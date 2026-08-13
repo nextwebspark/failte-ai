@@ -80,6 +80,21 @@ These upstream files we expect to modify. Keep this list short and current — a
 | `api/routes/main.py` | One `include_router` line per new router. Append at the end; conflicts are then trivial |
 | `ui/src/middleware.ts` | Route guarding by role |
 | `ui/src/lib/auth/` | Provider abstraction (`types.ts`, `config.ts`, `providers/`) |
+| **Branding — 10 files, see below** | Renamed Dograh → Failte AI in the visible chrome |
+
+#### Branding files
+
+`ui/src/components/BrandLogo.tsx` (the only logo source — used by `AppSidebar` and `AuthShell`), `ui/src/app/layout.tsx` (page title), `ui/src/components/layout/AppLayout.tsx`, `ui/src/components/auth/AuthShell.tsx`, `ui/src/components/lead-forms/OnboardingModal.tsx`, `ui/src/app/overview/page.tsx`, `ui/src/components/Footer.tsx`, `ui/src/app/api-keys/page.tsx`, `ui/src/components/AIModelConfigurationV2Editor.tsx`, `ui/src/app/workflow/[workflowId]/components/WorkflowEditorHeader.tsx`.
+
+**When resolving a conflict in these, the rename is intentional — keep our side of the branding strings and take upstream's side of everything else.**
+
+Three rules were applied and should hold for any future branding work:
+
+1. **Never rename wire values.** `mode: "dograh"` in the model configuration, `dograh_model` / `total_dograh_tokens` API fields, `window.DograhWidget` and `/embed/dograh-widget.js` (live on customer sites), the `dograh_auth_*` cookies and `X-Dograh-*` headers are all contracts. Only labels change.
+2. **Upstream's hosted service is relabelled neutrally, not rebranded.** The "Managed models" tab and "Managed Service Keys" authenticate against `services.dograh.com`. Calling them Failte AI would claim we provide models we do not.
+3. **Upstream's growth widgets are removed, not renamed.** The Slack invite to the Dograh community, the `dograh-hq/dograh` star badge (3 sites), the "Report an Issue" link to upstream's tracker, and the "Contact us" link into Dograh's sales funnel all pointed our users at the upstream project.
+
+Still Dograh-branded by decision, not oversight: deep-page help text in tool configuration, telephony, usage ("Dograh Tokens") and file upload. Scope was limited to the chrome users read at a glance, to keep the merge cost down.
 
 Prefer adding a new module over editing an existing one. Upstream's `AUTH_PROVIDER` seam is explicitly designed for this — a new provider drops in beside `local` and `stack` without touching either. See `docs/deployment/authentication.mdx`.
 

@@ -2,7 +2,6 @@
 
 import Link from 'next/link';
 
-import { GitHubStarBadge } from '@/components/layout/GitHubStarBadge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useAuth } from '@/lib/auth';
@@ -19,28 +18,16 @@ export default function OverviewPage() {
                     <CardHeader>
                         <CardTitle className="text-3xl">
                             {isOSSMode ? (
-                                "Welcome to Dograh"
+                                "Welcome to Failte AI"
                             ) : (
                                 `Welcome${user?.displayName ? `, ${user.displayName.split(' ')[0]}` : ''}!`
                             )}
                         </CardTitle>
                         <CardDescription className="text-lg mt-2">
-                            {isOSSMode ? (
-                                <>
-                                    Open source alternative to Vapi. Help us support the project by giving us a star on GitHub.
-                                </>
-                            ) : (
-                                "Get started with building voice AI workflows"
-                            )}
+                            Get started with building voice AI workflows
                         </CardDescription>
                     </CardHeader>
-                    <CardContent>
-                        {isOSSMode && (
-                            <div className="mb-6">
-                                <GitHubStarBadge label="Star us on GitHub" showCount source="overview_page" />
-                            </div>
-                        )}
-                    </CardContent>
+                    {/* Upstream's "Star us on GitHub" badge for dograh-hq/dograh was here. Removed. */}
                 </Card>
 
                 {/* Quick Actions */}
@@ -83,11 +70,15 @@ export default function OverviewPage() {
                     <CardHeader>
                         <CardTitle>Resources</CardTitle>
                         <CardDescription>
-                            Get help and learn more about Dograh
+                            Get help and learn more about the platform
                         </CardDescription>
                     </CardHeader>
                     <CardContent>
                         <div className="flex flex-wrap gap-4">
+                            {/* Points at the upstream project's documentation, which still
+                                describes this platform accurately. The "Report an Issue"
+                                button beside it linked to dograh-hq/dograh's issue tracker
+                                and was removed — our users should not be filing bugs there. */}
                             <Button asChild variant="outline">
                                 <a
                                     href="https://docs.dograh.com"
@@ -95,15 +86,6 @@ export default function OverviewPage() {
                                     rel="noopener noreferrer"
                                 >
                                     Documentation
-                                </a>
-                            </Button>
-                            <Button asChild variant="outline">
-                                <a
-                                    href="https://github.com/dograh-hq/dograh/issues"
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                >
-                                    Report an Issue
                                 </a>
                             </Button>
                         </div>
