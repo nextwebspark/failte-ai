@@ -82,11 +82,15 @@
   /* Single restrained warm accent — used only on primary CTAs + focus rings. */
   --cta: oklch(0.72 0.15 65);
   --cta-foreground: oklch(0.16 0.02 60);
-  /* Giant faded "dograh" wordmark (authentic Proxima Nova letterforms traced
-     from the brand logo PNG — the font is commercial, so the lettering ships
-     as static artwork in /public; fill + 0.9% opacity are baked into the
-     files). Theme-switched here; consumed by .app-surface and .auth-imprint. */
-  --brand-imprint: url("/brand-imprint-light.svg");
+  /* Giant faded wordmark painted low on the app surface and the auth form
+     column (consumed by .app-surface and .auth-imprint, theme-switched here).
+     Upstream shipped traced "dograh" letterforms as static SVGs in /public;
+     those are disabled because they wrote another brand across every screen.
+     To restore the effect with our own artwork, export a Failte AI wordmark at
+     roughly 1000x282 with the fill and ~0.9% opacity baked in, then point this
+     at url("/brand/failte-imprint-light.svg") (and the .dark override at the
+     dark variant). */
+  --brand-imprint: none;
 }
 
 .dark {
@@ -124,7 +128,8 @@
   /* Warm accent, slightly brighter against the near-black surfaces. */
   --cta: oklch(0.78 0.16 67);
   --cta-foreground: oklch(0.16 0.02 60);
-  --brand-imprint: url("/brand-imprint-dark.svg");
+  /* Disabled with the light variant above — see the note in :root. */
+  --brand-imprint: none;
 }
 
 @layer base {
@@ -231,9 +236,9 @@
   }
 
   /* Matte app background — flat charcoal (dark) / soft paper (light), NO
-     gradients, with one subtle graphic in BOTH themes: the giant faded
-     "dograh" wordmark (--brand-imprint, defined in :root/.dark) pinned to
-     the bottom of the viewport, echoing the dograh.com footer. */
+     gradients. Upstream also painted a giant faded wordmark here
+     (--brand-imprint, defined in :root/.dark); that is currently `none`
+     pending our own artwork, so this is a flat surface. */
   /* NOTE: background-attachment: fixed positions in VIEWPORT space but only
      paints inside .app-surface, which starts right of the ~270px sidebar —
      the +135px x-shift recentres the wordmark on the VISIBLE canvas. */
@@ -255,7 +260,7 @@
     background-color: oklch(0.165 0.002 80);
   }
 
-  /* Giant faded "dograh" imprint for the auth pages (applied to the AuthShell
+  /* Giant faded wordmark imprint for the auth pages (applied to the AuthShell
      form column, shared by Stack + OSS login/signup). Same --brand-imprint as
      .app-surface; element-relative here (no fixed attachment), so it centers
      and scales to whatever element carries the class. */

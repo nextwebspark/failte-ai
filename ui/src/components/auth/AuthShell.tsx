@@ -12,6 +12,7 @@ import type { ReactNode } from "react";
 import { BrandLogo } from "@/components/BrandLogo";
 
 const HIGHLIGHTS = [
+  "Done-for-you platform & configuration",
   "Speech-to-speech",
   "MCP-native",
   "BYOK - any model",
@@ -27,7 +28,8 @@ export function AuthShell({
   return (
     <div className="grid min-h-screen w-full bg-background lg:grid-cols-[55%_45%]">
       {/* Form column (LEFT) — scrolls and stays centered so tall forms never
-          clip. Carries the giant faded "dograh" imprint along its bottom. */}
+          clip. Carries the giant faded wordmark imprint along its bottom
+          (currently disabled — see --brand-imprint in globals.css). */}
       <main className="auth-imprint flex min-h-screen flex-col overflow-y-auto">
         <div className="flex min-h-full items-center justify-center p-6 sm:p-10">
           <div className="w-full max-w-md space-y-6 rounded-2xl border border-border/60 bg-card p-6 shadow-lg sm:p-8">
@@ -55,7 +57,7 @@ export function AuthShell({
 
         <div className="relative max-w-md space-y-5">
           <h1 className="text-3xl font-semibold leading-tight tracking-tight text-zinc-50 xl:text-4xl">
-            The open-source voice AI platform.
+            The Ireland-based voice agent platform.
           </h1>
           <ul className="flex flex-wrap gap-2">
             {HIGHLIGHTS.map((point) => (
