@@ -1,0 +1,32 @@
+# Port remap for the fork's local datastores.
+#
+# Why: an existing Dograh deployment (/Users/alokkumar/dev/voice-agent, prebuilt
+# ghcr.io images) already binds 5432, 6379, 9000/9001 and 8000 on this machine.
+# Rather than stop it, the fork's dev stack runs on adjacent ports so both
+# coexist.
+#
+# This file is NOT auto-loaded: `docker-compose.override.yaml` only auto-applies
+# to `docker-compose.yaml`, and we are overriding `docker-compose-local.yaml`.
+# Always pass both files:
+#
+#   docker compose -f docker-compose-local.yaml \
+#                  -f saas/dev/docker-compose-local.override.yaml up -d
+#
+# Matching values must be set in api/.env — see saas/docs/FORK.md.
+
+# `!override` is required: Compose merges sequence fields like `ports` by
+# APPENDING, so without it the base file's 5432/6379/9000 bindings survive and
+# still collide.
+services:
+  postgres:
+    ports: !override
+      - "5433:5432"
+
+  redis:
+    ports: !override
+      - "6380:6379"
+
+  minio:
+    ports: !override
+      - "127.0.0.1:9002:9000"
+      - "127.0.0.1:9003:9001"
