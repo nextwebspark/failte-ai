@@ -1,28 +1,25 @@
 import { cn } from "@/lib/utils";
 
-// Reusable Failte AI wordmark. Theme-aware by default: dark ink on light
-// surfaces, light ink on dark. Pass `inverse` to force the light treatment on an
-// always-dark surface (e.g. the auth brand panel). Pass `mark` to render the
-// square monogram instead of the full wordmark (e.g. the app sidebar header).
-// Height is controlled by the caller via className (e.g. "h-7"); the wordmark
-// sizes its type off that height so each lockup keeps its proportions.
+// Reusable Failte AI lockup. `mark` renders the square icon on its own (app
+// sidebar header); the default renders icon + wordmark. Pass `inverse` to force
+// light type on an always-dark surface (e.g. the auth brand panel). Height is
+// controlled by the caller via className (e.g. "h-7"); the icon tracks that
+// height and the type is sized to sit with it.
 //
 // ---------------------------------------------------------------------------
 // SWAPPING IN REAL ARTWORK
 // ---------------------------------------------------------------------------
-// This renders type, not images, so the UI carries our name before the designed
-// logo exists. To switch to image assets, drop them in `public/brand/` and
-// replace each branch below with the corresponding <img>:
+// The icon is a placeholder at `public/brand/failte-mark.svg` — a voice
+// waveform in a rounded badge, kept simple so it survives 16px. To replace it,
+// overwrite that file (same viewBox) and `src/app/icon.svg`, which is the same
+// artwork serving as the browser-tab icon via Next's app-router convention.
 //
-//   mark     -> <img src="/brand/failte-mark.png"          alt="Failte AI" className={cn("w-auto select-none", className)} />
-//   inverse  -> <img src="/brand/failte-logo-inverse.png"  alt="Failte AI" className={cn("w-auto select-none", className)} />
-//   default  -> two <img>s, `dark:hidden` on failte-logo.png and `hidden dark:block`
-//               on failte-logo-inverse.png, so the theme picks the right ink.
+// If a designed wordmark lockup arrives as a single image, drop it in
+// `public/brand/` and swap the <span> below for an <img> pair — one with
+// `dark:hidden` and one with `hidden dark:block` — so the theme picks the ink.
 //
-// Nothing else needs to change: BrandLogo is used in exactly two places
-// (AppSidebar renders `mark`, AuthShell renders the wordmark and its inverse).
-// The browser-tab icon is separate — it is `src/app/favicon.ico`, replaced in
-// place by Next's app-router convention.
+// BrandLogo is used in exactly two places: AppSidebar renders `mark`, AuthShell
+// renders the wordmark and its inverse.
 export function BrandLogo({
   className,
   inverse = false,
@@ -34,31 +31,27 @@ export function BrandLogo({
 }) {
   if (mark) {
     return (
-      <span
-        aria-label="Failte AI"
-        role="img"
-        className={cn(
-          "inline-flex aspect-square select-none items-center justify-center rounded-md",
-          "bg-foreground text-background text-[0.7rem] font-semibold leading-none",
-          className,
-        )}
-      >
-        FA
-      </span>
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src="/brand/failte-mark.svg"
+        alt="Failte AI"
+        className={cn("aspect-square w-auto select-none", className)}
+      />
     );
   }
 
   return (
-    <span
-      aria-label="Failte AI"
-      role="img"
-      className={cn(
-        "inline-flex select-none items-center whitespace-nowrap text-xl font-semibold leading-none tracking-tight",
-        inverse ? "text-white" : "text-foreground",
-        className,
-      )}
-    >
-      Failte<span className="ml-[0.25em] font-normal opacity-70">AI</span>
+    <span className={cn("inline-flex select-none items-center gap-2", className)}>
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src="/brand/failte-mark.svg" alt="" aria-hidden className="h-full w-auto" />
+      <span
+        className={cn(
+          "whitespace-nowrap text-xl font-semibold leading-none tracking-tight",
+          inverse ? "text-white" : "text-foreground",
+        )}
+      >
+        Failte<span className="ml-[0.25em] font-normal opacity-70">AI</span>
+      </span>
     </span>
   );
 }
