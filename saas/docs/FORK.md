@@ -223,12 +223,24 @@ They cover exactly the code paths our SaaS layer extends.
 
 ### Test baseline
 
-Recorded at fork time, against a tree byte-identical to `upstream/main` (commit `48aa0f60`, release 1.45.0):
+The suite is green. Any failure is ours:
 
 ```
-1858 passed, 2 failed
+1892 passed
 ```
 
-The two failures are `api/tests/test_sdk_sync.py::test_python_sdk_typed_in_sync` and `::test_typescript_sdk_typed_in_sync` — the checked-in SDK is out of sync with `node_specs` at upstream HEAD (`typed/trigger.py`, `typed/trigger.ts`). **This is upstream's drift, not ours.** Deliberately not fixed: running `scripts/generate_sdk.sh` would rewrite upstream-owned files and buy us a permanent conflict for no benefit.
+At fork time it was `1858 passed, 2 failed`. Both failures were `api/tests/test_sdk_sync.py` — upstream's own drift, not ours: commit `871ad4cc` added `from_phone_number_id` to the trigger node spec without regenerating the SDKs, so the committed typed files no longer matched the spec registry. Release 1.45.0 shipped that way.
 
-Treat any *third* failure as ours.
+Fixed by regenerating **only** the typed node files — the two commands under step 1 of `scripts/generate_sdk.sh`:
+
+```bash
+source venv/bin/activate && set -a && source api/.env && set +a
+SPECS=$(mktemp -t specs-XXXX.json)
+python -m api.services.workflow.node_specs > "$SPECS"
+PYTHONPATH="$PWD/sdk/python/src" python -m dograh_sdk.codegen --input "$SPECS" --out sdk/python/src/dograh_sdk/typed
+node sdk/typescript/scripts/codegen.mts --input "$SPECS" --out sdk/typescript/src/typed
+```
+
+**Do not run the whole `scripts/generate_sdk.sh` for this.** Steps 2–5 rerun `datamodel-codegen`, `openapi-typescript` and the docs OpenAPI dump, regenerating large committed files with our local tool versions. Any version skew against what upstream committed becomes churn in `_generated_models.py`, `_generated_client.*` and `docs/api-reference/openapi.json` — a lot of new conflict surface for no benefit. Step 1 alone touches 2 files.
+
+Expect `sdk/python/src/dograh_sdk/typed/trigger.py` and `sdk/typescript/src/typed/trigger.ts` to conflict once upstream regenerates their SDKs. **Take upstream's side** — theirs will be the correct output.
