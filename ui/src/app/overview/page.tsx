@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 
+import { SupportLink } from '@/components/SupportLink';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useAuth } from '@/lib/auth';
@@ -70,24 +71,16 @@ export default function OverviewPage() {
                     <CardHeader>
                         <CardTitle>Resources</CardTitle>
                         <CardDescription>
-                            Get help and learn more about the platform
+                            Get help from the team
                         </CardDescription>
                     </CardHeader>
                     <CardContent>
                         <div className="flex flex-wrap gap-4">
-                            {/* Points at the upstream project's documentation, which still
-                                describes this platform accurately. The "Report an Issue"
-                                button beside it linked to dograh-hq/dograh's issue tracker
-                                and was removed — our users should not be filing bugs there. */}
-                            <Button asChild variant="outline">
-                                <a
-                                    href="https://docs.dograh.com"
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                >
-                                    Documentation
-                                </a>
-                            </Button>
+                            {/* Upstream had a Documentation button and a "Report an Issue"
+                                button here, both pointing at dograh-hq. We publish neither a
+                                docs site nor a public tracker, so the card offers the one
+                                thing we can honour: a reply from a human. */}
+                            <SupportLink label="Email support" variant="outline" />
                         </div>
                     </CardContent>
                 </Card>

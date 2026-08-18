@@ -1,7 +1,7 @@
 import { StackHandler, StackTheme } from "@stackframe/stack";
 
-import { AuthEnterpriseCTA } from "@/components/auth/AuthEnterpriseCTA";
 import { AuthShell } from "@/components/auth/AuthShell";
+import { SupportLink } from "@/components/SupportLink";
 import { getAuthProvider } from "@/lib/auth/config";
 
 import { BackButton } from "./BackButton";
@@ -28,7 +28,15 @@ export default async function Handler(props: unknown) {
 
   if (authProvider === "local") {
     return (
-      <AuthShell enterpriseSlot={<AuthEnterpriseCTA />}>
+      <AuthShell
+      contactSlot={
+        <SupportLink
+          label="Talk to us"
+          variant="outline"
+          className="w-full border-white/20 bg-white/5 text-zinc-100 hover:bg-white/10 hover:text-white"
+        />
+      }
+    >
         <div className="space-y-2 text-center text-zinc-200">
           <h1 className="text-xl font-semibold">Local Auth Mode</h1>
           <p className="text-sm text-muted-foreground">
@@ -65,7 +73,15 @@ export default async function Handler(props: unknown) {
 
   if (isAuthForm) {
     return (
-      <AuthShell enterpriseSlot={<AuthEnterpriseCTA />}>
+      <AuthShell
+      contactSlot={
+        <SupportLink
+          label="Talk to us"
+          variant="outline"
+          className="w-full border-white/20 bg-white/5 text-zinc-100 hover:bg-white/10 hover:text-white"
+        />
+      }
+    >
         {showBackButton && <BackButton />}
         {handler}
       </AuthShell>

@@ -2,7 +2,8 @@
 // (/handler/[...stack], cloud) and the local/OSS auth pages (/auth/login,
 // /auth/signup). LEFT: a centered card that wraps the auth form (`children`).
 // RIGHT (lg+ only): a brand/value panel with the Failte AI logo, proof points, and
-// a Bland-style enterprise CTA block at the bottom (passed in as `enterpriseSlot`).
+// an enterprise pitch block at the bottom whose call-to-action is passed in as
+// `contactSlot` (a mailto — upstream's in-app lead-capture modal is deleted).
 // Mobile collapses to the single card column. The form column scrolls and stays
 // centered so tall (sign-up) forms never clip on short viewports. Palette is the
 // app's blacks/greys with one warm CTA accent.
@@ -20,10 +21,10 @@ const HIGHLIGHTS = [
 
 export function AuthShell({
   children,
-  enterpriseSlot,
+  contactSlot,
 }: {
   children: ReactNode;
-  enterpriseSlot?: ReactNode;
+  contactSlot?: ReactNode;
 }) {
   return (
     <div className="grid min-h-screen w-full bg-background lg:grid-cols-[55%_45%]">
@@ -81,7 +82,7 @@ export function AuthShell({
             We deploy Failte AI inside your environment for regulated and
             high-scale teams.
           </p>
-          {enterpriseSlot}
+          {contactSlot}
         </div>
       </aside>
     </div>

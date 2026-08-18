@@ -39,6 +39,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { detailFromError } from "@/lib/apiError";
 import { useAuth } from "@/lib/auth";
 import { copyTextToClipboard } from "@/lib/clipboard";
+import { publicDocsHref } from "@/lib/externalDocs";
 
 interface ConfigFormDialogProps {
   open: boolean;
@@ -111,6 +112,9 @@ export function ConfigFormDialog({
     () => providers.find((p) => p.provider === providerName),
     [providers, providerName],
   );
+  // Upstream points every telephony provider at its own docs site; only genuine
+  // third-party provider docs survive the filter.
+  const providerDocsHref = publicDocsHref(currentProvider?.docs_url);
   const visibleFields = useMemo(
     () =>
       currentProvider?.fields.filter(
@@ -291,9 +295,9 @@ export function ConfigFormDialog({
                 Provider cannot be changed after creation.
               </p>
             )}
-            {currentProvider?.docs_url && (
+            {currentProvider && providerDocsHref && (
               <a
-                href={currentProvider.docs_url}
+                href={providerDocsHref}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="inline-flex items-center gap-1 text-xs text-blue-600 underline"

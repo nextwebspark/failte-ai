@@ -4,7 +4,6 @@ import {
   AlertTriangle,
   ArrowLeft,
   Copy,
-  ExternalLink,
   Pencil,
   Plus,
   RotateCcw,
@@ -295,7 +294,7 @@ export default function TelephonyConfigurationDetailPage() {
                     This configuration is disabled
                   </p>
                   <p className="text-muted-foreground">
-                    Dograh stopped reconnecting after repeated connection
+                    Reconnection stopped after repeated connection
                     failures
                     {config.inactive_reason ? `: ${config.inactive_reason}` : ""}.
                     Calls will not work until it is reconnected. Correct the
@@ -359,15 +358,7 @@ export default function TelephonyConfigurationDetailPage() {
             <CardTitle>Phone numbers</CardTitle>
             <CardDescription>
               Numbers used as caller ID for outbound and accepted for inbound matching.
-              SIP URIs and extensions are supported alongside PSTN numbers.{" "}
-              <a
-                href="https://docs.dograh.com/integrations/telephony/inbound"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-0.5 underline"
-              >
-                Inbound docs <ExternalLink className="h-3 w-3" />
-              </a>
+              SIP URIs and extensions are supported alongside PSTN numbers.
             </CardDescription>
           </div>
           <Button

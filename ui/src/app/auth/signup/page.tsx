@@ -5,8 +5,8 @@ import { useState } from "react";
 import { toast } from "sonner";
 
 import { signupApiV1AuthSignupPost } from "@/client/sdk.gen";
-import { AuthEnterpriseCTA } from "@/components/auth/AuthEnterpriseCTA";
 import { AuthShell } from "@/components/auth/AuthShell";
+import { SupportLink } from "@/components/SupportLink";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -59,7 +59,15 @@ export default function SignupPage() {
   };
 
   return (
-    <AuthShell enterpriseSlot={<AuthEnterpriseCTA />}>
+    <AuthShell
+      contactSlot={
+        <SupportLink
+          label="Talk to us"
+          variant="outline"
+          className="w-full border-white/20 bg-white/5 text-zinc-100 hover:bg-white/10 hover:text-white"
+        />
+      }
+    >
       <div className="space-y-1.5 text-center">
         <h1 className="text-2xl font-semibold tracking-tight">Create an account</h1>
         <p className="text-sm text-muted-foreground">Enter your details to get started</p>

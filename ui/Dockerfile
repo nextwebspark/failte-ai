@@ -38,8 +38,6 @@ COPY ui/src ./src
 # Set build-time environment variables (needed for Next.js build)
 ENV NEXT_PUBLIC_NODE_ENV="oss"
 ENV NEXT_TELEMETRY_DISABLED="1"
-ENV NEXT_PUBLIC_CHATWOOT_URL="https://chat.dograh.com"
-ENV NEXT_PUBLIC_CHATWOOT_TOKEN="3fkFx2mCEjNHjM9gaNc4A82X"
 ENV BACKEND_URL="http://api:8000"
 
 # Build the application with standalone mode
