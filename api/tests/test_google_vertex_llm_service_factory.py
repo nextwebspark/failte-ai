@@ -9,6 +9,7 @@ from api.services.configuration.registry import (
     ServiceType,
 )
 from api.services.pipecat.service_factory import (
+    _vertex_model_family,
     create_llm_service,
     create_llm_service_from_provider,
 )
@@ -73,6 +74,100 @@ class TestGoogleVertexLLMServiceFactory:
         assert kwargs["project_id"] == "demo-project"
         assert kwargs["location"] == "us-east4"
         assert kwargs["credentials"] == '{"type":"service_account"}'
+
+
+class TestGoogleVertexModelFamilyRouting:
+    def test_model_family_table(self):
+        cases = {
+            "gemini-3.5-flash": "gemini",
+            "gemini-3.5-pro": "gemini",
+            "gemma-3-27b": "gemini",
+            "google/gemma": "gemini",
+            "": "gemini",
+            "claude-sonnet-4-6": "anthropic",
+            "claude-haiku-4-5@20251001": "anthropic",
+            "anthropic/claude-sonnet-5": "anthropic",
+            "meta/llama-3.3-70b-instruct-maas": "openai_compat",
+            "deepseek-ai/deepseek-v3.2-maas": "openai_compat",
+            "qwen/qwen3-coder-480b-a35b-instruct-maas": "openai_compat",
+            "openai/gpt-oss-120b-maas": "openai_compat",
+            "moonshotai/kimi-k2-thinking-maas": "openai_compat",
+            "my-custom-model": "openai_compat",
+        }
+        for model, family in cases.items():
+            assert _vertex_model_family(model) == family, model
+
+    def test_claude_model_routes_to_anthropic_service(self):
+        with patch(
+            "api.services.pipecat.vertex_llm.DograhVertexAnthropicLLMService"
+        ) as mock_service:
+            create_llm_service_from_provider(
+                provider=ServiceProviders.GOOGLE_VERTEX.value,
+                model="claude-sonnet-4-6",
+                api_key=None,
+                project_id="demo-project",
+                location="global",
+                credentials='{"type":"service_account"}',
+            )
+
+        kwargs = mock_service.call_args.kwargs
+        assert kwargs["project_id"] == "demo-project"
+        assert kwargs["location"] == "global"
+        assert kwargs["credentials"] == '{"type":"service_account"}'
+        assert kwargs["settings"].model == "claude-sonnet-4-6"
+        assert kwargs["settings"].temperature == 0.1
+
+    def test_claude_location_defaults_to_global(self):
+        with patch(
+            "api.services.pipecat.vertex_llm.DograhVertexAnthropicLLMService"
+        ) as mock_service:
+            create_llm_service_from_provider(
+                provider=ServiceProviders.GOOGLE_VERTEX.value,
+                model="claude-haiku-4-5@20251001",
+                api_key=None,
+                project_id="demo-project",
+                location=None,
+                credentials=None,
+            )
+
+        assert mock_service.call_args.kwargs["location"] == "global"
+
+    def test_claude_sonnet_5_omits_temperature(self):
+        from anthropic import NOT_GIVEN
+
+        with patch(
+            "api.services.pipecat.vertex_llm.DograhVertexAnthropicLLMService"
+        ) as mock_service:
+            create_llm_service_from_provider(
+                provider=ServiceProviders.GOOGLE_VERTEX.value,
+                model="claude-sonnet-5",
+                api_key=None,
+                project_id="demo-project",
+                location="global",
+                credentials=None,
+            )
+
+        assert mock_service.call_args.kwargs["settings"].temperature is NOT_GIVEN
+
+    def test_maas_model_routes_to_maas_service(self):
+        with patch(
+            "api.services.pipecat.vertex_llm.DograhVertexMaaSLLMService"
+        ) as mock_service:
+            create_llm_service_from_provider(
+                provider=ServiceProviders.GOOGLE_VERTEX.value,
+                model="meta/llama-3.3-70b-instruct-maas",
+                api_key=None,
+                project_id="demo-project",
+                location="us-central1",
+                credentials='{"type":"service_account"}',
+            )
+
+        kwargs = mock_service.call_args.kwargs
+        assert kwargs["project_id"] == "demo-project"
+        assert kwargs["location"] == "us-central1"
+        assert kwargs["credentials"] == '{"type":"service_account"}'
+        assert kwargs["settings"].model == "meta/llama-3.3-70b-instruct-maas"
+        assert kwargs["settings"].temperature == 0.1
 
 
 class TestGoogleVertexLLMValidation:

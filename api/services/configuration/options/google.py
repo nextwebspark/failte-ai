@@ -2,10 +2,37 @@ GOOGLE_MODELS = (
     "gemini-3.5-flash",
     "gemini-3.5-flash-lite",
 )
+# Vertex AI serves three model families through one provider: Gemini (native
+# google-genai API), Anthropic Claude (native Anthropic API), and open MaaS
+# models (OpenAI-compatible endpoint, ids shaped "{publisher}/{model}-maas").
+# The runtime picks the right service per model in service_factory.
 GOOGLE_VERTEX_MODELS = (
+    # Gemini
     "gemini-3.1-flash-lite",
     "gemini-3.5-flash",
     "gemini-3.5-flash-lite",
+    "gemini-3.5-pro",
+    # Anthropic Claude
+    "claude-haiku-4-5@20251001",
+    "claude-sonnet-4-6",
+    "claude-sonnet-5",
+    # Meta Llama (MaaS)
+    "meta/llama-3.3-70b-instruct-maas",
+    "meta/llama-4-scout-17b-16e-instruct-maas",
+    "meta/llama-4-maverick-17b-128e-instruct-maas",
+    # DeepSeek (MaaS)
+    "deepseek-ai/deepseek-v3.2-maas",
+    "deepseek-ai/deepseek-r1-0528-maas",
+    # Qwen (MaaS)
+    "qwen/qwen3-next-80b-a3b-instruct-maas",
+    "qwen/qwen3-coder-480b-a35b-instruct-maas",
+    "qwen/qwen3-235b-a22b-instruct-2507-maas",
+    # OpenAI open-weight (MaaS)
+    "openai/gpt-oss-120b-maas",
+    "openai/gpt-oss-20b-maas",
+    # Moonshot / MiniMax (MaaS)
+    "moonshotai/kimi-k2-thinking-maas",
+    "minimax/minimax-m2-maas",
 )
 
 GOOGLE_REALTIME_MODELS = ("gemini-3.1-flash-live-preview",)
