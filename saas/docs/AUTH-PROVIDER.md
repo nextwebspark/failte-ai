@@ -1,6 +1,20 @@
 # Auth provider evaluation
 
-> **Status: open.** No decision made. This records what we know so the next session starts from evidence rather than from scratch.
+> **Status: closed.** **Decision: Stack Auth, self-hosted in the EU.** Recorded in
+> [`app-doc/tenancy-stack-auth.md`](../../app-doc/tenancy-stack-auth.md), which supersedes the Spring
+> Authorization Server choice made in `app-doc/tenancy-auth-roadmap.md`.
+>
+> The evaluation below stands as written and is what drove the decision — in particular its central finding, that
+> no mainstream provider models a multi-level hierarchy, so the tree lives in our Postgres whichever provider we
+> pick. Given that, the deciding factors were the ones this document already identified: Stack is **already
+> integrated** (criterion 2, "Stack Auth starts from a large head start here"), is **open source and
+> self-hostable** so EU residency is ours to guarantee (criterion 1), ships **passwordless OTP and Google
+> natively** so we build no identity protocol of our own, and its **impersonation support already exists in this
+> repo** (criterion 5). The recommendation to prototype against the `AUTH_PROVIDER` seam rather than decide on
+> paper is honoured: Stack drops in as a third provider value, `failte`, beside `local` and `stack`.
+>
+> What this does **not** settle, and is tracked as an open question in the new document: enterprise SSO/SAML and
+> MFA sufficiency, and the operational cadence of running self-hosted Stack.
 
 ## Constraints
 

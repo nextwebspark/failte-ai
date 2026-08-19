@@ -38,6 +38,20 @@ function createFetchMock(autoStart: boolean) {
                         embedMode: 'inline',
                         containerId: 'failte-inline-container',
                     },
+                    // The widget carries no default copy of its own — every
+                    // visitor-facing string arrives already resolved on this
+                    // payload (api/schemas/widget_texts.py). Omitting `texts`
+                    // makes widgetText() return '' for each key, so the banner
+                    // this suite asserts on renders empty and stays hidden.
+                    texts: {
+                        endChatText: 'End chat',
+                        conversationEndedText: 'Conversation ended.',
+                        startNewChatText: 'Start new chat',
+                        chatRetryText: 'Retry',
+                        chatInputPlaceholder: 'Type a message…',
+                        sendMessageLabel: 'Send message',
+                        closeChatLabel: 'Close chat',
+                    },
                     auto_start: autoStart,
                 }),
             } as Response;
