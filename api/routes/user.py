@@ -1,10 +1,12 @@
 from datetime import datetime, timedelta
 from typing import List, Literal, Optional, TypedDict, Union
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from loguru import logger
 from pydantic import BaseModel, ValidationError
 
 from api.db import db_client
+from api.saas.voice_catalog import google_voices
 from api.db.models import (
     UserModel,
 )
@@ -429,7 +431,11 @@ async def reactivate_api_key(
 
 
 # Voice Configuration Endpoints
-TTSProvider = Literal["elevenlabs", "deepgram", "sarvam", "cartesia", "dograh", "rime"]
+# "google" is ours: served from Google's own voices API rather than MPS, so a
+# BYOK Google deployment gets a real picker. See api/saas/voice_catalog/.
+TTSProvider = Literal[
+    "elevenlabs", "deepgram", "sarvam", "cartesia", "dograh", "rime", "google"
+]
 
 
 class VoiceInfo(BaseModel):
@@ -467,6 +473,30 @@ async def get_voices(
     user: UserModel = Depends(get_user),
 ) -> VoicesResponse:
     """Get available voices for a TTS provider."""
+    # Google is served from Google, not MPS — the hosted catalogue has no Google
+    # voices, so a BYOK Google deployment fell through to a bare "Enter voice ID"
+    # box. See api/saas/voice_catalog/google_voices.py.
+    if provider == "google":
+        try:
+            result = await google_voices.list_voices(
+                credentials_json=await _google_tts_credentials(user),
+                model=model,
+                language=language,
+                q=q,
+                gender=gender,
+                accent=accent,
+            )
+            return VoicesResponse(
+                provider="google",
+                voices=[VoiceInfo(**voice) for voice in result["voices"]],
+                facets=VoiceFacets(**result["facets"]),
+            )
+        except Exception as e:
+            logger.exception("Failed to build the Google voice catalogue")
+            raise HTTPException(
+                status_code=502, detail="Failed to fetch Google voices"
+            ) from e
+
     try:
         result = await mps_service_key_client.get_voices(
             provider=provider,
@@ -503,3 +533,47 @@ async def get_voices(
             status_code=500,
             detail=f"Failed to fetch voices for {provider}",
         ) from e
+
+
+async def _google_tts_credentials(user: UserModel) -> str | None:
+    """The org's configured Google TTS credentials, or None for ADC.
+
+    Returning None is the normal case on a deployment that keeps the service
+    account at application level (GOOGLE_APPLICATION_CREDENTIALS).
+    """
+    try:
+        resolved = await get_resolved_ai_model_configuration(
+            organization_id=user.selected_organization_id
+        )
+        return getattr(resolved.effective.tts, "credentials", None)
+    except Exception:
+        logger.debug("No org TTS credentials resolved; falling back to ADC")
+        return None
+
+
+@router.get("/configurations/voices/google/preview")
+async def preview_google_voice(
+    voice_id: str,
+    user: UserModel = Depends(get_user),
+) -> Response:
+    """Synthesise a short sample of one Google voice.
+
+    Google publishes no preview URLs, so the picker needs us to render one.
+    Cached on disk per voice — the text never changes, so the second listen is
+    free.
+    """
+    try:
+        audio = await google_voices.preview_audio(
+            voice_id, credentials_json=await _google_tts_credentials(user)
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    except Exception as e:
+        logger.exception(f"Failed to synthesise preview for {voice_id}")
+        raise HTTPException(status_code=502, detail="Preview unavailable") from e
+
+    return Response(
+        content=audio,
+        media_type="audio/mpeg",
+        headers={"Cache-Control": "public, max-age=86400"},
+    )

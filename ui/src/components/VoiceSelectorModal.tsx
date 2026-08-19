@@ -4,7 +4,7 @@ import { Check, ChevronDown, Loader2, Pencil, Play, Square } from "lucide-react"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { getVoicesApiV1UserConfigurationsVoicesProviderGet } from "@/client/sdk.gen";
-import { VoiceInfo } from "@/client/types.gen";
+import { GetVoicesApiV1UserConfigurationsVoicesProviderGetData, VoiceInfo } from "@/client/types.gen";
 import { Button } from "@/components/ui/button";
 import {
     Dialog,
@@ -17,7 +17,15 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ACCENT_DISPLAY_NAMES } from "@/constants/accents";
 import { LANGUAGE_DISPLAY_NAMES } from "@/constants/languages";
+import { resolveBrowserBackendUrl } from "@/lib/apiClient";
+import { useAuth } from "@/lib/auth";
 import { cn } from "@/lib/utils";
+
+// The catalogue route's provider path param is a closed literal union in the
+// generated client. Providers reach this component as a plain string, so the
+// cast is unavoidable — naming the target type at least keeps it honest.
+type VoicesProvider =
+    GetVoicesApiV1UserConfigurationsVoicesProviderGetData["path"]["provider"];
 
 const ALL_FILTER_VALUE = "__all__";
 
@@ -44,6 +52,14 @@ interface VoiceSelectorModalProps {
     model?: string;
     /** Allow typing a raw voice ID for voices outside the catalog. */
     allowManualInput?: boolean;
+    /**
+     * What the filters start on each time the modal opens. Defaults suit the
+     * managed pipeline (American English); a provider whose catalogue is
+     * dominated by another accent can open somewhere more useful.
+     */
+    defaultGender?: string;
+    defaultAccent?: string;
+    defaultLanguage?: string;
     className?: string;
 }
 
@@ -74,8 +90,12 @@ export const VoiceSelectorModal: React.FC<VoiceSelectorModalProps> = ({
     onChange,
     model,
     allowManualInput = false,
+    defaultGender = DEFAULT_GENDER,
+    defaultAccent = DEFAULT_ACCENT,
+    defaultLanguage = DEFAULT_LANGUAGE,
     className,
 }) => {
+    const { getAccessToken } = useAuth();
     const [isOpen, setIsOpen] = useState(false);
     const [voices, setVoices] = useState<VoiceInfo[]>([]);
     const [facets, setFacets] = useState<Facets>(EMPTY_FACETS);
@@ -83,9 +103,9 @@ export const VoiceSelectorModal: React.FC<VoiceSelectorModalProps> = ({
     const [error, setError] = useState<string | null>(null);
 
     // Filters drive a server-side query (we never fetch the whole catalog).
-    const [gender, setGender] = useState(DEFAULT_GENDER);
-    const [accent, setAccent] = useState(DEFAULT_ACCENT);
-    const [language, setLanguage] = useState(DEFAULT_LANGUAGE);
+    const [gender, setGender] = useState(defaultGender);
+    const [accent, setAccent] = useState(defaultAccent);
+    const [language, setLanguage] = useState(defaultLanguage);
     const [searchInput, setSearchInput] = useState("");
     const [debouncedSearch, setDebouncedSearch] = useState("");
 
@@ -98,15 +118,26 @@ export const VoiceSelectorModal: React.FC<VoiceSelectorModalProps> = ({
     // Preview playback.
     const [playingVoiceId, setPlayingVoiceId] = useState<string | null>(null);
     const audioRef = useRef<HTMLAudioElement | null>(null);
+    // Blob URL for the preview currently playing, if we fetched the bytes
+    // ourselves. Held so it can be revoked — a blob lives until it is.
+    const blobUrlRef = useRef<string | null>(null);
     const requestId = useRef(0);
+
+    const releaseBlob = useCallback(() => {
+        if (blobUrlRef.current) {
+            URL.revokeObjectURL(blobUrlRef.current);
+            blobUrlRef.current = null;
+        }
+    }, []);
 
     const stopPreview = useCallback(() => {
         if (audioRef.current) {
             audioRef.current.pause();
             audioRef.current = null;
         }
+        releaseBlob();
         setPlayingVoiceId(null);
-    }, []);
+    }, [releaseBlob]);
 
     // Debounce the search box so typing doesn't fire a request per keystroke.
     useEffect(() => {
@@ -124,7 +155,7 @@ export const VoiceSelectorModal: React.FC<VoiceSelectorModalProps> = ({
         let active = true;
         (async () => {
             const response = await getVoicesApiV1UserConfigurationsVoicesProviderGet({
-                path: { provider: provider as never },
+                path: { provider: provider as VoicesProvider },
                 query: { q: value },
             });
             if (!active) return;
@@ -153,7 +184,7 @@ export const VoiceSelectorModal: React.FC<VoiceSelectorModalProps> = ({
             if (search) query.q = search;
 
             const response = await getVoicesApiV1UserConfigurationsVoicesProviderGet({
-                path: { provider: provider as never },
+                path: { provider: provider as VoicesProvider },
                 query,
             });
             if (id !== requestId.current) return; // a newer request superseded this one
@@ -202,9 +233,9 @@ export const VoiceSelectorModal: React.FC<VoiceSelectorModalProps> = ({
     );
 
     const openModal = () => {
-        setGender(DEFAULT_GENDER);
-        setAccent(DEFAULT_ACCENT);
-        setLanguage(DEFAULT_LANGUAGE);
+        setGender(defaultGender);
+        setAccent(defaultAccent);
+        setLanguage(defaultLanguage);
         setSearchInput("");
         setDebouncedSearch("");
         setManualMode(false);
@@ -213,18 +244,40 @@ export const VoiceSelectorModal: React.FC<VoiceSelectorModalProps> = ({
         setIsOpen(true);
     };
 
-    const playPreview = (voice: VoiceInfo) => {
+    const playPreview = async (voice: VoiceInfo) => {
         if (playingVoiceId === voice.voice_id) {
             stopPreview();
             return;
         }
         stopPreview();
         if (!voice.preview_url) return;
-        const audio = new Audio(voice.preview_url);
+
+        // Catalogue providers served by MPS ship absolute, public sample URLs.
+        // Ours (google) is a relative path on our own API, which needs the
+        // backend origin AND a bearer token — an <audio> element can send
+        // neither. Fetch the bytes and play a blob instead.
+        let src = voice.preview_url;
+        if (src.startsWith("/")) {
+            try {
+                const token = await getAccessToken();
+                const response = await fetch(`${resolveBrowserBackendUrl()}${src}`, {
+                    headers: { Authorization: `Bearer ${token}` },
+                });
+                if (!response.ok) throw new Error(`preview ${response.status}`);
+                src = URL.createObjectURL(await response.blob());
+                blobUrlRef.current = src;
+            } catch {
+                setPlayingVoiceId(null);
+                return;
+            }
+        }
+
+        const audio = new Audio(src);
         audioRef.current = audio;
         setPlayingVoiceId(voice.voice_id);
         const clear = () => {
             if (audioRef.current === audio) audioRef.current = null;
+            if (blobUrlRef.current === src) releaseBlob();
             setPlayingVoiceId((current) => (current === voice.voice_id ? null : current));
         };
         audio.onended = clear;

@@ -15,6 +15,7 @@ import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { VoiceSelector } from "@/components/VoiceSelector";
+import { VoiceSelectorModal } from "@/components/VoiceSelectorModal";
 import { LANGUAGE_DISPLAY_NAMES } from "@/constants/languages";
 import { useUserConfig } from "@/context/UserConfigContext";
 import { publicDocsHref } from "@/lib/externalDocs";
@@ -707,6 +708,32 @@ export function ServiceConfigurationForm({
             watch(`${service}_model`) as string | undefined,
         );
         const numberSchema = getNumberSchema(actualSchema);
+
+        // Google's catalogue is ours, not MPS's (api/saas/voice_catalog), and it is
+        // large — 1,500+ voices across 50+ languages — so it gets the same dialog
+        // picker the managed pipeline uses: server-side gender/accent/language
+        // filters, search, and per-voice previews. This has to run BEFORE the
+        // allow_custom_input check below, which is what used to drop Google's voice
+        // field to a bare text box. Opens on British female; manual entry stays
+        // available for a voice outside the catalogue.
+        if (
+            service === "tts" &&
+            field === "voice" &&
+            (serviceProviders.tts || "").toLowerCase() === "google"
+        ) {
+            return (
+                <VoiceSelectorModal
+                    provider="google"
+                    value={watch(`${service}_${field}`) as string || ""}
+                    onChange={(voiceId) => {
+                        setValue(`${service}_${field}`, voiceId, { shouldDirty: true });
+                    }}
+                    model={watch("tts_model") as string || undefined}
+                    allowManualInput
+                    defaultAccent="gb"
+                />
+            );
+        }
 
         if (service === "tts" && field === "voice" && !actualSchema?.allow_custom_input) {
             if (!dropdownOptions) {
