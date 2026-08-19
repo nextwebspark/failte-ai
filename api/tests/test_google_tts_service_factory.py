@@ -2,7 +2,6 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
-
 from pipecat.services.settings import NOT_GIVEN
 
 from api.services.configuration.registry import ServiceProviders

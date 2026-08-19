@@ -600,8 +600,10 @@ def create_tts_service(
         # with its locale, so let the voice decide and keep the configured
         # language only for voices that carry none.
         locale = re.match(r"^([a-z]{2,3}-[A-Z]{2})-", voice)
-        language = locale.group(1) if locale else (
-            getattr(user_config.tts, "language", None) or "en-US"
+        language = (
+            locale.group(1)
+            if locale
+            else (getattr(user_config.tts, "language", None) or "en-US")
         )
         speed = getattr(user_config.tts, "speed", None)
         location = getattr(user_config.tts, "location", None) or None

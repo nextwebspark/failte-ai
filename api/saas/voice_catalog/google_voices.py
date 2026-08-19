@@ -34,14 +34,20 @@ SCOPES = ["https://www.googleapis.com/auth/cloud-platform"]
 # Previews are identical for a given voice, so synthesising one twice is money
 # and latency for nothing.
 PREVIEW_CACHE = Path("/tmp/dograh-voice-previews")
-PREVIEW_TEXT = (
-    "Hello, thanks for calling. I can check that for you right now."
-)
+PREVIEW_TEXT = "Hello, thanks for calling. I can check that for you right now."
 
 # Google encodes the model family in the voice name.
 MODEL_FAMILIES = [
-    "Chirp3-HD", "Chirp-HD", "Journey", "Studio", "Neural2", "Polyglot",
-    "Wavenet", "News", "Casual", "Standard",
+    "Chirp3-HD",
+    "Chirp-HD",
+    "Journey",
+    "Studio",
+    "Neural2",
+    "Polyglot",
+    "Wavenet",
+    "News",
+    "Casual",
+    "Standard",
 ]
 
 # Maps the model id stored in our config to the token in the voice name.
@@ -57,24 +63,69 @@ MODEL_ID_TO_FAMILY = {
 }
 
 LANGUAGE_NAMES = {
-    "en": "English", "ga": "Irish", "fr": "French", "de": "German",
-    "es": "Spanish", "it": "Italian", "pt": "Portuguese", "nl": "Dutch",
-    "pl": "Polish", "hi": "Hindi", "ta": "Tamil", "te": "Telugu",
-    "bn": "Bengali", "gu": "Gujarati", "kn": "Kannada", "ml": "Malayalam",
-    "mr": "Marathi", "pa": "Punjabi", "ur": "Urdu", "ar": "Arabic",
-    "zh": "Chinese", "ja": "Japanese", "ko": "Korean", "ru": "Russian",
-    "tr": "Turkish", "sv": "Swedish", "da": "Danish", "no": "Norwegian",
-    "fi": "Finnish", "cs": "Czech", "el": "Greek", "he": "Hebrew",
-    "th": "Thai", "vi": "Vietnamese", "id": "Indonesian", "ms": "Malay",
-    "uk": "Ukrainian", "ro": "Romanian", "hu": "Hungarian", "sk": "Slovak",
+    "en": "English",
+    "ga": "Irish",
+    "fr": "French",
+    "de": "German",
+    "es": "Spanish",
+    "it": "Italian",
+    "pt": "Portuguese",
+    "nl": "Dutch",
+    "pl": "Polish",
+    "hi": "Hindi",
+    "ta": "Tamil",
+    "te": "Telugu",
+    "bn": "Bengali",
+    "gu": "Gujarati",
+    "kn": "Kannada",
+    "ml": "Malayalam",
+    "mr": "Marathi",
+    "pa": "Punjabi",
+    "ur": "Urdu",
+    "ar": "Arabic",
+    "zh": "Chinese",
+    "ja": "Japanese",
+    "ko": "Korean",
+    "ru": "Russian",
+    "tr": "Turkish",
+    "sv": "Swedish",
+    "da": "Danish",
+    "no": "Norwegian",
+    "fi": "Finnish",
+    "cs": "Czech",
+    "el": "Greek",
+    "he": "Hebrew",
+    "th": "Thai",
+    "vi": "Vietnamese",
+    "id": "Indonesian",
+    "ms": "Malay",
+    "uk": "Ukrainian",
+    "ro": "Romanian",
+    "hu": "Hungarian",
+    "sk": "Slovak",
 }
 
 REGION_NAMES = {
-    "US": "American", "GB": "British", "AU": "Australian", "IN": "Indian",
-    "IE": "Irish", "CA": "Canadian", "NZ": "New Zealand", "ZA": "South African",
-    "SG": "Singaporean", "PH": "Filipino", "NG": "Nigerian", "KE": "Kenyan",
-    "ES": "Spain", "MX": "Mexican", "BR": "Brazilian", "PT": "Portugal",
-    "FR": "French", "DE": "German", "IT": "Italian", "NL": "Dutch",
+    "US": "American",
+    "GB": "British",
+    "AU": "Australian",
+    "IN": "Indian",
+    "IE": "Irish",
+    "CA": "Canadian",
+    "NZ": "New Zealand",
+    "ZA": "South African",
+    "SG": "Singaporean",
+    "PH": "Filipino",
+    "NG": "Nigerian",
+    "KE": "Kenyan",
+    "ES": "Spain",
+    "MX": "Mexican",
+    "BR": "Brazilian",
+    "PT": "Portugal",
+    "FR": "French",
+    "DE": "German",
+    "IT": "Italian",
+    "NL": "Dutch",
 }
 
 

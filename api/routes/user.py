@@ -6,12 +6,12 @@ from loguru import logger
 from pydantic import BaseModel, ValidationError
 
 from api.db import db_client
-from api.saas.voice_catalog import google_voices
 from api.db.models import (
     UserModel,
 )
 from api.errors.failure import ErrorSource, classify_exception, log_failure
 from api.errors.mps import MPSUnavailableError
+from api.saas.voice_catalog import google_voices
 from api.schemas.onboarding_state import OnboardingState, OnboardingStateUpdate
 from api.schemas.widget_texts import WidgetTexts
 from api.schemas.workflow_configurations import (

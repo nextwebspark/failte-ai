@@ -49,9 +49,7 @@ GOOGLE_VOICES_PAYLOAD = {
 
 def _mock_http(payload=GOOGLE_VOICES_PAYLOAD, status_code=200):
     """Patch out the credential refresh and the voices HTTP call."""
-    response = SimpleNamespace(
-        status_code=status_code, json=lambda: payload, text=""
-    )
+    response = SimpleNamespace(status_code=status_code, json=lambda: payload, text="")
     client = MagicMock()
     client.get = AsyncMock(return_value=response)
     client.__aenter__ = AsyncMock(return_value=client)
@@ -99,7 +97,9 @@ async def test_name_is_the_short_name_and_description_carries_the_label():
     """The picker renders its own accent/gender/language line under the name,
     so a human label in the name would just be repeated back."""
     result = await _list()
-    aoede = next(v for v in result["voices"] if v["voice_id"] == "en-GB-Chirp3-HD-Aoede")
+    aoede = next(
+        v for v in result["voices"] if v["voice_id"] == "en-GB-Chirp3-HD-Aoede"
+    )
 
     assert aoede["name"] == "Aoede"
     assert aoede["description"] == "British female · Chirp3-HD"
@@ -142,7 +142,11 @@ async def test_facets_describe_the_whole_catalogue_not_the_filtered_view():
 
 async def test_upstream_failure_is_not_swallowed():
     creds_patch, http_patch = _mock_http(payload={}, status_code=403)
-    with creds_patch, http_patch, pytest.raises(RuntimeError, match="google voices api 403"):
+    with (
+        creds_patch,
+        http_patch,
+        pytest.raises(RuntimeError, match="google voices api 403"),
+    ):
         await google_voices.list_voices()
 
 
