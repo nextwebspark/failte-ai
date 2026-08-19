@@ -4,7 +4,6 @@ import {
   AlertTriangle,
   ChevronRight,
   Copy,
-  ExternalLink,
   Pencil,
   Plus,
   RotateCcw,
@@ -178,15 +177,7 @@ export default function TelephonyConfigurationsPage() {
             <h1 className="text-3xl font-bold mb-2">Telephony configurations</h1>
             <p className="text-muted-foreground">
               Connect one or more telephony provider accounts. Each campaign uses one
-              configuration; inbound calls are routed to the right one by account ID.{" "}
-              <a
-                href="https://docs.dograh.com/integrations/telephony/overview"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-0.5 underline"
-              >
-                Learn more <ExternalLink className="h-3 w-3" />
-              </a>
+              configuration; inbound calls are routed to the right one by account ID.
             </p>
           </div>
           <Button onClick={() => setCreateOpen(true)}>

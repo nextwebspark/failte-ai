@@ -10,11 +10,9 @@
     "fix-lint": "npx eslint --fix . --ignore-pattern '.next/*' --ignore-pattern 'node_modules/*' --ignore-pattern 'next-env.d.ts'",
     "generate-client": "openapi-ts",
     "test": "vitest run",
-    "test:display-options": "node scripts/test-display-options.mts",
-    "lint:lead-flow": "bash ../../user_onboarding/scripts/check_lead_flow.sh"
+    "test:display-options": "node scripts/test-display-options.mts"
   },
   "dependencies": {
-    "@calcom/embed-react": "^1.5.3",
     "@dagrejs/dagre": "^1.1.4",
     "@floating-ui/react-dom": "^2.1.9",
     "@radix-ui/react-alert-dialog": "^1.1.15",

@@ -1,5 +1,5 @@
 import * as LucideIcons from 'lucide-react';
-import { Circle, ExternalLink, type LucideIcon, X } from 'lucide-react';
+import { Circle, type LucideIcon, X } from 'lucide-react';
 import { useEffect, useMemo } from 'react';
 
 import type { NodeSpec } from '@/client/types.gen';
@@ -131,18 +131,7 @@ export default function AddNodePanel({ isOpen, onNodeSelect, onClose, nodes }: A
         >
             <div className="p-4 h-full overflow-y-auto">
                 <div className="flex justify-between items-center mb-6">
-                    <div className="flex flex-col gap-1">
-                        <h2 className="text-lg font-semibold">Add New Node</h2>
-                        <a
-                            href="https://docs.dograh.com/voice-agent/introduction"
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-xs text-muted-foreground hover:text-primary flex items-center gap-1 transition-colors"
-                        >
-                            <ExternalLink className="w-3 h-3" />
-                            View Nodes Documentation
-                        </a>
-                    </div>
+                    <h2 className="text-lg font-semibold">Add New Node</h2>
                     <Button variant="ghost" size="icon" onClick={onClose}>
                         <X className="w-5 h-5" />
                     </Button>

@@ -1,6 +1,6 @@
 "use client";
 
-import { ExternalLink, Upload } from "lucide-react";
+import { Upload } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -51,10 +51,7 @@ export default function FilesPage() {
             <div className="mb-8">
                 <h1 className="text-3xl font-bold mb-2">Knowledge Base Files</h1>
                 <p className="text-muted-foreground">
-                    Upload and manage documents for your voice agents to reference.{" "}
-                    <a href="https://docs.dograh.com/voice-agent/knowledge-base" target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-0.5 underline">
-                        Learn more <ExternalLink className="h-3 w-3" />
-                    </a>
+                    Upload and manage documents for your voice agents to reference.
                 </p>
             </div>
 

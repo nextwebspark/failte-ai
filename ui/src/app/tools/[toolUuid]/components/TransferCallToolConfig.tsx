@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowDown, ArrowUp, ExternalLink, Plus, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowUp, Plus, Trash2 } from "lucide-react";
 
 import type { RecordingResponseSchema } from "@/client/types.gen";
 import { RecordingSelect, StaticTextWarning } from "@/components/flow/TextOrAudioInput";
@@ -21,7 +21,6 @@ import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
-import { DOCS_BASE } from "@/constants/documentation";
 
 import {
     type ContextDestinationRuleRow,
@@ -287,15 +286,7 @@ export function TransferCallToolConfig({
                                     <Label>Dynamic Transfer Resolver</Label>
                                 </div>
                                 <p className="text-xs text-muted-foreground">
-                                    Dograh sends the resolved argument dictionary to this endpoint. The endpoint must return transfer_context.destination and may return transfer_context.custom_message.{" "}
-                                    <a
-                                        href={`${DOCS_BASE}/voice-agent/tools/call-transfer#dynamic-resolver-response`}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        className="inline-flex items-center gap-1 transition-colors hover:text-foreground"
-                                    >
-                                        Docs <ExternalLink className="h-3 w-3" />
-                                    </a>
+                                    Failte AI sends the resolved argument dictionary to this endpoint. The endpoint must return transfer_context.destination and may return transfer_context.custom_message.
                                 </p>
                             </div>
 
@@ -308,7 +299,7 @@ export function TransferCallToolConfig({
                                     showValidation
                                 />
                                 <Label className="text-xs text-muted-foreground">
-                                    Dograh sends a POST request with the resolved argument dictionary.
+                                    Failte AI sends a POST request with the resolved argument dictionary.
                                 </Label>
                             </div>
 
@@ -346,22 +337,14 @@ export function TransferCallToolConfig({
                                     rows={2}
                                 />
                                 <Label className="text-xs text-muted-foreground">
-                                    Spoken while Dograh waits for the resolver response.
+                                    Spoken while the agent waits for the resolver response.
                                 </Label>
                             </div>
 
                             <div className="grid gap-2 pt-4 border-t">
                                 <Label>LLM Parameters</Label>
                                 <p className="text-xs text-muted-foreground">
-                                    Define values the agent should provide when calling this transfer tool, such as state, department, or reason.{" "}
-                                    <a
-                                        href={`${DOCS_BASE}/voice-agent/tools/call-transfer#dynamic-resolver-request`}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        className="inline-flex items-center gap-1 transition-colors hover:text-foreground"
-                                    >
-                                        Docs <ExternalLink className="h-3 w-3" />
-                                    </a>
+                                    Define values the agent should provide when calling this transfer tool, such as state, department, or reason.
                                 </p>
                                 <ParameterEditor
                                     parameters={parameters}
@@ -372,15 +355,7 @@ export function TransferCallToolConfig({
                             <div className="grid gap-2 pt-4 border-t">
                                 <Label>Preset Parameters</Label>
                                 <p className="text-xs text-muted-foreground">
-                                    Add values Dograh injects at runtime. These are not exposed to the LLM and can use templates like {`{{initial_context.state}}`} or {`{{gathered_context.state}}`}.{" "}
-                                    <a
-                                        href={`${DOCS_BASE}/voice-agent/tools/call-transfer#dynamic-resolver-request`}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        className="inline-flex items-center gap-1 transition-colors hover:text-foreground"
-                                    >
-                                        Docs <ExternalLink className="h-3 w-3" />
-                                    </a>
+                                    Add values Failte AI injects at runtime. These are not exposed to the LLM and can use templates like {`{{initial_context.state}}`} or {`{{gathered_context.state}}`}.
                                 </p>
                                 <PresetParameterEditor
                                     parameters={presetParameters}
@@ -418,15 +393,7 @@ export function TransferCallToolConfig({
                                 <p className="text-xs text-muted-foreground">
                                     Destinations can be a SIP endpoint, E.164 PSTN number, another
                                     provider-supported destination, or a template such as{" "}
-                                    <code>{"{{initial_context.transfer_destination}}"}</code>.{" "}
-                                    <a
-                                        href={`${DOCS_BASE}/voice-agent/tools/call-transfer#context-mapping`}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        className="inline-flex items-center gap-1 transition-colors hover:text-foreground"
-                                    >
-                                        Docs <ExternalLink className="h-3 w-3" />
-                                    </a>
+                                    <code>{"{{initial_context.transfer_destination}}"}</code>.
                                 </p>
                             </div>
                                 {contextDestinationRules.map((rule, ruleIndex) => (

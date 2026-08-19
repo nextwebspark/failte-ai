@@ -37,7 +37,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
-import { SETTINGS_DOCUMENTATION_URLS } from "@/constants/documentation";
 import { useOrgConfig } from "@/context/OrgConfigContext";
 import { UnsavedChangesProvider, useUnsavedChanges, useUnsavedChangesContext } from "@/context/UnsavedChangesContext";
 import { useAudioPlayback } from "@/hooks/useAudioPlayback";
@@ -450,8 +449,7 @@ function GeneralSection({
                     <Settings className="h-4 w-4" />
                     General
                 </CardTitle>
-                <CardDescription>Agent name, call behavior, and turn detection.{" "}
-                    <a href={SETTINGS_DOCUMENTATION_URLS.general} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-0.5 underline">Learn more <ExternalLink className="h-3 w-3" /></a>
+                <CardDescription>Agent name, call behavior, and turn detection.
                 </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
@@ -1040,8 +1038,7 @@ function TemplateVariablesSection({
                     Template Variables
                 </CardTitle>
                 <CardDescription>
-                    Variables available in workflow prompts via {`{{variable_name}}`} syntax for testing the workflow.{" "}
-                    <a href={SETTINGS_DOCUMENTATION_URLS.templateVariables} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-0.5 underline">Learn more <ExternalLink className="h-3 w-3" /></a>
+                    Variables available in workflow prompts via {`{{variable_name}}`} syntax for testing the workflow.
                 </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -1435,8 +1432,7 @@ function WorkflowModelOverridesSection({
                     Model Overrides
                 </CardTitle>
                 <CardDescription>
-                    Override the full organization model configuration for this workflow.{" "}
-                    <a href={SETTINGS_DOCUMENTATION_URLS.modelOverrides} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-0.5 underline">Learn more <ExternalLink className="h-3 w-3" /></a>
+                    Override the full organization model configuration for this workflow.
                 </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -1786,8 +1782,7 @@ function WorkflowSettingsInner({
                                     </CardTitle>
                                     <CardDescription>
                                         Recordings are now managed at the organization level and shared across all agents.
-                                        Use <code className="rounded bg-muted px-1 text-xs">@</code> in prompt fields to insert them.{" "}
-                                        <a href={SETTINGS_DOCUMENTATION_URLS.recordings} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-0.5 underline">Learn more <ExternalLink className="h-3 w-3" /></a>
+                                        Use <code className="rounded bg-muted px-1 text-xs">@</code> in prompt fields to insert them.
                                     </CardDescription>
                                 </CardHeader>
                                 <CardFooter className="border-t pt-6">
@@ -1808,8 +1803,7 @@ function WorkflowSettingsInner({
                                         Add to Website
                                     </CardTitle>
                                     <CardDescription>
-                                        Configure a widget to add this voice agent to your website.{" "}
-                                        <a href={SETTINGS_DOCUMENTATION_URLS.deployment} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-0.5 underline">Learn more <ExternalLink className="h-3 w-3" /></a>
+                                        Configure a widget to add this voice agent to your website.
                                     </CardDescription>
                                 </CardHeader>
                                 <CardFooter className="border-t pt-6">

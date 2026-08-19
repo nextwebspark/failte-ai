@@ -1,4 +1,4 @@
-import { Check, ChevronDown, Copy, ExternalLink, Loader2, MessageCircle, Mic, Plus, Rocket, Send, Trash2 } from "lucide-react";
+import { Check, ChevronDown, Copy, Loader2, MessageCircle, Mic, Plus, Rocket, Send, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 
@@ -32,7 +32,6 @@ import {
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
-import { WIDGET_CONTEXT_DOC_URL, WIDGET_MODE_DOCUMENTATION_URLS } from "@/constants/documentation";
 import { HEADLESS_CHAT_EXAMPLE } from "@/constants/embedExamples";
 import { detailFromError } from "@/lib/apiError";
 import { copyTextToClipboard } from "@/lib/clipboard";
@@ -384,7 +383,7 @@ export function EmbedDialog({
                             ),
                             size: "medium",
                             autoStart: false,
-                            containerId: embedMode === "inline" ? "dograh-inline-container" : undefined,
+                            containerId: embedMode === "inline" ? "failte-inline-container" : undefined,
                         },
                         usage_limit: null,
                         expires_in_days: null,
@@ -447,21 +446,10 @@ export function EmbedDialog({
         <Dialog open={open} onOpenChange={onOpenChange}>
             <DialogContent className="sm:max-w-4xl w-full max-h-[90vh] overflow-y-auto">
                 <DialogHeader>
-                    <div className="flex items-center justify-between">
-                        <DialogTitle className="flex items-center gap-2">
-                            <Rocket className="h-5 w-5" />
-                            Configure Widget
-                        </DialogTitle>
-                        <a
-                            href={WIDGET_MODE_DOCUMENTATION_URLS[embedMode]}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors pr-6"
-                        >
-                            Docs
-                            <ExternalLink className="h-3.5 w-3.5" />
-                        </a>
-                    </div>
+                    <DialogTitle className="flex items-center gap-2">
+                        <Rocket className="h-5 w-5" />
+                        Configure Widget
+                    </DialogTitle>
                     <DialogDescription>
                         Add &quot;{workflowName}&quot; to any website with a simple script tag.
                     </DialogDescription>
@@ -860,12 +848,12 @@ export function EmbedDialog({
                                                 <ul className="text-sm space-y-2 text-muted-foreground">
                                                     <li>• Add the embed script tag to your page (see below).</li>
                                                     <li>• The widget renders no UI - render your own chat interface.</li>
-                                                    <li>• Call <code className="text-xs">window.DograhWidget.startChat()</code> to start a conversation (the agent greeting arrives via <code className="text-xs">onMessage</code>).</li>
-                                                    <li>• Call <code className="text-xs">window.DograhWidget.sendMessage(text)</code> to send a visitor message; it resolves with the updated transcript, or <code className="text-xs">null</code> if the message could not be delivered.</li>
-                                                    <li>• Call <code className="text-xs">window.DograhWidget.endChat()</code> to end the active conversation and trigger its completion webhook.</li>
+                                                    <li>• Call <code className="text-xs">window.FailteWidget.startChat()</code> to start a conversation (the agent greeting arrives via <code className="text-xs">onMessage</code>).</li>
+                                                    <li>• Call <code className="text-xs">window.FailteWidget.sendMessage(text)</code> to send a visitor message; it resolves with the updated transcript, or <code className="text-xs">null</code> if the message could not be delivered.</li>
+                                                    <li>• Call <code className="text-xs">window.FailteWidget.endChat()</code> to end the active conversation and trigger its completion webhook.</li>
                                                     <li>• Use <code className="text-xs">getMessages()</code> to read the transcript at any time.</li>
                                                     <li>• Subscribe to <code className="text-xs">onMessage</code> and <code className="text-xs">onChatStateChange</code> to drive your UI. States are <code className="text-xs">idle</code>, <code className="text-xs">starting</code>, <code className="text-xs">ready</code>, <code className="text-xs">waiting</code>, <code className="text-xs">ended</code>, <code className="text-xs">expired</code>, <code className="text-xs">error</code>.</li>
-                                                    <li>• Call <code className="text-xs">window.DograhWidget.setContext({"{ ... }"})</code> before <code className="text-xs">startChat()</code> to pass visitor details the page learned after load.</li>
+                                                    <li>• Call <code className="text-xs">window.FailteWidget.setContext({"{ ... }"})</code> before <code className="text-xs">startChat()</code> to pass visitor details the page learned after load.</li>
                                                 </ul>
                                             </div>
 
@@ -886,11 +874,11 @@ export function EmbedDialog({
                                                 <ul className="text-sm space-y-2 text-muted-foreground">
                                                     <li>• Add the embed script tag to your page (see below).</li>
                                                     <li>• The widget renders no UI - render your own buttons.</li>
-                                                    <li>• Call <code className="text-xs">window.DograhWidget.start()</code> to begin a call.</li>
-                                                    <li>• Call <code className="text-xs">window.DograhWidget.end()</code> to end it.</li>
+                                                    <li>• Call <code className="text-xs">window.FailteWidget.start()</code> to begin a call.</li>
+                                                    <li>• Call <code className="text-xs">window.FailteWidget.end()</code> to end it.</li>
                                                     <li>• Subscribe to <code className="text-xs">onCallStart</code>, <code className="text-xs">onCallEnd</code>, <code className="text-xs">onStatusChange</code>, <code className="text-xs">onError</code> to drive your UI.</li>
                                                     <li>• <code className="text-xs">start()</code> must run inside a user-gesture handler (click) so the browser grants microphone access.</li>
-                                                    <li>• Call <code className="text-xs">window.DograhWidget.setContext({"{ ... }"})</code> before <code className="text-xs">start()</code> to pass visitor details the page learned after load.</li>
+                                                    <li>• Call <code className="text-xs">window.FailteWidget.setContext({"{ ... }"})</code> before <code className="text-xs">start()</code> to pass visitor details the page learned after load.</li>
                                                 </ul>
                                             </div>
 
@@ -903,16 +891,16 @@ export function EmbedDialog({
                                                     <code className="text-blue-800 dark:text-blue-200">{`// Vanilla JS - keep your own state, render however you want
 let callStatus = 'idle';
 
-window.DograhWidget?.onStatusChange((status) => {
+window.FailteWidget?.onStatusChange((status) => {
   callStatus = status;
   // ...trigger your render here (re-paint DOM, dispatch event, etc.)
 });
 
 document.getElementById('talk-btn').addEventListener('click', () => {
   if (callStatus === 'connected' || callStatus === 'connecting') {
-    window.DograhWidget.end();
+    window.FailteWidget.end();
   } else {
-    window.DograhWidget.start();
+    window.FailteWidget.start();
   }
 });`}</code>
                                                 </pre>
@@ -922,12 +910,12 @@ document.getElementById('talk-btn').addEventListener('click', () => {
   const [status, setStatus] = useState('idle');
 
   useEffect(() => {
-    window.DograhWidget?.onStatusChange(setStatus);
+    window.FailteWidget?.onStatusChange(setStatus);
   }, []);
 
   const isLive = status === 'connected' || status === 'connecting';
   return (
-    <button onClick={() => isLive ? window.DograhWidget.end() : window.DograhWidget.start()}>
+    <button onClick={() => isLive ? window.FailteWidget.end() : window.FailteWidget.start()}>
       {/* render anything you want from \`status\` */}
     </button>
   );
@@ -943,15 +931,15 @@ document.getElementById('talk-btn').addEventListener('click', () => {
                                             <div className="rounded-lg bg-muted/50 p-4">
                                                 <h4 className="font-medium mb-2">Integration Instructions</h4>
                                                 <ul className="text-sm space-y-2 text-muted-foreground">
-                                                    <li>• Add a div with id=&quot;dograh-inline-container&quot; where you want the widget</li>
+                                                    <li>• Add a div with id=&quot;failte-inline-container&quot; where you want the widget</li>
                                                     <li>• The widget will render inside this container</li>
                                                     <li>• You have full control over the container&apos;s styling</li>
                                                     {widgetType === "chat" ? (
                                                         <li>• The chat panel renders in the container; the conversation starts when the visitor clicks the button</li>
                                                     ) : (
                                                         <>
-                                                            <li>• Call window.DograhWidget.start() to begin the call</li>
-                                                            <li>• Call window.DograhWidget.end() to end the call</li>
+                                                            <li>• Call window.FailteWidget.start() to begin the call</li>
+                                                            <li>• Call window.FailteWidget.end() to end the call</li>
                                                         </>
                                                     )}
                                                 </ul>
@@ -962,7 +950,7 @@ document.getElementById('talk-btn').addEventListener('click', () => {
                                                     <h4 className="font-medium mb-2 text-blue-900 dark:text-blue-100">Example</h4>
                                                     <pre className="text-xs overflow-x-auto">
                                                         <code className="text-blue-800 dark:text-blue-200">{`<h2>Chat with Our Agent</h2>
-<div id="dograh-inline-container" style="min-height: 480px">
+<div id="failte-inline-container" style="min-height: 480px">
   <!-- Chat panel renders here; no extra JS needed -->
 </div>`}</code>
                                                     </pre>
@@ -971,15 +959,15 @@ document.getElementById('talk-btn').addEventListener('click', () => {
                                                 <div className="rounded-lg bg-blue-50 dark:bg-blue-950/20 p-4 border border-blue-200 dark:border-blue-800">
                                                     <h4 className="font-medium mb-2 text-blue-900 dark:text-blue-100">Example React Component</h4>
                                                     <pre className="text-xs overflow-x-auto">
-                                                        <code className="text-blue-800 dark:text-blue-200">{`export function DograhAgent() {
+                                                        <code className="text-blue-800 dark:text-blue-200">{`export function FailteAgent() {
   const [isCallActive, setIsCallActive] = useState(false);
 
   useEffect(() => {
     // Widget will auto-initialize when script loads
-    window.DograhWidget?.onCallStart(() => {
+    window.FailteWidget?.onCallStart(() => {
       setIsCallActive(true);
     });
-    window.DograhWidget?.onCallEnd(() => {
+    window.FailteWidget?.onCallEnd(() => {
       setIsCallActive(false);
     });
   }, []);
@@ -987,11 +975,11 @@ document.getElementById('talk-btn').addEventListener('click', () => {
   return (
     <div className="my-8">
       <h2>Talk to Our Agent</h2>
-      <div id="dograh-inline-container" className="min-h-[400px]">
+      <div id="failte-inline-container" className="min-h-[400px]">
         {/* Widget renders here */}
       </div>
       <button
-        onClick={() => window.DograhWidget?.start()}
+        onClick={() => window.FailteWidget?.start()}
         disabled={isCallActive}
       >
         Start Call
@@ -1065,18 +1053,10 @@ document.getElementById('talk-btn').addEventListener('click', () => {
                                             </p>
                                             <p className="text-xs text-muted-foreground">
                                                 To pass visitor details to the agent, edit the{" "}
-                                                <code className="text-xs">data-dograh-context</code> values above — or call{" "}
-                                                <code className="text-xs">{"window.DograhWidget.setContext({ ... })"}</code> for
+                                                <code className="text-xs">data-failte-context</code> values above — or call{" "}
+                                                <code className="text-xs">{"window.FailteWidget.setContext({ ... })"}</code> for
                                                 details your page learns later. Each one is available in your prompts as{" "}
-                                                <code className="text-xs">{"{{initial_context.page_url}}"}</code>.{" "}
-                                                <a
-                                                    href={WIDGET_CONTEXT_DOC_URL}
-                                                    target="_blank"
-                                                    rel="noopener noreferrer"
-                                                    className="underline underline-offset-2 hover:text-foreground"
-                                                >
-                                                    Learn more
-                                                </a>
+                                                <code className="text-xs">{"{{initial_context.page_url}}"}</code>.
                                             </p>
                                         </div>
                                     </>

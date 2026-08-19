@@ -5,7 +5,6 @@ import {
     ChevronRight,
     CircleDollarSign,
     CreditCard,
-    ExternalLink,
     Info,
     RefreshCw,
 } from "lucide-react";
@@ -16,6 +15,7 @@ import { toast } from "sonner";
 
 import { createMpsCreditPurchaseUrlApiV1OrganizationsUsageMpsCreditsPurchaseUrlPost, getBillingCreditsApiV1OrganizationsBillingCreditsGet } from "@/client/sdk.gen";
 import type { MpsBillingCreditsResponse, MpsCreditLedgerEntryResponse } from "@/client/types.gen";
+import { SUPPORT_MAILTO } from "@/components/SupportLink";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -267,25 +267,22 @@ export default function BillingPage() {
                     <div className="text-sm text-amber-900 dark:text-amber-200">
                         <p className="font-medium">Credit purchases are unavailable in OSS mode</p>
                         <p className="mt-1">
-                            You can&apos;t purchase credits from this self-hosted app. Sign up and
-                            purchase credits at{" "}
-                            <a
-                                href="https://app.dograh.com"
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="inline-flex items-center gap-1 font-medium underline underline-offset-2"
-                            >
-                                app.dograh.com
-                                <ExternalLink className="h-3 w-3" />
-                            </a>
-                            . Then add the generated service key in{" "}
+                            You can&apos;t purchase credits from this self-hosted app. Add your own
+                            provider keys under BYOK in{" "}
                             <Link
                                 href="/model-configurations"
                                 className="font-medium underline underline-offset-2"
                             >
                                 Model Configurations
                             </Link>
-                            . Usage for that service key is visible in app.dograh.com.
+                            , or{" "}
+                            <a
+                                href={SUPPORT_MAILTO}
+                                className="font-medium underline underline-offset-2"
+                            >
+                                contact us
+                            </a>{" "}
+                            about a managed plan.
                         </p>
                     </div>
                 </div>

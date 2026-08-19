@@ -80,21 +80,25 @@ These upstream files we expect to modify. Keep this list short and current — a
 | `api/routes/main.py` | One `include_router` line per new router. Append at the end; conflicts are then trivial |
 | `ui/src/middleware.ts` | Route guarding by role |
 | `ui/src/lib/auth/` | Provider abstraction (`types.ts`, `config.ts`, `providers/`) |
-| **Branding — 10 files, see below** | Renamed Dograh → Failte AI in the visible chrome |
+| **Branding — every user-visible string, see below** | Renamed Dograh → Failte AI, or removed |
 
-#### Branding files
+#### Branding
 
-`ui/src/components/BrandLogo.tsx` (the only logo source — used by `AppSidebar` and `AuthShell`), `ui/src/app/layout.tsx` (page title), `ui/src/components/layout/AppLayout.tsx`, `ui/src/components/auth/AuthShell.tsx`, `ui/src/components/lead-forms/OnboardingModal.tsx`, `ui/src/app/overview/page.tsx`, `ui/src/components/Footer.tsx`, `ui/src/app/api-keys/page.tsx`, `ui/src/components/AIModelConfigurationV2Editor.tsx`, `ui/src/app/workflow/[workflowId]/components/WorkflowEditorHeader.tsx`.
+The de-branding pass covers **every string, link and asset a user can read or click** in `ui/`, not just the chrome. Do not re-narrow it. When resolving a conflict in a touched file, the rename is intentional — keep our side of the branding strings and take upstream's side of everything else.
 
-**When resolving a conflict in these, the rename is intentional — keep our side of the branding strings and take upstream's side of everything else.**
+Five rules, to hold for any future branding work:
 
-Three rules were applied and should hold for any future branding work:
-
-1. **Never rename wire values.** `mode: "dograh"` in the model configuration, `dograh_model` / `total_dograh_tokens` API fields, `window.DograhWidget` and `/embed/dograh-widget.js` (live on customer sites), the `dograh_auth_*` cookies and `X-Dograh-*` headers are all contracts. Only labels change.
+1. **Never rename wire values.** `mode: "dograh"` in the model configuration, `dograh_model` / `total_dograh_tokens` API fields, the `dograh_auth_*` cookies and `X-Dograh-*` headers are all contracts. Only labels change.
 2. **Upstream's hosted service is relabelled neutrally, not rebranded.** The "Managed models" tab and "Managed Service Keys" authenticate against `services.dograh.com`. Calling them Failte AI would claim we provide models we do not.
-3. **Upstream's growth widgets are removed, not renamed.** The Slack invite to the Dograh community, the `dograh-hq/dograh` star badge (3 sites), the "Report an Issue" link to upstream's tracker, and the "Contact us" link into Dograh's sales funnel all pointed our users at the upstream project.
+3. **Upstream's growth widgets are removed, not renamed.** The Slack invite, the `dograh-hq/dograh` star badge, the "Report an Issue" link and the sales-funnel "Contact us" all pointed our users at the upstream project.
+4. **No documentation links.** We publish no docs site. `ui/src/constants/documentation.ts` is deleted; documentation URLs the API supplies inside provider schemas and node specs are filtered by `ui/src/lib/externalDocs.ts`, which drops `*.dograh.com` and lets genuine third-party provider docs (Azure, Inworld, Hugging Face, Google STT) through. A sync that adds another vendor-hosted `docs_url` needs no new edit; a sync that reintroduces a hardcoded `docs.dograh.com` anchor must have it deleted.
+5. **No lead-gen.** `ui/src/components/lead-forms/` (17 files), `ui/src/context/LeadFormsContext.tsx` and `AuthEnterpriseCTA` are deleted — they POSTed our users' PII to `api-leads.dograh.com`. The post-signup onboarding questionnaire went with them. If a sync reintroduces any of it, delete it again. Support is a `mailto:` from `ui/src/components/SupportLink.tsx`, and the Chatwoot bubble (which routed our users into the upstream vendor's helpdesk) is deleted along with its `NEXT_PUBLIC_CHATWOOT_*` defaults in `ui/Dockerfile`.
 
-Still Dograh-branded by decision, not oversight: deep-page help text in tool configuration, telephony, usage ("Dograh Tokens") and file upload. Scope was limited to the chrome users read at a glance, to keep the merge cost down.
+**Embed widget.** The widget is `ui/public/embed/failte-widget.js` and its global is `window.FailteWidget`. `dograh-widget.js` remains as a shim that re-injects the real file, and the widget itself still accepts `data-dograh-context`, the legacy `dograh-inline-container` id and `window.DograhWidget` as an alias. That backward compatibility exists for snippets already pasted on customer sites — **do not delete it**. The snippet is generated server-side in `api/routes/workflow_embed.py`; it and the widget must be renamed in the same release.
+
+Accepted residue, checked and left alone: the Axiom org slug `dograh-of6c` in the superadmin-only log link, the GHCR image names behind the update badge, `ui/src/client/*.gen.ts` (generated from the API's OpenAPI spec — a hand edit gets clobbered), and comments that record what upstream shipped and why it was removed. Those comments are what stops a future sync from silently re-adding the growth widgets.
+
+Not done, and a deliberate scope call: user-visible strings produced by `api/` and merely echoed by the UI — `api/services/quota_service.py` messages, `api/errors/*.py` external messages, `api/services/organization_bootstrap.py`'s `"Default Dograh Model Service Key"` (also already written into provisioned orgs' rows), and the OpenAPI title/servers in `api/app.py` that seed `client.gen.ts`. Fix those at the API when the appetite for an `api/` diff exists.
 
 Prefer adding a new module over editing an existing one. Upstream's `AUTH_PROVIDER` seam is explicitly designed for this — a new provider drops in beside `local` and `stack` without touching either. See `docs/deployment/authentication.mdx`.
 

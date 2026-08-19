@@ -17,6 +17,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { VoiceSelector } from "@/components/VoiceSelector";
 import { LANGUAGE_DISPLAY_NAMES } from "@/constants/languages";
 import { useUserConfig } from "@/context/UserConfigContext";
+import { publicDocsHref } from "@/lib/externalDocs";
 import type { ModelOverrides } from "@/types/workflow-configurations";
 
 export type ServiceSegment = "llm" | "tts" | "stt" | "embeddings" | "realtime";
@@ -564,12 +565,12 @@ export function ServiceConfigurationForm({
                                 ))}
                             </SelectContent>
                         </Select>
-                        {(providerSchema?.description || providerSchema?.provider_docs_url) && (
+                        {(providerSchema?.description || publicDocsHref(providerSchema?.provider_docs_url)) && (
                             <p className="text-xs text-muted-foreground">
                                 {providerSchema?.description}{" "}
-                                {providerSchema?.provider_docs_url && (
+                                {publicDocsHref(providerSchema?.provider_docs_url) && (
                                     <a
-                                        href={providerSchema.provider_docs_url}
+                                        href={publicDocsHref(providerSchema?.provider_docs_url)}
                                         target="_blank"
                                         rel="noopener noreferrer"
                                         className="inline-flex items-center gap-0.5 underline"
@@ -668,13 +669,14 @@ export function ServiceConfigurationForm({
         const actualSchema = schema.$ref && providerSchema.$defs
             ? providerSchema.$defs[schema.$ref.split('/').pop() || '']
             : schema;
-        if (!actualSchema?.description && !actualSchema?.docs_url) return null;
+        const fieldDocsHref = publicDocsHref(actualSchema?.docs_url);
+        if (!actualSchema?.description && !fieldDocsHref) return null;
         return (
             <p className="text-xs text-muted-foreground">
                 {actualSchema?.description}{" "}
-                {actualSchema?.docs_url && (
+                {fieldDocsHref && (
                     <a
-                        href={actualSchema.docs_url}
+                        href={fieldDocsHref}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="inline-flex items-center gap-0.5 underline"
