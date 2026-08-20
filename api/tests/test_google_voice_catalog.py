@@ -47,6 +47,16 @@ GOOGLE_VOICES_PAYLOAD = {
 }
 
 
+@pytest.fixture(autouse=True)
+def _fresh_caches(tmp_path, monkeypatch):
+    """Each test gets an empty catalogue/credential cache and a private
+    preview directory, so nothing passes on a warm cache or touches the real
+    filesystem cache."""
+    monkeypatch.setattr(google_voices, "_catalogue_cache", {})
+    monkeypatch.setattr(google_voices, "_credentials_cache", {})
+    monkeypatch.setattr(google_voices, "PREVIEW_CACHE", tmp_path / "previews")
+
+
 def _mock_http(payload=GOOGLE_VOICES_PAYLOAD, status_code=200):
     """Patch out the credential refresh and the voices HTTP call."""
     response = SimpleNamespace(status_code=status_code, json=lambda: payload, text="")
@@ -157,5 +167,76 @@ async def test_upstream_failure_is_not_swallowed():
 async def test_preview_rejects_a_voice_id_that_is_not_a_voice_id(voice_id):
     """voice_id reaches a cache filename and an outbound request, so the guard
     is load-bearing, not cosmetic."""
-    with pytest.raises(ValueError, match="invalid voice id"):
+    with pytest.raises(google_voices.InvalidVoiceIdError, match="invalid voice id"):
         await google_voices.preview_audio(voice_id)
+
+
+async def test_catalogue_is_cached_between_calls():
+    """The picker refetches on every debounced keystroke; each fetch must not
+    cost a token mint plus a full ~1,568-voice download."""
+    creds_patch, http_patch = _mock_http()
+    with creds_patch as creds_mock, http_patch as client_mock:
+        await google_voices.list_voices()
+        await google_voices.list_voices(language="fr")
+
+    assert client_mock.call_count == 1
+    assert creds_mock.call_count == 1
+
+
+async def test_catalogue_cache_expires():
+    creds_patch, http_patch = _mock_http()
+    with creds_patch, http_patch as client_mock:
+        await google_voices.list_voices()
+        key = next(iter(google_voices._catalogue_cache))
+        cached_at, entries = google_voices._catalogue_cache[key]
+        google_voices._catalogue_cache[key] = (
+            cached_at - google_voices.CATALOGUE_TTL_SECONDS - 1,
+            entries,
+        )
+        await google_voices.list_voices()
+
+    assert client_mock.call_count == 2
+
+
+def _mock_synthesize(audio: bytes = b"mp3-bytes"):
+    import base64
+
+    payload = {"audioContent": base64.b64encode(audio).decode()}
+    response = SimpleNamespace(status_code=200, json=lambda: payload, text="")
+    client = MagicMock()
+    client.post = AsyncMock(return_value=response)
+    client.__aenter__ = AsyncMock(return_value=client)
+    client.__aexit__ = AsyncMock(return_value=False)
+    return (
+        patch.object(
+            google_voices, "_credentials", return_value=SimpleNamespace(token="tok")
+        ),
+        patch.object(google_voices.httpx, "AsyncClient", return_value=client),
+        client,
+    )
+
+
+async def test_preview_is_synthesised_once_then_served_from_disk():
+    creds_patch, http_patch, client = _mock_synthesize()
+    with creds_patch, http_patch:
+        first = await google_voices.preview_audio("en-GB-Chirp3-HD-Aoede")
+        second = await google_voices.preview_audio("en-GB-Chirp3-HD-Aoede")
+
+    assert first == second == b"mp3-bytes"
+    client.post.assert_awaited_once()
+
+
+async def test_preview_cache_write_failure_still_returns_audio(tmp_path, monkeypatch):
+    """A cache-write problem is not a synthesis failure — the user still gets
+    their preview."""
+    # A regular file where the cache directory should be makes mkdir raise
+    # NotADirectoryError, an OSError the write path must swallow.
+    blocker = tmp_path / "blocker"
+    blocker.write_bytes(b"")
+    monkeypatch.setattr(google_voices, "PREVIEW_CACHE", blocker / "previews")
+
+    creds_patch, http_patch, _ = _mock_synthesize()
+    with creds_patch, http_patch:
+        audio = await google_voices.preview_audio("en-GB-Chirp3-HD-Aoede")
+
+    assert audio == b"mp3-bytes"

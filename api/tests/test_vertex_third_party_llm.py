@@ -1,20 +1,29 @@
 import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import httpx
 import pytest
+from fastapi import HTTPException
 from pipecat.services.anthropic.llm import AnthropicLLMSettings
 from pipecat.services.openai.base_llm import OpenAILLMSettings
 
+from api.services.pipecat.vertex_llm import (
+    _GoogleCredentialsAuth,
+    build_vertex_llm_service,
+)
+
 
 def _make_anthropic_service(**kwargs):
-    from api.services.pipecat.vertex_llm import DograhVertexAnthropicLLMService
+    from api.services.pipecat.vertex_anthropic_llm import (
+        DograhVertexAnthropicLLMService,
+    )
 
     with (
         patch(
-            "api.services.pipecat.vertex_llm.GoogleVertexLLMService._get_credentials"
+            "api.services.pipecat.vertex_anthropic_llm.service_account_credentials"
         ) as mock_creds,
         patch(
-            "api.services.pipecat.vertex_llm.AsyncAnthropicVertex"
+            "api.services.pipecat.vertex_anthropic_llm.AsyncAnthropicVertex"
         ) as mock_client_cls,
     ):
         mock_creds.return_value = MagicMock(name="google_creds")
@@ -30,63 +39,76 @@ def _make_anthropic_service(**kwargs):
     return service, mock_creds, mock_client_cls
 
 
+class TestBuildVertexLLMService:
+    def test_gemini_model_uses_the_injected_builder(self):
+        sentinel = object()
+        service = build_vertex_llm_service(
+            "gemini-3.5-flash",
+            project_id="demo-project",
+            location=None,
+            credentials=None,
+            gemini_builder=lambda: sentinel,
+        )
+        assert service is sentinel
+
+    def test_missing_anthropic_package_is_an_actionable_400(self):
+        """A deployment without the extra must get a config error for Claude,
+        not a raw ModuleNotFoundError."""
+        with patch.dict(
+            "sys.modules", {"api.services.pipecat.vertex_anthropic_llm": None}
+        ):
+            with pytest.raises(HTTPException) as exc_info:
+                build_vertex_llm_service(
+                    "claude-sonnet-4-6",
+                    project_id="demo-project",
+                    location=None,
+                    credentials=None,
+                    gemini_builder=lambda: None,
+                )
+        assert exc_info.value.status_code == 400
+        assert "anthropic" in exc_info.value.detail
+
+
 class TestDograhVertexAnthropicLLMService:
     def test_constructs_vertex_client_from_credentials(self):
         service, mock_creds, mock_client_cls = _make_anthropic_service(
             location="us-east5"
         )
 
-        mock_creds.assert_called_once_with('{"type":"service_account"}', None)
+        mock_creds.assert_called_once_with('{"type":"service_account"}')
         kwargs = mock_client_cls.call_args.kwargs
         assert kwargs["project_id"] == "demo-project"
         assert kwargs["region"] == "us-east5"
         assert kwargs["credentials"] is mock_creds.return_value
-        assert service._client is mock_client_cls.return_value
 
     def test_location_defaults_to_global(self):
         _, _, mock_client_cls = _make_anthropic_service()
         assert mock_client_cls.call_args.kwargs["region"] == "global"
 
-    def test_message_stream_strips_betas_and_uses_non_beta_endpoint(self):
+    def test_beta_endpoint_calls_are_redirected_to_the_non_beta_one(self):
+        """pipecat hardcodes client.beta.messages.create plus a beta header
+        Vertex rejects; the client proxy must strip both."""
         service, _, _ = _make_anthropic_service()
-        service._client = MagicMock()
-        service._client.messages.create = AsyncMock(return_value="stream")
+        inner = MagicMock()
+        inner.messages.create = AsyncMock(return_value="response")
+        service._client._client = inner
+        service._client.beta.messages._client = inner
 
         result = asyncio.run(
-            service._create_message_stream(
-                service._client.beta.messages.create,
-                {"model": "claude-sonnet-4-6", "stream": True, "betas": ["x"]},
+            service._client.beta.messages.create(
+                model="claude-sonnet-4-6", stream=True, betas=["x"]
             )
         )
 
-        assert result == "stream"
-        service._client.messages.create.assert_awaited_once()
-        call_kwargs = service._client.messages.create.await_args.kwargs
+        assert result == "response"
+        call_kwargs = inner.messages.create.await_args.kwargs
         assert "betas" not in call_kwargs
         assert call_kwargs["model"] == "claude-sonnet-4-6"
-        service._client.beta.messages.create.assert_not_called()
+        inner.beta.messages.create.assert_not_called()
 
-    def test_run_inference_uses_non_beta_endpoint(self):
-        from pipecat.processors.aggregators.llm_context import LLMContext
-
-        service, _, _ = _make_anthropic_service()
-        text_block = MagicMock()
-        text_block.text = "hello"
-        service._client = MagicMock()
-        service._client.messages.create = AsyncMock(
-            return_value=MagicMock(content=[text_block])
-        )
-
-        context = LLMContext(messages=[{"role": "user", "content": "hi"}])
-        result = asyncio.run(
-            service.run_inference(context, system_instruction="You are a test bot.")
-        )
-
-        assert result == "hello"
-        call_kwargs = service._client.messages.create.await_args.kwargs
-        assert "betas" not in call_kwargs
-        assert call_kwargs["stream"] is False
-        service._client.beta.messages.create.assert_not_called()
+    def test_non_proxied_attributes_reach_the_real_client(self):
+        service, _, mock_client_cls = _make_anthropic_service()
+        assert service._client.close is mock_client_cls.return_value.close
 
 
 class TestDograhVertexMaaSLLMService:
@@ -94,7 +116,7 @@ class TestDograhVertexMaaSLLMService:
         from api.services.pipecat.vertex_llm import DograhVertexMaaSLLMService
 
         with patch(
-            "api.services.pipecat.vertex_llm.GoogleVertexLLMService._get_credentials"
+            "api.services.pipecat.vertex_llm.service_account_credentials"
         ) as mock_creds:
             mock_creds.return_value = MagicMock(name="google_creds")
             service = DograhVertexMaaSLLMService(
@@ -128,10 +150,6 @@ class TestGoogleCredentialsAuth:
         return creds
 
     def test_sync_flow_sets_bearer_and_skips_refresh_when_valid(self):
-        import httpx
-
-        from api.services.pipecat.vertex_llm import _GoogleCredentialsAuth
-
         creds = self._creds(valid=True)
         auth = _GoogleCredentialsAuth(creds)
         request = httpx.Request("POST", "https://example.com")
@@ -143,10 +161,6 @@ class TestGoogleCredentialsAuth:
         creds.refresh.assert_not_called()
 
     def test_async_flow_refreshes_expired_credentials(self):
-        import httpx
-
-        from api.services.pipecat.vertex_llm import _GoogleCredentialsAuth
-
         creds = self._creds(valid=False)
         auth = _GoogleCredentialsAuth(creds)
         request = httpx.Request("POST", "https://example.com")
@@ -159,3 +173,26 @@ class TestGoogleCredentialsAuth:
 
         assert sent.headers["Authorization"] == "Bearer tok-123"
         creds.refresh.assert_called_once()
+
+    def test_concurrent_refreshes_mint_one_token(self):
+        """Without the lock every concurrent request refreshes independently."""
+        creds = self._creds(valid=False)
+
+        def refresh(_request):
+            creds.valid = True
+
+        creds.refresh.side_effect = refresh
+        auth = _GoogleCredentialsAuth(creds)
+
+        async def one():
+            request = httpx.Request("POST", "https://example.com")
+            flow = auth.async_auth_flow(request)
+            return await anext(flow)
+
+        async def run():
+            return await asyncio.gather(*(one() for _ in range(5)))
+
+        results = asyncio.run(run())
+
+        creds.refresh.assert_called_once()
+        assert all(r.headers["Authorization"] == "Bearer tok-123" for r in results)

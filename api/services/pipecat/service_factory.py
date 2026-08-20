@@ -932,32 +932,6 @@ def create_tts_service(
         )
 
 
-# Claude models that reject non-default sampling params (temperature) with a 400.
-_VERTEX_TEMPERATURE_UNSUPPORTED = (
-    "claude-sonnet-5",
-    "claude-opus-5",
-    "claude-opus-4-7",
-    "claude-opus-4-8",
-    "claude-fable",
-)
-
-
-def _vertex_model_family(model: str) -> str:
-    """Pick the Vertex AI API surface for a model id.
-
-    Vertex serves Gemini natively, Claude via the Anthropic Messages API, and
-    every open MaaS model (meta/*, deepseek-ai/*, qwen/*, openai/gpt-oss-*, ...)
-    via the OpenAI-compatible endpoint — so anything that is neither Gemini nor
-    Claude routes there.
-    """
-    m = (model or "").lower()
-    if not m or m.startswith(("gemini", "gemma", "google/")):
-        return "gemini"
-    if m.startswith(("claude", "anthropic/")):
-        return "anthropic"
-    return "openai_compat"
-
-
 def _migrate_deprecated_google_model(model: str) -> str:
     """Google removed the ``gemini-2.0-flash*`` models. Transparently upgrade
     any stored config that still references them to the 2.5 equivalent so old
@@ -1044,40 +1018,23 @@ def create_llm_service_from_provider(
             settings=GoogleLLMSettings(model=model, temperature=0.1),
         )
     elif provider == ServiceProviders.GOOGLE_VERTEX.value:
-        family = _vertex_model_family(model)
-        # The MaaS/Anthropic services need the optional `anthropic` extra, so
-        # import them lazily to keep Gemini-only deployments working without it.
-        if family == "anthropic":
-            from anthropic import NOT_GIVEN as ANTHROPIC_NOT_GIVEN
+        # Vertex serves Gemini, Claude, and open MaaS models behind one config;
+        # the fork-owned vertex_llm module picks the service by model id. The
+        # Gemini path is passed as a builder so it never needs the optional
+        # `anthropic` extra.
+        from api.services.pipecat.vertex_llm import build_vertex_llm_service
 
-            from api.services.pipecat.vertex_llm import DograhVertexAnthropicLLMService
-            from pipecat.services.anthropic.llm import AnthropicLLMSettings
-
-            temp = (
-                ANTHROPIC_NOT_GIVEN
-                if model.lower().startswith(_VERTEX_TEMPERATURE_UNSUPPORTED)
-                else 0.1
-            )
-            return DograhVertexAnthropicLLMService(
-                credentials=credentials,
-                project_id=project_id,
-                location=location or "global",
-                settings=AnthropicLLMSettings(model=model, temperature=temp),
-            )
-        if family == "openai_compat":
-            from api.services.pipecat.vertex_llm import DograhVertexMaaSLLMService
-
-            return DograhVertexMaaSLLMService(
-                credentials=credentials,
-                project_id=project_id,
-                location=location,
-                settings=OpenAILLMSettings(model=model, temperature=0.1),
-            )
-        return DograhGoogleVertexLLMService(
-            credentials=credentials,
+        return build_vertex_llm_service(
+            model,
             project_id=project_id,
-            location=location or "us-east4",
-            settings=GoogleVertexLLMSettings(model=model, temperature=0.1),
+            location=location,
+            credentials=credentials,
+            gemini_builder=lambda: DograhGoogleVertexLLMService(
+                credentials=credentials,
+                project_id=project_id,
+                location=location or "us-east4",
+                settings=GoogleVertexLLMSettings(model=model, temperature=0.1),
+            ),
         )
     elif provider == ServiceProviders.AZURE.value:
         if endpoint:

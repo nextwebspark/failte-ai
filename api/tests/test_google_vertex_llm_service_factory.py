@@ -9,10 +9,10 @@ from api.services.configuration.registry import (
     ServiceType,
 )
 from api.services.pipecat.service_factory import (
-    _vertex_model_family,
     create_llm_service,
     create_llm_service_from_provider,
 )
+from api.services.pipecat.vertex_llm import VertexModelFamily, vertex_model_family
 
 
 class TestGoogleVertexLLMConfiguration:
@@ -95,11 +95,30 @@ class TestGoogleVertexModelFamilyRouting:
             "my-custom-model": "openai_compat",
         }
         for model, family in cases.items():
-            assert _vertex_model_family(model) == family, model
+            assert vertex_model_family(model) == VertexModelFamily(family), model
+
+    def test_every_catalogued_model_resolves_to_the_expected_service(self):
+        """Pins the routing table to the catalogue: a new id landing in the
+        wrong family silently sends users to an endpoint that 404s."""
+        from api.services.configuration.options.google import GOOGLE_VERTEX_MODELS
+
+        expected = {
+            VertexModelFamily.GEMINI: "gemini",
+            VertexModelFamily.ANTHROPIC: "claude",
+            VertexModelFamily.OPENAI_COMPAT: "maas",
+        }
+        for model in GOOGLE_VERTEX_MODELS:
+            family = vertex_model_family(model)
+            if model.startswith(("gemini", "gemma")):
+                assert expected[family] == "gemini", model
+            elif model.startswith("claude"):
+                assert expected[family] == "claude", model
+            else:
+                assert expected[family] == "maas", model
 
     def test_claude_model_routes_to_anthropic_service(self):
         with patch(
-            "api.services.pipecat.vertex_llm.DograhVertexAnthropicLLMService"
+            "api.services.pipecat.vertex_anthropic_llm.DograhVertexAnthropicLLMService"
         ) as mock_service:
             create_llm_service_from_provider(
                 provider=ServiceProviders.GOOGLE_VERTEX.value,
@@ -119,7 +138,7 @@ class TestGoogleVertexModelFamilyRouting:
 
     def test_claude_location_defaults_to_global(self):
         with patch(
-            "api.services.pipecat.vertex_llm.DograhVertexAnthropicLLMService"
+            "api.services.pipecat.vertex_anthropic_llm.DograhVertexAnthropicLLMService"
         ) as mock_service:
             create_llm_service_from_provider(
                 provider=ServiceProviders.GOOGLE_VERTEX.value,
@@ -136,7 +155,7 @@ class TestGoogleVertexModelFamilyRouting:
         from anthropic import NOT_GIVEN
 
         with patch(
-            "api.services.pipecat.vertex_llm.DograhVertexAnthropicLLMService"
+            "api.services.pipecat.vertex_anthropic_llm.DograhVertexAnthropicLLMService"
         ) as mock_service:
             create_llm_service_from_provider(
                 provider=ServiceProviders.GOOGLE_VERTEX.value,

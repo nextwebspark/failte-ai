@@ -16,10 +16,14 @@ has any, otherwise Application Default Credentials.
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import hashlib
 import json
+import os
 import re
+import tempfile
+import time
 from pathlib import Path
 
 import httpx
@@ -28,13 +32,32 @@ from google.auth.transport.requests import Request as GoogleAuthRequest
 from google.oauth2 import service_account
 from loguru import logger
 
+from api.constants import APP_ROOT_DIR
+
 VOICES_URL = "https://texttospeech.googleapis.com/v1/voices"
 SCOPES = ["https://www.googleapis.com/auth/cloud-platform"]
 
 # Previews are identical for a given voice, so synthesising one twice is money
-# and latency for nothing.
-PREVIEW_CACHE = Path("/tmp/dograh-voice-previews")
+# and latency for nothing. Owner-only: the cache is trusted content served to
+# authenticated users, so it must not live somewhere world-writable.
+PREVIEW_CACHE = Path(os.path.dirname(APP_ROOT_DIR)) / "failte_voice_previews"
 PREVIEW_TEXT = "Hello, thanks for calling. I can check that for you right now."
+
+# The catalogue is ~1,568 voices and changes rarely, while the picker refetches
+# on every debounced keystroke — so raw entries are cached per credential and
+# only shaping/filtering runs per request.
+CATALOGUE_TTL_SECONDS = 600.0
+_catalogue_cache: dict[str, tuple[float, list[dict]]] = {}
+
+# Credential objects track their own token expiry; rebuilding one per request
+# would mint a fresh OAuth token every call.
+_credentials_cache: dict[str, object] = {}
+
+
+class InvalidVoiceIdError(ValueError):
+    """The voice id failed validation — a client error, unlike every other
+    failure on this path (bad credentials, Google outage), which is ours."""
+
 
 # Google encodes the model family in the voice name.
 MODEL_FAMILIES = [
@@ -129,16 +152,35 @@ REGION_NAMES = {
 }
 
 
+def _credentials_key(credentials_json: str | None) -> str:
+    if not credentials_json:
+        return "adc"
+    return hashlib.sha256(credentials_json.encode()).hexdigest()[:32]
+
+
 def _credentials(credentials_json: str | None):
-    """Service-account JSON if the org configured one, else ADC."""
-    if credentials_json:
-        creds = service_account.Credentials.from_service_account_info(
-            json.loads(credentials_json), scopes=SCOPES
-        )
-    else:
-        creds, _ = google_auth_default(scopes=SCOPES)
-    creds.refresh(GoogleAuthRequest())
+    """Service-account JSON if the org configured one, else ADC.
+
+    Blocking (RSA parsing plus an HTTPS token round trip) — async callers go
+    through :func:`_credentials_async`.
+    """
+    key = _credentials_key(credentials_json)
+    creds = _credentials_cache.get(key)
+    if creds is None:
+        if credentials_json:
+            creds = service_account.Credentials.from_service_account_info(
+                json.loads(credentials_json), scopes=SCOPES
+            )
+        else:
+            creds, _ = google_auth_default(scopes=SCOPES)
+        _credentials_cache[key] = creds
+    if not creds.valid:
+        creds.refresh(GoogleAuthRequest())
     return creds
+
+
+async def _credentials_async(credentials_json: str | None):
+    return await asyncio.to_thread(_credentials, credentials_json)
 
 
 def _family(voice_name: str) -> str | None:
@@ -183,19 +225,25 @@ async def list_voices(
     accent: str | None = None,
 ) -> dict:
     """Fetch and shape Google's voice catalogue. Same contract as MPS."""
-    creds = _credentials(credentials_json)
-
-    async with httpx.AsyncClient(timeout=30.0) as client:
-        resp = await client.get(
-            VOICES_URL, headers={"Authorization": f"Bearer {creds.token}"}
-        )
-    if resp.status_code != 200:
-        raise RuntimeError(f"google voices api {resp.status_code}: {resp.text[:200]}")
+    cache_key = _credentials_key(credentials_json)
+    cached_at, entries = _catalogue_cache.get(cache_key, (0.0, None))
+    if entries is None or time.monotonic() - cached_at > CATALOGUE_TTL_SECONDS:
+        creds = await _credentials_async(credentials_json)
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            resp = await client.get(
+                VOICES_URL, headers={"Authorization": f"Bearer {creds.token}"}
+            )
+        if resp.status_code != 200:
+            raise RuntimeError(
+                f"google voices api {resp.status_code}: {resp.text[:200]}"
+            )
+        entries = resp.json().get("voices", [])
+        _catalogue_cache[cache_key] = (time.monotonic(), entries)
 
     wanted_family = MODEL_ID_TO_FAMILY.get((model or "").lower())
     voices: list[dict] = []
 
-    for entry in resp.json().get("voices", []):
+    for entry in entries:
         name = entry.get("name", "")
         locale = (entry.get("languageCodes") or [""])[0]
         if not name or not locale:
@@ -254,16 +302,16 @@ async def list_voices(
 async def preview_audio(voice_id: str, *, credentials_json: str | None = None) -> bytes:
     """Synthesise a short sample. Google publishes no preview URLs of its own."""
     if not re.fullmatch(r"[A-Za-z0-9-]{3,64}", voice_id):
-        raise ValueError("invalid voice id")
+        raise InvalidVoiceIdError("invalid voice id")
 
-    PREVIEW_CACHE.mkdir(parents=True, exist_ok=True)
     key = hashlib.sha256(f"{voice_id}|{PREVIEW_TEXT}".encode()).hexdigest()[:32]
     cached = PREVIEW_CACHE / f"{key}.mp3"
-    if cached.exists():
-        return cached.read_bytes()
+    hit = await asyncio.to_thread(_read_cached_preview, cached)
+    if hit is not None:
+        return hit
 
     locale = "-".join(voice_id.split("-")[:2])
-    creds = _credentials(credentials_json)
+    creds = await _credentials_async(credentials_json)
 
     async with httpx.AsyncClient(timeout=60.0) as client:
         resp = await client.post(
@@ -279,6 +327,30 @@ async def preview_audio(voice_id: str, *, credentials_json: str | None = None) -
         raise RuntimeError(f"synthesize {resp.status_code}: {resp.text[:200]}")
 
     audio = base64.b64decode(resp.json()["audioContent"])
-    cached.write_bytes(audio)
+    await asyncio.to_thread(_write_cached_preview, cached, audio)
     logger.debug(f"cached voice preview {voice_id} ({len(audio)} bytes)")
     return audio
+
+
+def _read_cached_preview(cached: Path) -> bytes | None:
+    if cached.exists():
+        return cached.read_bytes()
+    return None
+
+
+def _write_cached_preview(cached: Path, audio: bytes) -> None:
+    """Atomic write — a crash mid-write must not leave a truncated sample the
+    read path would serve forever. A cache-write failure is not a synthesis
+    failure, so it never propagates."""
+    try:
+        PREVIEW_CACHE.mkdir(parents=True, exist_ok=True, mode=0o700)
+        fd, tmp_path = tempfile.mkstemp(dir=PREVIEW_CACHE, suffix=".mp3")
+        try:
+            with os.fdopen(fd, "wb") as f:
+                f.write(audio)
+            os.replace(tmp_path, cached)
+        except BaseException:
+            os.unlink(tmp_path)
+            raise
+    except OSError:
+        logger.warning(f"voice preview cache write failed for {cached.name}")

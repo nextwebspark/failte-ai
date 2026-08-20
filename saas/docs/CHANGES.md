@@ -60,8 +60,9 @@ Notes:
 - Proprietary OpenAI models (GPT-5/4o) are not on Vertex (Azure-exclusive);
   Mistral is excluded because it uses a native non-OpenAI-compatible API.
 - MaaS models need per-project Model Garden enablement.
-- pipecat's `anthropic` extra added at all four install sites (setup scripts
-  and both Dockerfiles); the factory imports the new module lazily so
+- pipecat's `anthropic` extra added at all five install sites (three setup
+  scripts and both Dockerfiles), and `anthropic[vertex]` pinned in
+  `api/requirements.txt`; the Claude service module is imported lazily so
   Gemini-only deployments run without the package.
 - No UI changes — the model dropdown is schema-driven and picks the list up
   from the regenerated OpenAPI spec.

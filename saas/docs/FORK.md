@@ -85,7 +85,10 @@ These upstream files we expect to modify. Keep this list short and current — a
 | `ui/src/components/VoiceSelectorModal.tsx` | Authenticated blob playback (plus revocation) for our own relative preview URLs, and `defaultGender`/`defaultAccent`/`defaultLanguage` props so a provider can open on something other than American English |
 | `ui/src/components/ServiceConfigurationForm.tsx` | A Google TTS voice field renders `VoiceSelectorModal`, ahead of the `allow_custom_input` check |
 | `ui/src/client/` | Regenerated — the voice route's provider path param now includes `google` |
-| `api/services/pipecat/service_factory.py` | Google TTS: `language_code` derived from the voice's own locale instead of the separately-configured language |
+| `api/services/pipecat/service_factory.py` | Google TTS: `language_code` derived from the voice's own locale instead of the separately-configured language. Vertex LLM: the `GOOGLE_VERTEX` branch is a single call into fork-owned `api/services/pipecat/vertex_llm.py`, which routes Claude/MaaS models to their own services |
+| `api/services/configuration/options/google.py` | `GOOGLE_VERTEX_MODELS` extended with Claude and MaaS ids after upstream's Gemini block — keep both halves on conflict |
+| `api/services/configuration/registry.py` | Vertex `model`/`location` field descriptions widened to cover Claude and MaaS |
+| `api/Dockerfile`, `.devcontainer/Dockerfile`, `scripts/setup_pipecat.sh`, `scripts/setup_requirements.sh`, `scripts/setup_requirements.ps1` | `anthropic` added to the pipecat extras list — five copies of one string; re-add it to any site upstream rewrites |
 | `api/tests/test_google_tts_service_factory.py` | One fixture paired `sw-KE` with an `en-US` voice — the combination Google rejects — so it had to become a consistent pair |
 | `ui/src/app/workflow/[workflowId]/run/[runId]/hooks/useWebSocketRTC.tsx` | Live-feedback row ids come from `@/lib/feedbackId` — `Date.now()` alone collides |
 | `ui/src/lib/publicEmbedWidget.test.ts` | The mocked embed config carries a `texts` block, as the real endpoint does |

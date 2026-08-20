@@ -1,106 +1,131 @@
-"""Anthropic Claude and open MaaS models served through the org's Vertex AI project.
+"""Model-family routing and services for the Google Vertex LLM provider.
 
 Vertex AI exposes three model families behind one provider config
 (project_id / location / service-account credentials):
 
-- Gemini — handled by ``DograhGoogleVertexLLMService`` in ``service_factory``.
-- Anthropic Claude — native Anthropic Messages API via ``AsyncAnthropicVertex``.
-- Open MaaS models (Llama, DeepSeek, Qwen, gpt-oss, ...) — the OpenAI-compatible
-  ``.../endpoints/openapi`` endpoint.
-
-This module requires the ``anthropic`` package (pipecat's ``anthropic`` extra);
-``service_factory`` imports it lazily so Gemini-only deployments work without it.
+- Gemini — pipecat's native ``GoogleVertexLLMService`` (built by the caller,
+  so this module stays importable without the ``anthropic`` package).
+- Anthropic Claude — native Anthropic Messages API via ``AsyncAnthropicVertex``
+  (:mod:`api.services.pipecat.vertex_anthropic_llm`, imported lazily because it
+  needs pipecat's ``anthropic`` extra).
+- Open MaaS models (Llama, DeepSeek, Qwen, gpt-oss, ...) — the
+  OpenAI-compatible ``.../endpoints/openapi`` endpoint.
 """
 
 import asyncio
+from collections.abc import Callable
+from enum import Enum
 
 import httpx
-from anthropic import AsyncAnthropicVertex
+from fastapi import HTTPException
 from loguru import logger
 from openai import AsyncOpenAI, DefaultAsyncHttpxClient
 
-from pipecat.services.anthropic.llm import AnthropicLLMService
 from pipecat.services.google.vertex.llm import GoogleVertexLLMService
+from pipecat.services.openai.base_llm import OpenAILLMSettings
 from pipecat.services.openai.llm import OpenAILLMService
-from pipecat.services.settings import assert_given
 
 # MaaS models are served from specific regions only; requests against the
 # "global" location fail, so configs using the (default) global location are
 # mapped to this region instead.
 _DEFAULT_MAAS_REGION = "us-central1"
 
+# Claude models that reject non-default sampling params (temperature) with a
+# 400. Prefix-matched so dated snapshots (claude-sonnet-5@...) are covered.
+_TEMPERATURE_UNSUPPORTED_PREFIXES = (
+    "claude-sonnet-5",
+    "claude-opus-5",
+    "claude-opus-4-7",
+    "claude-opus-4-8",
+    "claude-fable",
+)
 
-class DograhVertexAnthropicLLMService(AnthropicLLMService):
-    """Anthropic Claude on Vertex AI using the org's project and credentials.
+_VERTEX_TEMPERATURE = 0.1
 
-    Vertex rejects the first-party ``interleaved-thinking`` beta header the
-    parent injects, so both inference paths are overridden to call the
-    non-beta Messages endpoint without ``betas``.
+
+class VertexModelFamily(str, Enum):
+    GEMINI = "gemini"
+    ANTHROPIC = "anthropic"
+    OPENAI_COMPAT = "openai_compat"
+
+
+def vertex_model_family(model: str) -> VertexModelFamily:
+    """Pick the Vertex AI API surface for a model id.
+
+    Anything that is neither Gemini nor Claude routes to the OpenAI-compatible
+    endpoint on purpose: the model field accepts custom values, and that
+    endpoint is the surface that serves every open MaaS publisher — a typo'd
+    id fails there with Vertex's own error rather than here.
     """
+    m = (model or "").lower()
+    if not m or m.startswith(("gemini", "gemma", "google/")):
+        return VertexModelFamily.GEMINI
+    if m.startswith(("claude", "anthropic/")):
+        return VertexModelFamily.ANTHROPIC
+    return VertexModelFamily.OPENAI_COMPAT
 
-    def __init__(
-        self,
-        *,
-        project_id: str,
-        location: str | None = None,
-        credentials: str | None = None,
-        settings=None,
-        **kwargs,
-    ):
-        google_creds = GoogleVertexLLMService._get_credentials(credentials, None)
-        client = AsyncAnthropicVertex(
+
+def build_vertex_llm_service(
+    model: str,
+    *,
+    project_id: str,
+    location: str | None,
+    credentials: str | None,
+    gemini_builder: Callable[[], object],
+):
+    """Build the right LLM service for a Vertex model id.
+
+    ``gemini_builder`` constructs the Gemini service so the Gemini path never
+    imports the ``anthropic`` package — deployments without pipecat's
+    ``anthropic`` extra keep working for Gemini models.
+    """
+    family = vertex_model_family(model)
+    if family is VertexModelFamily.GEMINI:
+        return gemini_builder()
+
+    if family is VertexModelFamily.ANTHROPIC:
+        try:
+            from anthropic import NOT_GIVEN as ANTHROPIC_NOT_GIVEN
+
+            from api.services.pipecat.vertex_anthropic_llm import (
+                DograhVertexAnthropicLLMService,
+            )
+            from pipecat.services.anthropic.llm import AnthropicLLMSettings
+        except ImportError as e:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "Claude models on Vertex require the 'anthropic' package; "
+                    "install pipecat's 'anthropic' extra to enable them."
+                ),
+            ) from e
+        temperature = (
+            ANTHROPIC_NOT_GIVEN
+            if model.lower().startswith(_TEMPERATURE_UNSUPPORTED_PREFIXES)
+            else _VERTEX_TEMPERATURE
+        )
+        return DograhVertexAnthropicLLMService(
+            credentials=credentials,
             project_id=project_id,
-            region=location or "global",
-            # The SDK refreshes the OAuth token from the credentials object on
-            # every request, covering calls longer than the 1-hour token life.
-            credentials=google_creds,
-        )
-        super().__init__(api_key="unused", settings=settings, client=client, **kwargs)
-
-    async def _create_message_stream(self, api_call, params):
-        params = {k: v for k, v in params.items() if k != "betas"}
-        return await super()._create_message_stream(
-            self._client.messages.create, params
+            location=location or "global",
+            settings=AnthropicLLMSettings(model=model, temperature=temperature),
         )
 
-    async def run_inference(self, context, max_tokens=None, system_instruction=None):
-        # Mirrors AnthropicLLMService.run_inference, minus the beta header and
-        # beta endpoint that Vertex rejects.
-        effective_instruction = system_instruction or assert_given(
-            self._settings.system_instruction
-        )
-        adapter = self.get_llm_adapter()
-        invocation_params = adapter.get_llm_invocation_params(
-            context,
-            enable_prompt_caching=assert_given(self._settings.enable_prompt_caching),
-            system_instruction=effective_instruction,
-            ensure_last_message_is_user=self._should_inject_trailing_user_message(),
-        )
+    return DograhVertexMaaSLLMService(
+        credentials=credentials,
+        project_id=project_id,
+        location=location,
+        settings=OpenAILLMSettings(model=model, temperature=_VERTEX_TEMPERATURE),
+    )
 
-        params = {
-            "model": self._settings.model,
-            "max_tokens": max_tokens
-            if max_tokens is not None
-            else self._settings.max_tokens,
-            "stream": False,
-            "temperature": self._settings.temperature,
-            "top_k": self._settings.top_k,
-            "top_p": self._settings.top_p,
-            "messages": invocation_params["messages"],
-            "system": invocation_params["system"],
-            "tools": invocation_params["tools"],
-        }
-        thinking = assert_given(self._settings.thinking)
-        if thinking:
-            params["thinking"] = thinking.model_dump(exclude_unset=True)
-        params.update(self._settings.extra)
-        params.pop("betas", None)
 
-        response = await self._client.messages.create(**params)
+def service_account_credentials(credentials_json: str | None):
+    """Google credentials from the org's pasted service-account JSON, or ADC.
 
-        return next(
-            (block.text for block in response.content if hasattr(block, "text")), None
-        )
+    Single wrapper around pipecat's private ``_get_credentials`` so an upstream
+    rename is a one-line fix here. Blocking: performs a token refresh.
+    """
+    return GoogleVertexLLMService._get_credentials(credentials_json, None)
 
 
 class _GoogleCredentialsAuth(httpx.Auth):
@@ -108,6 +133,8 @@ class _GoogleCredentialsAuth(httpx.Auth):
 
     def __init__(self, creds):
         self._creds = creds
+        # Concurrent requests must not each mint a token while others read it.
+        self._refresh_lock = asyncio.Lock()
 
     def sync_auth_flow(self, request):
         from google.auth.transport.requests import Request as GoogleAuthRequest
@@ -121,7 +148,9 @@ class _GoogleCredentialsAuth(httpx.Auth):
         from google.auth.transport.requests import Request as GoogleAuthRequest
 
         if not self._creds.valid:
-            await asyncio.to_thread(self._creds.refresh, GoogleAuthRequest())
+            async with self._refresh_lock:
+                if not self._creds.valid:
+                    await asyncio.to_thread(self._creds.refresh, GoogleAuthRequest())
         request.headers["Authorization"] = f"Bearer {self._creds.token}"
         yield request
 
@@ -142,7 +171,7 @@ class DograhVertexMaaSLLMService(OpenAILLMService):
         settings=None,
         **kwargs,
     ):
-        self._google_creds = GoogleVertexLLMService._get_credentials(credentials, None)
+        self._google_creds = service_account_credentials(credentials)
         region = location or ""
         if not region or region == "global":
             logger.warning(

@@ -18,7 +18,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { ACCENT_DISPLAY_NAMES } from "@/constants/accents";
 import { LANGUAGE_DISPLAY_NAMES } from "@/constants/languages";
 import { resolveBrowserBackendUrl } from "@/lib/apiClient";
+import { detailFromError } from "@/lib/apiError";
 import { useAuth } from "@/lib/auth";
+import logger from "@/lib/logger";
 import { cn } from "@/lib/utils";
 
 // The catalogue route's provider path param is a closed literal union in the
@@ -101,6 +103,8 @@ export const VoiceSelectorModal: React.FC<VoiceSelectorModalProps> = ({
     const [facets, setFacets] = useState<Facets>(EMPTY_FACETS);
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    // Preview failures get their own message — they must not blank the list.
+    const [previewError, setPreviewError] = useState<string | null>(null);
 
     // Filters drive a server-side query (we never fetch the whole catalog).
     const [gender, setGender] = useState(defaultGender);
@@ -122,6 +126,9 @@ export const VoiceSelectorModal: React.FC<VoiceSelectorModalProps> = ({
     // ourselves. Held so it can be revoked — a blob lives until it is.
     const blobUrlRef = useRef<string | null>(null);
     const requestId = useRef(0);
+    // Discards a preview fetch that finishes after the user has moved on —
+    // clicked another voice, stopped playback, or closed the modal.
+    const previewRequestId = useRef(0);
 
     const releaseBlob = useCallback(() => {
         if (blobUrlRef.current) {
@@ -131,6 +138,7 @@ export const VoiceSelectorModal: React.FC<VoiceSelectorModalProps> = ({
     }, []);
 
     const stopPreview = useCallback(() => {
+        previewRequestId.current++;
         if (audioRef.current) {
             audioRef.current.pause();
             audioRef.current = null;
@@ -183,26 +191,36 @@ export const VoiceSelectorModal: React.FC<VoiceSelectorModalProps> = ({
             const search = debouncedSearch.trim();
             if (search) query.q = search;
 
-            const response = await getVoicesApiV1UserConfigurationsVoicesProviderGet({
-                path: { provider: provider as VoicesProvider },
-                query,
-            });
-            if (id !== requestId.current) return; // a newer request superseded this one
+            try {
+                const response = await getVoicesApiV1UserConfigurationsVoicesProviderGet({
+                    path: { provider: provider as VoicesProvider },
+                    query,
+                });
+                if (id !== requestId.current) return; // a newer request superseded this one
 
-            if (response.error) {
+                if (response.error) {
+                    setError(detailFromError(response.error, "Failed to load voices"));
+                    setVoices([]);
+                } else {
+                    setVoices(response.data?.voices ?? []);
+                    if (response.data?.facets) {
+                        setFacets({
+                            genders: response.data.facets.genders ?? [],
+                            accents: response.data.facets.accents ?? [],
+                            languages: response.data.facets.languages ?? [],
+                        });
+                    }
+                }
+            } catch (err) {
+                // The generated client only rejects on network failures; without
+                // this the spinner would stay up forever.
+                if (id !== requestId.current) return;
+                logger.error(`Failed to load voices: ${err}`);
                 setError("Failed to load voices");
                 setVoices([]);
-            } else {
-                setVoices(response.data?.voices ?? []);
-                if (response.data?.facets) {
-                    setFacets({
-                        genders: response.data.facets.genders ?? [],
-                        accents: response.data.facets.accents ?? [],
-                        languages: response.data.facets.languages ?? [],
-                    });
-                }
+            } finally {
+                if (id === requestId.current) setIsLoading(false);
             }
-            setIsLoading(false);
         })();
     }, [isOpen, manualMode, provider, model, gender, accent, language, debouncedSearch]);
 
@@ -245,6 +263,7 @@ export const VoiceSelectorModal: React.FC<VoiceSelectorModalProps> = ({
     };
 
     const playPreview = async (voice: VoiceInfo) => {
+        setPreviewError(null);
         if (playingVoiceId === voice.voice_id) {
             stopPreview();
             return;
@@ -256,6 +275,7 @@ export const VoiceSelectorModal: React.FC<VoiceSelectorModalProps> = ({
         // Ours (google) is a relative path on our own API, which needs the
         // backend origin AND a bearer token — an <audio> element can send
         // neither. Fetch the bytes and play a blob instead.
+        const previewId = ++previewRequestId.current;
         let src = voice.preview_url;
         if (src.startsWith("/")) {
             try {
@@ -264,13 +284,24 @@ export const VoiceSelectorModal: React.FC<VoiceSelectorModalProps> = ({
                     headers: { Authorization: `Bearer ${token}` },
                 });
                 if (!response.ok) throw new Error(`preview ${response.status}`);
-                src = URL.createObjectURL(await response.blob());
+                const blobUrl = URL.createObjectURL(await response.blob());
+                if (previewId !== previewRequestId.current) {
+                    // The user moved on while the bytes were in flight.
+                    URL.revokeObjectURL(blobUrl);
+                    return;
+                }
+                src = blobUrl;
                 blobUrlRef.current = src;
-            } catch {
-                setPlayingVoiceId(null);
+            } catch (err) {
+                logger.error(`Voice preview failed for ${voice.voice_id}: ${err}`);
+                if (previewId === previewRequestId.current) {
+                    setPreviewError("Preview unavailable for this voice");
+                    setPlayingVoiceId(null);
+                }
                 return;
             }
         }
+        if (previewId !== previewRequestId.current) return;
 
         const audio = new Audio(src);
         audioRef.current = audio;
@@ -480,8 +511,16 @@ export const VoiceSelectorModal: React.FC<VoiceSelectorModalProps> = ({
                                 {manualMode ? "Browse catalog" : "Custom voice ID"}
                             </Button>
                         ) : (
-                            <span className="text-xs text-muted-foreground">
-                                {!manualMode && !isLoading && !error ? `${voices.length} voices` : ""}
+                            <span
+                                className={cn(
+                                    "text-xs",
+                                    previewError ? "text-destructive" : "text-muted-foreground",
+                                )}
+                            >
+                                {previewError ??
+                                    (!manualMode && !isLoading && !error
+                                        ? `${voices.length} voices`
+                                        : "")}
                             </span>
                         )}
                         <div className="flex items-center gap-2">
