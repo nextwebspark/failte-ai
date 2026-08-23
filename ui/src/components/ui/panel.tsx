@@ -40,9 +40,14 @@ function Panel({ className, accent, padding, ...props }: PanelProps) {
     return <div className={cn(panelVariants({ accent, padding }), className)} {...props} />
 }
 
+export interface PanelTitleProps extends React.HTMLAttributes<HTMLHeadingElement> {
+    /** Heading level, so a panel title keeps its place in the document outline. */
+    as?: "h2" | "h3" | "h4" | "div"
+}
+
 /** Panel title — 14.5px semibold, per the canvas. */
-function PanelTitle({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
-    return <div className={cn("text-[14.5px] font-semibold text-foreground", className)} {...props} />
+function PanelTitle({ className, as: Tag = "div", ...props }: PanelTitleProps) {
+    return <Tag className={cn("text-[14.5px] font-semibold text-foreground", className)} {...props} />
 }
 
 /** Mono sub-caption under a PanelTitle. */

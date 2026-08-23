@@ -271,7 +271,7 @@ export const WorkflowEditorHeader = ({
                                 className="h-8 max-w-xs bg-panel-2 border-line text-foreground text-base font-medium"
                             />
                             {rename.kind === "editing" && rename.error && (
-                                <span className="text-xs text-red-500" role="alert">{rename.error}</span>
+                                <span className="text-xs text-danger" role="alert">{rename.error}</span>
                             )}
                         </div>
                     ) : (
@@ -302,7 +302,7 @@ export const WorkflowEditorHeader = ({
             <div className="flex items-center gap-3">
                 {/* Read-only banner when viewing a historical version */}
                 {isViewingHistoricalVersion && (
-                    <div className="flex items-center gap-2 px-3 py-1.5 rounded-md border border-blue-500/30 bg-blue-500/10">
+                    <div className="flex items-center gap-2 px-3 py-1.5 rounded-md border border-sky/30 bg-sky-dim">
                         <Eye className="w-4 h-4 text-blue-400" />
                         <span className="text-sm text-blue-400">
                             Viewing {activeVersionLabel} - Read only
@@ -333,9 +333,9 @@ export const WorkflowEditorHeader = ({
 
                 {/* Unsaved changes indicator (hidden when viewing history) */}
                 {isDirty && !isViewingHistoricalVersion && (
-                    <div className="flex items-center gap-2 px-3 py-1.5 rounded-md border border-yellow-500/30 bg-yellow-500/10">
-                        <div className="w-2 h-2 rounded-full bg-yellow-500" />
-                        <span className="text-sm text-yellow-500">Unsaved changes</span>
+                    <div className="flex items-center gap-2 px-3 py-1.5 rounded-md border border-amber/30 bg-amber-dim">
+                        <div className="w-2 h-2 rounded-full bg-amber" />
+                        <span className="text-sm text-amber">Unsaved changes</span>
                     </div>
                 )}
 
@@ -343,10 +343,10 @@ export const WorkflowEditorHeader = ({
                 {hasValidationErrors && (
                     <Popover>
                         <PopoverTrigger asChild>
-                            <button className="flex items-center gap-2 px-3 py-1.5 rounded-md border border-red-500/30 bg-red-500/10 hover:bg-red-500/20 transition-colors cursor-pointer">
-                                <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
-                                <AlertCircle className="w-4 h-4 text-red-500" />
-                                <span className="text-sm text-red-500">
+                            <button className="flex items-center gap-2 px-3 py-1.5 rounded-md border border-danger/30 bg-danger-dim hover:bg-danger/20 transition-colors cursor-pointer">
+                                <div className="w-2 h-2 rounded-full bg-danger animate-pulse" />
+                                <AlertCircle className="w-4 h-4 text-danger" />
+                                <span className="text-sm text-danger">
                                     {workflowValidationErrors.length} {workflowValidationErrors.length === 1 ? "error" : "errors"}
                                 </span>
                             </button>
@@ -365,7 +365,7 @@ export const WorkflowEditorHeader = ({
                                         className="px-4 py-3 border-b border-line-soft last:border-b-0"
                                     >
                                         <div className="flex items-start gap-2">
-                                            <AlertCircle className="w-4 h-4 text-red-500 mt-0.5 flex-shrink-0" />
+                                            <AlertCircle className="w-4 h-4 text-danger mt-0.5 flex-shrink-0" />
                                             <div className="flex-1 min-w-0">
                                                 {(error.kind === "node" || error.kind === "edge") && error.id && (
                                                     <p className="text-xs text-ink-3 mb-1">

@@ -136,9 +136,9 @@ export function WorkflowTable({
                 <Table>
                     <TableHeader>
                         <TableRow>
-                            <TableHead className="">ID</TableHead>
-                            <TableHead className="">Agent Name</TableHead>
-                            <TableHead className="">Created At</TableHead>
+                            <TableHead>ID</TableHead>
+                            <TableHead>Agent Name</TableHead>
+                            <TableHead>Created At</TableHead>
                             <TableHead className="text-center">Total Runs</TableHead>
                             <TableHead className="text-right">Actions</TableHead>
                         </TableRow>

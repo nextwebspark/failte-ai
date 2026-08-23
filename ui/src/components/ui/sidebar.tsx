@@ -27,7 +27,7 @@ import { cn } from "@/lib/utils"
 
 const SIDEBAR_COOKIE_NAME = "sidebar_state"
 const SIDEBAR_COOKIE_MAX_AGE = 60 * 60 * 24 * 7
-const SIDEBAR_WIDTH = "13.625rem" // 218px — the design canvas nav width
+const SIDEBAR_WIDTH = "14.625rem" // 234px; the floating variant's p-2 leaves a 218px panel — the canvas nav width
 const SIDEBAR_WIDTH_MOBILE = "18rem"
 const SIDEBAR_WIDTH_ICON = "3rem"
 const SIDEBAR_KEYBOARD_SHORTCUT = "b"

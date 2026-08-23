@@ -149,6 +149,10 @@ const TONE = {
     bad: "bg-danger-dim text-danger",
     brand: "bg-brand-dim text-brand",
     mute: "bg-panel-2 text-ink-3",
+    // Outlined variants keep the remaining node types distinguishable without
+    // adding hues outside the canvas palette.
+    infoOutline: "border border-sky/40 bg-panel text-sky",
+    muteOutline: "border border-line bg-panel text-ink-2",
 } as const;
 
 function getBadgeForSpec(
@@ -171,11 +175,11 @@ function getBadgeForSpec(
         case "trigger":
             return { label: "API Trigger", className: TONE.brand };
         case "webhook":
-            return { label: "Webhook", className: TONE.mute };
+            return { label: "Webhook", className: TONE.muteOutline };
         case "qa":
             return { label: "QA Analysis", className: TONE.mute };
         case "integration":
-            return { label: spec.display_name, className: TONE.info };
+            return { label: spec.display_name, className: TONE.infoOutline };
     }
 }
 
@@ -329,7 +333,7 @@ function StatusDot({ enabled }: { enabled: boolean }) {
             <Circle
                 className={`h-2 w-2 ${
                     enabled
-                        ? "fill-green-500 text-green-500"
+                        ? "fill-ok text-ok"
                         : "fill-ink-3 text-ink-3"
                 }`}
             />

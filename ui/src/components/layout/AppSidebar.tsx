@@ -221,8 +221,9 @@ export function AppSidebar() {
       >
         <Link
           href={item.url}
+          aria-current={isItemActive ? "page" : undefined}
           onClick={handleMobileNavClick}
-          className={cn("relative", isCollapsed && "justify-center")}
+          className={cn(isCollapsed && "justify-center")}
           translate="no"
         >
           <Icon
@@ -303,7 +304,7 @@ export function AppSidebar() {
               <BrandLogo mark className="h-6" />
               {versionInfo && (
                 <span
-                  className="notranslate text-xs font-normal text-muted-foreground"
+                  className="notranslate min-w-0 truncate text-xs font-normal text-muted-foreground"
                   translate="no"
                 >
                   v{versionInfo.ui}
@@ -337,7 +338,7 @@ export function AppSidebar() {
             )}
           </div>
 
-          <SidebarTrigger className={cn("hover:bg-accent", isCollapsed && "mx-auto")}>
+          <SidebarTrigger className={cn("shrink-0 hover:bg-accent", isCollapsed && "mx-auto")}>
             {isCollapsed ? (
               <ChevronRight className="h-4 w-4" />
             ) : (

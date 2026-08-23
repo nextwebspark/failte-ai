@@ -26,6 +26,7 @@
   --color-input: var(--input);
   --color-border: var(--border);
   --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
   --color-accent-foreground: var(--accent-foreground);
   --color-accent: var(--accent);
   --color-muted-foreground: var(--muted-foreground);
@@ -106,30 +107,33 @@
   /* Ink */
   --ink: #141b29;
   --ink-2: #47505f;
-  --ink-3: #6e7890;
+  --ink-3: #667087;
 
   /* Accents + their dim washes (pill/chip backgrounds).
 
-     Two of the canvas's light values land just under WCAG AA, so light mode
-     adjusts them by the smallest amount that clears it — the difference is not
-     perceptible, and dark mode (the default) uses the canvas values unchanged:
+     The canvas's LIGHT accents are not WCAG AA as text: every consumer draws
+     the accent on its own dim wash at 10-12.5px, where the canvas values land
+     at 3.0-4.4:1. Each light accent below is therefore darkened by the smallest
+     amount that clears 4.5:1 on the worst surface (--panel-2), and each wash is
+     rederived from its new accent so the pair stays in step. The shift is not
+     perceptible; the canvas hues are preserved.
 
-     - --brand stays the canvas Irish green for borders, washes and accent text.
-       White on it is only 3.56:1, so --brand-strong (4.54:1) is what --primary
-       fills buttons with. Never put white text on --brand directly.
-     - --sky is nudged from the canvas #1a73c7 (4.46:1 on --bg) to clear 4.5. */
-  --brand: #169b62;
-  --brand-strong: #138755;
-  --brand-dim: rgba(22, 155, 98, 0.1);
+     Canvas originals, for reference: brand #169b62, sky #1a73c7, amber #b47708,
+     ok(green) #1f8f60, danger(red) #cc3a33.
+
+     DARK keeps the canvas values — they already pass — except --danger, which
+     was 4.10:1 on its own wash and is nudged likewise. */
+  --brand: #11764b;
+  --brand-dim: rgba(17, 118, 75, 0.1);
   --brand-ink: #ffffff;
-  --sky: #196dbd;
-  --sky-dim: rgba(25, 109, 189, 0.1);
-  --amber: #b47708;
-  --amber-dim: rgba(201, 138, 10, 0.1);
-  --ok: #1f8f60;
-  --ok-dim: rgba(31, 143, 96, 0.1);
-  --danger: #cc3a33;
-  --danger-dim: rgba(204, 58, 51, 0.08);
+  --sky: #1869b5;
+  --sky-dim: rgba(24, 105, 181, 0.1);
+  --amber: #8e5e06;
+  --amber-dim: rgba(142, 94, 6, 0.1);
+  --ok: #1a754f;
+  --ok-dim: rgba(26, 117, 79, 0.1);
+  --danger: #c03630;
+  --danger-dim: rgba(192, 54, 48, 0.08);
 
   --panel-shadow: 0 8px 28px rgba(20, 30, 50, 0.1);
 
@@ -140,7 +144,7 @@
   --card-foreground: var(--ink);
   --popover: var(--panel);
   --popover-foreground: var(--ink);
-  --primary: var(--brand-strong);
+  --primary: var(--brand);
   --primary-foreground: var(--brand-ink);
   --secondary: var(--panel-2);
   --secondary-foreground: var(--ink);
@@ -148,6 +152,9 @@
   --muted-foreground: var(--ink-3);
   --accent: var(--panel-2);
   --accent-foreground: var(--ink);
+  /* Text accent and button fill pull in opposite directions in dark mode:
+     --danger is lightened to stay readable on --danger-dim, while a solid
+     fill under white text must stay dark. Light mode can share one value. */
   --destructive: var(--danger);
   --destructive-foreground: #ffffff;
   --border: var(--line);
@@ -196,8 +203,6 @@
   --ink-3: #8d96a6;
 
   --brand: #2fc584;
-  /* Dark brand already clears AA against --brand-ink (8.5:1) — no deeper shade. */
-  --brand-strong: #2fc584;
   --brand-dim: rgba(47, 197, 132, 0.14);
   --brand-ink: #07130d;
   --sky: #5cb3ff;
@@ -206,8 +211,9 @@
   --amber-dim: rgba(240, 180, 41, 0.12);
   --ok: #3fb27f;
   --ok-dim: rgba(63, 178, 127, 0.12);
-  --danger: #e5534b;
-  --danger-dim: rgba(229, 83, 75, 0.12);
+  --danger: #e8645d;
+  --danger-dim: rgba(232, 100, 93, 0.12);
+  --destructive: #c2534e;
 
   --panel-shadow: 0 8px 28px rgba(0, 0, 0, 0.45);
 
@@ -284,13 +290,13 @@
   70% {
     box-shadow:
       0 0 0 3px color-mix(in srgb, var(--sky) 75%, transparent),
-      0 0 0 18px color-mix(in srgb, var(--sky) 0%, transparent);
+      0 0 0 18px transparent;
     transform: scale(1);
   }
   100% {
     box-shadow:
       0 0 0 3px color-mix(in srgb, var(--sky) 75%, transparent),
-      0 0 0 18px color-mix(in srgb, var(--sky) 0%, transparent);
+      0 0 0 18px transparent;
   }
 }
 
@@ -347,13 +353,14 @@
      (--brand-imprint, defined in :root/.dark); that is currently `none`
      pending our own artwork, so this is a flat surface. */
   /* NOTE: background-attachment: fixed positions in VIEWPORT space but only
-     paints inside .app-surface, which starts right of the ~270px sidebar —
-     the +135px x-shift recentres the wordmark on the VISIBLE canvas. */
+     paints inside .app-surface, which starts right of the sidebar — the x-shift
+     recentres the wordmark on the VISIBLE canvas. Keep it at roughly half the
+     sidebar's painted width (currently ~218px + gap, so ~113px). */
   .app-surface {
     background-color: var(--bg);
     background-image: var(--brand-imprint);
     background-size: min(68vw, 980px) auto;
-    background-position: calc(50% + 135px) calc(100% - 24px);
+    background-position: calc(50% + 113px) calc(100% - 24px);
     background-repeat: no-repeat;
     background-attachment: fixed;
   }
@@ -362,9 +369,6 @@
     .app-surface {
       background-position: center calc(100% - 24px);
     }
-  }
-  .dark .app-surface {
-    background-color: var(--bg);
   }
 
   /* Giant faded wordmark imprint for the auth pages (applied to the AuthShell
@@ -405,7 +409,7 @@
    colour, plus — dark mode only — a brighter SOLID top border, like light
    catching the machined top edge of the panel. Applied app-wide by the Card
    primitive (components/ui/card.tsx). Un-layered so border-top-color beats
-   the border-border/60 utility. No gradients (user constraint). */
+   the Card's own border utility. No gradients (user constraint). */
 .card-weave {
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12'%3E%3Cpath d='M0 0l12 12M12 0L0 12' stroke='%23000000' stroke-opacity='.015' fill='none'/%3E%3C/svg%3E");
   background-repeat: repeat;

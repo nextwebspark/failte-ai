@@ -30,12 +30,9 @@ export default function OverviewPage() {
                 </div>
 
                 {/* Quick actions — the canvas "Get started" panels */}
-                <SectionHeading action={<SectionHint>Build an agent, then point a number at it</SectionHint>}>
-                    Get started
-                </SectionHeading>
                 <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                     <Panel accent="sky">
-                        <PanelTitle>Create and Manage your Voice Agents</PanelTitle>
+                        <PanelTitle as="h2">Create and Manage your Voice Agents</PanelTitle>
                         <PanelDescription>
                             Build powerful AI Voice Agents with our visual editor
                         </PanelDescription>
@@ -47,7 +44,7 @@ export default function OverviewPage() {
                     </Panel>
 
                     <Panel>
-                        <PanelTitle>Configure Services</PanelTitle>
+                        <PanelTitle as="h2">Configure Services</PanelTitle>
                         <PanelDescription>
                             Set up your AI services like LLM, TTS, and STT providers
                         </PanelDescription>

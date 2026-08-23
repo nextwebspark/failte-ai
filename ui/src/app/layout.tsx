@@ -42,7 +42,14 @@ export default function RootLayout({
 }) {
 
   return (
-    <html lang="en" className="dark" suppressHydrationWarning>
+    // The font variables must sit on <html>: Tailwind's preflight sets
+    // font-family on html from :root, so variables scoped to <body> never
+    // reach it and the sans stack silently falls back to system-ui.
+    <html
+      lang="en"
+      className={`dark ${inter.variable} ${jetbrainsMono.variable}`}
+      suppressHydrationWarning
+    >
       <head>
         {/* Inline script to prevent flash of light theme - runs before React hydrates.
             Dark is the locked default: only an explicit stored 'light' opts out. */}
@@ -66,7 +73,7 @@ export default function RootLayout({
         />
       </head>
       <body
-        className={`${inter.variable} ${jetbrainsMono.variable} antialiased`}>
+        className="antialiased">
         <ThemeProvider attribute="class" defaultTheme="dark" enableSystem={false} disableTransitionOnChange>
           <SentryErrorBoundary>
             <AuthProvider>

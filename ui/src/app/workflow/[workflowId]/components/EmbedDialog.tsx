@@ -775,7 +775,7 @@ export function EmbedDialog({
                                     {embedMode === "headless" ? null : embedMode === "floating" ? (
                                         <div className="rounded-lg border bg-muted/30 p-6 flex items-center justify-center">
                                             <button
-                                                className="inline-flex items-center gap-2 rounded-full px-5 py-3 font-medium text-foreground shadow-lg whitespace-nowrap"
+                                                className="inline-flex items-center gap-2 rounded-full px-5 py-3 font-medium text-white shadow-lg whitespace-nowrap"
                                                 style={{ backgroundColor: buttonColor }}
                                             >
                                                 {widgetType === "chat" ? (
@@ -790,7 +790,7 @@ export function EmbedDialog({
                                         <div className="rounded-lg border bg-background p-6 flex items-center justify-center">
                                             <div className="w-full max-w-sm rounded-lg border shadow-sm overflow-hidden">
                                                 <div
-                                                    className="px-4 py-3 text-sm font-semibold text-foreground"
+                                                    className="px-4 py-3 text-sm font-semibold text-white"
                                                     style={{ backgroundColor: buttonColor }}
                                                 >
                                                     {buttonText || "Chat with Agent"}
@@ -800,7 +800,7 @@ export function EmbedDialog({
                                                         Hi! How can I help you today?
                                                     </div>
                                                     <div
-                                                        className="max-w-[80%] ml-auto rounded-lg rounded-br-sm px-3 py-2 text-sm text-foreground"
+                                                        className="max-w-[80%] ml-auto rounded-lg rounded-br-sm px-3 py-2 text-sm text-white"
                                                         style={{ backgroundColor: buttonColor }}
                                                     >
                                                         I have a question…
@@ -812,7 +812,7 @@ export function EmbedDialog({
                                                             || widgetTextDefaults?.chatInputPlaceholder}
                                                     </div>
                                                     <span
-                                                        className="inline-flex h-8 w-8 items-center justify-center rounded-md text-foreground"
+                                                        className="inline-flex h-8 w-8 items-center justify-center rounded-md text-white"
                                                         style={{ backgroundColor: buttonColor }}
                                                     >
                                                         <Send className="h-4 w-4" />
@@ -831,7 +831,7 @@ export function EmbedDialog({
                                                 </p>
                                                 <p className="text-sm text-muted-foreground mb-5">{callToActionText}</p>
                                                 <button
-                                                    className="px-8 py-3 rounded-lg font-semibold text-foreground shadow-md"
+                                                    className="px-8 py-3 rounded-lg font-semibold text-white shadow-md"
                                                     style={{ backgroundColor: buttonColor }}
                                                 >
                                                     {buttonText}

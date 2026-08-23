@@ -279,8 +279,8 @@ export default function CustomEdge(props: CustomEdgeProps) {
                             ? 'var(--sky)'
                             : data?.invalid ? 'var(--danger)' : 'var(--ink-3)',
                         strokeWidth: selected ? 4 : isHovered ? 3 : 2.5,
-                        opacity: selected || isHovered ? 1 : 0.7,
-                        transition: 'stroke 0.2s ease, stroke-width 0.2s ease, filter 0.2s ease',
+                        strokeOpacity: selected || isHovered ? 1 : 0.75,
+                        transition: 'stroke 0.2s ease, stroke-width 0.2s ease, stroke-opacity 0.2s ease',
                     }}
                     interactionWidth={20}
                 />

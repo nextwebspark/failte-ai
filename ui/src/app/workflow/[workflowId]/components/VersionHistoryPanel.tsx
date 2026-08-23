@@ -6,6 +6,7 @@ import { useEffect } from "react";
 
 import type { WorkflowVersionResponse } from "@/client/types.gen";
 import { Button } from "@/components/ui/button";
+import { StatusPill, statusTone } from "@/components/ui/status-pill";
 
 interface VersionHistoryPanelProps {
     isOpen: boolean;
@@ -25,12 +26,6 @@ const statusLabel: Record<string, string> = {
     draft: "Draft",
     published: "Published",
     archived: "Archived",
-};
-
-const statusColor: Record<string, string> = {
-    draft: "bg-amber-dim text-amber border-amber/30",
-    published: "bg-ok-dim text-ok border-ok/30",
-    archived: "bg-panel-2 text-ink-3 border-line",
 };
 
 export const VersionHistoryPanel = ({
@@ -118,13 +113,9 @@ export const VersionHistoryPanel = ({
                                                 </span>
                                             </div>
                                             {version.status !== "archived" && (
-                                                <span
-                                                    className={`rounded-full border px-2 py-0.5 text-xs ${
-                                                        statusColor[version.status] ?? ""
-                                                    }`}
-                                                >
+                                                <StatusPill tone={statusTone(version.status)}>
                                                     {statusLabel[version.status] ?? version.status}
-                                                </span>
+                                                </StatusPill>
                                             )}
                                         </div>
                                         <p className="text-xs text-ink-3">

@@ -46,4 +46,23 @@ function StatusPill({ className, tone, dot = false, children, ...props }: Status
     )
 }
 
-export { StatusPill, statusPillVariants }
+/**
+ * Shared status -> tone map. Workflow versions, tools and anything else with a
+ * draft/published/active/archived lifecycle should read from here rather than
+ * restating the colours locally.
+ */
+const STATUS_TONE: Record<string, StatusTone> = {
+    draft: "warn",
+    published: "ok",
+    active: "ok",
+    archived: "mute",
+    inactive: "mute",
+    failed: "bad",
+}
+
+/** Tone for a lifecycle status string, defaulting to the neutral chip. */
+function statusTone(status: string): StatusTone {
+    return STATUS_TONE[status] ?? "mute"
+}
+
+export { STATUS_TONE, StatusPill, statusPillVariants, statusTone }

@@ -73,10 +73,10 @@ const DiffCellView = ({ cell }: { cell: DiffCell | null }) => (
     <div
         className={cn(
             "h-full min-w-0 border-b border-line-soft px-4 py-1 font-mono text-xs leading-5",
-            cell?.kind === "removed" && "bg-red-500/10 text-red-100",
-            cell?.kind === "added" && "bg-emerald-500/10 text-emerald-100",
+            cell?.kind === "removed" && "bg-danger-dim text-danger",
+            cell?.kind === "added" && "bg-ok-dim text-ok",
             cell?.kind === "unchanged" && "bg-panel text-ink-2",
-            !cell && "bg-panel-2 text-ink-2",
+            !cell && "bg-panel-2 text-ink-3",
         )}
     >
         <code className="block min-w-0 whitespace-pre-wrap break-words [overflow-wrap:anywhere]">
@@ -87,8 +87,8 @@ const DiffCellView = ({ cell }: { cell: DiffCell | null }) => (
                         className={cn(
                             "box-decoration-clone",
                             segment.kind === "unchanged" && "bg-panel text-ink-2",
-                            segment.kind === "removed" && "bg-red-500/35 text-red-50",
-                            segment.kind === "added" && "bg-emerald-500/35 text-emerald-50",
+                            segment.kind === "removed" && "bg-danger/30 text-foreground",
+                            segment.kind === "added" && "bg-ok/30 text-foreground",
                         )}
                     >
                         {segment.text}
