@@ -140,9 +140,9 @@ export function FolderSection({
                             />
                             {isFolder ? (
                                 open ? (
-                                    <FolderOpen size={17} className="shrink-0 text-amber-500" />
+                                    <FolderOpen size={17} className="shrink-0 text-amber" />
                                 ) : (
-                                    <FolderIcon size={17} className="shrink-0 text-amber-500" />
+                                    <FolderIcon size={17} className="shrink-0 text-amber" />
                                 )
                             ) : isArchived ? (
                                 <Archive size={16} className="shrink-0 text-muted-foreground" />
@@ -200,7 +200,7 @@ export function FolderSection({
                                 currentFolderId={folder?.id ?? null}
                             />
                         ) : (
-                            <div className="rounded-lg border border-dashed bg-muted/30 p-6 text-center text-sm text-muted-foreground">
+                            <div className="rounded-lg border border-dashed border-line bg-panel-2 p-6 text-center font-mono text-[12.5px] text-ink-3">
                                 {isArchived
                                     ? 'No archived agents.'
                                     : isFolder

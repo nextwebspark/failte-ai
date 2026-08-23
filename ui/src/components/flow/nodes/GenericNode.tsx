@@ -141,31 +141,48 @@ function resolveIntegrationSummary(
     return "Not configured";
 }
 
+/** Canvas status tones, as the dim-wash backgrounds node badges are drawn with. */
+const TONE = {
+    // Filled washes
+    ok: "bg-ok-dim text-ok",
+    info: "bg-sky-dim text-sky",
+    warn: "bg-amber-dim text-amber",
+    bad: "bg-danger-dim text-danger",
+    mute: "bg-panel-2 text-ink-3",
+    // Outlined counterparts. Same hues, different form — enough to separate
+    // eight node types from a five-hue palette. The borders are solid because
+    // a badge sits on --panel, where border-line is 1.25:1 and invisible.
+    brandOutline: "border border-brand bg-panel text-brand",
+    infoOutline: "border border-sky bg-panel text-sky",
+    warnOutline: "border border-amber bg-panel text-amber",
+    muteOutline: "border border-ink-3 bg-panel text-ink-2",
+} as const;
+
 function getBadgeForSpec(
     spec: NodeSpec | undefined,
     variant: NodeStyleVariant,
 ): { label: string; className: string } {
     if (!spec) {
-        return { label: "Node", className: "bg-zinc-500 text-white" };
+        return { label: "Node", className: TONE.mute };
     }
 
     switch (variant) {
         case "start":
-            return { label: "Start Node", className: "bg-emerald-500 text-white" };
+            return { label: "Start Node", className: TONE.ok };
         case "agent":
-            return { label: "Agent Node", className: "bg-blue-500 text-white" };
+            return { label: "Agent Node", className: TONE.info };
         case "end":
-            return { label: "End Node", className: "bg-rose-500 text-white" };
+            return { label: "End Node", className: TONE.bad };
         case "global":
-            return { label: "Global Node", className: "bg-amber-500 text-white" };
+            return { label: "Global Node", className: TONE.warn };
         case "trigger":
-            return { label: "API Trigger", className: "bg-purple-500 text-white" };
+            return { label: "API Trigger", className: TONE.brandOutline };
         case "webhook":
-            return { label: "Webhook", className: "bg-indigo-500 text-white" };
+            return { label: "Webhook", className: TONE.muteOutline };
         case "qa":
-            return { label: "QA Analysis", className: "bg-teal-500 text-white" };
+            return { label: "QA Analysis", className: TONE.warnOutline };
         case "integration":
-            return { label: spec.display_name, className: "bg-cyan-600 text-white" };
+            return { label: spec.display_name, className: TONE.infoOutline };
     }
 }
 
@@ -319,8 +336,8 @@ function StatusDot({ enabled }: { enabled: boolean }) {
             <Circle
                 className={`h-2 w-2 ${
                     enabled
-                        ? "fill-green-500 text-green-500"
-                        : "fill-gray-400 text-gray-400"
+                        ? "fill-ok text-ok"
+                        : "fill-ink-3 text-ink-3"
                 }`}
             />
             <span className="text-xs text-muted-foreground">

@@ -99,14 +99,14 @@ export function UploadWorkflowButton() {
                         <DialogTitle>Upload Agent Definition</DialogTitle>
                     </DialogHeader>
                     <div
-                        className={`mt-4 border-2 border-dashed rounded-lg p-8 text-center ${isDragging ? 'border-primary bg-primary/5' : 'border-gray-300'
+                        className={`mt-4 border-2 border-dashed rounded-lg p-8 text-center ${isDragging ? 'border-primary bg-primary/5' : 'border-line'
                             }`}
                         onDrop={handleDrop}
                         onDragOver={handleDragOver}
                         onDragLeave={handleDragLeave}
                     >
-                        <Upload className="w-8 h-8 mx-auto mb-4 text-gray-400" />
-                        <p className="text-sm text-gray-600 mb-4">
+                        <Upload className="w-8 h-8 mx-auto mb-4 text-ink-3" />
+                        <p className="text-sm text-ink-2 mb-4">
                             Drag and drop your Workflow JSON File here, or Click to Select
                         </p>
                         <input
@@ -123,7 +123,7 @@ export function UploadWorkflowButton() {
                             Select File
                         </Button>
                         {error && (
-                            <p className="mt-4 text-sm text-red-600">{error}</p>
+                            <p className="mt-4 text-sm text-danger">{error}</p>
                         )}
                     </div>
                 </DialogContent>

@@ -72,11 +72,11 @@ const getChangeHunks = (
 const DiffCellView = ({ cell }: { cell: DiffCell | null }) => (
     <div
         className={cn(
-            "h-full min-w-0 border-b border-[#292929] px-4 py-1 font-mono text-xs leading-5",
-            cell?.kind === "removed" && "bg-red-500/10 text-red-100",
-            cell?.kind === "added" && "bg-emerald-500/10 text-emerald-100",
-            cell?.kind === "unchanged" && "bg-[#151515] text-gray-300",
-            !cell && "bg-[#101010] text-gray-600",
+            "h-full min-w-0 border-b border-line-soft px-4 py-1 font-mono text-xs leading-5",
+            cell?.kind === "removed" && "bg-danger-dim text-danger",
+            cell?.kind === "added" && "bg-ok-dim text-ok",
+            cell?.kind === "unchanged" && "bg-panel text-ink-2",
+            !cell && "bg-panel-2 text-ink-3",
         )}
     >
         <code className="block min-w-0 whitespace-pre-wrap break-words [overflow-wrap:anywhere]">
@@ -86,9 +86,9 @@ const DiffCellView = ({ cell }: { cell: DiffCell | null }) => (
                         key={`${index}-${segment.kind}`}
                         className={cn(
                             "box-decoration-clone",
-                            segment.kind === "unchanged" && "bg-[#1a1a1a] text-gray-300",
-                            segment.kind === "removed" && "bg-red-500/35 text-red-50",
-                            segment.kind === "added" && "bg-emerald-500/35 text-emerald-50",
+                            segment.kind === "unchanged" && "bg-panel text-ink-2",
+                            segment.kind === "removed" && "bg-danger/30 text-foreground",
+                            segment.kind === "added" && "bg-ok/30 text-foreground",
                         )}
                     >
                         {segment.text}
@@ -152,17 +152,17 @@ export const WorkflowVersionDiffDialog = ({
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent className="h-[calc(100vh-2rem)] max-h-[900px] w-[calc(100vw-2rem)] max-w-[1280px] grid-rows-[auto_auto_minmax(0,1fr)] gap-0 overflow-hidden border-[#333] bg-[#151515] p-0 sm:max-w-[1280px]">
-                <DialogHeader className="border-b border-[#333] px-5 py-4 pr-14">
+            <DialogContent className="h-[calc(100vh-2rem)] max-h-[900px] w-[calc(100vw-2rem)] max-w-[1280px] grid-rows-[auto_auto_minmax(0,1fr)] gap-0 overflow-hidden border-line bg-panel p-0 sm:max-w-[1280px]">
+                <DialogHeader className="border-b border-line px-5 py-4 pr-14">
                     <div className="flex items-center justify-between gap-4">
-                        <DialogTitle className="text-base text-white">
+                        <DialogTitle className="text-base text-foreground">
                             Changes {versionLabel(previousVersion)} → {versionLabel(selectedVersion)}
                         </DialogTitle>
                         {hasChanges && (
                             <div className="flex shrink-0 items-center gap-2">
                                 <span
                                     aria-live="polite"
-                                    className="min-w-14 text-right text-xs tabular-nums text-gray-500"
+                                    className="min-w-14 text-right text-xs tabular-nums text-ink-3"
                                 >
                                     {activeChangeIndex >= 0
                                         ? `${activeChangeIndex + 1} / ${changeHunks.length}`
@@ -175,7 +175,7 @@ export const WorkflowVersionDiffDialog = ({
                                         size="icon"
                                         aria-label="Go to previous change"
                                         onClick={handlePreviousChange}
-                                        className="h-7 w-7 border-[#3a3a3a] bg-transparent text-gray-400 hover:bg-[#292929] hover:text-white"
+                                        className="h-7 w-7 border-line bg-transparent text-ink-3 hover:bg-panel-2 hover:text-foreground"
                                     >
                                         <ChevronsLeft className="h-3.5 w-3.5" />
                                     </Button>
@@ -185,7 +185,7 @@ export const WorkflowVersionDiffDialog = ({
                                         size="icon"
                                         aria-label="Go to next change"
                                         onClick={handleNextChange}
-                                        className="h-7 w-7 border-[#3a3a3a] bg-transparent text-gray-400 hover:bg-[#292929] hover:text-white"
+                                        className="h-7 w-7 border-line bg-transparent text-ink-3 hover:bg-panel-2 hover:text-foreground"
                                     >
                                         <ChevronsRight className="h-3.5 w-3.5" />
                                     </Button>
@@ -198,26 +198,26 @@ export const WorkflowVersionDiffDialog = ({
                     </DialogDescription>
                 </DialogHeader>
 
-                <div className="grid grid-cols-2 border-b border-[#333] bg-[#181818] text-sm">
-                    <div className="flex items-center gap-2 border-r border-[#333] px-4 py-2">
-                        <span className="font-medium text-white">
+                <div className="grid grid-cols-2 border-b border-line bg-panel-2 text-sm">
+                    <div className="flex items-center gap-2 border-r border-line px-4 py-2">
+                        <span className="font-medium text-foreground">
                             {versionLabel(previousVersion)}
                         </span>
-                        <span className="text-xs text-gray-500">
+                        <span className="text-xs text-ink-3">
                             {statusLabel[previousVersion.status] ?? previousVersion.status}
                         </span>
                     </div>
                     <div className="flex items-center gap-2 px-4 py-2">
-                        <span className="font-medium text-white">
+                        <span className="font-medium text-foreground">
                             {versionLabel(selectedVersion)}
                         </span>
-                        <span className="text-xs text-gray-500">
+                        <span className="text-xs text-ink-3">
                             {statusLabel[selectedVersion.status] ?? selectedVersion.status}
                         </span>
                     </div>
                 </div>
 
-                <div className="min-h-0 overflow-auto bg-[#111]">
+                <div className="min-h-0 overflow-auto bg-panel">
                     {hasChanges ? (
                         <div className="grid min-w-0 grid-cols-2 items-stretch">
                             {rows.map((row, index) => {
@@ -233,10 +233,10 @@ export const WorkflowVersionDiffDialog = ({
                                         }}
                                         className={cn(
                                             "col-span-2 grid min-w-0 grid-cols-2 items-stretch",
-                                            isActiveHunkRow && "border-l-2 border-l-teal-400/70",
+                                            isActiveHunkRow && "border-l-2 border-l-sky",
                                         )}
                                     >
-                                        <div className="min-w-0 border-r border-[#333]">
+                                        <div className="min-w-0 border-r border-line">
                                             <DiffCellView cell={row.left} />
                                         </div>
                                         <div className="min-w-0">
@@ -247,7 +247,7 @@ export const WorkflowVersionDiffDialog = ({
                             })}
                         </div>
                     ) : (
-                        <p className="py-12 text-center text-sm text-gray-500">No changes</p>
+                        <p className="py-12 text-center text-sm text-ink-3">No changes</p>
                     )}
                 </div>
             </DialogContent>

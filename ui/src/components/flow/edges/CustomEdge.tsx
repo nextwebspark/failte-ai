@@ -76,7 +76,7 @@ const EdgeDetailsDialog = ({ open, onOpenChange, data, onSave }: EdgeDetailsDial
                 <DialogHeader>
                     <DialogTitle>Edit Condition</DialogTitle>
                     {data?.invalid && data.validationMessage && (
-                        <div className="mt-2 flex items-center gap-2 rounded-md bg-red-50 p-2 text-sm text-red-500 border border-red-200">
+                        <div className="mt-2 flex items-center gap-2 rounded-md border border-danger/30 bg-danger-dim p-2 text-sm text-danger">
                             <AlertCircle className="h-4 w-4" />
                             <span>{data.validationMessage}</span>
                         </div>
@@ -273,18 +273,14 @@ export default function CustomEdge(props: CustomEdgeProps) {
                     path={edgePath}
                     style={{
                         ...style,
-                        stroke: selected
-                            ? '#3B82F6'  // blue-500 when selected
-                            : isHovered
-                                ? '#60A5FA'  // blue-400 when hovered
-                                : data?.invalid ? '#EF4444' : '#94A3B8',
+                        // Sky marks selection and hover, matching node selection;
+                        // idle edges sit back on the muted ink.
+                        stroke: selected || isHovered
+                            ? 'var(--sky)'
+                            : data?.invalid ? 'var(--danger)' : 'var(--ink-3)',
                         strokeWidth: selected ? 4 : isHovered ? 3 : 2.5,
-                        filter: selected
-                            ? 'drop-shadow(0 0 8px rgba(59, 130, 246, 0.6))'
-                            : isHovered
-                                ? 'drop-shadow(0 0 6px rgba(96, 165, 250, 0.4))'
-                                : 'none',
-                        transition: 'stroke 0.2s ease, stroke-width 0.2s ease, filter 0.2s ease',
+                        strokeOpacity: selected || isHovered ? 1 : 0.75,
+                        transition: 'stroke 0.2s ease, stroke-width 0.2s ease, stroke-opacity 0.2s ease',
                     }}
                     interactionWidth={20}
                 />
@@ -350,13 +346,14 @@ export default function CustomEdge(props: CustomEdgeProps) {
                             </div>
                         </div>
                     ) : (
-                        /* Simple label shown by default - amber/orange colored pill style */
+                        /* Default label: the canvas "info" pill — mono on a panel
+                           chip so it stays readable over the flow background. */
                         <div className={cn(
-                            "px-3 py-1.5 rounded-full text-xs font-medium shadow-md",
+                            "rounded-full border px-2.5 py-1 font-mono text-[11px] font-medium shadow-sm",
                             "transition-all duration-200",
                             data?.invalid
-                                ? "bg-destructive text-destructive-foreground"
-                                : "bg-amber-500 text-amber-950"
+                                ? "border-danger/40 bg-danger-dim text-danger"
+                                : "border-sky/40 bg-panel text-sky"
                         )}>
                             {data?.label || data?.condition || 'No condition'}
                         </div>

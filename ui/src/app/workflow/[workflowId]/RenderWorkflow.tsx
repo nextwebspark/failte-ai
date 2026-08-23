@@ -625,7 +625,7 @@ function RenderWorkflow({
                                     variant={BackgroundVariant.Dots}
                                     gap={16}
                                     size={1}
-                                    color="#94a3b8"
+                                    color="var(--line)"
                                 />
 
                                 {/* Top-right controls - vertical layout (hidden when viewing history) */}
@@ -655,7 +655,7 @@ function RenderWorkflow({
                                                             variant="outline"
                                                             size="icon"
                                                             onClick={() => router.push(`/workflow/${workflowId}/settings`)}
-                                                            className="bg-white shadow-sm hover:shadow-md"
+                                                            className="bg-panel shadow-sm hover:shadow-md"
                                                         >
                                                             <Settings className="h-4 w-4" />
                                                         </Button>
@@ -679,7 +679,7 @@ function RenderWorkflow({
                                                 variant="outline"
                                                 size="icon"
                                                 onClick={() => rfInstance.current?.zoomIn()}
-                                                className="bg-white shadow-sm hover:shadow-md h-8 w-8"
+                                                className="bg-panel shadow-sm hover:shadow-md h-8 w-8"
                                             >
                                                 <Plus className="h-4 w-4" />
                                             </Button>
@@ -695,7 +695,7 @@ function RenderWorkflow({
                                                 variant="outline"
                                                 size="icon"
                                                 onClick={() => rfInstance.current?.zoomOut()}
-                                                className="bg-white shadow-sm hover:shadow-md h-8 w-8"
+                                                className="bg-panel shadow-sm hover:shadow-md h-8 w-8"
                                             >
                                                 <Minus className="h-4 w-4" />
                                             </Button>
@@ -711,7 +711,7 @@ function RenderWorkflow({
                                                 variant="outline"
                                                 size="icon"
                                                 onClick={() => rfInstance.current?.fitView()}
-                                                className="bg-white shadow-sm hover:shadow-md h-8 w-8"
+                                                className="bg-panel shadow-sm hover:shadow-md h-8 w-8"
                                             >
                                                 <Maximize2 className="h-4 w-4" />
                                             </Button>
@@ -731,7 +731,7 @@ function RenderWorkflow({
                                                         setNodes(layoutNodes(nodes, edges, 'TB', rfInstance));
                                                         setIsDirty(true);
                                                     }}
-                                                    className="bg-white shadow-sm hover:shadow-md h-8 w-8"
+                                                    className="bg-panel shadow-sm hover:shadow-md h-8 w-8"
                                                 >
                                                     <BrushCleaning className="h-4 w-4" />
                                                 </Button>

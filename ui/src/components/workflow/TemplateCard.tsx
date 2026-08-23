@@ -63,10 +63,10 @@ export function DuplicateWorkflowTemplate({ id, title, description, serverAccess
     };
 
     return (
-        <div className="bg-white border rounded-lg overflow-hidden shadow-sm hover:shadow-md transition-shadow p-4">
+        <div className="bg-card border rounded-lg overflow-hidden shadow-sm hover:shadow-md transition-shadow p-4">
             <div>
                 <h3 className="text-lg font-semibold mb-2">{title}</h3>
-                <p className="text-gray-600 mb-4">{description}</p>
+                <p className="text-ink-2 mb-4">{description}</p>
                 <Button
                     variant="outline"
                     className="w-full"

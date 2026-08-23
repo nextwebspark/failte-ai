@@ -18,17 +18,18 @@ export const BaseNode = forwardRef<
             // Base styling - larger with max width, uses semantic colors
             "relative rounded-lg border bg-card text-card-foreground min-w-[320px] max-w-[400px] min-h-[120px]",
             // Border styling
-            "border-border",
+            "border-line",
             className,
-            // Selected state - prominent halo effect
-            selected ? "border-primary ring-2 ring-primary/40 shadow-[0_0_20px_rgba(59,130,246,0.5)]" : "",
+            // Selected state - prominent halo effect. Sky, not primary: the
+            // canvas reserves the brand green for actions and marks selection blue.
+            selected ? "border-sky ring-2 ring-sky/40" : "",
             // Invalid state
-            invalid ? "border-destructive shadow-[0_0_10px_rgba(239,68,68,0.3)]" : "",
+            invalid ? "border-destructive ring-1 ring-destructive/30" : "",
             // Hovered through edge takes precedence over selected through edge
-            hovered_through_edge ? "ring-2 ring-primary/60 shadow-[0_0_12px_rgba(96,165,250,0.3)]" : "",
-            !hovered_through_edge && selected_through_edge ? "ring-1 ring-primary/50 shadow-[0_0_8px_rgba(59,130,246,0.2)]" : "",
-            runtimeActive ? "ring-2 ring-sky-400/60 shadow-[0_0_0_1px_rgba(56,189,248,0.18),0_0_24px_rgba(14,165,233,0.18)]" : "",
-            !selected_through_edge && !hovered_through_edge && "hover:border-muted-foreground/50",
+            hovered_through_edge ? "ring-2 ring-sky/60" : "",
+            !hovered_through_edge && selected_through_edge ? "ring-1 ring-sky/50" : "",
+            runtimeActive ? "ring-2 ring-sky/60 shadow-panel" : "",
+            !selected_through_edge && !hovered_through_edge && "hover:border-ink-3/50",
         )}
         tabIndex={0}
         {...props}
