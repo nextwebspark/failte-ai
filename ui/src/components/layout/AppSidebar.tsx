@@ -213,7 +213,8 @@ export function AppSidebar() {
         asChild
         tooltip={tooltip}
         className={cn(
-          "rounded-xl transition-colors hover:bg-accent hover:text-accent-foreground",
+          "h-auto gap-2.5 rounded-[7px] px-2.5 py-2 text-[13.5px] font-normal text-ink-2",
+          "transition-colors hover:bg-panel-2 hover:text-foreground",
           isItemActive &&
             "bg-sky-dim font-semibold text-sky hover:bg-sky-dim hover:text-sky"
         )}
@@ -224,12 +225,6 @@ export function AppSidebar() {
           className={cn("relative", isCollapsed && "justify-center")}
           translate="no"
         >
-          {isItemActive && !isCollapsed && (
-            <span
-              className="absolute left-0 top-1/2 h-5 w-0.5 -translate-y-1/2 rounded-full bg-sky"
-              aria-hidden
-            />
-          )}
           <Icon
             className={cn(
               "h-4 w-4 shrink-0",
@@ -296,7 +291,7 @@ export function AppSidebar() {
   );
 
   return (
-    <Sidebar collapsible="icon" variant="floating" className="app-sidebar-dock py-4">
+    <Sidebar collapsible="icon" variant="floating" className="app-sidebar-dock py-3.5">
       <SidebarHeader className="px-2 py-3 notranslate" translate="no">
         <div className="flex items-center justify-between">
           <div className={cn("flex items-center gap-2", isCollapsed && "hidden")}>
@@ -358,16 +353,16 @@ export function AppSidebar() {
         )}
       </SidebarHeader>
 
-      <SidebarContent className={cn("notranslate", isCollapsed && "px-0")} translate="no">
+      <SidebarContent className={cn("notranslate gap-0", isCollapsed && "px-0")} translate="no">
         {NAV_SECTIONS.map((section, index) => (
           <SidebarGroup
             key={section.label ?? "overview"}
-            className={index === 0 ? "mt-2" : "mt-6"}
+            className={cn("px-2 py-0", index === 0 && "mt-1")}
           >
             {section.label && (
               <SidebarGroupLabel
                 className={cn(
-                  "notranslate font-mono text-[10px] font-semibold uppercase tracking-[0.14em] text-ink-3",
+                  "notranslate h-auto px-2.5 pb-1.5 pt-3.5 font-mono text-[10px] font-semibold uppercase tracking-[0.14em] text-ink-3",
                   isCollapsed && "hidden"
                 )}
                 translate="no"
@@ -387,7 +382,10 @@ export function AppSidebar() {
       </SidebarContent>
 
       <SidebarFooter
-        className={cn("p-3 notranslate", isCollapsed && "p-2")}
+        className={cn(
+          "notranslate mx-2 mt-auto border-t border-line-soft px-0 pb-0 pt-3",
+          isCollapsed && "mx-1"
+        )}
         translate="no"
       >
         <div className="space-y-2">

@@ -389,19 +389,15 @@
 
 /* Floating-dock sidebar: detached rounded panel. Targets the shadcn sidebar's
    inner panel; applied via .app-sidebar-dock on <Sidebar variant="floating">. */
+/* The canvas nav is a flat panel: 10px radius, a 1px hairline border, no
+   glow and no drop shadow (app-doc/claude-design/, the <nav> element). Both
+   themes share it — only the token values differ. */
 .app-sidebar-dock [data-slot="sidebar-inner"] {
-  border-radius: 1.25rem;
-  overflow: hidden;
-}
-/* Flat carbon-charcoal panel with a soft light glow along the LEFT edge:
-   a 1px highlight line plus an inner bloom fading rightwards. */
-.dark .app-sidebar-dock [data-slot="sidebar-inner"] {
-  border-color: rgb(255 255 255 / 0.1);
+  border-radius: var(--radius);
+  border: 1px solid var(--line);
   background-color: var(--panel);
-  box-shadow:
-    inset 1px 0 0 rgb(255 255 255 / 0.1),
-    inset 3px 0 6px -4px rgb(255 255 255 / 0.08),
-    0 24px 50px -14px rgb(0 0 0 / 0.85);
+  box-shadow: none;
+  overflow: hidden;
 }
 
 /* Card surface ("Crosshatch + Top-Lit Edge", user-approved 2026-06-11 after a
