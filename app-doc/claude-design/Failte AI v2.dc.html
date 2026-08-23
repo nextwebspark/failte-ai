@@ -1,0 +1,1409 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  .tm{--bg:#f4f5f8;--panel:#ffffff;--panel2:#f7f8fa;--line:#e3e6ee;--line-soft:#edeff5;--text:#141b29;--text2:#47505f;--text3:#6e7890;--amber:#b47708;--amber-dim:rgba(201,138,10,.10);--brand:#169B62;--brand-dim:rgba(22,155,98,.10);--brand-ink:#ffffff;--sky:#1a73c7;--sky-dim:rgba(26,115,199,.10);--red:#cc3a33;--red-dim:rgba(204,58,51,.08);--green:#1f8f60;--green-dim:rgba(31,143,96,.10);--shadow:0 8px 28px rgba(20,30,50,.10);--mono:'JetBrains Mono',ui-monospace,monospace;--sans:'Inter',system-ui,sans-serif}
+  .tm.dark{--bg:#0b0d11;--panel:#12151b;--panel2:#171b22;--line:#232833;--line-soft:#1c212b;--text:#f1f3f6;--text2:#b8c0cc;--text3:#8d96a6;--amber:#f0b429;--amber-dim:rgba(240,180,41,.12);--brand:#2fc584;--brand-dim:rgba(47,197,132,.14);--brand-ink:#07130d;--sky:#5cb3ff;--sky-dim:rgba(92,179,255,.12);--red:#e5534b;--red-dim:rgba(229,83,75,.12);--green:#3fb27f;--green-dim:rgba(63,178,127,.12);--shadow:0 8px 28px rgba(0,0,0,.45)}
+  *{box-sizing:border-box}
+  html,body{height:100%;margin:0}
+  body{font:400 14px/1.45 'Inter',system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+  a{color:#1a73c7;text-decoration:none}
+  a:hover{text-decoration:underline}
+  @keyframes fadeUp{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+  @keyframes tmpulse{0%,100%{transform:scaleY(.35)}50%{transform:scaleY(1)}}
+</style>
+</helmet>
+
+<div class="tm {{ themeClass }}" style="height:100vh;display:flex;flex-direction:column;overflow:hidden;background:var(--bg);color:var(--text);font-family:var(--sans)">
+
+  <header style="height:46px;flex:none;display:flex;align-items:center;gap:8px;padding:0 14px">
+    <div style="display:flex;align-items:center;gap:6px;padding:4px 6px 4px 4px;border-radius:7px">
+      <img src="assets/failte-mark.svg" alt="" aria-hidden="true" style="width:22px;height:22px;border-radius:6px;display:block">
+      <span style="font:600 13px var(--mono)">Failte<span style="opacity:.6;font-weight:400">AI</span></span>
+    </div>
+    <span style="color:var(--text3);opacity:.4;font-size:12px">/</span>
+    <span style="font:500 13px var(--mono);color:var(--text3)">Acme Voice</span>
+    <span style="color:var(--text3);opacity:.4;font-size:12px">/</span>
+    <span style="color:var(--text);font:600 14px var(--sans);white-space:nowrap">{{ title }}</span>
+    <span style="font:400 12px var(--mono);color:var(--text3);white-space:nowrap">{{ subtitle }}</span>
+    <div style="margin-left:auto;display:flex;align-items:center;gap:10px">
+      <button style="display:flex;align-items:center;gap:6px;height:28px;padding:0 10px;border-radius:7px;border:1px solid var(--line);background:var(--panel);color:var(--text3);font:400 12px var(--mono);cursor:pointer" style-hover="color:var(--text)">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.3-4.3"></path></svg>
+        Search
+        <span style="border:1px solid var(--line);border-radius:4px;padding:0 3px;font-size:10px">⌘K</span>
+      </button>
+      <button style="display:flex;align-items:center;gap:6px;height:28px;padding:0 12px;border-radius:7px;border:none;background:var(--brand);color:var(--brand-ink);font:600 12px var(--sans);cursor:pointer">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M5 12h14M12 5v14"></path></svg>
+        {{ primaryAction }}
+      </button>
+      <span style="display:flex">
+        <span title="Siobhan Doyle" style="width:26px;height:26px;border-radius:50%;display:grid;place-items:center;font:600 10px var(--mono);background:var(--sky-dim);color:var(--sky);border:2px solid var(--bg)">SD</span>
+        <span title="Cian Murphy" style="width:26px;height:26px;border-radius:50%;display:grid;place-items:center;font:600 10px var(--mono);background:var(--brand-dim);color:var(--brand);border:2px solid var(--bg);margin-left:-8px">CM</span>
+        <span title="Aoife Byrne" style="width:26px;height:26px;border-radius:50%;display:grid;place-items:center;font:600 10px var(--mono);background:var(--green-dim);color:var(--green);border:2px solid var(--bg);margin-left:-8px">AB</span>
+      </span>
+    </div>
+  </header>
+
+  <div style="flex:1;display:flex;gap:14px;padding:0 14px 14px;min-height:0;overflow-x:auto">
+
+    <nav style="width:218px;flex:none;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px 8px;display:flex;flex-direction:column;overflow-y:auto">
+      <sc-if value="{{ inAgent }}" hint-placeholder-val="{{ false }}">
+        <button onClick="{{ goAgents }}" style="display:flex;align-items:center;gap:10px;width:100%;padding:8px 10px;border-radius:7px;font:500 13px var(--sans);color:var(--text2);background:none;border:none;text-align:left;cursor:pointer;margin-bottom:6px" style-hover="background:var(--panel2);color:var(--text)">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex:none"><path d="M19 12H5M12 19l-7-7 7-7"></path></svg>
+          <span>All voice agents</span>
+        </button>
+        <div style="height:1px;background:var(--line-soft);margin:0 4px 10px"></div>
+        <div style="padding:0 10px 10px">
+          <div style="font:600 13.5px var(--sans)">Renewals outbound</div>
+          <span style="display:inline-flex;align-items:center;gap:5px;margin-top:6px;padding:3px 9px;border-radius:6px;font:600 10px var(--mono);letter-spacing:.05em;text-transform:uppercase;color:var(--amber);background:var(--amber-dim)">
+            <span style="width:6px;height:6px;border-radius:50%;background:currentColor"></span>Draft
+          </span>
+        </div>
+      </sc-if>
+
+      <sc-for list="{{ navGroups }}" as="g" hint-placeholder-count="3">
+        <div style="{{ g.labelStyle }}">{{ g.group }}</div>
+        <sc-for list="{{ g.items }}" as="it" hint-placeholder-count="3">
+          <button onClick="{{ it.onClick }}" title="{{ it.label }}" style="{{ it.style }}">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex:none"><path d="{{ it.icon }}"></path></svg>
+            <span>{{ it.label }}</span>
+            <span style="{{ it.dot }}"></span>
+          </button>
+        </sc-for>
+      </sc-for>
+
+      <div style="margin-top:auto;padding-top:12px;border-top:1px solid var(--line-soft)">
+        <button onClick="{{ toggleTheme }}" style="display:flex;align-items:center;gap:10px;width:100%;padding:8px 10px;border-radius:7px;font:400 13.5px var(--sans);color:var(--text2);background:none;border:none;text-align:left;cursor:pointer" style-hover="background:var(--panel2);color:var(--text)">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex:none"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79Z"></path></svg>
+          <span>{{ themeLabel }}</span>
+        </button>
+      </div>
+    </nav>
+
+    <main style="flex:1;background:var(--panel);border:1px solid var(--line);border-radius:10px;overflow:auto;min-width:380px">
+      <div style="max-width:1440px;padding:24px 28px 48px">
+
+        <sc-if value="{{ isOverview }}" hint-placeholder-val="{{ true }}">
+          <div data-screen-label="Overview" style="animation:fadeUp .4s ease both">
+            <div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-bottom:20px">
+              <sc-for list="{{ stats }}" as="s" hint-placeholder-count="4">
+                <div style="background:var(--panel2);border:1px solid var(--line-soft);border-left:3px solid var(--sky);border-radius:10px;padding:14px 16px">
+                  <div style="font:600 10px var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--text3)">{{ s.label }}</div>
+                  <div style="font:700 24px var(--sans);color:var(--text);margin-top:6px">{{ s.value }}</div>
+                  <div style="font:400 11.5px var(--mono);color:var(--text3);margin-top:3px">{{ s.delta }}</div>
+                </div>
+              </sc-for>
+            </div>
+
+            <div style="display:grid;grid-template-columns:minmax(0,1.7fr) minmax(0,1fr);gap:16px;align-items:start">
+              <div>
+                <div style="display:flex;align-items:center;gap:14px;margin:0 0 12px">
+                  <span style="font:700 16px var(--sans);white-space:nowrap">Recent runs</span>
+                  <span style="flex:1;height:1px;background:var(--line-soft)"></span>
+                  <a href="#" style="font:500 12px var(--mono)">View all</a>
+                </div>
+                <div style="border:1px solid var(--line-soft);border-radius:10px;overflow:hidden">
+                  <div style="display:grid;grid-template-columns:1.6fr 1fr .8fr .7fr;gap:10px;padding:9px 14px;background:var(--panel2);font:600 10px var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--text3)">
+                    <div>Agent</div><div>Disposition</div><div>Duration</div><div>Time</div>
+                  </div>
+                  <sc-for list="{{ runs }}" as="r" hint-placeholder-count="6">
+                    <div style="display:grid;grid-template-columns:1.6fr 1fr .8fr .7fr;gap:10px;padding:11px 14px;border-top:1px solid var(--line-soft);align-items:center">
+                      <div style="font:500 13px var(--sans)">{{ r.agent }}</div>
+                      <div><span style="{{ r.pill }}">{{ r.disposition }}</span></div>
+                      <div style="font:400 12px var(--mono);color:var(--text3)">{{ r.duration }}</div>
+                      <div style="font:400 12px var(--mono);color:var(--text3)">{{ r.time }}</div>
+                    </div>
+                  </sc-for>
+                </div>
+              </div>
+
+              <div style="display:flex;flex-direction:column;gap:14px">
+                <div style="background:var(--panel2);border:1px solid var(--line-soft);border-radius:10px;padding:16px 18px">
+                  <div style="font:600 14.5px var(--sans)">Get started</div>
+                  <div style="font:400 11.5px var(--mono);color:var(--text3);margin:4px 0 14px">Build an agent, then point a number at it.</div>
+                  <div style="display:flex;flex-direction:column;gap:8px">
+                    <button onClick="{{ goAgents }}" style="padding:8px 12px;border-radius:7px;border:none;background:var(--brand);color:var(--brand-ink);font:600 12.5px var(--sans);text-align:left;cursor:pointer">Create a voice agent</button>
+                    <button onClick="{{ goModels }}" style="padding:8px 12px;border-radius:7px;border:1px solid var(--line);background:var(--panel);color:var(--text2);font:500 12.5px var(--sans);text-align:left;cursor:pointer" style-hover="color:var(--text);border-color:var(--text3)">Configure models</button>
+                    <button onClick="{{ goTelephony }}" style="padding:8px 12px;border-radius:7px;border:1px solid var(--line);background:var(--panel);color:var(--text2);font:500 12.5px var(--sans);text-align:left;cursor:pointer" style-hover="color:var(--text);border-color:var(--text3)">Connect telephony</button>
+                  </div>
+                </div>
+                <div style="background:var(--amber-dim);border:1px solid var(--line-soft);border-left:3px solid var(--amber);border-radius:10px;padding:14px 16px">
+                  <div style="font:600 10.5px var(--mono);letter-spacing:.06em;text-transform:uppercase;color:var(--amber)">Action required</div>
+                  <div style="font:400 12.5px var(--sans);color:var(--text2);margin-top:6px;text-wrap:pretty">One Telnyx configuration is missing a webhook public key. Inbound calls on that trunk will fail.</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ isAgents }}" hint-placeholder-val="{{ false }}">
+          <div data-screen-label="Voice agents" style="animation:fadeUp .4s ease both">
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px">
+              <div style="display:flex;gap:3px;padding:3px;border:1px solid var(--line);border-radius:8px;background:var(--panel2)">
+                <span style="padding:5px 12px;border-radius:6px;background:var(--panel);font:600 12px var(--sans);color:var(--text)">Active</span>
+                <span style="padding:5px 12px;border-radius:6px;font:500 12px var(--sans);color:var(--text3)">Archived</span>
+              </div>
+              <span style="font:400 11.5px var(--mono);color:var(--text3)">6 agents · 2 folders</span>
+            </div>
+            <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px">
+              <sc-for list="{{ agents }}" as="a" hint-placeholder-count="6">
+                <div onClick="{{ goEditor }}" style="background:var(--panel2);border:1px solid var(--line-soft);border-radius:10px;padding:16px 18px;cursor:pointer" style-hover="border-color:var(--sky)">
+                  <div style="display:flex;align-items:center;gap:8px">
+                    <span style="font:600 14px var(--sans)">{{ a.name }}</span>
+                    <span style="margin-left:auto;{{ a.pill }}">{{ a.status }}</span>
+                  </div>
+                  <div style="font:400 12.5px var(--sans);color:var(--text2);margin-top:6px;min-height:34px;text-wrap:pretty">{{ a.desc }}</div>
+                  <div style="display:flex;gap:14px;margin-top:12px;padding-top:12px;border-top:1px solid var(--line);font:400 11.5px var(--mono);color:var(--text3)">
+                    <span>{{ a.runs }} runs</span><span>{{ a.edited }}</span>
+                  </div>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ isGlobal }}" hint-placeholder-val="{{ false }}">
+          <div data-screen-label="Agent — Global instructions" style="animation:fadeUp .4s ease both;max-width:860px">
+            <div style="display:flex;align-items:center;gap:14px;margin:0 0 12px">
+              <span style="font:700 16px var(--sans)">Global instruction</span>
+              <span style="flex:1;height:1px;background:var(--line-soft)"></span>
+              <span style="font:400 11.5px var(--mono);color:var(--text3)">Prepended to every step that inherits it</span>
+            </div>
+            <textarea rows="9" style="width:100%;background:var(--panel2);border:1px solid var(--line-soft);border-left:3px solid var(--sky);border-radius:10px;padding:14px 16px;font:400 13.5px var(--sans);color:var(--text2);line-height:1.65;outline:none;resize:vertical" style-focus="border-color:var(--sky)">You are Aoife, a renewals agent for Acme Voice. Speak plainly and keep turns short — one question at a time. Never quote a price outside the approved band, never promise a date you cannot confirm, and never claim to be human if you are asked directly. If the caller sounds distressed or asks for a person, hand over.</textarea>
+
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px;margin-top:18px">
+              <div style="background:var(--panel2);border:1px solid var(--line-soft);border-radius:10px;padding:16px 18px">
+                <div style="font:600 14.5px var(--sans)">Voice and manner</div>
+                <div style="font:400 11.5px var(--mono);color:var(--text3);margin:4px 0 12px">Applies across the whole call.</div>
+                <label style="display:block;font:600 10.5px var(--mono);letter-spacing:.04em;text-transform:uppercase;color:var(--text3);margin-bottom:5px">Tone</label>
+                <select style="width:100%;background:var(--panel);border:1px solid var(--line);border-radius:7px;padding:8px 11px;font:500 12.5px var(--sans);color:var(--text);outline:none;cursor:pointer">
+                  <option>Warm and direct</option><option>Formal</option><option>Brisk</option>
+                </select>
+                <label style="display:block;font:600 10.5px var(--mono);letter-spacing:.04em;text-transform:uppercase;color:var(--text3);margin:12px 0 5px">Language</label>
+                <select style="width:100%;background:var(--panel);border:1px solid var(--line);border-radius:7px;padding:8px 11px;font:500 12.5px var(--sans);color:var(--text);outline:none;cursor:pointer">
+                  <option>English (Ireland)</option><option>English (Gulf)</option><option>Arabic</option>
+                </select>
+                <label style="display:block;font:600 10.5px var(--mono);letter-spacing:.04em;text-transform:uppercase;color:var(--text3);margin:12px 0 5px">Turn length</label>
+                <select style="width:100%;background:var(--panel);border:1px solid var(--line);border-radius:7px;padding:8px 11px;font:500 12.5px var(--sans);color:var(--text);outline:none;cursor:pointer">
+                  <option>Short — one or two sentences</option><option>Medium</option><option>No limit</option>
+                </select>
+              </div>
+
+              <div style="background:var(--panel2);border:1px solid var(--line-soft);border-radius:10px;padding:16px 18px">
+                <div style="font:600 14.5px var(--sans)">Guardrails</div>
+                <div style="font:400 11.5px var(--mono);color:var(--text3);margin:4px 0 12px">Hard limits the agent cannot talk past.</div>
+                <div style="display:flex;flex-direction:column;gap:8px">
+                  <sc-for list="{{ guardrails }}" as="g" hint-placeholder-count="4">
+                    <div style="display:flex;align-items:center;gap:10px;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:9px 12px">
+                      <span style="min-width:0;flex:1;font:400 12.5px var(--sans);color:var(--text2)">{{ g.text }}</span>
+                      <span style="flex:none;{{ g.toggle }}"><span style="{{ g.knob }}"></span></span>
+                    </div>
+                  </sc-for>
+                  <button style="align-self:flex-start;padding:6px 11px;border-radius:7px;border:1px dashed var(--line);background:none;color:var(--text3);font:500 11.5px var(--sans);cursor:pointer" style-hover="color:var(--sky);border-color:var(--sky)">+ Add guardrail</button>
+                </div>
+              </div>
+            </div>
+
+            <div style="display:flex;align-items:center;gap:14px;margin:26px 0 12px">
+              <span style="font:700 16px var(--sans)">Where it applies</span>
+              <span style="flex:1;height:1px;background:var(--line-soft)"></span>
+              <span style="font:400 11.5px var(--mono);color:var(--text3)">Turn off for a step that needs a different voice</span>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:8px">
+              <sc-for list="{{ inheritance }}" as="i" hint-placeholder-count="4">
+                <div style="display:flex;align-items:center;gap:12px;background:var(--panel2);border:1px solid var(--line-soft);border-radius:10px;padding:12px 16px">
+                  <span style="flex:none;{{ i.badge }}">{{ i.index }}</span>
+                  <span style="min-width:0;flex:1;font:500 13px var(--sans);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ i.name }}</span>
+                  <span style="flex:none;font:400 11px var(--mono);color:var(--text3)">{{ i.state }}</span>
+                  <span style="flex:none;{{ i.toggle }}"><span style="{{ i.knob }}"></span></span>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ isPrompt }}" hint-placeholder-val="{{ false }}">
+          <div data-screen-label="Agent — Conversation" style="animation:fadeUp .4s ease both;max-width:860px">
+
+            <div style="background:var(--panel2);border:1px solid var(--line-soft);border-left:3px solid var(--sky);border-radius:10px;padding:16px 18px">
+              <div style="display:flex;align-items:center;gap:10px">
+                <span style="font:700 9.5px var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--sky)">Start call</span>
+                <span style="margin-left:auto;font:400 11px var(--mono);color:var(--text3)">Always first · cannot be removed</span>
+              </div>
+              <div style="display:flex;gap:3px;padding:3px;border:1px solid var(--line);border-radius:8px;background:var(--panel);width:max-content;margin-top:12px">
+                <span style="padding:5px 12px;border-radius:6px;background:var(--panel2);font:600 11.5px var(--sans)">Spoken text</span>
+                <span style="padding:5px 12px;border-radius:6px;font:500 11.5px var(--sans);color:var(--text3)">Recording</span>
+              </div>
+              <input value="Hello, this is Aoife calling from Acme — is now a good moment?" style="width:100%;background:var(--panel);border:1px solid var(--line);border-radius:7px;padding:9px 11px;font:400 13px var(--sans);color:var(--text2);outline:none;margin-top:10px" style-focus="border-color:var(--sky)">
+              <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin-top:12px">
+                <div>
+                  <label style="display:block;font:600 10.5px var(--mono);letter-spacing:.04em;text-transform:uppercase;color:var(--text3);margin-bottom:5px">Wait before speaking</label>
+                  <select style="width:100%;background:var(--panel);border:1px solid var(--line);border-radius:7px;padding:8px 11px;font:500 12.5px var(--sans);color:var(--text);outline:none;cursor:pointer">
+                    <option>Speak immediately</option><option>Wait 1 second</option><option>Wait for the caller to speak first</option>
+                  </select>
+                </div>
+                <div>
+                  <label style="display:block;font:600 10.5px var(--mono);letter-spacing:.04em;text-transform:uppercase;color:var(--text3);margin-bottom:5px">Pre-call data fetch</label>
+                  <select style="width:100%;background:var(--panel);border:1px solid var(--line);border-radius:7px;padding:8px 11px;font:500 12.5px var(--sans);color:var(--text);outline:none;cursor:pointer">
+                    <option>Outbound calls only</option><option>Disabled</option><option>Always</option><option>Inbound calls only</option>
+                  </select>
+                </div>
+              </div>
+              <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:12px">
+                <span style="padding:4px 10px;border-radius:999px;background:var(--sky-dim);color:var(--sky);font:500 11.5px var(--mono)">{first_name}</span>
+                <span style="padding:4px 10px;border-radius:999px;background:var(--sky-dim);color:var(--sky);font:500 11.5px var(--mono)">{renewal_date}</span>
+                <span style="padding:4px 10px;border-radius:999px;background:var(--sky-dim);color:var(--sky);font:500 11.5px var(--mono)">{current_plan}</span>
+                <span style="padding:4px 10px;border-radius:999px;background:var(--panel);border:1px solid var(--line);color:var(--text3);font:500 11.5px var(--mono);cursor:pointer">+ Variable</span>
+              </div>
+            </div>
+
+            <sc-for list="{{ steps }}" as="st" hint-placeholder-count="3">
+              <div style="display:flex;justify-content:center"><span style="width:1px;height:20px;background:var(--line)"></span></div>
+              <div style="{{ st.card }}">
+                <div onClick="{{ st.toggle }}" style="display:flex;align-items:center;gap:10px;cursor:pointer">
+                  <span style="{{ st.badge }}">{{ st.index }}</span>
+                  <div style="min-width:0;flex:1">
+                    <div style="font:600 14px var(--sans);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ st.name }}</div>
+                    <div style="font:400 11px var(--mono);color:var(--text3);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ st.summary }}</div>
+                  </div>
+                  <span style="flex:none;font:400 11px var(--mono);color:var(--text3)">{{ st.exitCount }}</span>
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex:none;color:var(--text3);{{ st.chevron }}"><path d="m6 9 6 6 6-6"></path></svg>
+                </div>
+
+                <sc-if value="{{ st.open }}" hint-placeholder-val="{{ true }}">
+                  <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--line)">
+                    <label style="display:block;font:600 10.5px var(--mono);letter-spacing:.04em;text-transform:uppercase;color:var(--text3);margin-bottom:5px">What the agent does here</label>
+                    <textarea rows="4" value="{{ st.prompt }}" onChange="{{ noop }}" style="width:100%;background:var(--panel);border:1px solid var(--line);border-radius:7px;padding:10px 12px;font:400 13px var(--sans);color:var(--text2);line-height:1.6;outline:none;resize:vertical" style-focus="border-color:var(--sky)"></textarea>
+
+                    <label style="display:block;font:600 10.5px var(--mono);letter-spacing:.04em;text-transform:uppercase;color:var(--text3);margin:14px 0 6px">Move on when</label>
+                    <div style="display:flex;flex-direction:column;gap:6px">
+                      <sc-for list="{{ st.exits }}" as="ex" hint-placeholder-count="2">
+                        <div style="display:flex;align-items:center;gap:10px;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:9px 12px">
+                          <span style="{{ ex.pill }}">{{ ex.target }}</span>
+                          <span style="min-width:0;flex:1;font:400 12.5px var(--sans);color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ ex.condition }}</span>
+                          <span style="flex:none;font:400 10.5px var(--mono);color:var(--text3);white-space:nowrap">{{ ex.speech }}</span>
+                        </div>
+                      </sc-for>
+                      <button style="align-self:flex-start;padding:6px 11px;border-radius:7px;border:1px dashed var(--line);background:none;color:var(--text3);font:500 11.5px var(--sans);cursor:pointer" style-hover="color:var(--sky);border-color:var(--sky)">+ Add condition</button>
+                    </div>
+
+                    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:14px;margin-top:16px">
+                      <div>
+                        <div style="font:600 10.5px var(--mono);letter-spacing:.04em;text-transform:uppercase;color:var(--text3);margin-bottom:6px">Tools and documents</div>
+                        <div style="display:flex;flex-wrap:wrap;gap:6px">
+                          <sc-for list="{{ st.refs }}" as="rf" hint-placeholder-count="2">
+                            <span style="{{ rf.style }}">{{ rf.label }}</span>
+                          </sc-for>
+                          <span style="padding:4px 10px;border-radius:999px;background:var(--panel);border:1px solid var(--line);color:var(--text3);font:500 11.5px var(--mono);cursor:pointer">+ Attach</span>
+                        </div>
+                      </div>
+                      <div>
+                        <div style="font:600 10.5px var(--mono);letter-spacing:.04em;text-transform:uppercase;color:var(--text3);margin-bottom:6px">Capture from this step</div>
+                        <div style="display:flex;flex-wrap:wrap;gap:6px">
+                          <sc-for list="{{ st.captures }}" as="cp" hint-placeholder-count="2">
+                            <span style="display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:999px;background:var(--green-dim);color:var(--green);font:500 11.5px var(--mono)">{{ cp.name }}<span style="opacity:.65;font-size:10px">{{ cp.type }}</span></span>
+                          </sc-for>
+                          <span style="padding:4px 10px;border-radius:999px;background:var(--panel);border:1px solid var(--line);color:var(--text3);font:500 11.5px var(--mono);cursor:pointer">+ Field</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div style="display:flex;align-items:center;gap:10px;margin-top:16px;padding-top:12px;border-top:1px solid var(--line);flex-wrap:wrap">
+                      <span style="font:400 11.5px var(--sans);color:var(--text3)">Caller can interrupt the agent</span>
+                      <span style="{{ st.toggleStyle }}"><span style="{{ st.knob }}"></span></span>
+                      <span style="font:400 11.5px var(--sans);color:var(--text3);margin-left:8px">Uses global instruction</span>
+                      <span style="{{ st.globalToggle }}"><span style="{{ st.globalKnob }}"></span></span>
+                      <button style="margin-left:auto;padding:6px 11px;border-radius:7px;border:1px solid var(--line);background:var(--panel);color:var(--text3);font:500 11.5px var(--sans);cursor:pointer" style-hover="color:var(--red);border-color:var(--red)">Delete step</button>
+                    </div>
+                  </div>
+                </sc-if>
+              </div>
+            </sc-for>
+
+            <div style="display:flex;justify-content:center"><span style="width:1px;height:20px;background:var(--line)"></span></div>
+            <sc-if value="{{ addOpen }}" hint-placeholder-val="{{ false }}">
+              <div style="background:var(--panel2);border:1px solid var(--sky);border-radius:10px;padding:14px 16px;margin-bottom:10px">
+                <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+                  <span style="font:700 9.5px var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--sky)">Add to this conversation</span>
+                  <button onClick="{{ toggleAdd }}" style="margin-left:auto;border:none;background:none;color:var(--text3);font:500 11.5px var(--mono);cursor:pointer">Close</button>
+                </div>
+                <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:8px">
+                  <sc-for list="{{ nodeKinds }}" as="k" hint-placeholder-count="4">
+                    <button onClick="{{ toggleAdd }}" style="text-align:left;background:var(--panel);border:1px solid var(--line);border-radius:9px;padding:11px 13px;cursor:pointer" style-hover="border-color:var(--sky)">
+                      <div style="display:flex;align-items:center;gap:8px">
+                        <span style="font:600 12.5px var(--sans);color:var(--text)">{{ k.name }}</span>
+                        <span style="margin-left:auto;{{ k.pill }}">{{ k.group }}</span>
+                      </div>
+                      <div style="font:400 11.5px var(--sans);color:var(--text3);margin-top:5px;text-wrap:pretty">{{ k.desc }}</div>
+                    </button>
+                  </sc-for>
+                </div>
+              </div>
+            </sc-if>
+            <button onClick="{{ toggleAdd }}" style="width:100%;padding:12px;border-radius:10px;border:1.5px dashed var(--line);background:none;color:var(--text3);font:600 12.5px var(--sans);cursor:pointer" style-hover="border-color:var(--sky);color:var(--sky);background:var(--sky-dim)">+ Add step</button>
+
+            <div style="display:flex;justify-content:center"><span style="width:1px;height:20px;background:var(--line)"></span></div>
+            <div style="background:var(--panel2);border:1px solid var(--line-soft);border-left:3px solid var(--text3);border-radius:10px;padding:16px 18px">
+              <div style="display:flex;align-items:center;gap:10px">
+                <span style="font:700 9.5px var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--text3)">End call</span>
+                <span style="margin-left:auto;font:400 11px var(--mono);color:var(--text3)">Always last · cannot be removed</span>
+              </div>
+              <input value="Thanks for your time — I'll send the terms by email. Goodbye." style="width:100%;background:var(--panel);border:1px solid var(--line);border-radius:7px;padding:9px 11px;font:400 13px var(--sans);color:var(--text2);outline:none;margin-top:12px" style-focus="border-color:var(--sky)">
+              <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin-top:12px">
+                <div>
+                  <label style="display:block;font:600 10.5px var(--mono);letter-spacing:.04em;text-transform:uppercase;color:var(--text3);margin-bottom:5px">Log disposition as</label>
+                  <select style="width:100%;background:var(--panel);border:1px solid var(--line);border-radius:7px;padding:8px 11px;font:500 12.5px var(--sans);color:var(--text);outline:none;cursor:pointer">
+                    <option>Completed</option><option>Renewed</option><option>Declined</option><option>Callback booked</option>
+                  </select>
+                </div>
+                <div>
+                  <label style="display:block;font:600 10.5px var(--mono);letter-spacing:.04em;text-transform:uppercase;color:var(--text3);margin-bottom:5px">After the call</label>
+                  <select style="width:100%;background:var(--panel);border:1px solid var(--line);border-radius:7px;padding:8px 11px;font:500 12.5px var(--sans);color:var(--text);outline:none;cursor:pointer">
+                    <option>Send webhook · crm_notes</option><option>Nothing</option><option>Run QA review</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            <div style="display:flex;align-items:center;gap:14px;margin:26px 0 12px">
+              <span style="font:700 16px var(--sans)">Always-on rules</span>
+              <span style="flex:1;height:1px;background:var(--line-soft)"></span>
+              <span style="font:400 11.5px var(--mono);color:var(--text3)">Checked at every step</span>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:8px">
+              <sc-for list="{{ globalRules }}" as="g" hint-placeholder-count="3">
+                <div style="display:flex;align-items:center;gap:12px;background:var(--panel2);border:1px solid var(--line-soft);border-radius:10px;padding:12px 16px">
+                  <span style="min-width:0;flex:1;font:400 12.5px var(--sans);color:var(--text2)">{{ g.rule }}</span>
+                  <span style="flex:none;{{ g.pill }}">{{ g.action }}</span>
+                </div>
+              </sc-for>
+              <button style="align-self:flex-start;padding:7px 12px;border-radius:7px;border:1px dashed var(--line);background:none;color:var(--text3);font:500 12px var(--sans);cursor:pointer" style-hover="color:var(--sky);border-color:var(--sky)">+ Add rule</button>
+            </div>
+
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ isVoice }}" hint-placeholder-val="{{ false }}">
+          <div data-screen-label="Agent — Model and voice" style="animation:fadeUp .4s ease both">
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px">
+              <div style="background:var(--panel2);border:1px solid var(--line-soft);border-left:3px solid var(--sky);border-radius:10px;padding:16px 18px">
+                <div style="font:600 14.5px var(--sans)">Language model</div>
+                <div style="font:400 11.5px var(--mono);color:var(--text3);margin:4px 0 14px">Median first-token 410ms on this stack.</div>
+                <label style="display:block;font:600 10.5px var(--mono);letter-spacing:.04em;text-transform:uppercase;color:var(--text3);margin-bottom:5px">Model</label>
+                <select style="width:100%;background:var(--panel);border:1px solid var(--line);border-radius:7px;padding:8px 11px;font:500 13px var(--sans);color:var(--text);outline:none;cursor:pointer">
+                  <option>GPT-4o mini</option><option>GPT-4o</option><option>Claude Sonnet</option><option>Groq Llama 3.1</option>
+                </select>
+                <label style="display:block;font:600 10.5px var(--mono);letter-spacing:.04em;text-transform:uppercase;color:var(--text3);margin:14px 0 5px">Temperature — 0.4</label>
+                <input type="range" min="0" max="1" step="0.1" value="0.4" style="width:100%">
+                <label style="display:block;font:600 10.5px var(--mono);letter-spacing:.04em;text-transform:uppercase;color:var(--text3);margin:14px 0 5px">Transcription</label>
+                <select style="width:100%;background:var(--panel);border:1px solid var(--line);border-radius:7px;padding:8px 11px;font:500 13px var(--sans);color:var(--text);outline:none;cursor:pointer">
+                  <option>Deepgram Nova-3</option><option>Deepgram Nova-2</option><option>Whisper large</option>
+                </select>
+              </div>
+
+              <div style="background:var(--panel2);border:1px solid var(--line-soft);border-radius:10px;padding:16px 18px">
+                <div style="font:600 14.5px var(--sans)">Voice</div>
+                <div style="font:400 11.5px var(--mono);color:var(--text3);margin:4px 0 14px">Preview plays in the test panel.</div>
+                <div style="display:flex;flex-direction:column;gap:8px">
+                  <sc-for list="{{ voices }}" as="v" hint-placeholder-count="3">
+                    <div style="{{ v.box }}">
+                      <span style="width:28px;height:28px;flex:none;border-radius:50%;background:var(--sky-dim);color:var(--sky);display:grid;place-items:center;cursor:pointer">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"></path></svg>
+                      </span>
+                      <div style="min-width:0;flex:1">
+                        <div style="font:600 13px var(--sans);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ v.name }}</div>
+                        <div style="font:400 11px var(--mono);color:var(--text3);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ v.meta }}</div>
+                      </div>
+                      <span style="flex:none;margin-left:auto;{{ v.pill }}">{{ v.tag }}</span>
+                    </div>
+                  </sc-for>
+                </div>
+              </div>
+            </div>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ isAgentTools }}" hint-placeholder-val="{{ false }}">
+          <div data-screen-label="Agent — Tools" style="animation:fadeUp .4s ease both">
+            <div style="display:flex;align-items:center;gap:14px;margin:0 0 14px">
+              <span style="font:700 16px var(--sans)">Tools this agent can call</span>
+              <span style="flex:1;height:1px;background:var(--line-soft)"></span>
+              <button style="padding:6px 12px;border-radius:7px;border:none;background:var(--brand);color:var(--brand-ink);font:600 12px var(--sans);cursor:pointer">Add tool</button>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:8px">
+              <sc-for list="{{ agentTools }}" as="t" hint-placeholder-count="4">
+                <div style="display:flex;align-items:center;gap:12px;background:var(--panel2);border:1px solid var(--line-soft);border-radius:10px;padding:13px 16px">
+                  <span style="flex:none;{{ t.pill }}">{{ t.method }}</span>
+                  <div style="min-width:0;flex:1">
+                    <div style="font:600 13px var(--sans);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ t.name }}</div>
+                    <div style="font:400 11px var(--mono);color:var(--text3);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ t.url }}</div>
+                  </div>
+                  <span style="flex:none;margin-left:auto;font:400 11.5px var(--mono);color:var(--text3);white-space:nowrap">{{ t.calls }}</span>
+                  <span style="flex:none;{{ t.toggle }}"><span style="{{ t.knob }}"></span></span>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ isKnowledge }}" hint-placeholder-val="{{ false }}">
+          <div data-screen-label="Agent — Knowledge" style="animation:fadeUp .4s ease both">
+            <div style="border:1.5px dashed var(--line);border-radius:10px;padding:22px;text-align:center;color:var(--text3);font:400 12.5px var(--mono);cursor:pointer;margin-bottom:18px" style-hover="border-color:var(--sky);color:var(--sky);background:var(--sky-dim)">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" style="display:inline-block;margin-bottom:6px"><path d="M12 3v12m0 0-4-4m4 4 4-4M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"></path></svg>
+              <div>Drop a document here, or click to browse</div>
+              <div style="font-size:11px;margin-top:2px">PDF, Word, Markdown or CSV — indexed automatically</div>
+            </div>
+            <div style="border:1px solid var(--line-soft);border-radius:10px;overflow:hidden">
+              <div style="display:grid;grid-template-columns:2fr .6fr .6fr .9fr;gap:12px;padding:9px 14px;background:var(--panel2);font:600 10px var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--text3)">
+                <div>Document</div><div>Type</div><div>Size</div><div>Indexed</div>
+              </div>
+              <sc-for list="{{ agentFiles }}" as="f" hint-placeholder-count="3">
+                <div style="display:grid;grid-template-columns:2fr .6fr .6fr .9fr;gap:12px;padding:12px 14px;border-top:1px solid var(--line-soft);align-items:center">
+                  <div style="font:500 13px var(--sans)">{{ f.name }}</div>
+                  <div style="font:400 11.5px var(--mono);color:var(--text3)">{{ f.type }}</div>
+                  <div style="font:400 11.5px var(--mono);color:var(--text3)">{{ f.size }}</div>
+                  <div style="font:400 11.5px var(--mono);color:var(--text3)">{{ f.date }}</div>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ isAgentTelephony }}" hint-placeholder-val="{{ false }}">
+          <div data-screen-label="Agent — Telephony" style="animation:fadeUp .4s ease both">
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px;margin-bottom:18px">
+              <div style="background:var(--panel2);border:1px solid var(--line-soft);border-radius:10px;padding:16px 18px">
+                <div style="font:600 14.5px var(--sans)">Outbound caller ID</div>
+                <div style="font:400 11.5px var(--mono);color:var(--text3);margin:4px 0 12px">Shown to the person being called.</div>
+                <select style="width:100%;background:var(--panel);border:1px solid var(--line);border-radius:7px;padding:8px 11px;font:500 13px var(--mono);color:var(--text);outline:none;cursor:pointer">
+                  <option>+971 4 512 8890 — Telnyx</option><option>+353 1 906 2214 — Twilio</option>
+                </select>
+              </div>
+              <div style="background:var(--panel2);border:1px solid var(--line-soft);border-radius:10px;padding:16px 18px">
+                <div style="font:600 14.5px var(--sans)">Call window</div>
+                <div style="font:400 11.5px var(--mono);color:var(--text3);margin:4px 0 12px">Outbound attempts are held outside these hours.</div>
+                <div style="font:500 13px var(--mono);color:var(--text2)">09:00 – 18:00 · Gulf Standard Time</div>
+              </div>
+            </div>
+            <div style="background:var(--panel2);border:1px solid var(--line-soft);border-left:3px solid var(--sky);border-radius:10px;padding:16px 18px;margin-bottom:18px">
+              <div style="display:flex;align-items:center;gap:12px">
+                <div style="min-width:0">
+                  <div style="font:600 14.5px var(--sans)">Inbound routing</div>
+                  <div style="font:400 11.5px var(--mono);color:var(--text3);margin-top:4px">Calls to these numbers are answered by this agent.</div>
+                </div>
+                <span onClick="{{ toggleInbound }}" style="margin-left:auto;flex:none;{{ inboundToggle }}"><span style="{{ inboundKnob }}"></span></span>
+              </div>
+              <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin-top:14px">
+                <div>
+                  <label style="display:block;font:600 10.5px var(--mono);letter-spacing:.04em;text-transform:uppercase;color:var(--text3);margin-bottom:5px">Answer after</label>
+                  <select style="width:100%;background:var(--panel);border:1px solid var(--line);border-radius:7px;padding:8px 11px;font:500 12.5px var(--sans);color:var(--text);outline:none;cursor:pointer">
+                    <option>Answer immediately</option><option>1 ring</option><option>2 rings</option>
+                  </select>
+                </div>
+                <div>
+                  <label style="display:block;font:600 10.5px var(--mono);letter-spacing:.04em;text-transform:uppercase;color:var(--text3);margin-bottom:5px">If this agent is busy</label>
+                  <select style="width:100%;background:var(--panel);border:1px solid var(--line);border-radius:7px;padding:8px 11px;font:500 12.5px var(--sans);color:var(--text);outline:none;cursor:pointer">
+                    <option>Fall back to Reception</option><option>Play voicemail prompt</option><option>Reject the call</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            <div style="display:flex;align-items:center;gap:14px;margin:0 0 12px">
+              <span style="font:700 16px var(--sans)">Numbers on this agent</span>
+              <span style="flex:1;height:1px;background:var(--line-soft)"></span>
+              <button onClick="{{ openPhone }}" style="padding:6px 12px;border-radius:7px;border:1px solid var(--line);background:var(--panel);color:var(--text2);font:500 12px var(--sans);cursor:pointer" style-hover="color:var(--text);border-color:var(--text3)">Attach number</button>
+            </div>
+            <div style="border:1px solid var(--line-soft);border-radius:10px;overflow:hidden">
+              <div style="display:grid;grid-template-columns:1fr 1fr .8fr;gap:12px;padding:9px 14px;background:var(--panel2);font:600 10px var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--text3)">
+                <div>Number routed here</div><div>Provider</div><div>Direction</div>
+              </div>
+              <sc-for list="{{ agentNumbers }}" as="n" hint-placeholder-count="2">
+                <div style="display:grid;grid-template-columns:1fr 1fr .8fr;gap:12px;padding:12px 14px;border-top:1px solid var(--line-soft);align-items:center">
+                  <div style="font:500 12.5px var(--mono)">{{ n.number }}</div>
+                  <div style="font:400 12px var(--mono);color:var(--text3)">{{ n.provider }}</div>
+                  <div style="font:400 12px var(--mono);color:var(--text3)">{{ n.direction }}</div>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ isDeploy }}" hint-placeholder-val="{{ false }}">
+          <div data-screen-label="Agent — Deployment" style="animation:fadeUp .4s ease both;display:flex;flex-direction:column;gap:10px">
+            <sc-for list="{{ channels }}" as="c" hint-placeholder-count="3">
+              <div style="display:flex;align-items:center;gap:14px;background:var(--panel2);border:1px solid var(--line-soft);border-left:3px solid {{ c.accent }};border-radius:10px;padding:15px 18px">
+                <div style="min-width:0">
+                  <div style="font:600 14px var(--sans)">{{ c.name }}</div>
+                  <div style="font:400 11.5px var(--mono);color:var(--text3);margin-top:3px">{{ c.detail }}</div>
+                </div>
+                <span style="margin-left:auto;{{ c.pill }}">{{ c.status }}</span>
+                <button style="padding:6px 12px;border-radius:7px;border:1px solid var(--line);background:var(--panel);color:var(--text2);font:500 12px var(--sans);cursor:pointer" style-hover="color:var(--text);border-color:var(--text3)">{{ c.action }}</button>
+              </div>
+            </sc-for>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ isAgentRuns }}" hint-placeholder-val="{{ false }}">
+          <div data-screen-label="Agent — Runs" style="animation:fadeUp .4s ease both;border:1px solid var(--line-soft);border-radius:10px;overflow:hidden">
+            <div style="display:grid;grid-template-columns:1.2fr 1fr .8fr .7fr;gap:10px;padding:9px 14px;background:var(--panel2);font:600 10px var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--text3)">
+              <div>Called</div><div>Disposition</div><div>Duration</div><div>Time</div>
+            </div>
+            <sc-for list="{{ agentRuns }}" as="r" hint-placeholder-count="6">
+              <div style="display:grid;grid-template-columns:1.2fr 1fr .8fr .7fr;gap:10px;padding:11px 14px;border-top:1px solid var(--line-soft);align-items:center">
+                <div style="font:500 12.5px var(--mono)">{{ r.agent }}</div>
+                <div><span style="{{ r.pill }}">{{ r.disposition }}</span></div>
+                <div style="font:400 12px var(--mono);color:var(--text3)">{{ r.duration }}</div>
+                <div style="font:400 12px var(--mono);color:var(--text3)">{{ r.time }}</div>
+              </div>
+            </sc-for>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ isCampaigns }}" hint-placeholder-val="{{ false }}">
+          <div data-screen-label="Campaigns" style="animation:fadeUp .4s ease both;border:1px solid var(--line-soft);border-radius:10px;overflow:hidden">
+            <div style="display:grid;grid-template-columns:1.6fr 1.1fr .8fr 1.3fr .7fr;gap:12px;padding:9px 14px;background:var(--panel2);font:600 10px var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--text3)">
+              <div>Campaign</div><div>Agent</div><div>State</div><div>Progress</div><div>Created</div>
+            </div>
+            <sc-for list="{{ campaigns }}" as="c" hint-placeholder-count="5">
+              <div style="display:grid;grid-template-columns:1.6fr 1.1fr .8fr 1.3fr .7fr;gap:12px;padding:13px 14px;border-top:1px solid var(--line-soft);align-items:center">
+                <div style="font:500 13px var(--sans)">{{ c.name }}</div>
+                <div style="font:400 12px var(--mono);color:var(--text3)">{{ c.agent }}</div>
+                <div><span style="{{ c.pill }}">{{ c.state }}</span></div>
+                <div>
+                  <div style="height:5px;border-radius:999px;background:var(--line-soft);overflow:hidden"><div style="{{ c.bar }}"></div></div>
+                  <div style="font:400 11px var(--mono);color:var(--text3);margin-top:5px">{{ c.progress }}</div>
+                </div>
+                <div style="font:400 12px var(--mono);color:var(--text3)">{{ c.created }}</div>
+              </div>
+            </sc-for>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ isModels }}" hint-placeholder-val="{{ false }}">
+          <div data-screen-label="Models" style="animation:fadeUp .4s ease both;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px">
+            <sc-for list="{{ models }}" as="m" hint-placeholder-count="4">
+              <div style="background:var(--panel2);border:1px solid var(--line-soft);border-radius:10px;padding:16px 18px">
+                <div style="display:flex;align-items:center;gap:8px">
+                  <span style="font:600 14px var(--sans)">{{ m.name }}</span>
+                  <span style="{{ m.pill }}">{{ m.state }}</span>
+                </div>
+                <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-top:14px">
+                  <div>
+                    <div style="font:600 9.5px var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--text3)">LLM</div>
+                    <div style="font:500 12.5px var(--sans);margin-top:3px">{{ m.llm }}</div>
+                  </div>
+                  <div>
+                    <div style="font:600 9.5px var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--text3)">TTS</div>
+                    <div style="font:500 12.5px var(--sans);margin-top:3px">{{ m.tts }}</div>
+                  </div>
+                  <div>
+                    <div style="font:600 9.5px var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--text3)">STT</div>
+                    <div style="font:500 12.5px var(--sans);margin-top:3px">{{ m.stt }}</div>
+                  </div>
+                </div>
+                <div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--line);font:400 11.5px var(--mono);color:var(--text3)">Median first-token {{ m.latency }} · used by {{ m.used }} agents</div>
+              </div>
+            </sc-for>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ isTelephony }}" hint-placeholder-val="{{ false }}">
+          <div data-screen-label="Telephony" style="animation:fadeUp .4s ease both">
+            <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-bottom:20px">
+              <sc-for list="{{ providers }}" as="p" hint-placeholder-count="3">
+                <div style="background:var(--panel2);border:1px solid var(--line-soft);border-left:3px solid {{ p.accent }};border-radius:10px;padding:14px 16px">
+                  <div style="display:flex;align-items:center;gap:8px">
+                    <span style="font:600 14px var(--sans)">{{ p.name }}</span>
+                    <span style="margin-left:auto;{{ p.pill }}">{{ p.status }}</span>
+                  </div>
+                  <div style="font:400 12px var(--mono);color:var(--text3);margin-top:8px;text-wrap:pretty">{{ p.detail }}</div>
+                </div>
+              </sc-for>
+            </div>
+            <div style="display:flex;align-items:center;gap:14px;margin:0 0 12px">
+              <span style="font:700 16px var(--sans)">Phone numbers</span>
+              <span style="flex:1;height:1px;background:var(--line-soft)"></span>
+              <button onClick="{{ openPhone }}" style="padding:6px 12px;border-radius:7px;border:none;background:var(--brand);color:var(--brand-ink);font:600 12px var(--sans);cursor:pointer">Add phone number</button>
+            </div>
+            <div style="border:1px solid var(--line-soft);border-radius:10px;overflow:hidden">
+              <div style="display:grid;grid-template-columns:1fr 1fr 1.3fr .8fr;gap:12px;padding:9px 14px;background:var(--panel2);font:600 10px var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--text3)">
+                <div>Number</div><div>Provider</div><div>Routed to</div><div>Direction</div>
+              </div>
+              <sc-for list="{{ numbers }}" as="n" hint-placeholder-count="4">
+                <div style="display:grid;grid-template-columns:1fr 1fr 1.3fr .8fr;gap:12px;padding:12px 14px;border-top:1px solid var(--line-soft);align-items:center">
+                  <div style="font:500 12.5px var(--mono)">{{ n.number }}</div>
+                  <div style="font:400 12px var(--mono);color:var(--text3)">{{ n.provider }}</div>
+                  <div style="font:500 13px var(--sans)">{{ n.agent }}</div>
+                  <div style="font:400 12px var(--mono);color:var(--text3)">{{ n.direction }}</div>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ isTools }}" hint-placeholder-val="{{ false }}">
+          <div data-screen-label="Tools" style="animation:fadeUp .4s ease both;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px">
+            <sc-for list="{{ tools }}" as="t" hint-placeholder-count="4">
+              <div style="background:var(--panel2);border:1px solid var(--line-soft);border-radius:10px;padding:16px 18px">
+                <div style="display:flex;align-items:center;gap:8px">
+                  <span style="{{ t.pill }}">{{ t.method }}</span>
+                  <span style="font:600 14px var(--sans)">{{ t.name }}</span>
+                </div>
+                <div style="font:400 11.5px var(--mono);color:var(--text3);margin-top:8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ t.url }}</div>
+                <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--line);font:400 11.5px var(--mono);color:var(--text3)">{{ t.meta }}</div>
+              </div>
+            </sc-for>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ isFiles }}" hint-placeholder-val="{{ false }}">
+          <div data-screen-label="Files" style="animation:fadeUp .4s ease both;border:1px solid var(--line-soft);border-radius:10px;overflow:hidden">
+            <div style="display:grid;grid-template-columns:2fr .6fr .6fr 1fr .9fr;gap:12px;padding:9px 14px;background:var(--panel2);font:600 10px var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--text3)">
+              <div>Document</div><div>Type</div><div>Size</div><div>Used by</div><div>Uploaded</div>
+            </div>
+            <sc-for list="{{ files }}" as="f" hint-placeholder-count="6">
+              <div style="display:grid;grid-template-columns:2fr .6fr .6fr 1fr .9fr;gap:12px;padding:12px 14px;border-top:1px solid var(--line-soft);align-items:center">
+                <div style="font:500 13px var(--sans)">{{ f.name }}</div>
+                <div style="font:400 11.5px var(--mono);color:var(--text3)">{{ f.type }}</div>
+                <div style="font:400 11.5px var(--mono);color:var(--text3)">{{ f.size }}</div>
+                <div style="font:400 12px var(--mono);color:var(--text3)">{{ f.used }}</div>
+                <div style="font:400 11.5px var(--mono);color:var(--text3)">{{ f.date }}</div>
+              </div>
+            </sc-for>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ isRecordings }}" hint-placeholder-val="{{ false }}">
+          <div data-screen-label="Recordings" style="animation:fadeUp .4s ease both;display:flex;flex-direction:column;gap:8px">
+            <sc-for list="{{ recordings }}" as="r" hint-placeholder-count="5">
+              <div style="display:flex;align-items:center;gap:14px;background:var(--panel2);border:1px solid var(--line-soft);border-radius:10px;padding:12px 16px">
+                <span style="width:30px;height:30px;flex:none;border-radius:50%;background:var(--sky-dim);color:var(--sky);display:grid;place-items:center;cursor:pointer">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"></path></svg>
+                </span>
+                <div style="min-width:0">
+                  <div style="font:500 12.5px var(--mono)">{{ r.name }}</div>
+                  <div style="font:400 11.5px var(--sans);color:var(--text3);margin-top:2px">{{ r.meta }}</div>
+                </div>
+                <div style="margin-left:auto;display:flex;align-items:flex-end;gap:2px;height:20px">{{ r.wave }}</div>
+                <div style="width:44px;text-align:right;font:400 11.5px var(--mono);color:var(--text3)">{{ r.duration }}</div>
+              </div>
+            </sc-for>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ isReports }}" hint-placeholder-val="{{ false }}">
+          <div data-screen-label="Reports" style="animation:fadeUp .4s ease both">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:16px">
+              <span style="padding:6px 12px;border:1px solid var(--line);border-radius:7px;background:var(--panel2);font:500 12px var(--mono);color:var(--text2)">18 Aug 2026</span>
+              <span style="padding:6px 12px;border:1px solid var(--line);border-radius:7px;background:var(--panel2);font:500 12px var(--mono);color:var(--text2)">All agents</span>
+              <button style="margin-left:auto;padding:6px 12px;border:1px solid var(--line);border-radius:7px;background:var(--panel);font:500 12px var(--sans);color:var(--text2);cursor:pointer" style-hover="color:var(--text);border-color:var(--text3)">Export CSV</button>
+            </div>
+            <div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-bottom:20px">
+              <sc-for list="{{ reportStats }}" as="s" hint-placeholder-count="4">
+                <div style="background:var(--panel2);border:1px solid var(--line-soft);border-radius:10px;padding:14px 16px">
+                  <div style="font:600 10px var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--text3)">{{ s.label }}</div>
+                  <div style="font:700 22px var(--sans);margin-top:6px">{{ s.value }}</div>
+                </div>
+              </sc-for>
+            </div>
+            <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px">
+              <div style="background:var(--panel2);border:1px solid var(--line-soft);border-radius:10px;padding:16px 18px">
+                <div style="font:600 14.5px var(--sans)">Disposition</div>
+                <div style="display:flex;flex-direction:column;gap:10px;margin-top:14px">
+                  <sc-for list="{{ dispositions }}" as="d" hint-placeholder-count="5">
+                    <div>
+                      <div style="display:flex;font:500 12.5px var(--sans)"><span>{{ d.label }}</span><span style="margin-left:auto;font:400 11.5px var(--mono);color:var(--text3)">{{ d.value }}</span></div>
+                      <div style="height:5px;border-radius:999px;background:var(--line-soft);overflow:hidden;margin-top:5px"><div style="{{ d.bar }}"></div></div>
+                    </div>
+                  </sc-for>
+                </div>
+              </div>
+              <div style="background:var(--panel2);border:1px solid var(--line-soft);border-radius:10px;padding:16px 18px">
+                <div style="font:600 14.5px var(--sans)">Call duration</div>
+                <div style="display:flex;align-items:flex-end;gap:10px;height:168px;margin-top:18px">
+                  <sc-for list="{{ durations }}" as="d" hint-placeholder-count="6">
+                    <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:6px;height:100%">
+                      <div style="font:400 10px var(--mono);color:var(--text3)">{{ d.count }}</div>
+                      <div style="{{ d.bar }}"></div>
+                      <div style="font:400 10px var(--mono);color:var(--text3)">{{ d.label }}</div>
+                    </div>
+                  </sc-for>
+                </div>
+              </div>
+            </div>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ isSettings }}" hint-placeholder-val="{{ false }}">
+          <div data-screen-label="Workspace settings" style="animation:fadeUp .4s ease both;max-width:820px">
+
+            <div style="display:flex;align-items:center;gap:14px;margin:0 0 14px">
+              <span style="font:700 16px var(--sans)">Preferences</span>
+              <span style="flex:1;height:1px;background:var(--line-soft)"></span>
+              <span style="font:400 11.5px var(--mono);color:var(--text3)">Organisation-wide defaults</span>
+            </div>
+            <div style="background:var(--panel2);border:1px solid var(--line-soft);border-left:3px solid var(--sky);border-radius:10px;padding:18px 20px;margin-bottom:22px">
+              <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px">
+                <div>
+                  <label style="display:block;font:600 10.5px var(--mono);letter-spacing:.04em;text-transform:uppercase;color:var(--text3);margin-bottom:5px">Test phone number</label>
+                  <input value="+15551234567" style="width:100%;background:var(--panel);border:1px solid var(--line);border-radius:7px;padding:9px 11px;font:400 13px var(--mono);color:var(--text2);outline:none" style-focus="border-color:var(--sky)">
+                </div>
+                <div>
+                  <label style="display:block;font:600 10.5px var(--mono);letter-spacing:.04em;text-transform:uppercase;color:var(--text3);margin-bottom:5px">Timezone</label>
+                  <select style="width:100%;background:var(--panel);border:1px solid var(--line);border-radius:7px;padding:9px 11px;font:500 13px var(--sans);color:var(--text);outline:none;cursor:pointer">
+                    <option>(GMT+4:00) Gulf Standard Time — Asia/Dubai</option>
+                    <option>(GMT+1:00) Irish Standard Time — Europe/Dublin</option>
+                    <option>(GMT-5:00) Eastern Time — America/New_York</option>
+                  </select>
+                </div>
+              </div>
+              <div style="display:flex;align-items:flex-start;gap:16px;background:var(--panel);border:1px solid var(--line);border-radius:9px;padding:14px 16px;margin-top:14px">
+                <div style="min-width:0">
+                  <div style="font:600 13px var(--sans)">External PBX integrations</div>
+                  <div style="font:400 11.5px var(--sans);color:var(--text3);margin-top:4px;text-wrap:pretty">Show advanced external-PBX configuration for Asterisk, transfer tools and workflows. Existing configuration is preserved when this is disabled.</div>
+                </div>
+                <span style="margin-left:auto;flex:none;width:34px;height:19px;border-radius:999px;background:var(--line);display:flex;align-items:center;padding:2px;cursor:pointer"><span style="width:15px;height:15px;border-radius:50%;background:var(--panel)"></span></span>
+              </div>
+              <button style="margin-top:14px;padding:8px 14px;border-radius:7px;border:none;background:var(--brand);color:var(--brand-ink);font:600 12.5px var(--sans);cursor:pointer">Save</button>
+            </div>
+
+            <div style="display:flex;align-items:center;gap:14px;margin:0 0 14px">
+              <span style="font:700 16px var(--sans)">MCP server</span>
+              <span style="flex:1;height:1px;background:var(--line-soft)"></span>
+              <span style="{{ mcpPill }}">Requires API key</span>
+            </div>
+            <div style="background:var(--panel2);border:1px solid var(--line-soft);border-radius:10px;padding:18px 20px;margin-bottom:22px">
+              <div style="font:400 12px var(--sans);color:var(--text3);text-wrap:pretty">Connect an MCP-compatible assistant to this URL over streamable HTTP. Send your key in the <span style="font-family:var(--mono)">X-API-Key</span> header — <a href="#">get your API key</a>.</div>
+              <div style="display:flex;flex-direction:column;gap:10px;margin-top:14px">
+                <sc-for list="{{ mcpEndpoints }}" as="e" hint-placeholder-count="2">
+                  <div>
+                    <div style="font:600 10.5px var(--mono);letter-spacing:.04em;text-transform:uppercase;color:var(--text3);margin-bottom:5px">{{ e.label }}</div>
+                    <div style="display:flex;align-items:center;gap:8px">
+                      <code style="flex:1;min-width:0;background:var(--panel);border:1px solid var(--line);border-radius:7px;padding:8px 11px;font:400 11.5px var(--mono);color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ e.url }}</code>
+                      <button style="flex:none;padding:8px 12px;border-radius:7px;border:1px solid var(--line);background:var(--panel);color:var(--text2);font:500 12px var(--sans);cursor:pointer" style-hover="color:var(--text);border-color:var(--text3)">Copy</button>
+                    </div>
+                  </div>
+                </sc-for>
+              </div>
+            </div>
+
+            <div style="display:flex;align-items:center;gap:14px;margin:0 0 14px">
+              <span style="font:700 16px var(--sans)">Telemetry</span>
+              <span style="flex:1;height:1px;background:var(--line-soft)"></span>
+              <span style="{{ telemetryPill }}">Configured</span>
+            </div>
+            <div style="background:var(--panel2);border:1px solid var(--line-soft);border-radius:10px;padding:18px 20px">
+              <div style="font:400 12px var(--sans);color:var(--text3)">Langfuse tracing for voice agent calls.</div>
+              <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px;margin-top:14px">
+                <div>
+                  <label style="display:block;font:600 10.5px var(--mono);letter-spacing:.04em;text-transform:uppercase;color:var(--text3);margin-bottom:5px">Host</label>
+                  <input value="https://cloud.langfuse.com" style="width:100%;background:var(--panel);border:1px solid var(--line);border-radius:7px;padding:9px 11px;font:400 12.5px var(--mono);color:var(--text2);outline:none" style-focus="border-color:var(--sky)">
+                </div>
+                <div>
+                  <label style="display:block;font:600 10.5px var(--mono);letter-spacing:.04em;text-transform:uppercase;color:var(--text3);margin-bottom:5px">Project ID</label>
+                  <input value="failte-prod" style="width:100%;background:var(--panel);border:1px solid var(--line);border-radius:7px;padding:9px 11px;font:400 12.5px var(--mono);color:var(--text2);outline:none" style-focus="border-color:var(--sky)">
+                </div>
+                <div>
+                  <label style="display:block;font:600 10.5px var(--mono);letter-spacing:.04em;text-transform:uppercase;color:var(--text3);margin-bottom:5px">Public key</label>
+                  <input value="pk-lf-8c21…4f9a" style="width:100%;background:var(--panel);border:1px solid var(--line);border-radius:7px;padding:9px 11px;font:400 12.5px var(--mono);color:var(--text2);outline:none" style-focus="border-color:var(--sky)">
+                </div>
+                <div>
+                  <label style="display:block;font:600 10.5px var(--mono);letter-spacing:.04em;text-transform:uppercase;color:var(--text3);margin-bottom:5px">Secret key</label>
+                  <input type="password" value="sk-lf-000000000000" style="width:100%;background:var(--panel);border:1px solid var(--line);border-radius:7px;padding:9px 11px;font:400 12.5px var(--mono);color:var(--text2);outline:none" style-focus="border-color:var(--sky)">
+                </div>
+              </div>
+              <div style="display:flex;gap:8px;margin-top:14px">
+                <button style="padding:8px 14px;border-radius:7px;border:none;background:var(--brand);color:var(--brand-ink);font:600 12.5px var(--sans);cursor:pointer">Save</button>
+                <button style="padding:8px 14px;border-radius:7px;border:1px solid var(--line);background:var(--panel);color:var(--red);font:500 12.5px var(--sans);cursor:pointer" style-hover="border-color:var(--red)">Remove credentials</button>
+              </div>
+            </div>
+
+          </div>
+        </sc-if>
+
+      </div>
+    </main>
+
+    <sc-if value="{{ inAgent }}" hint-placeholder-val="{{ false }}">
+      <aside style="flex:0 1 336px;min-width:288px;background:var(--panel);border:1px solid var(--line);border-radius:10px;display:flex;flex-direction:column;overflow:hidden">
+        <div style="flex:none;padding:14px 16px;border-bottom:1px solid var(--line-soft)">
+          <div style="display:flex;align-items:center;gap:8px">
+            <span style="font:700 14px var(--sans)">Test agent</span>
+            <span style="margin-left:auto;{{ testStatePill }}">{{ testStateLabel }}</span>
+          </div>
+          <div style="display:flex;gap:3px;padding:3px;border:1px solid var(--line);border-radius:8px;background:var(--panel2);margin-top:12px">
+            <button onClick="{{ setVoiceMode }}" style="{{ voiceTabStyle }}">Voice</button>
+            <button onClick="{{ setChatMode }}" style="{{ chatTabStyle }}">Chat</button>
+          </div>
+          <div style="font:400 11px var(--mono);color:var(--text3);margin-top:10px">GPT-4o mini · ElevenLabs Turbo · Deepgram Nova-3</div>
+        </div>
+
+        <div style="flex:1;overflow-y:auto;padding:14px 16px;display:flex;flex-direction:column;gap:10px">
+          <sc-if value="{{ showMicPanel }}" hint-placeholder-val="{{ true }}">
+            <div style="background:var(--panel2);border:1px solid var(--line-soft);border-radius:10px;padding:18px 16px;text-align:center">
+              <div style="display:flex;align-items:center;justify-content:center;gap:3px;height:44px">{{ micWave }}</div>
+              <div style="font:400 11px var(--mono);color:var(--text3);margin-top:10px">{{ micHint }}</div>
+            </div>
+          </sc-if>
+
+          <sc-for list="{{ transcript }}" as="m" hint-placeholder-count="4">
+            <div style="{{ m.row }}">
+              <div style="{{ m.bubble }}">
+                <div style="font:600 9.5px var(--mono);letter-spacing:.08em;text-transform:uppercase;opacity:.6;margin-bottom:4px">{{ m.who }}</div>
+                <div style="font:400 12.5px var(--sans);line-height:1.5;text-wrap:pretty">{{ m.text }}</div>
+              </div>
+            </div>
+          </sc-for>
+
+          <sc-if value="{{ testing }}" hint-placeholder-val="{{ false }}">
+            <div style="display:flex;gap:12px;padding:10px 12px;background:var(--panel2);border:1px solid var(--line-soft);border-radius:8px;font:400 10.5px var(--mono);color:var(--text3)">
+              <span>Latency 412ms</span><span>Turns 3</span><span>Cost $0.021</span>
+            </div>
+          </sc-if>
+        </div>
+
+        <div style="flex:none;padding:12px 16px;border-top:1px solid var(--line-soft);display:flex;flex-direction:column;gap:8px">
+          <sc-if value="{{ showChatInput }}" hint-placeholder-val="{{ false }}">
+            <input placeholder="Type a caller message…" style="width:100%;background:var(--panel2);border:1px solid var(--line);border-radius:7px;padding:9px 11px;font:400 12.5px var(--sans);color:var(--text2);outline:none" style-focus="border-color:var(--sky)">
+          </sc-if>
+          <button onClick="{{ toggleTest }}" style="{{ testBtnStyle }}">{{ testBtnLabel }}</button>
+          <div style="font:400 10.5px var(--mono);color:var(--text3);text-align:center">Test calls are not billed and never dial a real number.</div>
+        </div>
+      </aside>
+    </sc-if>
+
+  </div>
+
+  <sc-if value="{{ phoneOpen }}" hint-placeholder-val="{{ false }}">
+    <div onClick="{{ closePhone }}" style="position:fixed;inset:0;background:rgba(10,14,22,.42);display:grid;place-items:center;padding:24px;z-index:40">
+      <div onClick="{{ stop }}" data-screen-label="Add phone number" style="width:100%;max-width:520px;max-height:88vh;overflow-y:auto;background:var(--panel);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow);padding:20px 22px;animation:fadeUp .22s ease both">
+        <div style="font:700 16px var(--sans)">Add phone number</div>
+        <div style="font:400 12px var(--sans);color:var(--text3);margin-top:5px;text-wrap:pretty">PSTN numbers (E.164), SIP URIs (sip:user@host) and SIP extensions are all supported.</div>
+
+        <div style="display:flex;flex-direction:column;gap:14px;margin-top:18px">
+          <div>
+            <label style="display:block;font:600 10.5px var(--mono);letter-spacing:.04em;text-transform:uppercase;color:var(--text3);margin-bottom:5px">Address</label>
+            <input placeholder="+19781899185, sip:101@asterisk.local, or 101" style="width:100%;background:var(--panel2);border:1px solid var(--line);border-radius:7px;padding:9px 11px;font:400 13px var(--mono);color:var(--text2);outline:none" style-focus="border-color:var(--sky)">
+          </div>
+
+          <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px">
+            <div>
+              <label style="display:block;font:600 10.5px var(--mono);letter-spacing:.04em;text-transform:uppercase;color:var(--text3);margin-bottom:5px">Country (ISO-2)</label>
+              <input placeholder="AE" maxlength="2" style="width:100%;background:var(--panel2);border:1px solid var(--line);border-radius:7px;padding:9px 11px;font:400 13px var(--mono);color:var(--text2);outline:none;text-transform:uppercase" style-focus="border-color:var(--sky)">
+            </div>
+            <div>
+              <label style="display:block;font:600 10.5px var(--mono);letter-spacing:.04em;text-transform:uppercase;color:var(--text3);margin-bottom:5px">Label</label>
+              <input placeholder="e.g. Dubai caller ID" style="width:100%;background:var(--panel2);border:1px solid var(--line);border-radius:7px;padding:9px 11px;font:400 13px var(--sans);color:var(--text2);outline:none" style-focus="border-color:var(--sky)">
+            </div>
+          </div>
+
+          <div>
+            <label style="display:block;font:600 10.5px var(--mono);letter-spacing:.04em;text-transform:uppercase;color:var(--text3);margin-bottom:5px">Inbound workflow</label>
+            <select style="width:100%;background:var(--panel2);border:1px solid var(--line);border-radius:7px;padding:9px 11px;font:500 13px var(--sans);color:var(--text);outline:none;cursor:pointer">
+              <option>(none)</option>
+              <option>#1 — Reception</option>
+              <option>#2 — Renewals outbound</option>
+              <option>#3 — Appointment booking</option>
+            </select>
+            <div style="font:400 11.5px var(--sans);color:var(--text3);margin-top:6px;text-wrap:pretty">Used when per-number inbound routing is enabled. Today inbound calls still route by the workflow_id in the webhook URL.</div>
+          </div>
+
+          <div style="display:flex;align-items:center;gap:16px;background:var(--panel2);border:1px solid var(--line);border-radius:9px;padding:12px 14px">
+            <span style="font:600 13px var(--sans)">Active</span>
+            <span onClick="{{ toggleActive }}" style="margin-left:auto;flex:none;{{ activeToggle }}"><span style="{{ activeKnob }}"></span></span>
+          </div>
+
+          <div style="display:flex;align-items:flex-start;gap:16px;background:var(--panel2);border:1px solid var(--line);border-radius:9px;padding:12px 14px">
+            <div style="min-width:0">
+              <div style="font:600 13px var(--sans)">Default caller ID for this configuration</div>
+              <div style="font:400 11.5px var(--sans);color:var(--text3);margin-top:4px">Used as the from-number for test calls when set.</div>
+            </div>
+            <span onClick="{{ toggleCallerId }}" style="margin-left:auto;flex:none;{{ callerToggle }}"><span style="{{ callerKnob }}"></span></span>
+          </div>
+        </div>
+
+        <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:20px;padding-top:16px;border-top:1px solid var(--line-soft)">
+          <button onClick="{{ closePhone }}" style="padding:8px 14px;border-radius:7px;border:1px solid var(--line);background:var(--panel);color:var(--text2);font:500 12.5px var(--sans);cursor:pointer" style-hover="color:var(--text);border-color:var(--text3)">Cancel</button>
+          <button onClick="{{ closePhone }}" style="padding:8px 16px;border-radius:7px;border:none;background:var(--brand);color:var(--brand-ink);font:600 12.5px var(--sans);cursor:pointer">Add</button>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1440,&quot;height&quot;:900}}">
+const ICON = {
+  home: "m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2zM9 22V12h6v10",
+  branch: "M6 3v12M21 6a3 3 0 1 1-6 0 3 3 0 0 1 6 0M9 18a3 3 0 1 1-6 0 3 3 0 0 1 6 0M15 6a9 9 0 0 1-9 9",
+  megaphone: "m3 11 18-5v12L3 14v-3M11.6 16.8a3 3 0 1 1-5.8-1.6",
+  cpu: "M4 4h16v16H4zM9 9h6v6H9zM9 2v2M15 2v2M9 20v2M15 20v2M2 9h2M2 15h2M20 9h2M20 15h2",
+  phone: "M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z",
+  wrench: "M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z",
+  database: "M3 5a9 3 0 1 0 18 0A9 3 0 1 0 3 5M3 5v14a9 3 0 0 0 18 0V5M3 12a9 3 0 0 0 18 0",
+  audio: "M2 10v3M6 6v11M10 3v18M14 8v7M18 5v13M22 10v3",
+  fileText: "M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6M16 13H8M16 17H8",
+  message: "M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z",
+  sliders: "M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6",
+  book: "M4 19.5A2.5 2.5 0 0 1 6.5 17H20M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z",
+  zap: "M13 2 3 14h9l-1 8 10-12h-9z",
+  trend: "m23 6-9.5 9.5-5-5L1 18",
+  settings: "M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z",
+};
+
+class Component extends DCLogic {
+  state = { screen: "overview", section: "prompt", dark: false, testMode: "voice", testing: false, openStep: 1, phoneOpen: false, pnActive: true, pnCallerId: false };
+
+  switchStyles(on) {
+    return {
+      toggle: "width:34px;height:19px;border-radius:999px;display:flex;align-items:center;padding:2px;cursor:pointer;background:" + (on ? "var(--sky)" : "var(--line)"),
+      knob: "width:15px;height:15px;border-radius:50%;background:" + (on ? "#fff" : "var(--panel)") + ";" + (on ? "margin-left:auto" : ""),
+    };
+  }
+
+  stepData() {
+    return [
+      {
+        name: "Confirm the account holder",
+        summary: "Verify name and account number before anything else",
+        prompt: "Check you are speaking to {first_name}. Ask for the last four digits of the account number and confirm with lookup_account before continuing.",
+        exits: [
+          { target: "Step 2", condition: "Identity confirmed", speech: "Thanks, {first_name}." },
+          { target: "End call", condition: "Wrong person or refuses to verify", speech: "No problem — apologies." },
+        ],
+        refs: [{ label: "lookup_account", kind: "tool" }],
+        captures: [{ name: "account_verified", type: "boolean" }],
+        interrupt: true,
+        useGlobal: true,
+      },
+      {
+        name: "Offer the renewal",
+        summary: "Main agenda — present the two-year rate and handle objections",
+        prompt: "Tell the caller their contract renews on {renewal_date} on the {current_plan} plan. Offer the two-year rate. Stay inside the approved price band. Handle one price objection before escalating.",
+        exits: [
+          { target: "Step 3", condition: "Caller accepts or wants the paperwork", speech: "Great — one moment." },
+          { target: "Transfer", condition: "Caller asks to cancel or gets frustrated", speech: "Let me put you through." },
+          { target: "End call", condition: "Caller declines twice", speech: "Understood, thanks for your time." },
+        ],
+        refs: [{ label: "Renewal pricing 2026.pdf", kind: "doc" }, { label: "crm_notes", kind: "tool" }],
+        captures: [{ name: "offer_response", type: "string" }, { name: "objection_reason", type: "string" }],
+        interrupt: true,
+        useGlobal: true,
+      },
+      {
+        name: "Confirm and close",
+        summary: "Read back the terms and take the next action",
+        prompt: "Read back the agreed rate and start date. Confirm the email address on file, then tell them the terms are on the way.",
+        exits: [{ target: "End call", condition: "Terms read back and agreed", speech: "" }],
+        refs: [{ label: "take_payment", kind: "tool" }],
+        captures: [{ name: "agreed_rate", type: "number" }, { name: "email_confirmed", type: "boolean" }],
+        interrupt: false,
+        useGlobal: false,
+      },
+    ];
+  }
+
+  pill(kind) {
+    const map = {
+      ok: ["var(--green-dim)", "var(--green)"],
+      info: ["var(--sky-dim)", "var(--sky)"],
+      warn: ["var(--amber-dim)", "var(--amber)"],
+      bad: ["var(--red-dim)", "var(--red)"],
+      mute: ["var(--panel)", "var(--text3)"],
+    }[kind] || ["var(--panel)", "var(--text3)"];
+    return `display:inline-flex;align-items:center;padding:3px 9px;border-radius:6px;background:${map[0]};color:${map[1]};font:600 10.5px var(--mono);letter-spacing:.04em;text-transform:uppercase;white-space:nowrap`;
+  }
+
+  bar(pct, color) {
+    return `height:100%;width:${pct}%;border-radius:999px;background:${color || "var(--sky)"}`;
+  }
+
+  navItem(label, icon, active, onClick, dot) {
+    return {
+      label, icon, onClick,
+      dot: dot ? "margin-left:auto;width:6px;height:6px;border-radius:50%;background:var(--amber)" : "display:none",
+      style: "display:flex;align-items:center;gap:10px;width:100%;padding:8px 10px;border-radius:7px;border:none;text-align:left;cursor:pointer;font:"
+        + (active ? "600 13.5px var(--sans);color:var(--sky);background:var(--sky-dim)" : "400 13.5px var(--sans);color:var(--text2);background:none"),
+    };
+  }
+
+  groupLabel(show) {
+    return show
+      ? "font:600 10px var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--text3);padding:14px 10px 6px"
+      : "display:none";
+  }
+
+  wave(seed) {
+    const bars = [];
+    for (let i = 0; i < 26; i++) {
+      const h = 3 + Math.abs(Math.sin((i + seed) * 1.7)) * 17;
+      bars.push(React.createElement("div", { key: i, style: { width: 2, height: h, borderRadius: 999, background: "var(--sky)", opacity: 0.4 } }));
+    }
+    return bars;
+  }
+
+  micBars(live) {
+    const bars = [];
+    for (let i = 0; i < 21; i++) {
+      const h = live ? 8 + Math.abs(Math.sin(i * 0.9)) * 34 : 6;
+      bars.push(React.createElement("div", {
+        key: i,
+        style: {
+          width: 3, height: h, borderRadius: 999,
+          background: live ? "var(--sky)" : "var(--line)",
+          animation: live ? `tmpulse ${0.7 + (i % 5) * 0.12}s ease-in-out ${(i % 7) * 0.06}s infinite` : "none",
+        },
+      }));
+    }
+    return bars;
+  }
+
+  renderVals() {
+    const go = (screen) => () => this.setState({ screen });
+    const goSection = (section) => () => this.setState({ screen: "agent", section });
+    const s = this.state.screen;
+    const sec = this.state.section;
+    const inAgent = s === "agent";
+    const testing = this.state.testing;
+    const voiceMode = this.state.testMode === "voice";
+
+    const meta = inAgent
+      ? {
+          global: ["Renewals outbound", "Global instructions", "Publish"],
+          prompt: ["Renewals outbound", "Conversation · draft saved 2 min ago", "Publish"],
+          voice: ["Renewals outbound", "Model and voice", "Publish"],
+          tools: ["Renewals outbound", "Tools", "Publish"],
+          knowledge: ["Renewals outbound", "Knowledge", "Publish"],
+          telephony: ["Renewals outbound", "Telephony", "Publish"],
+          deploy: ["Renewals outbound", "Deployment", "Publish"],
+          runs: ["Renewals outbound", "Runs", "Publish"],
+        }[sec]
+      : {
+          overview: ["Overview", "Everything running today", "New agent"],
+          agents: ["Voice agents", "Build and manage call flows", "New agent"],
+          campaigns: ["Campaigns", "Bulk runs across contact lists", "New campaign"],
+          models: ["Models", "LLM, speech and transcription stacks", "New configuration"],
+          telephony: ["Telephony", "Providers, trunks and numbers", "Add provider"],
+          tools: ["Tools", "HTTP and MCP tools agents can call", "New tool"],
+          files: ["Files", "Documents agents can reference", "Upload file"],
+          recordings: ["Recordings", "Shared audio for prompts and transitions", "Upload recording"],
+          reports: ["Reports", "Daily call outcomes", "Export"],
+          settings: ["Workspace settings", "Platform configuration and integrations", "Save changes"],
+        }[s];
+
+    const navGroups = inAgent
+      ? [
+          { group: "Configure", labelStyle: this.groupLabel(true), items: [
+            this.navItem("Global instructions", ICON.book, sec === "global", goSection("global")),
+            this.navItem("Conversation", ICON.message, sec === "prompt", goSection("prompt")),
+            this.navItem("Model and voice", ICON.sliders, sec === "voice", goSection("voice")),
+            this.navItem("Tools", ICON.wrench, sec === "tools", goSection("tools")),
+            this.navItem("Knowledge", ICON.database, sec === "knowledge", goSection("knowledge")),
+          ] },
+          { group: "Connect", labelStyle: this.groupLabel(true), items: [
+            this.navItem("Telephony", ICON.phone, sec === "telephony", goSection("telephony")),
+            this.navItem("Deployment", ICON.zap, sec === "deploy", goSection("deploy")),
+          ] },
+          { group: "Analyse", labelStyle: this.groupLabel(true), items: [
+            this.navItem("Runs", ICON.trend, sec === "runs", goSection("runs")),
+          ] },
+        ]
+      : [
+          { group: "", labelStyle: this.groupLabel(false), items: [
+            this.navItem("Overview", ICON.home, s === "overview", go("overview")),
+          ] },
+          { group: "Build", labelStyle: this.groupLabel(true), items: [
+            this.navItem("Voice agents", ICON.branch, s === "agents", go("agents")),
+            this.navItem("Campaigns", ICON.megaphone, s === "campaigns", go("campaigns")),
+            this.navItem("Models", ICON.cpu, s === "models", go("models")),
+            this.navItem("Telephony", ICON.phone, s === "telephony", go("telephony"), true),
+            this.navItem("Tools", ICON.wrench, s === "tools", go("tools")),
+            this.navItem("Files", ICON.database, s === "files", go("files")),
+            this.navItem("Recordings", ICON.audio, s === "recordings", go("recordings")),
+          ] },
+          { group: "Manage", labelStyle: this.groupLabel(true), items: [
+            this.navItem("Reports", ICON.fileText, s === "reports", go("reports")),
+            this.navItem("Workspace settings", ICON.settings, s === "settings", go("settings")),
+          ] },
+        ];
+
+    const tab = (on) => "flex:1;padding:6px 12px;border:none;border-radius:6px;cursor:pointer;font:"
+      + (on ? "600 12px var(--sans);color:var(--text);background:var(--panel)" : "500 12px var(--sans);color:var(--text3);background:none");
+
+    const msg = (who, text, agent) => ({
+      who,
+      text,
+      row: `display:flex;justify-content:${agent ? "flex-start" : "flex-end"}`,
+      bubble: agent
+        ? "max-width:88%;background:var(--panel2);border:1px solid var(--line-soft);border-radius:10px 10px 10px 3px;padding:10px 12px;color:var(--text2)"
+        : "max-width:88%;background:var(--sky-dim);border:1px solid var(--sky);border-radius:10px 10px 3px 10px;padding:10px 12px;color:var(--text)",
+    });
+
+    return {
+      themeClass: this.state.dark ? "dark" : "",
+      themeLabel: this.state.dark ? "Light mode" : "Dark mode",
+      toggleTheme: () => this.setState((p) => ({ dark: !p.dark })),
+      title: meta[0], subtitle: meta[1], primaryAction: meta[2],
+      navGroups, inAgent,
+
+      goOverview: go("overview"), goAgents: go("agents"), goModels: go("models"), goTelephony: go("telephony"),
+      goEditor: () => this.setState({ screen: "agent", section: "prompt" }),
+
+      isOverview: s === "overview", isAgents: s === "agents", isCampaigns: s === "campaigns",
+      isModels: s === "models", isTelephony: s === "telephony", isTools: s === "tools",
+      isFiles: s === "files", isRecordings: s === "recordings", isReports: s === "reports",
+      isSettings: s === "settings",
+      isGlobal: inAgent && sec === "global",
+      isPrompt: inAgent && sec === "prompt", isVoice: inAgent && sec === "voice",
+      isAgentTools: inAgent && sec === "tools", isKnowledge: inAgent && sec === "knowledge",
+      isAgentTelephony: inAgent && sec === "telephony", isDeploy: inAgent && sec === "deploy",
+      isAgentRuns: inAgent && sec === "runs",
+
+      testing,
+      setVoiceMode: () => this.setState({ testMode: "voice" }),
+      setChatMode: () => this.setState({ testMode: "chat" }),
+      toggleTest: () => this.setState((p) => ({ testing: !p.testing })),
+      voiceTabStyle: tab(voiceMode), chatTabStyle: tab(!voiceMode),
+      showChatInput: !voiceMode,
+      showMicPanel: voiceMode,
+      micWave: this.micBars(testing),
+      micHint: testing ? "Listening — speak into your mic" : "Start the test to speak to this agent",
+      testStatePill: testing ? this.pill("ok") : this.pill("mute"),
+      testStateLabel: testing ? "Live" : "Idle",
+      testBtnLabel: testing ? "Stop test" : (voiceMode ? "Start voice test" : "Start chat test"),
+      testBtnStyle: "width:100%;padding:10px 12px;border-radius:8px;border:none;cursor:pointer;font:600 13px var(--sans);"
+        + (testing ? "background:var(--red-dim);color:var(--red)" : "background:var(--brand);color:var(--brand-ink)"),
+      transcript: testing
+        ? [
+            msg("Agent", "Hello, this is Aoife calling from Acme — is now a good moment?", true),
+            msg("Caller", "Yes, go ahead.", false),
+            msg("Agent", "Your contract renews on 14 September. I can hold your current rate for two years — shall I read the terms?", true),
+          ]
+        : [],
+
+      steps: this.stepData().map((st, i) => {
+        const open = this.state.openStep === i;
+        return {
+          index: String(i + 1),
+          name: st.name,
+          summary: st.summary,
+          prompt: st.prompt,
+          open,
+          exitCount: st.exits.length + (st.exits.length === 1 ? " exit" : " exits"),
+          toggle: () => this.setState((p) => ({ openStep: p.openStep === i ? null : i })),
+          chevron: open ? "transform:rotate(180deg)" : "",
+          card: "background:var(--panel2);border:1px solid " + (open ? "var(--sky)" : "var(--line-soft)") + ";border-radius:10px;padding:14px 16px",
+          badge: "flex:none;width:22px;height:22px;border-radius:6px;display:grid;place-items:center;font:600 11px var(--mono);"
+            + (open ? "background:var(--sky);color:#fff" : "background:var(--panel);border:1px solid var(--line);color:var(--text3)"),
+          exits: st.exits.map((ex) => ({
+            target: ex.target,
+            condition: ex.condition,
+            speech: ex.speech ? "“" + ex.speech + "”" : "no transition line",
+            pill: this.pill(ex.target === "End call" ? "mute" : ex.target === "Transfer" ? "warn" : "info"),
+          })),
+          refs: st.refs.map((rf) => ({
+            label: rf.label,
+            style: rf.kind === "tool"
+              ? "padding:4px 10px;border-radius:999px;background:var(--sky-dim);color:var(--sky);font:500 11.5px var(--mono)"
+              : "padding:4px 10px;border-radius:999px;background:var(--brand-dim);color:var(--brand);font:500 11.5px var(--mono)",
+          })),
+          captures: st.captures,
+          globalToggle: this.switchStyles(st.useGlobal).toggle,
+          globalKnob: this.switchStyles(st.useGlobal).knob,
+          toggleStyle: "flex:none;width:34px;height:19px;border-radius:999px;display:flex;align-items:center;padding:2px;cursor:pointer;background:" + (st.interrupt ? "var(--sky)" : "var(--line)"),
+          knob: "width:15px;height:15px;border-radius:50%;background:" + (st.interrupt ? "#fff" : "var(--panel)") + ";" + (st.interrupt ? "margin-left:auto" : ""),
+        };
+      }),
+      addOpen: !!this.state.addOpen,
+      toggleAdd: () => this.setState((p) => ({ addOpen: !p.addOpen })),
+      nodeKinds: [
+        { name: "Agent step", group: "Agent", desc: "A spoken step with its own prompt and exit conditions.", pill: this.pill("info") },
+        { name: "Always-on rule", group: "Global", desc: "Checked at every step — transfer, end call or repeat.", pill: this.pill("warn") },
+        { name: "Webhook", group: "Integration", desc: "Send call data to an endpoint mid-call or at the end.", pill: this.pill("mute") },
+        { name: "QA review", group: "Integration", desc: "Score the call against a rubric after it completes.", pill: this.pill("mute") },
+      ],
+      noop: () => {},
+      guardrails: [
+        { text: "Never quote outside the approved price band", on: true },
+        { text: "Never confirm a start date without lookup_account", on: true },
+        { text: "Say you are an AI assistant if asked directly", on: true },
+        { text: "Do not discuss other customers' accounts", on: false },
+      ].map((g) => ({
+        text: g.text,
+        toggle: "width:34px;height:19px;border-radius:999px;display:flex;align-items:center;padding:2px;cursor:pointer;background:" + (g.on ? "var(--sky)" : "var(--line)"),
+        knob: "width:15px;height:15px;border-radius:50%;background:" + (g.on ? "#fff" : "var(--panel)") + ";" + (g.on ? "margin-left:auto" : ""),
+      })),
+      inheritance: this.stepData().map((st, i) => {
+        const on = i !== 2;
+        return {
+          index: String(i + 1),
+          name: st.name,
+          state: on ? "Inherits" : "Own voice only",
+          badge: "width:22px;height:22px;border-radius:6px;display:grid;place-items:center;font:600 11px var(--mono);background:var(--panel);border:1px solid var(--line);color:var(--text3)",
+          toggle: "width:34px;height:19px;border-radius:999px;display:flex;align-items:center;padding:2px;cursor:pointer;background:" + (on ? "var(--sky)" : "var(--line)"),
+          knob: "width:15px;height:15px;border-radius:50%;background:" + (on ? "#fff" : "var(--panel)") + ";" + (on ? "margin-left:auto" : ""),
+        };
+      }),
+      globalRules: [
+        { rule: "Caller asks for a human, or says the word “complaint”", action: "Transfer", pill: this.pill("warn") },
+        { rule: "Caller asks to be removed from the list", action: "End call", pill: this.pill("bad") },
+        { rule: "Voicemail detected", action: "Drop recording", pill: this.pill("mute") },
+      ],
+      toggleInbound: () => this.setState((p) => ({ inboundOn: !(p.inboundOn ?? true) })),
+      inboundToggle: this.switchStyles(this.state.inboundOn ?? true).toggle,
+      inboundKnob: this.switchStyles(this.state.inboundOn ?? true).knob,
+
+      phoneOpen: this.state.phoneOpen,
+      openPhone: () => this.setState({ phoneOpen: true }),
+      closePhone: () => this.setState({ phoneOpen: false }),
+      stop: (e) => e.stopPropagation(),
+      toggleActive: () => this.setState((p) => ({ pnActive: !p.pnActive })),
+      toggleCallerId: () => this.setState((p) => ({ pnCallerId: !p.pnCallerId })),
+      activeToggle: this.switchStyles(this.state.pnActive).toggle,
+      activeKnob: this.switchStyles(this.state.pnActive).knob,
+      callerToggle: this.switchStyles(this.state.pnCallerId).toggle,
+      callerKnob: this.switchStyles(this.state.pnCallerId).knob,
+
+      mcpPill: this.pill("mute"),
+      telemetryPill: this.pill("ok"),
+      mcpEndpoints: [
+        { label: "Public URL (Cloudflare tunnel)", url: "https://acme-voice.trycloudflare.com/api/v1/mcp/" },
+        { label: "Backend URL", url: "https://api.failte.acme.io/api/v1/mcp/" },
+      ],
+      voices: [
+        { name: "Aoife — warm, Irish", meta: "ElevenLabs Turbo · 128kbps", tag: "In use", pill: this.pill("info"), box: "display:flex;align-items:center;gap:12px;background:var(--sky-dim);border:1px solid var(--sky);border-radius:9px;padding:10px 12px" },
+        { name: "Cian — neutral, Irish", meta: "ElevenLabs Turbo · 128kbps", tag: "Preview", pill: this.pill("mute"), box: "display:flex;align-items:center;gap:12px;background:var(--panel);border:1px solid var(--line);border-radius:9px;padding:10px 12px" },
+        { name: "Layla — bilingual EN/AR", meta: "ElevenLabs Multilingual", tag: "Preview", pill: this.pill("mute"), box: "display:flex;align-items:center;gap:12px;background:var(--panel);border:1px solid var(--line);border-radius:9px;padding:10px 12px" },
+      ],
+      agentTools: [
+        { method: "GET", name: "lookup_account", url: "https://api.acme.io/v1/accounts/{account_id}", calls: "412 calls", pill: this.pill("ok"), toggle: "width:34px;height:19px;border-radius:999px;background:var(--sky);display:flex;align-items:center;padding:2px;cursor:pointer", knob: "width:15px;height:15px;border-radius:50%;background:#fff;margin-left:auto" },
+        { method: "POST", name: "take_payment", url: "https://pay.acme.io/v2/charges", calls: "96 calls", pill: this.pill("info"), toggle: "width:34px;height:19px;border-radius:999px;background:var(--sky);display:flex;align-items:center;padding:2px;cursor:pointer", knob: "width:15px;height:15px;border-radius:50%;background:#fff;margin-left:auto" },
+        { method: "MCP", name: "crm_notes", url: "mcp://crm.acme.io/sse", calls: "1,204 calls", pill: this.pill("mute"), toggle: "width:34px;height:19px;border-radius:999px;background:var(--sky);display:flex;align-items:center;padding:2px;cursor:pointer", knob: "width:15px;height:15px;border-radius:50%;background:#fff;margin-left:auto" },
+        { method: "POST", name: "book_appointment", url: "https://api.acme.io/v1/appointments", calls: "Not used", pill: this.pill("mute"), toggle: "width:34px;height:19px;border-radius:999px;background:var(--line);display:flex;align-items:center;padding:2px;cursor:pointer", knob: "width:15px;height:15px;border-radius:50%;background:var(--panel)" },
+      ],
+      agentFiles: [
+        { name: "Renewal pricing 2026.pdf", type: "PDF", size: "1.2 MB", date: "12 Aug 2026" },
+        { name: "Refund policy.md", type: "MD", size: "18 KB", date: "9 Aug 2026" },
+        { name: "Escalation matrix.pdf", type: "PDF", size: "320 KB", date: "28 Jul 2026" },
+      ],
+      agentNumbers: [
+        { number: "+971 4 512 8890", provider: "Telnyx", direction: "Outbound" },
+        { number: "+353 1 906 2216", provider: "Twilio", direction: "Inbound callback" },
+      ],
+      channels: [
+        { name: "Phone", detail: "Outbound via Telnyx · inbound callback on Twilio", status: "Live", action: "Configure", pill: this.pill("ok"), accent: "var(--green)" },
+        { name: "Web widget", detail: "Embed script for acme.io/renewals", status: "Draft", action: "Get embed", pill: this.pill("warn"), accent: "var(--amber)" },
+        { name: "API", detail: "POST /v1/agents/renewals-outbound/calls", status: "Live", action: "View docs", pill: this.pill("ok"), accent: "var(--sky)" },
+      ],
+      agentRuns: [
+        { agent: "+971 50 441 2210", disposition: "Completed", duration: "4m 02s", time: "14:22", pill: this.pill("ok") },
+        { agent: "+971 50 118 9034", disposition: "No answer", duration: "0m 22s", time: "14:15", pill: this.pill("mute") },
+        { agent: "+971 55 720 6612", disposition: "Transferred", duration: "1m 18s", time: "14:09", pill: this.pill("info") },
+        { agent: "+971 52 903 4471", disposition: "Completed", duration: "3m 40s", time: "13:58", pill: this.pill("ok") },
+        { agent: "+971 50 662 1180", disposition: "Voicemail", duration: "0m 41s", time: "13:44", pill: this.pill("mute") },
+        { agent: "+971 56 330 7725", disposition: "Failed", duration: "0m 06s", time: "13:31", pill: this.pill("bad") },
+      ],
+
+      stats: [
+        { label: "Calls today", value: "1,284", delta: "+18% vs yesterday" },
+        { label: "Avg duration", value: "3m 12s", delta: "Median 2m 41s" },
+        { label: "Transfer rate", value: "8.4%", delta: "108 transfers" },
+        { label: "Active agents", value: "6", delta: "2 archived" },
+      ],
+      runs: [
+        { agent: "Renewals outbound", disposition: "Completed", duration: "4m 02s", time: "14:22", pill: this.pill("ok") },
+        { agent: "Reception", disposition: "Transferred", duration: "1m 18s", time: "14:19", pill: this.pill("info") },
+        { agent: "Payment reminder", disposition: "No answer", duration: "0m 22s", time: "14:15", pill: this.pill("mute") },
+        { agent: "Reception", disposition: "Completed", duration: "2m 47s", time: "14:11", pill: this.pill("ok") },
+        { agent: "Appointment booking", disposition: "Voicemail", duration: "0m 41s", time: "14:04", pill: this.pill("mute") },
+        { agent: "Renewals outbound", disposition: "Failed", duration: "0m 06s", time: "13:58", pill: this.pill("bad") },
+      ],
+      agents: [
+        { name: "Reception", status: "Live", desc: "Answers inbound calls, routes to the right team.", runs: "8,412", edited: "Edited 2 days ago", pill: this.pill("ok") },
+        { name: "Renewals outbound", status: "Draft", desc: "Calls lapsed accounts ahead of renewal date.", runs: "1,204", edited: "Edited 2 min ago", pill: this.pill("warn") },
+        { name: "Payment reminder", status: "Live", desc: "Chases overdue invoices and takes card payment.", runs: "3,096", edited: "Edited 5 days ago", pill: this.pill("ok") },
+        { name: "Appointment booking", status: "Live", desc: "Books, moves and cancels appointments.", runs: "2,447", edited: "Edited 1 week ago", pill: this.pill("ok") },
+        { name: "NPS follow-up", status: "Paused", desc: "Short satisfaction survey after a resolved ticket.", runs: "612", edited: "Edited 3 weeks ago", pill: this.pill("mute") },
+        { name: "Order status", status: "Live", desc: "Reads order and delivery status from the API.", runs: "5,338", edited: "Edited 1 month ago", pill: this.pill("ok") },
+      ],
+      campaigns: [
+        { name: "August renewals — GCC", agent: "Renewals outbound", state: "Running", progress: "1,204 / 2,000", created: "12 Aug", pill: this.pill("info"), bar: this.bar(60) },
+        { name: "Overdue invoices W33", agent: "Payment reminder", state: "Paused", progress: "318 / 900", created: "11 Aug", pill: this.pill("warn"), bar: this.bar(35, "var(--amber)") },
+        { name: "Q3 NPS wave 2", agent: "NPS follow-up", state: "Completed", progress: "612 / 612", created: "4 Aug", pill: this.pill("ok"), bar: this.bar(100, "var(--green)") },
+        { name: "Winback — lapsed 90d", agent: "Renewals outbound", state: "Created", progress: "0 / 1,450", created: "18 Aug", pill: this.pill("mute"), bar: this.bar(0) },
+        { name: "Delivery delays notice", agent: "Order status", state: "Failed", progress: "42 / 780", created: "2 Aug", pill: this.pill("bad"), bar: this.bar(6, "var(--red)") },
+      ],
+      models: [
+        { name: "Default stack", state: "Default", llm: "GPT-4o mini", tts: "ElevenLabs Turbo", stt: "Deepgram Nova-3", latency: "410ms", used: "4", pill: this.pill("info") },
+        { name: "Low latency", state: "Live", llm: "Groq Llama 3.1", tts: "Cartesia Sonic", stt: "Deepgram Nova-3", latency: "230ms", used: "2", pill: this.pill("ok") },
+        { name: "High accuracy", state: "Live", llm: "Claude Sonnet", tts: "ElevenLabs v3", stt: "Whisper large", latency: "780ms", used: "1", pill: this.pill("ok") },
+        { name: "Arabic pilot", state: "Draft", llm: "GPT-4o", tts: "ElevenLabs Multilingual", stt: "Deepgram Nova-2", latency: "620ms", used: "0", pill: this.pill("warn") },
+      ],
+      providers: [
+        { name: "Twilio", status: "Connected", detail: "3 numbers · inbound and outbound trunks healthy", pill: this.pill("ok"), accent: "var(--green)" },
+        { name: "Telnyx", status: "Action required", detail: "Missing webhook public key — inbound calls will fail", pill: this.pill("warn"), accent: "var(--amber)" },
+        { name: "Cloudonix", status: "Connected", detail: "1 outbound trunk · SIP registration verified", pill: this.pill("ok"), accent: "var(--green)" },
+      ],
+      numbers: [
+        { number: "+353 1 906 2214", provider: "Twilio", agent: "Reception", direction: "Inbound" },
+        { number: "+353 1 906 2215", provider: "Twilio", agent: "Appointment booking", direction: "Inbound" },
+        { number: "+971 4 512 8890", provider: "Telnyx", agent: "Renewals outbound", direction: "Outbound" },
+        { number: "+44 20 3966 1180", provider: "Cloudonix", agent: "Payment reminder", direction: "Outbound" },
+      ],
+      tools: [
+        { method: "GET", name: "lookup_account", url: "https://api.acme.io/v1/accounts/{account_id}", meta: "Used by 3 agents · API key credential", pill: this.pill("ok") },
+        { method: "POST", name: "book_appointment", url: "https://api.acme.io/v1/appointments", meta: "Used by 1 agent · OAuth credential", pill: this.pill("info") },
+        { method: "POST", name: "take_payment", url: "https://pay.acme.io/v2/charges", meta: "Used by 1 agent · rotating secret", pill: this.pill("info") },
+        { method: "MCP", name: "crm_notes", url: "mcp://crm.acme.io/sse", meta: "6 tools exposed · refreshed 1 hour ago", pill: this.pill("mute") },
+      ],
+      files: [
+        { name: "Renewal pricing 2026.pdf", type: "PDF", size: "1.2 MB", used: "2 agents", date: "12 Aug 2026" },
+        { name: "Refund policy.md", type: "MD", size: "18 KB", used: "4 agents", date: "9 Aug 2026" },
+        { name: "Product catalogue.csv", type: "CSV", size: "840 KB", used: "1 agent", date: "2 Aug 2026" },
+        { name: "Escalation matrix.pdf", type: "PDF", size: "320 KB", used: "3 agents", date: "28 Jul 2026" },
+        { name: "Opening hours.md", type: "MD", size: "4 KB", used: "5 agents", date: "21 Jul 2026" },
+        { name: "Contact list — GCC.csv", type: "CSV", size: "2.4 MB", used: "1 campaign", date: "18 Jul 2026" },
+      ],
+      recordings: [
+        { name: "greeting_en_female.wav", meta: "Used in Reception · greeting node", duration: "0:06", wave: this.wave(1) },
+        { name: "hold_music_short.wav", meta: "Transition message · 3 tools", duration: "0:22", wave: this.wave(4) },
+        { name: "voicemail_drop_renewals.wav", meta: "Used in Renewals outbound", duration: "0:18", wave: this.wave(7) },
+        { name: "payment_confirmation.wav", meta: "Used in Payment reminder", duration: "0:09", wave: this.wave(11) },
+        { name: "closing_thanks.wav", meta: "Used in 4 agents", duration: "0:05", wave: this.wave(15) },
+      ],
+      reportStats: [
+        { label: "Total runs", value: "1,284" },
+        { label: "Transfers", value: "108" },
+        { label: "Avg duration", value: "3m 12s" },
+        { label: "Answer rate", value: "62%" },
+      ],
+      dispositions: [
+        { label: "Completed", value: "614 · 48%", bar: this.bar(48, "var(--green)") },
+        { label: "No answer", value: "302 · 24%", bar: this.bar(24, "var(--text3)") },
+        { label: "Voicemail", value: "168 · 13%", bar: this.bar(13, "var(--sky)") },
+        { label: "Transferred", value: "108 · 8%", bar: this.bar(8, "var(--amber)") },
+        { label: "Failed", value: "92 · 7%", bar: this.bar(7, "var(--red)") },
+      ],
+      durations: [
+        { label: "0-30s", count: "412", bar: "width:100%;height:38%;border-radius:4px 4px 0 0;background:var(--sky)" },
+        { label: "30-60s", count: "268", bar: "width:100%;height:25%;border-radius:4px 4px 0 0;background:var(--sky)" },
+        { label: "1-2m", count: "244", bar: "width:100%;height:23%;border-radius:4px 4px 0 0;background:var(--sky)" },
+        { label: "2-5m", count: "196", bar: "width:100%;height:18%;border-radius:4px 4px 0 0;background:var(--sky)" },
+        { label: "5-10m", count: "118", bar: "width:100%;height:11%;border-radius:4px 4px 0 0;background:var(--sky)" },
+        { label: "10m+", count: "46", bar: "width:100%;height:5%;border-radius:4px 4px 0 0;background:var(--sky)" },
+      ],
+    };
+  }
+}
+</script>
+</body>
+</html>
