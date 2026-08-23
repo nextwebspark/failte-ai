@@ -108,12 +108,22 @@
   --ink-2: #47505f;
   --ink-3: #6e7890;
 
-  /* Accents + their dim washes (pill/chip backgrounds) */
+  /* Accents + their dim washes (pill/chip backgrounds).
+
+     Two of the canvas's light values land just under WCAG AA, so light mode
+     adjusts them by the smallest amount that clears it — the difference is not
+     perceptible, and dark mode (the default) uses the canvas values unchanged:
+
+     - --brand stays the canvas Irish green for borders, washes and accent text.
+       White on it is only 3.56:1, so --brand-strong (4.54:1) is what --primary
+       fills buttons with. Never put white text on --brand directly.
+     - --sky is nudged from the canvas #1a73c7 (4.46:1 on --bg) to clear 4.5. */
   --brand: #169b62;
+  --brand-strong: #138755;
   --brand-dim: rgba(22, 155, 98, 0.1);
   --brand-ink: #ffffff;
-  --sky: #1a73c7;
-  --sky-dim: rgba(26, 115, 199, 0.1);
+  --sky: #196dbd;
+  --sky-dim: rgba(25, 109, 189, 0.1);
   --amber: #b47708;
   --amber-dim: rgba(201, 138, 10, 0.1);
   --ok: #1f8f60;
@@ -130,7 +140,7 @@
   --card-foreground: var(--ink);
   --popover: var(--panel);
   --popover-foreground: var(--ink);
-  --primary: var(--brand);
+  --primary: var(--brand-strong);
   --primary-foreground: var(--brand-ink);
   --secondary: var(--panel-2);
   --secondary-foreground: var(--ink);
@@ -186,6 +196,8 @@
   --ink-3: #8d96a6;
 
   --brand: #2fc584;
+  /* Dark brand already clears AA against --brand-ink (8.5:1) — no deeper shade. */
+  --brand-strong: #2fc584;
   --brand-dim: rgba(47, 197, 132, 0.14);
   --brand-ink: #07130d;
   --sky: #5cb3ff;

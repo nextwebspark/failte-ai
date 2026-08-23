@@ -3,6 +3,8 @@ import { Suspense } from 'react';
 import { getWorkflowsApiV1WorkflowFetchGet, listFoldersApiV1FolderGet } from '@/client/sdk.gen';
 import type { FolderResponse, WorkflowListResponse } from '@/client/types.gen';
 import { Card, CardContent } from '@/components/ui/card';
+import { SectionHeading } from '@/components/ui/section-heading';
+import { Skeleton } from '@/components/ui/skeleton';
 import { CreateWorkflowButton } from "@/components/workflow/CreateWorkflowButton";
 import { AgentFolderView } from '@/components/workflow/folders/AgentFolderView';
 import { CreateFolderButton } from '@/components/workflow/folders/CreateFolderButton';
@@ -28,7 +30,7 @@ async function WorkflowList() {
         } else {
             // For OSS mode, this shouldn't happen as token is auto-generated
             return (
-                <div className="text-red-500">
+                <div className="font-mono text-sm text-danger">
                     Authentication required. Please refresh the page.
                 </div>
             );
@@ -75,15 +77,13 @@ async function WorkflowList() {
             <>
                 {/* Active Workflows Section */}
                 <div className="mb-8">
-                    <h2 className="text-xl font-semibold mb-4">Active Agents</h2>
+                    <SectionHeading>Active Agents</SectionHeading>
                     {activeWorkflows.length > 0 || folders.length > 0 ? (
                         <AgentFolderView workflows={activeWorkflows} folders={folders} />
                     ) : (
-                        <Card>
-                            <CardContent className="p-8 text-center text-muted-foreground">
-                                No active workflows found. Create your first workflow to get started.
-                            </CardContent>
-                        </Card>
+                        <div className="rounded-lg border border-dashed border-line bg-panel-2 p-8 text-center font-mono text-[12.5px] text-ink-3">
+                            No active workflows found. Create your first workflow to get started.
+                        </div>
                     )}
                 </div>
 
@@ -98,7 +98,7 @@ async function WorkflowList() {
     } catch (err) {
         logger.error(`Error fetching workflows: ${err}`);
         return (
-            <div className="text-red-500">
+            <div className="font-mono text-sm text-danger">
                 Failed to load Workflows. Please Try Again Later.
             </div>
         );
@@ -113,8 +113,8 @@ async function PageContent() {
         <div className="container mx-auto px-4 py-8">
             {/* Your Workflows Section */}
             <div className="mb-6">
-                <div className="flex justify-between items-center mb-6">
-                    <h1 className="text-2xl font-bold">Your Agents</h1>
+                <div className="mb-6 flex items-center justify-between gap-4">
+                    <h1 className="text-xl font-bold tracking-tight">Your Agents</h1>
                     <div className="flex gap-2">
                         <UploadWorkflowButton />
                         <CreateFolderButton />
@@ -130,29 +130,18 @@ async function PageContent() {
 function WorkflowsLoading() {
     return (
         <div className="container mx-auto px-4 py-8">
-            {/* Get Started Section Loading */}
-            <div className="mb-12">
-                <div className="h-8 w-48 bg-muted rounded mb-6"></div>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {Array.from({ length: 3 }, (_, i) => (
-                        <Card key={i}>
-                            <CardContent className="p-0">
-                                <div className="h-40 bg-muted/70" />
-                            </CardContent>
-                        </Card>
-                    ))}
-                </div>
-            </div>
-
-            {/* Your Workflows Section Loading */}
             <div className="mb-6">
-                <div className="flex justify-between items-center mb-6">
-                    <div className="h-8 w-48 bg-muted rounded"></div>
-                    <div className="h-10 w-32 bg-muted rounded"></div>
+                <div className="mb-6 flex items-center justify-between gap-4">
+                    <Skeleton className="h-7 w-48" />
+                    <div className="flex gap-2">
+                        <Skeleton className="h-9 w-28" />
+                        <Skeleton className="h-9 w-32" />
+                    </div>
                 </div>
+                <Skeleton className="mb-4 h-5 w-36" />
                 <Card>
                     <CardContent className="p-0">
-                        <div className="h-96 bg-muted/70" />
+                        <Skeleton className="h-96 rounded-lg" />
                     </CardContent>
                 </Card>
             </div>

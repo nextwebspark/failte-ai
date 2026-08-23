@@ -136,11 +136,11 @@ export function WorkflowTable({
                 <Table>
                     <TableHeader>
                         <TableRow>
-                            <TableHead className="font-semibold">ID</TableHead>
-                            <TableHead className="font-semibold">Agent Name</TableHead>
-                            <TableHead className="font-semibold">Created At</TableHead>
-                            <TableHead className="font-semibold text-center">Total Runs</TableHead>
-                            <TableHead className="font-semibold text-right">Actions</TableHead>
+                            <TableHead className="">ID</TableHead>
+                            <TableHead className="">Agent Name</TableHead>
+                            <TableHead className="">Created At</TableHead>
+                            <TableHead className="text-center">Total Runs</TableHead>
+                            <TableHead className="text-right">Actions</TableHead>
                         </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -159,7 +159,7 @@ export function WorkflowTable({
                                     {formatDate(workflow.created_at, organizationTimezone)}
                                 </TableCell>
                                 <TableCell className="text-center">
-                                    <span className="inline-flex items-center justify-center min-w-[2rem] px-2 py-1 text-sm font-semibold bg-muted rounded-full">
+                                    <span className="inline-flex min-w-[2rem] items-center justify-center rounded-full bg-panel-2 px-2 py-1 font-mono text-xs font-semibold text-ink-2">
                                         {workflow.total_runs || 0}
                                     </span>
                                 </TableCell>

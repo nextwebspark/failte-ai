@@ -4,7 +4,8 @@ import Link from 'next/link';
 
 import { SupportLink } from '@/components/SupportLink';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Panel, PanelDescription, PanelTitle } from '@/components/ui/panel';
+import { SectionHeading, SectionHint } from '@/components/ui/section-heading';
 import { useAuth } from '@/lib/auth';
 
 export default function OverviewPage() {
@@ -13,77 +14,64 @@ export default function OverviewPage() {
 
     return (
         <div className="container mx-auto px-4 py-8">
-            <div className="max-w-4xl mx-auto">
-                {/* Welcome Card */}
-                <Card className="mb-8">
-                    <CardHeader>
-                        <CardTitle className="text-3xl">
-                            {isOSSMode ? (
-                                "Welcome to Failte AI"
-                            ) : (
-                                `Welcome${user?.displayName ? `, ${user.displayName.split(' ')[0]}` : ''}!`
-                            )}
-                        </CardTitle>
-                        <CardDescription className="text-lg mt-2">
-                            Get started with building voice AI workflows
-                        </CardDescription>
-                    </CardHeader>
-                    {/* Upstream's "Star us on GitHub" badge for dograh-hq/dograh was here. Removed. */}
-                </Card>
-
-                {/* Quick Actions */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <Card>
-                        <CardHeader>
-                            <CardTitle>Create and Manage your Voice Agents</CardTitle>
-                            <CardDescription>
-                                Build powerful AI Voice Agents with our visual editor
-                            </CardDescription>
-                        </CardHeader>
-                        <CardContent>
-                            <Button asChild>
-                                <Link href="/workflow">
-                                    Go to Agents
-                                </Link>
-                            </Button>
-                        </CardContent>
-                    </Card>
-
-                    <Card>
-                        <CardHeader>
-                            <CardTitle>Configure Services</CardTitle>
-                            <CardDescription>
-                                Set up your AI services like LLM, TTS, and STT providers
-                            </CardDescription>
-                        </CardHeader>
-                        <CardContent>
-                            <Button asChild variant="outline">
-                                <Link href="/model-configurations">
-                                    Configure Models
-                                </Link>
-                            </Button>
-                        </CardContent>
-                    </Card>
+            <div className="mx-auto max-w-4xl animate-fade-up">
+                {/* Welcome */}
+                <div className="mb-8">
+                    <h1 className="text-2xl font-bold tracking-tight">
+                        {isOSSMode ? (
+                            "Welcome to Failte AI"
+                        ) : (
+                            `Welcome${user?.displayName ? `, ${user.displayName.split(' ')[0]}` : ''}!`
+                        )}
+                    </h1>
+                    <p className="mt-1.5 font-mono text-[12.5px] text-ink-3">
+                        Get started with building voice AI workflows
+                    </p>
                 </div>
 
-                {/* Resources Section */}
-                <Card className="mt-8">
-                    <CardHeader>
-                        <CardTitle>Resources</CardTitle>
-                        <CardDescription>
-                            Get help from the team
-                        </CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                        <div className="flex flex-wrap gap-4">
-                            {/* Upstream had a Documentation button and a "Report an Issue"
-                                button here, both pointing at dograh-hq. We publish neither a
-                                docs site nor a public tracker, so the card offers the one
-                                thing we can honour: a reply from a human. */}
-                            <SupportLink label="Email support" variant="outline" />
-                        </div>
-                    </CardContent>
-                </Card>
+                {/* Quick actions — the canvas "Get started" panels */}
+                <SectionHeading action={<SectionHint>Build an agent, then point a number at it</SectionHint>}>
+                    Get started
+                </SectionHeading>
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                    <Panel accent="sky">
+                        <PanelTitle>Create and Manage your Voice Agents</PanelTitle>
+                        <PanelDescription>
+                            Build powerful AI Voice Agents with our visual editor
+                        </PanelDescription>
+                        <Button asChild size="sm" className="mt-4">
+                            <Link href="/workflow">
+                                Go to Agents
+                            </Link>
+                        </Button>
+                    </Panel>
+
+                    <Panel>
+                        <PanelTitle>Configure Services</PanelTitle>
+                        <PanelDescription>
+                            Set up your AI services like LLM, TTS, and STT providers
+                        </PanelDescription>
+                        <Button asChild size="sm" variant="soft" className="mt-4">
+                            <Link href="/model-configurations">
+                                Configure Models
+                            </Link>
+                        </Button>
+                    </Panel>
+                </div>
+
+                {/* Resources */}
+                <SectionHeading className="mt-8" action={<SectionHint>Get help from the team</SectionHint>}>
+                    Resources
+                </SectionHeading>
+                <Panel>
+                    <div className="flex flex-wrap gap-4">
+                        {/* Upstream had a Documentation button and a "Report an Issue"
+                            button here, both pointing at dograh-hq. We publish neither a
+                            docs site nor a public tracker, so the card offers the one
+                            thing we can honour: a reply from a human. */}
+                        <SupportLink label="Email support" variant="outline" />
+                    </div>
+                </Panel>
             </div>
         </div>
     );
