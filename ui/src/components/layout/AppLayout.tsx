@@ -15,7 +15,7 @@ function AppHeader() {
   const { toggleSidebar } = useSidebar();
 
   return (
-    <header className="sticky top-0 z-50 flex items-center justify-between border-b border-border/60 bg-background/70 px-4 py-2 backdrop-blur-md supports-[backdrop-filter]:bg-background/55">
+    <header className="sticky top-0 z-50 flex items-center justify-between border-b border-line bg-background/70 px-4 py-2 backdrop-blur-md supports-[backdrop-filter]:bg-background/55">
       <div className="flex items-center gap-3">
         <Button variant="ghost" size="icon" onClick={toggleSidebar} aria-label="Open menu" className="md:hidden">
           <Menu className="h-5 w-5" />
@@ -45,7 +45,7 @@ function BackendStatusBanner() {
   return (
     <div
       role="alert"
-      className="border-b border-amber-300 bg-amber-50 px-4 py-3 text-amber-950 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-100"
+      className="border-b border-amber/40 bg-amber-dim px-4 py-3 text-foreground"
     >
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex min-w-0 items-start gap-3">
@@ -60,7 +60,7 @@ function BackendStatusBanner() {
           size="sm"
           onClick={() => void refresh()}
           disabled={loading}
-          className="h-8 shrink-0 border-amber-400 bg-transparent text-amber-950 hover:bg-amber-100 dark:border-amber-700 dark:text-amber-100 dark:hover:bg-amber-900/40"
+          className="h-8 shrink-0 border-amber/50 bg-transparent text-amber hover:bg-amber-dim"
         >
           <RefreshCw className="h-4 w-4" />
           Retry
@@ -102,7 +102,7 @@ const AppLayout: React.FC<AppLayoutProps> = ({
             {!isWorkflowEditor && <AppHeader />}
             {/* Optional header area for specific pages */}
             {headerActions && (
-              <header className="sticky top-0 z-50 w-full border-b border-border/60 bg-background/70 backdrop-blur-md supports-[backdrop-filter]:bg-background/55">
+              <header className="sticky top-0 z-50 w-full border-b border-line bg-background/70 backdrop-blur-md supports-[backdrop-filter]:bg-background/55">
                 <div className="container mx-auto px-4 py-4">
                   <div className="flex items-center justify-center">
                     {headerActions}
@@ -113,7 +113,7 @@ const AppLayout: React.FC<AppLayoutProps> = ({
 
             {/* Optional sticky tabs */}
             {stickyTabs && (
-              <div className="sticky top-0 z-40 bg-[#2a2e39] border-b border-gray-700">
+              <div className="sticky top-0 z-40 border-b border-line bg-panel">
                 <div className="container mx-auto px-4">
                   <div className="flex items-center justify-center py-2">
                     {stickyTabs}

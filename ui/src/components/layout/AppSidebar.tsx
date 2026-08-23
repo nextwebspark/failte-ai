@@ -193,7 +193,7 @@ export function AppSidebar() {
         <div className="notranslate" translate="no">
           <p>{item.title}</p>
           {showWarningDot && (
-            <p className="text-amber-600 dark:text-amber-400">{TELEPHONY_WARNING_COPY}</p>
+            <p className="text-amber">{TELEPHONY_WARNING_COPY}</p>
           )}
         </div>
       ),
@@ -202,7 +202,7 @@ export function AppSidebar() {
       <AlertTriangle
         aria-label="Action required on a telephony configuration"
         className={cn(
-          "text-amber-500",
+          "text-amber",
           isCollapsed ? "absolute -right-0.5 -top-0.5 h-3 w-3" : "ml-auto h-3.5 w-3.5"
         )}
       />
@@ -215,7 +215,7 @@ export function AppSidebar() {
         className={cn(
           "rounded-xl transition-colors hover:bg-accent hover:text-accent-foreground",
           isItemActive &&
-            "bg-cta/15 font-semibold text-foreground hover:bg-cta/20 hover:text-foreground"
+            "bg-sky-dim font-semibold text-sky hover:bg-sky-dim hover:text-sky"
         )}
       >
         <Link
@@ -226,14 +226,14 @@ export function AppSidebar() {
         >
           {isItemActive && !isCollapsed && (
             <span
-              className="absolute left-0 top-1/2 h-5 w-0.5 -translate-y-1/2 rounded-full bg-cta"
+              className="absolute left-0 top-1/2 h-5 w-0.5 -translate-y-1/2 rounded-full bg-sky"
               aria-hidden
             />
           )}
           <Icon
             className={cn(
               "h-4 w-4 shrink-0",
-              isItemActive && "text-cta drop-shadow-[0_0_6px_rgba(240,170,70,0.8)]"
+              isItemActive && "text-sky"
             )}
           />
           <span
@@ -318,7 +318,7 @@ export function AppSidebar() {
             {isBehind && latestRelease && (
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <span className="inline-flex items-center gap-1 rounded-md border bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium leading-none text-amber-900 dark:bg-amber-950 dark:text-amber-200">
+                  <span className="inline-flex items-center gap-1 rounded-md border border-transparent bg-amber-dim px-1.5 py-0.5 text-[10px] font-medium leading-none text-amber">
                     <ArrowUpCircle className="h-3 w-3" />
                     Update
                   </span>
@@ -331,7 +331,7 @@ export function AppSidebar() {
             {isLatest && (
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <span className="inline-flex items-center rounded-md border bg-emerald-50 px-1.5 py-0.5 text-[10px] font-medium leading-none text-emerald-900 dark:bg-emerald-950 dark:text-emerald-200">
+                  <span className="inline-flex items-center rounded-md border border-transparent bg-ok-dim px-1.5 py-0.5 text-[10px] font-medium leading-none text-ok">
                     Latest
                   </span>
                 </TooltipTrigger>
@@ -367,7 +367,7 @@ export function AppSidebar() {
             {section.label && (
               <SidebarGroupLabel
                 className={cn(
-                  "notranslate text-xs font-semibold uppercase tracking-wider text-muted-foreground",
+                  "notranslate font-mono text-[10px] font-semibold uppercase tracking-[0.14em] text-ink-3",
                   isCollapsed && "hidden"
                 )}
                 translate="no"
@@ -394,7 +394,7 @@ export function AppSidebar() {
           {provider !== "stack" && (
             <div
               className={cn(
-                "flex items-center justify-between gap-1 rounded-full border border-border/60 bg-muted/30 p-1",
+                "flex items-center justify-between gap-1 rounded-full border border-line bg-panel-2 p-1",
                 isCollapsed && "flex-col"
               )}
             >
@@ -428,7 +428,7 @@ export function AppSidebar() {
           {provider === "stack" && (
             <div
               className={cn(
-                "flex items-center justify-between gap-1 rounded-full border border-border/60 bg-muted/30 p-1",
+                "flex items-center justify-between gap-1 rounded-full border border-line bg-panel-2 p-1",
                 isCollapsed && "flex-col"
               )}
             >

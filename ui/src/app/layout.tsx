@@ -1,7 +1,7 @@
 import "./globals.css";
 
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Inter, JetBrains_Mono } from "next/font/google";
 import { Suspense } from "react";
 
 import AppLayout from "@/components/layout/AppLayout";
@@ -17,13 +17,16 @@ import { TelephonyConfigWarningsProvider } from "@/context/TelephonyConfigWarnin
 import { AuthProvider } from "@/lib/auth";
 
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
+// Inter for prose, JetBrains Mono for data, metadata and numerals — the type
+// pairing the design canvas is built on (app-doc/claude-design/). Both are
+// wired to --font-sans / --font-mono in globals.css.
+const inter = Inter({
+  variable: "--font-inter",
   subsets: ["latin"],
 });
 
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
+const jetbrainsMono = JetBrains_Mono({
+  variable: "--font-jetbrains-mono",
   subsets: ["latin"],
 });
 
@@ -63,7 +66,7 @@ export default function RootLayout({
         />
       </head>
       <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
+        className={`${inter.variable} ${jetbrainsMono.variable} antialiased`}>
         <ThemeProvider attribute="class" defaultTheme="dark" enableSystem={false} disableTransitionOnChange>
           <SentryErrorBoundary>
             <AuthProvider>
