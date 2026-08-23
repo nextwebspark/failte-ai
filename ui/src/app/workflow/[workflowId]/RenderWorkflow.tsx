@@ -625,7 +625,7 @@ function RenderWorkflow({
                                     variant={BackgroundVariant.Dots}
                                     gap={16}
                                     size={1}
-                                    color="#94a3b8"
+                                    color="var(--line)"
                                 />
 
                                 {/* Top-right controls - vertical layout (hidden when viewing history) */}

@@ -25,7 +25,7 @@ export const BaseHandle = forwardRef<HTMLDivElement, BaseHandleProps>(
                 )}
                 style={{
                     border: 'none',
-                    background: '#94A3B8', // slate-400
+                    background: 'var(--ink-3)',
                     ...props.style,
                 }}
             >
