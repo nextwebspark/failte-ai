@@ -12,6 +12,7 @@ import {
 } from "@/client/sdk.gen";
 import type { CreateToolRequest, ToolResponse } from "@/client/types.gen";
 import { CredentialSelector } from "@/components/http";
+import { PageActions } from "@/components/layout/PageActionsSlot";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -283,7 +284,7 @@ export default function ToolsPage() {
 
     if (loading || !user) {
         return (
-            <div className="min-h-screen flex items-center justify-center">
+            <div className="min-h-full flex items-center justify-center">
                 <div className="space-y-4">
                     <Skeleton className="h-12 w-64" />
                     <Skeleton className="h-64 w-96" />
@@ -293,15 +294,16 @@ export default function ToolsPage() {
     }
 
     return (
-        <div className="min-h-screen">
-            <div className="container mx-auto px-4 py-8">
-                <div className="max-w-6xl mx-auto">
-                    <div className="mb-8">
-                        <h1 className="text-3xl font-bold mb-2">Tools</h1>
-                        <p className="text-muted-foreground">
-                            Manage reusable tools that can be used across your workflows.
-                        </p>
-                    </div>
+        <div className="page-body">
+            <div className="max-w-6xl">
+                {/* Screen name, strapline and primary action are rendered by the
+                    app header (AppTopBar) — see PageActions. */}
+                <PageActions>
+                    <Button onClick={() => setIsCreateDialogOpen(true)}>
+                        <Plus className="w-4 h-4" />
+                        New tool
+                    </Button>
+                </PageActions>
 
                     {error && (
                         <div className="mb-4 p-4 bg-destructive/10 border border-destructive/20 rounded-lg text-destructive">
@@ -311,18 +313,10 @@ export default function ToolsPage() {
 
                     <Card className="mb-6">
                         <CardHeader>
-                            <div className="flex justify-between items-center">
-                                <div>
-                                    <CardTitle>Your Tools</CardTitle>
-                                    <CardDescription>
-                                        Create and manage tools for your organization
-                                    </CardDescription>
-                                </div>
-                                <Button onClick={() => setIsCreateDialogOpen(true)}>
-                                    <Plus className="w-4 h-4 mr-2" />
-                                    Create Tool
-                                </Button>
-                            </div>
+                            <CardTitle>Your Tools</CardTitle>
+                            <CardDescription>
+                                Create and manage tools for your organization
+                            </CardDescription>
                         </CardHeader>
                         <CardContent>
                             {/* Search */}
@@ -487,7 +481,6 @@ export default function ToolsPage() {
                         </CardContent>
                     </Card>
                 </div>
-            </div>
 
             {/* Create Tool Dialog */}
             <Dialog open={isCreateDialogOpen} onOpenChange={(open) => {

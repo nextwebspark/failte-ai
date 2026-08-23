@@ -1,43 +1,12 @@
 "use client";
 
-import {
-  AlertTriangle,
-  ArrowUpCircle,
-  AudioLines,
-  Brain,
-  ChevronLeft,
-  ChevronRight,
-  CircleDollarSign,
-  Database,
-  FileText,
-  Home,
-  Key,
-  LogOut,
-  type LucideIcon,
-  Megaphone,
-  Phone,
-  Settings,
-  TrendingUp,
-  Workflow,
-  Wrench,
-} from "lucide-react";
+import { AlertTriangle } from "lucide-react";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import React from "react";
 
 import { BrandLogo } from "@/components/BrandLogo";
-import { SidebarTeamSwitcher } from "@/components/layout/SidebarTeamSwitcher";
-import { SupportLink } from "@/components/SupportLink";
 import ThemeToggle from "@/components/ThemeSwitcher";
-import { Button } from "@/components/ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import {
   Sidebar,
   SidebarContent,
@@ -49,115 +18,28 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarRail,
-  SidebarTrigger,
   useSidebar,
 } from "@/components/ui/sidebar";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { useAppConfig } from "@/context/AppConfigContext";
 import { useTelephonyConfigWarnings } from "@/context/TelephonyConfigWarningsContext";
-import { useLatestReleaseVersion } from "@/hooks/useLatestReleaseVersion";
-import type { LocalUser } from "@/lib/auth";
-import { useAuth } from "@/lib/auth";
 import { cn } from "@/lib/utils";
 
-type SidebarNavItem = {
-  title: string;
-  url: string;
-  icon: LucideIcon;
-  showsTelephonyWarning?: boolean;
-};
-
-type SidebarNavSection = {
-  label?: string;
-  items: SidebarNavItem[];
-};
+import { NAV_SECTIONS,type NavItem } from "./navConfig";
 
 const TELEPHONY_WARNING_COPY = "Action required";
 
-const NAV_SECTIONS: SidebarNavSection[] = [
-  {
-    items: [
-      {
-        title: "Overview",
-        url: "/overview",
-        icon: Home,
-      },
-    ],
-  },
-  {
-    label: "BUILD",
-    items: [
-      {
-        title: "Voice Agents",
-        url: "/workflow",
-        icon: Workflow,
-      },
-      {
-        title: "Campaigns",
-        url: "/campaigns",
-        icon: Megaphone,
-      },
-      {
-        title: "Models",
-        url: "/model-configurations",
-        icon: Brain,
-      },
-      {
-        title: "Telephony",
-        url: "/telephony-configurations",
-        icon: Phone,
-        showsTelephonyWarning: true,
-      },
-      {
-        title: "Tools",
-        url: "/tools",
-        icon: Wrench,
-      },
-      {
-        title: "Files",
-        url: "/files",
-        icon: Database,
-      },
-      {
-        title: "Recordings",
-        url: "/recordings",
-        icon: AudioLines,
-      },
-      {
-        title: "Developers",
-        url: "/api-keys",
-        icon: Key,
-      },
-    ],
-  },
-  {
-    label: "MANAGE",
-    items: [
-      {
-        title: "Agent Runs",
-        url: "/usage",
-        icon: TrendingUp,
-      },
-      {
-        title: "Billing",
-        url: "/billing",
-        icon: CircleDollarSign,
-      },
-      {
-        title: "Reports",
-        url: "/reports",
-        icon: FileText,
-      }
-    ],
-  },
-];
-
-export function AppSidebar() {
+/**
+ * The canvas's nav panel: nothing but grouped destinations and the theme row
+ * (app-doc/claude-design/Failte AI v2.dc.html, the <nav> element). Brand,
+ * version, workspace switcher and the account menu live in AppTopBar.
+ *
+ * `docked` positions the panel under that 46px header, in the 14px gutter the
+ * canvas body uses. The workflow editor still runs the full-height layout, so
+ * it passes `docked={false}` and keeps the stock floating placement.
+ */
+export function AppSidebar({ docked = true }: { docked?: boolean }) {
   const pathname = usePathname();
-  const router = useRouter();
   const { state, isMobile, setOpenMobile } = useSidebar();
-  const { provider, logout, user } = useAuth();
-  const { config } = useAppConfig();
   const {
     telnyxMissingWebhookPublicKeyCount,
     vonageMissingSignatureSecretCount,
@@ -167,15 +49,6 @@ export function AppSidebar() {
     vonageMissingSignatureSecretCount > 0;
   const isCollapsed = !isMobile && state === "collapsed";
 
-  // Version info from app config context
-  const versionInfo = config ? { ui: config.uiVersion, api: config.apiVersion } : null;
-
-  // Check for updates only on self-hosted (OSS) deployments — cloud is managed for the user.
-  const { latest: latestRelease, isBehind, isLatest } = useLatestReleaseVersion(
-    versionInfo?.ui,
-    { enabled: config?.deploymentMode === "oss" },
-  );
-
   const isActive = (path: string) => pathname.startsWith(path);
 
   const handleMobileNavClick = () => {
@@ -184,7 +57,7 @@ export function AppSidebar() {
     }
   };
 
-  const SidebarLink = ({ item }: { item: SidebarNavItem }) => {
+  const SidebarLink = ({ item }: { item: NavItem }) => {
     const isItemActive = isActive(item.url);
     const Icon = item.icon;
     const showWarningDot = item.showsTelephonyWarning && hasTelephonyWarning;
@@ -198,13 +71,19 @@ export function AppSidebar() {
         </div>
       ),
     };
-    const warningIndicator = (
+
+    // The canvas marks an attention-needing row with a 6px amber dot pushed to
+    // the end of the row; collapsed, it rides the icon's top-right corner.
+    const warningIndicator = isCollapsed ? (
       <AlertTriangle
         aria-label="Action required on a telephony configuration"
-        className={cn(
-          "text-amber",
-          isCollapsed ? "absolute -right-0.5 -top-0.5 h-3 w-3" : "ml-auto h-3.5 w-3.5"
-        )}
+        className="absolute -right-0.5 -top-0.5 h-3 w-3 text-amber"
+      />
+    ) : (
+      <span
+        aria-label="Action required on a telephony configuration"
+        role="img"
+        className="ml-auto h-1.5 w-1.5 shrink-0 rounded-full bg-amber"
       />
     );
 
@@ -226,12 +105,7 @@ export function AppSidebar() {
           className={cn(isCollapsed && "justify-center")}
           translate="no"
         >
-          <Icon
-            className={cn(
-              "h-4 w-4 shrink-0",
-              isItemActive && "text-sky"
-            )}
-          />
+          <Icon className={cn("h-4 w-4 shrink-0", isItemActive && "text-sky")} />
           <span
             className={cn("notranslate min-w-0 flex-1 truncate", isCollapsed && "sr-only")}
             translate="no"
@@ -257,109 +131,45 @@ export function AppSidebar() {
     );
   };
 
-  // Footer identity trigger: avatar initials only (no name), in a subtle
-  // bordered circle. Same treatment expanded and collapsed.
-  const displayIdentity =
-    user?.displayName ||
-    (user as { primaryEmail?: string } | undefined)?.primaryEmail ||
-    (user as LocalUser | undefined)?.email ||
-    "";
-  const userInitials =
-    displayIdentity
-      .split(/[\s@]/)
-      .filter(Boolean)
-      .slice(0, 2)
-      .map((s: string) => s[0]?.toUpperCase())
-      .join("") || "U";
-
-  const userChipTrigger = (
-    <Button
-      variant="ghost"
-      size="icon"
-      className="h-7 w-7 shrink-0 cursor-pointer rounded-full border border-border/80 bg-muted/40 hover:bg-muted/60"
-    >
-      <span className="text-xs font-medium">{userInitials}</span>
-    </Button>
-  );
-
-  // Support contact, rendered INSIDE the shared footer pill next to the profile
-  // icon. Expanded: label pill filling the row. Collapsed: icon-only. Keep two
-  // children in the pill — it is `justify-between` and looks broken with one.
-  const supportButton = isCollapsed ? (
-    <SupportLink iconOnly tooltipSide="right" />
-  ) : (
-    <SupportLink size="sm" className="h-7 gap-1.5 rounded-full px-3 text-xs" />
-  );
-
   return (
-    <Sidebar collapsible="icon" variant="floating" className="app-sidebar-dock py-3.5">
-      <SidebarHeader className="px-2 py-3 notranslate" translate="no">
-        <div className="flex items-center justify-between">
-          <div className={cn("flex items-center gap-2", isCollapsed && "hidden")}>
-            <Link
-              href="/"
-              className="notranslate flex items-center gap-2 px-1"
-              translate="no"
-            >
-              <BrandLogo mark className="h-6" />
-              {versionInfo && (
-                <span
-                  className="notranslate min-w-0 truncate text-xs font-normal text-muted-foreground"
-                  translate="no"
-                >
-                  v{versionInfo.ui}
-                </span>
-              )}
-            </Link>
-            {isBehind && latestRelease && (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <span className="inline-flex items-center gap-1 rounded-md border border-transparent bg-amber-dim px-1.5 py-0.5 text-[10px] font-medium leading-none text-amber">
-                    <ArrowUpCircle className="h-3 w-3" />
-                    Update
-                  </span>
-                </TooltipTrigger>
-                <TooltipContent side="bottom">
-                  <p>Update available: {latestRelease}</p>
-                </TooltipContent>
-              </Tooltip>
+    <Sidebar
+      collapsible="icon"
+      variant="floating"
+      className={cn(
+        "app-sidebar-dock",
+        docked
+          ? "app-sidebar-docked inset-y-auto bottom-3.5 left-0 h-auto p-0 pl-3.5"
+          : "py-3.5"
+      )}
+    >
+      {/* Only the undocked (workflow editor) layout carries the brand here —
+          the docked shell puts it in the app header instead. */}
+      {!docked && (
+        <SidebarHeader className="px-2 pb-0 pt-1 notranslate" translate="no">
+          <Link
+            href="/overview"
+            className={cn(
+              "notranslate flex items-center gap-2 rounded-[7px] px-1.5 py-1",
+              isCollapsed && "justify-center px-0"
             )}
-            {isLatest && (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <span className="inline-flex items-center rounded-md border border-transparent bg-ok-dim px-1.5 py-0.5 text-[10px] font-medium leading-none text-ok">
-                    Latest
-                  </span>
-                </TooltipTrigger>
-                <TooltipContent side="bottom">
-                  <p>You&apos;re running the latest release</p>
-                </TooltipContent>
-              </Tooltip>
-            )}
-          </div>
-
-          <SidebarTrigger className={cn("shrink-0 hover:bg-accent", isCollapsed && "mx-auto")}>
-            {isCollapsed ? (
-              <ChevronRight className="h-4 w-4" />
-            ) : (
-              <ChevronLeft className="h-4 w-4" />
-            )}
-          </SidebarTrigger>
-        </div>
-
-        {provider === "stack" && (
-          <div className={cn("mt-3 notranslate", isCollapsed && "hidden")} translate="no">
-            <SidebarTeamSwitcher />
-          </div>
-        )}
-      </SidebarHeader>
-
-      <SidebarContent className={cn("notranslate gap-0", isCollapsed && "px-0")} translate="no">
-        {NAV_SECTIONS.map((section, index) => (
-          <SidebarGroup
-            key={section.label ?? "overview"}
-            className={cn("px-2 py-0", index === 0 && "mt-1")}
+            translate="no"
           >
+            <BrandLogo mark className="h-[22px] rounded-md" />
+            <span
+              className={cn(
+                "font-mono text-[13px] font-semibold leading-none",
+                isCollapsed && "sr-only"
+              )}
+            >
+              Failte<span className="font-normal opacity-60">AI</span>
+            </span>
+          </Link>
+        </SidebarHeader>
+      )}
+
+      <SidebarContent className={cn("notranslate gap-0 pt-3.5", isCollapsed && "px-0")} translate="no">
+        {NAV_SECTIONS.map((section) => (
+          <SidebarGroup key={section.label ?? "overview"} className="px-2 py-0">
             {section.label && (
               <SidebarGroupLabel
                 className={cn(
@@ -384,103 +194,28 @@ export function AppSidebar() {
 
       <SidebarFooter
         className={cn(
-          "notranslate mx-2 mt-auto border-t border-line-soft px-0 pb-0 pt-3",
+          "notranslate mx-2 mt-auto border-t border-line-soft px-0 pb-3.5 pt-3",
           isCollapsed && "mx-1"
         )}
         translate="no"
       >
-        <div className="space-y-2">
-          {provider !== "stack" && (
-            <div
-              className={cn(
-                "flex items-center justify-between gap-1 rounded-full border border-line bg-panel-2 p-1",
-                isCollapsed && "flex-col"
-              )}
-            >
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  {userChipTrigger}
-                </DropdownMenuTrigger>
-                <DropdownMenuContent side="top" align="start" className="w-56">
-                  <DropdownMenuLabel className="font-normal">
-                    <div className="flex flex-col space-y-1">
-                      {(user as LocalUser | undefined)?.email && (
-                        <p className="text-xs text-muted-foreground">{(user as LocalUser).email}</p>
-                      )}
-                    </div>
-                  </DropdownMenuLabel>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={() => router.push("/settings")} className="cursor-pointer">
-                    <Settings className="mr-2 h-4 w-4" />
-                    Platform Settings
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => logout()} className="cursor-pointer">
-                    <LogOut className="mr-2 h-4 w-4" />
-                    Sign out
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-              {supportButton}
-            </div>
-          )}
-
-          {provider === "stack" && (
-            <div
-              className={cn(
-                "flex items-center justify-between gap-1 rounded-full border border-line bg-panel-2 p-1",
-                isCollapsed && "flex-col"
-              )}
-            >
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  {userChipTrigger}
-                </DropdownMenuTrigger>
-                <DropdownMenuContent side="top" align="start" className="w-56">
-                  <DropdownMenuLabel className="font-normal">
-                    <div className="flex flex-col space-y-1">
-                      {user?.displayName && (
-                        <p className="text-sm font-medium">{user.displayName}</p>
-                      )}
-                      {(user as { primaryEmail?: string })?.primaryEmail && (
-                        <p className="text-xs text-muted-foreground">{(user as { primaryEmail?: string }).primaryEmail}</p>
-                      )}
-                    </div>
-                  </DropdownMenuLabel>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={() => router.push("/handler/account-settings")} className="cursor-pointer">
-                    <Settings className="mr-2 h-4 w-4" />
-                    Account settings
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => router.push("/settings")} className="cursor-pointer">
-                    <Settings className="mr-2 h-4 w-4" />
-                    Platform Settings
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => logout()} className="cursor-pointer">
-                    <LogOut className="mr-2 h-4 w-4" />
-                    Sign out
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-              {supportButton}
-            </div>
-          )}
-
-          <div className="mt-1 flex justify-center">
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <div className="notranslate" translate="no">
-                  <ThemeToggle
-                    showLabel={false}
-                    className="rounded-full hover:bg-accent hover:text-accent-foreground"
-                  />
-                </div>
-              </TooltipTrigger>
-              <TooltipContent side={isCollapsed ? "right" : "top"}>
-                <p>Toggle theme</p>
-              </TooltipContent>
-            </Tooltip>
-          </div>
-        </div>
+        {isCollapsed ? (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <div className="notranslate flex justify-center" translate="no">
+                <ThemeToggle className="text-ink-2 hover:bg-panel-2 hover:text-foreground" />
+              </div>
+            </TooltipTrigger>
+            <TooltipContent side="right">
+              <p>Toggle theme</p>
+            </TooltipContent>
+          </Tooltip>
+        ) : (
+          <ThemeToggle
+            showLabel
+            className="h-auto rounded-[7px] px-2.5 py-2 text-[13.5px] text-ink-2 hover:bg-panel-2 hover:text-foreground"
+          />
+        )}
       </SidebarFooter>
       <SidebarRail />
     </Sidebar>

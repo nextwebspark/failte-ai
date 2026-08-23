@@ -1565,7 +1565,7 @@ export default function WorkflowSettingsPage() {
 
     if (error || !workflow) {
         return (
-            <div className="flex min-h-screen items-center justify-center">
+            <div className="flex min-h-full items-center justify-center">
                 <div className="text-lg text-destructive">{error || "Workflow not found"}</div>
             </div>
         );
@@ -1716,7 +1716,7 @@ function WorkflowSettingsInner({
     }, []);
 
     return (
-        <div className="min-h-screen">
+        <div className="min-h-full">
             {/* Sticky header */}
             <header className="sticky top-0 z-10 flex items-center gap-3 border-b bg-background/95 px-6 py-3 backdrop-blur supports-[backdrop-filter]:bg-background/60">
                 <Button

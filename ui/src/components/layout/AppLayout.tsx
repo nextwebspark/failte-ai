@@ -1,34 +1,16 @@
 "use client";
 
-import { AlertTriangle, Menu, RefreshCw } from "lucide-react";
-import Link from "next/link";
+import { AlertTriangle, RefreshCw } from "lucide-react";
 import { usePathname } from "next/navigation";
-import React, { ReactNode } from "react";
+import React, { ReactNode, useState } from "react";
 
 import { Button } from "@/components/ui/button";
-import { SidebarInset, SidebarProvider, useSidebar } from "@/components/ui/sidebar";
+import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { useAppConfig } from "@/context/AppConfigContext";
 
 import { AppSidebar } from "./AppSidebar";
-
-function AppHeader() {
-  const { toggleSidebar } = useSidebar();
-
-  return (
-    <header className="sticky top-0 z-50 flex items-center justify-between border-b border-line bg-background/70 px-4 py-2 backdrop-blur-md supports-[backdrop-filter]:bg-background/55">
-      <div className="flex items-center gap-3">
-        <Button variant="ghost" size="icon" onClick={toggleSidebar} aria-label="Open menu" className="md:hidden">
-          <Menu className="h-5 w-5" />
-        </Button>
-        <Link href="/" className="text-lg font-bold md:hidden">Failte AI</Link>
-      </div>
-      {/* Upstream shipped a "Join Slack" invite to the Dograh community and a
-          GitHub star badge for dograh-hq/dograh here. Both are removed: they
-          pointed our customers at the upstream project's community. */}
-      <div className="flex items-center gap-3" />
-    </header>
-  );
-}
+import { AppTopBar } from "./AppTopBar";
+import { PageActionsSlotProvider } from "./PageActionsSlot";
 
 function BackendStatusBanner() {
   const { config, loading, refresh } = useAppConfig();
@@ -72,16 +54,25 @@ function BackendStatusBanner() {
 
 interface AppLayoutProps {
   children: ReactNode;
-  headerActions?: ReactNode;
-  stickyTabs?: ReactNode;
 }
 
-const AppLayout: React.FC<AppLayoutProps> = ({
-  children,
-  headerActions,
-  stickyTabs,
-}) => {
+/**
+ * The workspace ("org level") shell from the design canvas
+ * (app-doc/claude-design/Failte AI v2.dc.html):
+ *
+ *   ┌──────────────────────────────────────────────┐  46px header — brand,
+ *   │ FailteAI / Workspace / Page  strapline   ⋯ ● │  breadcrumb, actions, you
+ *   ├────────────┬─────────────────────────────────┤
+ *   │  nav panel │  content panel                  │  14px gutter + 14px gap,
+ *   └────────────┴─────────────────────────────────┘  both rounded surfaces
+ *
+ * The viewport never scrolls: the content panel is the scroll container, so the
+ * header and nav stay put. The workflow editor keeps the previous full-height
+ * layout — it is an agent-level screen with a header of its own.
+ */
+const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
   const pathname = usePathname();
+  const [actionsSlot, setActionsSlot] = useState<HTMLDivElement | null>(null);
 
   // Check if current route should have sidebar
   // Hide sidebar for root (/), /handler routes (Stack Auth routes), and /auth routes
@@ -90,49 +81,38 @@ const AppLayout: React.FC<AppLayoutProps> = ({
   // Only match the exact editor page /workflow/<id>, not sub-routes like /workflow/<id>/runs
   const isWorkflowEditor = /^\/workflow\/\d+$/.test(pathname);
 
-  // Always render SidebarProvider to keep the component tree shape consistent
-  // across route changes (avoids React hooks ordering violations during navigation).
+  // Always render a single SidebarProvider and branch INSIDE it, so the
+  // provider (and its open/collapsed state) survives navigation between the
+  // shell, the workflow editor and the signed-out routes.
   return (
     <SidebarProvider defaultOpen>
-      {shouldShowSidebar ? (
-        <div className="flex min-h-screen w-full">
-          <AppSidebar />
-          <SidebarInset className="flex-1">
-            <BackendStatusBanner />
-            {!isWorkflowEditor && <AppHeader />}
-            {/* Optional header area for specific pages */}
-            {headerActions && (
-              <header className="sticky top-0 z-50 w-full border-b border-line bg-background/70 backdrop-blur-md supports-[backdrop-filter]:bg-background/55">
-                <div className="container mx-auto px-4 py-4">
-                  <div className="flex items-center justify-center">
-                    {headerActions}
-                  </div>
-                </div>
-              </header>
-            )}
-
-            {/* Optional sticky tabs */}
-            {stickyTabs && (
-              <div className="sticky top-0 z-40 border-b border-line bg-panel">
-                <div className="container mx-auto px-4">
-                  <div className="flex items-center justify-center py-2">
-                    {stickyTabs}
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Main content area */}
-            <main className="app-surface flex-1">
-              {children}
-            </main>
-          </SidebarInset>
-        </div>
-      ) : (
+      {!shouldShowSidebar ? (
         <div className="app-surface w-full flex-1">
           <BackendStatusBanner />
           {children}
         </div>
+      ) : isWorkflowEditor ? (
+        <div className="flex min-h-screen w-full">
+          <AppSidebar docked={false} />
+          <SidebarInset className="flex-1">
+            <BackendStatusBanner />
+            <main className="app-surface flex-1">{children}</main>
+          </SidebarInset>
+        </div>
+      ) : (
+        <PageActionsSlotProvider slot={actionsSlot}>
+          <div className="app-surface flex h-svh w-full flex-col overflow-hidden">
+            <AppTopBar actionsSlotRef={setActionsSlot} />
+
+            <div className="flex min-h-0 flex-1 gap-3.5 px-3.5 pb-3.5 md:pl-0">
+              <AppSidebar />
+              <main className="app-content-panel min-w-0 flex-1 overflow-y-auto rounded-[10px] border border-line bg-panel">
+                <BackendStatusBanner />
+                {children}
+              </main>
+            </div>
+          </div>
+        </PageActionsSlotProvider>
       )}
     </SidebarProvider>
   );

@@ -2,6 +2,7 @@ import { Suspense } from 'react';
 
 import { getWorkflowsApiV1WorkflowFetchGet, listFoldersApiV1FolderGet } from '@/client/sdk.gen';
 import type { FolderResponse, WorkflowListResponse } from '@/client/types.gen';
+import { PageActions } from '@/components/layout/PageActionsSlot';
 import { Card, CardContent } from '@/components/ui/card';
 import { SectionHeading } from '@/components/ui/section-heading';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -110,41 +111,29 @@ async function PageContent() {
     const workflowList = await WorkflowList();
 
     return (
-        <div className="container mx-auto px-4 py-8">
-            {/* Your Workflows Section */}
-            <div className="mb-6">
-                <div className="mb-6 flex items-center justify-between gap-4">
-                    <h1 className="text-xl font-bold tracking-tight">Your Agents</h1>
-                    <div className="flex gap-2">
-                        <UploadWorkflowButton />
-                        <CreateFolderButton />
-                        <CreateWorkflowButton />
-                    </div>
-                </div>
-                {workflowList}
-            </div>
+        <div className="page-body">
+            {/* The screen name lives in the app header (AppTopBar); the canvas
+                does not repeat it here, so the body opens straight on content
+                and the actions ride the header. */}
+            <PageActions>
+                <UploadWorkflowButton />
+                <CreateFolderButton />
+                <CreateWorkflowButton />
+            </PageActions>
+            {workflowList}
         </div>
     );
 }
 
 function WorkflowsLoading() {
     return (
-        <div className="container mx-auto px-4 py-8">
-            <div className="mb-6">
-                <div className="mb-6 flex items-center justify-between gap-4">
-                    <Skeleton className="h-7 w-48" />
-                    <div className="flex gap-2">
-                        <Skeleton className="h-9 w-28" />
-                        <Skeleton className="h-9 w-32" />
-                    </div>
-                </div>
-                <Skeleton className="mb-4 h-5 w-36" />
-                <Card>
-                    <CardContent className="p-0">
-                        <Skeleton className="h-96 rounded-lg" />
-                    </CardContent>
-                </Card>
-            </div>
+        <div className="page-body">
+            <Skeleton className="mb-4 h-5 w-36" />
+            <Card>
+                <CardContent className="p-0">
+                    <Skeleton className="h-96 rounded-lg" />
+                </CardContent>
+            </Card>
         </div>
     );
 }

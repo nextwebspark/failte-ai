@@ -3,6 +3,7 @@
 import { Upload } from "lucide-react";
 import { useEffect, useState } from "react";
 
+import { PageActions } from "@/components/layout/PageActionsSlot";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -24,7 +25,7 @@ export default function RecordingsPage() {
 
     if (loading || !user) {
         return (
-            <div className="container mx-auto px-4 py-8">
+            <div className="page-body">
                 <div className="space-y-4">
                     <Skeleton className="h-12 w-64" />
                     <Skeleton className="h-64 w-full" />
@@ -34,30 +35,24 @@ export default function RecordingsPage() {
     }
 
     return (
-        <div className="container mx-auto px-4 py-8">
-            <div className="mb-8">
-                <h1 className="text-3xl font-bold mb-2">Recordings</h1>
-                <p className="text-muted-foreground">
-                    Manage audio recordings for your organization. Use{" "}
-                    <code className="rounded bg-muted px-1 text-xs">@</code> in prompt fields to insert them,
-                    or as transition messages in tool calls.
-                </p>
-            </div>
+        <div className="page-body">
+            {/* Screen name, strapline and primary action are rendered by the
+                app header (AppTopBar) — see PageActions. */}
+            <PageActions>
+                <Button onClick={() => setIsUploadOpen(true)}>
+                    <Upload className="w-4 h-4" />
+                    Upload recording
+                </Button>
+            </PageActions>
 
             <Card>
                 <CardHeader>
-                    <div className="flex justify-between items-center">
-                        <div>
-                            <CardTitle>All Recordings</CardTitle>
-                            <CardDescription>
-                                Audio recordings shared across all agents in your organization
-                            </CardDescription>
-                        </div>
-                        <Button onClick={() => setIsUploadOpen(true)}>
-                            <Upload className="w-4 h-4 mr-2" />
-                            Upload Recording
-                        </Button>
-                    </div>
+                    <CardTitle>All Recordings</CardTitle>
+                    <CardDescription>
+                        Shared across every agent in your organization. Use{" "}
+                        <code className="rounded bg-muted px-1 text-xs">@</code> in prompt fields to
+                        insert them, or as transition messages in tool calls.
+                    </CardDescription>
                 </CardHeader>
                 <CardContent>
                     <RecordingsList refreshKey={refreshKey} />

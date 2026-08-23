@@ -25,6 +25,7 @@ import type {
   TelephonyConfigurationDetail,
   TelephonyConfigurationListItem,
 } from "@/client/types.gen";
+import { PageActions } from "@/components/layout/PageActionsSlot";
 import { ConfigFormDialog } from "@/components/telephony/ConfigFormDialog";
 import {
   AlertDialog,
@@ -170,20 +171,20 @@ export default function TelephonyConfigurationsPage() {
   };
 
   return (
-    <div className="min-h-screen">
-      <div className="container mx-auto px-4 py-8">
-        <div className="flex items-start justify-between gap-4 mb-6">
-          <div>
-            <h1 className="text-3xl font-bold mb-2">Telephony configurations</h1>
-            <p className="text-muted-foreground">
-              Connect one or more telephony provider accounts. Each campaign uses one
-              configuration; inbound calls are routed to the right one by account ID.
-            </p>
-          </div>
+    <div className="page-body">
+      <div>
+        {/* Screen name, strapline and primary action are rendered by the app
+            header (AppTopBar) — see PageActions. */}
+        <PageActions>
           <Button onClick={() => setCreateOpen(true)}>
-            <Plus className="h-4 w-4 mr-2" /> Add configuration
+            <Plus className="h-4 w-4" /> Add provider
           </Button>
-        </div>
+        </PageActions>
+
+        <p className="mb-6 max-w-3xl text-sm text-ink-2">
+          Connect one or more telephony provider accounts. Each campaign uses one
+          configuration; inbound calls are routed to the right one by account ID.
+        </p>
 
         {telnyxMissingWebhookPublicKeyCount > 0 && (
           <div className="mb-6 rounded-md border border-amber-300 bg-amber-50 p-4 text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-200">

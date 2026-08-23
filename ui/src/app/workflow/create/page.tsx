@@ -80,14 +80,12 @@ export default function CreateWorkflowPage() {
     };
 
     return (
-        <div className="min-h-screen">
-            <div className="container mx-auto px-4 py-8 max-w-2xl">
-                <div className="mb-6">
-                    <h1 className="text-3xl font-bold mb-2">Create Voice Agent</h1>
-                    <p className="text-muted-foreground">
-                        Tell us about your use case and we&apos;ll create a customized voice agent for you
-                    </p>
-                </div>
+        <div className="page-body">
+            <div className="max-w-2xl">
+                {/* The screen name lives in the app header (AppTopBar). */}
+                <p className="mb-6 text-sm text-ink-2">
+                    Tell us about your use case and we&apos;ll create a customized voice agent for you
+                </p>
 
                 <Card>
                     <CardHeader>

@@ -778,7 +778,7 @@ const data = await response.json();`;
 
     if (loading || !user) {
         return (
-            <div className="min-h-screen flex items-center justify-center">
+            <div className="min-h-full flex items-center justify-center">
                 <div className="space-y-4">
                     <Skeleton className="h-12 w-64" />
                     <Skeleton className="h-64 w-96" />
@@ -789,7 +789,7 @@ const data = await response.json();`;
 
     if (isLoading) {
         return (
-            <div className="min-h-screen">
+            <div className="min-h-full">
                 <div className="container mx-auto px-4 py-8">
                     <div className="max-w-4xl mx-auto space-y-6">
                         <Skeleton className="h-8 w-48" />
@@ -802,7 +802,7 @@ const data = await response.json();`;
 
     if (!tool) {
         return (
-            <div className="min-h-screen">
+            <div className="min-h-full">
                 <div className="container mx-auto px-4 py-8">
                     <div className="max-w-4xl mx-auto text-center">
                         <h1 className="text-2xl font-bold mb-4">Tool not found</h1>
@@ -843,7 +843,7 @@ const data = await response.json();`;
     const categoryConfig = getCategoryConfig(tool.category as ToolCategory);
 
     return (
-        <div className="min-h-screen">
+        <div className="min-h-full">
             <div className="container mx-auto px-4 py-8">
                 <div className="max-w-4xl mx-auto">
                     {/* Header */}

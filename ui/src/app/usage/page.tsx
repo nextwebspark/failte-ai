@@ -401,13 +401,11 @@ export default function UsagePage() {
     };
 
     return (
-        <div className="container mx-auto p-6 space-y-6">
+        <div className="page-body space-y-6">
             <div>
-                <div className="flex justify-between items-start">
-                    <div>
-                        <h1 className="text-3xl font-bold mb-2">Agent Runs</h1>
-                        <p className="text-muted-foreground">See all your Agent Runs across all Voice Agents. You can use filters to filter out required Agent Runs.</p>
-                    </div>
+                {/* The screen name lives in the app header (AppTopBar); the row
+                    below is the timezone control that used to sit beside it. */}
+                <div className="flex justify-end items-start">
                         <div className="flex items-center gap-2">
                             <Globe className="h-4 w-4 text-muted-foreground" />
                             <div className="w-[300px]">
