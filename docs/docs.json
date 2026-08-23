@@ -114,6 +114,7 @@
               "integrations/telephony/plivo",
               "integrations/telephony/telnyx",
               "integrations/telephony/cloudonix",
+              "integrations/telephony/voiptel",
               "integrations/telephony/vobiz",
               "integrations/telephony/asterisk-ari",
               "integrations/telephony/vicidial",

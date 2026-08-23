@@ -1,3 +1,4 @@
+import re
 from functools import wraps
 from typing import TYPE_CHECKING
 from urllib.parse import urlencode, urlparse, urlunparse
@@ -590,8 +591,20 @@ def create_tts_service(
         )
     elif user_config.tts.provider == ServiceProviders.GOOGLE.value:
         model = getattr(user_config.tts, "model", None) or "chirp_3_hd"
-        language = getattr(user_config.tts, "language", None) or "en-US"
         voice = getattr(user_config.tts, "voice", None) or "en-US-Chirp3-HD-Charon"
+
+        # Google rejects a synthesis whose language_code disagrees with the
+        # voice's own locale: language "en-GB" with en-US-Chirp3-HD-Aoede is a
+        # 400, and the two are configured independently, so the pairing is easy
+        # to get wrong from the voice picker. Every Google voice name begins
+        # with its locale, so let the voice decide and keep the configured
+        # language only for voices that carry none.
+        locale = re.match(r"^([a-z]{2,3}-[A-Z]{2})-", voice)
+        language = (
+            locale.group(1)
+            if locale
+            else (getattr(user_config.tts, "language", None) or "en-US")
+        )
         speed = getattr(user_config.tts, "speed", None)
         location = getattr(user_config.tts, "location", None) or None
         credentials = getattr(user_config.tts, "credentials", None)
@@ -1005,11 +1018,23 @@ def create_llm_service_from_provider(
             settings=GoogleLLMSettings(model=model, temperature=0.1),
         )
     elif provider == ServiceProviders.GOOGLE_VERTEX.value:
-        return DograhGoogleVertexLLMService(
-            credentials=credentials,
+        # Vertex serves Gemini, Claude, and open MaaS models behind one config;
+        # the fork-owned vertex_llm module picks the service by model id. The
+        # Gemini path is passed as a builder so it never needs the optional
+        # `anthropic` extra.
+        from api.services.pipecat.vertex_llm import build_vertex_llm_service
+
+        return build_vertex_llm_service(
+            model,
             project_id=project_id,
-            location=location or "us-east4",
-            settings=GoogleVertexLLMSettings(model=model, temperature=0.1),
+            location=location,
+            credentials=credentials,
+            gemini_builder=lambda: DograhGoogleVertexLLMService(
+                credentials=credentials,
+                project_id=project_id,
+                location=location or "us-east4",
+                settings=GoogleVertexLLMSettings(model=model, temperature=0.1),
+            ),
         )
     elif provider == ServiceProviders.AZURE.value:
         if endpoint:

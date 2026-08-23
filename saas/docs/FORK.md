@@ -81,6 +81,46 @@ These upstream files we expect to modify. Keep this list short and current — a
 | `ui/src/middleware.ts` | Route guarding by role |
 | `ui/src/lib/auth/` | Provider abstraction (`types.ts`, `config.ts`, `providers/`) |
 | **Branding — every user-visible string, see below** | Renamed Dograh → Failte AI, or removed |
+| `api/routes/user.py` | Google voice catalogue: a `provider == "google"` branch before the MPS call, the `/voices/google/preview` route, and `"google"` added to the `TTSProvider` literal |
+| `ui/src/components/VoiceSelectorModal.tsx` | Authenticated blob playback (plus revocation) for our own relative preview URLs, and `defaultGender`/`defaultAccent`/`defaultLanguage` props so a provider can open on something other than American English |
+| `ui/src/components/ServiceConfigurationForm.tsx` | A Google TTS voice field renders `VoiceSelectorModal`, ahead of the `allow_custom_input` check |
+| `ui/src/client/` | Regenerated — the voice route's provider path param now includes `google` |
+| `api/services/pipecat/service_factory.py` | Google TTS: `language_code` derived from the voice's own locale instead of the separately-configured language. Vertex LLM: the `GOOGLE_VERTEX` branch is a single call into fork-owned `api/services/pipecat/vertex_llm.py`, which routes Claude/MaaS models to their own services |
+| `api/services/configuration/options/google.py` | `GOOGLE_VERTEX_MODELS` extended with Claude and MaaS ids after upstream's Gemini block — keep both halves on conflict |
+| `api/services/configuration/registry.py` | Vertex `model`/`location` field descriptions widened to cover Claude and MaaS |
+| `api/Dockerfile`, `.devcontainer/Dockerfile`, `scripts/setup_pipecat.sh`, `scripts/setup_requirements.sh`, `scripts/setup_requirements.ps1` | `anthropic` added to the pipecat extras list — five copies of one string; re-add it to any site upstream rewrites |
+| `api/tests/test_google_tts_service_factory.py` | One fixture paired `sw-KE` with an `en-US` voice — the combination Google rejects — so it had to become a consistent pair |
+| `ui/src/app/workflow/[workflowId]/run/[runId]/hooks/useWebSocketRTC.tsx` | Live-feedback row ids come from `@/lib/feedbackId` — `Date.now()` alone collides |
+| `ui/src/lib/publicEmbedWidget.test.ts` | The mocked embed config carries a `texts` block, as the real endpoint does |
+
+#### Google voice picker
+
+The logic lives in `api/saas/voice_catalog/google_voices.py` (ours, conflict-free); the three
+files above are the seams that reach it. Upstream serves voice catalogues from its hosted MPS
+service, which has no Google voices, so a BYOK Google deployment got a free-text voice id box.
+
+Google reuses `VoiceSelectorModal` — the dialog upstream built for its managed pipeline, which
+filters server-side on `gender`/`accent`/`language`/`q` and reads `facets` back. Our catalogue
+answers exactly that contract, so agent-level Google voice selection is wiring, not new UI.
+`VoiceSelector` (the popover used by the MPS providers) is deliberately left untouched.
+
+Three traps worth keeping in the resolution:
+
+- Google's voice field sets `allow_custom_input: true`, and the form only rendered a picker when
+  a field *disallowed* it. Without the `ServiceConfigurationForm` change the modal is unreachable.
+- An `<audio>` element can send neither a backend origin nor a bearer token, so our preview URLs
+  must be fetched and played as a blob. MPS previews are public URLs and need none of this.
+- Voices carry a *base* language (`en`) with the region in `accent` (`gb`), not the raw locale
+  (`en-GB`). The picker's language filter and `LANGUAGE_DISPLAY_NAMES` are both keyed on the base
+  code, so emitting locales makes the default filter match zero voices. `preview_audio()`
+  recovers the full locale from the voice id.
+- Google's synthesis call takes `language_code` and `voice` separately and rejects them if they
+  disagree (`en-GB` + `en-US-Chirp3-HD-Aoede` is a 400). Since the two are configured
+  independently, `service_factory.py` takes the language from the voice's locale prefix and falls
+  back to the configured one only for a voice that carries none.
+
+Covered by `api/tests/test_google_voice_catalog.py`, `api/tests/test_google_tts_service_factory.py`
+and `ui/src/components/VoiceSelectorModal.test.tsx`.
 
 #### Branding
 
@@ -227,15 +267,22 @@ They cover exactly the code paths our SaaS layer extends.
 
 ### Test baseline
 
-The suite is green. Any failure is ours:
+Both suites are green. Any failure is ours:
 
 ```
-1892 passed
+python -m pytest api/tests   ->  1911 passed
+cd ui && npm test            ->  106 passed (21 files)
 ```
 
 At fork time it was `1858 passed, 2 failed`. Both failures were `api/tests/test_sdk_sync.py` — upstream's own drift, not ours: commit `871ad4cc` added `from_phone_number_id` to the trigger node spec without regenerating the SDKs, so the committed typed files no longer matched the spec registry. Release 1.45.0 shipped that way.
 
-Fixed by regenerating **only** the typed node files — the two commands under step 1 of `scripts/generate_sdk.sh`:
+The UI suite also inherited one failure: `publicEmbedWidget.test.ts` mocked the embed config
+endpoint without its `texts` block, and the widget holds no default copy of its own — every
+visitor-facing string arrives already resolved from `api/schemas/widget_texts.py`. So
+`widgetText()` returned `''` for every key and the banner the test asserts on rendered empty.
+Fixed in the fixture, which now sends `texts` the way the real endpoint does.
+
+The SDK drift was fixed by regenerating **only** the typed node files — the two commands under step 1 of `scripts/generate_sdk.sh`:
 
 ```bash
 source venv/bin/activate && set -a && source api/.env && set +a

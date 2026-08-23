@@ -1,0 +1,330 @@
+---
+title: "Voiptel Trunk Configuration"
+description: "Connect Voiptel Irish numbers to Dograh AI voice agents over a SIP trunk"
+---
+
+## Overview
+
+[Voiptel](https://voiptel.ie/) is an Irish VoIP carrier — they sell numbers, PSTN termination, and hosted PBX service. They are **not** a CPaaS: there is no REST API, no call-control markup dialect, and no media-stream WebSocket. So there is no `voiptel` provider in Dograh's telephony provider list, and there never will be — there would be nothing for it to call.
+
+Voiptel connects to Dograh the way any plain SIP carrier does: **as a SIP trunk terminating into a programmable layer that Dograh already supports.**
+
+You have two supported paths. Both are already implemented — neither needs new code.
+
+| | **Cloudonix** (recommended) | **Asterisk ARI** |
+|---|---|---|
+| Infrastructure you run | None | An Asterisk 20 LTS / 22+ instance |
+| Voiptel trunk terminates on | Cloudonix's SIP edge | Your Asterisk |
+| Setup effort | ~30 min, all web console | A few hours, `pjsip.conf` + dialplan |
+| Inbound routing | Per-DNID, via a Voice Application | Per-extension, via `Stasis()` dialplan |
+| Dograh provider to select | **Cloudonix** | **Asterisk ARI** |
+| Best when | You just want Voiptel numbers answered by an agent | You already run a PBX, or need dialplan-level control |
+
+<Note>
+Pick **Cloudonix** unless you already operate Asterisk. It gives you the SIP
+edge, the call control, and the DNID routing without standing up or securing a
+PBX of your own.
+</Note>
+
+---
+
+## What to request from Voiptel first
+
+Both paths need the same things from Voiptel's support. Send them one ticket:
+
+1. **SIP trunk provisioning** for your account — inbound (termination to you) and outbound (origination from you), if you want the agent to place calls too.
+2. **Authentication method** — either:
+   - *IP authentication* (Voiptel whitelists your SIP edge IP — simplest, and what Cloudonix expects), or
+   - *Registration credentials* (SIP username, password, registrar host).
+3. **Their SIP signalling host and port**, and which transports they accept (UDP / TCP / TLS).
+4. **Their media IP ranges**, so you can whitelist them.
+5. **The DDI / DNID format they will present** on inbound calls — full E.164 (`+353...`), national (`0...`), or bare subscriber digits. This bites people; ask explicitly.
+6. **Codec support** — confirm **G.711 a-law and µ-law**. Dograh's media path is µ-law; a trunk locked to G.729 will not work.
+7. **Whether they accept your caller ID** on outbound, and whether numbers must be pre-verified.
+
+<Note>
+Ireland is E.164 `+353`. Voiptel presenting a national-format DDI like
+`014433000` instead of `+35314433000` is the single most common reason an
+inbound call reaches the platform but no agent answers — Dograh matches the
+called number against the phone numbers on your configuration after
+normalising to E.164. If Voiptel cannot present E.164, see
+[Number format mismatches](#number-format-mismatches) below.
+</Note>
+
+---
+
+## Path A — Voiptel via Cloudonix
+
+Voiptel terminates calls onto Cloudonix's SIP edge. Cloudonix provides the programmable layer, and Dograh talks to Cloudonix.
+
+```
+Voiptel PSTN ──SIP trunk──▶ Cloudonix edge ──CXML/WSS──▶ Dograh ──▶ Agent
+```
+
+### Step 1: Create the Cloudonix domain and get credentials
+
+Follow [Step 1 of the Cloudonix guide](/integrations/telephony/cloudonix#step-1-get-cloudonix-credentials) to create an account and collect your **Domain ID** and **Bearer Token**.
+
+### Step 2: Configure Cloudonix in Dograh
+
+Follow [Step 2 of the Cloudonix guide](/integrations/telephony/cloudonix#step-2-configure-in-dograh-ai). Leave **Application Name** blank — Dograh auto-creates the Voice Application with the correct `url` already set.
+
+Save, then open the saved configuration. The **SIP connectivity** panel now shows your domain's regional endpoints. **These are the values you give Voiptel.**
+
+### Step 3: Give Voiptel the Cloudonix endpoint
+
+From the SIP connectivity panel, use the **Global** region for Irish traffic:
+
+| Transport | Endpoint | Port |
+|---|---|---|
+| UDP | `<your-domain-uuid>.sip.cloudonix.net` | `5060` |
+| TCP | `<your-domain-uuid>.sip.cloudonix.net;transport=tcp` | `5060` |
+| TLS | `<your-domain-uuid>.sip.cloudonix.net;transport=tls` | `443` |
+
+Cloudonix's **Global** edge originates outbound calls from `18.219.128.166` — give Voiptel this address to whitelist. India (`in.dimi.tel`, ports 9060/9443, edge `128.199.27.19`) and UAE (`uae.dimi.tel`, ports 9081/9443, edge `20.233.60.70`) also appear in the panel; ignore them unless you are terminating traffic in those regions.
+
+<Note>
+Read the exact hostname off the SIP connectivity panel rather than composing
+it by hand — it is built from your domain UUID, and the panel is generated
+from the same table that provisions the trunk, so it cannot drift.
+</Note>
+
+Ask Voiptel to route your DDIs to that endpoint.
+
+### Step 4: Create the inbound trunk on Cloudonix
+
+In the [Cloudonix cockpit](https://cockpit.cloudonix.io), go to **Trunks → Create Inbound Trunk** and create a trunk accepting traffic from Voiptel's signalling IPs (from your ticket, item 4).
+
+### Step 5: Bind your Voiptel DNIDs to the Voice Application
+
+In the cockpit, open **Applications** and select the `dograh-<random>` application Dograh created. Under **DNID Numbers**, add each Voiptel number, in the format Voiptel actually presents it (item 5 of your ticket).
+
+Full detail: [Cloudonix inbound setup, Step 2](/integrations/telephony/cloudonix#step-2-create-the-voice-application-and-link-dnids).
+
+### Step 6: Add the numbers in Dograh and assign workflows
+
+1. Open your Cloudonix configuration at **/telephony-configurations**
+2. Under **Phone numbers**, add each Voiptel DDI in E.164 (`+35312345678`)
+3. Set each number's **Inbound workflow** to the agent that should answer
+4. Save
+
+Saving pushes the webhook URL to your Cloudonix Voice Application automatically. Verify it landed: the application's **URL** should read `https://api.dograh.com/api/v1/telephony/inbound/run` with method `POST` (self-hosted deployments use their own backend domain).
+
+### Step 7: Outbound (optional)
+
+For the agent to place calls out through Voiptel, configure a **Dograh-managed outbound trunk** on the Cloudonix configuration — enable it, give it a name (letters, digits, hyphens only), pick the **Global** region, and set the SIP domain Voiptel expects in the Request-URI. Dograh creates and syncs the trunk on Cloudonix for you.
+
+Set one of your Voiptel numbers as the **default caller ID** on the configuration. Cloudonix rejects outbound calls with no caller ID.
+
+---
+
+## Path B — Voiptel via Asterisk ARI
+
+You run Asterisk. Voiptel terminates onto it as a PJSIP trunk, and Dograh drives call control over ARI.
+
+```
+Voiptel PSTN ──SIP trunk──▶ your Asterisk ──ARI + WSS──▶ Dograh ──▶ Agent
+```
+
+Complete the [Asterisk ARI guide](/integrations/telephony/asterisk-ari) first — `ari.conf`, `http.conf`, `websocket_client.conf`, and the Dograh-side configuration are all covered there and are Voiptel-independent. What follows is only the Voiptel trunk itself.
+
+### Step 1: Define the Voiptel trunk (`pjsip.conf`)
+
+Substitute the values from your Voiptel ticket. Registration-based variant:
+
+```ini
+[voiptel-transport]
+type = transport
+protocol = udp
+bind = 0.0.0.0:5060
+
+[voiptel]
+type = registration
+transport = voiptel-transport
+outbound_auth = voiptel-auth
+server_uri = sip:sip.voiptel.example
+client_uri = sip:YOUR_SIP_USERNAME@sip.voiptel.example
+retry_interval = 60
+
+[voiptel-auth]
+type = auth
+auth_type = userpass
+username = YOUR_SIP_USERNAME
+password = YOUR_SIP_PASSWORD
+
+[voiptel]
+type = aor
+contact = sip:sip.voiptel.example
+
+[voiptel]
+type = endpoint
+transport = voiptel-transport
+context = from-voiptel
+disallow = all
+allow = ulaw
+allow = alaw
+outbound_auth = voiptel-auth
+aors = voiptel
+from_user = YOUR_SIP_USERNAME
+direct_media = no
+
+[voiptel]
+type = identify
+endpoint = voiptel
+match = sip.voiptel.example
+```
+
+If Voiptel uses IP authentication instead, drop the `registration` and `auth` sections and keep `endpoint`, `aor`, and `identify` — `identify` is what maps inbound packets from their IP onto the endpoint.
+
+<Note>
+`allow = ulaw` is mandatory. Dograh's external media channel is G.711
+µ-law; a trunk that negotiates only a-law will connect but the agent will
+hear nothing usable. Offering both `ulaw` and `alaw` and letting Asterisk
+transcode is fine.
+
+`direct_media = no` is also required — media must flow through Asterisk for
+the external media channel to tap it.
+</Note>
+
+### Step 2: Route Voiptel's inbound calls into Stasis (`extensions.conf`)
+
+```ini
+[from-voiptel]
+exten => _X.,1,NoOp(Voiptel inbound to ${EXTEN} from ${CALLERID(num)})
+ same => n,Set(CALLERID(num)=${FILTER(0-9+,${CALLERID(num)})})
+ same => n,Stasis(dograh)
+ same => n,Hangup()
+```
+
+Replace `dograh` with the app name from your `ari.conf`.
+
+If Voiptel presents national-format DDIs, normalise them to E.164 here so they match what you register in Dograh:
+
+```ini
+[from-voiptel]
+; Voiptel sends 0XXXXXXXX — rewrite the leading 0 to +353
+exten => _0X.,1,NoOp(Voiptel inbound to ${EXTEN})
+ same => n,Goto(from-voiptel-e164,+353${EXTEN:1},1)
+
+[from-voiptel-e164]
+exten => _+353X.,1,NoOp(Normalised to ${EXTEN})
+ same => n,Stasis(dograh)
+ same => n,Hangup()
+```
+
+### Step 3: Outbound through Voiptel (optional)
+
+```ini
+[dograh-outbound]
+exten => _+353X.,1,NoOp(Outbound via Voiptel to ${EXTEN})
+ same => n,Set(CALLERID(num)=${YOUR_VOIPTEL_DDI})
+ same => n,Dial(PJSIP/${EXTEN}@voiptel,60)
+ same => n,Hangup()
+```
+
+Set **From Extensions** on your Dograh ARI configuration to the endpoint Dograh should originate through — e.g. `PJSIP/voiptel`.
+
+### Step 4: Reload and register the numbers
+
+```bash
+asterisk -rx "module reload res_pjsip.so"
+asterisk -rx "dialplan reload"
+asterisk -rx "pjsip show registrations"    # expect: Registered
+asterisk -rx "pjsip show endpoint voiptel" # expect: Available
+```
+
+Then in Dograh, add each DDI under **Phone numbers** on your ARI configuration — using **exactly the string that reaches `Stasis()`** after any dialplan rewriting — and assign each an **Inbound workflow**.
+
+---
+
+## Verifying end to end
+
+1. **Signalling reaches the platform.** Cloudonix: check **Sessions** in the cockpit. Asterisk: `asterisk -rvvv` and watch for the `Stasis` dialplan step.
+2. **Dograh created a run.** The call appears under your workflow runs with `direction: inbound`.
+3. **Audio is two-way.** Both directions audible, no one-way audio (see [No audio](#no-audio-or-one-way-audio) below).
+4. **The right agent answered.** Confirm the workflow that ran matches the number's **Inbound workflow** assignment.
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Number format mismatches">
+    The most common Voiptel-specific failure. The call arrives, Dograh sees it,
+    but no phone number matches so nothing answers.
+
+    Dograh normalises the called number to E.164 and matches it against the
+    addresses on your telephony configuration. If Voiptel presents
+    `014433000` and you registered `+35314433000`, there is no match.
+
+    Fix at whichever layer you control: rewrite in the Asterisk dialplan
+    (Path B, Step 2), or register the number in the DNID list and in Dograh
+    in the exact format Voiptel sends (Path A). Check the backend logs for
+    the number as received before assuming the DDI is wrong.
+  </Accordion>
+
+  <Accordion title="Calls rejected at the SIP layer (403 / 407)">
+    - **403 Forbidden inbound:** Voiptel is not routing to the endpoint you
+      gave them, or your side is not recognising their source IP. On Path A,
+      confirm the Cloudonix inbound trunk lists Voiptel's signalling IPs.
+      On Path B, confirm the `[voiptel] type = identify` `match` covers every
+      IP they send from — carriers frequently signal from more addresses than
+      they document.
+    - **407 Proxy Authentication Required outbound:** credentials are wrong,
+      or the trunk is IP-authenticated and your origin IP is not whitelisted.
+      Give Voiptel the Cloudonix edge IP (`18.219.128.166` for Global) or your
+      Asterisk's public IP.
+  </Accordion>
+
+  <Accordion title="No audio, or one-way audio">
+    - Confirm the trunk negotiated **G.711**. `asterisk -rx "core show channels
+      verbose"` during a call, or check the SDP in a `pjsip set logger on`
+      trace. G.729 will not work.
+    - Path B: `direct_media = no` on the endpoint. With direct media on,
+      RTP bypasses Asterisk and the external media channel has nothing to tap.
+    - One-way audio is almost always NAT or firewall: confirm Voiptel's media
+      IP ranges are open inbound, and that your `external_media_address` /
+      `external_signaling_address` are set on the PJSIP transport if Asterisk
+      is behind NAT.
+  </Accordion>
+
+  <Accordion title="Inbound reaches Dograh but hangs up immediately">
+    - The called number has no **Inbound workflow** assigned.
+    - The number is not registered under the telephony configuration at all.
+    - The organisation is out of quota.
+
+    All three appear in the backend logs. Path B additionally: confirm the
+    extension is registered under the *ARI* configuration, not a different one.
+  </Accordion>
+
+  <Accordion title="Outbound calls rejected for caller ID">
+    Voiptel may only accept caller IDs that are DDIs on your own account.
+    Set the **default caller ID** on the Dograh configuration to a Voiptel-owned
+    number in E.164, and confirm with Voiptel whether arbitrary caller ID
+    presentation is permitted on your trunk.
+  </Accordion>
+
+  <Accordion title="Why isn't there a 'Voiptel' option in the provider dropdown?">
+    Because Voiptel has no programmable-voice API for a provider integration to
+    call — no REST endpoint to place a call, no markup dialect to answer one,
+    no media WebSocket to stream audio. They are a carrier, not a platform.
+    Select **Cloudonix** or **Asterisk ARI** as the provider; Voiptel is the
+    trunk behind it.
+
+    If Voiptel later ships a partner API, see
+    [Custom Telephony Provider](/integrations/telephony/custom).
+  </Accordion>
+</AccordionGroup>
+
+## Best practices
+
+- Terminate on **TLS** where Voiptel supports it — SIP over UDP on port 5060 attracts constant scanning.
+- Restrict inbound SIP to Voiptel's documented IP ranges rather than leaving 5060 open.
+- Register DDIs in E.164 everywhere and normalise at the edge, so there is exactly one canonical format inside the system.
+- Test with a single call before pointing production DDIs at an agent.
+- On Path B, keep Asterisk patched — it is now an internet-facing service you own.
+
+## Further reading
+
+- [Cloudonix Integration](/integrations/telephony/cloudonix) — the full Cloudonix setup this guide builds on
+- [Asterisk ARI Integration](/integrations/telephony/asterisk-ari) — Asterisk-side configuration in full
+- [Inbound Calling](/integrations/telephony/inbound) — how Dograh routes inbound calls to workflows
+- [Custom Telephony Provider](/integrations/telephony/custom) — for carriers that *do* expose a programmable API

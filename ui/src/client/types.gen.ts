@@ -6639,6 +6639,10 @@ export type TriggerCallRequest = {
      * Telephony Configuration Id
      */
     telephony_configuration_id?: number | null;
+    /**
+     * From Phone Number Id
+     */
+    from_phone_number_id?: number | null;
 };
 
 /**
@@ -10411,7 +10415,7 @@ export type GetVoicesApiV1UserConfigurationsVoicesProviderGetData = {
         /**
          * Provider
          */
-        provider: 'elevenlabs' | 'deepgram' | 'sarvam' | 'cartesia' | 'dograh' | 'rime';
+        provider: 'elevenlabs' | 'deepgram' | 'sarvam' | 'cartesia' | 'dograh' | 'rime' | 'google';
     };
     query?: {
         /**
@@ -10459,6 +10463,48 @@ export type GetVoicesApiV1UserConfigurationsVoicesProviderGetResponses = {
 };
 
 export type GetVoicesApiV1UserConfigurationsVoicesProviderGetResponse = GetVoicesApiV1UserConfigurationsVoicesProviderGetResponses[keyof GetVoicesApiV1UserConfigurationsVoicesProviderGetResponses];
+
+export type PreviewGoogleVoiceApiV1UserConfigurationsVoicesGooglePreviewGetData = {
+    body?: never;
+    headers?: {
+        /**
+         * Authorization
+         */
+        authorization?: string | null;
+        /**
+         * X-Api-Key
+         */
+        'X-API-Key'?: string | null;
+    };
+    path?: never;
+    query: {
+        /**
+         * Voice Id
+         */
+        voice_id: string;
+    };
+    url: '/api/v1/user/configurations/voices/google/preview';
+};
+
+export type PreviewGoogleVoiceApiV1UserConfigurationsVoicesGooglePreviewGetErrors = {
+    /**
+     * Not found
+     */
+    404: unknown;
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type PreviewGoogleVoiceApiV1UserConfigurationsVoicesGooglePreviewGetError = PreviewGoogleVoiceApiV1UserConfigurationsVoicesGooglePreviewGetErrors[keyof PreviewGoogleVoiceApiV1UserConfigurationsVoicesGooglePreviewGetErrors];
+
+export type PreviewGoogleVoiceApiV1UserConfigurationsVoicesGooglePreviewGetResponses = {
+    /**
+     * Successful Response
+     */
+    200: unknown;
+};
 
 export type CreateCampaignApiV1CampaignCreatePostData = {
     body: CreateCampaignRequest;

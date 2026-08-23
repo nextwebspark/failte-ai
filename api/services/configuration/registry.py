@@ -445,7 +445,11 @@ class GoogleVertexLLMConfiguration(BaseLLMConfiguration):
     provider: Literal[ServiceProviders.GOOGLE_VERTEX] = ServiceProviders.GOOGLE_VERTEX
     model: str = Field(
         default="gemini-3.5-flash",
-        description="Gemini model on Vertex AI.",
+        description=(
+            "Model on Vertex AI. Supports Gemini, Anthropic Claude (claude-*), "
+            "and open MaaS models (e.g. meta/*, deepseek-ai/*, qwen/*) served "
+            "through your Vertex project."
+        ),
         json_schema_extra={
             "examples": GOOGLE_VERTEX_MODELS,
             "allow_custom_input": True,
@@ -454,7 +458,11 @@ class GoogleVertexLLMConfiguration(BaseLLMConfiguration):
     project_id: str = Field(description="Google Cloud project ID for Vertex AI.")
     location: str = Field(
         default="global",
-        description="GCP region for the Vertex AI endpoint (e.g. 'global').",
+        description=(
+            "GCP region for the Vertex AI endpoint (e.g. 'global'). Gemini and "
+            "Claude support 'global'; MaaS models are regional — 'global' is "
+            "auto-mapped to 'us-central1' for them."
+        ),
     )
     credentials: str | None = Field(
         default=None,

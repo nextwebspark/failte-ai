@@ -8,6 +8,7 @@ import type { ConversationNodeTransitionItem, RealtimeFeedbackMessage as Feedbac
 import { useAppConfig } from "@/context/AppConfigContext";
 import { resolveBrowserBackendUrl } from '@/lib/apiClient';
 import { detailFromError } from '@/lib/apiError';
+import { feedbackId } from '@/lib/feedbackId';
 import logger from '@/lib/logger';
 
 import { sdpFilterCodec } from "../utils";
@@ -421,7 +422,7 @@ export const useWebSocketRTC = ({ workflowId, workflowRunId, accessToken, initia
                             ) {
                                 interruptWarningShownRef.current = true;
                                 setFeedbackMessages(prev => [...prev, {
-                                    id: `interrupt-warning-${Date.now()}`,
+                                    id: feedbackId("interrupt-warning"),
                                     type: 'interrupt-warning',
                                     text: 'Interruption is disabled for this step. The bot will finish speaking before processing your input. You can enable interruption in the workflow editor.',
                                     timestamp: new Date().toISOString(),
@@ -445,7 +446,7 @@ export const useWebSocketRTC = ({ workflowId, workflowRunId, accessToken, initia
 
                                 // Step 3: Add new transcription (interim or final)
                                 return [...messagesWithoutInterim, {
-                                    id: `user-${Date.now()}`,
+                                    id: feedbackId("user"),
                                     type: 'user-transcription',
                                     text: transcription.text,
                                     final: transcription.final,
@@ -468,7 +469,7 @@ export const useWebSocketRTC = ({ workflowId, workflowRunId, accessToken, initia
                                 }
                                 // Start new bot message
                                 return [...prev, {
-                                    id: `bot-${Date.now()}`,
+                                    id: feedbackId("bot"),
                                     type: 'bot-text',
                                     text: message.payload.text,
                                     final: false,
@@ -524,7 +525,7 @@ export const useWebSocketRTC = ({ workflowId, workflowRunId, accessToken, initia
                             const transitionTimestamp = new Date().toISOString();
                             const transition: ConversationNodeTransitionItem = {
                                 kind: 'node-transition',
-                                id: `node-${Date.now()}`,
+                                id: feedbackId("node"),
                                 timestamp: transitionTimestamp,
                                 nodeId: node_id,
                                 nodeName: node_name ?? 'Node',
@@ -550,7 +551,7 @@ export const useWebSocketRTC = ({ workflowId, workflowRunId, accessToken, initia
                         case 'rtf-ttfb-metric': {
                             const { ttfb_seconds, processor, model } = message.payload;
                             setFeedbackMessages(prev => [...prev, {
-                                id: `ttfb-${Date.now()}`,
+                                id: feedbackId("ttfb"),
                                 type: 'ttfb-metric',
                                 text: `${(ttfb_seconds * 1000).toFixed(0)}ms`,
                                 ttfbSeconds: ttfb_seconds,
@@ -564,7 +565,7 @@ export const useWebSocketRTC = ({ workflowId, workflowRunId, accessToken, initia
                         case 'rtf-pipeline-error': {
                             const { error, fatal, processor: errorProcessor } = message.payload;
                             setFeedbackMessages(prev => [...prev, {
-                                id: `error-${Date.now()}`,
+                                id: feedbackId("error"),
                                 type: 'pipeline-error',
                                 text: error,
                                 fatal,
