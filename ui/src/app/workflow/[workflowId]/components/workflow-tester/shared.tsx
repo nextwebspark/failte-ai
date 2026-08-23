@@ -13,7 +13,7 @@ export function DisabledNotice({ reason }: { reason: string }) {
                 <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
                 <div className="space-y-0.5">
                     <p className="font-medium">Testing is paused</p>
-                    <p className="text-amber/90">{reason}</p>
+                    <p className="text-amber">{reason}</p>
                 </div>
             </div>
         </div>

@@ -11,7 +11,7 @@ import { cn } from "@/lib/utils"
  * a screen (sky), a success/live state (brand), or an action-required notice
  * (amber) — see "Model and voice" and "Action required" in the canvas.
  */
-const panelVariants = cva("rounded-lg border border-line-soft bg-panel-2", {
+const panelVariants = cva("rounded-lg border border-line bg-panel-2", {
     variants: {
         accent: {
             none: "",

@@ -25,7 +25,7 @@ export const stackAuthDarkTheme: ThemeConfig = {
     mutedForeground: "#8d96a6", // --ink-3
     accent: "#171b22",
     accentForeground: "#f1f3f6",
-    destructive: "#e5534b", // --danger
+    destructive: "#e5534b", // canvas --red
     destructiveForeground: "#ffffff",
     border: "#232833", // --line
     input: "#232833",

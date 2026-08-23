@@ -16,7 +16,7 @@ export const BaseHandle = forwardRef<HTMLDivElement, BaseHandleProps>(
                 type={type}
                 {...props}
                 className={cn(
-                    "transition-all hover:!bg-blue-500",
+                    "transition-all hover:!bg-sky",
                     // Source (outgoing) has larger visible handle for easier connection
                     isSource && "!h-[16px] !w-[16px] rounded-full",
                     // Target (incoming) smaller rectangle

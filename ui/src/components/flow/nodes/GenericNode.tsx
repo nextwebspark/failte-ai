@@ -143,16 +143,19 @@ function resolveIntegrationSummary(
 
 /** Canvas status tones, as the dim-wash backgrounds node badges are drawn with. */
 const TONE = {
+    // Filled washes
     ok: "bg-ok-dim text-ok",
     info: "bg-sky-dim text-sky",
     warn: "bg-amber-dim text-amber",
     bad: "bg-danger-dim text-danger",
-    brand: "bg-brand-dim text-brand",
     mute: "bg-panel-2 text-ink-3",
-    // Outlined variants keep the remaining node types distinguishable without
-    // adding hues outside the canvas palette.
-    infoOutline: "border border-sky/40 bg-panel text-sky",
-    muteOutline: "border border-line bg-panel text-ink-2",
+    // Outlined counterparts. Same hues, different form — enough to separate
+    // eight node types from a five-hue palette. The borders are solid because
+    // a badge sits on --panel, where border-line is 1.25:1 and invisible.
+    brandOutline: "border border-brand bg-panel text-brand",
+    infoOutline: "border border-sky bg-panel text-sky",
+    warnOutline: "border border-amber bg-panel text-amber",
+    muteOutline: "border border-ink-3 bg-panel text-ink-2",
 } as const;
 
 function getBadgeForSpec(
@@ -173,11 +176,11 @@ function getBadgeForSpec(
         case "global":
             return { label: "Global Node", className: TONE.warn };
         case "trigger":
-            return { label: "API Trigger", className: TONE.brand };
+            return { label: "API Trigger", className: TONE.brandOutline };
         case "webhook":
             return { label: "Webhook", className: TONE.muteOutline };
         case "qa":
-            return { label: "QA Analysis", className: TONE.mute };
+            return { label: "QA Analysis", className: TONE.warnOutline };
         case "integration":
             return { label: spec.display_name, className: TONE.infoOutline };
     }

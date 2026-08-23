@@ -76,7 +76,7 @@ const EdgeDetailsDialog = ({ open, onOpenChange, data, onSave }: EdgeDetailsDial
                 <DialogHeader>
                     <DialogTitle>Edit Condition</DialogTitle>
                     {data?.invalid && data.validationMessage && (
-                        <div className="mt-2 flex items-center gap-2 rounded-md bg-red-50 p-2 text-sm text-red-500 border border-red-200">
+                        <div className="mt-2 flex items-center gap-2 rounded-md border border-danger/30 bg-danger-dim p-2 text-sm text-danger">
                             <AlertCircle className="h-4 w-4" />
                             <span>{data.validationMessage}</span>
                         </div>
