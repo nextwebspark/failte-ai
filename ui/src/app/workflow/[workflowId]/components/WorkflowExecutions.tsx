@@ -207,7 +207,7 @@ export function WorkflowExecutions({ workflowId, searchParams }: WorkflowExecuti
     }, [fetchWorkflowRuns, currentPage, appliedFilters, sortBy, sortOrder]);
 
     return (
-        <div className="container mx-auto py-8">
+        <div className="page-body">
             <WorkflowRunsTable
                 runs={workflowRuns}
                 loading={loading}

@@ -6,8 +6,7 @@ import {
     Panel,
     ReactFlow,
 } from "@xyflow/react";
-import { BrushCleaning, Maximize2, Minus, Plus, Settings } from 'lucide-react';
-import { useRouter } from 'next/navigation';
+import { BrushCleaning, Maximize2, Minus, Plus } from 'lucide-react';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 
@@ -16,9 +15,9 @@ import type { DocumentResponseSchema, RecordingResponseSchema, ToolResponse, Wor
 import { useNodeSpecs } from "@/components/flow/renderer";
 import { FlowEdge, FlowNode, NodeType } from "@/components/flow/types";
 import { Button } from '@/components/ui/button';
-import { Sheet, SheetContent } from '@/components/ui/sheet';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { useOnboarding } from '@/context/OnboardingContext';
+import { useAgentShell } from '@/context/AgentShellContext';
+import { useUnsavedChanges } from '@/context/UnsavedChangesContext';
 import { detailFromError } from '@/lib/apiError';
 import { WorkflowConfigurations } from '@/types/workflow-configurations';
 
@@ -27,9 +26,7 @@ import CustomEdge from "../../../components/flow/edges/CustomEdge";
 import { GenericNode } from "../../../components/flow/nodes/GenericNode";
 import { PhoneCallDialog } from './components/PhoneCallDialog';
 import { VersionHistoryPanel } from './components/VersionHistoryPanel';
-import type { WorkflowRuntimeNodeTransition } from './components/workflow-tester/types';
 import { WorkflowEditorHeader } from "./components/WorkflowEditorHeader";
-import { WorkflowTesterPanel } from './components/WorkflowTesterPanel';
 import { WorkflowVersionDiffDialog } from './components/WorkflowVersionDiffDialog';
 import { WorkflowProvider } from "./contexts/WorkflowContext";
 import { useWorkflowState } from "./hooks/useWorkflowState";
@@ -45,7 +42,6 @@ interface RenderWorkflowProps {
     initialWorkflowName: string;
     workflowId: number;
     workflowUuid?: string;
-    initialTotalRuns?: number | null;
     openTesterOnLoad?: boolean;
     initialFlow?: {
         nodes: FlowNode[];
@@ -67,7 +63,6 @@ function RenderWorkflow({
     initialWorkflowName,
     workflowId,
     workflowUuid,
-    initialTotalRuns,
     openTesterOnLoad = false,
     initialFlow,
     initialTemplateContextVariables,
@@ -76,14 +71,18 @@ function RenderWorkflow({
     initialVersionStatus,
     user,
 }: RenderWorkflowProps) {
-    const router = useRouter();
     const { specs } = useNodeSpecs();
-    const { hasCompletedAction } = useOnboarding();
+    // The test rail, the nav and the header live in the agent shell now, so the
+    // canvas only publishes what they need and listens for what they emit.
+    const {
+        openTester,
+        setTesterDisabledReason,
+        subscribeToRuntimeTransitions,
+        setAgentName,
+        setVersionStatus,
+    } = useAgentShell();
     const [isPhoneCallDialogOpen, setIsPhoneCallDialogOpen] = useState(false);
     const [isVersionPanelOpen, setIsVersionPanelOpen] = useState(false);
-    const [isTesterRailOpen, setIsTesterRailOpen] = useState(true);
-    const [isTesterSheetOpen, setIsTesterSheetOpen] = useState(false);
-    const [isDesktopViewport, setIsDesktopViewport] = useState(false);
     const [versions, setVersions] = useState<WorkflowVersionResponse[]>([]);
     const [versionsLoading, setVersionsLoading] = useState(false);
     const [versionsLoadingMore, setVersionsLoadingMore] = useState(false);
@@ -112,7 +111,6 @@ function RenderWorkflow({
         workflowName,
         isDirty,
         workflowValidationErrors,
-        templateContextVariables,
         setNodes,
         setEdges,
         setIsDirty,
@@ -391,36 +389,35 @@ function RenderWorkflow({
         return null;
     }, [isDirty, isViewingHistoricalVersion, workflowValidationErrors.length]);
 
-    const handleOpenTester = useCallback(() => {
-        if (window.innerWidth >= 1280) {
-            setIsTesterRailOpen(true);
-            return;
-        }
-        setIsTesterSheetOpen(true);
-    }, []);
+    // The rail is mounted by the shell, so tell it when a test cannot start.
+    // Clear the reason on unmount: the tester stays open on the other agent
+    // sections, where this canvas's dirty/validation state no longer applies.
+    useEffect(() => {
+        setTesterDisabledReason(testerDisabledReason);
+        return () => setTesterDisabledReason(null);
+    }, [setTesterDisabledReason, testerDisabledReason]);
 
-    const shouldShowWebCallOnboarding = useMemo(() => {
-        return (initialTotalRuns ?? 0) === 0 && !hasCompletedAction('web_call_started');
-    }, [hasCompletedAction, initialTotalRuns]);
+    // An unsaved graph must survive a nav click: the provider in page.tsx
+    // intercepts the section links and asks first.
+    useUnsavedChanges("conversation", isDirty);
+
+    // Keep the nav panel and the header breadcrumb on the live name/status.
+    useEffect(() => {
+        if (workflowName) setAgentName(workflowName);
+    }, [setAgentName, workflowName]);
 
     useEffect(() => {
-        const syncViewport = () => {
-            setIsDesktopViewport(window.innerWidth >= 1280);
-        };
-
-        syncViewport();
-        window.addEventListener('resize', syncViewport);
-        return () => window.removeEventListener('resize', syncViewport);
-    }, []);
+        setVersionStatus(currentVersionStatus);
+    }, [currentVersionStatus, setVersionStatus]);
 
     useEffect(() => {
-        if (hasAutoOpenedTester.current || !openTesterOnLoad || !shouldShowWebCallOnboarding || testerDisabledReason) {
+        if (hasAutoOpenedTester.current || !openTesterOnLoad || testerDisabledReason) {
             return;
         }
 
-        handleOpenTester();
+        openTester();
         hasAutoOpenedTester.current = true;
-    }, [handleOpenTester, openTesterOnLoad, shouldShowWebCallOnboarding, testerDisabledReason]);
+    }, [openTester, openTesterOnLoad, testerDisabledReason]);
 
     // Fetch documents, tools, and recordings once for the entire workflow
     useEffect(() => {
@@ -481,8 +478,11 @@ function RenderWorkflow({
         [activeRuntimeNodeId, nodes],
     );
 
-    const handleRuntimeNodeTransition = useCallback(
-        (transition: WorkflowRuntimeNodeTransition) => {
+    // The rail lives in the shell, so the live node highlight arrives as a
+    // subscription rather than a prop: whichever section is open, only the flow
+    // canvas cares about it.
+    useEffect(() => {
+        return subscribeToRuntimeTransitions((transition) => {
             const nodeId = transition.nodeId;
             const instance = rfInstance.current;
             if (!nodeId || !instance) {
@@ -501,9 +501,8 @@ function RenderWorkflow({
                 padding: 0.45,
                 maxZoom: 0.9,
             });
-        },
-        [rfInstance],
-    );
+        });
+    }, [rfInstance, subscribeToRuntimeTransitions]);
 
     // Guard saveWorkflow so it's a no-op when viewing a historical version.
     // This is the single safety net that covers every save path: header button,
@@ -569,8 +568,8 @@ function RenderWorkflow({
 
     return (
         <WorkflowProvider value={workflowContextValue}>
-            <div className="flex flex-col h-screen min-w-fit">
-                {/* New Workflow Editor Header */}
+            <div className="flex h-full min-h-0 flex-col">
+                {/* Section toolbar — the identity and the nav are the shell's. */}
                 <WorkflowEditorHeader
                     workflowName={workflowName}
                     isDirty={isDirty}
@@ -581,7 +580,6 @@ function RenderWorkflow({
                     saveWorkflow={guardedSaveWorkflow}
                     user={user}
                     onPhoneCallClick={() => setIsPhoneCallDialogOpen(true)}
-                    onTestAgentClick={handleOpenTester}
                     onHistoryClick={handleOpenVersionPanel}
                     activeVersionLabel={activeVersionLabel}
                     isViewingHistoricalVersion={isViewingHistoricalVersion}
@@ -646,22 +644,6 @@ function RenderWorkflow({
                                                     </TooltipTrigger>
                                                     <TooltipContent side="left">
                                                         <p>Add node</p>
-                                                    </TooltipContent>
-                                                </Tooltip>
-
-                                                <Tooltip>
-                                                    <TooltipTrigger asChild>
-                                                        <Button
-                                                            variant="outline"
-                                                            size="icon"
-                                                            onClick={() => router.push(`/workflow/${workflowId}/settings`)}
-                                                            className="bg-panel shadow-sm hover:shadow-md"
-                                                        >
-                                                            <Settings className="h-4 w-4" />
-                                                        </Button>
-                                                    </TooltipTrigger>
-                                                    <TooltipContent side="left">
-                                                        <p>Workflow settings</p>
                                                     </TooltipContent>
                                                 </Tooltip>
                                             </div>
@@ -744,36 +726,7 @@ function RenderWorkflow({
                                 </TooltipProvider>
                             </div>
                         </div>
-
-                        {isTesterRailOpen && (
-                            <aside className="hidden h-full w-[400px] shrink-0 border-l border-border xl:block">
-                                <WorkflowTesterPanel
-                                    workflowId={workflowId}
-                                    initialContextVariables={templateContextVariables}
-                                    disabled={testerDisabledReason !== null}
-                                    disabledReason={testerDisabledReason}
-                                    showWebCallOnboarding={shouldShowWebCallOnboarding}
-                                    isVisible={isDesktopViewport}
-                                    onClose={() => setIsTesterRailOpen(false)}
-                                    onRuntimeNodeTransition={handleRuntimeNodeTransition}
-                                />
-                            </aside>
-                        )}
                     </div>
-
-                    <Sheet open={isTesterSheetOpen} onOpenChange={setIsTesterSheetOpen}>
-                        <SheetContent side="right" className="w-full max-w-none p-0 sm:max-w-xl xl:hidden">
-                            <WorkflowTesterPanel
-                                workflowId={workflowId}
-                                initialContextVariables={templateContextVariables}
-                                disabled={testerDisabledReason !== null}
-                                disabledReason={testerDisabledReason}
-                                showWebCallOnboarding={shouldShowWebCallOnboarding}
-                                isVisible={isTesterSheetOpen}
-                                onRuntimeNodeTransition={handleRuntimeNodeTransition}
-                            />
-                        </SheetContent>
-                    </Sheet>
                 </div>
 
                 <AddNodePanel

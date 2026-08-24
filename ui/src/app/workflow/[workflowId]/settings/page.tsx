@@ -1,32 +1,16 @@
 "use client";
 
 import { format } from "date-fns";
-import { ArrowLeft, BookA, Brain, CalendarIcon, Clipboard, Download, ExternalLink, FileDown, Fingerprint, Loader2, Mic, Pause, PhoneOff, Play, Plus, Rocket, Settings, Trash2Icon, Upload, Variable, X } from "lucide-react";
+import { BookA, CalendarIcon, Clipboard, Download, ExternalLink, FileDown, Fingerprint, Loader2, Mic, Pause, PhoneOff, Play, Plus, Settings, Trash2Icon, Upload, Variable, X } from "lucide-react";
 import Link from "next/link";
-import { useParams, useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import {
     downloadWorkflowReportApiV1WorkflowWorkflowIdReportGet,
     getAmbientNoiseUploadUrlApiV1WorkflowAmbientNoiseUploadUrlPost,
-    getModelConfigurationV2ApiV1OrganizationsModelConfigurationsV2Get,
-    getModelConfigurationV2DefaultsApiV1OrganizationsModelConfigurationsV2DefaultsGet,
-    getWorkflowApiV1WorkflowFetchWorkflowIdGet,
 } from "@/client/sdk.gen";
-import type {
-    ModelConfigurationPricingResponse,
-    OrganizationAiModelConfigurationResponse,
-    OrganizationAiModelConfigurationV2,
-    WorkflowResponse,
-} from "@/client/types.gen";
-import {
-    AIModelConfigurationV2Editor,
-    type ModelConfigurationDefaultsV2,
-} from "@/components/AIModelConfigurationV2Editor";
-import { FlowEdge, FlowNode } from "@/components/flow/types";
 import { LLMConfigSelector } from "@/components/LLMConfigSelector";
-import SpinLoader from "@/components/SpinLoader";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
@@ -38,20 +22,16 @@ import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { useOrgConfig } from "@/context/OrgConfigContext";
-import { UnsavedChangesProvider, useUnsavedChanges, useUnsavedChangesContext } from "@/context/UnsavedChangesContext";
+import { useUnsavedChanges, useUnsavedChangesContext } from "@/context/UnsavedChangesContext";
 import { useAudioPlayback } from "@/hooks/useAudioPlayback";
-import { detailFromError } from "@/lib/apiError";
-import { useAuth } from "@/lib/auth";
 import { copyTextToClipboard } from "@/lib/clipboard";
 import logger from "@/lib/logger";
-import { fetchModelConfigurationPricing } from "@/lib/modelConfigurationPricing";
 import {
     type AmbientNoiseConfiguration,
     DEFAULT_PROVISIONAL_VAD_PAUSE_SECS,
     DEFAULT_TURN_START_MIN_WORDS,
     DEFAULT_VOICEMAIL_DETECTION_CONFIGURATION,
     type ExternalPBXFieldMapping,
-    resolveWorkflowConfigurations,
     TURN_START_STRATEGY_OPTIONS,
     type TurnStartStrategy,
     type TurnStopStrategy,
@@ -59,8 +39,7 @@ import {
     type WorkflowConfigurations,
 } from "@/types/workflow-configurations";
 
-import { EmbedDialog } from "../components/EmbedDialog";
-import { useWorkflowState } from "../hooks/useWorkflowState";
+import { type AgentSectionContext, AgentSectionShell } from "../components/AgentSectionShell";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -91,14 +70,14 @@ VOICEMAIL SYSTEM (respond "VOICEMAIL"):
 Respond with ONLY "CONVERSATION" if a person answered, or "VOICEMAIL" if it's voicemail/recording.`;
 
 // Sidebar navigation items
+// On-this-page rail. Model overrides ("Model and voice") and the website
+// widget ("Deployment") are nav rows of their own now, so they are not here.
 const NAV_ITEMS = [
     { id: "general", label: "General", icon: Settings },
-    { id: "models", label: "Model Overrides", icon: Brain },
     { id: "variables", label: "Template Variables", icon: Variable },
     { id: "dictionary", label: "Dictionary", icon: BookA },
     { id: "voicemail", label: "Voicemail Detection", icon: PhoneOff },
     { id: "recordings", label: "Recordings", icon: Mic },
-    { id: "deployment", label: "Add to Website", icon: Rocket },
     { id: "report", label: "Report", icon: FileDown },
     { id: "identity", label: "Agent UUID", icon: Fingerprint },
 ];
@@ -1369,332 +1348,46 @@ function AgentUuidSection({ workflowUuid }: { workflowUuid: string }) {
 // Section: Model Overrides
 // ---------------------------------------------------------------------------
 
-function withoutModelConfigurationOverrides(configurations: WorkflowConfigurations): WorkflowConfigurations {
-    const next = { ...configurations };
-    delete next.model_overrides;
-    delete next.model_configuration_v2_override;
-    return next;
-}
+// ---------------------------------------------------------------------------
+// Page — "Advanced settings"
+// ---------------------------------------------------------------------------
 
-function WorkflowModelOverridesSection({
-    workflowConfigurations,
-    workflowName,
-    onSave,
-    modelConfigurationDefaults,
-    organizationModelConfiguration,
-    modelConfigurationPricing,
-    modelConfigurationLoading,
-    modelConfigurationError,
-}: {
-    workflowConfigurations: WorkflowConfigurations;
-    workflowName: string;
-    onSave: (configurations: WorkflowConfigurations, workflowName: string) => Promise<void>;
-    modelConfigurationDefaults: ModelConfigurationDefaultsV2 | null;
-    organizationModelConfiguration: OrganizationAiModelConfigurationResponse | null;
-    modelConfigurationPricing: ModelConfigurationPricingResponse | null;
-    modelConfigurationLoading: boolean;
-    modelConfigurationError: string | null;
-}) {
-    const savedV2Override = workflowConfigurations.model_configuration_v2_override;
-    const hasSavedModelOverride = Boolean(savedV2Override || workflowConfigurations.model_overrides);
-    const [overrideEnabled, setOverrideEnabled] = useState(Boolean(savedV2Override));
-    const [isRemovingOverride, setIsRemovingOverride] = useState(false);
-
-    useEffect(() => {
-        setOverrideEnabled(Boolean(workflowConfigurations.model_configuration_v2_override));
-    }, [workflowConfigurations.model_configuration_v2_override]);
-
-    const hasOrgConfiguration = organizationModelConfiguration?.source === "organization_v2";
-
-    const saveV2Override = async (configuration: OrganizationAiModelConfigurationV2) => {
-        const nextConfigurations = withoutModelConfigurationOverrides(workflowConfigurations);
-        nextConfigurations.model_configuration_v2_override = configuration;
-        await onSave(nextConfigurations, workflowName);
-        toast.success(`Model override saved. ${PUBLISH_WORKFLOW_REMINDER}`);
-    };
-
-    const removeV2Override = async () => {
-        setIsRemovingOverride(true);
-        try {
-            await onSave(withoutModelConfigurationOverrides(workflowConfigurations), workflowName);
-            setOverrideEnabled(false);
-            toast.success(`Organization model configuration saved. ${PUBLISH_WORKFLOW_REMINDER}`);
-        } finally {
-            setIsRemovingOverride(false);
-        }
-    };
-
+/**
+ * Everything about an agent that does not have a home of its own in the nav.
+ *
+ * The design canvas (app-doc/claude-design/Failte AI v2.dc.html) gives each
+ * agent concern its own nav row; the sections here are the remainder — call
+ * behaviour, template variables, the pronunciation dictionary, voicemail
+ * detection, the report export and the agent's identifiers. Model overrides
+ * and the website widget moved out to "Model and voice" and "Deployment".
+ *
+ * The header, the nav panel and the test rail belong to the shell, so this
+ * screen is only its own content plus the on-this-page rail.
+ */
+export default function AgentAdvancedSettingsPage() {
     return (
-        <Card id="models">
-            <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-base">
-                    <Brain className="h-4 w-4" />
-                    Model Overrides
-                </CardTitle>
-                <CardDescription>
-                    Override the full organization model configuration for this workflow.
-                </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-                {modelConfigurationLoading && (
-                    <div className="flex items-center gap-2 rounded-md border p-4 text-sm text-muted-foreground">
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                        Loading model configuration
-                    </div>
-                )}
-
-                {modelConfigurationError && (
-                    <div className="rounded-md border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-                        {modelConfigurationError}
-                    </div>
-                )}
-
-                {!modelConfigurationLoading && !modelConfigurationError && !hasOrgConfiguration && (
-                    <div className="flex flex-col gap-3 rounded-md border bg-muted/30 p-4 sm:flex-row sm:items-center sm:justify-between">
-                        <p className="text-sm text-muted-foreground">
-                            Set up your organization model configuration before overriding it per workflow.
-                        </p>
-                        <Button type="button" variant="outline" size="sm" asChild>
-                            <Link href="/model-configurations">Configure Models</Link>
-                        </Button>
-                    </div>
-                )}
-
-                {!modelConfigurationLoading && !modelConfigurationError && hasOrgConfiguration && modelConfigurationDefaults && organizationModelConfiguration && (
-                    <>
-                        <div className="flex items-center justify-between rounded-md border p-4">
-                            <div className="space-y-0.5">
-                                <Label htmlFor="workflow-model-v2-override" className="text-sm font-medium">
-                                    Override for this workflow
-                                </Label>
-                                <p className="text-xs text-muted-foreground">
-                                    {overrideEnabled
-                                        ? "This workflow uses its own complete model configuration."
-                                        : "This workflow uses the organization model configuration."}
-                                </p>
-                            </div>
-                            <Switch
-                                id="workflow-model-v2-override"
-                                checked={overrideEnabled}
-                                onCheckedChange={setOverrideEnabled}
-                            />
-                        </div>
-
-                        {overrideEnabled ? (
-                            <AIModelConfigurationV2Editor
-                                defaults={modelConfigurationDefaults}
-                                configuration={
-                                    (savedV2Override as OrganizationAiModelConfigurationV2 | undefined)
-                                    || (organizationModelConfiguration.configuration as OrganizationAiModelConfigurationV2 | null)
-                                }
-                                effectiveConfiguration={
-                                    savedV2Override
-                                        ? null
-                                        : organizationModelConfiguration.effective_configuration
-                                }
-                                pricing={modelConfigurationPricing}
-                                submitLabel="Save Model Override"
-                                onSave={saveV2Override}
-                            />
-                        ) : (
-                            <div className="rounded-md border bg-muted/20 p-4">
-                                <p className="text-sm text-muted-foreground">
-                                    Using organization model configuration.
-                                </p>
-                                {hasSavedModelOverride && (
-                                    <Button
-                                        type="button"
-                                        className="mt-3"
-                                        onClick={removeV2Override}
-                                        disabled={isRemovingOverride}
-                                    >
-                                        {isRemovingOverride ? "Saving..." : "Save Organization Configuration"}
-                                    </Button>
-                                )}
-                            </div>
-                        )}
-                    </>
-                )}
-            </CardContent>
-        </Card>
+        <AgentSectionShell>
+            {(context) => <AdvancedSettings context={context} />}
+        </AgentSectionShell>
     );
 }
 
-// ---------------------------------------------------------------------------
-// Main Page
-// ---------------------------------------------------------------------------
-
-// ---------------------------------------------------------------------------
-// Page wrapper — handles auth & data fetching, then mounts the content
-// component only when everything is loaded. This avoids useWorkflowState
-// running with empty initial values and overwriting the Zustand store.
-// ---------------------------------------------------------------------------
-
-export default function WorkflowSettingsPage() {
-    const params = useParams();
-    const { user, redirectToLogin, loading: authLoading } = useAuth();
-    const [workflow, setWorkflow] = useState<WorkflowResponse | undefined>(undefined);
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState<string | null>(null);
-
-    useEffect(() => {
-        if (!authLoading && !user) {
-            redirectToLogin();
-        }
-    }, [authLoading, user, redirectToLogin]);
-
-    useEffect(() => {
-        const fetchWorkflow = async () => {
-            if (!user) return;
-            try {
-                const response = await getWorkflowApiV1WorkflowFetchWorkflowIdGet({
-                    path: { workflow_id: Number(params.workflowId) },
-                });
-                setWorkflow(response.data);
-            } catch (err) {
-                setError("Failed to fetch workflow");
-                logger.error(`Error fetching workflow settings: ${err}`);
-            } finally {
-                setLoading(false);
-            }
-        };
-        if (user) fetchWorkflow();
-    }, [params.workflowId, user]);
-
-    if (loading || authLoading) return <SpinLoader />;
-
-    if (error || !workflow) {
-        return (
-            <div className="flex min-h-full items-center justify-center">
-                <div className="text-lg text-destructive">{error || "Workflow not found"}</div>
-            </div>
-        );
-    }
-
-    if (!user) return null;
-
-    return <WorkflowSettingsContent workflow={workflow} user={user} />;
-}
-
-// ---------------------------------------------------------------------------
-// Content — only mounts once the workflow API response is available, so
-// useWorkflowState always initialises with real data.
-// ---------------------------------------------------------------------------
-
-function WorkflowSettingsContent({
-    workflow,
-    user,
-}: {
-    workflow: WorkflowResponse;
-    user: { id: string; email?: string };
-}) {
-    return (
-        <UnsavedChangesProvider>
-            <WorkflowSettingsInner workflow={workflow} user={user} />
-        </UnsavedChangesProvider>
-    );
-}
-
-function WorkflowSettingsInner({
-    workflow,
-    user,
-}: {
-    workflow: WorkflowResponse;
-    user: { id: string; email?: string };
-}) {
-    const router = useRouter();
-    const { dirtySections, confirmNavigate } = useUnsavedChangesContext();
-
-    const [isEmbedDialogOpen, setIsEmbedDialogOpen] = useState(false);
-    const [activeSection, setActiveSection] = useState("general");
-    const [modelConfigurationDefaults, setModelConfigurationDefaults] = useState<ModelConfigurationDefaultsV2 | null>(null);
-    const [organizationModelConfiguration, setOrganizationModelConfiguration] = useState<OrganizationAiModelConfigurationResponse | null>(null);
-    const [modelConfigurationPricing, setModelConfigurationPricing] = useState<ModelConfigurationPricingResponse | null>(null);
-    const [modelConfigurationLoading, setModelConfigurationLoading] = useState(true);
-    const [modelConfigurationError, setModelConfigurationError] = useState<string | null>(null);
-    const hasFetchedModelConfiguration = useRef(false);
-
-    const workflowId = workflow.id;
-
-    const initialFlow = useMemo(
-        () => ({
-            nodes: workflow.workflow_definition.nodes as FlowNode[],
-            edges: workflow.workflow_definition.edges as FlowEdge[],
-            viewport: { x: 0, y: 0, zoom: 0 },
-        }),
-        [workflow],
-    );
-
-    const initialTemplateContextVariables = useMemo(
-        () => (workflow.template_context_variables as Record<string, string>) || {},
-        [workflow],
-    );
-
-    const initialWorkflowConfigurations = useMemo(
-        () => (
-            workflow.workflow_configurations
-                ? (workflow.workflow_configurations as WorkflowConfigurations)
-                : undefined
-        ),
-        [workflow],
-    );
-
+function AdvancedSettings({ context }: { context: AgentSectionContext }) {
     const {
+        workflow,
+        workflowId,
         workflowName,
         workflowConfigurations,
-        textChatInactivityTimeoutConstraints,
-        widgetTextDefaults,
         templateContextVariables,
         dictionary,
         saveWorkflowConfigurations,
         saveTemplateContextVariables,
         saveDictionary,
-    } = useWorkflowState({
-        initialWorkflowName: workflow.name,
-        workflowId,
-        initialFlow,
-        initialTemplateContextVariables,
-        initialWorkflowConfigurations,
-        user,
-    });
-    const resolvedWorkflowConfigurationsForRender = workflowConfigurations
-        ? resolveWorkflowConfigurations(workflowConfigurations)
-        : null;
+    } = context;
+    const { dirtySections } = useUnsavedChangesContext();
+    const [activeSection, setActiveSection] = useState("general");
 
-    useEffect(() => {
-        if (hasFetchedModelConfiguration.current) return;
-        hasFetchedModelConfiguration.current = true;
-
-        const loadModelConfiguration = async () => {
-            setModelConfigurationLoading(true);
-            setModelConfigurationError(null);
-            const [defaultsResult, configurationResult, pricingResult] = await Promise.all([
-                getModelConfigurationV2DefaultsApiV1OrganizationsModelConfigurationsV2DefaultsGet(),
-                getModelConfigurationV2ApiV1OrganizationsModelConfigurationsV2Get(),
-                fetchModelConfigurationPricing(),
-            ]);
-
-            if (defaultsResult.error) {
-                setModelConfigurationError(detailFromError(defaultsResult.error, "Failed to load model configuration defaults"));
-                setModelConfigurationLoading(false);
-                return;
-            }
-            if (configurationResult.error) {
-                setModelConfigurationError(detailFromError(configurationResult.error, "Failed to load model configuration"));
-                setModelConfigurationLoading(false);
-                return;
-            }
-
-            setModelConfigurationDefaults(defaultsResult.data as ModelConfigurationDefaultsV2);
-            setOrganizationModelConfiguration(configurationResult.data || null);
-            setModelConfigurationPricing(pricingResult);
-            setModelConfigurationLoading(false);
-        };
-
-        loadModelConfiguration();
-    }, []);
-
-    // Intersection observer for active sidebar link
+    // Intersection observer for the active on-this-page link.
     useEffect(() => {
         const ids = NAV_ITEMS.map((n) => n.id);
         const observer = new IntersectionObserver(
@@ -1716,153 +1409,81 @@ function WorkflowSettingsInner({
     }, []);
 
     return (
-        <div className="min-h-full">
-            {/* Sticky header */}
-            <header className="sticky top-0 z-10 flex items-center gap-3 border-b bg-background/95 px-6 py-3 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-                <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => confirmNavigate(() => router.push(`/workflow/${workflowId}`))}
-                >
-                    <ArrowLeft className="h-4 w-4" />
-                </Button>
-                <div>
-                    <p className="text-xs text-muted-foreground">Workflow Settings</p>
-                    <h1 className="text-sm font-semibold">{workflowName || workflow.name}</h1>
-                </div>
-            </header>
+        <div className="page-body flex max-w-5xl gap-8">
+            <div className="min-w-0 flex-1 space-y-8">
+                <GeneralSection
+                    workflowConfigurations={workflowConfigurations}
+                    workflowName={workflowName}
+                    workflowId={workflowId}
+                    onSave={saveWorkflowConfigurations}
+                />
 
-            {/* Main + right nav */}
-            <div className="mx-auto flex max-w-5xl gap-8 px-6 py-8">
-                {/* Sections */}
-                <div className="min-w-0 flex-1 space-y-8">
-                    {resolvedWorkflowConfigurationsForRender && (
-                        <>
-                            {/* General */}
-                            <GeneralSection
-                                workflowConfigurations={resolvedWorkflowConfigurationsForRender}
-                                workflowName={workflowName || workflow.name}
-                                workflowId={workflowId}
-                                onSave={saveWorkflowConfigurations}
-                            />
+                <TemplateVariablesSection
+                    templateContextVariables={templateContextVariables}
+                    onSave={saveTemplateContextVariables}
+                />
 
-                            <WorkflowModelOverridesSection
-                                workflowConfigurations={resolvedWorkflowConfigurationsForRender}
-                                workflowName={workflowName}
-                                onSave={saveWorkflowConfigurations}
-                                modelConfigurationDefaults={modelConfigurationDefaults}
-                                organizationModelConfiguration={organizationModelConfiguration}
-                                modelConfigurationPricing={modelConfigurationPricing}
-                                modelConfigurationLoading={modelConfigurationLoading}
-                                modelConfigurationError={modelConfigurationError}
-                            />
+                <DictionarySection dictionary={dictionary} onSave={saveDictionary} />
 
-                            {/* Template Variables */}
-                            <TemplateVariablesSection
-                                templateContextVariables={templateContextVariables}
-                                onSave={saveTemplateContextVariables}
-                            />
+                <VoicemailSection
+                    workflowConfigurations={workflowConfigurations}
+                    workflowName={workflowName}
+                    onSave={saveWorkflowConfigurations}
+                />
 
-                            {/* Dictionary */}
-                            <DictionarySection dictionary={dictionary} onSave={saveDictionary} />
+                {/* Recordings – moved to org-level page */}
+                <Card id="recordings">
+                    <CardHeader>
+                        <CardTitle className="flex items-center gap-2 text-base">
+                            <Mic className="h-4 w-4" />
+                            Recordings
+                        </CardTitle>
+                        <CardDescription>
+                            Recordings are now managed at the organization level and shared across all agents.
+                            Use <code className="rounded bg-muted px-1 text-xs">@</code> in prompt fields to insert them.
+                        </CardDescription>
+                    </CardHeader>
+                    <CardFooter className="border-t pt-6">
+                        <Button variant="outline" asChild>
+                            <Link href="/recordings">
+                                Go to Recordings
+                                <ExternalLink className="ml-2 h-4 w-4" />
+                            </Link>
+                        </Button>
+                    </CardFooter>
+                </Card>
 
-                            {/* Voicemail Detection */}
-                            <VoicemailSection
-                                workflowConfigurations={resolvedWorkflowConfigurationsForRender}
-                                workflowName={workflowName}
-                                onSave={saveWorkflowConfigurations}
-                            />
+                <ReportSection workflowId={workflowId} />
 
-                            {/* Recordings – moved to org-level page */}
-                            <Card id="recordings">
-                                <CardHeader>
-                                    <CardTitle className="flex items-center gap-2 text-base">
-                                        <Mic className="h-4 w-4" />
-                                        Recordings
-                                    </CardTitle>
-                                    <CardDescription>
-                                        Recordings are now managed at the organization level and shared across all agents.
-                                        Use <code className="rounded bg-muted px-1 text-xs">@</code> in prompt fields to insert them.
-                                    </CardDescription>
-                                </CardHeader>
-                                <CardFooter className="border-t pt-6">
-                                    <Button variant="outline" asChild>
-                                        <Link href="/recordings">
-                                            Go to Recordings
-                                            <ExternalLink className="ml-2 h-4 w-4" />
-                                        </Link>
-                                    </Button>
-                                </CardFooter>
-                            </Card>
-
-                            {/* Deployment (dialog trigger) */}
-                            <Card id="deployment">
-                                <CardHeader>
-                                    <CardTitle className="flex items-center gap-2 text-base">
-                                        <Rocket className="h-4 w-4" />
-                                        Add to Website
-                                    </CardTitle>
-                                    <CardDescription>
-                                        Configure a widget to add this voice agent to your website.
-                                    </CardDescription>
-                                </CardHeader>
-                                <CardFooter className="border-t pt-6">
-                                    <Button variant="outline" onClick={() => setIsEmbedDialogOpen(true)}>
-                                        Configure Widget
-                                    </Button>
-                                </CardFooter>
-                            </Card>
-
-                            {/* Report */}
-                            <ReportSection workflowId={workflowId} />
-
-                            {/* Agent UUID */}
-                            {workflow.workflow_uuid && (
-                                <AgentUuidSection workflowUuid={workflow.workflow_uuid} />
-                            )}
-                        </>
-                    )}
-                </div>
-
-                {/* ---- Right-side sticky nav ---- */}
-                <nav className="hidden w-44 shrink-0 lg:block">
-                    <div className="sticky top-20 space-y-1">
-                        <p className="mb-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                            On this page
-                        </p>
-                        {NAV_ITEMS.map((item) => (
-                            <a
-                                key={item.id}
-                                href={`#${item.id}`}
-                                className={`flex items-center gap-1.5 rounded-md px-2 py-1 text-sm transition-colors hover:text-foreground ${
-                                    activeSection === item.id
-                                        ? "font-medium text-foreground"
-                                        : "text-muted-foreground"
-                                }`}
-                            >
-                                {item.label}
-                                {dirtySections.has(item.id) && (
-                                    <span className="h-1.5 w-1.5 rounded-full bg-orange-500" />
-                                )}
-                            </a>
-                        ))}
-                    </div>
-                </nav>
+                {workflow.workflow_uuid && (
+                    <AgentUuidSection workflowUuid={workflow.workflow_uuid} />
+                )}
             </div>
 
-            {/* Dialogs for complex sections */}
-            {resolvedWorkflowConfigurationsForRender && (
-                <EmbedDialog
-                    open={isEmbedDialogOpen}
-                    onOpenChange={setIsEmbedDialogOpen}
-                    workflowId={workflowId}
-                    workflowName={workflowName || workflow.name}
-                    workflowConfigurations={resolvedWorkflowConfigurationsForRender}
-                    textChatInactivityTimeoutConstraints={textChatInactivityTimeoutConstraints}
-                    widgetTextDefaults={widgetTextDefaults}
-                    onSaveWorkflowConfigurations={saveWorkflowConfigurations}
-                />
-            )}
+            {/* ---- Right-side sticky nav ---- */}
+            <nav className="hidden w-44 shrink-0 lg:block">
+                <div className="sticky top-4 space-y-1">
+                    <p className="mb-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                        On this page
+                    </p>
+                    {NAV_ITEMS.map((item) => (
+                        <a
+                            key={item.id}
+                            href={`#${item.id}`}
+                            className={`flex items-center gap-1.5 rounded-md px-2 py-1 text-sm transition-colors hover:text-foreground ${
+                                activeSection === item.id
+                                    ? "font-medium text-foreground"
+                                    : "text-muted-foreground"
+                            }`}
+                        >
+                            {item.label}
+                            {dirtySections.has(item.id) && (
+                                <span className="h-1.5 w-1.5 rounded-full bg-orange-500" />
+                            )}
+                        </a>
+                    ))}
+                </div>
+            </nav>
         </div>
     );
 }
