@@ -198,13 +198,10 @@ export default function ReportsPage() {
   const isToday = format(selectedDate, 'yyyy-MM-dd') === format(new Date(), 'yyyy-MM-dd');
 
   return (
-    <div className="container mx-auto p-6 space-y-6">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-        <div className="space-y-2">
-          <h1 className="text-3xl font-bold">Daily Reports</h1>
-        </div>
-
+    <div className="page-body space-y-6">
+      {/* The screen name lives in the app header (AppTopBar); this row is the
+          filter bar the canvas puts at the top of the content panel. */}
+      <div className="flex flex-col sm:flex-row justify-end items-start sm:items-center gap-4">
         {/* Date Navigation & Workflow Selector */}
         <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center">
           {/* Workflow Selector */}

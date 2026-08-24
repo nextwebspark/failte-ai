@@ -15,6 +15,7 @@ import { toast } from "sonner";
 
 import { createMpsCreditPurchaseUrlApiV1OrganizationsUsageMpsCreditsPurchaseUrlPost, getBillingCreditsApiV1OrganizationsBillingCreditsGet } from "@/client/sdk.gen";
 import type { MpsBillingCreditsResponse, MpsCreditLedgerEntryResponse } from "@/client/types.gen";
+import { PageActions } from "@/components/layout/PageActionsSlot";
 import { SUPPORT_MAILTO } from "@/components/SupportLink";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -224,11 +225,7 @@ export default function BillingPage() {
 
     if (loading || configLoading) {
         return (
-            <div className="container mx-auto p-6 space-y-6">
-                <div className="space-y-2">
-                    <Skeleton className="h-9 w-40" />
-                    <Skeleton className="h-5 w-96 max-w-full" />
-                </div>
+            <div className="page-body space-y-6">
                 <div className="grid gap-4 md:grid-cols-2">
                     <Skeleton className="h-36 rounded-lg" />
                     <Skeleton className="h-36 rounded-lg" />
@@ -239,27 +236,21 @@ export default function BillingPage() {
     }
 
     return (
-        <div className="container mx-auto p-6 space-y-6">
-            <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-                <div>
-                    <h1 className="text-3xl font-bold mb-2">Billing</h1>
-                    <p className="text-muted-foreground">
-                        Credits, balance, and account usage for your organization.
-                    </p>
-                </div>
-                <div className="flex items-center gap-2">
-                    <Button variant="outline" onClick={handleRefresh} disabled={refreshing}>
-                        <RefreshCw className={`h-4 w-4 mr-2 ${refreshing ? "animate-spin" : ""}`} />
-                        Refresh
+        <div className="page-body space-y-6">
+            {/* Screen name, strapline and primary actions are rendered by the
+                app header (AppTopBar) — see PageActions. */}
+            <PageActions>
+                <Button variant="outline" onClick={handleRefresh} disabled={refreshing}>
+                    <RefreshCw className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />
+                    Refresh
+                </Button>
+                {canPurchaseCredits && (
+                    <Button onClick={handlePurchaseCredits} disabled={purchasing}>
+                        <CreditCard className="h-4 w-4" />
+                        {purchasing ? "Opening..." : "Add credits"}
                     </Button>
-                    {canPurchaseCredits && (
-                        <Button onClick={handlePurchaseCredits} disabled={purchasing}>
-                            <CreditCard className="h-4 w-4 mr-2" />
-                            {purchasing ? "Opening..." : "Add Credits"}
-                        </Button>
-                    )}
-                </div>
-            </div>
+                )}
+            </PageActions>
 
             {isOssMode && (
                 <div className="flex gap-3 rounded-lg border border-amber-200 bg-amber-50 p-4 dark:border-amber-900/50 dark:bg-amber-950/30">

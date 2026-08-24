@@ -306,7 +306,7 @@ export default function APIKeysPage() {
     // Don't render content until auth is loaded
     if (loading || !user) {
         return (
-            <div className="min-h-screen flex items-center justify-center">
+            <div className="min-h-full flex items-center justify-center">
                 <div className="space-y-4">
                     <Skeleton className="h-12 w-64" />
                     <Skeleton className="h-64 w-96" />
@@ -321,13 +321,10 @@ export default function APIKeysPage() {
     const showServiceKeyArchiveControls = !isOSS;
 
     return (
-        <div className="min-h-screen">
-            <div className="container mx-auto px-4 py-8">
-                <div className="max-w-6xl mx-auto">
-                    <div className="mb-8">
-                        <h1 className="text-3xl font-bold mb-2">Developer Portal</h1>
-                        <p className="text-muted-foreground">Manage your API keys to access Failte AI programmatically</p>
-                    </div>
+        <div className="page-body">
+            <div className="max-w-6xl">
+                {/* Screen name and strapline are rendered by the app header
+                    (AppTopBar), so the body opens straight on content. */}
 
                     {error && (
                         <div className="mb-4 p-4 bg-destructive/10 border border-destructive/20 rounded-lg text-destructive">
@@ -569,7 +566,6 @@ export default function APIKeysPage() {
                         </p>
                     </div>
                 </div>
-            </div>
 
             {/* Create API Key Dialog */}
             <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>

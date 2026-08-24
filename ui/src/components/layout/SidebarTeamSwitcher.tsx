@@ -18,7 +18,12 @@ const StackTeamSwitcher = React.lazy(() =>
   }))
 );
 
-export function SidebarTeamSwitcher() {
+export function SidebarTeamSwitcher({
+  triggerClassName = "w-full",
+}: {
+  /** Lets the app header render the switcher as a compact breadcrumb segment. */
+  triggerClassName?: string;
+} = {}) {
   const { provider, user } = useAuth();
 
   // The !user guard is load-bearing (Sentry JAVASCRIPT-NEXTJS-2Z): Stack's
@@ -31,10 +36,21 @@ export function SidebarTeamSwitcher() {
     return null;
   }
 
-  return <SidebarTeamSwitcherContent user={user as CurrentUser} />;
+  return (
+    <SidebarTeamSwitcherContent
+      user={user as CurrentUser}
+      triggerClassName={triggerClassName}
+    />
+  );
 }
 
-function SidebarTeamSwitcherContent({ user }: { user: CurrentUser }) {
+function SidebarTeamSwitcherContent({
+  user,
+  triggerClassName,
+}: {
+  user: CurrentUser;
+  triggerClassName: string;
+}) {
   const [isSwitching, setIsSwitching] = useState(false);
 
   const handleChange = async (team: Team | null) => {
@@ -61,7 +77,7 @@ function SidebarTeamSwitcherContent({ user }: { user: CurrentUser }) {
           onChange={(team) => {
             void handleChange(team);
           }}
-          triggerClassName="w-full"
+          triggerClassName={triggerClassName}
         />
       </React.Suspense>
       {isSwitching && (

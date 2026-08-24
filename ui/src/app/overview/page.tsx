@@ -13,8 +13,8 @@ export default function OverviewPage() {
     const isOSSMode = provider !== 'stack';
 
     return (
-        <div className="container mx-auto px-4 py-8">
-            <div className="mx-auto max-w-4xl animate-fade-up">
+        <div className="page-body">
+            <div className="max-w-4xl animate-fade-up">
                 {/* Welcome */}
                 <div className="mb-8">
                     <h1 className="text-2xl font-bold tracking-tight">
