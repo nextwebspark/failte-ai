@@ -141,10 +141,11 @@ function WorkflowModelOverridesSection({
             <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-base">
                     <Brain className="h-4 w-4" />
-                    Model Overrides
+                    Model and voice
                 </CardTitle>
                 <CardDescription>
-                    Override the full organization model configuration for this workflow.
+                    This agent speaks with the workspace LLM, speech and transcription
+                    stack unless you override the whole stack here.
                 </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -164,7 +165,7 @@ function WorkflowModelOverridesSection({
                 {!modelConfigurationLoading && !modelConfigurationError && !hasOrgConfiguration && (
                     <div className="flex flex-col gap-3 rounded-md border bg-muted/30 p-4 sm:flex-row sm:items-center sm:justify-between">
                         <p className="text-sm text-muted-foreground">
-                            Set up your organization model configuration before overriding it per workflow.
+                            Set up your workspace model configuration before overriding it per agent.
                         </p>
                         <Button type="button" variant="outline" size="sm" asChild>
                             <Link href="/model-configurations">Configure Models</Link>
@@ -177,12 +178,12 @@ function WorkflowModelOverridesSection({
                         <div className="flex items-center justify-between rounded-md border p-4">
                             <div className="space-y-0.5">
                                 <Label htmlFor="workflow-model-v2-override" className="text-sm font-medium">
-                                    Override for this workflow
+                                    Override for this agent
                                 </Label>
                                 <p className="text-xs text-muted-foreground">
                                     {overrideEnabled
-                                        ? "This workflow uses its own complete model configuration."
-                                        : "This workflow uses the organization model configuration."}
+                                        ? "This agent uses its own complete model configuration."
+                                        : "This agent uses the workspace model configuration."}
                                 </p>
                             </div>
                             <Switch
@@ -211,7 +212,7 @@ function WorkflowModelOverridesSection({
                         ) : (
                             <div className="rounded-md border bg-muted/20 p-4">
                                 <p className="text-sm text-muted-foreground">
-                                    Using organization model configuration.
+                                    Using the workspace model configuration.
                                 </p>
                                 {hasSavedModelOverride && (
                                     <Button

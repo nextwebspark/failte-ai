@@ -228,6 +228,8 @@ export function WorkflowExecutions({ workflowId, searchParams }: WorkflowExecuti
                 onSort={handleSort}
                 workflowId={workflowId}
                 onReload={handleReload}
+                // "Renewals outbound / Runs" is already in the app header.
+                title=""
             />
         </div>
     );
