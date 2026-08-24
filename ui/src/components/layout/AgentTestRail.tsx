@@ -54,7 +54,12 @@ export function AgentTestRail() {
   return (
     <>
       {isRailOpen && (
-        <aside className="hidden w-[336px] min-w-[288px] shrink-0 overflow-hidden rounded-[10px] border border-line bg-panel xl:block">
+        // The rail takes a SHARE of the shell rather than a fixed 336px: a
+        // transcript at 336px wraps every other word, and on a wide monitor a
+        // fixed rail leaves the centre panel absurdly wide. The clamps keep it
+        // usable at both ends — never narrower than a readable bubble, never so
+        // wide it starves the flow canvas.
+        <aside className="hidden w-[32%] min-w-[380px] max-w-[620px] shrink-0 overflow-hidden rounded-[10px] border border-line bg-panel xl:block">
           {/* The rounded panel around it is the surface — the tester paints
               nothing of its own so the shell's three columns match. */}
           <WorkflowTesterPanel
@@ -66,7 +71,12 @@ export function AgentTestRail() {
       )}
 
       <Sheet open={isSheetOpen} onOpenChange={setSheetOpen}>
-        <SheetContent side="right" className="w-full max-w-none p-0 sm:max-w-xl xl:hidden">
+        {/* Below xl the same panel is a sheet, on the same proportional rule:
+            a share of the viewport, capped so it stays a panel and not a page. */}
+        <SheetContent
+          side="right"
+          className="w-full max-w-none p-0 sm:w-[70%] sm:max-w-[640px] xl:hidden"
+        >
           <WorkflowTesterPanel {...panelProps} isVisible={isSheetOpen} />
         </SheetContent>
       </Sheet>
