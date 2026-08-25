@@ -10,6 +10,7 @@ import type { WorkflowResponse } from '@/client/types.gen';
 import { FlowEdge, FlowNode } from '@/components/flow/types';
 import SpinLoader from '@/components/SpinLoader';
 import { PostHogEvent } from '@/constants/posthog-events';
+import { UnsavedChangesProvider } from '@/context/UnsavedChangesContext';
 import { detailFromError } from '@/lib/apiError';
 import { useAuth } from '@/lib/auth';
 import logger from '@/lib/logger';
@@ -94,11 +95,13 @@ export default function WorkflowDetailPage() {
     }
     else {
         return stableUser ? (
+            // Guards the nav: the section links are <a> tags, so an unsaved
+            // graph now asks before the shell swaps the centre panel.
+            <UnsavedChangesProvider>
             <RenderWorkflow
                 initialWorkflowName={workflow.name}
                 workflowId={workflow.id}
                 workflowUuid={workflow.workflow_uuid ?? undefined}
-                initialTotalRuns={workflow.total_runs ?? 0}
                 openTesterOnLoad={openTesterOnLoad}
                 initialFlow={{
                     nodes: workflow.workflow_definition.nodes as FlowNode[],
@@ -115,6 +118,7 @@ export default function WorkflowDetailPage() {
                 initialVersionStatus={workflow.version_status ?? null}
                 user={stableUser}
             />
+            </UnsavedChangesProvider>
         ) : null;
     }
 }

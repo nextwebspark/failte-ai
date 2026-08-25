@@ -101,7 +101,9 @@ export function WorkflowRunsTable({
             {/* Title and Filters */}
             {showFilters && (
                 <div className="mb-6">
-                    <h1 className="text-2xl font-bold mb-4">{title}</h1>
+                    {/* The shell prints the screen name in the app header, so a
+                        caller that already has one there passes title="". */}
+                    {title && <h1 className="text-2xl font-bold mb-4">{title}</h1>}
                     <FilterBuilder
                         availableAttributes={availableAttributes}
                         activeFilters={activeFilters}

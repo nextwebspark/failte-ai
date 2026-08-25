@@ -1,7 +1,7 @@
 "use client";
 
 import type { CurrentUser } from "@stackframe/stack";
-import { ArrowUpCircle, LogOut, Menu, Settings } from "lucide-react";
+import { ArrowUpCircle, Bot, LogOut, Menu, Settings } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import React from "react";
@@ -20,11 +20,13 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useSidebar } from "@/components/ui/sidebar";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { useAgentShellOptional } from "@/context/AgentShellContext";
 import { useAppConfig } from "@/context/AppConfigContext";
 import { useLatestReleaseVersion } from "@/hooks/useLatestReleaseVersion";
 import type { LocalUser } from "@/lib/auth";
 import { useAuth } from "@/lib/auth";
 
+import { agentSectionFor } from "./agentNav";
 import { getPageMeta } from "./navConfig";
 
 /**
@@ -46,8 +48,17 @@ export function AppTopBar({
   const { provider, logout, user } = useAuth();
   const { config } = useAppConfig();
   const { toggleSidebar } = useSidebar();
+  const agentShell = useAgentShellOptional();
 
-  const meta = getPageMeta(pathname);
+  // On an agent route the canvas prints the AGENT as the title and the open
+  // section as the strapline — the nav below swaps with it.
+  const agentSection = agentShell ? agentSectionFor(pathname) : null;
+  const meta = agentShell
+    ? {
+        title: agentShell.agent?.name ?? "Voice agent",
+        subtitle: agentSection?.title,
+      }
+    : getPageMeta(pathname);
   const uiVersion = config?.uiVersion;
 
   // Update check is OSS-only — cloud deployments are upgraded for the user.
@@ -158,6 +169,20 @@ export function AppTopBar({
       />
 
       <div className="ml-auto flex flex-none items-center gap-2.5 md:ml-0">
+        {/* On xl the test rail is pinned beside the content panel; below it,
+            the same panel opens as a sheet from here. */}
+        {agentShell && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={agentShell.openTester}
+            className="h-7 gap-1.5 rounded-[7px] border-line bg-transparent px-2.5 text-xs text-ink-2 hover:bg-panel-2 hover:text-foreground xl:hidden"
+          >
+            <Bot className="h-3.5 w-3.5" />
+            Test agent
+          </Button>
+        )}
+
         <SupportLink iconOnly tooltipSide="bottom" variant="ghost" className="text-ink-3 hover:text-foreground" />
 
         <DropdownMenu>

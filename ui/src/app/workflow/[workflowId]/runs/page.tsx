@@ -2,19 +2,20 @@
 
 import { useParams, useSearchParams } from "next/navigation";
 
-import WorkflowLayout from "../../WorkflowLayout";
 import { WorkflowExecutions } from "../components/WorkflowExecutions";
 
+/**
+ * "Runs" — the canvas's Analyse section for one agent. The shell supplies the
+ * header, the nav and the test rail; this is just the call history.
+ */
 export default function WorkflowRunsPage() {
     const { workflowId } = useParams();
     const searchParams = useSearchParams();
 
     return (
-        <WorkflowLayout showFeaturesNav={false}>
-            <WorkflowExecutions
-                workflowId={Number(workflowId)}
-                searchParams={searchParams}
-            />
-        </WorkflowLayout>
+        <WorkflowExecutions
+            workflowId={Number(workflowId)}
+            searchParams={searchParams}
+        />
     );
 }
