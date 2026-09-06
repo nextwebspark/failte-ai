@@ -16,6 +16,7 @@ import { toast } from "sonner";
 import { createMpsCreditPurchaseUrlApiV1OrganizationsUsageMpsCreditsPurchaseUrlPost, getBillingCreditsApiV1OrganizationsBillingCreditsGet } from "@/client/sdk.gen";
 import type { MpsBillingCreditsResponse, MpsCreditLedgerEntryResponse } from "@/client/types.gen";
 import { PageActions } from "@/components/layout/PageActionsSlot";
+import { runDetailHref } from "@/components/layout/shellContext";
 import { SUPPORT_MAILTO } from "@/components/SupportLink";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -94,7 +95,9 @@ const getRunHref = (entry: MpsCreditLedgerEntryResponse) => {
         return null;
     }
 
-    return `/workflow/${entry.workflow_id}/run/${entry.workflow_run_id}`;
+    // Opened from billing, so the run keeps the workspace shell and comes back
+    // here — see shellContext.
+    return runDetailHref(entry.workflow_id, entry.workflow_run_id, "/billing");
 };
 
 const getPageFromSearchParams = (

@@ -215,6 +215,10 @@ export function CampaignRuns({ campaignId, workflowId, searchParams }: CampaignR
         attr => ['dateRange', 'dispositionCode', 'duration', 'status', 'tokenUsage'].includes(attr.id)
     );
 
+    // Runs opened from here belong to the campaign screen, not the agent editor.
+    const campaignQuery = searchParams?.toString();
+    const returnTo = `/campaigns/${campaignId}${campaignQuery ? `?${campaignQuery}` : ''}`;
+
     return (
         <WorkflowRunsTable
             runs={runs}
@@ -235,6 +239,7 @@ export function CampaignRuns({ campaignId, workflowId, searchParams }: CampaignR
             sortOrder={sortOrder}
             onSort={handleSort}
             workflowId={workflowId}
+            returnTo={returnTo}
             onReload={handleReload}
             title="Campaign Workflow Runs"
             emptyMessage="No workflow runs found for this campaign"

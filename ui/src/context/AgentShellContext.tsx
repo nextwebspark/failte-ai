@@ -15,6 +15,7 @@ import React, {
 import type { WorkflowRuntimeNodeTransition } from "@/app/workflow/[workflowId]/components/workflow-tester/types";
 import { getWorkflowApiV1WorkflowFetchWorkflowIdGet } from "@/client/sdk.gen";
 import { agentIdFromPath } from "@/components/layout/agentNav";
+import { useShellChrome } from "@/components/layout/shellContext";
 import { useAuth } from "@/lib/auth";
 import logger from "@/lib/logger";
 
@@ -71,7 +72,10 @@ const AgentShellContext = createContext<AgentShellValue | null>(null);
 
 export function AgentShellProvider({ children }: { children: ReactNode }) {
   const pathname = usePathname();
-  const workflowId = agentIdFromPath(pathname);
+  const { workspaceMode } = useShellChrome();
+  // A run opened from a workspace list keeps the workspace shell, even though
+  // its URL sits under /workflow/<id> — see shellContext.
+  const workflowId = workspaceMode ? null : agentIdFromPath(pathname);
   const { user } = useAuth();
 
   const [agent, setAgent] = useState<AgentSummary | null>(null);

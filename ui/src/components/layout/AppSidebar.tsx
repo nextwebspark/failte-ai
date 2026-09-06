@@ -27,6 +27,7 @@ import { cn } from "@/lib/utils";
 
 import { AGENT_NAV_SECTIONS, agentHref, agentSectionFor } from "./agentNav";
 import { NAV_SECTIONS } from "./navConfig";
+import { useShellChrome } from "./shellContext";
 
 const TELEPHONY_WARNING_COPY = "Action required";
 
@@ -56,6 +57,7 @@ export function AppSidebar({ docked = true }: { docked?: boolean }) {
   const pathname = usePathname();
   const { state, isMobile, setOpenMobile } = useSidebar();
   const agentShell = useAgentShellOptional();
+  const { returnTo } = useShellChrome();
   const {
     telnyxMissingWebhookPublicKeyCount,
     vonageMissingSignatureSecretCount,
@@ -142,6 +144,11 @@ export function AppSidebar({ docked = true }: { docked?: boolean }) {
     );
   };
 
+  // A run opened from a workspace list keeps that list's row lit, even though
+  // the pathname is now /workflow/<id>/run/<runId>.
+  const isWorkspaceRowActive = (url: string) =>
+    pathname.startsWith(url) || Boolean(returnTo?.startsWith(url));
+
   const workspaceNav = NAV_SECTIONS.map((section) => (
     <SidebarGroup key={section.label ?? "overview"} className="px-2 py-0">
       {section.label && (
@@ -162,7 +169,7 @@ export function AppSidebar({ docked = true }: { docked?: boolean }) {
               title={item.title}
               url={item.url}
               icon={item.icon}
-              isActive={pathname.startsWith(item.url)}
+              isActive={isWorkspaceRowActive(item.url)}
               showWarningDot={item.showsTelephonyWarning && hasTelephonyWarning}
             />
           </SidebarMenuItem>
