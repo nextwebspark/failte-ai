@@ -1,11 +1,13 @@
 "use client";
 
 import { ArrowDown, ArrowUp, ArrowUpDown, ChevronLeft, ChevronRight, ExternalLink, RefreshCw } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 import { WorkflowRunResponseSchema } from "@/client/types.gen";
 import { CallTypeCell } from "@/components/CallTypeCell";
 import { FilterBuilder } from "@/components/filters/FilterBuilder";
+import { runDetailHref } from "@/components/layout/shellContext";
 import { MediaPreviewButton, MediaPreviewDialog } from "@/components/MediaPreviewDialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -50,6 +52,11 @@ export interface WorkflowRunsTableProps {
 
     // Navigation & Actions
     workflowId: number;
+    /**
+     * This list's own URL (path + query). Opening a run carries it along so the
+     * run screen keeps this screen's shell and can return to it unchanged.
+     */
+    returnTo?: string;
 
     // Reload
     onReload?: () => void;
@@ -80,6 +87,7 @@ export function WorkflowRunsTable({
     sortOrder = 'desc',
     onSort,
     workflowId,
+    returnTo,
     onReload,
     title = "Workflow Run History",
     subtitle,
@@ -88,12 +96,14 @@ export function WorkflowRunsTable({
 }: WorkflowRunsTableProps) {
     const [selectedRowId, setSelectedRowId] = useState<number | null>(null);
     const organizationTimezone = useOrganizationTimezone();
+    const router = useRouter();
 
     // Media preview dialog
     const mediaPreview = MediaPreviewDialog();
 
+    // Same tab: the run screen keeps this list's shell and links back to it.
     const handleRowClick = (runId: number) => {
-        window.open(`/workflow/${workflowId}/run/${runId}`, '_blank');
+        router.push(runDetailHref(workflowId, runId, returnTo));
     };
 
     return (
@@ -223,7 +233,8 @@ export function WorkflowRunsTable({
                                                     <Button
                                                         variant="outline"
                                                         size="icon"
-                                                        onClick={() => window.open(`/workflow/${workflowId}/run/${run.id}`, '_blank')}
+                                                        title="Open run in a new tab"
+                                                        onClick={() => window.open(runDetailHref(workflowId, run.id, returnTo), '_blank')}
                                                     >
                                                         <ExternalLink className="h-4 w-4" />
                                                     </Button>

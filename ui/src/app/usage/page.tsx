@@ -11,6 +11,7 @@ import type { DailyUsageBreakdownResponse, OrganizationPreferences, UsageHistory
 import { CallTypeCell } from '@/components/CallTypeCell';
 import { DailyUsageTable } from '@/components/DailyUsageTable';
 import { FilterBuilder } from '@/components/filters/FilterBuilder';
+import { runDetailHref } from '@/components/layout/shellContext';
 import { MediaPreviewButton, MediaPreviewDialog } from '@/components/MediaPreviewDialog';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -383,9 +384,11 @@ export default function UsagePage() {
         fetchUsageHistory(newPage, appliedFilters);
     };
 
-    // Handle row click to navigate to workflow run
+    // Handle row click to navigate to workflow run. The run keeps this screen's
+    // shell and links back to this exact list — see shellContext.
     const handleRowClick = (run: WorkflowRunUsageResponse) => {
-        router.push(`/workflow/${run.workflow_id}/run/${run.id}`);
+        const query = searchParams.toString();
+        router.push(runDetailHref(run.workflow_id, run.id, `/usage${query ? `?${query}` : ''}`));
     };
 
     const timezoneValue = typeof selectedTimezone === 'string' ? selectedTimezone : selectedTimezone.value;

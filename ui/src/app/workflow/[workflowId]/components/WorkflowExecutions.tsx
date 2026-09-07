@@ -206,6 +206,10 @@ export function WorkflowExecutions({ workflowId, searchParams }: WorkflowExecuti
         fetchWorkflowRuns(currentPage, appliedFilters, sortBy, sortOrder);
     }, [fetchWorkflowRuns, currentPage, appliedFilters, sortBy, sortOrder]);
 
+    // Where a run should return to: this list, exactly as it stands now.
+    const listQuery = searchParams.toString();
+    const returnTo = `/workflow/${workflowId}/runs${listQuery ? `?${listQuery}` : ''}`;
+
     return (
         <div className="page-body">
             <WorkflowRunsTable
@@ -227,6 +231,7 @@ export function WorkflowExecutions({ workflowId, searchParams }: WorkflowExecuti
                 sortOrder={sortOrder}
                 onSort={handleSort}
                 workflowId={workflowId}
+                returnTo={returnTo}
                 onReload={handleReload}
                 // "Renewals outbound / Runs" is already in the app header.
                 title=""

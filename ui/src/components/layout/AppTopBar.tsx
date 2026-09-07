@@ -28,6 +28,7 @@ import { useAuth } from "@/lib/auth";
 
 import { agentSectionFor } from "./agentNav";
 import { getPageMeta } from "./navConfig";
+import { useShellChrome } from "./shellContext";
 
 /**
  * The canvas's 46px app header (app-doc/claude-design/Failte AI v2.dc.html):
@@ -49,16 +50,22 @@ export function AppTopBar({
   const { config } = useAppConfig();
   const { toggleSidebar } = useSidebar();
   const agentShell = useAgentShellOptional();
+  const { returnTo, workspaceMode, showTestRail } = useShellChrome();
 
   // On an agent route the canvas prints the AGENT as the title and the open
   // section as the strapline — the nav below swaps with it.
   const agentSection = agentShell ? agentSectionFor(pathname) : null;
+  // A run opened from a workspace list keeps that list's breadcrumb; the run
+  // itself becomes the strapline.
+  const runId = workspaceMode ? pathname.split("/").pop() : null;
   const meta = agentShell
     ? {
         title: agentShell.agent?.name ?? "Voice agent",
         subtitle: agentSection?.title,
       }
-    : getPageMeta(pathname);
+    : workspaceMode && returnTo
+      ? { ...getPageMeta(returnTo), subtitle: runId ? `Run ${runId}` : undefined }
+      : getPageMeta(pathname);
   const uiVersion = config?.uiVersion;
 
   // Update check is OSS-only — cloud deployments are upgraded for the user.
@@ -171,7 +178,7 @@ export function AppTopBar({
       <div className="ml-auto flex flex-none items-center gap-2.5 md:ml-0">
         {/* On xl the test rail is pinned beside the content panel; below it,
             the same panel opens as a sheet from here. */}
-        {agentShell && (
+        {agentShell && showTestRail && (
           <Button
             variant="outline"
             size="sm"

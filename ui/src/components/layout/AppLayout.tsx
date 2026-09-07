@@ -9,11 +9,11 @@ import { SidebarProvider } from "@/components/ui/sidebar";
 import { AgentShellProvider } from "@/context/AgentShellContext";
 import { useAppConfig } from "@/context/AppConfigContext";
 
-import { isAgentRoute } from "./agentNav";
 import { AgentTestRail } from "./AgentTestRail";
 import { AppSidebar } from "./AppSidebar";
 import { AppTopBar } from "./AppTopBar";
 import { PageActionsSlotProvider } from "./PageActionsSlot";
+import { useShellChrome } from "./shellContext";
 
 function BackendStatusBanner() {
   const { config, loading, refresh } = useAppConfig();
@@ -82,7 +82,9 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
   const shouldShowShell =
     pathname !== "/" && !pathname.startsWith("/handler") && !pathname.startsWith("/auth");
 
-  const inAgent = isAgentRoute(pathname);
+  // A run's detail screen is a read-only record, and a run opened from a
+  // workspace list stays in the workspace — neither gets the live test rail.
+  const { showTestRail } = useShellChrome();
 
   // Always render a single SidebarProvider and branch INSIDE it, so the
   // provider (and its open/collapsed state) survives navigation between the
@@ -106,7 +108,7 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
                   <BackendStatusBanner />
                   {children}
                 </main>
-                {inAgent && <AgentTestRail />}
+                {showTestRail && <AgentTestRail />}
               </div>
             </div>
           </PageActionsSlotProvider>
