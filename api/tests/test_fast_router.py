@@ -161,3 +161,25 @@ def test_transcript_keeps_only_recent_spoken_messages():
         transcript_from_messages(messages, 2)
         == "Caller: Life jackets?\nCaller: The Baltic one."
     )
+
+
+def test_agent_generation_pipeline_places_router_and_gate():
+    from pipecat.processors.frame_processor import FrameProcessor
+
+    from api.services.pipecat.pipeline_builder import build_agent_generation_pipeline
+
+    llm, callbacks, recording, tts = (FrameProcessor() for _ in range(4))
+    gate = AckGate()
+    router = FastRouterProcessor(decide=_decider(None), gate=gate)
+
+    pipeline = build_agent_generation_pipeline(
+        llm,
+        tts,
+        callbacks,
+        recording_router=recording,
+        fast_router=router,
+        ack_gate=gate,
+    )
+
+    inner = pipeline.processors[1:-1]
+    assert inner == [router, llm, callbacks, recording, gate, tts]
