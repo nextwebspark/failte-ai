@@ -1,0 +1,46 @@
+# Asterisk for the Voiptel / SkyPhone trunk, running alongside a local Dograh.
+#
+#   cp .env.example .env   # fill in, never commit
+#   docker compose up --build
+#
+# Bridge networking with explicitly published ports, NOT network_mode: host.
+# Published ports preserve the port number one-for-one, which is what symmetric
+# RTP needs; Docker Desktop's host-networking mode NATs opaquely.
+
+services:
+  asterisk:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: dograh/asterisk-voiptel:22
+    container_name: asterisk-voiptel
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      # ARI. Localhost only -- ari_manager runs on the Mac host and reaches it
+      # here. Exposing 8088 publicly hands out full call control.
+      - "127.0.0.1:8088:8088"
+      # SIP signalling. Only needed inbound if the PBX opens a fresh connection
+      # to our registered Contact instead of reusing the registration socket.
+      - "5071:5071/tcp"
+      # RTP. Must match RTP_START/RTP_END in .env and rtp.conf. Keep the range
+      # small -- publishing thousands of UDP ports makes Docker Desktop crawl.
+      - "10000-10050:10000-10050/udp"
+    extra_hosts:
+      # Lets Asterisk reach the Dograh API running on the Mac host.
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - asterisk-spool:/var/spool/asterisk
+      - asterisk-lib:/var/lib/asterisk
+      - ./logs:/var/log/asterisk
+    healthcheck:
+      test: ["CMD", "asterisk", "-rx", "core show uptime"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+volumes:
+  asterisk-spool:
+  asterisk-lib:

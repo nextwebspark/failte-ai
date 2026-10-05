@@ -1,0 +1,58 @@
+# Builds the two main Dograh images for linux/amd64 and pushes them to
+# Artifact Registry. One submission, one source upload, both images.
+#
+#   gcloud builds submit --config=deploy/gcp/cloudbuild.yaml \
+#     --substitutions=_TAG=$(git rev-parse --short HEAD) --project=dograh-eu
+#
+# The API image is the long pole: it installs pipecat with ~18 extras plus a
+# static ffmpeg build. Expect 20-40 minutes on the first build.
+
+substitutions:
+  _REGION: europe-west1
+  _REPO: dograh
+  _TAG: latest
+
+options:
+  machineType: E2_HIGHCPU_8
+  diskSizeGb: 100
+  logging: CLOUD_LOGGING_ONLY
+
+timeout: 3600s
+
+images:
+  - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/dograh-api:${_TAG}'
+  - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/dograh-api:latest'
+  - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/dograh-ui:${_TAG}'
+  - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/dograh-ui:latest'
+
+steps:
+  # Build the UI first — it is the faster of the two, so a Dockerfile mistake
+  # surfaces in minutes rather than after the long API build.
+  - id: ui
+    name: gcr.io/cloud-builders/docker
+    # Both Dockerfiles use `RUN --mount=type=cache`, which is a BuildKit
+    # feature. Without this the build fails with "the --mount option requires
+    # BuildKit".
+    env: ['DOCKER_BUILDKIT=1']
+    args:
+      - build
+      - -f
+      - ui/Dockerfile
+      - -t
+      - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/dograh-ui:${_TAG}'
+      - -t
+      - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/dograh-ui:latest'
+      - .
+
+  - id: api
+    name: gcr.io/cloud-builders/docker
+    env: ['DOCKER_BUILDKIT=1']
+    args:
+      - build
+      - -f
+      - api/Dockerfile
+      - -t
+      - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/dograh-api:${_TAG}'
+      - -t
+      - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/dograh-api:latest'
+      - .

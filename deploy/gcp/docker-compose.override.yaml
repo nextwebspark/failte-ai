@@ -1,0 +1,116 @@
+# GCP app-VM overlay for the root docker-compose.yaml.
+#
+# Layered on top of the standard remote stack, so the normal installer flow
+# still applies — this file only expresses what differs on GCP:
+#
+#   sudo ./setup_remote.sh
+#   docker compose \
+#     -f docker-compose.yaml \
+#     -f deploy/gcp/docker-compose.override.yaml \
+#     --profile remote up -d
+#
+# Export COMPOSE_FILE in the VM's shell profile so plain `docker compose ...`
+# picks both files up and you cannot forget the overlay:
+#   export COMPOSE_FILE=docker-compose.yaml:deploy/gcp/docker-compose.override.yaml
+#
+# Requires Compose v2.24+ for the `!reset` / `!override` merge tags.
+
+services:
+  # ---------------------------------------------------------------------------
+  # Postgres now lives in Cloud SQL (private IP, same VPC). Drop the container.
+  # ---------------------------------------------------------------------------
+  postgres: !reset null
+
+  # ---------------------------------------------------------------------------
+  # MinIO is deliberately KEPT even though storage is GCS.
+  #
+  # Two reasons, both practical:
+  #   1. deploy/templates/nginx.remote.conf.template hardcodes
+  #      `proxy_pass http://minio:9000/voice-audio/`. nginx resolves that name at
+  #      startup and refuses to start if it does not exist, so removing the
+  #      service breaks the whole ingress until that template is forked.
+  #   2. It is the rollback path during the storage migration. Rows in
+  #      workflow_runs / workflow_recordings carry a per-row storage_backend
+  #      enum; until every row is flipped to 's3' and verified, MinIO must still
+  #      be able to serve historical recordings.
+  #
+  # It is inert once ENABLE_AWS_S3=true: api/services/storage.py only constructs
+  # MinioFileSystem for rows whose backend is 'minio', so the anonymous bucket
+  # policy in api/services/filesystem/minio.py is never applied.
+  #
+  # Once the GCS cutover is verified and stable, remove MinIO *and* the
+  # /voice-audio/ location from the nginx template together — not separately.
+  # ---------------------------------------------------------------------------
+
+  api:
+    # Upstream sets no restart policy on the core services, so after the
+    # dograh-dev-hours 19:00 stop only the sidecars came back at 08:00.
+    restart: unless-stopped
+    environment:
+      # The root compose file HARDCODES DATABASE_URL to the postgres container,
+      # so a DATABASE_URL in .env is silently ignored. It must be overridden
+      # here. Note the postgresql+asyncpg:// prefix — api/constants.py requires
+      # the driver, a bare postgresql:// URL fails at startup.
+      DATABASE_URL: "${DATABASE_URL:?DATABASE_URL is required — point it at the Cloud SQL private IP}"
+      # botocore >= 1.36 sends a CRC32 checksum trailer on every PutObject;
+      # GCS's S3 XML API rejects it with SignatureDoesNotMatch, so every
+      # recording/transcript upload failed. Only checksum when an op requires it.
+      AWS_REQUEST_CHECKSUM_CALCULATION: when_required
+      AWS_RESPONSE_CHECKSUM_VALIDATION: when_required
+    depends_on: !override
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+
+  # ---------------------------------------------------------------------------
+  # Agent sidecars. Both are called by the api container as `http_api` tools
+  # during a live conversation, so they sit on app-network and publish NO host
+  # ports — nothing outside the VM can reach them.
+  # ---------------------------------------------------------------------------
+  calendar-shim:
+    image: "${REGISTRY:?REGISTRY is required}/calendar-shim:${CALENDAR_SHIM_TAG:-latest}"
+    container_name: calendar-shim
+    restart: unless-stopped
+    env_file:
+      - ./deploy/gcp/secrets/calendar-shim.env
+    volumes:
+      # Google service-account key, materialised from Secret Manager at boot.
+      - /etc/dograh/sa.json:/secrets/sa.json:ro
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://localhost:8080/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks:
+      - app-network
+
+  chmarine-product-service:
+    image: "${REGISTRY:?REGISTRY is required}/product-service:${PRODUCT_SERVICE_TAG:-latest}"
+    container_name: chmarine-product-service
+    restart: unless-stopped
+    env_file:
+      - ./deploy/gcp/secrets/product-service.env
+    volumes:
+      # catalogue.sqlite lives on the VM's persistent disk so PD snapshots cover
+      # it. Rebuilding it means re-crawling chmarine.com — copy, do not rebuild.
+      - /var/lib/dograh/chmarine:/data
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://localhost:8080/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks:
+      - app-network
+
+  # Same reason as api: survive the scheduled VM stop/start and daemon restarts.
+  ui:
+    restart: unless-stopped
+  nginx:
+    restart: unless-stopped
+  redis:
+    restart: unless-stopped
+  minio:
+    restart: unless-stopped

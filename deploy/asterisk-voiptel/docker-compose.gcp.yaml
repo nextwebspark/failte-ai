@@ -1,0 +1,49 @@
+# GCP sip-VM overlay for deploy/asterisk-voiptel/docker-compose.yaml.
+#
+# Kept as an overlay rather than edits to the base file so the local Mac setup
+# (which runs this stack against a Dograh on the host) keeps working unchanged.
+#
+#   cd deploy/asterisk-voiptel
+#   docker compose -f docker-compose.yaml -f docker-compose.gcp.yaml up -d
+#
+# Requires Compose v2.24+ for the `!reset` merge tag.
+
+services:
+  asterisk:
+    # Built in Cloud Build, not here. Asterisk 22 compiles from source with
+    # bundled pjproject; doing that on a 2 GB e2-small is slow and risks the
+    # OOM killer. The image also pins the module set (chan_websocket,
+    # res_websocket_client, res_ari*) that no distro package ships — which is
+    # why this runs from an image rather than a native apt install.
+    build: !reset null
+    image: "${ASTERISK_IMAGE:?ASTERISK_IMAGE is required — build it in Cloud Build first}"
+
+    # Host networking. The base file uses bridge + 1:1 published ports because
+    # Docker Desktop on macOS NATs host mode opaquely; on Linux that caveat does
+    # not apply, and host mode is strictly better here:
+    #   - no NAT layer between the carrier's RTP and Asterisk
+    #   - no 121 published UDP ports, so no docker-proxy processes at all
+    #   - source ports are preserved, which symmetric RTP depends on
+    # This is as close to a native install as it gets while keeping a
+    # reproducible, pre-built image.
+    network_mode: host
+
+    # With host networking, `ports` is meaningless — the container binds the
+    # host's interfaces directly. Reachability is governed entirely by the VPC
+    # firewall rules created in deploy/gcp/bootstrap.sh:
+    #   allow-sip  tcp 5071          <- carrier signalling IP only
+    #   allow-rtp  udp 10000-10120   <- carrier signalling + media IPs only
+    #   allow-ari  tcp 8088          <- source-tags=dograh-app only
+    # NOTE: etc/http.conf binds ARI to 0.0.0.0, and ARI is unauthenticated at
+    # the transport layer. The allow-ari rule is therefore the ONLY thing
+    # keeping call control private — do not widen it.
+    ports: !reset null
+
+    # host.docker.internal is meaningless here: the API is on a different VM,
+    # reached over the VPC. DOGRAH_WS_URI in .env must point at APP_INTERNAL_IP.
+    extra_hosts: !reset null
+
+    # Server-side override of the template baked into the image (bind port 5071),
+    # so a config change does not need a 30-min Asterisk rebuild.
+    volumes:
+      - ./etc/pjsip.conf:/etc/asterisk-templates/pjsip.conf:ro
