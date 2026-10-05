@@ -12,6 +12,7 @@ import { UnsavedChangesProvider } from "@/context/UnsavedChangesContext";
 import { useAuth } from "@/lib/auth";
 import logger from "@/lib/logger";
 import {
+    type CallDispositionOption,
     resolveWorkflowConfigurations,
     type WorkflowConfigurations,
 } from "@/types/workflow-configurations";
@@ -36,6 +37,10 @@ export type AgentSectionContext = {
     workflowConfigurations: WorkflowConfigurations;
     templateContextVariables: Record<string, string>;
     dictionary: string;
+    /** Platform defaults for the call disposition editor. */
+    defaultCallDispositions: CallDispositionOption[];
+    /** Built-in voicemail/screening classifier instructions. */
+    defaultAnswerClassifierPrompt: string;
     textChatInactivityTimeoutConstraints: TextChatInactivityTimeoutConstraints | null;
     widgetTextDefaults: WidgetTexts | null;
     saveWorkflowConfigurations: (
@@ -140,6 +145,8 @@ function AgentSectionState({
     const {
         workflowName,
         workflowConfigurations,
+        defaultCallDispositions,
+        defaultAnswerClassifierPrompt,
         textChatInactivityTimeoutConstraints,
         widgetTextDefaults,
         templateContextVariables,
@@ -172,6 +179,8 @@ function AgentSectionState({
                 workflowConfigurations: resolved,
                 templateContextVariables,
                 dictionary,
+                defaultCallDispositions,
+                defaultAnswerClassifierPrompt,
                 textChatInactivityTimeoutConstraints,
                 widgetTextDefaults,
                 saveWorkflowConfigurations,

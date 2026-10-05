@@ -25,6 +25,7 @@ from api.services.telephony.base import (
     SIPTransportDetails,
     TelephonyProvider,
 )
+from api.services.telephony.sip import first_sip_string, normalize_sip_headers
 from api.services.workflow.initial_context import merge_external_initial_context
 from api.utils.common import get_backend_endpoints
 from api.utils.telephony_address import normalize_telephony_address
@@ -43,17 +44,11 @@ CLOUDONIX_API_BASE_URL = "https://api.cloudonix.io"
 AGENT_STREAM_HANDSHAKE_TIMEOUT_S = 10
 
 
-def _first_enabled_trunk_name(trunks: Any) -> str | None:
-    """Name of the first enabled outbound trunk, or ``None`` when there is none."""
-    if not isinstance(trunks, list):
-        return None
-    for trunk in trunks:
-        if not isinstance(trunk, dict) or trunk.get("enabled") is not True:
-            continue
-        name = trunk.get("name")
-        if isinstance(name, str) and name.strip():
-            return name.strip()
-    return None
+def _key_tail(key: str | None) -> str:
+    """Last 8 characters of an API key, for logs that compare two keys."""
+    if not key:
+        return "MISSING"
+    return key[-8:] if len(key) > 8 else "SHORT_KEY"
 
 
 def _inbound_transports(
@@ -102,19 +97,18 @@ class CloudonixProvider(TelephonyProvider):
                 - domain_uuid: UUID returned by Cloudonix's domainGet API
                 - application_name: Cloudonix Voice Application name whose
                     url is updated by ``configure_inbound``
-                - outbound_trunk: Dograh-managed outbound voice-trunk settings;
-                    its name is used to route outbound calls deterministically
+                - trunks: Dograh-managed outbound voice trunks on this domain
+                - trunk_id_by_number: which trunk each active number dials out
+                    on, so a call is pinned to the carrier that authorised its
+                    caller ID
                 - from_numbers: List of phone numbers to use (optional, fetched from API if not provided)
         """
         self.bearer_token = config.get("bearer_token")
         self.domain_id = self._normalize_domain(config.get("domain_id"))
         self.domain_uuid = config.get("domain_uuid")
         self.application_name = config.get("application_name")
-        # Storage allows several trunks; outbound calls pin to the first
-        # enabled one until there is a rule for choosing between them.
-        self.outbound_trunk_name = _first_enabled_trunk_name(
-            config.get("outbound_trunks")
-        )
+        self.trunks = config.get("trunks") or []
+        self.trunk_id_by_number = config.get("trunk_id_by_number") or {}
         self.from_numbers = config.get("from_numbers", [])
         self.default_from_number = config.get("default_from_number")
 
@@ -123,6 +117,22 @@ class CloudonixProvider(TelephonyProvider):
             self.from_numbers = [self.from_numbers]
 
         self.base_url = CLOUDONIX_API_BASE_URL
+
+    def _pin_trunk(self, data: Dict[str, Any], from_number: Optional[str]) -> None:
+        """Route the call over the trunk that authorised its caller ID.
+
+        Cloudonix otherwise tries every active trunk in creation order, which
+        can present a number one carrier owns to a different carrier. When no
+        trunk resolves we leave the selector off rather than guess — and we
+        drop any the caller passed through kwargs, since the stored assignment
+        is what decides this.
+        """
+        trunk = self.select_trunk(from_number)
+        name = trunk.get("name") if trunk else None
+        if isinstance(name, str) and name.strip():
+            data["trunk"] = name.strip()
+        else:
+            data.pop("trunk", None)
 
     @staticmethod
     def _normalize_domain(domain: Optional[str]) -> Optional[str]:
@@ -220,14 +230,7 @@ class CloudonixProvider(TelephonyProvider):
 
         # Merge any additional kwargs
         data.update(kwargs)
-        if self.outbound_trunk_name:
-            # Cloudonix otherwise tries every active trunk in creation order.
-            # Pin calls to the trunk managed by this Dograh configuration.
-            data["trunk"] = self.outbound_trunk_name
-        else:
-            # The stored enable flag is authoritative; callers cannot inject a
-            # trunk selector through provider kwargs while it is disabled.
-            data.pop("trunk", None)
+        self._pin_trunk(data, from_number)
 
         # Make the API request
         headers = self._get_auth_headers()
@@ -865,23 +868,53 @@ class CloudonixProvider(TelephonyProvider):
         - SessionData: Contains additional call info including underlying provider details
         """
 
-        session_data = webhook_data.get("SessionData", {})
-        token = session_data.get("token", "") if isinstance(session_data, dict) else ""
+        session_data = webhook_data.get("SessionData")
+        session_data = session_data if isinstance(session_data, dict) else {}
+        profile = session_data.get("profile")
+        profile = profile if isinstance(profile, dict) else {}
+        token = session_data.get("token", "")
 
         call_id = webhook_data.get("Session") or webhook_data.get("CallSid") or token
 
-        account_id = CloudonixProvider._normalize_domain(
-            webhook_data.get("Domain") or webhook_data.get("AccountSid", "")
+        raw_domain = webhook_data.get("Domain")
+        raw_account_sid = webhook_data.get("AccountSid", "")
+        account_id = CloudonixProvider._normalize_domain(raw_domain or raw_account_sid)
+        # The domain is what picks the telephony configuration — and therefore
+        # the organization — for this call, so record both fields it can come
+        # from before they are collapsed into one normalized value.
+        logger.info(
+            f"Cloudonix inbound webhook domain fields — Domain={raw_domain!r} "
+            f"AccountSid={raw_account_sid!r} normalized={account_id!r} "
+            f"To={webhook_data.get('To')!r} From={webhook_data.get('From')!r}"
         )
 
         # Extract underlying provider information from SessionData if available
-        session_data = webhook_data.get("SessionData", {})
         underlying_provider = None
-        if isinstance(session_data, dict):
-            profile = session_data.get("profile", {})
-            trunk_headers = profile.get("trunk-sip-headers", {})
-            if "Twilio-AccountSid" in trunk_headers:
-                underlying_provider = "twilio"
+        trunk_headers = profile.get("trunk-sip-headers")
+        if isinstance(trunk_headers, dict) and "Twilio-AccountSid" in trunk_headers:
+            underlying_provider = "twilio"
+
+        # Cloudonix's CallSid/Session identify its session, not the caller's
+        # SIP dialog. The latter is repeated in callIds, profile.callId and CID.
+        sip_headers = normalize_sip_headers(
+            (name, value)
+            for field in ("trunk-sip-headers", "subscriber-sip-headers")
+            if isinstance(forwarded := profile.get(field), dict)
+            for name, value in forwarded.items()
+        )
+        lowered = {name.lower(): value for name, value in sip_headers.items()}
+        sip_call_id = (
+            first_sip_string(session_data.get("callIds"))
+            or first_sip_string(profile.get("callId"))
+            or next(
+                (
+                    lowered[name]
+                    for name in ("cid", "call-id", "correlation-id", "x-correlation-id")
+                    if lowered.get(name)
+                ),
+                None,
+            )
+        )
 
         direction = webhook_data.get("Direction", "inbound").lower()
         if direction in {"inbound", "subscriber"}:
@@ -901,6 +934,8 @@ class CloudonixProvider(TelephonyProvider):
                 **webhook_data,
                 "underlying_provider": underlying_provider,
             },
+            sip_call_id=sip_call_id,
+            sip_headers=sip_headers,
         )
 
     @staticmethod
@@ -952,10 +987,21 @@ class CloudonixProvider(TelephonyProvider):
         is_valid = api_key == self.bearer_token
 
         if is_valid:
-            logger.info("Cloudonix x-cx-apikey validation successful")
+            logger.info(
+                f"Cloudonix x-cx-apikey validation successful for "
+                f"domain={self.domain_id}"
+            )
         else:
+            # A mismatch here usually means the config this request resolved to
+            # is not the one Cloudonix called: the key belongs to whichever
+            # domain took the call, the expected key to whatever the inbound
+            # route matched. Print both tails so the two can be told apart.
             logger.warning(
-                f"Cloudonix x-cx-apikey validation failed. Expected key ending with ...{self.bearer_token[-8:] if len(self.bearer_token) > 8 else 'SHORT_KEY'}"
+                f"Cloudonix x-cx-apikey validation failed. Received key ending "
+                f"with ...{_key_tail(api_key)}, expected key ending with "
+                f"...{_key_tail(self.bearer_token)} "
+                f"(matched config domain={self.domain_id}, "
+                f"application={self.application_name})"
             )
 
         return True  # TODO: update this post clarification from cloudonix
@@ -1217,7 +1263,8 @@ class CloudonixProvider(TelephonyProvider):
                     if response.status != 200:
                         body = await response.text()
                         raise ProviderPhoneNumberLookupError(
-                            f"Cloudonix API {response.status}: {body}"
+                            f"Cloudonix API {response.status}: {body}",
+                            status_code=response.status,
                         )
                     data = await response.json()
         except ProviderPhoneNumberLookupError:
@@ -1392,10 +1439,7 @@ class CloudonixProvider(TelephonyProvider):
             "timeout": timeout,
         }
         data.update(kwargs)
-        if self.outbound_trunk_name:
-            data["trunk"] = self.outbound_trunk_name
-        else:
-            data.pop("trunk", None)
+        self._pin_trunk(data, from_number)
         headers = self._get_auth_headers()
         masked_destination = f"***{destination[-4:]}" if len(destination) > 4 else "***"
         logger.info(

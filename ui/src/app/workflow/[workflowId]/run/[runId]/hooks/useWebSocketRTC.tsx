@@ -5,6 +5,7 @@ import { getTurnCredentialsApiV1TurnCredentialsGet, validateUserConfigurationsAp
 import { TurnCredentialsResponse } from "@/client/types.gen";
 import { WorkflowValidationError } from "@/components/flow/types";
 import type { ConversationNodeTransitionItem, RealtimeFeedbackMessage as FeedbackMessage } from "@/components/workflow/conversation";
+import { isLlmTtfb } from "@/components/workflow/conversation/adapters/fromRealtimeFeedback";
 import { useAppConfig } from "@/context/AppConfigContext";
 import { resolveBrowserBackendUrl } from '@/lib/apiClient';
 import { detailFromError } from '@/lib/apiError';
@@ -39,6 +40,11 @@ const HANDLED_SERVICE_ERROR_TYPES = new Set([
     'service_key_org_mismatch',
     'quota_check_failed',
 ]);
+
+// Errors meaning this run can never be called again. Retrying reaches the same
+// refusal, so the session is closed out as completed and the caller is left to
+// start a fresh run rather than being offered a retry that cannot succeed.
+const SPENT_RUN_ERROR_TYPES = new Set(['workflow_run_already_completed']);
 
 export const useWebSocketRTC = ({ workflowId, workflowRunId, accessToken, initialContextVariables, onNodeTransition }: UseWebSocketRTCProps) => {
     const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('idle');
@@ -396,6 +402,15 @@ export const useWebSocketRTC = ({ workflowId, workflowRunId, accessToken, initia
 
                                 // Stop the connection and surface the handled service error.
                                 cleanupConnection({ graceful: false, status: 'failed' });
+                            } else if (SPENT_RUN_ERROR_TYPES.has(message.payload?.error_type)) {
+                                logger.info('Run is no longer callable:', message.payload.message);
+                                setPermissionError(
+                                    message.payload?.message || 'This test run has already finished.'
+                                );
+                                // Completed rather than failed: the run did its
+                                // work, so the footer offers a new test instead
+                                // of a retry that would be refused again.
+                                cleanupConnection({ graceful: true, status: 'idle' });
                             } else {
                                 const serverErrorMessage = message.payload?.message || 'Server error';
                                 logger.error('Server error:', message.payload);
@@ -549,7 +564,13 @@ export const useWebSocketRTC = ({ workflowId, workflowRunId, accessToken, initia
                         }
 
                         case 'rtf-ttfb-metric': {
-                            const { ttfb_seconds, processor, model } = message.payload;
+                            const { ttfb_seconds, processor, model, kind } = message.payload;
+                            // Only the LLM's TTFB is shown (as reasoning delay). STT and TTS
+                            // TTFB can arrive mid-reply, and any message between two bot-text
+                            // chunks splits the bot bubble.
+                            if (!isLlmTtfb(kind)) {
+                                break;
+                            }
                             setFeedbackMessages(prev => [...prev, {
                                 id: feedbackId("ttfb"),
                                 type: 'ttfb-metric',

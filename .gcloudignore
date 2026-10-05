@@ -1,0 +1,44 @@
+# Upload filter for `gcloud builds submit`.
+#
+# gcloud does NOT read .dockerignore — without this file it would upload the
+# whole tree, including ui/node_modules (~3 GB) and venv (~1 GB).
+#
+# IMPORTANT: this uses .gitignore syntax, where a bare name like `run` matches a
+# directory of that name at ANY depth. That silently dropped
+# ui/src/app/workflow/[workflowId]/run and pipecat/src/pipecat/evals from an
+# earlier upload and broke the build with a confusing "Module not found".
+# Every repo-root-only entry below is therefore anchored with a leading slash.
+
+.git
+.github
+.gcloudignore
+
+# Local environments (anchored — do not match nested dirs)
+/venv
+/.venv
+**/node_modules
+**/.next
+**/__pycache__
+**/*.pyc
+/.mypy_cache
+/.pytest_cache
+/.ruff_cache
+
+# Local runtime state (anchored: `run`, `logs` and `certs` all exist as
+# legitimate source directories deeper in the tree)
+/logs
+/run
+/certs
+/dograh_pcm_cache
+/failte_voice_previews
+
+# Not needed by any image (anchored: pipecat/src/pipecat/evals IS needed)
+/evals
+/sdk
+/app-doc
+
+# Never upload secrets
+**/.env
+**/.env.*
+!**/.env.example
+/deploy/gcp/secrets

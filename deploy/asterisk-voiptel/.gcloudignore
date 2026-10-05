@@ -1,0 +1,7 @@
+# .env holds SIP_PASS and ARI_PASSWORD — never upload it to Cloud Build.
+# (The Dockerfile only COPYs entrypoint.sh and etc/, so it was never baked into
+# the image, but there is no reason to ship the credentials to the builder.)
+.env
+.env.*
+!.env.example
+logs/

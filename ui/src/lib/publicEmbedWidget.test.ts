@@ -18,6 +18,21 @@ type WidgetWindow = Window & {
     };
 };
 
+// The embed config endpoint resolves every visitor-facing label server-side, so
+// the widget never carries defaults of its own. Mirror that here.
+const WIDGET_TEXTS = {
+    endChatText: 'End chat',
+    endChatConfirmText: 'End this chat?',
+    endChatCancelText: 'Cancel',
+    endingChatText: 'Ending…',
+    conversationEndedText: 'Conversation ended.',
+    startNewChatText: 'Start new chat',
+    chatRetryText: 'Retry',
+    chatInputPlaceholder: 'Type a message…',
+    sendMessageLabel: 'Send message',
+    closeChatLabel: 'Close chat',
+};
+
 async function flushMicrotasks() {
     for (let i = 0; i < 5; i += 1) {
         await Promise.resolve();
@@ -38,20 +53,7 @@ function createFetchMock(autoStart: boolean) {
                         embedMode: 'inline',
                         containerId: 'failte-inline-container',
                     },
-                    // The widget carries no default copy of its own — every
-                    // visitor-facing string arrives already resolved on this
-                    // payload (api/schemas/widget_texts.py). Omitting `texts`
-                    // makes widgetText() return '' for each key, so the banner
-                    // this suite asserts on renders empty and stays hidden.
-                    texts: {
-                        endChatText: 'End chat',
-                        conversationEndedText: 'Conversation ended.',
-                        startNewChatText: 'Start new chat',
-                        chatRetryText: 'Retry',
-                        chatInputPlaceholder: 'Type a message…',
-                        sendMessageLabel: 'Send message',
-                        closeChatLabel: 'Close chat',
-                    },
+                    texts: WIDGET_TEXTS,
                     auto_start: autoStart,
                 }),
             } as Response;
@@ -173,6 +175,11 @@ describe('public embed widget chat lifecycle', () => {
         expect(fetchMock.mock.calls.some(([url]) =>
             String(url).endsWith('/api/v1/public/embed/chat/emb_session_TEST/end'),
         )).toBe(false);
+
+        expect(document.querySelector('.failte-chat-end-confirmation')?.textContent)
+            .toContain(WIDGET_TEXTS.endChatConfirmText);
+        expect(document.querySelector('.failte-chat-end-confirm-cancel')?.textContent)
+            .toBe(WIDGET_TEXTS.endChatCancelText);
 
         const confirmEndButton = document.querySelector<HTMLButtonElement>(
             '.failte-chat-end-confirm-submit',

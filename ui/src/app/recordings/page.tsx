@@ -7,10 +7,12 @@ import { PageActions } from "@/components/layout/PageActionsSlot";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAuth } from "@/lib/auth";
 
 import RecordingsList from "./RecordingsList";
 import { RecordingsUploadDialog } from "./RecordingsUploadDialog";
+import TtsCacheList from "./TtsCacheList";
 
 export default function RecordingsPage() {
     const { user, redirectToLogin, loading } = useAuth();
@@ -45,19 +47,40 @@ export default function RecordingsPage() {
                 </Button>
             </PageActions>
 
-            <Card>
-                <CardHeader>
-                    <CardTitle>All Recordings</CardTitle>
-                    <CardDescription>
-                        Shared across every agent in your organization. Use{" "}
-                        <code className="rounded bg-muted px-1 text-xs">@</code> in prompt fields to
-                        insert them, or as transition messages in tool calls.
-                    </CardDescription>
-                </CardHeader>
-                <CardContent>
-                    <RecordingsList refreshKey={refreshKey} />
-                </CardContent>
-            </Card>
+            <Tabs defaultValue="recordings" key={`${user.id}:${"selectedTeam" in user ? user.selectedTeam?.id : user.organizationId}`}>
+                <TabsList className="mb-4">
+                    <TabsTrigger value="recordings">Uploaded recordings</TabsTrigger>
+                    <TabsTrigger value="tts-cache">TTS cache</TabsTrigger>
+                </TabsList>
+                <TabsContent value="recordings">
+                    <Card>
+                        <CardHeader>
+                            <CardTitle>All Recordings</CardTitle>
+                            <CardDescription>
+                                Shared across every agent in your organization. Use{" "}
+                                <code className="rounded bg-muted px-1 text-xs">@</code> in prompt fields to
+                                insert them, or as transition messages in tool calls.
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                            <RecordingsList refreshKey={refreshKey} />
+                        </CardContent>
+                    </Card>
+                </TabsContent>
+                <TabsContent value="tts-cache">
+                    <Card>
+                        <CardHeader>
+                            <CardTitle>Cached speech</CardTitle>
+                            <CardDescription>
+                                Speech reused across your organization’s workflows. Listen to a phrase and invalidate it to generate fresh audio on its next request.
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                            <TtsCacheList />
+                        </CardContent>
+                    </Card>
+                </TabsContent>
+            </Tabs>
 
             <RecordingsUploadDialog
                 open={isUploadOpen}

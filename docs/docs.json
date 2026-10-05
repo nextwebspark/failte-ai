@@ -57,7 +57,8 @@
               "configurations/api-keys",
               "configurations/agent-uuid",
               "configurations/interruption",
-              "configurations/tracing"
+              "configurations/tracing",
+              "configurations/call-events"
             ]
           },
           {
@@ -76,6 +77,7 @@
                     "group": "Built-in Tools",
                     "pages": [
                       "voice-agent/tools/call-transfer",
+                      "voice-agent/tools/transfer-agent",
                       "voice-agent/tools/end-call"
                     ]
                   },
@@ -109,11 +111,13 @@
             "pages": [
               "integrations/telephony/overview",
               "integrations/telephony/inbound",
+              "integrations/telephony/dograh-sip",
               "integrations/telephony/twilio",
               "integrations/telephony/vonage",
               "integrations/telephony/plivo",
               "integrations/telephony/telnyx",
               "integrations/telephony/cloudonix",
+              "integrations/telephony/exotel",
               "integrations/telephony/voiptel",
               "integrations/telephony/vobiz",
               "integrations/telephony/asterisk-ari",
@@ -150,6 +154,7 @@
             "group": "Guides",
             "pages": [
               "developer/workflow-schema",
+              "developer/call-dispositions",
               "developer/webhooks",
               "developer/environment-variables"
             ]
