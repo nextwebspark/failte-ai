@@ -56,6 +56,7 @@ from pipecat.services.gladia.stt import GladiaSTTService, GladiaSTTSettings
 from pipecat.services.google.llm import GoogleLLMService, GoogleLLMSettings
 from pipecat.services.google.stt import GoogleSTTService, GoogleSTTSettings
 from pipecat.services.google.tts import GoogleTTSService, GoogleTTSSettings
+from google.genai.types import HttpOptions, HttpRetryOptions
 from pipecat.services.google.vertex.llm import (
     GoogleVertexLLMService,
     GoogleVertexLLMSettings,
@@ -228,6 +229,30 @@ def stt_uses_external_turns(user_config) -> bool:
     if user_config.stt.provider == ServiceProviders.CARTESIA.value:
         return user_config.stt.model == "ink-2"
     return False
+
+
+# google-genai ships a retry policy for transient failures (408/429/5xx) but
+# leaves it switched off: `retry_args(None)` returns `stop_after_attempt(1)`, so
+# a client built without `http_options` never retries. Gemini on Vertex runs on
+# dynamic shared quota, which returns 429 RESOURCE_EXHAUSTED whenever the shared
+# pool is momentarily saturated — there is no per-project quota to raise, so a
+# single 429 would otherwise abort the turn (google/llm.py catches it and pushes
+# an ErrorFrame).
+#
+# The delays are deliberately far shorter than the SDK defaults (5 attempts,
+# 1s initial, 60s max). This runs mid-conversation while a caller is waiting, so
+# the budget is ~1s of added latency in the worst case; anything longer is dead
+# air and worse than failing fast.
+GOOGLE_GENAI_HTTP_OPTIONS = HttpOptions(
+    retry_options=HttpRetryOptions(
+        attempts=3,
+        initial_delay=0.25,
+        max_delay=2.0,
+        exp_base=2,
+        jitter=0.2,
+        http_status_codes=[408, 429, 500, 502, 503, 504],
+    )
+)
 
 
 class DograhGoogleLLMService(GoogleLLMService):
@@ -1016,6 +1041,7 @@ def create_llm_service_from_provider(
         return DograhGoogleLLMService(
             api_key=api_key,
             settings=GoogleLLMSettings(model=model, temperature=0.1),
+            http_options=GOOGLE_GENAI_HTTP_OPTIONS,
         )
     elif provider == ServiceProviders.GOOGLE_VERTEX.value:
         # Vertex serves Gemini, Claude, and open MaaS models behind one config;
@@ -1034,6 +1060,7 @@ def create_llm_service_from_provider(
                 project_id=project_id,
                 location=location or "us-east4",
                 settings=GoogleVertexLLMSettings(model=model, temperature=0.1),
+                http_options=GOOGLE_GENAI_HTTP_OPTIONS,
             ),
         )
     elif provider == ServiceProviders.AZURE.value:

@@ -37,6 +37,9 @@ def build_pipeline(
     pipeline_metrics_aggregator,
     voicemail_detector=None,
     recording_router=None,
+    input_silence_filler=None,
+    fast_router=None,
+    ack_gate=None,
 ):
     """Build the main pipeline with all components.
 
@@ -48,12 +51,18 @@ def build_pipeline(
         recording_router: Optional RecordingRouterProcessor. When provided,
             inserts between callback processor and TTS to route between
             pre-recorded audio playback and dynamic TTS.
+        input_silence_filler: Optional InputSilenceFiller. When provided,
+            inserts directly after the transport input so STT and VAD receive
+            continuous audio even when the caller's line drops it.
+        fast_router: Optional FastRouterProcessor. When provided, inserts
+            directly before the main LLM to acknowledge the caller early.
+        ack_gate: The AckGate paired with ``fast_router``. Inserted directly
+            before TTS so an acknowledgement never interrupts an answer.
     """
-    # Build processors list with optional voicemail detection
-    processors = [
-        transport.input(),  # Transport user input
-        stt,
-    ]
+    processors = [transport.input()]  # Transport user input
+    if input_silence_filler:
+        processors.append(input_silence_filler)
+    processors.append(stt)
 
     # Insert voicemail detector after STT if enabled
     # Note: We intentionally do NOT use voicemail_detector.gate() to allow TTS
@@ -70,6 +79,8 @@ def build_pipeline(
     post_llm = [pipeline_engine_callback_processor]
     if recording_router:
         post_llm.append(recording_router)
+    if ack_gate:
+        post_llm.append(ack_gate)
 
     processors.append(user_context_aggregator)
 
@@ -78,6 +89,9 @@ def build_pipeline(
     # determines whether a human or voicemail answered the call.
     if voicemail_detector:
         processors.append(voicemail_detector.llm_gate())
+
+    if fast_router:
+        processors.append(fast_router)
 
     processors.extend(
         [

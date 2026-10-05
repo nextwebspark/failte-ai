@@ -32,7 +32,9 @@ from api.services.pipecat.event_handlers import (
     register_audio_data_handler,
     register_event_handlers,
 )
+from api.services.pipecat.fast_router import create_fast_router
 from api.services.pipecat.in_memory_buffers import InMemoryLogsBuffer
+from api.services.pipecat.input_silence_filler import InputSilenceFiller
 from api.services.pipecat.pipeline_builder import (
     build_pipeline,
     build_realtime_pipeline,
@@ -1051,6 +1053,29 @@ async def _run_pipeline_impl(
             voicemail_detector=voicemail_detector,
         )
     else:
+        # Opt-in per workflow: some callers' lines stop sending audio during
+        # silence, which stalls end-of-turn detection (see input_silence_filler).
+        input_silence_filler = (
+            InputSilenceFiller()
+            if run_configs.get("input_silence_fill_enabled")
+            else None
+        )
+        if input_silence_filler:
+            logger.info(f"[run {workflow_run_id}] input silence filler enabled")
+        # Opt-in per workflow: a light model acknowledges the caller while the
+        # main LLM works (see fast_router).
+        fast_router = ack_gate = None
+        fast_router_config = run_configs.get("fast_router") or {}
+        if fast_router_config.get("enabled"):
+            fast_router, ack_gate = create_fast_router(
+                fast_router_config,
+                project_id=getattr(user_config.llm, "project_id", None),
+            )
+            if fast_router:
+                logger.info(
+                    f"[run {workflow_run_id}] fast router enabled: "
+                    f"{fast_router_config.get('model')} @ {fast_router_config.get('location')}"
+                )
         pipeline = build_pipeline(
             transport,
             stt,
@@ -1063,6 +1088,9 @@ async def _run_pipeline_impl(
             pipeline_metrics_aggregator,
             voicemail_detector=voicemail_detector,
             recording_router=recording_router,
+            input_silence_filler=input_silence_filler,
+            fast_router=fast_router,
+            ack_gate=ack_gate,
         )
 
     # Create pipeline task with audio configuration
