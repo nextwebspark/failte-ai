@@ -65,6 +65,7 @@ export interface WorkflowRunsTableProps {
     title?: string;
     subtitle?: string;
     showFilters?: boolean;
+    showAgentVersion?: boolean;
     emptyMessage?: string;
 }
 
@@ -86,12 +87,12 @@ export function WorkflowRunsTable({
     sortBy,
     sortOrder = 'desc',
     onSort,
-    workflowId,
     returnTo,
     onReload,
     title = "Workflow Run History",
     subtitle,
     showFilters = true,
+    showAgentVersion = false,
     emptyMessage = "No workflow runs found",
 }: WorkflowRunsTableProps) {
     const [selectedRowId, setSelectedRowId] = useState<number | null>(null);
@@ -102,8 +103,10 @@ export function WorkflowRunsTable({
     const mediaPreview = MediaPreviewDialog();
 
     // Same tab: the run screen keeps this list's shell and links back to it.
-    const handleRowClick = (runId: number) => {
-        router.push(runDetailHref(workflowId, runId, returnTo));
+    // Use the run's own workflow: a campaign with a traffic split mixes runs
+    // from several agents in one list.
+    const handleRowClick = (run: WorkflowRunResponseSchema) => {
+        router.push(runDetailHref(run.workflow_id, run.id, returnTo));
     };
 
     return (
@@ -168,6 +171,7 @@ export function WorkflowRunsTable({
                                 <TableHeader>
                                     <TableRow className="bg-muted/50">
                                         <TableHead className="font-semibold">ID</TableHead>
+                                        {showAgentVersion && <TableHead>Agent / version</TableHead>}
                                         <TableHead className="font-semibold">Status</TableHead>
                                         <TableHead className="font-semibold">Created At</TableHead>
                                         <TableHead className="font-semibold">Call Type</TableHead>
@@ -193,9 +197,10 @@ export function WorkflowRunsTable({
                                         <TableRow
                                             key={run.id}
                                             className={`cursor-pointer hover:bg-muted/50 ${selectedRowId === run.id ? "bg-primary/20 ring-1 ring-primary/50" : ""}`}
-                                            onClick={() => handleRowClick(run.id)}
+                                            onClick={() => handleRowClick(run)}
                                         >
                                             <TableCell className="font-mono text-sm">#{run.id}</TableCell>
+                                            {showAgentVersion && <TableCell><div>{run.workflow_name ?? `Agent #${run.workflow_id}`}</div><div className="text-xs text-muted-foreground">{run.version_number != null ? `Version ${run.version_number}` : run.definition_id != null ? `Definition #${run.definition_id}` : 'Unversioned'}</div></TableCell>}
                                             <TableCell>
                                                 <Badge variant={run.is_completed ? "default" : "secondary"}>
                                                     {run.is_completed ? "Completed" : "In Progress"}
@@ -234,7 +239,7 @@ export function WorkflowRunsTable({
                                                         variant="outline"
                                                         size="icon"
                                                         title="Open run in a new tab"
-                                                        onClick={() => window.open(runDetailHref(workflowId, run.id, returnTo), '_blank')}
+                                                        onClick={() => window.open(runDetailHref(run.workflow_id, run.id, returnTo), '_blank')}
                                                     >
                                                         <ExternalLink className="h-4 w-4" />
                                                     </Button>

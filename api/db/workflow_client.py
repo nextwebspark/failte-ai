@@ -11,6 +11,47 @@ from api.db.models import WorkflowDefinitionModel, WorkflowModel, WorkflowRunMod
 
 
 class WorkflowClient(BaseDBClient):
+    async def get_workflow_definition(
+        self, workflow_id: int, definition_id: int, organization_id: int
+    ) -> WorkflowDefinitionModel | None:
+        async with self.async_session() as session:
+            return await session.scalar(
+                select(WorkflowDefinitionModel)
+                .join(
+                    WorkflowModel,
+                    WorkflowModel.id == WorkflowDefinitionModel.workflow_id,
+                )
+                .where(
+                    WorkflowDefinitionModel.id == definition_id,
+                    WorkflowDefinitionModel.workflow_id == workflow_id,
+                    WorkflowModel.organization_id == organization_id,
+                )
+            )
+
+    async def get_workflow_version_summaries(
+        self, workflow_id: int, organization_id: int
+    ):
+        async with self.async_session() as session:
+            result = await session.execute(
+                select(
+                    WorkflowDefinitionModel.id,
+                    WorkflowDefinitionModel.version_number,
+                    WorkflowDefinitionModel.status,
+                    WorkflowDefinitionModel.published_at,
+                )
+                .join(
+                    WorkflowModel,
+                    WorkflowModel.id == WorkflowDefinitionModel.workflow_id,
+                )
+                .where(
+                    WorkflowModel.id == workflow_id,
+                    WorkflowModel.organization_id == organization_id,
+                    WorkflowDefinitionModel.status.in_(["published", "archived"]),
+                )
+                .order_by(WorkflowDefinitionModel.version_number.desc())
+            )
+            return [dict(row) for row in result.mappings()]
+
     async def _next_version_number(self, session, workflow_id: int) -> int:
         """Get the next version number for a workflow."""
         result = await session.execute(
@@ -335,6 +376,8 @@ class WorkflowClient(BaseDBClient):
         workflow_id: int,
         limit: int | None = None,
         offset: int = 0,
+        version_number: int | None = None,
+        status: str | None = None,
     ) -> list[WorkflowDefinitionModel]:
         """List versions for a workflow, newest first.
 
@@ -354,6 +397,12 @@ class WorkflowClient(BaseDBClient):
                 )
                 .order_by(WorkflowDefinitionModel.version_number.desc())
             )
+            if version_number is not None:
+                query = query.where(
+                    WorkflowDefinitionModel.version_number == version_number
+                )
+            if status is not None:
+                query = query.where(WorkflowDefinitionModel.status == status)
             if offset:
                 query = query.offset(offset)
             if limit is not None:
@@ -879,6 +928,35 @@ class WorkflowClient(BaseDBClient):
                 counts[workflow_id] = run_count
 
             return counts
+
+    async def get_organization_disposition_codes(
+        self, organization_id: int
+    ) -> list[str]:
+        """Every disposition code observed across an organization's workflows.
+
+        ``add_call_disposition_code`` learns codes per workflow as runs finish,
+        which is what the per-workflow run filters offer. Org-wide filters need
+        the union, and it is the only way custom mapped codes (``XFER``,
+        ``DNC``, ...) can be offered at all - those exist nowhere in our enums.
+        """
+        async with self.async_session() as session:
+            result = await session.execute(
+                select(WorkflowModel.call_disposition_codes).where(
+                    WorkflowModel.organization_id == organization_id
+                )
+            )
+
+            codes: list[str] = []
+            seen: set[str] = set()
+            for (stored,) in result.all():
+                if not isinstance(stored, dict):
+                    continue
+                for code in stored.get("disposition_codes") or []:
+                    if isinstance(code, str) and code and code not in seen:
+                        seen.add(code)
+                        codes.append(code)
+
+            return codes
 
     async def add_call_disposition_code(
         self, workflow_id: int, disposition_code: str
