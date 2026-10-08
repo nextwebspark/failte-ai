@@ -13,10 +13,10 @@ Vertex AI exposes three model families behind one provider config
 """
 
 import asyncio
+import importlib
 from collections.abc import Callable
 from enum import Enum
 
-import httpx
 from fastapi import HTTPException
 from loguru import logger
 from openai import AsyncOpenAI, DefaultAsyncHttpxClient
@@ -128,7 +128,15 @@ def service_account_credentials(credentials_json: str | None):
     return GoogleVertexLLMService._get_credentials(credentials_json, None)
 
 
-class _GoogleCredentialsAuth(httpx.Auth):
+# openai 2.x builds its HTTP client on ``httpx``, 3.x on ``httpx2``. The client
+# rejects auth/limits objects from the other library, so take them from
+# whichever one DefaultAsyncHttpxClient actually subclasses.
+_http = importlib.import_module(
+    DefaultAsyncHttpxClient.__mro__[1].__module__.split(".", 1)[0]
+)
+
+
+class _GoogleCredentialsAuth(_http.Auth):
     """httpx auth flow that injects a fresh Vertex OAuth bearer token per request."""
 
     def __init__(self, creds):
@@ -195,7 +203,7 @@ class DograhVertexMaaSLLMService(OpenAILLMService):
             base_url=base_url,
             http_client=DefaultAsyncHttpxClient(
                 auth=_GoogleCredentialsAuth(self._google_creds),
-                limits=httpx.Limits(
+                limits=_http.Limits(
                     max_keepalive_connections=100,
                     max_connections=1000,
                     keepalive_expiry=None,
