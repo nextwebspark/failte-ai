@@ -134,19 +134,21 @@ export function StripeBilling() {
             setLoading(true);
             setFetchError(null);
             try {
-                const [accountResponse, ledgerResponse] = await Promise.all([
-                    getBillingAccountApiV1BillingAccountGet({ signal: controller.signal }),
-                    getBillingLedgerApiV1BillingLedgerGet({
-                        query: {
-                            limit: LEDGER_PAGE_SIZE,
-                            offset: (currentPage - 1) * LEDGER_PAGE_SIZE,
-                        },
-                        signal: controller.signal,
-                    }),
-                ]);
+                // Sequential on purpose: the first account read creates the
+                // account and its welcome credit, which the ledger must include.
+                const accountResponse = await getBillingAccountApiV1BillingAccountGet({
+                    signal: controller.signal,
+                });
                 if (accountResponse.error) {
                     throw new Error(detailFromError(accountResponse.error, "Failed to load billing"));
                 }
+                const ledgerResponse = await getBillingLedgerApiV1BillingLedgerGet({
+                    query: {
+                        limit: LEDGER_PAGE_SIZE,
+                        offset: (currentPage - 1) * LEDGER_PAGE_SIZE,
+                    },
+                    signal: controller.signal,
+                });
                 if (ledgerResponse.error) {
                     throw new Error(detailFromError(ledgerResponse.error, "Failed to load billing history"));
                 }
@@ -452,7 +454,7 @@ export function StripeBilling() {
                                                 <TableCell>
                                                     <div className="flex flex-col gap-1">
                                                         <span className="font-medium">{ENTRY_LABELS[entry.entry_type]}</span>
-                                                        {entry.description && (
+                                                        {entry.description && entry.description !== ENTRY_LABELS[entry.entry_type] && (
                                                             <span className="text-xs text-muted-foreground">{entry.description}</span>
                                                         )}
                                                     </div>

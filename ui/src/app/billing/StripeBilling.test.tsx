@@ -8,7 +8,7 @@ const mocks = vi.hoisted(() => ({
     getCredits: vi.fn(), push: vi.fn(), replace: vi.fn(),
     toast: Object.assign(vi.fn(), { error: vi.fn(), success: vi.fn() }),
     params: new URLSearchParams(),
-    can: vi.fn(() => true),
+    can: vi.fn<(...permissions: string[]) => boolean>(() => true),
 }));
 vi.mock("next/navigation", () => ({
     useRouter: () => ({ push: mocks.push, replace: mocks.replace }),
@@ -90,7 +90,7 @@ describe("Stripe billing page", () => {
     });
 
     it("hides purchasing from members who can only read billing", async () => {
-        mocks.can.mockImplementation((permission: string) => permission === "billing:read");
+        mocks.can.mockImplementation((...permissions: string[]) => permissions.every(p => p === "billing:read"));
         render(<BillingPage />);
 
         await screen.findByText("19.88");
