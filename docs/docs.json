@@ -58,7 +58,8 @@
               "configurations/agent-uuid",
               "configurations/interruption",
               "configurations/tracing",
-              "configurations/call-events"
+              "configurations/call-events",
+              "configurations/billing"
             ]
           },
           {
@@ -177,7 +178,8 @@
               "deployment/custom-domain",
               "deployment/scaling",
               "deployment/update",
-              "deployment/heroku"
+              "deployment/heroku",
+              "deployment/stripe-billing"
             ]
           }
         ]
