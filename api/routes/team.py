@@ -40,6 +40,12 @@ from api.utils.clock import SystemClock
 
 router = APIRouter(prefix="/organizations", tags=["team"])
 
+# Under Stack Auth, team membership is owned by Stack (its team invitations and
+# member removal); our membership rows follow it. Endpoints that add or remove
+# members therefore only exist with local auth, or a member removed here would
+# be re-added from their Stack team on their next request.
+LOCAL_MEMBERSHIP = [Depends(require_local_auth)]
+
 MembersReader = Annotated[
     OrgMembership, Depends(require_permission(Permission.MEMBERS_READ))
 ]
@@ -134,7 +140,9 @@ async def rename_current_organization(
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
-@router.post("/leave", status_code=status.HTTP_204_NO_CONTENT)
+@router.post(
+    "/leave", status_code=status.HTTP_204_NO_CONTENT, dependencies=LOCAL_MEMBERSHIP
+)
 async def leave_current_organization(
     membership: Annotated[OrgMembership, Depends(get_org_membership)],
 ) -> Response:
@@ -173,7 +181,11 @@ async def update_member_role(
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
-@router.delete("/members/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/members/{user_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=LOCAL_MEMBERSHIP,
+)
 async def remove_member(user_id: int, membership: MembersManager) -> Response:
     if user_id == membership.user.id:
         raise HTTPException(
@@ -186,7 +198,11 @@ async def remove_member(user_id: int, membership: MembersManager) -> Response:
 # -- invitations ---------------------------------------------------------------
 
 
-@router.get("/invitations", response_model=list[InvitationResponse])
+@router.get(
+    "/invitations",
+    response_model=list[InvitationResponse],
+    dependencies=LOCAL_MEMBERSHIP,
+)
 async def list_invitations(
     membership: MembersManager, invitations: Invitations
 ) -> list[InvitationResponse]:
@@ -198,6 +214,7 @@ async def list_invitations(
     "/invitations",
     response_model=IssuedInvitationResponse,
     status_code=status.HTTP_201_CREATED,
+    dependencies=LOCAL_MEMBERSHIP,
 )
 async def create_invitation(
     request: CreateInvitationRequest,
@@ -214,7 +231,9 @@ async def create_invitation(
 
 
 @router.post(
-    "/invitations/{invitation_id}/resend", response_model=IssuedInvitationResponse
+    "/invitations/{invitation_id}/resend",
+    response_model=IssuedInvitationResponse,
+    dependencies=LOCAL_MEMBERSHIP,
 )
 async def resend_invitation(
     invitation_id: int, membership: MembersManager, invitations: Invitations
@@ -227,7 +246,11 @@ async def resend_invitation(
     return _issued_response(issued)
 
 
-@router.delete("/invitations/{invitation_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/invitations/{invitation_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=LOCAL_MEMBERSHIP,
+)
 async def revoke_invitation(
     invitation_id: int, membership: MembersManager, invitations: Invitations
 ) -> Response:

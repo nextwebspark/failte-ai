@@ -10,6 +10,7 @@ from pydantic import SecretStr
 
 from api.errors.account import OAuthLoginError
 from api.services.auth.oauth.base import AuthorizationRequest, OAuthIdentity
+from api.utils.text import strip_control_characters
 
 _AUTHORIZE_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 _TOKEN_URL = "https://oauth2.googleapis.com/token"
@@ -61,7 +62,9 @@ class GoogleOAuthProvider:
             subject=str(claims["sub"]),
             email=email.lower(),
             email_verified=claims.get("email_verified") is True,
-            name=name if isinstance(name, str) else None,
+            name=(strip_control_characters(name) or None)
+            if isinstance(name, str)
+            else None,
             picture=picture if isinstance(picture, str) else None,
         )
 

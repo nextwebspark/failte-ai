@@ -7,7 +7,18 @@ describe("isSafeNextPath", () => {
     expect(isSafeNextPath(path)).toBe(true);
   });
 
-  it.each([null, undefined, "", "https://evil.example", "//evil.example", "/\\evil.example", "workflow"])(
+  it.each([
+    null,
+    undefined,
+    "",
+    "https://evil.example",
+    "//evil.example",
+    "/\\evil.example",
+    "/\t/evil.example",
+    "/\n/evil.example",
+    "/\u007f/evil.example",
+    "workflow",
+  ])(
     "rejects %s",
     (path) => {
       expect(isSafeNextPath(path)).toBe(false);

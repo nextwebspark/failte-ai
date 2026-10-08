@@ -31,7 +31,11 @@ export function GoogleCallback({
     if (!code || !state || providerError || started.current) return;
     started.current = true;
     (async () => {
-      const res = await googleCallbackApiV1AuthGoogleCallbackPost({ body: { code, state } });
+      const res = await googleCallbackApiV1AuthGoogleCallbackPost({
+        // Sends back the sign-in state cookie set by /auth/google/start.
+        credentials: "include",
+        body: { code, state },
+      });
       if (res.error || !res.data) {
         setError(detailFromError(res.error, "Google sign-in failed."));
         return;

@@ -26,11 +26,15 @@ from api.services.auth.oauth.base import OAuthIdentity
 from api.services.email.base import EmailDeliveryError, EmailMessage, EmailSender
 from api.services.email.templates import password_reset_message, verify_email_message
 from api.services.invitations.service import InvitationService
+from api.services.rate_limit import RateLimiter
 from api.utils.clock import Clock
 from api.utils.secure_token import hash_token, issue_token
 
 EMAIL_VERIFICATION_TTL = timedelta(hours=24)
 PASSWORD_RESET_TTL = timedelta(minutes=60)
+# Per address, for emails anyone can trigger (resend verification, reset).
+ACCOUNT_EMAIL_LIMIT = 3
+ACCOUNT_EMAIL_WINDOW = timedelta(minutes=15)
 
 PasswordHasher = Callable[[str], str]
 PasswordVerifier = Callable[[str, str], bool]
@@ -65,6 +69,7 @@ class AccountStore(Protocol):
         google_sub: str,
         avatar_url: str | None,
         verified_at: datetime,
+        revoke_credentials: bool,
     ) -> AuthAccount: ...
 
     async def mark_email_verified(
@@ -130,6 +135,7 @@ class AccountService:
         verify_password: PasswordVerifier,
         issue_session_token: SessionIssuer,
         ensure_organization: OrganizationEnsurer,
+        rate_limiter: RateLimiter,
     ) -> None:
         self._store = store
         self._invitations = invitations
@@ -140,6 +146,7 @@ class AccountService:
         self._verify_password = verify_password
         self._issue_session_token = issue_session_token
         self._ensure_organization = ensure_organization
+        self._limiter = rate_limiter
         self._app_url = policy.app_url.rstrip("/")
 
     # -- password accounts ---------------------------------------------------
@@ -161,19 +168,21 @@ class AccountService:
         if await self._store.get_account_by_email(email):
             raise EmailAlreadyRegisteredError()
 
-        # The invite link was delivered to this inbox, so it proves ownership.
-        verified = bool(invite_token) or not self._policy.require_email_verification
+        # Only the invite link proves this inbox belongs to the person signing
+        # up. Turning verification off lets them in without proof; it does not
+        # make the address verified.
+        proven = bool(invite_token)
         account = await self._store.create_account(
             email=email,
             name=name,
             password_hash=self._hash_password(credentials.password),
-            email_verified_at=self._clock.now() if verified else None,
+            email_verified_at=self._clock.now() if proven else None,
         )
         if invite_token:
             await self._invitations.accept(
                 token=invite_token, user_id=account.user_id, email=email
             )
-        if not verified:
+        if not proven and self._policy.require_email_verification:
             await self._send_verification(account)
             return SignupOutcome(account=account, session=None)
         return SignupOutcome(account=account, session=await self._onboard(account))
@@ -207,6 +216,8 @@ class AccountService:
         account = await self._store.get_account_by_email(email.strip())
         if account is None or account.is_email_verified:
             return
+        if not await self._may_email(TokenPurpose.EMAIL_VERIFICATION, account):
+            return
         await self._send_verification(account)
 
     # -- password reset ----------------------------------------------------------
@@ -215,6 +226,8 @@ class AccountService:
         """Always succeeds silently so callers can't probe which emails exist."""
         account = await self._store.get_account_by_email(email.strip())
         if account is None or account.email is None:
+            return
+        if not await self._may_email(TokenPurpose.PASSWORD_RESET, account):
             return
         now = self._clock.now()
         token = issue_token()
@@ -260,11 +273,15 @@ class AccountService:
                     raise OAuthLoginError(
                         "This email is linked to a different Google account"
                     )
+                # If the address was never verified, whoever registered it may
+                # not own the inbox: drop their password and pending links so
+                # only the Google identity (the proven owner) keeps access.
                 account = await self._store.link_google_account(
                     existing.user_id,
                     google_sub=identity.subject,
                     avatar_url=identity.picture,
                     verified_at=now,
+                    revoke_credentials=not existing.is_email_verified,
                 )
             else:
                 if invite_token:
@@ -291,13 +308,28 @@ class AccountService:
     # -- internals ---------------------------------------------------------------
 
     async def _may_sign_up(self, email: str) -> bool:
+        if self._policy.signup_enabled:
+            return True
+        # An open invitation lets the address sign up while signup is closed,
+        # but only when it will have to prove inbox ownership before it can
+        # claim anything.
         return (
-            self._policy.signup_enabled
-            or await self._invitations.has_open_invitation(email)
+            self._policy.require_email_verification
+            and await self._invitations.has_open_invitation(email)
+        )
+
+    async def _may_email(self, purpose: TokenPurpose, account: AuthAccount) -> bool:
+        """Silently drop repeat requests: telling the caller would reveal that
+        the address has an account."""
+        return await self._limiter.allow(
+            f"account-email:{purpose}:{account.user_id}",
+            limit=ACCOUNT_EMAIL_LIMIT,
+            window=ACCOUNT_EMAIL_WINDOW,
         )
 
     async def _onboard(self, account: AuthAccount) -> Session:
-        if account.email:
+        # Joining invited organizations requires proof the inbox is theirs.
+        if account.email and account.is_email_verified:
             await self._invitations.claim_pending(
                 user_id=account.user_id,
                 verified_email=account.email,

@@ -2,6 +2,7 @@ import aiohttp
 from pydantic import SecretStr
 
 from api.services.email.base import EmailDeliveryError, EmailMessage
+from api.utils.text import strip_control_characters
 
 _RESEND_URL = "https://api.resend.com/emails"
 _TIMEOUT = aiohttp.ClientTimeout(total=15)
@@ -20,7 +21,7 @@ class ResendEmailSender:
         payload = {
             "from": self._from,
             "to": [message.to],
-            "subject": message.subject,
+            "subject": strip_control_characters(message.subject),
             "text": message.text,
             "html": message.html,
         }

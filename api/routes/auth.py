@@ -1,4 +1,6 @@
 import secrets
+from collections.abc import Awaitable, Callable
+from datetime import timedelta
 from typing import Annotated
 
 from fastapi import APIRouter, Cookie, Depends, HTTPException, Request, Response
@@ -38,6 +40,7 @@ from api.services.auth.oauth.state import (
     states_match,
 )
 from api.services.posthog_client import capture_event
+from api.services.rate_limit import RateLimiter, get_rate_limiter
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -120,13 +123,59 @@ async def verify_email(request: TokenRequest, accounts: Accounts) -> AuthRespons
     return _auth_response(await accounts.verify_email(request.token))
 
 
-@router.post("/resend-verification", status_code=202, dependencies=LOCAL_ONLY)
+# Anonymous endpoints that send email. Per-address limits live in the
+# service (silent, so they don't reveal which addresses exist); these cap a
+# single client and the total volume, which protects the mail quota.
+CLIENT_EMAIL_LIMIT = 10
+CLIENT_EMAIL_WINDOW = timedelta(minutes=15)
+GLOBAL_EMAIL_LIMIT = 300
+GLOBAL_EMAIL_WINDOW = timedelta(hours=1)
+
+
+def _client_address(request: Request) -> str:
+    # Behind the UI proxy every request shares one peer address, so prefer the
+    # forwarded client. It is spoofable, which is why a global cap backs it.
+    forwarded = request.headers.get("x-forwarded-for", "")
+    first = forwarded.split(",")[0].strip()
+    return first or (request.client.host if request.client else "unknown")
+
+
+def _email_throttle(name: str) -> Callable[..., Awaitable[None]]:
+    async def _dependency(
+        request: Request,
+        limiter: Annotated[RateLimiter, Depends(get_rate_limiter)],
+    ) -> None:
+        client = _client_address(request)
+        allowed = await limiter.allow(
+            f"{name}:client:{client}",
+            limit=CLIENT_EMAIL_LIMIT,
+            window=CLIENT_EMAIL_WINDOW,
+        ) and await limiter.allow(
+            f"{name}:all", limit=GLOBAL_EMAIL_LIMIT, window=GLOBAL_EMAIL_WINDOW
+        )
+        if not allowed:
+            raise HTTPException(
+                status_code=429, detail="Too many requests; try again later"
+            )
+
+    return _dependency
+
+
+@router.post(
+    "/resend-verification",
+    status_code=202,
+    dependencies=[*LOCAL_ONLY, Depends(_email_throttle("resend-verification"))],
+)
 async def resend_verification(request: EmailRequest, accounts: Accounts) -> Response:
     await accounts.resend_verification(request.email)
     return Response(status_code=202)
 
 
-@router.post("/forgot-password", status_code=202, dependencies=LOCAL_ONLY)
+@router.post(
+    "/forgot-password",
+    status_code=202,
+    dependencies=[*LOCAL_ONLY, Depends(_email_throttle("forgot-password"))],
+)
 async def forgot_password(request: EmailRequest, accounts: Accounts) -> Response:
     await accounts.request_password_reset(request.email)
     return Response(status_code=202)

@@ -10,11 +10,13 @@ from api.services.invitations.service import (
     InvitationService,
     IssuedInvitation,
 )
+from api.services.rate_limit import RateLimiter, get_rate_limiter
 from api.utils.clock import SystemClock
 
 
 def get_invitation_service(
     email_sender: Annotated[EmailSender, Depends(get_email_sender)],
+    rate_limiter: Annotated[RateLimiter, Depends(get_rate_limiter)],
 ) -> InvitationService:
     """FastAPI dependency wiring the service to the real DB and mailer."""
     return InvitationService(
@@ -23,6 +25,7 @@ def get_invitation_service(
         email_sender=email_sender,
         clock=SystemClock(),
         app_url=UI_APP_URL,
+        rate_limiter=rate_limiter,
     )
 
 

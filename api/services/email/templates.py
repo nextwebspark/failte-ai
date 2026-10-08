@@ -4,6 +4,8 @@ from html import escape
 
 from api.services.email.base import EmailMessage
 
+PRODUCT_NAME = "Failte AI"
+
 
 def _layout(heading: str, body_html: str, action_label: str, action_url: str) -> str:
     return f"""<!doctype html>
@@ -27,16 +29,16 @@ def invitation_email(
     expires_in_days: int,
 ) -> EmailMessage:
     who = inviter_name or "A teammate"
-    subject = f"{who} invited you to {organization_name} on Dograh"
+    subject = f"{who} invited you to {organization_name} on {PRODUCT_NAME}"
     text = (
-        f"{who} invited you to join {organization_name} on Dograh as {role_label}.\n\n"
+        f"{who} invited you to join {organization_name} on {PRODUCT_NAME} as {role_label}.\n\n"
         f"Accept the invitation: {accept_url}\n\n"
         f"This link expires in {expires_in_days} days. If you weren't expecting "
         "it, you can ignore this email."
     )
     body = (
         f"<p>{escape(who)} invited you to join <strong>{escape(organization_name)}"
-        f"</strong> on Dograh as <strong>{escape(role_label)}</strong>.</p>"
+        f"</strong> on {PRODUCT_NAME} as <strong>{escape(role_label)}</strong>.</p>"
         f'<p style="font-size:13px;color:#666">This link expires in '
         f"{expires_in_days} days. If you weren't expecting it, you can ignore "
         "this email.</p>"
@@ -53,13 +55,14 @@ def verify_email_message(
     *, to: str, verify_url: str, expires_in_hours: int
 ) -> EmailMessage:
     text = (
-        "Confirm your email address to finish setting up your Dograh account.\n\n"
+        f"Confirm your email address to finish setting up your {PRODUCT_NAME} account.\n\n"
         f"Verify your email: {verify_url}\n\n"
         f"This link expires in {expires_in_hours} hours. If you didn't sign up, "
         "you can ignore this email."
     )
     body = (
-        "<p>Confirm your email address to finish setting up your Dograh "
+        "<p>Confirm your email address to finish setting up your "
+        f"{PRODUCT_NAME} "
         "account.</p>"
         f'<p style="font-size:13px;color:#666">This link expires in '
         f"{expires_in_hours} hours. If you didn't sign up, you can ignore this "
@@ -67,7 +70,7 @@ def verify_email_message(
     )
     return EmailMessage(
         to=to,
-        subject="Verify your email for Dograh",
+        subject=f"Verify your email for {PRODUCT_NAME}",
         text=text,
         html=_layout("Verify your email", body, "Verify email", verify_url),
     )
@@ -77,20 +80,20 @@ def password_reset_message(
     *, to: str, reset_url: str, expires_in_minutes: int
 ) -> EmailMessage:
     text = (
-        "Someone asked to reset the password for your Dograh account.\n\n"
+        f"Someone asked to reset the password for your {PRODUCT_NAME} account.\n\n"
         f"Choose a new password: {reset_url}\n\n"
         f"This link expires in {expires_in_minutes} minutes. If it wasn't you, "
         "ignore this email; your password stays the same."
     )
     body = (
-        "<p>Someone asked to reset the password for your Dograh account.</p>"
+        f"<p>Someone asked to reset the password for your {PRODUCT_NAME} account.</p>"
         f'<p style="font-size:13px;color:#666">This link expires in '
         f"{expires_in_minutes} minutes. If it wasn't you, ignore this email; "
         "your password stays the same.</p>"
     )
     return EmailMessage(
         to=to,
-        subject="Reset your Dograh password",
+        subject=f"Reset your {PRODUCT_NAME} password",
         text=text,
         html=_layout("Reset your password", body, "Choose a new password", reset_url),
     )

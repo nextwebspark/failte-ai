@@ -25,6 +25,8 @@ from api.services.auth.oauth.base import AuthorizationRequest, OAuthIdentity
 from api.services.email import get_email_sender
 from api.services.email.base import EmailMessage
 from api.services.invitations.service import InvitationService
+from api.services.rate_limit import get_rate_limiter
+from api.tests.support.rate_limit import InMemoryRateLimiter
 from api.utils.auth import create_jwt_token
 from api.utils.clock import SystemClock
 
@@ -94,7 +96,9 @@ async def api(sessions, monkeypatch):
     app = FastAPI()
     app.add_exception_handler(DomainError, handle_domain_error)
     app.include_router(auth_router, prefix="/api/v1")
+    limiter = InMemoryRateLimiter()
     app.dependency_overrides[get_email_sender] = lambda: sender
+    app.dependency_overrides[get_rate_limiter] = lambda: limiter
     app.dependency_overrides[get_google_oauth_provider] = lambda: google
     app.dependency_overrides[get_account_policy] = lambda: AccountPolicy(
         signup_enabled=policy.signup_enabled,
@@ -105,7 +109,7 @@ async def api(sessions, monkeypatch):
         transport=ASGITransport(app=app), base_url="http://test"
     ) as client:
         yield SimpleNamespace(
-            client=client, sender=sender, google=google, policy=policy
+            client=client, sender=sender, google=google, policy=policy, limiter=limiter
         )
 
 
@@ -149,6 +153,7 @@ def _invitations(sender: FakeSender) -> InvitationService:
         email_sender=sender,
         clock=SystemClock(),
         app_url="https://app.example.com",
+        rate_limiter=InMemoryRateLimiter(),
     )
 
 
@@ -365,9 +370,13 @@ async def test_google_creates_verified_user_with_org(api):
     assert body["user"]["organization_id"] is not None
 
 
-async def test_google_links_existing_password_account(api):
+async def test_google_drops_credentials_of_unverified_account(api):
+    """Review finding: an unverified account may have been registered by
+    someone who doesn't own the inbox. Linking Google must not let that
+    password (or pending links) keep working."""
     email = _email()
-    await _signup(api, email)
+    await _signup(api, email)  # unverified; password chosen by "someone"
+    pending_verify = api.sender.link_token()
     existing = await db_client.get_account_by_email(email)
     api.google.identity = _identity(email)
 
@@ -376,7 +385,23 @@ async def test_google_links_existing_password_account(api):
     assert response.json()["user"]["id"] == existing.user_id
     linked = await db_client.get_account(existing.user_id)
     assert linked.google_sub == api.google.identity.subject
-    # A verified Google email also verifies the password login.
+    assert linked.password_hash is None
+    assert (await _login(api, email)).status_code == 401
+    stale = await api.client.post(
+        "/api/v1/auth/verify-email", json={"token": pending_verify}
+    )
+    assert stale.status_code == 400
+
+
+async def test_google_keeps_password_of_verified_account(api):
+    email = _email()
+    await _signup(api, email)
+    await api.client.post(
+        "/api/v1/auth/verify-email", json={"token": api.sender.link_token()}
+    )
+    api.google.identity = _identity(email)
+
+    assert (await _google_login(api)).status_code == 200
     assert (await _login(api, email)).status_code == 200
 
 
@@ -532,3 +557,86 @@ async def test_google_provider_maps_verified_identity(monkeypatch):
     query = parse_qs(urlparse(url).query)
     assert query["code_challenge_method"] == ["S256"]
     assert query["redirect_uri"] == ["http://ui/cb"]
+
+
+# -- review fixes: unproven addresses, throttling --------------------------------
+
+
+async def test_verification_off_does_not_claim_invites(sessions, api):
+    """Review finding: with verification switched off, typing an invited
+    address must not join the inviting org."""
+    api.policy.require_verification = False
+    org = await _make_org_with_admin(sessions)
+    email = _email()
+    await _invitations(api.sender).invite(
+        organization_id=org.id, inviter_id=org.admin_id, email=email, role=OrgRole.ADMIN
+    )
+
+    response = await _signup(api, email)
+
+    assert response.status_code == 200
+    user = response.json()["user"]
+    assert user["organization_id"] != org.id
+    assert await db_client.get_member_role(user["id"], org.id) is None
+    account = await db_client.get_account_by_email(email)
+    assert not account.is_email_verified
+
+
+async def test_verification_off_and_signup_closed_needs_invite_link(sessions, api):
+    api.policy.require_verification = False
+    api.policy.signup_enabled = False
+    org = await _make_org_with_admin(sessions)
+    email = _email()
+    await _invitations(api.sender).invite(
+        organization_id=org.id, inviter_id=org.admin_id, email=email, role=OrgRole.ADMIN
+    )
+    invite_token = api.sender.sent[-1].text.split("/invite/", 1)[1].split()[0]
+
+    assert (await _signup(api, email)).status_code == 403
+    joined = await _signup(api, email, invite_token=invite_token)
+    assert joined.status_code == 200
+    assert joined.json()["user"]["organization_id"] == org.id
+
+
+async def test_account_emails_are_throttled_per_address_silently(api):
+    email = _email()
+    await _signup(api, email)  # sends verification #1
+    for _ in range(5):
+        response = await api.client.post(
+            "/api/v1/auth/resend-verification", json={"email": email}
+        )
+        assert response.status_code == 202
+    verification_emails = [m for m in api.sender.sent if m.to == email]
+    # 1 at signup + ACCOUNT_EMAIL_LIMIT resends; the rest are dropped silently.
+    assert len(verification_emails) == 1 + 3
+
+
+async def test_anonymous_email_endpoints_are_throttled_per_client(api):
+    statuses = [
+        (
+            await api.client.post(
+                "/api/v1/auth/forgot-password", json={"email": _email()}
+            )
+        ).status_code
+        for _ in range(12)
+    ]
+    assert statuses[:10] == [202] * 10
+    assert statuses[10:] == [429, 429]
+
+
+async def test_signup_rejects_control_characters_in_name(api):
+    response = await api.client.post(
+        "/api/v1/auth/signup",
+        json={"email": _email(), "password": PASSWORD, "name": "Eve\r\nBcc: x@y.z"},
+    )
+    assert response.status_code == 422
+
+
+@pytest.mark.parametrize(
+    "path", ["/\t/evil.example", "/\n/evil.example", "/\x7f/evil.example", "/ok\x00"]
+)
+def test_safe_next_path_rejects_control_characters(path):
+    from api.services.auth.oauth.state import safe_next_path
+
+    assert safe_next_path(path) is None
+    assert safe_next_path("/workflow?tab=1") == "/workflow?tab=1"

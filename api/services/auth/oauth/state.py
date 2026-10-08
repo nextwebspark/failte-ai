@@ -66,9 +66,13 @@ def states_match(cookie_state: OAuthLoginState, returned_state: str) -> bool:
 
 
 def safe_next_path(value: str | None) -> str | None:
-    """Accept only same-origin absolute paths (no open redirects)."""
+    """Accept only same-origin absolute paths (no open redirects).
+
+    Browsers drop ASCII tab/CR/LF while parsing URLs, so ``/\t/evil.com``
+    becomes ``//evil.com``; reject every control character, not just CR/LF.
+    """
     if not value or not value.startswith("/") or value.startswith("//"):
         return None
-    if "\\" in value or "\n" in value or "\r" in value:
+    if "\\" in value or any(ord(c) < 0x20 or c == "\x7f" for c in value):
         return None
     return value

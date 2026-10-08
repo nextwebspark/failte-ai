@@ -172,6 +172,7 @@ class MembershipClient(BaseDBClient):
             LastAdminError: the change would demote the only admin.
         """
         async with self.async_session() as session:
+            await self._lock_organization(session, organization_id)
             current = await self._lock_member_role(session, organization_id, user_id)
             if current == role:
                 return
@@ -198,6 +199,7 @@ class MembershipClient(BaseDBClient):
             LastAdminError: the member is the only admin.
         """
         async with self.async_session() as session:
+            await self._lock_organization(session, organization_id)
             current = await self._lock_member_role(session, organization_id, user_id)
             if current == OrgRole.ADMIN:
                 await self._ensure_another_admin(session, organization_id, user_id)
@@ -239,6 +241,20 @@ class MembershipClient(BaseDBClient):
             await session.commit()
 
     @staticmethod
+    async def _lock_organization(session: AsyncSession, organization_id: int) -> None:
+        """Serialize membership changes per organization.
+
+        Every role change and removal takes this lock first, so concurrent
+        changes never acquire membership row locks in opposite orders
+        (deadlock) and the last-admin check sees a stable set of admins.
+        """
+        await session.execute(
+            select(OrganizationModel.id)
+            .where(OrganizationModel.id == organization_id)
+            .with_for_update()
+        )
+
+    @staticmethod
     async def _lock_member_role(
         session: AsyncSession, organization_id: int, user_id: int
     ) -> OrgRole:
@@ -259,8 +275,8 @@ class MembershipClient(BaseDBClient):
     async def _ensure_another_admin(
         session: AsyncSession, organization_id: int, excluding_user_id: int
     ) -> None:
-        # Lock every admin row so two concurrent demotions cannot both see the
-        # other admin and leave the organization with none.
+        # Callers hold the organization lock, so this set of admins cannot
+        # change underneath the check.
         admins = await session.execute(
             select(_members.c.user_id)
             .where(

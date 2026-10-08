@@ -1,6 +1,8 @@
 from typing import Annotated
 
-from pydantic import AfterValidator, BaseModel, ConfigDict, EmailStr
+from pydantic import AfterValidator, BaseModel, ConfigDict, EmailStr, StringConstraints
+
+from api.utils.text import reject_control_characters
 
 
 def _password_min_length(v: str) -> str:
@@ -11,11 +13,17 @@ def _password_min_length(v: str) -> str:
 
 NewPassword = Annotated[str, AfterValidator(_password_min_length)]
 
+DisplayName = Annotated[
+    str,
+    StringConstraints(strip_whitespace=True, max_length=100),
+    AfterValidator(reject_control_characters),
+]
+
 
 class SignupRequest(BaseModel):
     email: EmailStr
     password: NewPassword
-    name: str | None = None
+    name: DisplayName | None = None
     # Token from an invitation link: join that organization instead of
     # creating a new one. Allowed even when open signup is disabled.
     invite_token: str | None = None

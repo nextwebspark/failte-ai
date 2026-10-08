@@ -10,10 +10,15 @@ from api.schemas.team import (
     AcceptInvitationResponse,
     InvitationPreviewResponse,
 )
-from api.services.auth.depends import get_user
+from api.services.auth.depends import get_user, require_local_auth
 from api.services.invitations import InvitationService, get_invitation_service
 
-router = APIRouter(prefix="/invitations", tags=["team"])
+# Invitations are a local-auth feature; Stack Auth has its own team invites.
+router = APIRouter(
+    prefix="/invitations",
+    tags=["team"],
+    dependencies=[Depends(require_local_auth)],
+)
 
 Invitations = Annotated[InvitationService, Depends(get_invitation_service)]
 

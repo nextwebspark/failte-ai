@@ -100,15 +100,30 @@ class AccountClient(BaseDBClient):
         google_sub: str,
         avatar_url: str | None,
         verified_at: datetime,
+        revoke_credentials: bool,
     ) -> AuthAccount:
         """Attach a Google identity; a verified Google email also verifies
-        the account's email."""
+        the account's email.
+
+        With ``revoke_credentials`` the password is cleared and every unused
+        verification/reset token invalidated, in the same transaction.
+        """
         async with self.async_session() as session:
             user = await session.scalar(
                 select(UserModel).where(UserModel.id == user_id)
             )
             if user is None:
                 raise LookupError(f"user {user_id} not found")
+            if revoke_credentials:
+                user.password_hash = None
+                await session.execute(
+                    update(UserTokenModel)
+                    .where(
+                        UserTokenModel.user_id == user_id,
+                        UserTokenModel.used_at.is_(None),
+                    )
+                    .values(used_at=verified_at)
+                )
             user.google_sub = google_sub
             if avatar_url and not user.avatar_url:
                 user.avatar_url = avatar_url

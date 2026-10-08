@@ -32,6 +32,9 @@ export function GoogleSignInButton({
   const start = async () => {
     setLoading(true);
     const res = await googleStartApiV1AuthGoogleStartGet({
+      // The response sets the sign-in state cookie the callback must return,
+      // which needs credentials when the API is on another origin.
+      credentials: "include",
       query: {
         invite_token: inviteToken ?? undefined,
         next: nextPath ?? undefined,

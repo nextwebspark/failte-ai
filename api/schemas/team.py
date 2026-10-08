@@ -3,12 +3,15 @@
 from datetime import datetime
 from typing import Annotated
 
-from pydantic import BaseModel, ConfigDict, EmailStr, StringConstraints
+from pydantic import AfterValidator, BaseModel, ConfigDict, EmailStr, StringConstraints
 
 from api.enums import InvitationStatus, OrgRole
+from api.utils.text import reject_control_characters
 
 OrganizationName = Annotated[
-    str, StringConstraints(strip_whitespace=True, min_length=1, max_length=100)
+    str,
+    StringConstraints(strip_whitespace=True, min_length=1, max_length=100),
+    AfterValidator(reject_control_characters),
 ]
 
 

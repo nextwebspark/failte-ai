@@ -250,3 +250,49 @@ async def test_remove_member_archives_keys_and_clears_selection(
     assert stored_key.is_active is False
     assert stored_key.archived_at is not None
     assert user.selected_organization_id is None
+
+
+async def test_concurrent_admin_changes_do_not_deadlock(sessions, org_with_members):
+    """Review finding: demoting one admin while removing another took row
+    locks in opposite orders. With three admins both changes succeed."""
+    import asyncio
+
+    data = org_with_members
+    await db_client.update_member_role(data.org.id, data.developer.id, OrgRole.ADMIN)
+    async with sessions() as session:
+        third = UserModel(
+            provider_id=f"members-{uuid.uuid4().hex}",
+            email=f"third-{uuid.uuid4().hex}@example.com",
+        )
+        session.add(third)
+        await session.commit()
+    await db_client.add_user_to_organization(third.id, data.org.id, role=OrgRole.ADMIN)
+
+    await asyncio.gather(
+        db_client.update_member_role(data.org.id, data.admin.id, OrgRole.VIEWER),
+        db_client.remove_organization_member(data.org.id, data.developer.id),
+    )
+
+    assert await db_client.get_member_role(data.admin.id, data.org.id) is OrgRole.VIEWER
+    assert await db_client.get_member_role(data.developer.id, data.org.id) is None
+    assert await db_client.get_member_role(third.id, data.org.id) is OrgRole.ADMIN
+
+
+async def test_concurrent_removal_of_both_admins_keeps_one(sessions, org_with_members):
+    import asyncio
+
+    data = org_with_members
+    await db_client.update_member_role(data.org.id, data.developer.id, OrgRole.ADMIN)
+
+    results = await asyncio.gather(
+        db_client.update_member_role(data.org.id, data.admin.id, OrgRole.VIEWER),
+        db_client.remove_organization_member(data.org.id, data.developer.id),
+        return_exceptions=True,
+    )
+
+    assert sum(isinstance(r, LastAdminError) for r in results) == 1
+    roles = [
+        await db_client.get_member_role(u.id, data.org.id)
+        for u in (data.admin, data.developer)
+    ]
+    assert OrgRole.ADMIN in roles

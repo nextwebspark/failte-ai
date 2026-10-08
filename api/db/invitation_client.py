@@ -73,8 +73,23 @@ class InvitationClient(BaseDBClient):
         expires_at: datetime,
         now: datetime,
     ) -> Invitation:
-        """Create an invitation, revoking any open one for the same address."""
+        """Create an invitation, revoking any open one for the same address.
+
+        Concurrent invites to the same address (double-click, two admins) are
+        serialized by a transaction-scoped advisory lock, so the second one
+        revokes the first instead of colliding on the open-invitation index.
+        """
         async with self.async_session() as session:
+            await session.execute(
+                select(
+                    func.pg_advisory_xact_lock(
+                        func.hashtextextended(
+                            f"organization_invitation:{organization_id}:{email.lower()}",
+                            0,
+                        )
+                    )
+                )
+            )
             await session.execute(
                 update(_Invite)
                 .where(

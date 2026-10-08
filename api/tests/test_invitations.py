@@ -22,9 +22,11 @@ from api.errors.invitations import (
     InvitationRateLimitError,
 )
 from api.errors.membership import AlreadyMemberError
+from api.services.auth import depends as auth_depends_module
 from api.services.email.base import EmailDeliveryError, EmailMessage
 from api.services.invitations import service as invitation_service_module
 from api.services.invitations.service import INVITATION_TTL, InvitationService
+from api.tests.support.rate_limit import InMemoryRateLimiter
 from api.utils.secure_token import hash_token
 
 pytestmark = pytest.mark.real_org_roles
@@ -104,13 +106,19 @@ def clock() -> FakeClock:
 
 
 @pytest.fixture
-def service(sender, clock) -> InvitationService:
+def limiter() -> InMemoryRateLimiter:
+    return InMemoryRateLimiter()
+
+
+@pytest.fixture
+def service(sender, clock, limiter) -> InvitationService:
     return InvitationService(
         store=db_client,
         directory=db_client,
         email_sender=sender,
         clock=clock,
         app_url="https://app.example.com/",
+        rate_limiter=limiter,
     )
 
 
@@ -431,6 +439,7 @@ async def team_app(sender):
     from api.services.auth.account_dependencies import get_account_policy
     from api.services.auth.accounts import AccountPolicy
     from api.services.email import get_email_sender
+    from api.services.rate_limit import get_rate_limiter
 
     app = FastAPI()
     app.add_exception_handler(DomainError, handle_domain_error)
@@ -438,6 +447,7 @@ async def team_app(sender):
     app.include_router(invitations_router)
     app.include_router(auth_router)
     app.dependency_overrides[get_email_sender] = lambda: sender
+    app.dependency_overrides[get_rate_limiter] = InMemoryRateLimiter
     policy = SimpleNamespace(signup_enabled=True)
     app.dependency_overrides[get_account_policy] = lambda: AccountPolicy(
         signup_enabled=policy.signup_enabled,
@@ -593,3 +603,99 @@ async def test_public_lookup_and_accept_route(sessions, org, service, sender, te
 
     again = await team_app.client.post("/invitations/accept", json={"token": token})
     assert again.status_code == 410
+
+
+# -- review fixes -------------------------------------------------------------------
+
+
+async def test_resend_is_rate_limited_per_invitation(org, service):
+    issued = await service.invite(
+        organization_id=org.id,
+        inviter_id=org.admin.id,
+        email=_email(),
+        role=OrgRole.VIEWER,
+    )
+    for _ in range(invitation_service_module.MAX_RESENDS_PER_INVITATION):
+        await service.resend(
+            organization_id=org.id,
+            invitation_id=issued.invitation.id,
+            inviter_id=org.admin.id,
+        )
+    with pytest.raises(InvitationRateLimitError):
+        await service.resend(
+            organization_id=org.id,
+            invitation_id=issued.invitation.id,
+            inviter_id=org.admin.id,
+        )
+
+
+async def test_concurrent_invites_to_same_address_leave_one_open(org, service):
+    import asyncio
+
+    email = _email()
+    results = await asyncio.gather(
+        *(
+            service.invite(
+                organization_id=org.id,
+                inviter_id=org.admin.id,
+                email=email,
+                role=OrgRole.VIEWER,
+            )
+            for _ in range(4)
+        )
+    )
+    assert len(results) == 4
+    open_invites = [
+        i for i in await service.list_open(org.id) if i.email == email.lower()
+    ]
+    assert len(open_invites) == 1
+
+
+async def test_membership_changes_are_local_auth_only_under_stack(
+    org, team_app, monkeypatch
+):
+    monkeypatch.setattr(auth_depends_module, "AUTH_PROVIDER", "stack")
+    team_app.state.user = org.admin
+    for method, path in [
+        ("POST", "/organizations/invitations"),
+        ("GET", "/organizations/invitations"),
+        ("POST", "/organizations/leave"),
+        ("DELETE", f"/organizations/members/{org.admin.id}"),
+        ("GET", "/invitations/lookup?token=" + "x" * 20),
+    ]:
+        response = await team_app.client.request(
+            method, path, json={"email": _email(), "role": "viewer"}
+        )
+        assert response.status_code == 404, (method, path, response.text)
+
+
+async def test_rename_rejects_line_breaks(org, team_app):
+    team_app.state.user = org.admin
+    response = await team_app.client.patch(
+        "/organizations/current", json={"name": "Acme\nBcc: x@y.z"}
+    )
+    assert response.status_code == 422
+
+
+async def test_smtp_sender_strips_line_breaks_from_subject():
+    from api.services.email.base import EmailMessage
+    from api.services.email.settings import SmtpSecurity, SmtpSettings
+    from api.services.email.smtp_sender import SmtpEmailSender
+
+    sender = SmtpEmailSender(
+        SmtpSettings("localhost", 25, None, None, SmtpSecurity.NONE, 1.0),
+        "Failte AI <no-reply@example.com>",
+    )
+    delivered = []
+    sender._deliver = delivered.append  # type: ignore[method-assign]
+
+    await sender.send(
+        EmailMessage(
+            to="a@example.com",
+            subject="Eve\r\nBcc: victim@example.com invited you",
+            text="t",
+            html="<p>t</p>",
+        )
+    )
+
+    assert delivered[0]["Subject"] == "Eve Bcc: victim@example.com invited you"

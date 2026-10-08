@@ -23,5 +23,7 @@ mypy --strict --follow-imports=silent \
   api/services/email \
   api/services/invitations \
   api/services/membership \
+  api/services/rate_limit \
+  api/utils/text.py \
   api/utils/clock.py \
   api/utils/secure_token.py

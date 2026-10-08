@@ -45,7 +45,7 @@ class EmailConfigurationError(ValueError):
 
 def load_email_settings(env: Mapping[str, str] = os.environ) -> EmailSettings:
     provider = EmailProvider(env.get("EMAIL_PROVIDER", EmailProvider.NONE).lower())
-    from_address = env.get("EMAIL_FROM", "Dograh <no-reply@localhost>")
+    from_address = env.get("EMAIL_FROM", "Failte AI <no-reply@localhost>")
 
     smtp: SmtpSettings | None = None
     resend_api_key: SecretStr | None = None

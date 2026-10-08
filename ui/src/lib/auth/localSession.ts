@@ -18,7 +18,17 @@ export async function startLocalSession(
   window.location.href = isSafeNextPath(nextPath) ? nextPath : "/after-sign-in";
 }
 
+// Browsers drop tab/CR/LF while parsing URLs ("/\t/evil.com" -> "//evil.com"),
+// so any control character disqualifies a path.
+const CONTROL_CHARACTERS = /[\u0000-\u001f\u007f]/;
+
 /** Same-origin absolute paths only, so a crafted link can't redirect offsite. */
 export function isSafeNextPath(path: string | null | undefined): path is string {
-  return Boolean(path && path.startsWith("/") && !path.startsWith("//") && !path.includes("\\"));
+  return Boolean(
+    path &&
+      path.startsWith("/") &&
+      !path.startsWith("//") &&
+      !path.includes("\\") &&
+      !CONTROL_CHARACTERS.test(path),
+  );
 }

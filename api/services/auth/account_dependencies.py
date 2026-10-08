@@ -10,6 +10,7 @@ from api.services.auth.accounts import AccountPolicy, AccountService
 from api.services.email import EmailSender, get_email_sender
 from api.services.invitations import InvitationService, get_invitation_service
 from api.services.membership import ensure_user_has_organization
+from api.services.rate_limit import RateLimiter, get_rate_limiter
 from api.utils.auth import create_jwt_token, hash_password, verify_password
 from api.utils.clock import SystemClock
 
@@ -32,6 +33,7 @@ def get_account_service(
     email_sender: Annotated[EmailSender, Depends(get_email_sender)],
     invitations: Annotated[InvitationService, Depends(get_invitation_service)],
     policy: Annotated[AccountPolicy, Depends(get_account_policy)],
+    rate_limiter: Annotated[RateLimiter, Depends(get_rate_limiter)],
 ) -> AccountService:
     return AccountService(
         store=db_client,
@@ -43,4 +45,5 @@ def get_account_service(
         verify_password=verify_password,
         issue_session_token=create_jwt_token,
         ensure_organization=_ensure_organization,
+        rate_limiter=rate_limiter,
     )

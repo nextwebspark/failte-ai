@@ -16,15 +16,17 @@ from api.errors.invitations import (
 from api.errors.membership import AlreadyMemberError
 from api.services.auth.permissions import ROLE_LABELS
 from api.services.email.base import EmailDeliveryError, EmailSender
-from api.services.email.templates import invitation_email
+from api.services.email.templates import PRODUCT_NAME, invitation_email
 from api.services.invitations.ports import Directory, InvitationStore
+from api.services.rate_limit import RateLimiter
 from api.utils.clock import Clock
 from api.utils.secure_token import hash_token, issue_token
 
 INVITATION_TTL = timedelta(days=7)
 RATE_LIMIT_WINDOW = timedelta(hours=1)
 MAX_INVITATIONS_PER_WINDOW = 50
-_FALLBACK_ORG_NAME = "a Dograh workspace"
+MAX_RESENDS_PER_INVITATION = 3
+_FALLBACK_ORG_NAME = f"a {PRODUCT_NAME} workspace"
 
 
 @dataclass(frozen=True, slots=True)
@@ -57,10 +59,12 @@ class InvitationService:
         email_sender: EmailSender,
         clock: Clock,
         app_url: str,
+        rate_limiter: RateLimiter,
     ) -> None:
         self._store = store
         self._directory = directory
         self._email = email_sender
+        self._limiter = rate_limiter
         self._clock = clock
         self._app_url = app_url.rstrip("/")
 
@@ -98,6 +102,19 @@ class InvitationService:
     async def resend(
         self, *, organization_id: int, invitation_id: int, inviter_id: int
     ) -> IssuedInvitation:
+        # Each resend mails the invitee, so cap it per invitation and count it
+        # against the organization's sending budget too.
+        allowed = await self._limiter.allow(
+            f"invitations:resend:{invitation_id}",
+            limit=MAX_RESENDS_PER_INVITATION,
+            window=RATE_LIMIT_WINDOW,
+        ) and await self._limiter.allow(
+            f"invitations:resend-org:{organization_id}",
+            limit=MAX_INVITATIONS_PER_WINDOW,
+            window=RATE_LIMIT_WINDOW,
+        )
+        if not allowed:
+            raise InvitationRateLimitError()
         token = issue_token()
         invitation = await self._store.rotate_invitation_token(
             organization_id,
