@@ -4,7 +4,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from api.constants import BILLING_PROVIDER
+from api.constants import BILLING_PROVIDER, BILLING_SALES_CONTACT
 from api.db import db_client
 from api.enums import BillingLedgerEntryType
 from api.schemas.billing import (
@@ -18,7 +18,11 @@ from api.services.auth.depends import OrgMembership, require_permission
 from api.services.auth.permissions import Permission
 from api.services.billing import pricing
 from api.services.billing.accounts import ensure_billing_account
-from api.services.billing.checkout import create_portal_session, create_topup_checkout
+from api.services.billing.checkout import (
+    create_portal_session,
+    create_setup_fee_checkout,
+    create_topup_checkout,
+)
 
 
 async def require_stripe_billing() -> None:
@@ -57,6 +61,7 @@ async def get_billing_account(membership: BillingReader) -> BillingAccountRespon
         max_topup_eur=pricing.MAX_TOPUP_EUR,
         setup_fee_eur=pricing.SETUP_FEE_EUR,
         setup_fee_included_credit_eur=pricing.SETUP_FEE_INCLUDED_CREDIT_EUR,
+        sales_contact=BILLING_SALES_CONTACT,
     )
 
 
@@ -100,6 +105,16 @@ async def create_top_up(
         organization_id=membership.organization_id,
         customer_email=membership.user.email,
         amount_eur=body.amount_eur,
+        created_by=membership.user.id,
+    )
+    return CheckoutUrlResponse(url=url)
+
+
+@router.post("/setup-fee", response_model=CheckoutUrlResponse)
+async def create_setup_fee(membership: BillingManager) -> CheckoutUrlResponse:
+    url = await create_setup_fee_checkout(
+        organization_id=membership.organization_id,
+        customer_email=membership.user.email,
         created_by=membership.user.id,
     )
     return CheckoutUrlResponse(url=url)

@@ -146,6 +146,35 @@ class BillingClient(BaseDBClient):
             ).scalar_one_or_none()
             return _to_account(row) if row else None
 
+    async def update_billing_account(
+        self, organization_id: int, **changes: Any
+    ) -> BillingAccount:
+        """Set any of ``plan``, ``price_per_minute_eur`` (None clears the
+        override) and ``credit_limit_eur`` on the organization's account."""
+        allowed = {"plan", "price_per_minute_eur", "credit_limit_eur"}
+        unknown = set(changes) - allowed
+        if unknown:
+            raise ValueError(f"Cannot update billing account fields: {unknown}")
+        if "plan" in changes:
+            changes["plan"] = BillingPlan(changes["plan"]).value
+        async with self.async_session() as session:
+            await _insert_account_if_missing(session, organization_id)
+            if changes:
+                await session.execute(
+                    update(BillingAccountModel)
+                    .where(BillingAccountModel.organization_id == organization_id)
+                    .values(**changes)
+                )
+            await session.commit()
+            row = (
+                await session.execute(
+                    select(BillingAccountModel)
+                    .where(BillingAccountModel.organization_id == organization_id)
+                    .execution_options(populate_existing=True)
+                )
+            ).scalar_one()
+            return _to_account(row)
+
     async def set_billing_stripe_customer_id(
         self, organization_id: int, stripe_customer_id: str
     ) -> str:

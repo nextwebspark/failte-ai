@@ -7,10 +7,16 @@ from loguru import logger
 
 from api.constants import STRIPE_AUTOMATIC_TAX, UI_APP_URL
 from api.db import db_client
-from api.enums import BillingLedgerEntryType
+from api.enums import BillingLedgerEntryType, BillingPlan
 from api.errors.billing import InvalidTopUpAmountError
 from api.services.billing.accounts import ensure_billing_account
-from api.services.billing.pricing import CURRENCY, MAX_TOPUP_EUR, MIN_TOPUP_EUR
+from api.services.billing.pricing import (
+    CURRENCY,
+    MAX_TOPUP_EUR,
+    MIN_TOPUP_EUR,
+    SETUP_FEE_EUR,
+    SETUP_FEE_INCLUDED_CREDIT_EUR,
+)
 from api.services.billing.stripe_client import (
     ensure_stripe_customer,
     get_stripe_client,
@@ -18,6 +24,7 @@ from api.services.billing.stripe_client import (
 
 # Checkout session metadata["purpose"] values.
 PURPOSE_TOPUP = "topup"
+PURPOSE_SETUP_FEE = "setup_fee"
 
 _CENT = Decimal("0.01")
 
@@ -113,6 +120,23 @@ async def create_topup_checkout(
     )
 
 
+async def create_setup_fee_checkout(
+    *,
+    organization_id: int,
+    customer_email: str | None,
+    created_by: int,
+) -> str:
+    """Checkout for the one-time Done-for-you setup fee."""
+    return await create_checkout_session(
+        organization_id=organization_id,
+        customer_email=customer_email,
+        amount_eur=SETUP_FEE_EUR,
+        product_name="Fáilte AI done-for-you agent setup",
+        purpose=PURPOSE_SETUP_FEE,
+        created_by=created_by,
+    )
+
+
 async def create_portal_session(organization_id: int) -> str:
     """Stripe Customer Portal link, where customers download their invoices."""
     customer_id = await ensure_stripe_customer(organization_id)
@@ -123,14 +147,15 @@ async def create_portal_session(organization_id: int) -> str:
 
 
 async def handle_paid_checkout_session(event: stripe.Event) -> None:
-    """Credit the wallet for a paid top-up. Safe to run more than once."""
+    """Apply a paid Checkout session to the ledger. Safe to run more than once."""
     session = event.data.object
     if session.payment_status != "paid":
         # Delayed payment methods finish later with async_payment_succeeded.
         return
 
     metadata = session.metadata.to_dict() if session.metadata else {}
-    if metadata.get("purpose") != PURPOSE_TOPUP:
+    purpose = metadata.get("purpose")
+    if purpose not in (PURPOSE_TOPUP, PURPOSE_SETUP_FEE):
         return
 
     organization_id = int(metadata["organization_id"])
@@ -145,24 +170,42 @@ async def handle_paid_checkout_session(event: stripe.Event) -> None:
         )
         return
 
-    # Credit the VAT-exclusive amount; VAT is owed to Revenue, not spendable.
-    amount_eur = _from_cents(session.amount_subtotal)
+    # VAT-exclusive amount paid; VAT is owed to Revenue, never spendable.
+    paid_eur = _from_cents(session.amount_subtotal)
     created_by = metadata.get("created_by")
+    if purpose == PURPOSE_TOPUP:
+        entry_type = BillingLedgerEntryType.TOPUP
+        credit_eur = paid_eur
+        description = "Credit top-up"
+    else:
+        # The fee pays for our work; only its included call credit is spendable.
+        entry_type = BillingLedgerEntryType.SETUP_FEE
+        credit_eur = SETUP_FEE_INCLUDED_CREDIT_EUR
+        description = "Done-for-you setup (includes call credit)"
+
     entry = await db_client.add_billing_ledger_entry(
         organization_id=organization_id,
-        entry_type=BillingLedgerEntryType.TOPUP,
-        amount_eur=amount_eur,
-        description="Credit top-up",
+        entry_type=entry_type,
+        amount_eur=credit_eur,
+        description=description,
         stripe_checkout_session_id=session.id,
         created_by=int(created_by) if created_by else None,
-        metadata={"payment_intent": session.payment_intent},
+        metadata={"payment_intent": session.payment_intent, "paid_eur": str(paid_eur)},
     )
     if entry is None:
-        logger.info("Checkout session {} was already credited", session.id)
+        logger.info("Checkout session {} was already applied", session.id)
         return
+
+    if purpose == PURPOSE_SETUP_FEE and account.plan == BillingPlan.PAYG:
+        await db_client.update_billing_account(
+            organization_id, plan=BillingPlan.DONE_FOR_YOU
+        )
     logger.info(
-        "Credited EUR {} to organization {} from checkout session {}",
-        amount_eur,
-        organization_id,
+        "Applied {} checkout session {} to organization {}: paid EUR {}, "
+        "credited EUR {}",
+        purpose,
         session.id,
+        organization_id,
+        paid_eur,
+        credit_eur,
     )

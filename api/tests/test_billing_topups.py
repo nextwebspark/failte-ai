@@ -214,3 +214,51 @@ async def test_billing_account_route(
     assert Decimal(body["price_per_minute_eur"]) == Decimal("0.12")
     assert ledger.status_code == 200
     assert ledger.json()["total"] == 1
+
+
+@pytest.mark.asyncio
+async def test_paid_setup_fee_grants_included_credit_and_plan(
+    db_session, async_session
+):
+    organization = await _create_organization(async_session)
+    await db_session.ensure_billing_account(organization.id)
+    await db_session.set_billing_stripe_customer_id(organization.id, "cus_test_1")
+    event = _checkout_event(organization.id, purpose="setup_fee", amount_subtotal=55000)
+
+    await checkout.handle_paid_checkout_session(event)
+    await checkout.handle_paid_checkout_session(event)
+
+    account = await db_session.get_billing_account(organization.id)
+    assert account.plan == "done_for_you"
+    assert account.balance_eur == Decimal("50")
+    entries, total = await db_session.list_billing_ledger_entries(organization.id)
+    assert total == 1
+    assert entries[0].entry_type == BillingLedgerEntryType.SETUP_FEE
+    assert entries[0].metadata["paid_eur"] == "550.00"
+
+
+@pytest.mark.asyncio
+async def test_setup_fee_does_not_downgrade_enterprise(db_session, async_session):
+    organization = await _create_organization(async_session)
+    await db_session.update_billing_account(organization.id, plan="enterprise")
+    await db_session.set_billing_stripe_customer_id(organization.id, "cus_test_1")
+
+    await checkout.handle_paid_checkout_session(
+        _checkout_event(organization.id, purpose="setup_fee", amount_subtotal=55000)
+    )
+
+    account = await db_session.get_billing_account(organization.id)
+    assert account.plan == "enterprise"
+
+
+@pytest.mark.asyncio
+async def test_setup_fee_checkout_amount(db_session, async_session, fake_stripe):
+    organization = await _create_organization(async_session)
+
+    await checkout.create_setup_fee_checkout(
+        organization_id=organization.id, customer_email=None, created_by=1
+    )
+
+    params = fake_stripe.v1.checkout.sessions.create_async.await_args.kwargs["params"]
+    assert params["line_items"][0]["price_data"]["unit_amount"] == 55000
+    assert params["metadata"]["purpose"] == "setup_fee"

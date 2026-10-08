@@ -97,6 +97,8 @@ STRIPE_SECRET_KEY = os.getenv("STRIPE_SECRET_KEY") or None
 STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET") or None
 # Let Stripe Tax compute VAT at checkout. Needs Stripe Tax set up on the account.
 STRIPE_AUTOMATIC_TAX = os.getenv("STRIPE_AUTOMATIC_TAX", "true").lower() == "true"
+# Where the billing page sends Enterprise enquiries (email address or URL).
+BILLING_SALES_CONTACT = os.getenv("BILLING_SALES_CONTACT") or None
 ENABLE_PROMETHEUS_METRICS = (
     os.getenv("ENABLE_PROMETHEUS_METRICS", "false").lower() == "true"
 )
