@@ -2,9 +2,10 @@
 and manual ledger adjustments (e.g. Enterprise invoices paid outside the
 app)."""
 
-from typing import Annotated
+from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import StreamingResponse
 
 from api.db import db_client
 from api.db.billing_client import BillingAccount
@@ -18,6 +19,7 @@ from api.schemas.billing import (
 )
 from api.services.auth.depends import get_superuser
 from api.services.billing.accounts import ensure_billing_account
+from api.services.billing.margins import margins_csv, monthly_margins
 from api.services.billing.pricing import price_per_minute_eur
 
 router = APIRouter(
@@ -104,3 +106,41 @@ async def adjust_organization_balance(
         workflow_run_id=entry.workflow_run_id,
         created_at=entry.created_at,
     )
+
+
+@router.get("/margins", include_in_schema=False)
+async def get_monthly_margins(
+    _user: Superuser,
+    month: Annotated[str, Query(pattern=r"^\d{4}-(0[1-9]|1[0-2])$")],
+    format: Literal["json", "csv"] = "json",
+):
+    """Revenue, estimated provider cost and margin per organization for a
+    calendar month (UTC), to tune the per-minute rate."""
+    margins = await monthly_margins(month)
+    if format == "csv":
+        return StreamingResponse(
+            margins_csv(margins),
+            media_type="text/csv",
+            headers={
+                "Content-Disposition": f'attachment; filename="margins-{month}.csv"'
+            },
+        )
+    return {
+        "month": month,
+        "organizations": [
+            {
+                "organization_id": m.organization_id,
+                "organization_name": m.organization_name,
+                "calls": m.calls,
+                "billed_seconds": m.billed_seconds,
+                "revenue_eur": str(m.revenue_eur),
+                "provider_cost_eur": str(m.provider_cost_eur),
+                "margin_eur": str(m.margin_eur),
+                "margin_percent": (
+                    None if m.margin_percent is None else str(m.margin_percent)
+                ),
+                "uncosted_calls": m.uncosted_calls,
+            }
+            for m in margins
+        ],
+    }

@@ -11,6 +11,7 @@ from api.enums import BillingLedgerEntryType
 from api.services.billing.accounts import ensure_billing_account
 from api.services.billing.notifications import notify_balance_change
 from api.services.billing.pricing import price_per_minute_eur
+from api.services.billing.provider_costs import estimate_provider_cost_eur
 
 _LEDGER_QUANTUM = Decimal("0.0001")
 
@@ -58,6 +59,7 @@ async def charge_workflow_run(workflow_run, organization_id: int) -> None:
         logger.info("Workflow run {} was already charged", workflow_run.id)
         return
 
+    provider_cost = estimate_provider_cost_eur(workflow_run.usage_info)
     await db_client.update_workflow_run(
         workflow_run.id,
         cost_info={
@@ -66,6 +68,13 @@ async def charge_workflow_run(workflow_run, organization_id: int) -> None:
             "billed_seconds": seconds,
             "rate_per_minute_eur": str(rate),
             "charge_eur": str(amount),
+            # Estimates for margin monitoring; None when a model is unpriced.
+            "provider_cost_eur": (
+                str(provider_cost) if provider_cost is not None else None
+            ),
+            "margin_eur": (
+                str(amount - provider_cost) if provider_cost is not None else None
+            ),
         },
     )
     try:

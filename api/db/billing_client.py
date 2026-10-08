@@ -12,7 +12,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 
 from api.db.base_client import BaseDBClient
-from api.db.models import BillingAccountModel, BillingLedgerEntryModel
+from api.db.models import (
+    BillingAccountModel,
+    BillingLedgerEntryModel,
+    OrganizationModel,
+    WorkflowRunModel,
+)
 from api.enums import BillingLedgerEntryType, BillingPlan
 
 _Entry = BillingLedgerEntryModel
@@ -31,6 +36,15 @@ class BillingAccount:
     price_per_minute_eur: Decimal | None
     stripe_customer_id: str | None
     created_at: datetime
+
+
+@dataclass(frozen=True, slots=True)
+class ChargedRun:
+    organization_id: int
+    organization_name: str | None
+    workflow_run_id: int
+    charged_eur: Decimal
+    cost_info: dict[str, Any]
 
 
 @dataclass(frozen=True, slots=True)
@@ -296,3 +310,37 @@ class BillingClient(BaseDBClient):
                 .all()
             )
             return [_to_entry(row) for row in rows], total
+
+    async def list_charged_runs(
+        self, *, start: datetime, end: datetime
+    ) -> list[ChargedRun]:
+        """Every call charged in ``[start, end)`` across all organizations,
+        with its cost_info. For internal margin reporting only."""
+        async with self.async_session() as session:
+            result = await session.execute(
+                select(
+                    _Entry.organization_id,
+                    OrganizationModel.name,
+                    _Entry.workflow_run_id,
+                    _Entry.amount_eur,
+                    WorkflowRunModel.cost_info,
+                )
+                .join(OrganizationModel, OrganizationModel.id == _Entry.organization_id)
+                .join(WorkflowRunModel, WorkflowRunModel.id == _Entry.workflow_run_id)
+                .where(
+                    _Entry.entry_type == BillingLedgerEntryType.USAGE.value,
+                    _Entry.created_at >= start,
+                    _Entry.created_at < end,
+                )
+                .order_by(_Entry.organization_id, _Entry.id)
+            )
+            return [
+                ChargedRun(
+                    organization_id=row.organization_id,
+                    organization_name=row.name,
+                    workflow_run_id=row.workflow_run_id,
+                    charged_eur=-row.amount_eur,
+                    cost_info=row.cost_info or {},
+                )
+                for row in result.all()
+            ]
