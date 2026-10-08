@@ -13,3 +13,8 @@ class BillingNotConfiguredError(BillingError):
 
     def __init__(self) -> None:
         super().__init__("Billing is not configured on this server")
+
+
+class InvalidTopUpAmountError(BillingError):
+    status_code = 422
+    code = "invalid_topup_amount"
