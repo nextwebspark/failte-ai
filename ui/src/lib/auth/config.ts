@@ -11,6 +11,7 @@ interface ResolvedAuthConfig {
   authProvider: string;
   stackConfig: StackConfig | null;
   signupEnabled: boolean;
+  googleAuthEnabled: boolean;
 }
 
 let cachedConfig: ResolvedAuthConfig | null = null;
@@ -49,7 +50,8 @@ async function resolveAuthConfig(): Promise<ResolvedAuthConfig> {
       // Default to signup-enabled when the backend omits the field (older api
       // versions before the flag existed) — matches the backend's own default.
       const signupEnabled = data.signup_enabled !== false;
-      cachedConfig = { authProvider, stackConfig, signupEnabled };
+      const googleAuthEnabled = data.google_auth_enabled === true;
+      cachedConfig = { authProvider, stackConfig, signupEnabled, googleAuthEnabled };
       return cachedConfig;
     }
   } catch {
@@ -60,7 +62,12 @@ async function resolveAuthConfig(): Promise<ResolvedAuthConfig> {
   // do NOT cache it: caching here would pin the entire UI to local auth until a
   // container restart if the first resolution loses the startup race with the api
   // service. Leaving it uncached means the next request retries and self-heals.
-  return { authProvider: "local", stackConfig: null, signupEnabled: true };
+  return {
+    authProvider: "local",
+    stackConfig: null,
+    signupEnabled: true,
+    googleAuthEnabled: false,
+  };
 }
 
 /**
@@ -84,4 +91,18 @@ export async function getStackConfig(): Promise<StackConfig | null> {
  */
 export async function getSignupEnabled(): Promise<boolean> {
   return (await resolveAuthConfig()).signupEnabled;
+}
+
+export interface LocalAuthOptions {
+  signupEnabled: boolean;
+  googleAuthEnabled: boolean;
+}
+
+/**
+ * Options the local login/signup pages render with (resolved server-side so
+ * the first paint is correct).
+ */
+export async function getLocalAuthOptions(): Promise<LocalAuthOptions> {
+  const { signupEnabled, googleAuthEnabled } = await resolveAuthConfig();
+  return { signupEnabled, googleAuthEnabled };
 }

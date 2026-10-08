@@ -58,7 +58,9 @@ from api.schemas.telephony_phone_number import (
 from api.services.auth.depends import (
     get_user,
     get_user_with_selected_organization,
+    requires,
 )
+from api.services.auth.permissions import Permission
 from api.services.configuration.ai_model_configuration import (
     check_for_masked_keys_in_ai_model_configuration_v2,
     compile_ai_model_configuration_v2,
@@ -238,6 +240,7 @@ async def get_current_organization_context(user: UserModel = Depends(get_user)):
 @router.get(
     "/telephony-providers/metadata",
     response_model=TelephonyProvidersMetadataResponse,
+    dependencies=requires(Permission.TELEPHONY_READ),
 )
 async def get_telephony_providers_metadata(user: UserModel = Depends(get_user)):
     """Return the list of available telephony providers and their form schemas.
@@ -365,7 +368,10 @@ async def _model_configuration_v2_response(
     )
 
 
-@router.get("/model-configurations/v2/defaults")
+@router.get(
+    "/model-configurations/v2/defaults",
+    dependencies=requires(Permission.AGENTS_READ),
+)
 async def get_model_configuration_v2_defaults(
     user: UserModel = Depends(get_user_with_selected_organization),
 ):
@@ -413,6 +419,7 @@ async def get_model_configuration_v2_defaults(
 @router.get(
     "/model-configurations/v2",
     response_model=OrganizationAIModelConfigurationResponse,
+    dependencies=requires(Permission.AGENTS_READ),
 )
 async def get_model_configuration_v2(
     user: UserModel = Depends(get_user_with_selected_organization),
@@ -423,6 +430,7 @@ async def get_model_configuration_v2(
 @router.get(
     "/model-configurations/v2/pricing",
     response_model=ModelConfigurationPricingResponse,
+    dependencies=requires(Permission.AGENTS_READ),
 )
 async def get_model_configuration_pricing(
     user: UserModel = Depends(get_user_with_selected_organization),
@@ -460,6 +468,7 @@ async def get_model_configuration_pricing(
 @router.put(
     "/model-configurations/v2",
     response_model=OrganizationAIModelConfigurationResponse,
+    dependencies=requires(Permission.CREDENTIALS_WRITE),
 )
 async def save_model_configuration_v2(
     request: OrganizationAIModelConfigurationV2,
@@ -489,7 +498,10 @@ async def save_model_configuration_v2(
     )
 
 
-@router.get("/model-configurations/v2/migration-preview")
+@router.get(
+    "/model-configurations/v2/migration-preview",
+    dependencies=requires(Permission.AGENTS_READ),
+)
 async def preview_model_configuration_v2_migration(
     user: UserModel = Depends(get_user_with_selected_organization),
 ):
@@ -509,6 +521,7 @@ async def preview_model_configuration_v2_migration(
 @router.post(
     "/model-configurations/v2/migrate",
     response_model=OrganizationAIModelConfigurationResponse,
+    dependencies=requires(Permission.CREDENTIALS_WRITE),
 )
 async def migrate_model_configuration_v2(
     force: bool = Query(default=False),
@@ -590,7 +603,11 @@ class DispositionCodesResponse(BaseModel):
     )
 
 
-@router.get("/disposition-codes", response_model=DispositionCodesResponse)
+@router.get(
+    "/disposition-codes",
+    response_model=DispositionCodesResponse,
+    dependencies=requires(Permission.CALLS_READ),
+)
 async def get_disposition_codes(
     user: UserModel = Depends(get_user_with_selected_organization),
 ):
@@ -614,7 +631,11 @@ async def get_disposition_codes(
     )
 
 
-@router.get("/preferences", response_model=OrganizationPreferencesResponse)
+@router.get(
+    "/preferences",
+    response_model=OrganizationPreferencesResponse,
+    dependencies=requires(Permission.AGENTS_READ),
+)
 async def get_preferences(
     user: UserModel = Depends(get_user_with_selected_organization),
 ):
@@ -622,7 +643,11 @@ async def get_preferences(
     return await get_organization_preferences_response(organization_id)
 
 
-@router.put("/preferences", response_model=OrganizationPreferencesResponse)
+@router.put(
+    "/preferences",
+    response_model=OrganizationPreferencesResponse,
+    dependencies=requires(Permission.ORG_MANAGE),
+)
 async def save_preferences(
     request: OrganizationPreferences,
     user: UserModel = Depends(get_user_with_selected_organization),
@@ -646,7 +671,11 @@ def _preferences_validation_error(exc: ValueError) -> HTTPException:
     return HTTPException(422, str(exc))
 
 
-@router.post("/call-events/test", response_model=CallEventsConnectionResult)
+@router.post(
+    "/call-events/test",
+    response_model=CallEventsConnectionResult,
+    dependencies=requires(Permission.INTEGRATIONS_WRITE),
+)
 async def test_call_events_connection(
     request: CallEventsSettings,
     user: UserModel = Depends(get_user_with_selected_organization),
@@ -674,6 +703,7 @@ async def test_call_events_connection(
     "/model-configurations/preferences",
     response_model=OrganizationPreferences,
     include_in_schema=False,
+    dependencies=requires(Permission.AGENTS_READ),
 )
 async def get_model_configuration_preferences_legacy(
     user: UserModel = Depends(get_user_with_selected_organization),
@@ -866,7 +896,11 @@ async def _sync_inbound_for_phone_number(
 # ---------------------------------------------------------------------------
 
 
-@router.get("/telephony-configs", response_model=TelephonyConfigurationListResponse)
+@router.get(
+    "/telephony-configs",
+    response_model=TelephonyConfigurationListResponse,
+    dependencies=requires(Permission.TELEPHONY_READ),
+)
 async def list_telephony_configurations(user: UserModel = Depends(get_user)):
     """List the org's telephony configurations with phone-number counts."""
     if not user.selected_organization_id:
@@ -914,7 +948,11 @@ async def list_telephony_configurations(user: UserModel = Depends(get_user)):
     return TelephonyConfigurationListResponse(configurations=items)
 
 
-@router.post("/telephony-configs", response_model=TelephonyConfigurationDetail)
+@router.post(
+    "/telephony-configs",
+    response_model=TelephonyConfigurationDetail,
+    dependencies=requires(Permission.TELEPHONY_WRITE),
+)
 async def create_telephony_configuration(
     request: TelephonyConfigurationCreateRequest,
     user: UserModel = Depends(get_user),
@@ -962,7 +1000,9 @@ async def create_telephony_configuration(
 
 
 @router.get(
-    "/telephony-configs/{config_id}", response_model=TelephonyConfigurationDetail
+    "/telephony-configs/{config_id}",
+    response_model=TelephonyConfigurationDetail,
+    dependencies=requires(Permission.TELEPHONY_READ),
 )
 async def get_telephony_configuration_by_id(
     config_id: int, user: UserModel = Depends(get_user)
@@ -979,7 +1019,9 @@ async def get_telephony_configuration_by_id(
 
 
 @router.put(
-    "/telephony-configs/{config_id}", response_model=TelephonyConfigurationDetail
+    "/telephony-configs/{config_id}",
+    response_model=TelephonyConfigurationDetail,
+    dependencies=requires(Permission.TELEPHONY_WRITE),
 )
 async def update_telephony_configuration(
     config_id: int,
@@ -1043,6 +1085,7 @@ async def update_telephony_configuration(
 @router.post(
     "/telephony-configs/{config_id}/set-default-outbound",
     response_model=TelephonyConfigurationDetail,
+    dependencies=requires(Permission.TELEPHONY_WRITE),
 )
 async def set_default_outbound(config_id: int, user: UserModel = Depends(get_user)):
     if not user.selected_organization_id:
@@ -1059,6 +1102,7 @@ async def set_default_outbound(config_id: int, user: UserModel = Depends(get_use
 @router.post(
     "/telephony-configs/{config_id}/reactivate",
     response_model=TelephonyConfigurationDetail,
+    dependencies=requires(Permission.TELEPHONY_WRITE),
 )
 async def reactivate_telephony_configuration(
     config_id: int, user: UserModel = Depends(get_user)
@@ -1086,7 +1130,10 @@ async def reactivate_telephony_configuration(
     return await _detail_response(row)
 
 
-@router.delete("/telephony-configs/{config_id}")
+@router.delete(
+    "/telephony-configs/{config_id}",
+    dependencies=requires(Permission.TELEPHONY_WRITE),
+)
 async def delete_telephony_configuration(
     config_id: int, user: UserModel = Depends(get_user)
 ):
@@ -1218,7 +1265,11 @@ async def _reject_duplicate_trunk_name(
             )
 
 
-@router.get("/telephony-configs/{config_id}/trunks", response_model=TrunkListResponse)
+@router.get(
+    "/telephony-configs/{config_id}/trunks",
+    response_model=TrunkListResponse,
+    dependencies=requires(Permission.TELEPHONY_READ),
+)
 async def list_telephony_trunks(config_id: int, user: UserModel = Depends(get_user)):
     if not user.selected_organization_id:
         raise HTTPException(status_code=400, detail="No organization selected")
@@ -1237,7 +1288,11 @@ async def list_telephony_trunks(config_id: int, user: UserModel = Depends(get_us
     )
 
 
-@router.post("/telephony-configs/{config_id}/trunks", response_model=TrunkResponse)
+@router.post(
+    "/telephony-configs/{config_id}/trunks",
+    response_model=TrunkResponse,
+    dependencies=requires(Permission.TELEPHONY_WRITE),
+)
 async def create_telephony_trunk(
     config_id: int,
     request: TrunkCreateRequest,
@@ -1278,7 +1333,9 @@ async def create_telephony_trunk(
 
 
 @router.put(
-    "/telephony-configs/{config_id}/trunks/{trunk_id}", response_model=TrunkResponse
+    "/telephony-configs/{config_id}/trunks/{trunk_id}",
+    response_model=TrunkResponse,
+    dependencies=requires(Permission.TELEPHONY_WRITE),
 )
 async def update_telephony_trunk(
     config_id: int,
@@ -1338,7 +1395,10 @@ async def update_telephony_trunk(
     return _trunk_to_response(trunk)
 
 
-@router.delete("/telephony-configs/{config_id}/trunks/{trunk_id}")
+@router.delete(
+    "/telephony-configs/{config_id}/trunks/{trunk_id}",
+    dependencies=requires(Permission.TELEPHONY_WRITE),
+)
 async def delete_telephony_trunk(
     config_id: int, trunk_id: int, user: UserModel = Depends(get_user)
 ):
@@ -1416,6 +1476,7 @@ async def _ensure_workflow_belongs_to_org(workflow_id: int, organization_id: int
 @router.get(
     "/telephony-configs/{config_id}/phone-numbers",
     response_model=PhoneNumberListResponse,
+    dependencies=requires(Permission.TELEPHONY_READ),
 )
 async def list_phone_numbers(config_id: int, user: UserModel = Depends(get_user)):
     if not user.selected_organization_id:
@@ -1431,6 +1492,7 @@ async def list_phone_numbers(config_id: int, user: UserModel = Depends(get_user)
 @router.post(
     "/telephony-configs/{config_id}/phone-numbers",
     response_model=PhoneNumberResponse,
+    dependencies=requires(Permission.TELEPHONY_WRITE),
 )
 async def create_phone_number(
     config_id: int,
@@ -1505,6 +1567,7 @@ async def create_phone_number(
 @router.get(
     "/telephony-configs/{config_id}/phone-numbers/{phone_number_id}",
     response_model=PhoneNumberResponse,
+    dependencies=requires(Permission.TELEPHONY_READ),
 )
 async def get_phone_number(
     config_id: int,
@@ -1524,6 +1587,7 @@ async def get_phone_number(
 @router.put(
     "/telephony-configs/{config_id}/phone-numbers/{phone_number_id}",
     response_model=PhoneNumberResponse,
+    dependencies=requires(Permission.TELEPHONY_WRITE),
 )
 async def update_phone_number(
     config_id: int,
@@ -1578,6 +1642,7 @@ async def update_phone_number(
 @router.post(
     "/telephony-configs/{config_id}/phone-numbers/{phone_number_id}/set-default-caller",
     response_model=PhoneNumberResponse,
+    dependencies=requires(Permission.TELEPHONY_WRITE),
 )
 async def set_default_caller_id(
     config_id: int,
@@ -1594,7 +1659,10 @@ async def set_default_caller_id(
     return _phone_number_to_response(row)
 
 
-@router.delete("/telephony-configs/{config_id}/phone-numbers/{phone_number_id}")
+@router.delete(
+    "/telephony-configs/{config_id}/phone-numbers/{phone_number_id}",
+    dependencies=requires(Permission.TELEPHONY_WRITE),
+)
 async def delete_phone_number(
     config_id: int,
     phone_number_id: int,
@@ -1654,7 +1722,11 @@ class LangfuseCredentialsResponse(BaseModel):
     configured: bool = False
 
 
-@router.get("/langfuse-credentials", response_model=LangfuseCredentialsResponse)
+@router.get(
+    "/langfuse-credentials",
+    response_model=LangfuseCredentialsResponse,
+    dependencies=requires(Permission.INTEGRATIONS_READ),
+)
 async def get_langfuse_credentials(user: UserModel = Depends(get_user)):
     """Get Langfuse credentials for the user's organization with masked sensitive fields."""
     if not user.selected_organization_id:
@@ -1678,7 +1750,10 @@ async def get_langfuse_credentials(user: UserModel = Depends(get_user)):
     )
 
 
-@router.post("/langfuse-credentials")
+@router.post(
+    "/langfuse-credentials",
+    dependencies=requires(Permission.INTEGRATIONS_WRITE),
+)
 async def save_langfuse_credentials(
     request: LangfuseCredentialsRequest,
     user: UserModel = Depends(get_user),
@@ -1723,7 +1798,10 @@ async def save_langfuse_credentials(
     return {"message": "Langfuse credentials saved successfully"}
 
 
-@router.delete("/langfuse-credentials")
+@router.delete(
+    "/langfuse-credentials",
+    dependencies=requires(Permission.INTEGRATIONS_WRITE),
+)
 async def delete_langfuse_credentials(user: UserModel = Depends(get_user)):
     """Delete Langfuse credentials for the user's organization."""
     if not user.selected_organization_id:
@@ -1790,7 +1868,11 @@ class CampaignDefaultsResponse(BaseModel):
     last_campaign_settings: Optional[LastCampaignSettingsResponse] = None
 
 
-@router.get("/campaign-defaults", response_model=CampaignDefaultsResponse)
+@router.get(
+    "/campaign-defaults",
+    response_model=CampaignDefaultsResponse,
+    dependencies=requires(Permission.CAMPAIGNS_READ),
+)
 async def get_campaign_defaults(user: UserModel = Depends(get_user)):
     """Get campaign limits for the user's organization.
 

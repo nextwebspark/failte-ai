@@ -7,6 +7,7 @@ import pytest
 from fastapi import HTTPException
 from google.auth.credentials import AnonymousCredentials
 from openai import NotGiven as OpenAINotGiven
+from pipecat.services.google.vertex.llm import GoogleVertexLLMService
 from pydantic import ValidationError
 
 from api.schemas.ai_model_configuration import (
@@ -23,7 +24,6 @@ from api.services.configuration.registry import (
 )
 from api.services.configuration.resolve import resolve_effective_config
 from api.services.pipecat.service_factory import (
-    DograhGoogleVertexLLMService,
     create_llm_service,
     create_llm_service_from_provider,
     create_llm_service_with_model_override,
@@ -48,8 +48,11 @@ def _config(provider, **overrides):
 
 @pytest.fixture(autouse=True)
 def anonymous_vertex_credentials(monkeypatch):
+    # Patch pipecat's base class: other tests reload service_factory, which
+    # replaces the DograhGoogleVertexLLMService class object imported above,
+    # so patching the subclass would miss the one the factory instantiates.
     monkeypatch.setattr(
-        DograhGoogleVertexLLMService,
+        GoogleVertexLLMService,
         "_get_credentials",
         staticmethod(lambda *_: AnonymousCredentials()),
     )

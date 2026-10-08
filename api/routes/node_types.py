@@ -14,7 +14,8 @@ from pydantic import BaseModel
 
 from api.db.models import UserModel
 from api.sdk_expose import sdk_expose
-from api.services.auth.depends import get_user
+from api.services.auth.depends import get_user, requires
+from api.services.auth.permissions import Permission
 from api.services.workflow.node_specs import (
     SPEC_VERSION,
     NodeSpec,
@@ -37,6 +38,7 @@ class NodeTypesResponse(BaseModel):
         method="list_node_types",
         description="List every registered node type with its spec. Pinned to spec_version.",
     ),
+    dependencies=requires(Permission.AGENTS_READ),
 )
 async def list_node_types(
     _user: UserModel = Depends(get_user),
@@ -56,6 +58,7 @@ async def list_node_types(
         method="get_node_type",
         description="Fetch a single node spec by name.",
     ),
+    dependencies=requires(Permission.AGENTS_READ),
 )
 async def get_node_type(
     name: str,

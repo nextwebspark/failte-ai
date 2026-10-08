@@ -5,16 +5,29 @@ import { useState } from "react";
 import { toast } from "sonner";
 
 import { loginApiV1AuthLoginPost } from "@/client/sdk.gen";
-import { AuthShell } from "@/components/auth/AuthShell";
-import { SupportLink } from "@/components/SupportLink";
+import { CheckInbox } from "@/components/auth/CheckInbox";
+import { AuthDivider, GoogleSignInButton } from "@/components/auth/GoogleSignInButton";
+import { LocalAuthShell } from "@/components/auth/LocalAuthShell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { detailFromError, errorCodeFromError } from "@/lib/apiError";
+import { startLocalSession } from "@/lib/auth/localSession";
 
-export function LoginForm({ signupEnabled }: { signupEnabled: boolean }) {
+export function LoginForm({
+  signupEnabled,
+  googleAuthEnabled,
+  nextPath,
+}: {
+  signupEnabled: boolean;
+  googleAuthEnabled: boolean;
+  /** Same-origin path to continue to after signing in. */
+  nextPath: string | null;
+}) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  const [unverifiedEmail, setUnverifiedEmail] = useState<string | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -26,19 +39,15 @@ export function LoginForm({ signupEnabled }: { signupEnabled: boolean }) {
       });
 
       if (res.error || !res.data) {
-        const detail = (res.error as { detail?: string })?.detail;
-        toast.error(detail || "Login failed");
+        if (errorCodeFromError(res.error) === "email_not_verified") {
+          setUnverifiedEmail(email);
+          return;
+        }
+        toast.error(detailFromError(res.error, "Login failed"));
         return;
       }
 
-      // Set httpOnly cookies via server route
-      await fetch("/api/auth/session", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token: res.data.token, user: res.data.user }),
-      });
-
-      window.location.href = "/after-sign-in";
+      await startLocalSession(res.data, nextPath);
     } catch {
       toast.error("An error occurred. Please try again.");
     } finally {
@@ -46,22 +55,29 @@ export function LoginForm({ signupEnabled }: { signupEnabled: boolean }) {
     }
   };
 
+  if (unverifiedEmail) {
+    return (
+      <LocalAuthShell>
+        <CheckInbox email={unverifiedEmail} />
+      </LocalAuthShell>
+    );
+  }
+
   return (
-    <AuthShell
-      contactSlot={
-        <SupportLink
-          label="Talk to us"
-          variant="outline"
-          className="w-full border-white/20 bg-white/5 text-zinc-100 hover:bg-white/10 hover:text-white"
-        />
-      }
-    >
+    <LocalAuthShell>
       <div className="space-y-1.5 text-center">
         <h1 className="text-2xl font-semibold tracking-tight">Sign in</h1>
         <p className="text-sm text-muted-foreground">
           Enter your email and password to continue
         </p>
       </div>
+
+      {googleAuthEnabled && (
+        <>
+          <GoogleSignInButton nextPath={nextPath} />
+          <AuthDivider />
+        </>
+      )}
 
       <form onSubmit={handleSubmit} className="space-y-4">
         <div className="space-y-2">
@@ -76,7 +92,15 @@ export function LoginForm({ signupEnabled }: { signupEnabled: boolean }) {
           />
         </div>
         <div className="space-y-2">
-          <Label htmlFor="password">Password</Label>
+          <div className="flex items-center justify-between">
+            <Label htmlFor="password">Password</Label>
+            <Link
+              href="/auth/forgot-password"
+              className="text-xs text-muted-foreground underline-offset-4 hover:text-primary hover:underline"
+            >
+              Forgot password?
+            </Link>
+          </div>
           <Input
             id="password"
             type="password"
@@ -99,6 +123,6 @@ export function LoginForm({ signupEnabled }: { signupEnabled: boolean }) {
           </Link>
         </p>
       )}
-    </AuthShell>
+    </LocalAuthShell>
   );
 }

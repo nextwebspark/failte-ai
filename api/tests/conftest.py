@@ -7,13 +7,17 @@ the root api/conftest.py. This module provides lightweight, non-DB fixtures:
 - Pre-built WorkflowGraph fixtures for various node topologies
 """
 
+import sys
 from dataclasses import dataclass, field
 from typing import Any, Dict, Optional
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
+from fastapi import HTTPException
 
+from api.enums import OrgRole
 from api.schemas.organization_preferences import OrganizationPreferences
+from api.services.auth import depends as auth_depends
 from api.services.workflow.dto import (
     AgentNodeData,
     EdgeDataDTO,
@@ -27,6 +31,32 @@ from api.services.workflow.dto import (
     VariableType,
 )
 from api.services.workflow.workflow_graph import WorkflowGraph
+
+
+@pytest.fixture(autouse=True)
+def _stub_users_act_as_org_admins(request, monkeypatch):
+    """Most route tests authenticate with stub users that have no membership
+    row. Treat them as admins of their selected organization so those tests keep
+    exercising the behavior they target; tests of role enforcement itself opt
+    out with ``@pytest.mark.real_org_roles``.
+    """
+    if request.node.get_closest_marker("real_org_roles"):
+        return
+
+    async def resolve(user):
+        if user.selected_organization_id is None:
+            raise HTTPException(status_code=400, detail="No organization selected")
+        return auth_depends.OrgMembership(
+            user=user, organization_id=user.selected_organization_id, role=OrgRole.ADMIN
+        )
+
+    real = auth_depends.resolve_org_membership
+    # Patch every module that imported the function by name (e.g. WebSocket
+    # routes), not just the defining module.
+    for module in list(sys.modules.values()):
+        if getattr(module, "resolve_org_membership", None) is real:
+            monkeypatch.setattr(module, "resolve_org_membership", resolve)
+
 
 START_CALL_SYSTEM_PROMPT = "Start Call System Prompt"
 AGENT_SYSTEM_PROMPT = "Agent Node System Prompt"

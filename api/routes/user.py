@@ -9,6 +9,7 @@ from api.db import db_client
 from api.db.models import (
     UserModel,
 )
+from api.enums import OrgRole
 from api.errors.failure import ErrorSource, classify_exception, log_failure
 from api.errors.mps import MPSUnavailableError
 from api.saas.voice_catalog import google_voices
@@ -21,7 +22,13 @@ from api.schemas.workflow_configurations import (
     get_default_call_disposition_options,
     get_default_workflow_configurations,
 )
-from api.services.auth.depends import get_user
+from api.services.auth.depends import (
+    OrgMembership,
+    get_org_membership,
+    get_user,
+    requires,
+)
+from api.services.auth.permissions import Permission
 from api.services.configuration.ai_model_configuration import (
     convert_legacy_ai_model_configuration_to_v2,
     get_resolved_ai_model_configuration,
@@ -185,7 +192,10 @@ async def get_user_configurations(
     return masked_config
 
 
-@router.put("/configurations/user")
+@router.put(
+    "/configurations/user",
+    dependencies=requires(Permission.CREDENTIALS_WRITE),
+)
 async def update_user_configurations(
     request: UserConfigurationRequestResponseSchema,
     user: UserModel = Depends(get_user),
@@ -353,7 +363,7 @@ class CreateAPIKeyResponse(BaseModel):
     created_at: datetime
 
 
-@router.get("/api-keys")
+@router.get("/api-keys", dependencies=requires(Permission.API_KEYS_MANAGE))
 async def get_api_keys(
     include_archived: bool = Query(default=False),
     user: UserModel = Depends(get_user),
@@ -380,7 +390,7 @@ async def get_api_keys(
     ]
 
 
-@router.post("/api-keys")
+@router.post("/api-keys", dependencies=requires(Permission.API_KEYS_MANAGE))
 async def create_api_key(
     request: CreateAPIKeyRequest,
     user: UserModel = Depends(get_user),
@@ -404,21 +414,16 @@ async def create_api_key(
     )
 
 
-@router.delete("/api-keys/{api_key_id}")
+@router.delete(
+    "/api-keys/{api_key_id}",
+    dependencies=requires(Permission.API_KEYS_MANAGE),
+)
 async def archive_api_key(
     api_key_id: int,
-    user: UserModel = Depends(get_user),
+    membership: OrgMembership = Depends(get_org_membership),
 ) -> dict:
     """Archive an API key (soft delete)."""
-    if not user.selected_organization_id:
-        raise HTTPException(status_code=400, detail="No organization selected")
-
-    # Verify the API key belongs to the user's organization
-    api_keys = await db_client.get_api_keys_by_organization(
-        user.selected_organization_id, include_archived=True
-    )
-    if not any(key.id == api_key_id for key in api_keys):
-        raise HTTPException(status_code=404, detail="API key not found")
+    await _find_manageable_api_key(membership, api_key_id)
 
     success = await db_client.archive_api_key(api_key_id)
     if not success:
@@ -427,27 +432,37 @@ async def archive_api_key(
     return {"success": True, "message": "API key archived successfully"}
 
 
-@router.put("/api-keys/{api_key_id}/reactivate")
+@router.put(
+    "/api-keys/{api_key_id}/reactivate",
+    dependencies=requires(Permission.API_KEYS_MANAGE),
+)
 async def reactivate_api_key(
     api_key_id: int,
-    user: UserModel = Depends(get_user),
+    membership: OrgMembership = Depends(get_org_membership),
 ) -> dict:
     """Reactivate an archived API key."""
-    if not user.selected_organization_id:
-        raise HTTPException(status_code=400, detail="No organization selected")
-
-    # Verify the API key belongs to the user's organization
-    api_keys = await db_client.get_api_keys_by_organization(
-        user.selected_organization_id, include_archived=True
-    )
-    if not any(key.id == api_key_id for key in api_keys):
-        raise HTTPException(status_code=404, detail="API key not found")
+    await _find_manageable_api_key(membership, api_key_id)
 
     success = await db_client.reactivate_api_key(api_key_id)
     if not success:
         raise HTTPException(status_code=500, detail="Failed to reactivate API key")
 
     return {"success": True, "message": "API key reactivated successfully"}
+
+
+async def _find_manageable_api_key(membership: OrgMembership, api_key_id: int) -> None:
+    """404 unless the key is in the caller's organization; 403 unless the
+    caller created it or is an admin."""
+    api_keys = await db_client.get_api_keys_by_organization(
+        membership.organization_id, include_archived=True
+    )
+    key = next((k for k in api_keys if k.id == api_key_id), None)
+    if key is None:
+        raise HTTPException(status_code=404, detail="API key not found")
+    if key.created_by != membership.user.id and membership.role is not OrgRole.ADMIN:
+        raise HTTPException(
+            status_code=403, detail="Only admins can manage other members' API keys"
+        )
 
 
 # Voice Configuration Endpoints
@@ -482,7 +497,10 @@ class VoicesResponse(BaseModel):
     facets: Optional[VoiceFacets] = None
 
 
-@router.get("/configurations/voices/{provider}")
+@router.get(
+    "/configurations/voices/{provider}",
+    dependencies=requires(Permission.AGENTS_READ),
+)
 async def get_voices(
     provider: TTSProvider,
     model: Optional[str] = None,
@@ -593,7 +611,10 @@ async def _google_tts_credentials(user: UserModel) -> str | None:
     return getattr(tts, "credentials", None)
 
 
-@router.get("/configurations/voices/google/preview")
+@router.get(
+    "/configurations/voices/google/preview",
+    dependencies=requires(Permission.AGENTS_READ),
+)
 async def preview_google_voice(
     voice_id: str,
     user: UserModel = Depends(get_user),

@@ -26,7 +26,8 @@ from api.schemas.ai_model_configuration import OrganizationAIModelConfigurationV
 from api.schemas.workflow import WorkflowRunResponseSchema
 from api.schemas.workflow_configurations import WorkflowConfigurationDefaults
 from api.sdk_expose import sdk_expose
-from api.services.auth.depends import get_user
+from api.services.auth.depends import get_user, requires
+from api.services.auth.permissions import Permission
 from api.services.configuration.ai_model_configuration import (
     WORKFLOW_MODEL_CONFIGURATION_V2_OVERRIDE_KEY,
     check_for_masked_keys_in_ai_model_configuration_v2,
@@ -380,7 +381,10 @@ class CreateWorkflowTemplateRequest(BaseModel):
     activity_description: str
 
 
-@router.post("/{workflow_id}/validate")
+@router.post(
+    "/{workflow_id}/validate",
+    dependencies=requires(Permission.AGENTS_READ),
+)
 async def validate_workflow(
     workflow_id: int,
     user: UserModel = Depends(get_user),
@@ -450,6 +454,7 @@ def _transform_schema_errors(
         method="create_workflow",
         description="Create a new workflow from a workflow definition.",
     ),
+    dependencies=requires(Permission.AGENTS_WRITE),
 )
 async def create_workflow(
     request: CreateWorkflowRequest, user: UserModel = Depends(get_user)
@@ -533,7 +538,10 @@ async def create_workflow(
     }
 
 
-@router.post("/create/template")
+@router.post(
+    "/create/template",
+    dependencies=requires(Permission.AGENTS_WRITE),
+)
 async def create_workflow_from_template(
     request: CreateWorkflowTemplateRequest,
     user: UserModel = Depends(get_user),
@@ -664,7 +672,7 @@ class WorkflowSummaryResponse(BaseModel):
     name: str
 
 
-@router.get("/count")
+@router.get("/count", dependencies=requires(Permission.AGENTS_READ))
 async def get_workflow_count(
     user: UserModel = Depends(get_user),
 ) -> WorkflowCountResponse:
@@ -715,6 +723,7 @@ def _validate_status_filter(status: Optional[str]) -> List[str]:
         method="list_workflows",
         description="List all workflows in the authenticated organization.",
     ),
+    dependencies=requires(Permission.AGENTS_READ),
 )
 async def get_workflows(
     user: UserModel = Depends(get_user),
@@ -770,6 +779,7 @@ async def get_workflows(
         method="get_workflow",
         description="Get a single workflow by ID (returns draft if one exists, else published).",
     ),
+    dependencies=requires(Permission.AGENTS_READ),
 )
 async def get_workflow(
     workflow_id: int,
@@ -825,7 +835,10 @@ class WorkflowVersionSummaryResponse(BaseModel):
     published_at: datetime | None
 
 
-@router.get("/{workflow_id}/version-summaries")
+@router.get(
+    "/{workflow_id}/version-summaries",
+    dependencies=requires(Permission.AGENTS_READ),
+)
 async def get_workflow_version_summaries(
     workflow_id: int, user: UserModel = Depends(get_user)
 ) -> list[WorkflowVersionSummaryResponse]:
@@ -839,7 +852,10 @@ async def get_workflow_version_summaries(
     )
 
 
-@router.get("/{workflow_id}/versions")
+@router.get(
+    "/{workflow_id}/versions",
+    dependencies=requires(Permission.AGENTS_READ),
+)
 async def get_workflow_versions(
     workflow_id: int,
     limit: int | None = Query(None, ge=1, le=100),
@@ -887,7 +903,10 @@ async def get_workflow_versions(
     ]
 
 
-@router.post("/{workflow_id}/publish")
+@router.post(
+    "/{workflow_id}/publish",
+    dependencies=requires(Permission.AGENTS_WRITE),
+)
 async def publish_workflow(
     workflow_id: int,
     user: UserModel = Depends(get_user),
@@ -941,7 +960,10 @@ async def publish_workflow(
     }
 
 
-@router.post("/{workflow_id}/create-draft")
+@router.post(
+    "/{workflow_id}/create-draft",
+    dependencies=requires(Permission.AGENTS_WRITE),
+)
 async def create_workflow_draft(
     workflow_id: int,
     user: UserModel = Depends(get_user),
@@ -973,7 +995,7 @@ async def create_workflow_draft(
     )
 
 
-@router.get("/summary")
+@router.get("/summary", dependencies=requires(Permission.AGENTS_READ))
 async def get_workflows_summary(
     user: UserModel = Depends(get_user),
     status: Optional[str] = Query(
@@ -1002,7 +1024,10 @@ async def get_workflows_summary(
     ]
 
 
-@router.put("/{workflow_id}/status")
+@router.put(
+    "/{workflow_id}/status",
+    dependencies=requires(Permission.AGENTS_WRITE),
+)
 async def update_workflow_status(
     workflow_id: int,
     request: UpdateWorkflowStatusRequest,
@@ -1047,7 +1072,10 @@ async def update_workflow_status(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.put("/{workflow_id}/folder")
+@router.put(
+    "/{workflow_id}/folder",
+    dependencies=requires(Permission.AGENTS_WRITE),
+)
 async def move_workflow_to_folder(
     workflow_id: int,
     request: MoveWorkflowToFolderRequest,
@@ -1095,6 +1123,7 @@ async def move_workflow_to_folder(
         method="update_workflow",
         description="Update a workflow's name and/or definition. Saves as a new draft.",
     ),
+    dependencies=requires(Permission.AGENTS_WRITE),
 )
 async def update_workflow(
     workflow_id: int,
@@ -1369,7 +1398,10 @@ async def update_workflow(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/{workflow_id}/duplicate")
+@router.post(
+    "/{workflow_id}/duplicate",
+    dependencies=requires(Permission.AGENTS_WRITE),
+)
 async def duplicate_workflow_endpoint(
     workflow_id: int,
     user: UserModel = Depends(get_user),
@@ -1415,7 +1447,10 @@ async def duplicate_workflow_endpoint(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/{workflow_id}/runs")
+@router.post(
+    "/{workflow_id}/runs",
+    dependencies=requires(Permission.AGENTS_WRITE),
+)
 async def create_workflow_run(
     workflow_id: int,
     request: CreateWorkflowRunRequest,
@@ -1483,7 +1518,10 @@ async def create_workflow_run(
     }
 
 
-@router.get("/{workflow_id}/runs/{run_id}")
+@router.get(
+    "/{workflow_id}/runs/{run_id}",
+    dependencies=requires(Permission.CALLS_READ),
+)
 async def get_workflow_run(
     workflow_id: int, run_id: int, user: UserModel = Depends(get_user)
 ) -> WorkflowRunResponseSchema:
@@ -1550,7 +1588,10 @@ class WorkflowRunsResponse(BaseModel):
     applied_filters: Optional[List[dict]] = None
 
 
-@router.get("/{workflow_id}/runs")
+@router.get(
+    "/{workflow_id}/runs",
+    dependencies=requires(Permission.CALLS_READ),
+)
 async def get_workflow_runs(
     workflow_id: int,
     page: int = Query(1, ge=1, description="Page number (starts from 1)"),
@@ -1617,7 +1658,10 @@ async def get_workflow_runs(
     )
 
 
-@router.get("/{workflow_id}/report")
+@router.get(
+    "/{workflow_id}/report",
+    dependencies=requires(Permission.CALLS_READ),
+)
 async def download_workflow_report(
     workflow_id: int,
     user: UserModel = Depends(get_user),
@@ -1671,7 +1715,10 @@ async def get_workflow_templates() -> List[WorkflowTemplateResponse]:
     ]
 
 
-@router.post("/templates/duplicate")
+@router.post(
+    "/templates/duplicate",
+    dependencies=requires(Permission.AGENTS_WRITE),
+)
 async def duplicate_workflow_template(
     request: DuplicateTemplateRequest, user: UserModel = Depends(get_user)
 ) -> WorkflowResponse:
@@ -1758,6 +1805,7 @@ class AmbientNoiseUploadResponse(BaseModel):
     "/ambient-noise/upload-url",
     response_model=AmbientNoiseUploadResponse,
     summary="Get a presigned URL to upload a custom ambient noise audio file",
+    dependencies=requires(Permission.AGENTS_WRITE),
 )
 async def get_ambient_noise_upload_url(
     request: AmbientNoiseUploadRequest,

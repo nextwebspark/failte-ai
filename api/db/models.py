@@ -5,6 +5,7 @@ from pgvector.sqlalchemy import Vector
 from sqlalchemy import (
     JSON,
     Boolean,
+    CheckConstraint,
     Column,
     DateTime,
     Enum,
@@ -20,13 +21,14 @@ from sqlalchemy import (
     func,
     text,
 )
-from sqlalchemy.orm import declarative_base, relationship
+from sqlalchemy.orm import Mapped, declarative_base, mapped_column, relationship
 
 from api.constants import DEFAULT_CAMPAIGN_RETRY_CONFIG
 
 from ..enums import (
     CallType,
     IntegrationAction,
+    OrgRole,
     ToolCategory,
     ToolStatus,
     TriggerState,
@@ -49,27 +51,57 @@ organization_users_association = Table(
     Column(
         "organization_id", Integer, ForeignKey("organizations.id"), primary_key=True
     ),
+    # OrgRole value; see api.enums.OrgRole.
+    Column("role", String(32), nullable=False, default=OrgRole.DEVELOPER.value),
+    Column(
+        "created_at",
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(UTC),
+        server_default=func.now(),
+    ),
+    Column(
+        "invited_by",
+        Integer,
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+    ),
+    CheckConstraint(
+        "role IN ('admin', 'developer', 'viewer')", name="ck_organization_users_role"
+    ),
+    Index("ix_organization_users_organization_id_role", "organization_id", "role"),
 )
 
 
 class UserModel(Base):
     __tablename__ = "users"
-    id = Column(Integer, primary_key=True, index=True)
-    provider_id = Column(String, unique=True, index=True, nullable=False)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    provider_id: Mapped[str] = mapped_column(String, unique=True, index=True)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
     workflows = relationship("WorkflowModel", back_populates="user")
-    selected_organization_id = Column(
-        Integer, ForeignKey("organizations.id"), nullable=True
+    selected_organization_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("organizations.id")
     )
     selected_organization = relationship("OrganizationModel", back_populates="users")
+    # Explicit joins: organization_users also references users via invited_by.
     organizations = relationship(
         "OrganizationModel",
         secondary=organization_users_association,
+        primaryjoin=lambda: UserModel.id == organization_users_association.c.user_id,
+        secondaryjoin=lambda: (
+            OrganizationModel.id == organization_users_association.c.organization_id
+        ),
         back_populates="users",
     )
-    is_superuser = Column(Boolean, default=False)
-    email = Column(String, nullable=True)
-    password_hash = Column(String, nullable=True)
+    is_superuser: Mapped[bool | None] = mapped_column(Boolean, default=False)
+    email: Mapped[str | None] = mapped_column(String)
+    password_hash: Mapped[str | None] = mapped_column(String)
+    name: Mapped[str | None] = mapped_column(String)
+    # Null until the user proves they own ``email`` (link click or a verified
+    # OAuth identity).
+    email_verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    google_sub: Mapped[str | None] = mapped_column(String)
+    avatar_url: Mapped[str | None] = mapped_column(String)
 
     __table_args__ = (
         Index(
@@ -78,6 +110,7 @@ class UserModel(Base):
             unique=True,
             postgresql_where=text("email IS NOT NULL"),
         ),
+        UniqueConstraint("google_sub", name="uq_users_google_sub"),
     )
 
 
@@ -105,8 +138,9 @@ class UserConfigurationModel(Base):
 class OrganizationModel(Base):
     __tablename__ = "organizations"
 
-    id = Column(Integer, primary_key=True, index=True)
-    provider_id = Column(String, unique=True, index=True, nullable=False)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    provider_id: Mapped[str] = mapped_column(String, unique=True, index=True)
+    name: Mapped[str | None] = mapped_column(String)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
 
     # Deprecated: MPS owns quota and credit ledger state.
@@ -155,6 +189,10 @@ class OrganizationModel(Base):
     users = relationship(
         "UserModel",
         secondary=organization_users_association,
+        primaryjoin=lambda: (
+            OrganizationModel.id == organization_users_association.c.organization_id
+        ),
+        secondaryjoin=lambda: UserModel.id == organization_users_association.c.user_id,
         back_populates="organizations",
     )
     integrations = relationship("IntegrationModel", back_populates="organization")
@@ -165,6 +203,74 @@ class OrganizationModel(Base):
         "OrganizationConfigurationModel", back_populates="organization"
     )
     api_keys = relationship("APIKeyModel", back_populates="organization")
+
+
+class OrganizationInvitationModel(Base):
+    """An emailed invitation to join an organization with a given role."""
+
+    __tablename__ = "organization_invitations"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    organization_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("organizations.id", ondelete="CASCADE")
+    )
+    # Stored lowercased.
+    email: Mapped[str] = mapped_column(String)
+    # OrgRole value.
+    role: Mapped[str] = mapped_column(String(32))
+    # SHA-256 of the token sent to the invitee; the raw token is never stored.
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    invited_by: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="SET NULL")
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        server_default=func.now(),
+    )
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    accepted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    accepted_by: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="SET NULL")
+    )
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    __table_args__ = (
+        CheckConstraint(
+            "role IN ('admin', 'developer', 'viewer')",
+            name="ck_organization_invitations_role",
+        ),
+        # At most one open invitation per address per organization.
+        Index(
+            "uq_organization_invitations_open_email",
+            "organization_id",
+            "email",
+            unique=True,
+            postgresql_where=text("accepted_at IS NULL AND revoked_at IS NULL"),
+        ),
+        Index("ix_organization_invitations_email", "email"),
+    )
+
+
+class UserTokenModel(Base):
+    """Single-use, expiring token mailed to a user (verify email, reset)."""
+
+    __tablename__ = "user_tokens"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    # TokenPurpose value.
+    purpose: Mapped[str] = mapped_column(String(32))
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        server_default=func.now(),
+    )
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class APIKeyModel(Base):

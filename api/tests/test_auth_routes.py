@@ -1,11 +1,16 @@
 from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-import api.routes.auth as auth_routes
+from api.app import handle_domain_error
+from api.db import db_client
+from api.errors.domain import DomainError
 from api.routes.auth import router
 from api.services.auth import depends as auth_depends
+from api.services.auth.account_dependencies import get_account_policy
+from api.services.auth.accounts import AccountPolicy
 from api.services.auth.depends import get_user
 
 
@@ -42,8 +47,18 @@ def test_stack_mode_hides_email_password_auth_routes(monkeypatch):
 
 
 def test_signup_disabled_returns_403(monkeypatch):
-    monkeypatch.setattr(auth_routes, "ENABLE_SIGNUP", False)
-    client = TestClient(_make_test_app())
+    app = _make_test_app()
+    app.add_exception_handler(DomainError, handle_domain_error)
+    app.dependency_overrides[get_account_policy] = lambda: AccountPolicy(
+        signup_enabled=False, require_email_verification=True, app_url="http://ui"
+    )
+    # No open invitation for this address.
+    monkeypatch.setattr(
+        db_client,
+        "list_open_invitations_for_email",
+        AsyncMock(return_value=[]),
+    )
+    client = TestClient(app)
 
     response = client.post(
         "/auth/signup",
@@ -55,7 +70,10 @@ def test_signup_disabled_returns_403(monkeypatch):
     )
 
     assert response.status_code == 403
-    assert response.json() == {"detail": "Signup is disabled"}
+    assert response.json() == {
+        "detail": "Signup is disabled",
+        "code": "signup_disabled",
+    }
 
 
 def test_stack_mode_keeps_current_user_route_available(monkeypatch):
@@ -64,6 +82,7 @@ def test_stack_mode_keeps_current_user_route_available(monkeypatch):
     app.dependency_overrides[get_user] = lambda: SimpleNamespace(
         id=7,
         email="user@example.com",
+        name=None,
         selected_organization_id=42,
         provider_id="stack-user-1",
     )

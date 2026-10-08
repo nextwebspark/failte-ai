@@ -10,7 +10,8 @@ from api.db import db_client
 from api.db.models import UserModel
 from api.enums import WebhookCredentialType
 from api.sdk_expose import sdk_expose
-from api.services.auth.depends import get_user
+from api.services.auth.depends import get_user, requires
+from api.services.auth.permissions import Permission
 
 router = APIRouter(prefix="/credentials")
 
@@ -114,6 +115,7 @@ def build_credential_response(credential) -> CredentialResponse:
         method="list_credentials",
         description="List webhook credentials available to the authenticated organization.",
     ),
+    dependencies=requires(Permission.INTEGRATIONS_READ),
 )
 async def list_credentials(
     user: UserModel = Depends(get_user),
@@ -136,7 +138,7 @@ async def list_credentials(
     return [build_credential_response(cred) for cred in credentials]
 
 
-@router.post("/")
+@router.post("/", dependencies=requires(Permission.CREDENTIALS_WRITE))
 async def create_credential(
     request: CreateCredentialRequest,
     user: UserModel = Depends(get_user),
@@ -180,7 +182,10 @@ async def create_credential(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/{credential_uuid}")
+@router.get(
+    "/{credential_uuid}",
+    dependencies=requires(Permission.INTEGRATIONS_READ),
+)
 async def get_credential(
     credential_uuid: str,
     user: UserModel = Depends(get_user),
@@ -209,7 +214,10 @@ async def get_credential(
     return build_credential_response(credential)
 
 
-@router.put("/{credential_uuid}")
+@router.put(
+    "/{credential_uuid}",
+    dependencies=requires(Permission.CREDENTIALS_WRITE),
+)
 async def update_credential(
     credential_uuid: str,
     request: UpdateCredentialRequest,
@@ -262,7 +270,10 @@ async def update_credential(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.delete("/{credential_uuid}")
+@router.delete(
+    "/{credential_uuid}",
+    dependencies=requires(Permission.CREDENTIALS_WRITE),
+)
 async def delete_credential(
     credential_uuid: str,
     user: UserModel = Depends(get_user),

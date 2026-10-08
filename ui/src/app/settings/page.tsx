@@ -12,12 +12,18 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { useOrgConfig } from "@/context/OrgConfigContext";
 
 export default function SettingsPage() {
+  // Organization-wide defaults are admin-only; the rest are integrations.
+  const { can } = useOrgConfig();
+  const canManageOrg = can("org:manage");
+
   return (
     <div className="page-body">
       {/* Screen name and strapline are rendered by the app header (AppTopBar). */}
       <div className="w-full max-w-2xl space-y-6">
+        {canManageOrg && (
         <Card>
           <CardHeader>
             <CardTitle>Preferences</CardTitle>
@@ -30,6 +36,7 @@ export default function SettingsPage() {
             <OrganizationPreferencesSection />
           </CardContent>
         </Card>
+        )}
 
         <Card>
           <CardHeader>

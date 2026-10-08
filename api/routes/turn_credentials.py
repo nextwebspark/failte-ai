@@ -34,7 +34,8 @@ from api.constants import (
 )
 from api.db.models import UserModel
 from api.enums import Environment
-from api.services.auth.depends import get_user
+from api.services.auth.depends import get_user, requires
+from api.services.auth.permissions import Permission
 
 router = APIRouter(prefix="/turn", tags=["turn"])
 
@@ -131,7 +132,11 @@ def generate_turn_credentials(user_id: str, ttl: int = TURN_CREDENTIAL_TTL) -> d
     }
 
 
-@router.get("/credentials", response_model=TurnCredentialsResponse)
+@router.get(
+    "/credentials",
+    response_model=TurnCredentialsResponse,
+    dependencies=requires(Permission.AGENTS_WRITE),
+)
 async def get_turn_credentials(
     user: UserModel = Depends(get_user),
 ) -> TurnCredentialsResponse:

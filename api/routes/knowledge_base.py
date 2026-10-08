@@ -21,7 +21,8 @@ from api.schemas.knowledge_base import (
     ProcessDocumentRequestSchema,
 )
 from api.sdk_expose import sdk_expose
-from api.services.auth.depends import get_user
+from api.services.auth.depends import get_user, requires
+from api.services.auth.permissions import Permission
 from api.services.knowledge_base_content import (
     DocumentContentConflictError,
     DocumentContentTooLargeError,
@@ -75,6 +76,7 @@ def _to_document_response(
     "/upload-url",
     response_model=DocumentUploadResponseSchema,
     summary="Get presigned URL for document upload",
+    dependencies=requires(Permission.AGENTS_WRITE),
 )
 async def get_upload_url(
     request: DocumentUploadRequestSchema,
@@ -136,6 +138,7 @@ async def get_upload_url(
     "/process-document",
     response_model=DocumentResponseSchema,
     summary="Trigger document processing",
+    dependencies=requires(Permission.AGENTS_WRITE),
 )
 async def process_document(
     request: ProcessDocumentRequestSchema,
@@ -238,6 +241,7 @@ async def process_document(
         method="list_documents",
         description="List knowledge base documents available to the authenticated organization.",
     ),
+    dependencies=requires(Permission.AGENTS_READ),
 )
 async def list_documents(
     status: Annotated[
@@ -280,6 +284,7 @@ async def list_documents(
     "/documents/{document_uuid}",
     response_model=DocumentResponseSchema,
     summary="Get document details",
+    dependencies=requires(Permission.AGENTS_READ),
 )
 async def get_document(
     document_uuid: str,
@@ -313,6 +318,7 @@ async def get_document(
     "/documents/{document_uuid}/content",
     response_model=DocumentContentResponseSchema,
     summary="Get editable document content",
+    dependencies=requires(Permission.AGENTS_READ),
 )
 async def get_document_content(
     document_uuid: str,
@@ -354,6 +360,7 @@ async def get_document_content(
     "/documents/{document_uuid}/content",
     response_model=DocumentResponseSchema,
     summary="Replace document content and re-index",
+    dependencies=requires(Permission.AGENTS_WRITE),
 )
 async def save_document_content(
     document_uuid: str,
@@ -417,6 +424,7 @@ async def save_document_content(
 @router.delete(
     "/documents/{document_uuid}",
     summary="Delete document",
+    dependencies=requires(Permission.AGENTS_WRITE),
 )
 async def delete_document(
     document_uuid: str,
@@ -457,6 +465,7 @@ async def delete_document(
     "/search",
     response_model=ChunkSearchResponseSchema,
     summary="Search for similar chunks",
+    dependencies=requires(Permission.AGENTS_READ),
 )
 async def search_chunks(
     request: ChunkSearchRequestSchema,

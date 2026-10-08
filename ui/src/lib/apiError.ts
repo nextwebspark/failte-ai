@@ -32,3 +32,12 @@ export function detailFromError(err: unknown, fallback = "Request failed"): stri
     }
     return fallback;
 }
+
+/**
+ * Stable machine-readable error code the backend adds to business-rule errors
+ * (e.g. `email_not_verified`), or undefined.
+ */
+export function errorCodeFromError(err: unknown): string | undefined {
+    const code = (err as { code?: unknown } | null)?.code;
+    return typeof code === "string" ? code : undefined;
+}

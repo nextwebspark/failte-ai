@@ -10,6 +10,7 @@ from api.routes.auth import router as auth_router
 from api.routes.campaign import router as campaign_router
 from api.routes.credentials import router as credentials_router
 from api.routes.folder import router as folder_router
+from api.routes.invitations import router as invitations_router
 from api.routes.knowledge_base import router as knowledge_base_router
 from api.routes.node_types import router as node_types_router
 from api.routes.organization import router as organization_router
@@ -22,6 +23,7 @@ from api.routes.reports import router as reports_router
 from api.routes.s3_signed_url import router as s3_router
 from api.routes.service_keys import router as service_keys_router
 from api.routes.superuser import router as superuser_router
+from api.routes.team import router as team_router
 from api.routes.telephony import router as telephony_router
 from api.routes.tool import router as tool_router
 from api.routes.tts_cache import router as tts_cache_router
@@ -48,6 +50,8 @@ router.include_router(campaign_router)
 router.include_router(credentials_router)
 router.include_router(tool_router)
 router.include_router(organization_router)
+router.include_router(team_router)
+router.include_router(invitations_router)
 router.include_router(s3_router)
 router.include_router(service_keys_router)
 router.include_router(organization_usage_router)
@@ -84,6 +88,10 @@ class HealthResponse(BaseModel):
     turn_enabled: bool
     force_turn_relay: bool
     signup_enabled: bool
+    # Local auth: whether "Continue with Google" is configured, and whether
+    # password signups must verify their email before logging in.
+    google_auth_enabled: bool = False
+    email_verification_required: bool = False
     # Public Stack Auth client config — only populated when auth_provider == "stack".
     # The UI reads these at runtime to initialize Stack, so they no longer need to
     # be baked into the browser bundle at build time. Both are public values.
@@ -101,9 +109,11 @@ async def health() -> HealthResponse:
         ENABLE_COTURN,
         ENABLE_SIGNUP,
         FORCE_TURN_RELAY,
+        REQUIRE_EMAIL_VERIFICATION,
         STACK_AUTH_PROJECT_ID,
         STACK_PUBLISHABLE_CLIENT_KEY,
     )
+    from api.services.auth.oauth import google_oauth_enabled
     from api.utils.common import get_backend_endpoints, is_local_or_private_url
 
     backend_endpoint, _ = await get_backend_endpoints()
@@ -129,6 +139,9 @@ async def health() -> HealthResponse:
         turn_enabled=ENABLE_COTURN,
         force_turn_relay=FORCE_TURN_RELAY,
         signup_enabled=ENABLE_SIGNUP,
+        google_auth_enabled=AUTH_PROVIDER == "local" and google_oauth_enabled(),
+        email_verification_required=AUTH_PROVIDER == "local"
+        and REQUIRE_EMAIL_VERIFICATION,
         stack_project_id=STACK_AUTH_PROJECT_ID if is_stack else None,
         stack_publishable_client_key=(
             STACK_PUBLISHABLE_CLIENT_KEY if is_stack else None

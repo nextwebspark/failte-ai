@@ -22,11 +22,12 @@ import {
 } from "@/components/ui/sidebar";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useAgentShellOptional } from "@/context/AgentShellContext";
+import { useOrgConfig } from "@/context/OrgConfigContext";
 import { useTelephonyConfigWarnings } from "@/context/TelephonyConfigWarningsContext";
 import { cn } from "@/lib/utils";
 
 import { AGENT_NAV_SECTIONS, agentHref, agentSectionFor } from "./agentNav";
-import { NAV_SECTIONS } from "./navConfig";
+import { NAV_SECTIONS, type NavItem } from "./navConfig";
 import { useShellChrome } from "./shellContext";
 
 const TELEPHONY_WARNING_COPY = "Action required";
@@ -66,6 +67,10 @@ export function AppSidebar({ docked = true }: { docked?: boolean }) {
     telnyxMissingWebhookPublicKeyCount > 0 ||
     vonageMissingSignatureSecretCount > 0;
   const isCollapsed = !isMobile && state === "collapsed";
+  const { role, can } = useOrgConfig();
+  // Until the role is known, show everything rather than flashing a short nav.
+  const visibleItems = (items: NavItem[]) =>
+    role === null ? items : items.filter((item) => !item.requires || can(item.requires));
 
   const handleMobileNavClick = () => {
     if (isMobile) {
@@ -149,7 +154,12 @@ export function AppSidebar({ docked = true }: { docked?: boolean }) {
   const isWorkspaceRowActive = (url: string) =>
     pathname.startsWith(url) || Boolean(returnTo?.startsWith(url));
 
-  const workspaceNav = NAV_SECTIONS.map((section) => (
+  const workspaceNav = NAV_SECTIONS.map((section) => ({
+    ...section,
+    items: visibleItems(section.items),
+  }))
+    .filter((section) => section.items.length > 0)
+    .map((section) => (
     <SidebarGroup key={section.label ?? "overview"} className="px-2 py-0">
       {section.label && (
         <SidebarGroupLabel

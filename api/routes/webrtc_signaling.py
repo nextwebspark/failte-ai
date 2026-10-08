@@ -45,7 +45,8 @@ from api.routes.turn_credentials import (
     TURN_SECRET,
     generate_turn_credentials,
 )
-from api.services.auth.depends import get_user_ws
+from api.services.auth.depends import get_user_ws, resolve_org_membership
+from api.services.auth.permissions import Permission
 from api.services.call_concurrency import (
     CallConcurrencyLimitError,
     WorkflowRunSlotAlreadyBoundError,
@@ -843,6 +844,11 @@ async def signaling_websocket(
     """WebSocket endpoint for WebRTC signaling with ICE trickling."""
     if not user.selected_organization_id:
         raise HTTPException(status_code=400, detail="No organization selected")
+    # Browser test calls are part of building an agent.
+    membership = await resolve_org_membership(user)
+    if not membership.can(Permission.AGENTS_WRITE):
+        await websocket.close(code=1008, reason="Your role does not allow test calls")
+        return
 
     workflow_run = await db_client.get_workflow_run(
         workflow_run_id, organization_id=user.selected_organization_id

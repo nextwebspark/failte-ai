@@ -1,12 +1,15 @@
-from typing import Annotated
+from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
+from typing import Annotated, Any
 
 from fastapi import Depends, Header, HTTPException, Query, WebSocket
 from loguru import logger
 
-from api.constants import AUTH_PROVIDER
+from api.constants import AUTH_PROVIDER, REQUIRE_EMAIL_VERIFICATION
 from api.db import db_client
 from api.db.models import UserModel
-from api.enums import PostHogEvent
+from api.enums import OrgRole, PostHogEvent
+from api.services.auth.permissions import Permission, has_permissions
 from api.services.auth.stack_auth import stackauth
 from api.services.organization_bootstrap import ensure_organization_bootstrapped
 from api.services.posthog_client import (
@@ -115,7 +118,13 @@ async def get_user(
 
         # Check if user's selected organization differs from the current organization
         if user_model.selected_organization_id != organization.id:
-            await db_client.add_user_to_organization(user_model.id, organization.id)
+            # Whoever creates the Stack team administers it; anyone joining an
+            # existing team starts as a developer.
+            await db_client.add_user_to_organization(
+                user_model.id,
+                organization.id,
+                role=OrgRole.ADMIN if org_was_created else OrgRole.DEVELOPER,
+            )
 
             # Update user's selected organization
             await db_client.update_user_selected_organization(
@@ -251,6 +260,73 @@ async def get_user_with_selected_organization(
     return user
 
 
+@dataclass(frozen=True, slots=True)
+class OrgMembership:
+    """The authenticated user's membership in their selected organization."""
+
+    user: UserModel
+    organization_id: int
+    role: OrgRole
+
+    def can(self, *permissions: Permission) -> bool:
+        return has_permissions(self.role, *permissions)
+
+
+async def get_org_membership(
+    user: Annotated[UserModel, Depends(get_user_with_selected_organization)],
+) -> OrgMembership:
+    return await resolve_org_membership(user)
+
+
+async def resolve_org_membership(user: UserModel) -> OrgMembership:
+    """The user's membership in their selected organization (403 if none).
+
+    For callers outside FastAPI's dependency graph, e.g. WebSocket handlers.
+    """
+    if user.selected_organization_id is None:
+        raise HTTPException(status_code=400, detail="No organization selected")
+    organization_id: int = user.selected_organization_id
+    role = await db_client.get_member_role(user.id, organization_id)
+    if role is None:
+        # Platform superusers may act in any organization (support access).
+        if not user.is_superuser:
+            raise HTTPException(
+                status_code=403, detail="You are not a member of this organization"
+            )
+        role = OrgRole.ADMIN
+    return OrgMembership(user=user, organization_id=organization_id, role=role)
+
+
+def require_permission(
+    *permissions: Permission,
+) -> Callable[..., Awaitable[OrgMembership]]:
+    """Dependency factory: 403 unless the member's role grants every permission.
+
+    Use as ``Depends(require_permission(Permission.AGENTS_WRITE))``, either on a
+    handler parameter (to receive the ``OrgMembership``) or in a route/router
+    ``dependencies=[...]`` list.
+    """
+
+    async def _dependency(
+        membership: Annotated[OrgMembership, Depends(get_org_membership)],
+    ) -> OrgMembership:
+        if not membership.can(*permissions):
+            raise HTTPException(
+                status_code=403,
+                detail="Your role does not allow this action",
+            )
+        return membership
+
+    return _dependency
+
+
+def requires(*permissions: Permission) -> list[Any]:
+    """Route ``dependencies=`` value enforcing ``permissions`` for the caller's
+    role in their selected organization, e.g.
+    ``@router.get("/x", dependencies=requires(Permission.AGENTS_READ))``."""
+    return [Depends(require_permission(*permissions))]
+
+
 async def _handle_oss_auth(authorization: str | None) -> UserModel:
     """
     Handle authentication for OSS deployment mode.
@@ -274,6 +350,10 @@ async def _handle_oss_auth(authorization: str | None) -> UserModel:
         user = await db_client.get_user_by_id(int(payload["sub"]))
         if user is None:
             raise HTTPException(status_code=401, detail="User not found")
+        if REQUIRE_EMAIL_VERIFICATION and user.email_verified_at is None:
+            raise HTTPException(
+                status_code=403, detail="Verify your email address to continue"
+            )
     except HTTPException:
         raise
     except Exception:
@@ -309,6 +389,17 @@ async def _handle_api_key_auth(api_key: str) -> UserModel:
     user = await db_client.get_user_by_id(api_key_model.created_by)
     if not user:
         raise HTTPException(status_code=401, detail="API key owner not found")
+
+    # A key only acts while its creator still belongs to the key's organization;
+    # the creator's current role there bounds what the key may do.
+    owner_role = await db_client.get_member_role(user.id, api_key_model.organization_id)
+    if owner_role is None:
+        raise HTTPException(status_code=401, detail="API key owner is not a member")
+    if not has_permissions(owner_role, Permission.API_KEYS_MANAGE):
+        # e.g. the owner was demoted to viewer after creating the key.
+        raise HTTPException(
+            status_code=403, detail="API key owner's role does not allow API access"
+        )
 
     # Set the organization context to the API key's organization
     user.selected_organization_id = api_key_model.organization_id

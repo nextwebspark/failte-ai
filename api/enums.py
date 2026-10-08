@@ -1,4 +1,4 @@
-from enum import Enum
+from enum import Enum, StrEnum
 
 
 class IntegrationAction(Enum):
@@ -265,3 +265,24 @@ class PostHogEvent(str, Enum):
     ORGANIZATION_USER_ASSOCIATED = "organization_user_associated"
     # usage_* events track orgs hitting capacity/limit boundaries
     USAGE_CONCURRENT_CALL_LIMIT_REACHED = "usage_concurrent_call_limit_reached"
+
+
+class OrgRole(StrEnum):
+    """Role a user holds within one organization (stored on the membership)."""
+
+    ADMIN = "admin"
+    DEVELOPER = "developer"
+    # Business-owner / client persona; read-only on configuration.
+    VIEWER = "viewer"
+
+
+class InvitationStatus(StrEnum):
+    PENDING = "pending"
+    ACCEPTED = "accepted"
+    REVOKED = "revoked"
+    EXPIRED = "expired"
+
+
+class TokenPurpose(StrEnum):
+    EMAIL_VERIFICATION = "email_verification"
+    PASSWORD_RESET = "password_reset"

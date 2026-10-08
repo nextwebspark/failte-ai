@@ -8,6 +8,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from redis.exceptions import ConnectionError as RedisConnectionError
 
+from api.enums import OrgRole
 from api.routes import organization_usage
 from api.services.auth import depends as auth_depends
 from api.services.call_concurrency import service as concurrency_service
@@ -38,6 +39,12 @@ def endpoint(monkeypatch):
                 id=user_id, selected_organization_id=999
             )
         ),
+    )
+    # The key owner belongs to both orgs.
+    monkeypatch.setattr(
+        auth_depends.db_client,
+        "get_member_role",
+        AsyncMock(return_value=OrgRole.DEVELOPER),
     )
     count = AsyncMock(return_value=0)
     monkeypatch.setattr(concurrency_service.rate_limiter, "get_concurrent_count", count)

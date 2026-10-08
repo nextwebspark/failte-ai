@@ -57,6 +57,10 @@ BACKEND_API_ENDPOINT = (
     os.getenv("BACKEND_API_ENDPOINT") or PUBLIC_BASE_URL or "http://localhost:8000"
 )
 UI_APP_URL = os.getenv("UI_APP_URL", "http://localhost:3010")
+# Must match an authorized redirect URI on the Google OAuth client.
+GOOGLE_REDIRECT_URI = os.getenv(
+    "GOOGLE_REDIRECT_URI", f"{UI_APP_URL.rstrip('/')}/auth/google/callback"
+)
 
 DATABASE_URL = os.environ["DATABASE_URL"]
 REDIS_URL = os.environ["REDIS_URL"]
@@ -67,6 +71,13 @@ CORS_ALLOWED_ORIGINS = [
 ]
 AUTH_PROVIDER = os.getenv("AUTH_PROVIDER", "local")
 ENABLE_SIGNUP = os.getenv("ENABLE_SIGNUP", "true").lower() == "true"
+# Local auth: password accounts must click an emailed link before logging in.
+REQUIRE_EMAIL_VERIFICATION = (
+    os.getenv("REQUIRE_EMAIL_VERIFICATION", "true").lower() == "true"
+)
+# "Continue with Google" (local auth). Enabled when both id and secret are set.
+GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID") or None
+GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET") or None
 # Stack Auth public client config. These are safe to expose to the browser (the
 # publishable client key is public by design, and the project id is non-sensitive),
 # and are served to the UI at runtime via /api/v1/health so the frontend no longer
