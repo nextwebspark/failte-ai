@@ -5,7 +5,7 @@ from datetime import datetime
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Any
 
-from sqlalchemy import func
+from sqlalchemy import func, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -145,6 +145,33 @@ class BillingClient(BaseDBClient):
                 )
             ).scalar_one_or_none()
             return _to_account(row) if row else None
+
+    async def set_billing_stripe_customer_id(
+        self, organization_id: int, stripe_customer_id: str
+    ) -> str:
+        """Record the organization's Stripe customer unless one is already set.
+
+        Returns the customer id that ends up stored, which is the existing one
+        if a concurrent caller got there first.
+        """
+        async with self.async_session() as session:
+            await _insert_account_if_missing(session, organization_id)
+            await session.execute(
+                update(BillingAccountModel)
+                .where(
+                    BillingAccountModel.organization_id == organization_id,
+                    BillingAccountModel.stripe_customer_id.is_(None),
+                )
+                .values(stripe_customer_id=stripe_customer_id)
+            )
+            await session.commit()
+            return (
+                await session.execute(
+                    select(BillingAccountModel.stripe_customer_id).where(
+                        BillingAccountModel.organization_id == organization_id
+                    )
+                )
+            ).scalar_one()
 
     async def add_billing_ledger_entry(
         self,
