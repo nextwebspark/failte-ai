@@ -1,4 +1,5 @@
 import { getLocalAuthOptions } from "@/lib/auth/config";
+import { isSafeNextPath } from "@/lib/auth/localSession";
 
 import { LoginForm } from "./LoginForm";
 
@@ -8,7 +9,20 @@ import { LoginForm } from "./LoginForm";
 // build-time prerender, which would bake in the flags' build-environment value.
 export const dynamic = "force-dynamic";
 
-export default async function LoginPage() {
-  const { signupEnabled, googleAuthEnabled } = await getLocalAuthOptions();
-  return <LoginForm signupEnabled={signupEnabled} googleAuthEnabled={googleAuthEnabled} />;
+export default async function LoginPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ next?: string }>;
+}) {
+  const [{ signupEnabled, googleAuthEnabled }, { next }] = await Promise.all([
+    getLocalAuthOptions(),
+    searchParams,
+  ]);
+  return (
+    <LoginForm
+      signupEnabled={signupEnabled}
+      googleAuthEnabled={googleAuthEnabled}
+      nextPath={isSafeNextPath(next) ? next : null}
+    />
+  );
 }

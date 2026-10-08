@@ -1,12 +1,12 @@
 "use client";
 
-import type { CurrentUser } from "@stackframe/stack";
-import { ArrowUpCircle, Bot, LogOut, Menu, Settings } from "lucide-react";
+import { ArrowUpCircle, Bot, LogOut, Menu, Settings, Users } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import React from "react";
 
 import { BrandLogo } from "@/components/BrandLogo";
+import { LocalOrgSwitcher } from "@/components/layout/LocalOrgSwitcher";
 import { SidebarTeamSwitcher } from "@/components/layout/SidebarTeamSwitcher";
 import { SupportLink } from "@/components/SupportLink";
 import { Button } from "@/components/ui/button";
@@ -22,9 +22,11 @@ import { useSidebar } from "@/components/ui/sidebar";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useAgentShellOptional } from "@/context/AgentShellContext";
 import { useAppConfig } from "@/context/AppConfigContext";
+import { useOrgConfig } from "@/context/OrgConfigContext";
 import { useLatestReleaseVersion } from "@/hooks/useLatestReleaseVersion";
 import type { LocalUser } from "@/lib/auth";
 import { useAuth } from "@/lib/auth";
+import { ROLE_LABELS } from "@/lib/auth/roles";
 
 import { agentSectionFor } from "./agentNav";
 import { getPageMeta } from "./navConfig";
@@ -73,10 +75,7 @@ export function AppTopBar({
     enabled: config?.deploymentMode === "oss",
   });
 
-  const workspaceName =
-    provider === "stack"
-      ? (user as CurrentUser | null)?.selectedTeam?.displayName ?? null
-      : null;
+  const { role, can } = useOrgConfig();
 
   const displayIdentity =
     user?.displayName ||
@@ -149,14 +148,12 @@ export function AppTopBar({
           </div>
         </>
       ) : (
-        workspaceName && (
-          <>
-            <span className="hidden sm:inline">{separator}</span>
-            <span className="hidden truncate font-mono text-[13px] font-medium text-ink-3 sm:inline">
-              {workspaceName}
-            </span>
-          </>
-        )
+        <>
+          <span className="hidden sm:inline">{separator}</span>
+          <div className="hidden min-w-0 max-w-[220px] sm:block">
+            <LocalOrgSwitcher />
+          </div>
+        </>
       )}
 
       <span className="hidden sm:inline">{separator}</span>
@@ -218,6 +215,9 @@ export function AppTopBar({
                     {(user as LocalUser).email}
                   </p>
                 )}
+                {role && (
+                  <p className="text-xs text-muted-foreground">Role: {ROLE_LABELS[role]}</p>
+                )}
               </div>
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
@@ -230,10 +230,16 @@ export function AppTopBar({
                 Account settings
               </DropdownMenuItem>
             )}
-            <DropdownMenuItem onClick={() => router.push("/settings")} className="cursor-pointer">
-              <Settings className="mr-2 h-4 w-4" />
-              Workspace settings
+            <DropdownMenuItem onClick={() => router.push("/team")} className="cursor-pointer">
+              <Users className="mr-2 h-4 w-4" />
+              Team
             </DropdownMenuItem>
+            {(role === null || can("integrations:read")) && (
+              <DropdownMenuItem onClick={() => router.push("/settings")} className="cursor-pointer">
+                <Settings className="mr-2 h-4 w-4" />
+                Workspace settings
+              </DropdownMenuItem>
+            )}
             <DropdownMenuItem onClick={() => logout()} className="cursor-pointer">
               <LogOut className="mr-2 h-4 w-4" />
               Sign out

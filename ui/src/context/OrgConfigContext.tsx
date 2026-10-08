@@ -1,6 +1,6 @@
 'use client';
 
-import { createContext, ReactNode, useCallback, useContext, useEffect, useRef, useState } from 'react';
+import { createContext, ReactNode, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 
 import { client } from '@/client/client.gen';
 import { getCurrentOrganizationContextApiV1OrganizationsContextGet, getPreferencesApiV1OrganizationsPreferencesGet, getUserConfigurationsApiV1UserConfigurationsUserGet } from '@/client/sdk.gen';
@@ -9,10 +9,7 @@ import { setupAuthInterceptor } from '@/lib/apiClient';
 import { detailFromError } from '@/lib/apiError';
 import type { AuthUser } from '@/lib/auth';
 import { useAuth } from '@/lib/auth';
-
-interface TeamPermission {
-    id: string;
-}
+import type { OrgRole, Permission } from '@/lib/auth/roles';
 
 interface OrganizationPricing {
     price_per_second_usd: number | null;
@@ -26,7 +23,12 @@ interface OrgConfigContextType {
     loading: boolean;
     error: Error | null;
     refreshConfig: () => Promise<void>;
-    permissions: TeamPermission[];
+    /** The caller's role in the selected organization (null until loaded). */
+    role: OrgRole | null;
+    permissions: readonly Permission[];
+    /** True when the caller's role grants every given permission. Always
+     *  false until the organization context has loaded. */
+    can: (...required: Permission[]) => boolean;
     user: AuthUser | null;
     organizationPricing: OrganizationPricing | null;
     organizationPreferences: OrganizationPreferencesResponse | null;
@@ -56,7 +58,6 @@ export function OrgConfigProvider({ children }: { children: ReactNode }) {
     const [error, setError] = useState<Error | null>(null);
     const [organizationPricing, setOrganizationPricing] = useState<OrganizationPricing | null>(null);
     const [organizationPreferences, setOrganizationPreferences] = useState<OrganizationPreferencesResponse | null>(null);
-    const [permissions, setPermissions] = useState<TeamPermission[]>([]);
 
     const auth = useAuth();
 
@@ -64,39 +65,10 @@ export function OrgConfigProvider({ children }: { children: ReactNode }) {
     authRef.current = auth;
 
     const hasFetchedConfig = useRef(false);
-    const hasFetchedPermissions = useRef(false);
 
     if (!auth.loading && auth.isAuthenticated) {
         setupAuthInterceptor(client, auth.getAccessToken);
     }
-
-    useEffect(() => {
-        if (auth.loading || hasFetchedPermissions.current) {
-            return;
-        }
-        hasFetchedPermissions.current = true;
-
-        const fetchPermissions = async () => {
-            const currentAuth = authRef.current;
-            if (currentAuth.provider === 'stack' && currentAuth.getSelectedTeam && currentAuth.listPermissions) {
-                const selectedTeam = currentAuth.getSelectedTeam();
-                if (selectedTeam) {
-                    try {
-                        const perms = await currentAuth.listPermissions(selectedTeam);
-                        setPermissions(Array.isArray(perms) ? perms : []);
-                    } catch {
-                        setPermissions([]);
-                    }
-                } else {
-                    setPermissions([]);
-                }
-            } else {
-                setPermissions([{ id: 'admin' }]);
-            }
-        };
-
-        fetchPermissions();
-    }, [auth.loading, auth.provider]);
 
     const fetchConfig = useCallback(async () => {
         const currentAuth = authRef.current;
@@ -149,6 +121,15 @@ export function OrgConfigProvider({ children }: { children: ReactNode }) {
         await fetchConfig();
     }, [fetchConfig]);
 
+    const permissions = useMemo<readonly Permission[]>(
+        () => orgContext?.permissions ?? [],
+        [orgContext],
+    );
+    const can = useCallback(
+        (...required: Permission[]) => required.every((p) => permissions.includes(p)),
+        [permissions],
+    );
+
     return (
         <OrgConfigContext.Provider
             value={{
@@ -157,7 +138,9 @@ export function OrgConfigProvider({ children }: { children: ReactNode }) {
                 loading,
                 error,
                 refreshConfig,
+                role: orgContext?.role ?? null,
                 permissions,
+                can,
                 user: auth.user,
                 organizationPricing,
                 organizationPreferences,

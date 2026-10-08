@@ -25,6 +25,7 @@ async def preview_invitation(
 ) -> InvitationPreviewResponse:
     preview = await invitations.preview(token)
     return InvitationPreviewResponse(
+        organization_id=preview.organization_id,
         organization_name=preview.organization_name,
         inviter_name=preview.inviter_name,
         role=preview.role,

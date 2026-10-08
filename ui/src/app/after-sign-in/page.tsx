@@ -1,7 +1,10 @@
 import { isNextRouterError } from "next/dist/client/components/is-next-router-error";
 import { redirect } from "next/navigation";
 
-import { getWorkflowCountApiV1WorkflowCountGet } from "@/client/sdk.gen";
+import {
+    getCurrentOrganizationContextApiV1OrganizationsContextGet,
+    getWorkflowCountApiV1WorkflowCountGet,
+} from "@/client/sdk.gen";
 import { getServerAccessToken,getServerAuthProvider, getServerUser } from "@/lib/auth/server";
 import logger from '@/lib/logger';
 import { getRedirectUrl } from "@/lib/utils";
@@ -35,6 +38,15 @@ export default async function AfterSignInPage() {
     try {
         const accessToken = await getServerAccessToken();
         if (accessToken) {
+            // Clients (viewer role) can't build agents; land them on call history.
+            const contextResponse = await getCurrentOrganizationContextApiV1OrganizationsContextGet({
+                headers: { Authorization: `Bearer ${accessToken}` },
+            });
+            if (contextResponse.data?.role === 'viewer') {
+                logger.debug('[AfterSignInPage] Viewer role, redirecting to /usage');
+                redirect('/usage');
+            }
+
             const countResponse = await getWorkflowCountApiV1WorkflowCountGet({
                 headers: {
                     Authorization: `Bearer ${accessToken}`,

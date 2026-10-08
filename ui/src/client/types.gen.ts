@@ -3893,6 +3893,10 @@ export type InitiateCallRequest = {
  */
 export type InvitationPreviewResponse = {
     /**
+     * Organization Id
+     */
+    organization_id: number;
+    /**
      * Organization Name
      */
     organization_name: string;

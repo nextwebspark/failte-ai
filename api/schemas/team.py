@@ -68,6 +68,7 @@ class IssuedInvitationResponse(BaseModel):
 
 
 class InvitationPreviewResponse(BaseModel):
+    organization_id: int
     organization_name: str
     inviter_name: str | None
     role: OrgRole

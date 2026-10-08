@@ -40,6 +40,7 @@ class IssuedInvitation:
 class InvitationPreview:
     """What the holder of an invitation link may see before accepting."""
 
+    organization_id: int
     organization_name: str
     inviter_name: str | None
     role: OrgRole
@@ -133,6 +134,7 @@ class InvitationService:
             else None
         )
         return InvitationPreview(
+            organization_id=invitation.organization_id,
             organization_name=(organization.name if organization else None)
             or _FALLBACK_ORG_NAME,
             inviter_name=(inviter.name or inviter.email) if inviter else None,

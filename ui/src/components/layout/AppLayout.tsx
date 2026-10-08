@@ -4,14 +4,17 @@ import { AlertTriangle, RefreshCw } from "lucide-react";
 import { usePathname } from "next/navigation";
 import React, { ReactNode, useState } from "react";
 
+import { NoAccess } from "@/components/auth/NoAccess";
 import { Button } from "@/components/ui/button";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { AgentShellProvider } from "@/context/AgentShellContext";
 import { useAppConfig } from "@/context/AppConfigContext";
+import { useOrgConfig } from "@/context/OrgConfigContext";
 
 import { AgentTestRail } from "./AgentTestRail";
 import { AppSidebar } from "./AppSidebar";
 import { AppTopBar } from "./AppTopBar";
+import { getRequiredPermission } from "./navConfig";
 import { PageActionsSlotProvider } from "./PageActionsSlot";
 import { useShellChrome } from "./shellContext";
 
@@ -78,13 +81,23 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
   const pathname = usePathname();
   const [actionsSlot, setActionsSlot] = useState<HTMLDivElement | null>(null);
 
-  // Hide the shell for root (/), /handler routes (Stack Auth) and /auth routes.
+  // Hide the shell for root (/), /handler routes (Stack Auth), /auth routes
+  // and invitation landing pages.
   const shouldShowShell =
-    pathname !== "/" && !pathname.startsWith("/handler") && !pathname.startsWith("/auth");
+    pathname !== "/" &&
+    !pathname.startsWith("/handler") &&
+    !pathname.startsWith("/auth") &&
+    !pathname.startsWith("/invite");
 
   // A run's detail screen is a read-only record, and a run opened from a
   // workspace list stays in the workspace — neither gets the live test rail.
   const { showTestRail } = useShellChrome();
+
+  // The API enforces roles; this just replaces a screen full of 403s with an
+  // explanation. Nothing is blocked until the role is known.
+  const { role, can } = useOrgConfig();
+  const requiredPermission = getRequiredPermission(pathname);
+  const blocked = role !== null && requiredPermission !== null && !can(requiredPermission);
 
   // Always render a single SidebarProvider and branch INSIDE it, so the
   // provider (and its open/collapsed state) survives navigation between the
@@ -106,7 +119,7 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
                 <AppSidebar />
                 <main className="app-content-panel min-w-0 flex-1 overflow-y-auto rounded-[10px] border border-line bg-panel">
                   <BackendStatusBanner />
-                  {children}
+                  {blocked ? <NoAccess role={role} /> : children}
                 </main>
                 {showTestRail && <AgentTestRail />}
               </div>

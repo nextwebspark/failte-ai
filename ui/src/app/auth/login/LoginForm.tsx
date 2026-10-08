@@ -17,9 +17,12 @@ import { startLocalSession } from "@/lib/auth/localSession";
 export function LoginForm({
   signupEnabled,
   googleAuthEnabled,
+  nextPath,
 }: {
   signupEnabled: boolean;
   googleAuthEnabled: boolean;
+  /** Same-origin path to continue to after signing in. */
+  nextPath: string | null;
 }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -44,7 +47,7 @@ export function LoginForm({
         return;
       }
 
-      await startLocalSession(res.data);
+      await startLocalSession(res.data, nextPath);
     } catch {
       toast.error("An error occurred. Please try again.");
     } finally {
@@ -71,7 +74,7 @@ export function LoginForm({
 
       {googleAuthEnabled && (
         <>
-          <GoogleSignInButton />
+          <GoogleSignInButton nextPath={nextPath} />
           <AuthDivider />
         </>
       )}

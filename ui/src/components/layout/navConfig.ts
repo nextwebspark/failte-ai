@@ -12,8 +12,11 @@ import {
   Phone,
   Settings,
   TrendingUp,
+  Users,
   Wrench,
 } from "lucide-react";
+
+import type { Permission } from "@/lib/auth/roles";
 
 /**
  * Single source of truth for the workspace ("org level") shell: what the left
@@ -31,6 +34,8 @@ export type NavItem = {
   icon: LucideIcon;
   /** Flags the amber dot the canvas puts on a nav row needing attention. */
   showsTelephonyWarning?: boolean;
+  /** Hidden (and its route blocked) unless the caller's role grants this. */
+  requires?: Permission;
 };
 
 export type NavSection = {
@@ -45,28 +50,30 @@ export const NAV_SECTIONS: NavSection[] = [
   {
     label: "BUILD",
     items: [
-      { title: "Voice agents", url: "/workflow", icon: GitBranch },
-      { title: "Campaigns", url: "/campaigns", icon: Megaphone },
-      { title: "Models", url: "/model-configurations", icon: Cpu },
+      { title: "Voice agents", url: "/workflow", icon: GitBranch, requires: "agents:read" },
+      { title: "Campaigns", url: "/campaigns", icon: Megaphone, requires: "campaigns:read" },
+      { title: "Models", url: "/model-configurations", icon: Cpu, requires: "credentials:write" },
       {
         title: "Telephony",
         url: "/telephony-configurations",
         icon: Phone,
         showsTelephonyWarning: true,
+        requires: "telephony:read",
       },
-      { title: "Tools", url: "/tools", icon: Wrench },
-      { title: "Files", url: "/files", icon: Database },
-      { title: "Recordings", url: "/recordings", icon: AudioLines },
-      { title: "Developers", url: "/api-keys", icon: Key },
+      { title: "Tools", url: "/tools", icon: Wrench, requires: "agents:write" },
+      { title: "Files", url: "/files", icon: Database, requires: "agents:write" },
+      { title: "Recordings", url: "/recordings", icon: AudioLines, requires: "agents:write" },
+      { title: "Developers", url: "/api-keys", icon: Key, requires: "api_keys:manage" },
     ],
   },
   {
     label: "MANAGE",
     items: [
-      { title: "Agent runs", url: "/usage", icon: TrendingUp },
-      { title: "Billing", url: "/billing", icon: CircleDollarSign },
-      { title: "Reports", url: "/reports", icon: FileText },
-      { title: "Workspace settings", url: "/settings", icon: Settings },
+      { title: "Agent runs", url: "/usage", icon: TrendingUp, requires: "reports:read" },
+      { title: "Billing", url: "/billing", icon: CircleDollarSign, requires: "billing:read" },
+      { title: "Reports", url: "/reports", icon: FileText, requires: "reports:read" },
+      { title: "Team", url: "/team", icon: Users, requires: "members:read" },
+      { title: "Workspace settings", url: "/settings", icon: Settings, requires: "integrations:read" },
     ],
   },
 ];
@@ -96,6 +103,7 @@ const PAGE_META: Record<string, PageMeta> = {
   "/billing": { title: "Billing", subtitle: "Balance, top-ups and invoices" },
   "/reports": { title: "Reports", subtitle: "Daily call outcomes" },
   "/settings": { title: "Workspace settings", subtitle: "Platform configuration and integrations" },
+  "/team": { title: "Team", subtitle: "Members, roles and invitations" },
   "/automation": { title: "Automation", subtitle: "Scheduled and triggered runs" },
   "/superadmin": { title: "Superadmin", subtitle: "Cross-organisation administration" },
   "/impersonate": { title: "Impersonate", subtitle: "Act as another user" },
@@ -115,4 +123,33 @@ export function getPageMeta(pathname: string): PageMeta {
   }
 
   return match ?? { title: "Workspace" };
+}
+
+/**
+ * Route prefix -> permission needed to use the screen. Covers every nav item
+ * plus screens that only make sense for editors. Longest prefix wins; routes
+ * not listed here are open to every member.
+ */
+const ROUTE_PERMISSIONS: Record<string, Permission> = {
+  ...Object.fromEntries(
+    NAV_SECTIONS.flatMap((section) => section.items)
+      .filter((item): item is NavItem & { requires: Permission } => Boolean(item.requires))
+      .map((item) => [item.url, item.requires]),
+  ),
+  "/workflow/create": "agents:write",
+  "/campaigns/new": "campaigns:write",
+  "/automation": "agents:write",
+};
+
+export function getRequiredPermission(pathname: string): Permission | null {
+  let match: Permission | null = null;
+  let matchedLength = 0;
+  for (const [prefix, permission] of Object.entries(ROUTE_PERMISSIONS)) {
+    const isMatch = pathname === prefix || pathname.startsWith(`${prefix}/`);
+    if (isMatch && prefix.length > matchedLength) {
+      match = permission;
+      matchedLength = prefix.length;
+    }
+  }
+  return match;
 }
