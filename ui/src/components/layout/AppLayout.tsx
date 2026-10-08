@@ -94,9 +94,12 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
   const { showTestRail } = useShellChrome();
 
   // The API enforces roles; this just replaces a screen full of 403s with an
-  // explanation. Nothing is blocked until the role is known.
-  const { role, can } = useOrgConfig();
+  // explanation. A restricted screen waits for the role so it doesn't mount
+  // and fire requests the role can't make; if the role can't be loaded at all
+  // the screen renders and the API remains the guard.
+  const { role, can, loading: orgLoading } = useOrgConfig();
   const requiredPermission = getRequiredPermission(pathname);
+  const awaitingRole = requiredPermission !== null && role === null && orgLoading;
   const blocked = role !== null && requiredPermission !== null && !can(requiredPermission);
 
   // Always render a single SidebarProvider and branch INSIDE it, so the
@@ -119,7 +122,7 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
                 <AppSidebar />
                 <main className="app-content-panel min-w-0 flex-1 overflow-y-auto rounded-[10px] border border-line bg-panel">
                   <BackendStatusBanner />
-                  {blocked ? <NoAccess role={role} /> : children}
+                  {awaitingRole ? null : blocked ? <NoAccess role={role} /> : children}
                 </main>
                 {showTestRail && <AgentTestRail />}
               </div>

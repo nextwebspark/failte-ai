@@ -21,7 +21,8 @@ export function RoleSelect({
   return (
     <Select value={value} onValueChange={(v) => onChange(v as OrgRole)} disabled={disabled}>
       <SelectTrigger id={id} className="h-8 w-[140px]">
-        <SelectValue />
+        {/* Items carry a description; the trigger shows just the role name. */}
+        <SelectValue>{ROLE_LABELS[value]}</SelectValue>
       </SelectTrigger>
       <SelectContent>
         {ORG_ROLES.map((role) => (

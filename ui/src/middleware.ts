@@ -3,15 +3,7 @@ import { NextResponse } from 'next/server';
 
 import { getServerBackendUrl } from '@/lib/apiClient';
 import { OSS_TOKEN_COOKIE } from '@/lib/auth/cookies';
-
-// Paths that don't require authentication in OSS mode.
-// `/embed` serves the public website widget (e.g. /embed/dograh-widget.js),
-// which must be fetchable without a session cookie so third-party sites can
-// embed it — otherwise the middleware 307-redirects the asset to /auth/login.
-// `/auth` covers login, signup, email verification, password reset and the
-// Google callback; `/invite` previews an invitation before the user has an
-// account.
-const PUBLIC_PATHS = ['/auth', '/invite', '/embed'];
+import { isPublicPath } from '@/lib/auth/publicPaths';
 
 let cachedAuthProvider: string | null = null;
 
@@ -55,12 +47,7 @@ export async function middleware(request: NextRequest) {
   const token = request.cookies.get(OSS_TOKEN_COOKIE)?.value;
   const { pathname } = request.nextUrl;
 
-  // Allow public paths without auth. Match on a path-segment boundary (exact
-  // match or a `/`-delimited subpath) rather than a bare prefix, so a public
-  // entry like `/embed` exempts `/embed` and `/embed/...` but NOT sibling
-  // routes such as `/embed-admin` — a bare startsWith would let those bypass
-  // authentication.
-  if (PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`))) {
+  if (isPublicPath(pathname)) {
     return NextResponse.next();
   }
 
