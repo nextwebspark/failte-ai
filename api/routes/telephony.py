@@ -25,7 +25,8 @@ from api.enums import CallType, WorkflowRunMode, WorkflowRunState
 from api.errors.failure import failure_already_reported
 from api.errors.telephony_errors import TelephonyError
 from api.sdk_expose import sdk_expose
-from api.services.auth.depends import get_user
+from api.services.auth.depends import get_user, requires
+from api.services.auth.permissions import Permission
 from api.services.call_concurrency import (
     CallConcurrencyLimitError,
     WorkflowRunSlotAlreadyBoundError,
@@ -88,6 +89,7 @@ def _get_execution_user_id(workflow) -> int:
         method="test_phone_call",
         description="Place a test call from a workflow to a phone number.",
     ),
+    dependencies=requires(Permission.AGENTS_WRITE),
 )
 async def initiate_call(
     request: InitiateCallRequest, user: UserModel = Depends(get_user)

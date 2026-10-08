@@ -29,7 +29,8 @@ from api.schemas.tool import (
     UpdateToolRequest,
 )
 from api.sdk_expose import sdk_expose
-from api.services.auth.depends import get_user
+from api.services.auth.depends import get_user, requires
+from api.services.auth.permissions import Permission
 from api.services.tool_management import (
     ToolManagementError,
     build_tool_response,
@@ -99,6 +100,7 @@ def validate_status(status: str) -> None:
         method="list_tools",
         description="List tools available to the authenticated organization.",
     ),
+    dependencies=requires(Permission.AGENTS_READ),
 )
 async def list_tools(
     status: str | None = None,
@@ -140,6 +142,7 @@ async def list_tools(
         method="create_tool",
         description="Create a reusable tool for the authenticated organization.",
     ),
+    dependencies=requires(Permission.AGENTS_WRITE),
 )
 async def create_tool(
     request: CreateToolRequest,
@@ -160,7 +163,7 @@ async def create_tool(
         raise HTTPException(status_code=e.status_code, detail=e.message) from e
 
 
-@router.get("/{tool_uuid}")
+@router.get("/{tool_uuid}", dependencies=requires(Permission.AGENTS_READ))
 async def get_tool(
     tool_uuid: str,
     user: UserModel = Depends(get_user),
@@ -189,7 +192,10 @@ async def get_tool(
     return build_tool_response(tool, include_created_by=True)
 
 
-@router.post("/{tool_uuid}/mcp/refresh")
+@router.post(
+    "/{tool_uuid}/mcp/refresh",
+    dependencies=requires(Permission.AGENTS_WRITE),
+)
 async def refresh_mcp_tools(
     tool_uuid: str,
     user: UserModel = Depends(get_user),
@@ -203,7 +209,10 @@ async def refresh_mcp_tools(
         raise HTTPException(status_code=e.status_code, detail=e.message) from e
 
 
-@router.post("/{tool_uuid}/test")
+@router.post(
+    "/{tool_uuid}/test",
+    dependencies=requires(Permission.AGENTS_WRITE),
+)
 async def test_tool(
     tool_uuid: str,
     request: ToolTestRequest,
@@ -351,7 +360,7 @@ def _hint_for_status_code(
     return None
 
 
-@router.put("/{tool_uuid}")
+@router.put("/{tool_uuid}", dependencies=requires(Permission.AGENTS_WRITE))
 async def update_tool(
     tool_uuid: str,
     request: UpdateToolRequest,
@@ -407,7 +416,7 @@ async def update_tool(
     return build_tool_response(tool, include_created_by=True)
 
 
-@router.delete("/{tool_uuid}")
+@router.delete("/{tool_uuid}", dependencies=requires(Permission.AGENTS_WRITE))
 async def delete_tool(
     tool_uuid: str,
     user: UserModel = Depends(get_user),
@@ -434,7 +443,10 @@ async def delete_tool(
     return {"status": "archived", "tool_uuid": tool_uuid}
 
 
-@router.post("/{tool_uuid}/unarchive")
+@router.post(
+    "/{tool_uuid}/unarchive",
+    dependencies=requires(Permission.AGENTS_WRITE),
+)
 async def unarchive_tool(
     tool_uuid: str,
     user: UserModel = Depends(get_user),

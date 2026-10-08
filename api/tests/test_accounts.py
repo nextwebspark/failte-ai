@@ -28,6 +28,8 @@ from api.services.invitations.service import InvitationService
 from api.utils.auth import create_jwt_token
 from api.utils.clock import SystemClock
 
+pytestmark = pytest.mark.real_org_roles
+
 PASSWORD = "correct horse battery"
 
 

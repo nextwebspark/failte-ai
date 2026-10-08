@@ -13,7 +13,12 @@ from redis.exceptions import RedisError
 from api.constants import DEPLOYMENT_MODE, UI_APP_URL
 from api.db import db_client
 from api.db.models import UserModel
-from api.services.auth.depends import get_user, get_user_with_selected_organization
+from api.services.auth.depends import (
+    get_user,
+    get_user_with_selected_organization,
+    requires,
+)
+from api.services.auth.permissions import Permission
 from api.services.call_concurrency import call_concurrency
 from api.services.mps_service_key_client import mps_service_key_client
 from api.services.reports import generate_usage_runs_report_csv
@@ -41,6 +46,7 @@ class OrganizationConcurrentCallsResponse(BaseModel):
         401: {"description": "Missing or invalid credentials"},
         503: {"description": "The current call count is unavailable"},
     },
+    dependencies=requires(Permission.CALLS_READ),
 )
 async def get_organization_concurrent_calls(
     response: Response,
@@ -197,7 +203,11 @@ class DailyUsageBreakdownResponse(BaseModel):
     currency: Optional[str] = None
 
 
-@router.get("/usage/current-period", response_model=CurrentUsageResponse)
+@router.get(
+    "/usage/current-period",
+    response_model=CurrentUsageResponse,
+    dependencies=requires(Permission.BILLING_READ),
+)
 async def get_current_period_usage(user: UserModel = Depends(get_user)):
     """Get current reporting-period usage for the user's organization."""
     if not user.selected_organization_id:
@@ -223,7 +233,11 @@ async def _oss_mps_credits_response(user: UserModel) -> MPSBillingCreditsRespons
     )
 
 
-@router.get("/billing/credits", response_model=MPSBillingCreditsResponse)
+@router.get(
+    "/billing/credits",
+    response_model=MPSBillingCreditsResponse,
+    dependencies=requires(Permission.BILLING_READ),
+)
 async def get_billing_credits(
     page: int = Query(1, ge=1),
     limit: int = Query(50, ge=1, le=100),
@@ -386,6 +400,7 @@ async def get_billing_credits(
 @router.post(
     "/usage/mps-credits/purchase-url",
     response_model=MPSCreditPurchaseUrlResponse,
+    dependencies=requires(Permission.BILLING_MANAGE),
 )
 async def create_mps_credit_purchase_url(
     user: UserModel = Depends(get_user_with_selected_organization),
@@ -455,7 +470,11 @@ Date filtering on this endpoint is done via the dedicated `start_date` / `end_da
 """
 
 
-@router.get("/usage/runs", response_model=UsageHistoryResponse)
+@router.get(
+    "/usage/runs",
+    response_model=UsageHistoryResponse,
+    dependencies=requires(Permission.REPORTS_READ),
+)
 async def get_usage_history(
     start_date: Optional[str] = Query(
         None,
@@ -558,7 +577,10 @@ async def get_usage_history(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/usage/runs/report")
+@router.get(
+    "/usage/runs/report",
+    dependencies=requires(Permission.REPORTS_READ),
+)
 async def download_usage_runs_report(
     start_date: Optional[str] = Query(
         None,
@@ -602,7 +624,11 @@ async def download_usage_runs_report(
     )
 
 
-@router.get("/usage/daily-breakdown", response_model=DailyUsageBreakdownResponse)
+@router.get(
+    "/usage/daily-breakdown",
+    response_model=DailyUsageBreakdownResponse,
+    dependencies=requires(Permission.REPORTS_READ),
+)
 async def get_daily_usage_breakdown(
     days: int = Query(7, ge=1, le=30, description="Number of days to include"),
     user: UserModel = Depends(get_user),

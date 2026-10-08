@@ -1,6 +1,6 @@
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import Depends, Header, HTTPException, Query, WebSocket
 from loguru import logger
@@ -275,6 +275,16 @@ class OrgMembership:
 async def get_org_membership(
     user: Annotated[UserModel, Depends(get_user_with_selected_organization)],
 ) -> OrgMembership:
+    return await resolve_org_membership(user)
+
+
+async def resolve_org_membership(user: UserModel) -> OrgMembership:
+    """The user's membership in their selected organization (403 if none).
+
+    For callers outside FastAPI's dependency graph, e.g. WebSocket handlers.
+    """
+    if user.selected_organization_id is None:
+        raise HTTPException(status_code=400, detail="No organization selected")
     organization_id: int = user.selected_organization_id
     role = await db_client.get_member_role(user.id, organization_id)
     if role is None:
@@ -308,6 +318,13 @@ def require_permission(
         return membership
 
     return _dependency
+
+
+def requires(*permissions: Permission) -> list[Any]:
+    """Route ``dependencies=`` value enforcing ``permissions`` for the caller's
+    role in their selected organization, e.g.
+    ``@router.get("/x", dependencies=requires(Permission.AGENTS_READ))``."""
+    return [Depends(require_permission(*permissions))]
 
 
 async def _handle_oss_auth(authorization: str | None) -> UserModel:
@@ -375,8 +392,14 @@ async def _handle_api_key_auth(api_key: str) -> UserModel:
 
     # A key only acts while its creator still belongs to the key's organization;
     # the creator's current role there bounds what the key may do.
-    if await db_client.get_member_role(user.id, api_key_model.organization_id) is None:
+    owner_role = await db_client.get_member_role(user.id, api_key_model.organization_id)
+    if owner_role is None:
         raise HTTPException(status_code=401, detail="API key owner is not a member")
+    if not has_permissions(owner_role, Permission.API_KEYS_MANAGE):
+        # e.g. the owner was demoted to viewer after creating the key.
+        raise HTTPException(
+            status_code=403, detail="API key owner's role does not allow API access"
+        )
 
     # Set the organization context to the API key's organization
     user.selected_organization_id = api_key_model.organization_id

@@ -9,7 +9,8 @@ from pydantic import BaseModel, Field
 
 from api.db import db_client
 from api.enums import StorageBackend
-from api.services.auth.depends import get_user
+from api.services.auth.depends import get_user, requires
+from api.services.auth.permissions import Permission
 from api.services.storage import get_storage_for_backend, storage_fs
 
 
@@ -165,6 +166,7 @@ async def _authorize_and_get_workflow_run(
     "/signed-url",
     response_model=S3SignedUrlResponse,
     summary="Generate a signed S3 URL",
+    dependencies=requires(Permission.CALLS_READ),
 )
 async def get_signed_url(
     key: Annotated[str, Query(description="S3 object key")],
@@ -242,6 +244,7 @@ async def get_signed_url(
     "/file-metadata",
     response_model=FileMetadataResponse,
     summary="Get file metadata for debugging",
+    dependencies=requires(Permission.CALLS_READ),
 )
 async def get_file_metadata(
     key: Annotated[str, Query(description="S3 object key")],
@@ -296,6 +299,7 @@ async def get_file_metadata(
     "/presigned-upload-url",
     response_model=PresignedUploadUrlResponse,
     summary="Generate a presigned URL for direct CSV upload",
+    dependencies=requires(Permission.AGENTS_WRITE),
 )
 async def get_presigned_upload_url(
     request: PresignedUploadUrlRequest,

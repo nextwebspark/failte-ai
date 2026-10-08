@@ -9,7 +9,11 @@ from pydantic import BaseModel, Field
 from api.db import db_client
 from api.db.models import UserModel, WorkflowRunTextSessionModel
 from api.enums import WorkflowRunMode
-from api.services.auth.depends import get_user_with_selected_organization
+from api.services.auth.depends import (
+    get_user_with_selected_organization,
+    requires,
+)
+from api.services.auth.permissions import Permission
 from api.services.quota_service import authorize_workflow_run_start
 from api.services.workflow.initial_context import merge_external_initial_context
 from api.services.workflow.run_creation import prepare_workflow_run_inputs
@@ -163,6 +167,7 @@ async def _execute_pending_turn_response(
 @router.post(
     "/{workflow_id}/text-chat/sessions",
     response_model=WorkflowRunTextSessionResponse,
+    dependencies=requires(Permission.AGENTS_WRITE),
 )
 async def create_text_chat_session(
     workflow_id: int,
@@ -236,6 +241,7 @@ async def create_text_chat_session(
 @router.get(
     "/{workflow_id}/text-chat/sessions/{run_id}",
     response_model=WorkflowRunTextSessionResponse,
+    dependencies=requires(Permission.AGENTS_WRITE),
 )
 async def get_text_chat_session(
     workflow_id: int,
@@ -249,6 +255,7 @@ async def get_text_chat_session(
 @router.post(
     "/{workflow_id}/text-chat/sessions/{run_id}/messages",
     response_model=WorkflowRunTextSessionResponse,
+    dependencies=requires(Permission.AGENTS_WRITE),
 )
 async def append_text_chat_message(
     workflow_id: int,
@@ -285,6 +292,7 @@ async def append_text_chat_message(
 @router.post(
     "/{workflow_id}/text-chat/sessions/{run_id}/end",
     response_model=WorkflowRunTextSessionResponse,
+    dependencies=requires(Permission.AGENTS_WRITE),
 )
 async def end_text_chat_session(
     workflow_id: int,
@@ -308,6 +316,7 @@ async def end_text_chat_session(
 @router.post(
     "/{workflow_id}/text-chat/sessions/{run_id}/rewind",
     response_model=WorkflowRunTextSessionResponse,
+    dependencies=requires(Permission.AGENTS_WRITE),
 )
 async def rewind_text_chat_session(
     workflow_id: int,

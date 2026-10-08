@@ -17,7 +17,11 @@ from api.schemas.tts_cache import (
     TTSCacheOrder,
     TTSCacheSort,
 )
-from api.services.auth.depends import get_user_with_selected_organization
+from api.services.auth.depends import (
+    get_user_with_selected_organization,
+    requires,
+)
+from api.services.auth.permissions import Permission
 from api.services.pipecat.tts_cache.management import TTSCacheManager
 from api.services.pipecat.tts_cache.redis import RedisCacheBackend
 
@@ -53,7 +57,11 @@ def get_cache_manager(
     return TTSCacheManager(backend, user.selected_organization_id)
 
 
-@router.get("", response_model=TTSCacheList)
+@router.get(
+    "",
+    response_model=TTSCacheList,
+    dependencies=requires(Permission.AGENTS_READ),
+)
 async def list_tts_cache(
     response: Response,
     manager: Annotated[TTSCacheManager, Depends(get_cache_manager)],
@@ -93,6 +101,7 @@ async def list_tts_cache(
             "content": {"audio/wav": {"schema": {"type": "string", "format": "binary"}}}
         }
     },
+    dependencies=requires(Permission.AGENTS_READ),
 )
 async def preview_tts_cache(
     entry_id: EntryId,
@@ -111,7 +120,11 @@ async def preview_tts_cache(
     )
 
 
-@router.delete("/{entry_id}", response_model=TTSCacheInvalidation)
+@router.delete(
+    "/{entry_id}",
+    response_model=TTSCacheInvalidation,
+    dependencies=requires(Permission.AGENTS_WRITE),
+)
 async def invalidate_tts_cache_entry(
     entry_id: EntryId,
     manager: Annotated[TTSCacheManager, Depends(get_cache_manager)],
@@ -120,7 +133,11 @@ async def invalidate_tts_cache_entry(
     return TTSCacheInvalidation(removed=int(await manager.delete_entry(entry_id)))
 
 
-@router.delete("", response_model=TTSCacheInvalidation)
+@router.delete(
+    "",
+    response_model=TTSCacheInvalidation,
+    dependencies=requires(Permission.AGENTS_WRITE),
+)
 async def clear_tts_cache(
     manager: Annotated[TTSCacheManager, Depends(get_cache_manager)],
 ) -> TTSCacheInvalidation:

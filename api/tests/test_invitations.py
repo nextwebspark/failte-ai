@@ -27,6 +27,8 @@ from api.services.invitations import service as invitation_service_module
 from api.services.invitations.service import INVITATION_TTL, InvitationService
 from api.utils.secure_token import hash_token
 
+pytestmark = pytest.mark.real_org_roles
+
 
 @dataclass
 class FakeSender:

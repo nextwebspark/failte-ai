@@ -10,13 +10,18 @@ from api.schemas.service_key import (
     CreateServiceKeyResponse,
     ServiceKeyResponse,
 )
-from api.services.auth.depends import get_user
+from api.services.auth.depends import get_user, requires
+from api.services.auth.permissions import Permission
 from api.services.mps_service_key_client import mps_service_key_client
 
 router = APIRouter()
 
 
-@router.get("/user/service-keys", response_model=List[ServiceKeyResponse])
+@router.get(
+    "/user/service-keys",
+    response_model=List[ServiceKeyResponse],
+    dependencies=requires(Permission.INTEGRATIONS_READ),
+)
 async def get_service_keys(
     include_archived: bool = False,
     user: UserModel = Depends(get_user),
@@ -45,7 +50,11 @@ async def get_service_keys(
         raise HTTPException(status_code=500, detail="Failed to retrieve service keys")
 
 
-@router.post("/user/service-keys", response_model=CreateServiceKeyResponse)
+@router.post(
+    "/user/service-keys",
+    response_model=CreateServiceKeyResponse,
+    dependencies=requires(Permission.CREDENTIALS_WRITE),
+)
 async def create_service_key(
     request: CreateServiceKeyRequest,
     user: UserModel = Depends(get_user),
@@ -83,7 +92,10 @@ async def create_service_key(
         )
 
 
-@router.delete("/user/service-keys/{service_key_id}")
+@router.delete(
+    "/user/service-keys/{service_key_id}",
+    dependencies=requires(Permission.CREDENTIALS_WRITE),
+)
 async def archive_service_key(
     service_key_id: str,  # Changed from int to str since MPS uses string IDs
     user: UserModel = Depends(get_user),
@@ -122,7 +134,10 @@ async def archive_service_key(
         )
 
 
-@router.put("/user/service-keys/{service_key_id}/reactivate")
+@router.put(
+    "/user/service-keys/{service_key_id}/reactivate",
+    dependencies=requires(Permission.CREDENTIALS_WRITE),
+)
 async def reactivate_service_key(
     service_key_id: str,  # Changed from int to str since MPS uses string IDs
     user: UserModel = Depends(get_user),  # Kept for consistency but not used

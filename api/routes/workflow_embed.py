@@ -10,7 +10,8 @@ from api.constants import BACKEND_API_ENDPOINT, ENVIRONMENT, UI_APP_URL
 from api.db import db_client
 from api.db.models import EmbedTokenModel, UserModel
 from api.enums import PostHogEvent
-from api.services.auth.depends import get_user
+from api.services.auth.depends import get_user, requires
+from api.services.auth.permissions import Permission
 from api.services.posthog_client import capture_event
 
 router = APIRouter(prefix="/workflow")
@@ -59,7 +60,10 @@ class EmbedTokenResponse(BaseModel):
     embed_script: str
 
 
-@router.post("/{workflow_id}/embed-token")
+@router.post(
+    "/{workflow_id}/embed-token",
+    dependencies=requires(Permission.AGENTS_WRITE),
+)
 async def create_or_update_embed_token(
     workflow_id: int,
     request: Request,
@@ -139,7 +143,10 @@ async def create_or_update_embed_token(
     )
 
 
-@router.get("/{workflow_id}/embed-token")
+@router.get(
+    "/{workflow_id}/embed-token",
+    dependencies=requires(Permission.AGENTS_READ),
+)
 async def get_embed_token(
     workflow_id: int,
     request: Request,
@@ -184,7 +191,10 @@ async def get_embed_token(
     )
 
 
-@router.delete("/{workflow_id}/embed-token")
+@router.delete(
+    "/{workflow_id}/embed-token",
+    dependencies=requires(Permission.AGENTS_WRITE),
+)
 async def deactivate_embed_token(
     workflow_id: int,
     user: UserModel = Depends(get_user),

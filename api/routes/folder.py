@@ -6,7 +6,8 @@ from pydantic import BaseModel, Field, field_validator
 from api.db import db_client
 from api.db.folder_client import FolderNameConflictError
 from api.db.models import UserModel
-from api.services.auth.depends import get_user
+from api.services.auth.depends import get_user, requires
+from api.services.auth.permissions import Permission
 
 router = APIRouter(prefix="/folder")
 
@@ -33,7 +34,7 @@ class UpdateFolderRequest(CreateFolderRequest):
     pass
 
 
-@router.get("/")
+@router.get("/", dependencies=requires(Permission.AGENTS_READ))
 async def list_folders(
     user: UserModel = Depends(get_user),
 ) -> list[FolderResponse]:
@@ -46,7 +47,7 @@ async def list_folders(
     ]
 
 
-@router.post("/")
+@router.post("/", dependencies=requires(Permission.AGENTS_WRITE))
 async def create_folder(
     request: CreateFolderRequest,
     user: UserModel = Depends(get_user),
@@ -62,7 +63,7 @@ async def create_folder(
     return FolderResponse(id=folder.id, name=folder.name, created_at=folder.created_at)
 
 
-@router.put("/{folder_id}")
+@router.put("/{folder_id}", dependencies=requires(Permission.AGENTS_WRITE))
 async def rename_folder(
     folder_id: int,
     request: UpdateFolderRequest,
@@ -82,7 +83,7 @@ async def rename_folder(
     return FolderResponse(id=folder.id, name=folder.name, created_at=folder.created_at)
 
 
-@router.delete("/{folder_id}")
+@router.delete("/{folder_id}", dependencies=requires(Permission.AGENTS_WRITE))
 async def delete_folder(
     folder_id: int,
     user: UserModel = Depends(get_user),

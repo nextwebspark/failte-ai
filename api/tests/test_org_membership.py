@@ -21,6 +21,8 @@ from api.services.auth.permissions import (
     has_permissions,
 )
 
+pytestmark = pytest.mark.real_org_roles
+
 # ---------------------------------------------------------------------------
 # Policy
 # ---------------------------------------------------------------------------

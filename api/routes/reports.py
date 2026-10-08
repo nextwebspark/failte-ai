@@ -5,7 +5,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
 from api.db.models import UserModel
-from api.services.auth.depends import get_user
+from api.services.auth.depends import get_user, requires
+from api.services.auth.permissions import Permission
 from api.services.reports import DailyReportService
 
 router = APIRouter(prefix="/organizations/reports")
@@ -35,7 +36,11 @@ class WorkflowRunDetail(BaseModel):
     created_at: str
 
 
-@router.get("/daily", response_model=DailyReportResponse)
+@router.get(
+    "/daily",
+    response_model=DailyReportResponse,
+    dependencies=requires(Permission.REPORTS_READ),
+)
 async def get_daily_report(
     date: str = Query(..., description="Date in YYYY-MM-DD format"),
     timezone: str = Query(..., description="IANA timezone (e.g., 'America/New_York')"),
@@ -74,7 +79,11 @@ async def get_daily_report(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/workflows", response_model=List[WorkflowOption])
+@router.get(
+    "/workflows",
+    response_model=List[WorkflowOption],
+    dependencies=requires(Permission.REPORTS_READ),
+)
 async def get_workflow_options(
     user: UserModel = Depends(get_user),
 ) -> List[WorkflowOption]:
@@ -94,7 +103,11 @@ async def get_workflow_options(
     return [WorkflowOption(**w) for w in workflows]
 
 
-@router.get("/daily/runs", response_model=List[WorkflowRunDetail])
+@router.get(
+    "/daily/runs",
+    response_model=List[WorkflowRunDetail],
+    dependencies=requires(Permission.REPORTS_READ),
+)
 async def get_daily_runs_detail(
     date: str = Query(..., description="Date in YYYY-MM-DD format"),
     timezone: str = Query(..., description="IANA timezone (e.g., 'America/New_York')"),

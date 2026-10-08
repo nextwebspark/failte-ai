@@ -20,7 +20,8 @@ from api.schemas.workflow_recording import (
     RecordingUploadResponseSchema,
 )
 from api.sdk_expose import sdk_expose
-from api.services.auth.depends import get_user
+from api.services.auth.depends import get_user, requires
+from api.services.auth.permissions import Permission
 from api.services.mps_service_key_client import mps_service_key_client
 from api.services.storage import storage_fs
 
@@ -62,6 +63,7 @@ def _build_response(rec) -> RecordingResponseSchema:
     "/upload-url",
     response_model=BatchRecordingUploadResponseSchema,
     summary="Get presigned URLs for recording uploads",
+    dependencies=requires(Permission.AGENTS_WRITE),
 )
 async def get_upload_urls(
     request: BatchRecordingUploadRequestSchema,
@@ -122,6 +124,7 @@ async def get_upload_urls(
     "/",
     response_model=BatchRecordingCreateResponseSchema,
     summary="Create recording records after upload",
+    dependencies=requires(Permission.AGENTS_WRITE),
 )
 async def create_recordings(
     request: BatchRecordingCreateRequestSchema,
@@ -170,6 +173,7 @@ async def create_recordings(
         method="list_recordings",
         description="List workflow recordings available to the authenticated organization.",
     ),
+    dependencies=requires(Permission.AGENTS_READ),
 )
 async def list_recordings(
     workflow_id: Annotated[
@@ -211,6 +215,7 @@ async def list_recordings(
 @router.delete(
     "/{recording_id}",
     summary="Delete a recording",
+    dependencies=requires(Permission.AGENTS_WRITE),
 )
 async def delete_recording(
     recording_id: str,
@@ -245,6 +250,7 @@ async def delete_recording(
     "/{id}",
     response_model=RecordingResponseSchema,
     summary="Update a recording's Recording ID",
+    dependencies=requires(Permission.AGENTS_WRITE),
 )
 async def update_recording(
     id: int,
@@ -312,6 +318,7 @@ async def update_recording(
 @router.post(
     "/transcribe",
     summary="Transcribe an audio file",
+    dependencies=requires(Permission.AGENTS_WRITE),
 )
 async def transcribe_audio(
     file: UploadFile = File(...),
