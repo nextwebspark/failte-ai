@@ -262,6 +262,9 @@ class OrganizationUsageClient(BaseDBClient):
                 # Add USD cost if available in cost_info
                 if run.cost_info and "charge_usd" in run.cost_info:
                     run_data["charge_usd"] = run.cost_info["charge_usd"]
+                # EUR charge from the prepaid credit ledger (Stripe billing)
+                if run.cost_info and "charge_eur" in run.cost_info:
+                    run_data["charge_eur"] = float(run.cost_info["charge_eur"])
 
                 formatted_runs.append(run_data)
 

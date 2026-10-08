@@ -10,6 +10,7 @@ import io
 from datetime import UTC, datetime
 from typing import Any, List, Optional
 
+from api.constants import BILLING_PROVIDER
 from api.db import db_client
 from api.utils.artifacts import artifact_url
 
@@ -43,6 +44,9 @@ def build_run_report_csv(runs: List[Any]) -> io.StringIO:
         "Call Disposition",
         "Call Duration (s)",
     ]
+    include_charge = BILLING_PROVIDER == "stripe"
+    if include_charge:
+        pre_headers.append("Charge (EUR)")
     post_headers = [
         "Call Tags",
         "Transcript URL",
@@ -69,6 +73,8 @@ def build_run_report_csv(runs: List[Any]) -> io.StringIO:
             gathered.get("mapped_call_disposition", ""),
             usage.get("call_duration_seconds", ""),
         ]
+        if include_charge:
+            pre_values.append((run.cost_info or {}).get("charge_eur", ""))
 
         extracted = gathered.get("extracted_variables", {})
         if not isinstance(extracted, dict):
