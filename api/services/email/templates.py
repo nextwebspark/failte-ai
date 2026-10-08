@@ -97,3 +97,35 @@ def password_reset_message(
         text=text,
         html=_layout("Reset your password", body, "Choose a new password", reset_url),
     )
+
+
+def low_balance_message(
+    *,
+    to: str,
+    organization_name: str,
+    balance: str,
+    out_of_credit: bool,
+    billing_url: str,
+) -> EmailMessage:
+    if out_of_credit:
+        subject = f"{organization_name} is out of call credit on {PRODUCT_NAME}"
+        heading = "You're out of call credit"
+        summary = (
+            f"{organization_name} has {balance} of call credit left, which is not "
+            "enough to start a call. New calls are paused until you top up."
+        )
+    else:
+        subject = f"{organization_name} is running low on call credit"
+        heading = "Call credit is running low"
+        summary = (
+            f"{organization_name} has {balance} of call credit left on "
+            f"{PRODUCT_NAME}. Top up now to keep your agents taking calls."
+        )
+    text = f"{summary}\n\nAdd credit: {billing_url}\n"
+    body = f"<p>{escape(summary)}</p>"
+    return EmailMessage(
+        to=to,
+        subject=subject,
+        text=text,
+        html=_layout(heading, body, "Add credit", billing_url),
+    )

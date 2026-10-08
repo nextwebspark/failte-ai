@@ -1,5 +1,6 @@
 """Stripe Checkout for prepaid credit top-ups."""
 
+from datetime import timedelta
 from decimal import ROUND_HALF_UP, Decimal
 
 import stripe
@@ -8,7 +9,7 @@ from loguru import logger
 from api.constants import STRIPE_AUTOMATIC_TAX, UI_APP_URL
 from api.db import db_client
 from api.enums import BillingLedgerEntryType, BillingPlan
-from api.errors.billing import InvalidTopUpAmountError
+from api.errors.billing import CheckoutRateLimitError, InvalidTopUpAmountError
 from api.services.billing.accounts import ensure_billing_account
 from api.services.billing.pricing import (
     CURRENCY,
@@ -21,12 +22,18 @@ from api.services.billing.stripe_client import (
     ensure_stripe_customer,
     get_stripe_client,
 )
+from api.services.rate_limit import get_rate_limiter
 
 # Checkout session metadata["purpose"] values.
 PURPOSE_TOPUP = "topup"
 PURPOSE_SETUP_FEE = "setup_fee"
 
 _CENT = Decimal("0.01")
+
+# Checkout sessions an organization may open per window; each one is a Stripe
+# API call, so this keeps a stuck button or a script from hammering Stripe.
+CHECKOUT_RATE_LIMIT = 10
+CHECKOUT_RATE_WINDOW = timedelta(minutes=10)
 
 
 def _billing_url(query: str) -> str:
@@ -56,6 +63,12 @@ async def create_checkout_session(
     reverse-charges it when an EU business enters a valid VAT number. Stripe
     emails the customer an invoice for every payment.
     """
+    if not await get_rate_limiter().allow(
+        f"billing-checkout:{organization_id}",
+        limit=CHECKOUT_RATE_LIMIT,
+        window=CHECKOUT_RATE_WINDOW,
+    ):
+        raise CheckoutRateLimitError()
     await ensure_billing_account(organization_id)
     organization = await db_client.get_organization_by_id(organization_id)
     customer_id = await ensure_stripe_customer(

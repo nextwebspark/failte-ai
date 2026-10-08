@@ -18,3 +18,11 @@ class BillingNotConfiguredError(BillingError):
 class InvalidTopUpAmountError(BillingError):
     status_code = 422
     code = "invalid_topup_amount"
+
+
+class CheckoutRateLimitError(BillingError):
+    status_code = 429
+    code = "checkout_rate_limited"
+
+    def __init__(self) -> None:
+        super().__init__("Too many checkout attempts. Please wait a few minutes.")

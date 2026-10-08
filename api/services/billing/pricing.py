@@ -36,6 +36,14 @@ MAX_TOPUP_EUR = Decimal("5000")
 # (about four minutes at the default rate).
 MIN_BALANCE_FOR_CALL_EUR = Decimal("0.50")
 
+# Admins are emailed when spendable credit (balance + credit limit) drops
+# below this, and again when it can no longer start a call.
+LOW_BALANCE_WARNING_EUR = Decimal("5.00")
+
+# A call's maximum length is capped at what the balance can pay for when it
+# starts, but never below this, so a call is not cut off the moment it starts.
+MIN_GUARDED_CALL_SECONDS = 60
+
 # Done-for-you: one-time setup fee, which includes some call credit.
 SETUP_FEE_EUR = Decimal("550.00")
 SETUP_FEE_INCLUDED_CREDIT_EUR = Decimal("50.00")

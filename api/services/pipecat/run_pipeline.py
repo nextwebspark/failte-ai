@@ -16,6 +16,7 @@ from api.schemas.workflow_configurations import (
     DEFAULT_TURN_START_STRATEGY,
     WorkflowConfigurationDefaults,
 )
+from api.services.billing.guard import affordable_call_seconds, capped_call_duration
 from api.services.call_concurrency import call_concurrency
 from api.services.configuration.registry import ServiceProviders
 from api.services.integrations import (
@@ -705,6 +706,26 @@ async def _run_pipeline_impl(
                 keyterms = [
                     term.strip() for term in dictionary.split(",") if term.strip()
                 ]
+
+    # Under prepaid billing a call may not outlast the credit that pays for it.
+    try:
+        affordable_seconds = await affordable_call_seconds(workflow.organization_id)
+    except Exception:
+        logger.warning(
+            "Could not read credit balance to cap call duration for run {}",
+            workflow_run_id,
+            exc_info=True,
+        )
+        affordable_seconds = None
+    capped_seconds = capped_call_duration(max_call_duration_seconds, affordable_seconds)
+    if capped_seconds < max_call_duration_seconds:
+        logger.info(
+            "Capping run {} at {}s (configured {}s) to the remaining call credit",
+            workflow_run_id,
+            capped_seconds,
+            max_call_duration_seconds,
+        )
+        max_call_duration_seconds = capped_seconds
 
     # Resolve model overrides from the version onto global org config (skip
     # when the caller already resolved it).

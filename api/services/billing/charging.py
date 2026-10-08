@@ -9,6 +9,7 @@ from loguru import logger
 from api.db import db_client
 from api.enums import BillingLedgerEntryType
 from api.services.billing.accounts import ensure_billing_account
+from api.services.billing.notifications import notify_balance_change
 from api.services.billing.pricing import price_per_minute_eur
 
 _LEDGER_QUANTUM = Decimal("0.0001")
@@ -67,6 +68,21 @@ async def charge_workflow_run(workflow_run, organization_id: int) -> None:
             "charge_eur": str(amount),
         },
     )
+    try:
+        await notify_balance_change(
+            organization_id,
+            available_before=entry.balance_after_eur
+            - entry.amount_eur
+            + account.credit_limit_eur,
+            available_after=entry.balance_after_eur + account.credit_limit_eur,
+            balance_after=entry.balance_after_eur,
+        )
+    except Exception:
+        logger.warning(
+            "Failed to send balance alert for organization {}",
+            organization_id,
+            exc_info=True,
+        )
     logger.info(
         "Charged EUR {} to organization {} for workflow run {} ({}s); balance EUR {}",
         amount,
