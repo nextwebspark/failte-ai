@@ -47,7 +47,10 @@ def _is_usage_not_ready_error(exc: Exception) -> bool:
 
 async def report_workflow_run_platform_usage(workflow_run) -> None:
     """Bill a completed workflow run: charge the ledger, or report to MPS."""
-    if BILLING_PROVIDER != "stripe" and DEPLOYMENT_MODE == "oss":
+    # Only Stripe billing and hosted MPS billing account for usage.
+    if BILLING_PROVIDER == "none" or (
+        BILLING_PROVIDER == "mps" and DEPLOYMENT_MODE == "oss"
+    ):
         return
 
     if getattr(workflow_run, "mode", None) == WorkflowRunMode.TEXTCHAT.value:

@@ -59,8 +59,41 @@ async def test_affordable_call_seconds(monkeypatch, account, expected):
     monkeypatch.setattr(
         guard.db_client, "get_billing_account", AsyncMock(return_value=account)
     )
+    monkeypatch.setattr(
+        guard.call_concurrency, "get_org_active_calls", AsyncMock(return_value=1)
+    )
 
     assert await guard.affordable_call_seconds(42) == expected
+
+
+@pytest.mark.asyncio
+async def test_credit_is_shared_between_concurrent_calls(monkeypatch):
+    monkeypatch.setattr(guard, "BILLING_PROVIDER", "stripe")
+    monkeypatch.setattr(
+        guard.db_client, "get_billing_account", AsyncMock(return_value=_account("6"))
+    )
+    monkeypatch.setattr(
+        guard.call_concurrency, "get_org_active_calls", AsyncMock(return_value=20)
+    )
+
+    # EUR 6 / 20 calls = EUR 0.30 each = 150s at EUR 0.12/min, so 20 calls
+    # together cannot spend more than the balance.
+    assert await guard.affordable_call_seconds(42) == 150
+
+
+@pytest.mark.asyncio
+async def test_unknown_active_call_count_falls_back_to_full_balance(monkeypatch):
+    monkeypatch.setattr(guard, "BILLING_PROVIDER", "stripe")
+    monkeypatch.setattr(
+        guard.db_client, "get_billing_account", AsyncMock(return_value=_account("1.20"))
+    )
+    monkeypatch.setattr(
+        guard.call_concurrency,
+        "get_org_active_calls",
+        AsyncMock(side_effect=RuntimeError("redis down")),
+    )
+
+    assert await guard.affordable_call_seconds(42) == 600
 
 
 @pytest.mark.asyncio

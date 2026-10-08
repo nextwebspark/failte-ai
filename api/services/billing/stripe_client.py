@@ -12,6 +12,7 @@ from loguru import logger
 from api.constants import STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET
 from api.db import db_client
 from api.errors.billing import BillingNotConfiguredError
+from api.services.billing.accounts import ensure_billing_account
 
 
 @lru_cache(maxsize=1)
@@ -44,7 +45,9 @@ async def ensure_stripe_customer(
     touch Stripe. The idempotency key keeps concurrent first checkouts from
     creating two customers.
     """
-    account, _ = await db_client.ensure_billing_account(organization_id)
+    # The service-level ensure grants the trial credit if this is the
+    # organization's first billing touch.
+    account = await ensure_billing_account(organization_id)
     if account.stripe_customer_id:
         return account.stripe_customer_id
 

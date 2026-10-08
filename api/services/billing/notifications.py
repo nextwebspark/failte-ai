@@ -36,9 +36,11 @@ async def notify_balance_change(
     *,
     available_before: Decimal,
     available_after: Decimal,
-    balance_after: Decimal,
 ) -> None:
-    """Email the organization's admins when spendable credit crosses a threshold."""
+    """Email the organization's admins when spendable credit (balance plus
+    any credit limit) crosses a threshold. The email states that spendable
+    amount, never the raw balance, which can be negative under a credit
+    limit."""
     alert = crossed_threshold(available_before, available_after)
     if alert is None:
         return
@@ -62,7 +64,7 @@ async def notify_balance_change(
                 low_balance_message(
                     to=recipient,
                     organization_name=organization_name,
-                    balance=_euro(balance_after),
+                    balance=_euro(max(available_after, Decimal(0))),
                     out_of_credit=alert == "out_of_credit",
                     billing_url=f"{UI_APP_URL.rstrip('/')}/billing",
                 )

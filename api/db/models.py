@@ -940,6 +940,8 @@ class BillingLedgerEntryModel(Base):
         Integer, ForeignKey("workflow_runs.id", ondelete="SET NULL")
     )
     stripe_checkout_session_id: Mapped[str | None] = mapped_column(String)
+    # Stripe refund/dispute event this entry applies, for idempotency.
+    stripe_reference: Mapped[str | None] = mapped_column(String)
     created_by: Mapped[int | None] = mapped_column(
         Integer, ForeignKey("users.id", ondelete="SET NULL")
     )
@@ -971,6 +973,13 @@ class BillingLedgerEntryModel(Base):
             "stripe_checkout_session_id",
             unique=True,
             postgresql_where=text("stripe_checkout_session_id IS NOT NULL"),
+        ),
+        # A Stripe refund or dispute is applied at most once.
+        Index(
+            "uq_billing_ledger_entries_stripe_reference",
+            "stripe_reference",
+            unique=True,
+            postgresql_where=text("stripe_reference IS NOT NULL"),
         ),
         Index(
             "ix_billing_ledger_entries_org_created",

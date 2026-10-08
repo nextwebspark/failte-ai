@@ -26,3 +26,13 @@ class CheckoutRateLimitError(BillingError):
 
     def __init__(self) -> None:
         super().__init__("Too many checkout attempts. Please wait a few minutes.")
+
+
+class SetupFeeNotAvailableError(BillingError):
+    status_code = 409
+    code = "setup_fee_not_available"
+
+    def __init__(self, plan: str) -> None:
+        super().__init__(
+            f"The setup fee can only be bought on the pay-as-you-go plan, not {plan}"
+        )

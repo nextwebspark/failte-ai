@@ -9,7 +9,11 @@ from loguru import logger
 from api.constants import STRIPE_AUTOMATIC_TAX, UI_APP_URL
 from api.db import db_client
 from api.enums import BillingLedgerEntryType, BillingPlan
-from api.errors.billing import CheckoutRateLimitError, InvalidTopUpAmountError
+from api.errors.billing import (
+    CheckoutRateLimitError,
+    InvalidTopUpAmountError,
+    SetupFeeNotAvailableError,
+)
 from api.services.billing.accounts import ensure_billing_account
 from api.services.billing.pricing import (
     CURRENCY,
@@ -139,7 +143,14 @@ async def create_setup_fee_checkout(
     customer_email: str | None,
     created_by: int,
 ) -> str:
-    """Checkout for the one-time Done-for-you setup fee."""
+    """Checkout for the one-time Done-for-you setup fee.
+
+    Only pay-as-you-go accounts can buy it; Done-for-you accounts have
+    already paid it, and Enterprise terms are agreed separately.
+    """
+    account = await ensure_billing_account(organization_id)
+    if account.plan != BillingPlan.PAYG:
+        raise SetupFeeNotAvailableError(account.plan)
     return await create_checkout_session(
         organization_id=organization_id,
         customer_email=customer_email,
@@ -203,16 +214,23 @@ async def handle_paid_checkout_session(event: stripe.Event) -> None:
         description=description,
         stripe_checkout_session_id=session.id,
         created_by=int(created_by) if created_by else None,
-        metadata={"payment_intent": session.payment_intent, "paid_eur": str(paid_eur)},
+        metadata={
+            "payment_intent": session.payment_intent,
+            "paid_eur": str(paid_eur),
+            # VAT-inclusive total in cents, to size later refunds and disputes.
+            "amount_total": session.amount_total,
+        },
     )
-    if entry is None:
-        logger.info("Checkout session {} was already applied", session.id)
-        return
-
+    # Before the duplicate check returns: if the plan change failed after the
+    # ledger entry committed, Stripe's retry must still apply it.
     if purpose == PURPOSE_SETUP_FEE and account.plan == BillingPlan.PAYG:
         await db_client.update_billing_account(
             organization_id, plan=BillingPlan.DONE_FOR_YOU
         )
+    if entry is None:
+        logger.info("Checkout session {} was already applied", session.id)
+        return
+
     logger.info(
         "Applied {} checkout session {} to organization {}: paid EUR {}, "
         "credited EUR {}",

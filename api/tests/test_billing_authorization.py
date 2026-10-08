@@ -16,6 +16,16 @@ def _account(balance: str, credit_limit: str = "0", plan=BillingPlan.PAYG):
     )
 
 
+def _byok_config():
+    return SimpleNamespace(
+        managed_service_version=2,
+        llm=SimpleNamespace(provider="google_vertex", api_key=None),
+        stt=None,
+        tts=None,
+        embeddings=None,
+    )
+
+
 @pytest.fixture
 def stripe_billing(monkeypatch):
     monkeypatch.setattr(quota_service, "BILLING_PROVIDER", "stripe")
@@ -33,11 +43,18 @@ def stripe_billing(monkeypatch):
         "get_user_by_id",
         AsyncMock(return_value=SimpleNamespace(id=123, provider_id="owner")),
     )
-    # The MPS path must never be consulted under Stripe billing.
+    # Own (BYOK) model keys: nothing for the key-level checks to do.
     monkeypatch.setattr(
         quota_service,
         "get_effective_ai_model_configuration_for_workflow",
-        AsyncMock(side_effect=AssertionError("model config must not be loaded")),
+        AsyncMock(return_value=_byok_config()),
+    )
+    # MPS organization billing must never be consulted under Stripe billing.
+    monkeypatch.setattr(quota_service, "DEPLOYMENT_MODE", "saas")
+    monkeypatch.setattr(
+        quota_service,
+        "_authorize_hosted_workflow_run_start",
+        AsyncMock(side_effect=AssertionError("MPS org billing must not be used")),
     )
 
 
@@ -147,3 +164,69 @@ async def test_other_providers_skip_the_ledger(monkeypatch):
 
     assert result.has_quota is True
     ensure.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_dograh_keys_are_still_checked_after_the_balance(
+    stripe_billing, monkeypatch
+):
+    _set_account(monkeypatch, _account("20"))
+    monkeypatch.setattr(
+        quota_service,
+        "get_effective_ai_model_configuration_for_workflow",
+        AsyncMock(
+            return_value=SimpleNamespace(
+                managed_service_version=1,
+                llm=SimpleNamespace(provider="dograh", api_key="mps_sk_exhausted"),
+                stt=None,
+                tts=None,
+                embeddings=None,
+            )
+        ),
+    )
+    key_check = AsyncMock(
+        return_value=quota_service.QuotaCheckResult(
+            has_quota=False, error_code="quota_exceeded", error_message="no credits"
+        )
+    )
+    monkeypatch.setattr(quota_service, "_authorize_oss_dograh_keys", key_check)
+
+    result = await _authorize()
+
+    assert result.has_quota is False
+    assert result.error_code == "quota_exceeded"
+    key_check.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_none_provider_skips_hosted_mps_billing(monkeypatch):
+    monkeypatch.setattr(quota_service, "BILLING_PROVIDER", "none")
+    monkeypatch.setattr(quota_service, "DEPLOYMENT_MODE", "saas")
+    monkeypatch.setattr(
+        quota_service.db_client,
+        "get_workflow",
+        AsyncMock(
+            return_value=SimpleNamespace(
+                id=7, user_id=123, organization_id=42, workflow_configurations={}
+            )
+        ),
+    )
+    monkeypatch.setattr(
+        quota_service.db_client,
+        "get_user_by_id",
+        AsyncMock(return_value=SimpleNamespace(id=123, provider_id="owner")),
+    )
+    monkeypatch.setattr(
+        quota_service,
+        "get_effective_ai_model_configuration_for_workflow",
+        AsyncMock(return_value=_byok_config()),
+    )
+    monkeypatch.setattr(
+        quota_service,
+        "_authorize_hosted_workflow_run_start",
+        AsyncMock(side_effect=AssertionError("MPS org billing must not be used")),
+    )
+
+    result = await _authorize()
+
+    assert result.has_quota is True

@@ -32,12 +32,51 @@ def call_charge_eur(seconds: int, rate_per_minute_eur: Decimal) -> Decimal:
     )
 
 
+def _cost_info(workflow_run, *, seconds: int, rate: Decimal, amount: Decimal) -> dict:
+    provider_cost = estimate_provider_cost_eur(
+        getattr(workflow_run, "usage_info", None)
+    )
+    return {
+        **(getattr(workflow_run, "cost_info", None) or {}),
+        "currency": "EUR",
+        "billed_seconds": seconds,
+        "rate_per_minute_eur": str(rate),
+        "charge_eur": str(amount),
+        # Estimates for margin monitoring; None when a model is unpriced.
+        "provider_cost_eur": str(provider_cost) if provider_cost is not None else None,
+        "margin_eur": (
+            str(amount - provider_cost) if provider_cost is not None else None
+        ),
+    }
+
+
+async def _repair_cost_info(workflow_run) -> None:
+    """Record the charge on a run that was charged but lost its cost_info,
+    e.g. because writing it failed after the ledger entry committed."""
+    if "charge_eur" in (getattr(workflow_run, "cost_info", None) or {}):
+        return
+    entry = await db_client.get_usage_ledger_entry_for_run(workflow_run.id)
+    if entry is None:
+        return
+    await db_client.update_workflow_run(
+        workflow_run.id,
+        cost_info=_cost_info(
+            workflow_run,
+            seconds=int(entry.metadata.get("billed_seconds") or 0),
+            rate=Decimal(entry.metadata.get("rate_per_minute_eur") or 0),
+            amount=-entry.amount_eur,
+        ),
+    )
+    logger.info("Restored cost_info for already-charged run {}", workflow_run.id)
+
+
 async def charge_workflow_run(workflow_run, organization_id: int) -> None:
     """Debit a completed call from its organization's balance.
 
     Idempotent per run: the ledger refuses a second usage entry for the same
-    run, so a retried completion job never double-charges. Calls that never
-    connected (no duration) are free.
+    run, so a retry (the completion job or the uncharged-run sweep) never
+    double-charges, and it repairs a cost_info lost after the charge.
+    Calls that never connected (no duration) are free.
     """
     seconds = billable_seconds(getattr(workflow_run, "usage_info", None))
     if seconds == 0:
@@ -57,25 +96,12 @@ async def charge_workflow_run(workflow_run, organization_id: int) -> None:
     )
     if entry is None:
         logger.info("Workflow run {} was already charged", workflow_run.id)
+        await _repair_cost_info(workflow_run)
         return
 
-    provider_cost = estimate_provider_cost_eur(workflow_run.usage_info)
     await db_client.update_workflow_run(
         workflow_run.id,
-        cost_info={
-            **(getattr(workflow_run, "cost_info", None) or {}),
-            "currency": "EUR",
-            "billed_seconds": seconds,
-            "rate_per_minute_eur": str(rate),
-            "charge_eur": str(amount),
-            # Estimates for margin monitoring; None when a model is unpriced.
-            "provider_cost_eur": (
-                str(provider_cost) if provider_cost is not None else None
-            ),
-            "margin_eur": (
-                str(amount - provider_cost) if provider_cost is not None else None
-            ),
-        },
+        cost_info=_cost_info(workflow_run, seconds=seconds, rate=rate, amount=amount),
     )
     try:
         await notify_balance_change(
@@ -84,7 +110,6 @@ async def charge_workflow_run(workflow_run, organization_id: int) -> None:
             - entry.amount_eur
             + account.credit_limit_eur,
             available_after=entry.balance_after_eur + account.credit_limit_eur,
-            balance_after=entry.balance_after_eur,
         )
     except Exception:
         logger.warning(

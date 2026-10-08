@@ -57,6 +57,7 @@ REDIS_SETTINGS = RedisSettings(
     ssl_check_hostname=False if use_ssl else None,
 )
 
+from api.tasks.billing_sweep import sweep_uncharged_workflow_runs
 from api.tasks.campaign_tasks import (
     process_campaign_batch,
     sync_campaign_source,
@@ -97,6 +98,13 @@ class WorkerSettings:
             minute=set(range(0, 60, TEXT_CHAT_INACTIVITY_SWEEP_INTERVAL_MINUTES)),
             second=30,
             run_at_startup=True,
+        ),
+        # Under Stripe billing, charge completed calls whose charge failed in
+        # the completion job (no-op for other billing providers).
+        cron(
+            sweep_uncharged_workflow_runs,
+            minute=set(range(2, 60, 10)),
+            second=0,
         ),
     ]
     redis_settings = REDIS_SETTINGS

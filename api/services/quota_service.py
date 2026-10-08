@@ -819,18 +819,23 @@ async def authorize_workflow_run_start(
             workflow_configurations = definition.workflow_configurations
 
         if BILLING_PROVIDER == "stripe":
-            return await _authorize_stripe_billing_run_start(
+            billing_result = await _authorize_stripe_billing_run_start(
                 organization_id=organization_id,
                 workflow_id=workflow.id,
                 workflow_run_id=workflow_run_id,
             )
+            if not billing_result.has_quota:
+                return billing_result
+            # Stripe replaces MPS organization billing only. Any Dograh service
+            # keys in the model configuration are still checked below, and a
+            # managed-v2 run still gets its MPS correlation id.
 
         user_config = await get_effective_ai_model_configuration_for_workflow(
             organization_id=organization_id,
             workflow_configurations=workflow_configurations,
         )
 
-        if DEPLOYMENT_MODE != "oss":
+        if DEPLOYMENT_MODE != "oss" and BILLING_PROVIDER == "mps":
             return await _authorize_hosted_workflow_run_start(
                 workflow_owner=workflow_owner,
                 organization_id=organization_id,

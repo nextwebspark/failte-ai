@@ -6,6 +6,11 @@ import stripe
 from loguru import logger
 
 from api.services.billing.checkout import handle_paid_checkout_session
+from api.services.billing.refunds import (
+    handle_charge_refunded,
+    handle_dispute_closed,
+    handle_dispute_created,
+)
 
 EventHandler = Callable[[stripe.Event], Awaitable[None]]
 
@@ -14,6 +19,9 @@ EventHandler = Callable[[stripe.Event], Awaitable[None]]
 _HANDLERS: dict[str, EventHandler] = {
     "checkout.session.completed": handle_paid_checkout_session,
     "checkout.session.async_payment_succeeded": handle_paid_checkout_session,
+    "charge.refunded": handle_charge_refunded,
+    "charge.dispute.created": handle_dispute_created,
+    "charge.dispute.closed": handle_dispute_closed,
 }
 
 

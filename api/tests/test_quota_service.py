@@ -9,6 +9,14 @@ from api.services.configuration.registry import ServiceProviders
 from api.services.managed_model_services import MPS_CORRELATION_ID_CONTEXT_KEY
 from api.services.quota_service import QuotaCheckResult
 
+
+@pytest.fixture(autouse=True)
+def _mps_billing(monkeypatch):
+    """These tests cover MPS billing, the provider a hosted deployment
+    defaults to; the test environment itself defaults to OSS ("none")."""
+    monkeypatch.setattr(quota_service, "BILLING_PROVIDER", "mps")
+
+
 _UNSET = object()
 
 

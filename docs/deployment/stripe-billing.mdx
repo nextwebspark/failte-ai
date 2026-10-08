@@ -52,8 +52,20 @@ Subscribe it to these events:
 
 - `checkout.session.completed`
 - `checkout.session.async_payment_succeeded`
+- `charge.refunded`
+- `charge.dispute.created`
+- `charge.dispute.closed`
 
 The endpoint verifies Stripe's signature and returns `400` for anything else. Each Checkout session is credited at most once, so Stripe's retries are safe.
+
+Refunds and disputes take credit back:
+
+- A refund made in the Stripe dashboard removes the refunded share of the credit that payment added.
+- A dispute (chargeback) removes the disputed share when it opens, and gives it back if the dispute is closed in your favour.
+
+## Missed charges
+
+Every 10 minutes the background worker (`arq`) looks for completed calls from the last 7 days that were never charged, for example because the database was briefly unavailable when the call ended, and charges them. Calls made before an organization's billing account existed are never charged retroactively.
 
 ## Enterprise accounts
 

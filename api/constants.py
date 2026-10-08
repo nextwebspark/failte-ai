@@ -90,9 +90,13 @@ DOGRAH_DEVOPS_SECRET = os.getenv("DOGRAH_DEVOPS_SECRET") or None
 # Who owns credit balances and charging: "stripe" (local ledger, paid through
 # Stripe), "mps" (Dograh's managed service) or "none" (no billing). Defaults
 # keep the pre-existing behavior: no billing in OSS mode, MPS when hosted.
-BILLING_PROVIDER = os.getenv("BILLING_PROVIDER") or (
+BILLING_PROVIDER = (os.getenv("BILLING_PROVIDER") or "").strip().lower() or (
     "none" if DEPLOYMENT_MODE == "oss" else "mps"
 )
+if BILLING_PROVIDER not in ("stripe", "mps", "none"):
+    raise ValueError(
+        f"BILLING_PROVIDER must be stripe, mps or none, not {BILLING_PROVIDER!r}"
+    )
 STRIPE_SECRET_KEY = os.getenv("STRIPE_SECRET_KEY") or None
 STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET") or None
 # Let Stripe Tax compute VAT at checkout. Needs Stripe Tax set up on the account.
