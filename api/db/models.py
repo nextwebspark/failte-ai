@@ -99,9 +99,7 @@ class UserModel(Base):
     name: Mapped[str | None] = mapped_column(String)
     # Null until the user proves they own ``email`` (link click or a verified
     # OAuth identity).
-    email_verified_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True)
-    )
+    email_verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     google_sub: Mapped[str | None] = mapped_column(String)
     avatar_url: Mapped[str | None] = mapped_column(String)
 

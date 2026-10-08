@@ -4,10 +4,10 @@ from unittest.mock import AsyncMock
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from api.routes.auth import router
 from api.app import handle_domain_error
 from api.db import db_client
 from api.errors.domain import DomainError
+from api.routes.auth import router
 from api.services.auth import depends as auth_depends
 from api.services.auth.account_dependencies import get_account_policy
 from api.services.auth.accounts import AccountPolicy
