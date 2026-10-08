@@ -88,6 +88,10 @@ class HealthResponse(BaseModel):
     turn_enabled: bool
     force_turn_relay: bool
     signup_enabled: bool
+    # Local auth: whether "Continue with Google" is configured, and whether
+    # password signups must verify their email before logging in.
+    google_auth_enabled: bool = False
+    email_verification_required: bool = False
     # Public Stack Auth client config — only populated when auth_provider == "stack".
     # The UI reads these at runtime to initialize Stack, so they no longer need to
     # be baked into the browser bundle at build time. Both are public values.
@@ -105,9 +109,11 @@ async def health() -> HealthResponse:
         ENABLE_COTURN,
         ENABLE_SIGNUP,
         FORCE_TURN_RELAY,
+        REQUIRE_EMAIL_VERIFICATION,
         STACK_AUTH_PROJECT_ID,
         STACK_PUBLISHABLE_CLIENT_KEY,
     )
+    from api.services.auth.oauth import google_oauth_enabled
     from api.utils.common import get_backend_endpoints, is_local_or_private_url
 
     backend_endpoint, _ = await get_backend_endpoints()
@@ -133,6 +139,9 @@ async def health() -> HealthResponse:
         turn_enabled=ENABLE_COTURN,
         force_turn_relay=FORCE_TURN_RELAY,
         signup_enabled=ENABLE_SIGNUP,
+        google_auth_enabled=AUTH_PROVIDER == "local" and google_oauth_enabled(),
+        email_verification_required=AUTH_PROVIDER == "local"
+        and REQUIRE_EMAIL_VERIFICATION,
         stack_project_id=STACK_AUTH_PROJECT_ID if is_stack else None,
         stack_publishable_client_key=(
             STACK_PUBLISHABLE_CLIENT_KEY if is_stack else None

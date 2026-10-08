@@ -97,6 +97,13 @@ class UserModel(Base):
     email: Mapped[str | None] = mapped_column(String)
     password_hash: Mapped[str | None] = mapped_column(String)
     name: Mapped[str | None] = mapped_column(String)
+    # Null until the user proves they own ``email`` (link click or a verified
+    # OAuth identity).
+    email_verified_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True)
+    )
+    google_sub: Mapped[str | None] = mapped_column(String)
+    avatar_url: Mapped[str | None] = mapped_column(String)
 
     __table_args__ = (
         Index(
@@ -105,6 +112,7 @@ class UserModel(Base):
             unique=True,
             postgresql_where=text("email IS NOT NULL"),
         ),
+        UniqueConstraint("google_sub", name="uq_users_google_sub"),
     )
 
 
@@ -244,6 +252,27 @@ class OrganizationInvitationModel(Base):
         ),
         Index("ix_organization_invitations_email", "email"),
     )
+
+
+class UserTokenModel(Base):
+    """Single-use, expiring token mailed to a user (verify email, reset)."""
+
+    __tablename__ = "user_tokens"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    # TokenPurpose value.
+    purpose: Mapped[str] = mapped_column(String(32))
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        server_default=func.now(),
+    )
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class APIKeyModel(Base):

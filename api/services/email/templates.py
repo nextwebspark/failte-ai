@@ -47,3 +47,50 @@ def invitation_email(
         text=text,
         html=_layout("You're invited", body, "Accept invitation", accept_url),
     )
+
+
+def verify_email_message(
+    *, to: str, verify_url: str, expires_in_hours: int
+) -> EmailMessage:
+    text = (
+        "Confirm your email address to finish setting up your Dograh account.\n\n"
+        f"Verify your email: {verify_url}\n\n"
+        f"This link expires in {expires_in_hours} hours. If you didn't sign up, "
+        "you can ignore this email."
+    )
+    body = (
+        "<p>Confirm your email address to finish setting up your Dograh "
+        "account.</p>"
+        f'<p style="font-size:13px;color:#666">This link expires in '
+        f"{expires_in_hours} hours. If you didn't sign up, you can ignore this "
+        "email.</p>"
+    )
+    return EmailMessage(
+        to=to,
+        subject="Verify your email for Dograh",
+        text=text,
+        html=_layout("Verify your email", body, "Verify email", verify_url),
+    )
+
+
+def password_reset_message(
+    *, to: str, reset_url: str, expires_in_minutes: int
+) -> EmailMessage:
+    text = (
+        "Someone asked to reset the password for your Dograh account.\n\n"
+        f"Choose a new password: {reset_url}\n\n"
+        f"This link expires in {expires_in_minutes} minutes. If it wasn't you, "
+        "ignore this email; your password stays the same."
+    )
+    body = (
+        "<p>Someone asked to reset the password for your Dograh account.</p>"
+        f'<p style="font-size:13px;color:#666">This link expires in '
+        f"{expires_in_minutes} minutes. If it wasn't you, ignore this email; "
+        "your password stays the same.</p>"
+    )
+    return EmailMessage(
+        to=to,
+        subject="Reset your Dograh password",
+        text=text,
+        html=_layout("Reset your password", body, "Choose a new password", reset_url),
+    )

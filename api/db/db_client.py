@@ -1,3 +1,4 @@
+from api.db.account_client import AccountClient
 from api.db.agent_trigger_client import AgentTriggerClient
 from api.db.api_key_client import APIKeyClient
 from api.db.campaign_client import CampaignClient
@@ -33,6 +34,7 @@ class DBClient(
     OrganizationClient,
     MembershipClient,
     InvitationClient,
+    AccountClient,
     OrganizationConfigurationClient,
     OrganizationUsageClient,
     IntegrationClient,
@@ -62,6 +64,7 @@ class DBClient(
     - OrganizationClient: handles organization operations
     - MembershipClient: handles organization members and their roles
     - InvitationClient: handles invitations to join an organization
+    - AccountClient: handles login identities and single-use account tokens
     - OrganizationConfigurationClient: handles organization configuration operations
     - OrganizationUsageClient: handles organization usage reporting aggregates
     - IntegrationClient: handles integration operations

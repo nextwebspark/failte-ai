@@ -426,6 +426,8 @@ async def team_app(sender):
     from api.routes.invitations import router as invitations_router
     from api.routes.team import router as team_router
     from api.services.auth import depends as auth_depends
+    from api.services.auth.account_dependencies import get_account_policy
+    from api.services.auth.accounts import AccountPolicy
     from api.services.email import get_email_sender
 
     app = FastAPI()
@@ -434,6 +436,12 @@ async def team_app(sender):
     app.include_router(invitations_router)
     app.include_router(auth_router)
     app.dependency_overrides[get_email_sender] = lambda: sender
+    policy = SimpleNamespace(signup_enabled=True)
+    app.dependency_overrides[get_account_policy] = lambda: AccountPolicy(
+        signup_enabled=policy.signup_enabled,
+        require_email_verification=True,
+        app_url="https://app.example.com",
+    )
 
     state = SimpleNamespace(user=None)
 
@@ -447,7 +455,7 @@ async def team_app(sender):
     async with AsyncClient(
         transport=ASGITransport(app=app), base_url="http://test"
     ) as client:
-        yield SimpleNamespace(client=client, state=state)
+        yield SimpleNamespace(client=client, state=state, policy=policy)
 
 
 async def test_admin_invites_and_viewer_cannot(sessions, org, team_app, sender):
@@ -512,9 +520,7 @@ async def test_select_requires_membership(sessions, org, team_app):
 async def test_signup_with_invite_joins_org_even_when_signup_disabled(
     sessions, org, service, sender, team_app, monkeypatch
 ):
-    import api.routes.auth as auth_routes
-
-    monkeypatch.setattr(auth_routes, "ENABLE_SIGNUP", False)
+    team_app.policy.signup_enabled = False
     email = _email()
     await service.invite(
         organization_id=org.id,

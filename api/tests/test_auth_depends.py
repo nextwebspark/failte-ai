@@ -1,3 +1,4 @@
+from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
@@ -5,6 +6,8 @@ import pytest
 from fastapi import HTTPException
 
 from api.services.auth import depends as auth_depends
+
+VERIFIED_AT = datetime(2026, 1, 1, tzinfo=UTC)
 
 
 def _patch_get_user_dependencies(
@@ -255,7 +258,12 @@ async def test_oss_auth_bootstraps_existing_organization(monkeypatch):
     adding managed SIP has no signup left to run. Bootstrap has to be reachable
     from an ordinary authenticated request or those orgs never get provisioned.
     """
-    user = SimpleNamespace(id=7, provider_id="oss-user-1", selected_organization_id=42)
+    user = SimpleNamespace(
+        id=7,
+        provider_id="oss-user-1",
+        selected_organization_id=42,
+        email_verified_at=VERIFIED_AT,
+    )
     bootstrap = AsyncMock(return_value=True)
 
     _patch_oss_auth_dependencies(monkeypatch, user=user, bootstrap=bootstrap)
@@ -273,7 +281,12 @@ async def test_oss_auth_does_not_mask_bootstrap_error_as_invalid_token(monkeypat
     The token decoded fine; telling the user to log in again would send them
     chasing an auth problem they do not have.
     """
-    user = SimpleNamespace(id=7, provider_id="oss-user-1", selected_organization_id=42)
+    user = SimpleNamespace(
+        id=7,
+        provider_id="oss-user-1",
+        selected_organization_id=42,
+        email_verified_at=VERIFIED_AT,
+    )
     bootstrap = AsyncMock(side_effect=RuntimeError("database unavailable"))
 
     _patch_oss_auth_dependencies(monkeypatch, user=user, bootstrap=bootstrap)
@@ -285,7 +298,10 @@ async def test_oss_auth_does_not_mask_bootstrap_error_as_invalid_token(monkeypat
 @pytest.mark.asyncio
 async def test_oss_auth_skips_bootstrap_without_organization(monkeypatch):
     user = SimpleNamespace(
-        id=7, provider_id="oss-user-1", selected_organization_id=None
+        id=7,
+        provider_id="oss-user-1",
+        selected_organization_id=None,
+        email_verified_at=VERIFIED_AT,
     )
     bootstrap = AsyncMock(return_value=True)
 

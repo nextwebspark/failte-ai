@@ -46,3 +46,22 @@ async def leave_organization(*, user_id: int, organization_id: int) -> int | Non
     next_id = remaining[0].organization_id
     await db_client.update_user_selected_organization(user_id, next_id)
     return next_id
+
+
+async def ensure_user_has_organization(*, user_id: int, user_provider_id: str) -> int:
+    """Make sure the user has a selected organization, creating a personal one
+    only when they belong to none. Returns the selected organization id."""
+    organizations = await db_client.list_user_organizations(user_id)
+    if not organizations:
+        return await create_organization_for_user(
+            user_id=user_id, user_provider_id=user_provider_id, name=None
+        )
+    account = await db_client.get_account(user_id)
+    selected = account.selected_organization_id if account else None
+    if selected is not None and any(
+        o.organization_id == selected for o in organizations
+    ):
+        return selected
+    first = organizations[0].organization_id
+    await db_client.update_user_selected_organization(user_id, first)
+    return first

@@ -132,7 +132,10 @@ async def handle_mps_unavailable_error(
 async def handle_domain_error(_request: Request, exc: DomainError) -> JSONResponse:
     """Map business-rule violations raised below the HTTP layer."""
 
-    return JSONResponse(status_code=exc.status_code, content={"detail": exc.message})
+    content: dict[str, str] = {"detail": exc.message}
+    if exc.code:
+        content["code"] = exc.code
+    return JSONResponse(status_code=exc.status_code, content=content)
 
 
 # Configure CORS.

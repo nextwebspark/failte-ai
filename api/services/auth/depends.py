@@ -5,7 +5,7 @@ from typing import Annotated
 from fastapi import Depends, Header, HTTPException, Query, WebSocket
 from loguru import logger
 
-from api.constants import AUTH_PROVIDER
+from api.constants import AUTH_PROVIDER, REQUIRE_EMAIL_VERIFICATION
 from api.db import db_client
 from api.db.models import UserModel
 from api.enums import OrgRole, PostHogEvent
@@ -333,6 +333,10 @@ async def _handle_oss_auth(authorization: str | None) -> UserModel:
         user = await db_client.get_user_by_id(int(payload["sub"]))
         if user is None:
             raise HTTPException(status_code=401, detail="User not found")
+        if REQUIRE_EMAIL_VERIFICATION and user.email_verified_at is None:
+            raise HTTPException(
+                status_code=403, detail="Verify your email address to continue"
+            )
     except HTTPException:
         raise
     except Exception:

@@ -159,6 +159,13 @@ class InvitationService:
             select_organization=True,
         )
 
+    async def has_open_invitation(self, email: str) -> bool:
+        return bool(
+            await self._store.list_open_invitations_for_email(
+                email.strip().lower(), self._clock.now()
+            )
+        )
+
     async def claim_pending(
         self, *, user_id: int, verified_email: str, select_latest: bool
     ) -> list[Invitation]:
