@@ -91,6 +91,8 @@ class HealthResponse(BaseModel):
     tunnel_url: str | None = None
     deployment_mode: str
     auth_provider: str
+    # Who handles credits: "stripe", "mps" or "none" (see api.constants).
+    billing_provider: str = "none"
     turn_enabled: bool
     force_turn_relay: bool
     signup_enabled: bool
@@ -111,6 +113,7 @@ async def health() -> HealthResponse:
         APP_VERSION,
         AUTH_PROVIDER,
         BACKEND_API_ENDPOINT,
+        BILLING_PROVIDER,
         DEPLOYMENT_MODE,
         ENABLE_COTURN,
         ENABLE_SIGNUP,
@@ -142,6 +145,7 @@ async def health() -> HealthResponse:
         tunnel_url=tunnel_url,
         deployment_mode=DEPLOYMENT_MODE,
         auth_provider=AUTH_PROVIDER,
+        billing_provider=BILLING_PROVIDER,
         turn_enabled=ENABLE_COTURN,
         force_turn_relay=FORCE_TURN_RELAY,
         signup_enabled=ENABLE_SIGNUP,

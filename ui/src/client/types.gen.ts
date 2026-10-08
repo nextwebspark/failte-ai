@@ -879,6 +879,122 @@ export type BatchRecordingUploadResponseSchema = {
 };
 
 /**
+ * BillingAccountResponse
+ */
+export type BillingAccountResponse = {
+    /**
+     * Currency
+     */
+    currency: string;
+    plan: BillingPlan;
+    /**
+     * Balance Eur
+     */
+    balance_eur: string;
+    /**
+     * Credit Limit Eur
+     */
+    credit_limit_eur: string;
+    /**
+     * Price Per Minute Eur
+     */
+    price_per_minute_eur: string;
+    /**
+     * Min Balance For Call Eur
+     */
+    min_balance_for_call_eur: string;
+    /**
+     * Topup Packs Eur
+     */
+    topup_packs_eur: Array<string>;
+    /**
+     * Min Topup Eur
+     */
+    min_topup_eur: string;
+    /**
+     * Max Topup Eur
+     */
+    max_topup_eur: string;
+    /**
+     * Setup Fee Eur
+     */
+    setup_fee_eur: string;
+    /**
+     * Setup Fee Included Credit Eur
+     */
+    setup_fee_included_credit_eur: string;
+    /**
+     * Sales Contact
+     */
+    sales_contact: string | null;
+};
+
+/**
+ * BillingLedgerEntryResponse
+ */
+export type BillingLedgerEntryResponse = {
+    /**
+     * Id
+     */
+    id: number;
+    entry_type: BillingLedgerEntryType;
+    /**
+     * Amount Eur
+     */
+    amount_eur: string;
+    /**
+     * Balance After Eur
+     */
+    balance_after_eur: string;
+    /**
+     * Description
+     */
+    description: string | null;
+    /**
+     * Workflow Run Id
+     */
+    workflow_run_id: number | null;
+    /**
+     * Created At
+     */
+    created_at: string;
+};
+
+/**
+ * BillingLedgerEntryType
+ */
+export type BillingLedgerEntryType = 'topup' | 'usage' | 'setup_fee' | 'trial_credit' | 'adjustment' | 'refund';
+
+/**
+ * BillingLedgerResponse
+ */
+export type BillingLedgerResponse = {
+    /**
+     * Entries
+     */
+    entries: Array<BillingLedgerEntryResponse>;
+    /**
+     * Total
+     */
+    total: number;
+    /**
+     * Limit
+     */
+    limit: number;
+    /**
+     * Offset
+     */
+    offset: number;
+};
+
+/**
+ * BillingPlan
+ *
+ * Commercial plan an organization is billed under.
+ */
+export type BillingPlan = 'payg' | 'done_for_you' | 'enterprise';
+
+/**
  * Body_transcribe_audio_api_v1_workflow_recordings_transcribe_post
  */
 export type BodyTranscribeAudioApiV1WorkflowRecordingsTranscribePost = {
@@ -1344,6 +1460,16 @@ export type CartesiaTtsConfiguration = {
      * Cartesia language code for TTS synthesis (e.g. 'en', 'tr', 'fr', 'de').
      */
     language?: string;
+};
+
+/**
+ * CheckoutUrlResponse
+ */
+export type CheckoutUrlResponse = {
+    /**
+     * Url
+     */
+    url: string;
 };
 
 /**
@@ -3475,6 +3601,10 @@ export type HealthResponse = {
      * Auth Provider
      */
     auth_provider: string;
+    /**
+     * Billing Provider
+     */
+    billing_provider?: string;
     /**
      * Turn Enabled
      */
@@ -7348,6 +7478,16 @@ export type ToolTestResponse = {
 };
 
 /**
+ * TopUpRequest
+ */
+export type TopUpRequest = {
+    /**
+     * Amount Eur
+     */
+    amount_eur: number | string;
+};
+
+/**
  * TrafficDefinitionStats
  */
 export type TrafficDefinitionStats = {
@@ -9068,6 +9208,10 @@ export type WorkflowRunUsageResponse = {
      * Charge Usd
      */
     charge_usd?: number | null;
+    /**
+     * Charge Eur
+     */
+    charge_eur?: number | null;
 };
 
 /**
@@ -17874,6 +18018,214 @@ export type GetNodeTypeApiV1NodeTypesNameGetResponses = {
 };
 
 export type GetNodeTypeApiV1NodeTypesNameGetResponse = GetNodeTypeApiV1NodeTypesNameGetResponses[keyof GetNodeTypeApiV1NodeTypesNameGetResponses];
+
+export type GetBillingAccountApiV1BillingAccountGetData = {
+    body?: never;
+    headers?: {
+        /**
+         * Authorization
+         */
+        authorization?: string | null;
+        /**
+         * X-Api-Key
+         */
+        'X-API-Key'?: string | null;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/v1/billing/account';
+};
+
+export type GetBillingAccountApiV1BillingAccountGetErrors = {
+    /**
+     * Not found
+     */
+    404: unknown;
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type GetBillingAccountApiV1BillingAccountGetError = GetBillingAccountApiV1BillingAccountGetErrors[keyof GetBillingAccountApiV1BillingAccountGetErrors];
+
+export type GetBillingAccountApiV1BillingAccountGetResponses = {
+    /**
+     * Successful Response
+     */
+    200: BillingAccountResponse;
+};
+
+export type GetBillingAccountApiV1BillingAccountGetResponse = GetBillingAccountApiV1BillingAccountGetResponses[keyof GetBillingAccountApiV1BillingAccountGetResponses];
+
+export type GetBillingLedgerApiV1BillingLedgerGetData = {
+    body?: never;
+    headers?: {
+        /**
+         * Authorization
+         */
+        authorization?: string | null;
+        /**
+         * X-Api-Key
+         */
+        'X-API-Key'?: string | null;
+    };
+    path?: never;
+    query?: {
+        /**
+         * Limit
+         */
+        limit?: number;
+        /**
+         * Offset
+         */
+        offset?: number;
+        /**
+         * Entry Type
+         */
+        entry_type?: BillingLedgerEntryType | null;
+    };
+    url: '/api/v1/billing/ledger';
+};
+
+export type GetBillingLedgerApiV1BillingLedgerGetErrors = {
+    /**
+     * Not found
+     */
+    404: unknown;
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type GetBillingLedgerApiV1BillingLedgerGetError = GetBillingLedgerApiV1BillingLedgerGetErrors[keyof GetBillingLedgerApiV1BillingLedgerGetErrors];
+
+export type GetBillingLedgerApiV1BillingLedgerGetResponses = {
+    /**
+     * Successful Response
+     */
+    200: BillingLedgerResponse;
+};
+
+export type GetBillingLedgerApiV1BillingLedgerGetResponse = GetBillingLedgerApiV1BillingLedgerGetResponses[keyof GetBillingLedgerApiV1BillingLedgerGetResponses];
+
+export type CreateTopUpApiV1BillingTopUpPostData = {
+    body: TopUpRequest;
+    headers?: {
+        /**
+         * Authorization
+         */
+        authorization?: string | null;
+        /**
+         * X-Api-Key
+         */
+        'X-API-Key'?: string | null;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/v1/billing/top-up';
+};
+
+export type CreateTopUpApiV1BillingTopUpPostErrors = {
+    /**
+     * Not found
+     */
+    404: unknown;
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type CreateTopUpApiV1BillingTopUpPostError = CreateTopUpApiV1BillingTopUpPostErrors[keyof CreateTopUpApiV1BillingTopUpPostErrors];
+
+export type CreateTopUpApiV1BillingTopUpPostResponses = {
+    /**
+     * Successful Response
+     */
+    200: CheckoutUrlResponse;
+};
+
+export type CreateTopUpApiV1BillingTopUpPostResponse = CreateTopUpApiV1BillingTopUpPostResponses[keyof CreateTopUpApiV1BillingTopUpPostResponses];
+
+export type CreateSetupFeeApiV1BillingSetupFeePostData = {
+    body?: never;
+    headers?: {
+        /**
+         * Authorization
+         */
+        authorization?: string | null;
+        /**
+         * X-Api-Key
+         */
+        'X-API-Key'?: string | null;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/v1/billing/setup-fee';
+};
+
+export type CreateSetupFeeApiV1BillingSetupFeePostErrors = {
+    /**
+     * Not found
+     */
+    404: unknown;
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type CreateSetupFeeApiV1BillingSetupFeePostError = CreateSetupFeeApiV1BillingSetupFeePostErrors[keyof CreateSetupFeeApiV1BillingSetupFeePostErrors];
+
+export type CreateSetupFeeApiV1BillingSetupFeePostResponses = {
+    /**
+     * Successful Response
+     */
+    200: CheckoutUrlResponse;
+};
+
+export type CreateSetupFeeApiV1BillingSetupFeePostResponse = CreateSetupFeeApiV1BillingSetupFeePostResponses[keyof CreateSetupFeeApiV1BillingSetupFeePostResponses];
+
+export type CreateBillingPortalApiV1BillingPortalPostData = {
+    body?: never;
+    headers?: {
+        /**
+         * Authorization
+         */
+        authorization?: string | null;
+        /**
+         * X-Api-Key
+         */
+        'X-API-Key'?: string | null;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/v1/billing/portal';
+};
+
+export type CreateBillingPortalApiV1BillingPortalPostErrors = {
+    /**
+     * Not found
+     */
+    404: unknown;
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type CreateBillingPortalApiV1BillingPortalPostError = CreateBillingPortalApiV1BillingPortalPostErrors[keyof CreateBillingPortalApiV1BillingPortalPostErrors];
+
+export type CreateBillingPortalApiV1BillingPortalPostResponses = {
+    /**
+     * Successful Response
+     */
+    200: CheckoutUrlResponse;
+};
+
+export type CreateBillingPortalApiV1BillingPortalPostResponse = CreateBillingPortalApiV1BillingPortalPostResponses[keyof CreateBillingPortalApiV1BillingPortalPostResponses];
 
 export type HealthApiV1HealthGetData = {
     body?: never;

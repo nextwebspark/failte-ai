@@ -24,6 +24,7 @@ import {
     TableHeader,
     TableRow,
 } from '@/components/ui/table';
+import { useAppConfig } from '@/context/AppConfigContext';
 import { useUserConfig } from '@/context/UserConfigContext';
 import { useDispositionCodes } from '@/hooks/useDispositionCodes';
 import { detailFromError } from '@/lib/apiError';
@@ -67,6 +68,9 @@ export default function UsagePage() {
     const searchParams = useSearchParams();
     const { organizationPricing } = useUserConfig();
     const auth = useAuth();
+    const { config: appConfig } = useAppConfig();
+    // Under Stripe billing each run carries the EUR charged to the credit balance.
+    const showEurCharge = appConfig?.billingProvider === 'stripe';
 
     // Usage history state
     const [usageHistory, setUsageHistory] = useState<UsageHistoryResponse | null>(null);
@@ -606,6 +610,9 @@ export default function UsagePage() {
                                                 {organizationPricing?.price_per_second_usd && (
                                                     <TableHead className="font-semibold text-right">Cost (USD)</TableHead>
                                                 )}
+                                                {showEurCharge && (
+                                                    <TableHead className="font-semibold text-right">Cost (EUR)</TableHead>
+                                                )}
                                                 <TableHead className="font-semibold">Actions</TableHead>
                                             </TableRow>
                                         </TableHeader>
@@ -646,6 +653,14 @@ export default function UsagePage() {
                                                         <TableCell className="text-right font-medium">
                                                             {run.charge_usd !== undefined && run.charge_usd !== null
                                                                 ? `$${run.charge_usd.toFixed(2)}`
+                                                                : '-'
+                                                            }
+                                                        </TableCell>
+                                                    )}
+                                                    {showEurCharge && (
+                                                        <TableCell className="text-right font-medium">
+                                                            {run.charge_eur !== undefined && run.charge_eur !== null
+                                                                ? new Intl.NumberFormat('en-IE', { style: 'currency', currency: 'EUR', maximumFractionDigits: 4 }).format(run.charge_eur)
                                                                 : '-'
                                                             }
                                                         </TableCell>
