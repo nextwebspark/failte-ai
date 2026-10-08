@@ -5,6 +5,7 @@ from api.db.embed_token_client import EmbedTokenClient
 from api.db.folder_client import FolderClient
 from api.db.integration_client import IntegrationClient
 from api.db.knowledge_base_client import KnowledgeBaseClient
+from api.db.membership_client import MembershipClient
 from api.db.organization_client import OrganizationClient
 from api.db.organization_configuration_client import OrganizationConfigurationClient
 from api.db.organization_usage_client import OrganizationUsageClient
@@ -29,6 +30,7 @@ class DBClient(
     WorkflowRunTextSessionClient,
     UserClient,
     OrganizationClient,
+    MembershipClient,
     OrganizationConfigurationClient,
     OrganizationUsageClient,
     IntegrationClient,
@@ -56,6 +58,7 @@ class DBClient(
     - WorkflowRunClient: handles workflow run operations
     - UserClient: handles user and user configuration operations
     - OrganizationClient: handles organization operations
+    - MembershipClient: handles organization members and their roles
     - OrganizationConfigurationClient: handles organization configuration operations
     - OrganizationUsageClient: handles organization usage reporting aggregates
     - IntegrationClient: handles integration operations

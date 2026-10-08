@@ -214,6 +214,7 @@ class UserClient(BaseDBClient):
                 provider_id=f"oss_{int(datetime.now(timezone.utc).timestamp())}_{uuid.uuid4()}",
                 email=email.lower(),
                 password_hash=password_hash,
+                name=name,
             )
             session.add(user)
             await session.commit()

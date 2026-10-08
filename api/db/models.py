@@ -5,6 +5,7 @@ from pgvector.sqlalchemy import Vector
 from sqlalchemy import (
     JSON,
     Boolean,
+    CheckConstraint,
     Column,
     DateTime,
     Enum,
@@ -27,6 +28,7 @@ from api.constants import DEFAULT_CAMPAIGN_RETRY_CONFIG
 from ..enums import (
     CallType,
     IntegrationAction,
+    OrgRole,
     ToolCategory,
     ToolStatus,
     TriggerState,
@@ -49,6 +51,25 @@ organization_users_association = Table(
     Column(
         "organization_id", Integer, ForeignKey("organizations.id"), primary_key=True
     ),
+    # OrgRole value; see api.enums.OrgRole.
+    Column("role", String(32), nullable=False, default=OrgRole.DEVELOPER.value),
+    Column(
+        "created_at",
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(UTC),
+        server_default=func.now(),
+    ),
+    Column(
+        "invited_by",
+        Integer,
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+    ),
+    CheckConstraint(
+        "role IN ('admin', 'developer', 'viewer')", name="ck_organization_users_role"
+    ),
+    Index("ix_organization_users_organization_id_role", "organization_id", "role"),
 )
 
 
@@ -62,14 +83,20 @@ class UserModel(Base):
         Integer, ForeignKey("organizations.id"), nullable=True
     )
     selected_organization = relationship("OrganizationModel", back_populates="users")
+    # Explicit joins: organization_users also references users via invited_by.
     organizations = relationship(
         "OrganizationModel",
         secondary=organization_users_association,
+        primaryjoin=lambda: UserModel.id == organization_users_association.c.user_id,
+        secondaryjoin=lambda: (
+            OrganizationModel.id == organization_users_association.c.organization_id
+        ),
         back_populates="users",
     )
     is_superuser = Column(Boolean, default=False)
     email = Column(String, nullable=True)
     password_hash = Column(String, nullable=True)
+    name = Column(String, nullable=True)
 
     __table_args__ = (
         Index(
@@ -107,6 +134,7 @@ class OrganizationModel(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     provider_id = Column(String, unique=True, index=True, nullable=False)
+    name = Column(String, nullable=True)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
 
     # Deprecated: MPS owns quota and credit ledger state.
@@ -155,6 +183,10 @@ class OrganizationModel(Base):
     users = relationship(
         "UserModel",
         secondary=organization_users_association,
+        primaryjoin=lambda: (
+            OrganizationModel.id == organization_users_association.c.organization_id
+        ),
+        secondaryjoin=lambda: UserModel.id == organization_users_association.c.user_id,
         back_populates="organizations",
     )
     integrations = relationship("IntegrationModel", back_populates="organization")

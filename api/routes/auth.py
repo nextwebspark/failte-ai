@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from api.constants import ENABLE_SIGNUP
 from api.db import db_client
 from api.db.models import UserModel
-from api.enums import PostHogEvent
+from api.enums import OrgRole, PostHogEvent
 from api.schemas.auth import AuthResponse, LoginRequest, SignupRequest, UserResponse
 from api.services.auth.depends import get_user, require_local_auth
 from api.services.organization_bootstrap import ensure_organization_bootstrapped
@@ -45,7 +45,9 @@ async def signup(request: SignupRequest):
     )
 
     # Link user to organization
-    await db_client.add_user_to_organization(user.id, organization.id)
+    await db_client.add_user_to_organization(
+        user.id, organization.id, role=OrgRole.ADMIN
+    )
     await db_client.update_user_selected_organization(user.id, organization.id)
 
     # Create default service configuration. This never raises, so signup still

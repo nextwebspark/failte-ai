@@ -4,6 +4,8 @@ from pydantic import BaseModel
 
 from api.db import db_client
 from api.db.models import UserModel
+from api.enums import OrgRole
+from api.services.auth.permissions import Permission, permissions_for
 from api.services.configuration.ai_model_configuration import (
     get_resolved_ai_model_configuration,
 )
@@ -19,6 +21,11 @@ class OrganizationModelServicesContext(BaseModel):
 class OrganizationContextResponse(BaseModel):
     organization_id: Optional[int] = None
     organization_provider_id: Optional[str] = None
+    organization_name: str | None = None
+    # The caller's role in the selected organization and what it grants; the
+    # UI gates navigation and actions on these (the API enforces them).
+    role: OrgRole | None = None
+    permissions: list[Permission] = []
     model_services: OrganizationModelServicesContext
 
 
@@ -30,6 +37,14 @@ async def get_organization_context(user: UserModel) -> OrganizationContextRespon
         else None
     )
 
+    role = (
+        await db_client.get_member_role(user.id, organization_id)
+        if organization_id
+        else None
+    )
+    if role is None and organization_id and user.is_superuser:
+        role = OrgRole.ADMIN
+
     resolved = await get_resolved_ai_model_configuration(
         organization_id=organization_id,
     )
@@ -38,6 +53,9 @@ async def get_organization_context(user: UserModel) -> OrganizationContextRespon
     return OrganizationContextResponse(
         organization_id=organization_id,
         organization_provider_id=organization.provider_id if organization else None,
+        organization_name=organization.name if organization else None,
+        role=role,
+        permissions=sorted(permissions_for(role)) if role else [],
         model_services=OrganizationModelServicesContext(
             config_source=resolved.source,
             has_model_configuration_v2=resolved.source == "organization_v2",
