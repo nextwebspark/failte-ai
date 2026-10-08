@@ -4,6 +4,7 @@ from api.db.campaign_client import CampaignClient
 from api.db.embed_token_client import EmbedTokenClient
 from api.db.folder_client import FolderClient
 from api.db.integration_client import IntegrationClient
+from api.db.invitation_client import InvitationClient
 from api.db.knowledge_base_client import KnowledgeBaseClient
 from api.db.membership_client import MembershipClient
 from api.db.organization_client import OrganizationClient
@@ -31,6 +32,7 @@ class DBClient(
     UserClient,
     OrganizationClient,
     MembershipClient,
+    InvitationClient,
     OrganizationConfigurationClient,
     OrganizationUsageClient,
     IntegrationClient,
@@ -59,6 +61,7 @@ class DBClient(
     - UserClient: handles user and user configuration operations
     - OrganizationClient: handles organization operations
     - MembershipClient: handles organization members and their roles
+    - InvitationClient: handles invitations to join an organization
     - OrganizationConfigurationClient: handles organization configuration operations
     - OrganizationUsageClient: handles organization usage reporting aggregates
     - IntegrationClient: handles integration operations

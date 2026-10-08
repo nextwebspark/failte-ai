@@ -33,6 +33,7 @@ from fastapi.responses import JSONResponse
 from loguru import logger
 
 from api.constants import REDIS_URL
+from api.errors.domain import DomainError
 from api.errors.mps import MPS_UNAVAILABLE_PUBLIC_MESSAGE, MPSUnavailableError
 from api.mcp_server import mcp
 from api.routes.main import router as main_router
@@ -125,6 +126,13 @@ async def handle_mps_unavailable_error(
         status_code=503,
         content={"detail": MPS_UNAVAILABLE_PUBLIC_MESSAGE},
     )
+
+
+@app.exception_handler(DomainError)
+async def handle_domain_error(_request: Request, exc: DomainError) -> JSONResponse:
+    """Map business-rule violations raised below the HTTP layer."""
+
+    return JSONResponse(status_code=exc.status_code, content={"detail": exc.message})
 
 
 # Configure CORS.

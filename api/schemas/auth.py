@@ -5,6 +5,9 @@ class SignupRequest(BaseModel):
     email: EmailStr
     password: str
     name: str | None = None
+    # Token from an invitation link: join that organization instead of
+    # creating a new one. Allowed even when open signup is disabled.
+    invite_token: str | None = None
 
     @field_validator("password")
     @classmethod

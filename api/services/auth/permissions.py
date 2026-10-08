@@ -69,3 +69,11 @@ def permissions_for(role: OrgRole) -> frozenset[Permission]:
 
 def has_permissions(role: OrgRole, *required: Permission) -> bool:
     return permissions_for(role).issuperset(required)
+
+
+# Display names; the stored values never change when these do.
+ROLE_LABELS: Mapping[OrgRole, str] = {
+    OrgRole.ADMIN: "Admin",
+    OrgRole.DEVELOPER: "Developer",
+    OrgRole.VIEWER: "Client",
+}

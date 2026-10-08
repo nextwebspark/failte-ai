@@ -60,6 +60,17 @@ services:
     networks:
       - app-network
 
+  # Catches outgoing email in development. Point the API at it with
+  # EMAIL_PROVIDER=smtp SMTP_HOST=localhost SMTP_PORT=1025 SMTP_SECURITY=none,
+  # then read messages at http://localhost:8025.
+  mailpit:
+    image: axllent/mailpit:v1.27
+    ports:
+      - "127.0.0.1:1025:1025"
+      - "127.0.0.1:8025:8025"
+    networks:
+      - app-network
+
 volumes:
   postgres_data:
   redis_data:

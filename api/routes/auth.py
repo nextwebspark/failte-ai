@@ -1,12 +1,15 @@
+from typing import Annotated
+
 from fastapi import APIRouter, Depends, HTTPException
 
 from api.constants import ENABLE_SIGNUP
 from api.db import db_client
 from api.db.models import UserModel
-from api.enums import OrgRole, PostHogEvent
+from api.enums import PostHogEvent
 from api.schemas.auth import AuthResponse, LoginRequest, SignupRequest, UserResponse
 from api.services.auth.depends import get_user, require_local_auth
-from api.services.organization_bootstrap import ensure_organization_bootstrapped
+from api.services.invitations import InvitationService, get_invitation_service
+from api.services.membership import create_organization_for_user
 from api.services.posthog_client import capture_event
 from api.utils.auth import create_jwt_token, hash_password, verify_password
 
@@ -21,8 +24,14 @@ router = APIRouter(
     response_model=AuthResponse,
     dependencies=[Depends(require_local_auth)],
 )
-async def signup(request: SignupRequest):
-    if not ENABLE_SIGNUP:
+async def signup(
+    request: SignupRequest,
+    invitations: Annotated[InvitationService, Depends(get_invitation_service)],
+):
+    if request.invite_token:
+        # Validates before creating the user so a bad link leaves no account.
+        await invitations.require_acceptable(request.invite_token, request.email)
+    elif not ENABLE_SIGNUP:
         raise HTTPException(status_code=403, detail="Signup is disabled")
 
     # Check if email is already taken
@@ -38,27 +47,15 @@ async def signup(request: SignupRequest):
         name=request.name,
     )
 
-    # Create organization for the user
-    org_provider_id = f"org_{user.provider_id}"
-    organization, _ = await db_client.get_or_create_organization_by_provider_id(
-        org_provider_id=org_provider_id, user_id=user.id
-    )
-
-    # Link user to organization
-    await db_client.add_user_to_organization(
-        user.id, organization.id, role=OrgRole.ADMIN
-    )
-    await db_client.update_user_selected_organization(user.id, organization.id)
-
-    # Create default service configuration. This never raises, so signup still
-    # succeeds if MPS is down; `_handle_oss_auth` re-enters bootstrap on the
-    # user's subsequent authenticated requests, so a failure here is recovered
-    # rather than permanent. Doing it here anyway means the common case has a
-    # model configuration and SIP connectivity by the time the UI first loads.
-    await ensure_organization_bootstrapped(
-        organization.id,
-        created_by=user.provider_id,
-    )
+    if request.invite_token:
+        invitation = await invitations.accept(
+            token=request.invite_token, user_id=user.id, email=request.email
+        )
+        organization_id = invitation.organization_id
+    else:
+        organization_id = await create_organization_for_user(
+            user_id=user.id, user_provider_id=user.provider_id, name=None
+        )
 
     # Create JWT token
     token = create_jwt_token(user.id, request.email)
@@ -67,7 +64,7 @@ async def signup(request: SignupRequest):
         distinct_id=str(user.provider_id),
         event=PostHogEvent.SIGNED_UP,
         properties={
-            "organization_id": organization.id,
+            "organization_id": organization_id,
             "auth_provider": "local",
         },
     )
@@ -78,7 +75,7 @@ async def signup(request: SignupRequest):
             id=user.id,
             email=user.email,
             name=request.name,
-            organization_id=organization.id,
+            organization_id=organization_id,
             provider_id=user.provider_id,
         ),
     )

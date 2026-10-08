@@ -3,7 +3,7 @@
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
-from sqlalchemy import and_, update
+from sqlalchemy import and_, func, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 
@@ -42,7 +42,60 @@ class UserOrganization:
     role: OrgRole
 
 
+@dataclass(frozen=True, slots=True)
+class UserIdentity:
+    user_id: int
+    email: str | None
+    name: str | None
+
+
+@dataclass(frozen=True, slots=True)
+class OrganizationSummary:
+    organization_id: int
+    name: str | None
+    provider_id: str
+
+
 class MembershipClient(BaseDBClient):
+    async def get_user_identity(self, user_id: int) -> UserIdentity | None:
+        async with self.async_session() as session:
+            row = (
+                await session.execute(
+                    select(UserModel.id, UserModel.email, UserModel.name).where(
+                        UserModel.id == user_id
+                    )
+                )
+            ).first()
+            return UserIdentity(row.id, row.email, row.name) if row else None
+
+    async def get_user_identity_by_email(self, email: str) -> UserIdentity | None:
+        async with self.async_session() as session:
+            row = (
+                await session.execute(
+                    select(UserModel.id, UserModel.email, UserModel.name).where(
+                        func.lower(UserModel.email) == email.lower()
+                    )
+                )
+            ).first()
+            return UserIdentity(row.id, row.email, row.name) if row else None
+
+    async def get_organization_summary(
+        self, organization_id: int
+    ) -> OrganizationSummary | None:
+        async with self.async_session() as session:
+            row = (
+                await session.execute(
+                    select(
+                        OrganizationModel.id,
+                        OrganizationModel.name,
+                        OrganizationModel.provider_id,
+                    ).where(OrganizationModel.id == organization_id)
+                )
+            ).first()
+            return (
+                OrganizationSummary(row.id, row.name, row.provider_id) if row else None
+            )
+
     async def get_member_role(
         self, user_id: int, organization_id: int
     ) -> OrgRole | None:

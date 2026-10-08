@@ -274,3 +274,10 @@ class OrgRole(StrEnum):
     DEVELOPER = "developer"
     # Business-owner / client persona; read-only on configuration.
     VIEWER = "viewer"
+
+
+class InvitationStatus(StrEnum):
+    PENDING = "pending"
+    ACCEPTED = "accepted"
+    REVOKED = "revoked"
+    EXPIRED = "expired"

@@ -1,18 +1,13 @@
 """Domain errors for organization membership and role management.
 
-Raised by the db/ and services/ layers and mapped to HTTP responses once, in
-``api.app``. Nothing here depends on FastAPI.
+Raised by the db/ and services/ layers; see ``api.errors.domain``.
 """
 
+from api.errors.domain import DomainError
 
-class MembershipError(Exception):
+
+class MembershipError(DomainError):
     """Base class for membership rule violations."""
-
-    status_code: int = 400
-
-    def __init__(self, message: str) -> None:
-        super().__init__(message)
-        self.message = message
 
 
 class MemberNotFoundError(MembershipError):
@@ -36,3 +31,10 @@ class OrganizationAccessDeniedError(MembershipError):
 
     def __init__(self) -> None:
         super().__init__("You are not a member of this organization")
+
+
+class AlreadyMemberError(MembershipError):
+    status_code = 409
+
+    def __init__(self) -> None:
+        super().__init__("This user is already a member of the organization")
