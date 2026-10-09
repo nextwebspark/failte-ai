@@ -12,6 +12,7 @@ from api.enums import WebhookCredentialType
 from api.sdk_expose import sdk_expose
 from api.services.auth.depends import get_user, requires
 from api.services.auth.permissions import Permission
+from api.services.tool_integrations.resources import is_integration_managed
 
 router = APIRouter(prefix="/credentials")
 
@@ -95,6 +96,23 @@ def validate_credential_data(
                 status_code=400,
                 detail="Custom Header credential requires 'header_name' and 'header_value' fields",
             )
+
+
+async def _refuse_if_integration_managed(
+    credential_uuid: str, organization_id: int
+) -> None:
+    """Fallcha: integration credentials change only through /integrations."""
+    credential = await db_client.get_credential_by_uuid(
+        credential_uuid, organization_id
+    )
+    if credential and is_integration_managed(credential.credential_data):
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "This credential is managed by an integration; uninstall it "
+                "from Integrations"
+            ),
+        )
 
 
 def build_credential_response(credential) -> CredentialResponse:
@@ -238,6 +256,8 @@ async def update_credential(
             status_code=400, detail="No organization selected for the user"
         )
 
+    await _refuse_if_integration_managed(credential_uuid, user.selected_organization_id)
+
     # Validate credential data if provided
     if request.credential_type and request.credential_data:
         validate_credential_data(request.credential_type, request.credential_data)
@@ -291,6 +311,8 @@ async def delete_credential(
         raise HTTPException(
             status_code=400, detail="No organization selected for the user"
         )
+
+    await _refuse_if_integration_managed(credential_uuid, user.selected_organization_id)
 
     deleted = await db_client.delete_credential(
         credential_uuid, user.selected_organization_id

@@ -26,6 +26,7 @@ api/
 | Live pipeline runtime        | `services/pipecat/`                                                           |
 | Telephony providers/call flow| `services/telephony/`                                                         |
 | Third-party integrations     | `services/integrations/`                                                      |
+| Catalog integrations (tools service proxy) | `services/tool_integrations/` (not the post-call plugins above) |
 | Campaign and other domains   | `services/`                                                                   |
 | Database access              | `db/`                                                                         |
 | Request/response types       | `schemas/`                                                                    |

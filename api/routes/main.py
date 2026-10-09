@@ -13,6 +13,7 @@ from api.routes.billing_webhooks import router as billing_webhooks_router
 from api.routes.campaign import router as campaign_router
 from api.routes.credentials import router as credentials_router
 from api.routes.folder import router as folder_router
+from api.routes.integrations import router as integrations_router
 from api.routes.invitations import router as invitations_router
 from api.routes.knowledge_base import router as knowledge_base_router
 from api.routes.node_types import router as node_types_router
@@ -52,6 +53,7 @@ router.include_router(user_router)
 router.include_router(campaign_router)
 router.include_router(credentials_router)
 router.include_router(tool_router)
+router.include_router(integrations_router)
 router.include_router(organization_router)
 router.include_router(team_router)
 router.include_router(invitations_router)

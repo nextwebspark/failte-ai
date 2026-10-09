@@ -14,16 +14,21 @@ mypy --strict --follow-imports=silent \
   api/db/invitation_client.py \
   api/db/membership_client.py \
   api/errors/domain.py \
+  api/errors/integrations.py \
   api/errors/invitations.py \
   api/errors/membership.py \
+  api/routes/integrations.py \
   api/routes/invitations.py \
   api/routes/team.py \
+  api/schemas/integrations.py \
   api/schemas/team.py \
   api/services/auth/permissions.py \
   api/services/email \
   api/services/invitations \
   api/services/membership \
   api/services/rate_limit \
+  api/services/tool_integrations \
   api/utils/text.py \
+  api/utils/trusted_origins.py \
   api/utils/clock.py \
   api/utils/secure_token.py
