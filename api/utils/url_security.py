@@ -2,7 +2,7 @@ import ipaddress
 import socket
 from urllib.parse import urlparse
 
-from api.constants import DEPLOYMENT_MODE
+from api.constants import DEPLOYMENT_MODE, TRUSTED_TOOL_HOSTS
 
 _CGNAT_NETWORK = ipaddress.ip_network("100.64.0.0/10")
 
@@ -26,6 +26,9 @@ def validate_user_configured_service_url(
         raise ValueError(f"{field_name} must be an http, https, ws, or wss URL")
 
     hostname = parsed.hostname
+    # Operator-trusted internal services (e.g. the Fallcha tools service).
+    if hostname.lower() in TRUSTED_TOOL_HOSTS:
+        return
     if hostname.lower() == "localhost":
         raise ValueError(f"{field_name} cannot point to localhost in SaaS mode")
 

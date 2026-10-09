@@ -2,3 +2,4 @@ mypy==2.0.0
 watchfiles==1.1.1
 datamodel-code-generator==0.56.1
 twine==6.2.0
+respx==0.23.1

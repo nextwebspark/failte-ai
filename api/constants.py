@@ -1,6 +1,7 @@
 import os
 from pathlib import Path
 from typing import Final
+from urllib.parse import urlparse
 
 from api.enums import Environment
 
@@ -95,6 +96,23 @@ STACK_PUBLISHABLE_CLIENT_KEY = os.getenv("STACK_PUBLISHABLE_CLIENT_KEY")
 DOGRAH_MPS_SECRET_KEY = os.getenv("DOGRAH_MPS_SECRET_KEY", None)
 MPS_API_URL = os.getenv("MPS_API_URL", "https://services.dograh.com")
 DOGRAH_DEVOPS_SECRET = os.getenv("DOGRAH_DEVOPS_SECRET") or None
+# Fallcha tools service (tools/): hosts catalog providers as MCP servers. The
+# integrations API is disabled (503) until TOOLS_INTERNAL_SECRET is set.
+TOOLS_SERVICE_URL = (
+    os.getenv("TOOLS_SERVICE_URL") or "http://fallcha-tools:8000"
+).rstrip("/")
+TOOLS_INTERNAL_SECRET = os.getenv("TOOLS_INTERNAL_SECRET") or None
+# Hostnames that user-configured tool URLs may point at even in SaaS mode,
+# where private/internal addresses are otherwise refused. Always includes the
+# tools service host.
+TRUSTED_TOOL_HOSTS: frozenset[str] = frozenset(
+    host
+    for host in (
+        *(h.strip().lower() for h in os.getenv("TRUSTED_TOOL_HOSTS", "").split(",")),
+        (urlparse(TOOLS_SERVICE_URL).hostname or "").lower(),
+    )
+    if host
+)
 # Who owns credit balances and charging: "stripe" (local ledger, paid through
 # Stripe), "mps" (the managed model service, MPS) or "none" (no billing). Defaults
 # keep the pre-existing behavior: no billing in OSS mode, MPS when hosted.
