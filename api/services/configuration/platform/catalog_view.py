@@ -44,14 +44,25 @@ _MODES = (
 )
 
 
-def build_platform_model_catalog(*, enabled: bool) -> PlatformModelCatalog:
+def build_platform_model_catalog(
+    *,
+    enabled: bool,
+    llm_models: tuple[PlatformOption, ...] = catalog.LLM_MODELS,
+    locked: bool = False,
+) -> PlatformModelCatalog:
+    """The catalog one organization sees.
+
+    *llm_models* is what its policy offers; *locked* tells the UI that
+    support pinned its settings.
+    """
     return PlatformModelCatalog(
         enabled=enabled,
+        locked=locked,
         default_mode=catalog.DEFAULT_PIPELINE_MODE,
         modes=list(_MODES),
         realtime=PlatformRealtimeCatalog(
-            models=_options(catalog.REALTIME_MODELS),
-            voices=_options(catalog.REALTIME_VOICES),
+            models=options_for(catalog.REALTIME_MODELS),
+            voices=options_for(catalog.REALTIME_VOICES),
             languages=list(catalog.REALTIME_LANGUAGES),
             defaults=PlatformRealtimeDefaults(
                 model=catalog.DEFAULT_REALTIME_MODEL,
@@ -61,7 +72,7 @@ def build_platform_model_catalog(*, enabled: bool) -> PlatformModelCatalog:
         ),
         pipeline=PlatformPipelineCatalog(
             llm=PlatformLLMCatalog(
-                models=_options(catalog.LLM_MODELS),
+                models=options_for(llm_models),
                 temperature_range=_range(catalog.LLM_TEMPERATURE_RANGE),
                 defaults=PlatformLLMDefaults(
                     model=catalog.DEFAULT_LLM_MODEL,
@@ -69,7 +80,7 @@ def build_platform_model_catalog(*, enabled: bool) -> PlatformModelCatalog:
                 ),
             ),
             stt=PlatformSTTCatalog(
-                models=_options(catalog.STT_MODELS),
+                models=options_for(catalog.STT_MODELS),
                 languages=list(catalog.STT_LANGUAGES),
                 defaults=PlatformSTTDefaults(
                     model=catalog.DEFAULT_STT_MODEL,
@@ -77,7 +88,7 @@ def build_platform_model_catalog(*, enabled: bool) -> PlatformModelCatalog:
                 ),
             ),
             tts=PlatformTTSCatalog(
-                models=_options(catalog.TTS_MODELS),
+                models=options_for(catalog.TTS_MODELS),
                 languages=list(catalog.TTS_LANGUAGES),
                 speed_range=_range(catalog.TTS_SPEED_RANGE),
                 voice_catalog=catalog.TTS_VOICE_CATALOG,
@@ -92,7 +103,7 @@ def build_platform_model_catalog(*, enabled: bool) -> PlatformModelCatalog:
     )
 
 
-def _options(options: tuple[PlatformOption, ...]) -> list[PlatformCatalogOption]:
+def options_for(options: tuple[PlatformOption, ...]) -> list[PlatformCatalogOption]:
     return [
         PlatformCatalogOption(
             id=option.id,

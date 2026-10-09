@@ -10,6 +10,10 @@ from api.services.configuration.ai_model_configuration import (
     get_effective_ai_model_configuration_for_workflow,
 )
 from api.services.configuration.platform import catalog as platform_catalog
+from api.services.configuration.platform.policy import (
+    get_platform_model_policy,
+    offered_llm_models,
+)
 from api.services.managed_model_services import get_mps_correlation_id
 from api.services.pipecat.service_factory import (
     create_llm_service_from_provider,
@@ -77,14 +81,14 @@ async def create_qa_llm_service(
     model_override = (
         qa_data.qa_model if qa_data.qa_model and qa_data.qa_model != "default" else None
     )
-    if (
-        model_override is not None
-        and user_configuration.platform_managed
-        and model_override
-        not in platform_catalog.option_ids(platform_catalog.LLM_MODELS)
-    ):
-        # Only catalog models run on the operator's project.
-        model_override = None
+    if model_override is not None and user_configuration.platform_managed:
+        # Only models offered to this organization run on the operator's
+        # project.
+        policy = await get_platform_model_policy(workflow_run.workflow.organization_id)
+        if model_override not in platform_catalog.option_ids(
+            offered_llm_models(policy)
+        ):
+            model_override = None
     model = model_override or user_configuration.llm.model
     llm = create_llm_service_with_model_override(
         user_configuration,

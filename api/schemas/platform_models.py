@@ -68,8 +68,12 @@ class PlatformLLMChoice(_Choice):
     @field_validator("model")
     @classmethod
     def _model_allowed(cls, value: str) -> str:
+        # Restricted models are valid here; whether an organization may pick
+        # one is its platform policy's call.
         return _require_allowed(
-            value, catalog.option_ids(catalog.LLM_MODELS), "LLM model"
+            value,
+            catalog.option_ids(catalog.LLM_MODELS + catalog.RESTRICTED_LLM_MODELS),
+            "LLM model",
         )
 
 
@@ -162,6 +166,42 @@ class PlatformAIModelConfiguration(_Choice):
                 "platform.pipeline is required when pipeline_mode is pipeline"
             )
         return self
+
+
+# Gemini text models and Speech serve the "eu"/"us" multi-regions; Gemini Live
+# only single regions such as europe-west1.
+_REGION = r"[a-z]+-[a-z]+[0-9]+"
+_MULTI_REGION_LOCATION = rf"^(global|eu|us|{_REGION})$"
+_SINGLE_REGION_LOCATION = rf"^{_REGION}$"
+_PROJECT_ID = r"^[a-z][a-z0-9-]{4,28}[a-z0-9]$"
+
+
+class PlatformModelPolicy(_Choice):
+    """Superuser-set access and placement for one organization's platform models.
+
+    Every field defaults to "as the server is configured", so an empty policy
+    changes nothing.
+    """
+
+    # Restricted catalog entries this organization may pick.
+    extra_models: list[str] = Field(default_factory=list)
+    # Pin the organization to its current choices: customers cannot change them.
+    locked: bool = False
+    # Enterprise placement: another Vertex project (the server's credentials
+    # need access to it) or other locations than the server defaults.
+    project_id: str | None = Field(default=None, pattern=_PROJECT_ID)
+    llm_location: str | None = Field(default=None, pattern=_MULTI_REGION_LOCATION)
+    realtime_location: str | None = Field(default=None, pattern=_SINGLE_REGION_LOCATION)
+    speech_location: str | None = Field(default=None, pattern=_MULTI_REGION_LOCATION)
+
+    @field_validator("extra_models")
+    @classmethod
+    def _extras_are_restricted_models(cls, value: list[str]) -> list[str]:
+        restricted = catalog.option_ids(catalog.RESTRICTED_LLM_MODELS)
+        unknown = sorted(set(value) - restricted)
+        if unknown:
+            raise ValueError(f"Not restricted platform models: {', '.join(unknown)}")
+        return sorted(set(value))
 
 
 def default_platform_configuration() -> PlatformAIModelConfiguration:
@@ -263,6 +303,8 @@ class PlatformModelCatalog(BaseModel):
     """
 
     enabled: bool
+    # Support pinned this organization's settings; customers can't change them.
+    locked: bool = False
     default_mode: PlatformPipelineMode
     modes: list[PlatformModeOption]
     realtime: PlatformRealtimeCatalog

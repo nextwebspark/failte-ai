@@ -33,6 +33,13 @@ from api.services.configuration.masking import (
     hide_secret,
     resolve_masked_api_keys,
 )
+from api.services.configuration.platform.policy import (
+    InvalidPlatformPolicyError,
+    PlatformConfigurationLockedError,
+    ensure_choices_offered,
+    get_platform_model_policy,
+    platform_settings_for_organization,
+)
 from api.services.configuration.platform.settings import (
     PlatformModelsNotConfiguredError,
 )
@@ -59,6 +66,51 @@ def ensure_platform_mode_allowed(
         raise PlatformModelsDisabledError(
             "Platform models are not enabled on this server"
         )
+
+
+async def compile_for_organization(
+    configuration: OrganizationAIModelConfigurationV2,
+    organization_id: int | None,
+) -> EffectiveAIModelConfiguration:
+    """Compile *configuration*, placing platform services per the org's policy."""
+    if configuration.mode != "platform":
+        return compile_ai_model_configuration_v2(configuration)
+    return compile_ai_model_configuration_v2(
+        configuration,
+        platform_settings=await platform_settings_for_organization(organization_id),
+    )
+
+
+async def ensure_platform_choices_allowed(
+    configuration: OrganizationAIModelConfigurationV2,
+    *,
+    previous: OrganizationAIModelConfigurationV2 | None,
+    organization_id: int | None,
+    user: UserModel,
+) -> None:
+    """Raise unless the organization's policy lets *user* save these choices.
+
+    Only changes are checked: re-saving *previous* unchanged (the UI sends the
+    whole workflow configuration on every save) is always allowed. Superusers
+    may save anything in the catalog, including choices the policy doesn't
+    offer and changes to a locked organization.
+    """
+    if configuration.platform is None or user.is_superuser:
+        return
+    previous_platform = previous.platform if previous is not None else None
+    if configuration.platform == previous_platform:
+        return
+    try:
+        policy = await get_platform_model_policy(organization_id)
+    except InvalidPlatformPolicyError as exc:
+        raise PlatformConfigurationLockedError(
+            "Model settings for this workspace are managed by Fallcha.ai support"
+        ) from exc
+    if policy.locked:
+        raise PlatformConfigurationLockedError(
+            "Model settings for this workspace are managed by Fallcha.ai support"
+        )
+    ensure_choices_offered(configuration.platform, policy, previous=previous_platform)
 
 
 class CustomerKeysNotAllowedError(ValueError):
@@ -126,7 +178,9 @@ async def get_resolved_ai_model_configuration(
     )
     if organization_configuration is not None:
         try:
-            effective = compile_ai_model_configuration_v2(organization_configuration)
+            effective = await compile_for_organization(
+                organization_configuration, organization_id
+            )
         except PlatformModelsNotConfiguredError:
             # Keep the app usable (settings, agents, history) when the server
             # lost its platform settings; calls fail at start instead.
@@ -162,8 +216,9 @@ async def get_effective_ai_model_configuration_for_workflow(
     )
     try:
         if v2_override:
-            return compile_ai_model_configuration_v2(
-                OrganizationAIModelConfigurationV2.model_validate(v2_override)
+            return await compile_for_organization(
+                OrganizationAIModelConfigurationV2.model_validate(v2_override),
+                organization_id,
             )
 
         resolved_config = await get_resolved_ai_model_configuration(

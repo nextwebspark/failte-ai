@@ -34,9 +34,11 @@ from api.services.configuration.ai_model_configuration import (
     PlatformModelsDisabledError,
     check_for_masked_keys_in_ai_model_configuration_v2,
     compile_ai_model_configuration_v2,
+    compile_for_organization,
     convert_legacy_ai_model_configuration_to_v2,
     ensure_configuration_allowed,
     ensure_customer_keys_allowed,
+    ensure_platform_choices_allowed,
     get_resolved_ai_model_configuration,
     merge_ai_model_configuration_v2_secrets,
 )
@@ -48,6 +50,9 @@ from api.services.configuration.masking import (
     secrets_hidden_for,
 )
 from api.services.configuration.merge import merge_workflow_configuration_secrets
+from api.services.configuration.platform.policy import (
+    PlatformConfigurationLockedError,
+)
 from api.services.configuration.resolve import (
     enrich_overrides_with_api_keys,
     resolve_effective_config,
@@ -1259,6 +1264,12 @@ async def update_workflow(
                     if existing_v2_override
                     else None
                 )
+                await ensure_platform_choices_allowed(
+                    incoming_v2_override,
+                    previous=existing_v2_override_config,
+                    organization_id=user.selected_organization_id,
+                    user=user,
+                )
                 v2_override = merge_ai_model_configuration_v2_secrets(
                     incoming_v2_override,
                     existing_v2_override_config,
@@ -1272,13 +1283,19 @@ async def update_workflow(
                         resolved_config.organization_configuration,
                     )
                 check_for_masked_keys_in_ai_model_configuration_v2(v2_override)
-                effective = compile_ai_model_configuration_v2(v2_override)
+                effective = await compile_for_organization(
+                    v2_override, user.selected_organization_id
+                )
                 await UserConfigurationValidator().validate(
                     effective,
                     organization_id=user.selected_organization_id,
                     created_by=user.provider_id,
                 )
-            except (CustomerKeysNotAllowedError, PlatformModelsDisabledError) as e:
+            except (
+                CustomerKeysNotAllowedError,
+                PlatformModelsDisabledError,
+                PlatformConfigurationLockedError,
+            ) as e:
                 raise HTTPException(status_code=403, detail=str(e)) from e
             except (ValidationError, ValueError) as e:
                 raise HTTPException(status_code=422, detail=str(e))

@@ -21,20 +21,24 @@ class PlatformVertexSettings:
     credentials_json: str | None = None
 
 
-def load_platform_vertex_settings() -> PlatformVertexSettings:
+def load_platform_vertex_settings(
+    *, project_id: str | None = None
+) -> PlatformVertexSettings:
     """Read the operator's Vertex settings from the environment.
 
-    Raises PlatformModelsNotConfiguredError when no project is configured, so a
-    platform configuration on a misconfigured server fails loudly instead of
-    building services that cannot authenticate.
+    *project_id* replaces the server's project (an Enterprise organization's
+    own project). Raises PlatformModelsNotConfiguredError when no project is
+    configured, so a platform configuration on a misconfigured server fails
+    loudly instead of building services that cannot authenticate.
     """
-    if not constants.PLATFORM_VERTEX_PROJECT_ID:
+    project_id = project_id or constants.PLATFORM_VERTEX_PROJECT_ID
+    if not project_id:
         raise PlatformModelsNotConfiguredError(
             "Platform models are not configured on this server: "
             "set PLATFORM_VERTEX_PROJECT_ID"
         )
     return PlatformVertexSettings(
-        project_id=constants.PLATFORM_VERTEX_PROJECT_ID,
+        project_id=project_id,
         llm_location=constants.PLATFORM_VERTEX_LLM_LOCATION,
         realtime_location=constants.PLATFORM_VERTEX_REALTIME_LOCATION,
         speech_location=constants.PLATFORM_GOOGLE_SPEECH_LOCATION,

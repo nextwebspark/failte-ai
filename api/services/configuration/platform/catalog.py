@@ -110,6 +110,18 @@ LLM_MODELS: Final[tuple[PlatformOption, ...]] = (
     ),
 )
 
+# Offered only to organizations a superuser enables them for (#49).
+RESTRICTED_LLM_MODELS: Final[tuple[PlatformOption, ...]] = (
+    PlatformOption(
+        id="gemini-3.5-flash-lite",
+        label="Gemini 3.5 Flash Lite",
+        description=(
+            "Lowest latency. Can skip end-call and number confirmation on "
+            "complex flows; test the agent before switching."
+        ),
+    ),
+)
+
 LLM_TEMPERATURE_RANGE: Final = NumericRange(min=0.0, max=2.0, step=0.1)
 
 # --- Pipeline: speech-to-text -------------------------------------------------

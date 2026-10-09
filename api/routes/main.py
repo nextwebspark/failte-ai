@@ -25,6 +25,7 @@ from api.routes.public_embed_chat import router as public_embed_chat_router
 from api.routes.reports import router as reports_router
 from api.routes.s3_signed_url import router as s3_router
 from api.routes.service_keys import router as service_keys_router
+from api.routes.platform_admin import router as platform_admin_router
 from api.routes.superuser import router as superuser_router
 from api.routes.team import router as team_router
 from api.routes.telephony import router as telephony_router
@@ -75,6 +76,7 @@ router.include_router(node_types_router)
 router.include_router(agent_stream_router)
 router.include_router(billing_router)
 router.include_router(billing_admin_router)
+router.include_router(platform_admin_router)
 router.include_router(billing_webhooks_router)
 
 for _integration_router in all_routers():

@@ -37,7 +37,10 @@ from api.schemas.organization_preferences import (
     OrganizationPreferences,
     OrganizationPreferencesResponse,
 )
-from api.schemas.platform_models import ModelConfigurationV2Defaults
+from api.schemas.platform_models import (
+    ModelConfigurationV2Defaults,
+    PlatformModelPolicy,
+)
 from api.schemas.telephony_config import (
     TelephonyConfigRequest,
     TelephonyConfigurationCreateRequest,
@@ -68,9 +71,11 @@ from api.services.configuration.ai_model_configuration import (
     PlatformModelsDisabledError,
     check_for_masked_keys_in_ai_model_configuration_v2,
     compile_ai_model_configuration_v2,
+    compile_for_organization,
     convert_legacy_ai_model_configuration_to_v2,
     customer_keys_allowed,
     ensure_configuration_allowed,
+    ensure_platform_choices_allowed,
     get_organization_ai_model_configuration_v2,
     get_resolved_ai_model_configuration,
     mask_ai_model_configuration_v2,
@@ -88,6 +93,13 @@ from api.services.configuration.masking import (
 )
 from api.services.configuration.platform.catalog_view import (
     build_platform_model_catalog,
+)
+from api.services.configuration.platform.policy import (
+    InvalidPlatformPolicyError,
+    PlatformChoiceNotOfferedError,
+    PlatformConfigurationLockedError,
+    get_platform_model_policy,
+    offered_llm_models,
 )
 from api.services.configuration.registry import (
     DOGRAH_MULTILINGUAL_AUTODETECT_LANGUAGES,
@@ -394,23 +406,27 @@ async def _model_configuration_v2_response(
 async def get_model_configuration_v2_defaults(
     user: UserModel = Depends(get_user_with_selected_organization),
 ) -> ModelConfigurationV2Defaults:
+    try:
+        policy = await get_platform_model_policy(user.selected_organization_id)
+    except InvalidPlatformPolicyError:
+        # Show the server catalog read-only until support fixes the policy.
+        policy = PlatformModelPolicy(locked=True)
+    catalog = build_platform_model_catalog(
+        enabled=constants.PLATFORM_MODELS_ENABLED,
+        llm_models=offered_llm_models(policy),
+        locked=policy.locked,
+    )
     if not customer_keys_allowed(user):
         # Provider schemas describe api_key fields; customers here pick from
         # the platform catalog only.
-        return ModelConfigurationV2Defaults(
-            platform=build_platform_model_catalog(
-                enabled=constants.PLATFORM_MODELS_ENABLED
-            )
-        )
+        return ModelConfigurationV2Defaults(platform=catalog)
     byok_default_providers = {
         service: provider
         for service, provider in DEFAULT_SERVICE_PROVIDERS.items()
         if provider != ServiceProviders.DOGRAH.value
     }
     return ModelConfigurationV2Defaults(
-        platform=build_platform_model_catalog(
-            enabled=constants.PLATFORM_MODELS_ENABLED
-        ),
+        platform=catalog,
         dograh={
             "voices": [DOGRAH_DEFAULT_VOICE],
             "allow_custom_input": _dograh_allows_custom_voice(),
@@ -505,15 +521,24 @@ async def save_model_configuration_v2(
     user: UserModel = Depends(get_user_with_selected_organization),
 ):
     organization_id = user.selected_organization_id
+    existing = await get_organization_ai_model_configuration_v2(organization_id)
     try:
         ensure_configuration_allowed(request, user=user)
-    except (CustomerKeysNotAllowedError, PlatformModelsDisabledError) as exc:
+        await ensure_platform_choices_allowed(
+            request, previous=existing, organization_id=organization_id, user=user
+        )
+    except (
+        CustomerKeysNotAllowedError,
+        PlatformModelsDisabledError,
+        PlatformConfigurationLockedError,
+    ) as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
-    existing = await get_organization_ai_model_configuration_v2(organization_id)
+    except PlatformChoiceNotOfferedError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     configuration = merge_ai_model_configuration_v2_secrets(request, existing)
     try:
         check_for_masked_keys_in_ai_model_configuration_v2(configuration)
-        effective = compile_ai_model_configuration_v2(configuration)
+        effective = await compile_for_organization(configuration, organization_id)
         await UserConfigurationValidator().validate(
             effective,
             organization_id=organization_id,
