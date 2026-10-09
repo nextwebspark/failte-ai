@@ -486,7 +486,7 @@ async def test_workflow_legacy_overrides_are_rejected_on_platform_orgs(
         },
     )
 
-    assert response.status_code == 422
+    assert response.status_code == 403
     assert "platform models" in response.json()["detail"]
 
 
@@ -537,7 +537,7 @@ async def test_legacy_user_configuration_cannot_rewrite_platform_services(
         json={"stt": {"provider": "google", "model": "latest_long"}},
     )
 
-    assert response.status_code == 409
+    assert response.status_code == 403
     fetched = await client.get("/api/v1/organizations/model-configurations/v2")
     assert fetched.json()["configuration"] == REALTIME_CONFIG
 

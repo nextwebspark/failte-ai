@@ -2,10 +2,14 @@
 
 from typing import Any
 
+from loguru import logger
+
+from api import constants
 from api.db.models import WorkflowRunModel
 from api.services.configuration.ai_model_configuration import (
     get_effective_ai_model_configuration_for_workflow,
 )
+from api.services.configuration.platform import catalog as platform_catalog
 from api.services.managed_model_services import get_mps_correlation_id
 from api.services.pipecat.service_factory import (
     create_llm_service_from_provider,
@@ -29,7 +33,11 @@ async def create_qa_llm_service(
         getattr(workflow_run, "initial_context", None)
     )
 
-    if not qa_data.qa_use_workflow_llm:
+    if not qa_data.qa_use_workflow_llm and constants.PLATFORM_MODELS_ENABLED:
+        # Customers on platform models hold no provider keys; QA runs on the
+        # workflow's platform LLM instead.
+        logger.warning("Ignoring the QA node's own LLM on a platform-models server")
+    elif not qa_data.qa_use_workflow_llm:
         provider = qa_data.qa_provider or "openai"
         model = qa_data.qa_model or "default"
         api_key = qa_data.qa_api_key
@@ -69,6 +77,14 @@ async def create_qa_llm_service(
     model_override = (
         qa_data.qa_model if qa_data.qa_model and qa_data.qa_model != "default" else None
     )
+    if (
+        model_override is not None
+        and user_configuration.platform_managed
+        and model_override
+        not in platform_catalog.option_ids(platform_catalog.LLM_MODELS)
+    ):
+        # Only catalog models run on the operator's project.
+        model_override = None
     model = model_override or user_configuration.llm.model
     llm = create_llm_service_with_model_override(
         user_configuration,

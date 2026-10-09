@@ -12,6 +12,7 @@ The rules are simple:
 import copy
 from typing import Any, Dict, Optional
 
+from api import constants
 from api.schemas.ai_model_configuration import EffectiveAIModelConfiguration
 from api.services.configuration.registry import ServiceConfig
 from api.services.integrations import get_node_secret_fields
@@ -119,12 +120,33 @@ def resolve_masked_api_keys(
     return resolved
 
 
+def secrets_hidden_for(user: Any) -> bool:
+    """Whether responses to *user* must carry no secrets at all, not even masked.
+
+    On a platform-models server customers never hold keys. Superusers still get
+    masked values so their GET -> PUT round trips keep stored keys.
+    """
+    return constants.PLATFORM_MODELS_ENABLED and not getattr(
+        user, "is_superuser", False
+    )
+
+
+def hide_secret(container: Dict[str, Any], key: str, *, drop: bool) -> None:
+    """Mask a stored secret in an API response, or drop it entirely."""
+    if drop:
+        container.pop(key, None)
+    else:
+        container[key] = _mask_secret_value(container[key])
+
+
 # ---------------------------------------------------------------------------
 # High-level helpers for EffectiveAIModelConfiguration objects
 # ---------------------------------------------------------------------------
 
 
-def _mask_service(service_cfg: Optional[ServiceConfig]) -> Optional[Dict[str, Any]]:
+def _mask_service(
+    service_cfg: Optional[ServiceConfig], drop_secrets: bool = False
+) -> Optional[Dict[str, Any]]:
     if service_cfg is None:
         return None
 
@@ -133,12 +155,13 @@ def _mask_service(service_cfg: Optional[ServiceConfig]) -> Optional[Dict[str, An
     for secret_field in SERVICE_SECRET_FIELDS:
         if secret_field not in data or not data[secret_field]:
             continue
-        raw = data[secret_field]
-        data[secret_field] = _mask_secret_value(raw)
+        hide_secret(data, secret_field, drop=drop_secrets)
     return data
 
 
-def mask_user_config(config: EffectiveAIModelConfiguration) -> Dict[str, Any]:
+def mask_user_config(
+    config: EffectiveAIModelConfiguration, *, drop_secrets: bool = False
+) -> Dict[str, Any]:
     """Return a JSON-serialisable dict of *config* with every api_key masked.
 
     Platform-managed services also lose their project, location and
@@ -146,7 +169,7 @@ def mask_user_config(config: EffectiveAIModelConfiguration) -> Dict[str, Any]:
     """
 
     def service(service_cfg: Optional[ServiceConfig]) -> Optional[Dict[str, Any]]:
-        data = _mask_service(service_cfg)
+        data = _mask_service(service_cfg, drop_secrets)
         if data is not None and config.platform_managed:
             for field in PLATFORM_HIDDEN_FIELDS:
                 data.pop(field, None)
@@ -164,7 +187,9 @@ def mask_user_config(config: EffectiveAIModelConfiguration) -> Dict[str, Any]:
     }
 
 
-def mask_workflow_configurations(config: Optional[Dict]) -> Optional[Dict]:
+def mask_workflow_configurations(
+    config: Optional[Dict], *, drop_secrets: bool = False
+) -> Optional[Dict]:
     """Mask secret fields inside workflow-level model overrides for API responses."""
     if not config:
         return config
@@ -177,27 +202,26 @@ def mask_workflow_configurations(config: Optional[Dict]) -> Optional[Dict]:
             if not isinstance(override, dict):
                 continue
             for secret_field in SERVICE_SECRET_FIELDS:
-                raw = override.get(secret_field)
-                if raw:
-                    override[secret_field] = _mask_secret_value(raw)
+                if override.get(secret_field):
+                    hide_secret(override, secret_field, drop=drop_secrets)
 
     v2_override = masked.get("model_configuration_v2_override")
     if isinstance(v2_override, dict):
-        _mask_nested_service_secrets(v2_override)
+        _mask_nested_service_secrets(v2_override, drop_secrets)
 
     return masked
 
 
-def _mask_nested_service_secrets(value):
+def _mask_nested_service_secrets(value, drop_secrets: bool):
     if isinstance(value, dict):
         for key, nested in list(value.items()):
             if key in SERVICE_SECRET_FIELDS and nested:
-                value[key] = _mask_secret_value(nested)
+                hide_secret(value, key, drop=drop_secrets)
             else:
-                _mask_nested_service_secrets(nested)
+                _mask_nested_service_secrets(nested, drop_secrets)
     elif isinstance(value, list):
         for item in value:
-            _mask_nested_service_secrets(item)
+            _mask_nested_service_secrets(item, drop_secrets)
 
 
 # ---------------------------------------------------------------------------
@@ -215,7 +239,9 @@ def _secret_fields_for_node_type(node_type: str | None) -> tuple[str, ...]:
     return _NODE_SECRET_FIELDS.get(node_type, ()) or get_node_secret_fields(node_type)
 
 
-def mask_workflow_definition(workflow_definition: Optional[Dict]) -> Optional[Dict]:
+def mask_workflow_definition(
+    workflow_definition: Optional[Dict], *, drop_secrets: bool = False
+) -> Optional[Dict]:
     """Return a copy of *workflow_definition* with node secret fields masked."""
     if not workflow_definition:
         return workflow_definition
@@ -230,7 +256,12 @@ def mask_workflow_definition(workflow_definition: Optional[Dict]) -> Optional[Di
         data = node.get("data", {})
         for field in secret_fields:
             raw_key = data.get(field)
-            if raw_key:
+            if not raw_key:
+                continue
+            if drop_secrets and field in _NODE_SECRET_FIELDS.get("qa", ()):
+                # Model-provider keys only; integration secrets stay masked.
+                data.pop(field)
+            else:
                 data[field] = mask_key(raw_key)
     return masked
 

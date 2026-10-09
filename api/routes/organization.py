@@ -5,11 +5,11 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from loguru import logger
 from pydantic import BaseModel, Field, ValidationError
 
+from api import constants
 from api.constants import (
     DEFAULT_CAMPAIGN_RETRY_CONFIG,
     DEFAULT_ORG_CONCURRENCY_LIMIT,
     DEPLOYMENT_MODE,
-    PLATFORM_MODELS_ENABLED,
 )
 from api.db import db_client
 from api.db.models import UserModel
@@ -64,11 +64,13 @@ from api.services.auth.depends import (
 )
 from api.services.auth.permissions import Permission
 from api.services.configuration.ai_model_configuration import (
+    CustomerKeysNotAllowedError,
     PlatformModelsDisabledError,
     check_for_masked_keys_in_ai_model_configuration_v2,
     compile_ai_model_configuration_v2,
     convert_legacy_ai_model_configuration_to_v2,
-    ensure_platform_mode_allowed,
+    customer_keys_allowed,
+    ensure_configuration_allowed,
     get_organization_ai_model_configuration_v2,
     get_resolved_ai_model_configuration,
     mask_ai_model_configuration_v2,
@@ -78,7 +80,12 @@ from api.services.configuration.ai_model_configuration import (
 )
 from api.services.configuration.check_validity import UserConfigurationValidator
 from api.services.configuration.defaults import DEFAULT_SERVICE_PROVIDERS
-from api.services.configuration.masking import is_mask_of, mask_key, mask_user_config
+from api.services.configuration.masking import (
+    is_mask_of,
+    mask_key,
+    mask_user_config,
+    secrets_hidden_for,
+)
 from api.services.configuration.platform.catalog_view import (
     build_platform_model_catalog,
 )
@@ -369,8 +376,12 @@ async def _model_configuration_v2_response(
         else resolved.organization_configuration
     )
     return OrganizationAIModelConfigurationResponse(
-        configuration=mask_ai_model_configuration_v2(raw_configuration),
-        effective_configuration=mask_user_config(resolved.effective),
+        configuration=mask_ai_model_configuration_v2(
+            raw_configuration, drop_secrets=secrets_hidden_for(user)
+        ),
+        effective_configuration=mask_user_config(
+            resolved.effective, drop_secrets=secrets_hidden_for(user)
+        ),
         source=resolved.source,
     )
 
@@ -383,13 +394,23 @@ async def _model_configuration_v2_response(
 async def get_model_configuration_v2_defaults(
     user: UserModel = Depends(get_user_with_selected_organization),
 ) -> ModelConfigurationV2Defaults:
+    if not customer_keys_allowed(user):
+        # Provider schemas describe api_key fields; customers here pick from
+        # the platform catalog only.
+        return ModelConfigurationV2Defaults(
+            platform=build_platform_model_catalog(
+                enabled=constants.PLATFORM_MODELS_ENABLED
+            )
+        )
     byok_default_providers = {
         service: provider
         for service, provider in DEFAULT_SERVICE_PROVIDERS.items()
         if provider != ServiceProviders.DOGRAH.value
     }
     return ModelConfigurationV2Defaults(
-        platform=build_platform_model_catalog(enabled=PLATFORM_MODELS_ENABLED),
+        platform=build_platform_model_catalog(
+            enabled=constants.PLATFORM_MODELS_ENABLED
+        ),
         dograh={
             "voices": [DOGRAH_DEFAULT_VOICE],
             "allow_custom_input": _dograh_allows_custom_voice(),
@@ -485,8 +506,8 @@ async def save_model_configuration_v2(
 ):
     organization_id = user.selected_organization_id
     try:
-        ensure_platform_mode_allowed(request)
-    except PlatformModelsDisabledError as exc:
+        ensure_configuration_allowed(request, user=user)
+    except (CustomerKeysNotAllowedError, PlatformModelsDisabledError) as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
     existing = await get_organization_ai_model_configuration_v2(organization_id)
     configuration = merge_ai_model_configuration_v2_secrets(request, existing)
@@ -524,9 +545,12 @@ async def preview_model_configuration_v2_migration(
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
     return {
-        "configuration": mask_ai_model_configuration_v2(configuration),
+        "configuration": mask_ai_model_configuration_v2(
+            configuration, drop_secrets=secrets_hidden_for(user)
+        ),
         "effective_configuration": mask_user_config(
-            compile_ai_model_configuration_v2(configuration)
+            compile_ai_model_configuration_v2(configuration),
+            drop_secrets=secrets_hidden_for(user),
         ),
     }
 
@@ -541,7 +565,7 @@ async def migrate_model_configuration_v2(
     user: UserModel = Depends(get_user_with_selected_organization),
 ):
     organization_id = user.selected_organization_id
-    if PLATFORM_MODELS_ENABLED:
+    if constants.PLATFORM_MODELS_ENABLED:
         # The legacy conversion only produces dograh/byok and opens an MPS
         # billing account; neither belongs on a platform-models server.
         raise HTTPException(

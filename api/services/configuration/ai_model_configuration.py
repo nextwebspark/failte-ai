@@ -12,7 +12,7 @@ from pydantic import ValidationError
 from api import constants
 from api.constants import MPS_API_URL
 from api.db import db_client
-from api.db.models import OrganizationConfigurationModel
+from api.db.models import OrganizationConfigurationModel, UserModel
 from api.enums import OrganizationConfigurationKey
 from api.schemas.ai_model_configuration import (
     DOGRAH_DEFAULT_LANGUAGE,
@@ -30,7 +30,7 @@ from api.schemas.ai_model_configuration import (
 from api.services.configuration.masking import (
     SERVICE_SECRET_FIELDS,
     contains_masked_key,
-    mask_key,
+    hide_secret,
     resolve_masked_api_keys,
 )
 from api.services.configuration.platform.settings import (
@@ -59,6 +59,43 @@ def ensure_platform_mode_allowed(
         raise PlatformModelsDisabledError(
             "Platform models are not enabled on this server"
         )
+
+
+class CustomerKeysNotAllowedError(ValueError):
+    """A customer tried to use their own keys or providers on platform models."""
+
+
+def customer_keys_allowed(user: UserModel) -> bool:
+    """Whether *user* may configure providers and keys (BYOK, Dograh-managed).
+
+    Platform-models servers run every customer on the operator's account, so
+    only superusers may store other configurations there.
+    """
+    return not constants.PLATFORM_MODELS_ENABLED or bool(user.is_superuser)
+
+
+def ensure_customer_keys_allowed(user: UserModel) -> None:
+    """Raise unless *user* may configure providers and keys."""
+    if not customer_keys_allowed(user):
+        raise CustomerKeysNotAllowedError(
+            "This workspace runs on platform models; choose models, voices and "
+            "languages from the catalog instead of providers and keys"
+        )
+
+
+def ensure_configuration_allowed(
+    configuration: OrganizationAIModelConfigurationV2, *, user: UserModel
+) -> None:
+    """Raise unless *user* may store *configuration* on this server."""
+    ensure_platform_mode_allowed(configuration)
+    if (
+        configuration.mode != "platform"
+        # Sections beside a platform choice would store keys that go live if
+        # the mode is ever switched.
+        or configuration.dograh is not None
+        or configuration.byok is not None
+    ):
+        ensure_customer_keys_allowed(user)
 
 
 @dataclass
@@ -335,11 +372,13 @@ def check_for_masked_keys_in_ai_model_configuration_v2(
 
 def mask_ai_model_configuration_v2(
     configuration: OrganizationAIModelConfigurationV2 | None,
+    *,
+    drop_secrets: bool = False,
 ) -> dict | None:
     if configuration is None:
         return None
     data = configuration.model_dump(mode="json", exclude_none=True)
-    _mask_secret_fields(data)
+    _mask_secret_fields(data, drop_secrets)
     return data
 
 
@@ -460,22 +499,16 @@ def _raise_if_masked_secret(value):
             _raise_if_masked_secret(item)
 
 
-def _mask_secret_fields(value):
+def _mask_secret_fields(value, drop_secrets: bool):
     if isinstance(value, dict):
         for key, nested in list(value.items()):
             if key in SERVICE_SECRET_FIELDS and nested:
-                value[key] = _mask_secret_value(nested)
+                hide_secret(value, key, drop=drop_secrets)
             else:
-                _mask_secret_fields(nested)
+                _mask_secret_fields(nested, drop_secrets)
     elif isinstance(value, list):
         for item in value:
-            _mask_secret_fields(item)
-
-
-def _mask_secret_value(value):
-    if isinstance(value, list):
-        return [mask_key(item) for item in value]
-    return mask_key(value)
+            _mask_secret_fields(item, drop_secrets)
 
 
 def _convert_any_dograh_legacy_configuration(

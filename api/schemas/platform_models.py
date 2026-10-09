@@ -271,6 +271,7 @@ class PlatformModelCatalog(BaseModel):
 
 class ModelConfigurationV2Defaults(BaseModel):
     # Provider schemas for the legacy managed (MPS) and BYOK editors.
-    dograh: dict[str, Any]
-    byok: dict[str, Any]
+    # Omitted where customers may not configure providers and keys.
+    dograh: dict[str, Any] | None = None
+    byok: dict[str, Any] | None = None
     platform: PlatformModelCatalog

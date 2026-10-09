@@ -364,9 +364,9 @@ def test_platform_models_refuse_mps_billing_at_startup():
 async def test_legacy_migrate_endpoint_is_closed_on_platform_servers(
     async_session, test_client_factory, monkeypatch
 ):
-    from api.routes import organization as organization_routes
+    from api import constants
 
-    monkeypatch.setattr(organization_routes, "PLATFORM_MODELS_ENABLED", True)
+    monkeypatch.setattr(constants, "PLATFORM_MODELS_ENABLED", True)
     organization = OrganizationModel(provider_id=f"migrate-org-{uuid.uuid4().hex}")
     async_session.add(organization)
     await async_session.flush()
