@@ -176,7 +176,7 @@ class ConnectionRepository:
         last_error: str | None = None,
         account_label: str | None = None,
     ) -> ConnectionInfo:
-        row = await self._get_row(org_id, connection_id)
+        row = await self._get_row(org_id, connection_id, for_update=True)
         if row.status == ConnectionStatus.REVOKED:
             raise ConnectionRevokedError("connection has been revoked")
         row.status = status
@@ -189,7 +189,7 @@ class ConnectionRepository:
 
     async def revoke_connection(self, org_id: int, connection_id: uuid.UUID) -> None:
         """Revoke every key, wipe secrets, and mark the connection revoked."""
-        row = await self._get_row(org_id, connection_id)
+        row = await self._get_row(org_id, connection_id, for_update=True)
         await self._session.execute(
             update(ConnectionKey)
             .where(
@@ -205,12 +205,17 @@ class ConnectionRepository:
         row.expires_at = None
         await self._session.commit()
 
-    async def _get_row(self, org_id: int, connection_id: uuid.UUID) -> Connection:
-        row = await self._session.scalar(
-            select(Connection).where(
-                Connection.id == connection_id, Connection.org_id == org_id
-            )
+    async def _get_row(
+        self, org_id: int, connection_id: uuid.UUID, *, for_update: bool = False
+    ) -> Connection:
+        query = select(Connection).where(
+            Connection.id == connection_id, Connection.org_id == org_id
         )
+        if for_update:
+            # Row lock + fresh read: a concurrent revoke and a status write
+            # serialize, and a revoked row is never flipped back to active.
+            query = query.with_for_update().execution_options(populate_existing=True)
+        row = await self._session.scalar(query)
         if row is None:
             raise ConnectionNotFoundError("connection not found")
         return row
@@ -229,9 +234,10 @@ class KeyRepository:
         created_by: int | None = None,
     ) -> IssuedKey:
         connection = await self._session.scalar(
-            select(Connection).where(
-                Connection.id == connection_id, Connection.org_id == org_id
-            )
+            select(Connection)
+            .where(Connection.id == connection_id, Connection.org_id == org_id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
         )
         if connection is None:
             raise ConnectionNotFoundError("connection not found")

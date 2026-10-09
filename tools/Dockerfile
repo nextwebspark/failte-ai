@@ -3,7 +3,7 @@
 #   docker build -t fallcha-tools tools/
 FROM python:3.13-slim AS builder
 
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/
+COPY --from=ghcr.io/astral-sh/uv:0.11.2 /uv /usr/local/bin/
 ENV VIRTUAL_ENV=/opt/venv PATH=/opt/venv/bin:$PATH
 RUN python -m venv "$VIRTUAL_ENV"
 

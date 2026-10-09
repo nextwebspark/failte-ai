@@ -14,9 +14,11 @@ from fallcha_tools.config import Settings
 from fallcha_tools.core.crypto import SecretBox
 from fallcha_tools.core.db import Database
 from fallcha_tools.core.keys import hash_connection_key
+from fallcha_tools.core.models import ConnectionStatus
 from fallcha_tools.core.repositories import (
     ConnectionNotFoundError,
     ConnectionRepository,
+    ConnectionRevokedError,
     KeyRepository,
 )
 from tests.conftest import (
@@ -284,3 +286,81 @@ async def test_keys_and_secrets_are_org_bound(
             assert await KeyRepository(session).lookup_key(key) is None
     finally:
         await db.dispose()
+
+
+async def test_validation_errors_do_not_echo_input(client: httpx.AsyncClient) -> None:
+    secret_value = "sk-live-do-not-echo-0123456789"
+    payloads: list[dict[str, Any]] = [
+        {"provider": "echo", "auth_mode": "api_key", "secret": secret_value},
+        {
+            "provider": "echo",
+            "auth_mode": "api_key",
+            "secret": {"api_key": "x"},
+            "unexpected": secret_value,
+        },
+    ]
+    for payload in payloads:
+        response = await client.post(
+            "/internal/connections", headers=internal_headers(), json=payload
+        )
+        assert response.status_code == 422
+        assert secret_value not in response.text
+        for error in response.json()["detail"]:
+            assert set(error) == {"loc", "msg", "type"}
+
+
+async def test_oversized_org_id_rejected(client: httpx.AsyncClient) -> None:
+    for org in (str(2**63), "9" * 19, "1" * 40, "+5", " 7"):
+        response = await client.get(
+            "/internal/connections", headers={**internal_headers(), "X-Org-Id": org}
+        )
+        assert response.status_code == 400, org
+    max_ok = await client.get(
+        "/internal/connections",
+        headers={**internal_headers(), "X-Org-Id": str(10**18 - 1)},
+    )
+    assert max_ok.status_code == 200
+
+
+async def test_status_write_never_resurrects_revoked_connection(
+    client: httpx.AsyncClient, settings: Settings
+) -> None:
+    connection_id = uuid.UUID(await create_echo_connection(client))
+    box = SecretBox(settings.encryption_keys)
+    db = Database(settings.database_url)
+    try:
+        async with db.session() as stale, db.session() as other:
+            stale_repo = ConnectionRepository(stale, box)
+            # The stale session has the row cached as active ...
+            await stale_repo.load_secrets(1, connection_id)
+            # ... while another session revokes it.
+            await ConnectionRepository(other, box).revoke_connection(1, connection_id)
+            with pytest.raises(ConnectionRevokedError):
+                await stale_repo.set_status(1, connection_id, ConnectionStatus.ACTIVE)
+            await stale.rollback()
+            with pytest.raises(ConnectionRevokedError):
+                await KeyRepository(stale).issue_key(
+                    org_id=1, connection_id=connection_id
+                )
+    finally:
+        await db.dispose()
+
+    row = await client.get(
+        f"/internal/connections/{connection_id}", headers=internal_headers()
+    )
+    assert row.json()["status"] == "revoked"
+
+
+async def test_connection_test_survives_raising_provider(
+    client: httpx.AsyncClient,
+) -> None:
+    connection_id = await create_echo_connection(client, api_key="raise")
+    response = await client.post(
+        f"/internal/connections/{connection_id}/test", headers=internal_headers()
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["ok"] is False
+    assert body["connection"]["status"] == "error"
+    assert body["connection"]["last_error"] == "connection test failed unexpectedly"
+    assert "leak" not in response.text

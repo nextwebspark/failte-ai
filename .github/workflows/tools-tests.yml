@@ -64,5 +64,11 @@ jobs:
       - name: Pytest
         run: pytest -v
 
+      # Models and migrations must agree (pytest left the DB at head).
+      - name: Alembic check
+        env:
+          DATABASE_URL: ${{ env.TOOLS_TEST_DATABASE_URL }}
+        run: alembic check
+
       - name: Docker image builds
         run: docker build -t fallcha-tools:ci .

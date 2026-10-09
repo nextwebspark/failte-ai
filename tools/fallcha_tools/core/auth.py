@@ -10,6 +10,7 @@
 from __future__ import annotations
 
 import hmac
+import re
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import Annotated
@@ -34,11 +35,16 @@ def secrets_match(provided: str | None, expected: str) -> bool:
     return hmac.compare_digest(provided.encode(), expected.encode())
 
 
+_ID_PATTERN = re.compile(r"^[0-9]{1,18}$")
+_BIGINT_MAX = 2**63 - 1
+
+
 def _positive_int(value: str | None) -> int | None:
-    if value is None or not value.isdecimal():
+    """A positive id that fits the BIGINT columns, else None."""
+    if value is None or not _ID_PATTERN.fullmatch(value):
         return None
     parsed = int(value)
-    return parsed if parsed > 0 else None
+    return parsed if 0 < parsed <= _BIGINT_MAX else None
 
 
 def require_internal_caller(

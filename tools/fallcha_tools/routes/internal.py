@@ -5,12 +5,13 @@ from __future__ import annotations
 import uuid
 
 from fastapi import APIRouter, Depends, Response, status
+from loguru import logger
 
 from fallcha_tools.core.auth import InternalCallerDep, require_internal_caller
 from fallcha_tools.core.container import ConnectionRepoDep, KeyRepoDep, ServicesDep
 from fallcha_tools.core.errors import InvalidRequestError
 from fallcha_tools.core.models import AuthMode, ConnectionStatus
-from fallcha_tools.core.provider import ConnectionContext
+from fallcha_tools.core.provider import ConnectionContext, ConnectionTestResult
 from fallcha_tools.core.repositories import ConnectionInfo
 from fallcha_tools.schemas import (
     CatalogProvider,
@@ -28,6 +29,7 @@ router = APIRouter(prefix="/internal", dependencies=[Depends(require_internal_ca
 
 # OAuth2 connections are created by the OAuth callback, never from raw input.
 _DIRECT_AUTH_MODES = frozenset({AuthMode.SERVICE_ACCOUNT, AuthMode.API_KEY})
+_TEST_FAILED = "connection test failed unexpectedly"
 
 
 def _out(info: ConnectionInfo) -> ConnectionOut:
@@ -107,17 +109,26 @@ async def test_connection(
 ) -> ConnectionTestOut:
     loaded = await repo.load_secrets(caller.org_id, connection_id)
     provider = services.registry.get(loaded.info.provider)
-    result = await provider.test_connection(
-        ConnectionContext(
-            org_id=caller.org_id,
-            connection_id=connection_id,
-            provider=provider.id,
-            auth_mode=loaded.info.auth_mode,
-            secret=loaded.secret,
-            access_token=loaded.access_token,
-            http=services.http,
-        )
+    ctx = ConnectionContext(
+        org_id=caller.org_id,
+        connection_id=connection_id,
+        provider=provider.id,
+        auth_mode=loaded.info.auth_mode,
+        secret=loaded.secret,
+        access_token=loaded.access_token,
+        http=services.http,
     )
+    try:
+        result = await provider.test_connection(ctx)
+    except Exception as exc:  # a provider bug must not become a 500
+        # Type only: the message or locals could contain secret material.
+        logger.warning(
+            "connection test for {} ({}) raised {}",
+            connection_id,
+            provider.id,
+            type(exc).__name__,
+        )
+        result = ConnectionTestResult(ok=False, message=_TEST_FAILED)
     info = await repo.set_status(
         caller.org_id,
         connection_id,

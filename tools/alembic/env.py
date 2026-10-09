@@ -72,7 +72,14 @@ def run_migrations_offline() -> None:
         context.run_migrations()
 
 
+# Arbitrary constant ("ftools") identifying this service's migration lock.
+_MIGRATION_LOCK_ID = 0x66746F6F6C73
+
+
 def _run_sync(connection: Connection) -> None:
+    # Replicas starting together would race on the same migrations; the
+    # transaction-scoped lock serializes them and releases on commit.
+    connection.execute(text(f"SELECT pg_advisory_xact_lock({_MIGRATION_LOCK_ID})"))
     # The version table lives in our schema, so it must exist first.
     connection.execute(text(f"CREATE SCHEMA IF NOT EXISTS {SCHEMA}"))
     _configure(connection=connection)

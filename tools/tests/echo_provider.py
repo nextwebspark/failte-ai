@@ -46,6 +46,8 @@ class EchoProvider:
             }
 
     async def test_connection(self, ctx: ConnectionContext) -> ConnectionTestResult:
+        if ctx.secret.get("api_key") == "raise":
+            raise RuntimeError(f"provider exploded with {ctx.secret['api_key']}-leak")
         if ctx.secret.get("api_key") == "good":
             return ConnectionTestResult(ok=True, account_label="echo-account")
         return ConnectionTestResult(ok=False, message="bad api key")

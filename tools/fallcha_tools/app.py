@@ -11,6 +11,7 @@ from contextlib import asynccontextmanager
 
 import httpx
 from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from loguru import logger
 
@@ -53,6 +54,21 @@ async def _tools_error_handler(_: Request, exc: Exception) -> JSONResponse:
     return JSONResponse({"detail": str(exc)}, status_code=status_code)
 
 
+async def _validation_error_handler(_: Request, exc: Exception) -> JSONResponse:
+    # FastAPI's default echoes each offending ``input`` (and ``ctx``) back;
+    # request bodies here carry secrets, so only location and reason are kept.
+    errors = exc.errors() if isinstance(exc, RequestValidationError) else []
+    detail = [
+        {
+            "loc": list(err.get("loc", ())),
+            "msg": err.get("msg"),
+            "type": err.get("type"),
+        }
+        for err in errors
+    ]
+    return JSONResponse({"detail": detail}, status_code=422)
+
+
 def create_app(
     settings: Settings | None = None, registry: ProviderRegistry | None = None
 ) -> FastAPI:
@@ -60,7 +76,13 @@ def create_app(
     registry = registry if registry is not None else build_registry()
 
     logger.remove()
-    logger.add(sys.stderr, level=settings.log_level.upper())
+    # No variable values in tracebacks: they could include decrypted secrets.
+    logger.add(
+        sys.stderr,
+        level=settings.log_level.upper(),
+        backtrace=False,
+        diagnose=False,
+    )
 
     box = SecretBox(settings.encryption_keys)
     db = Database(settings.database_url)
@@ -85,6 +107,7 @@ def create_app(
     app = FastAPI(title="Fallcha Tools", lifespan=lifespan)
     app.state.services = services
     app.add_exception_handler(ToolsError, _tools_error_handler)
+    app.add_exception_handler(RequestValidationError, _validation_error_handler)
 
     @app.get("/health")
     async def health() -> dict[str, str]:
