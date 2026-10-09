@@ -29,5 +29,6 @@ mypy --strict --follow-imports=silent \
   api/services/rate_limit \
   api/services/tool_integrations \
   api/utils/text.py \
+  api/utils/trusted_origins.py \
   api/utils/clock.py \
   api/utils/secure_token.py

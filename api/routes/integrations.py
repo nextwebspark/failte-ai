@@ -1,14 +1,18 @@
 """Catalog integrations: providers hosted by the Fallcha tools service.
 
 A thin, RBAC-enforcing proxy. Reads need ``INTEGRATIONS_READ``; connecting,
-reconfiguring, testing and removing need ``CREDENTIALS_WRITE`` (installing and
-uninstalling also create/archive a tool, so they need ``AGENTS_WRITE`` too).
+reconfiguring, testing and removing need ``INTEGRATIONS_WRITE`` (installing
+and uninstalling also create/archive a tool, so they need ``AGENTS_WRITE``
+too).
 """
 
 import uuid
-from typing import Annotated
+from collections.abc import Callable, Coroutine
+from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, Response, status
+from fastapi import APIRouter, Depends, Request, Response, status
+from fastapi.exceptions import RequestValidationError
+from fastapi.routing import APIRoute
 
 from api.schemas.integrations import (
     InstallIntegrationRequest,
@@ -26,18 +30,44 @@ from api.services.tool_integrations import (
     get_integration_service,
 )
 
-router = APIRouter(prefix="/integrations", tags=["integrations"])
+
+class _NoEchoValidationRoute(APIRoute):
+    """422s without each error's ``input``/``ctx``: install bodies carry
+    provider secrets, which FastAPI would otherwise echo back."""
+
+    def get_route_handler(self) -> Callable[[Request], Coroutine[Any, Any, Response]]:
+        handler = super().get_route_handler()
+
+        async def no_echo_handler(request: Request) -> Response:
+            try:
+                return await handler(request)
+            except RequestValidationError as exc:
+                raise RequestValidationError(
+                    [
+                        {k: v for k, v in err.items() if k not in ("input", "ctx")}
+                        for err in exc.errors()
+                    ]
+                ) from None
+
+        return no_echo_handler
+
+
+router = APIRouter(
+    prefix="/integrations",
+    tags=["integrations"],
+    route_class=_NoEchoValidationRoute,
+)
 
 Integrations = Annotated[IntegrationService, Depends(get_integration_service)]
 Reader = Annotated[
     OrgMembership, Depends(require_permission(Permission.INTEGRATIONS_READ))
 ]
 Writer = Annotated[
-    OrgMembership, Depends(require_permission(Permission.CREDENTIALS_WRITE))
+    OrgMembership, Depends(require_permission(Permission.INTEGRATIONS_WRITE))
 ]
 Installer = Annotated[
     OrgMembership,
-    Depends(require_permission(Permission.CREDENTIALS_WRITE, Permission.AGENTS_WRITE)),
+    Depends(require_permission(Permission.INTEGRATIONS_WRITE, Permission.AGENTS_WRITE)),
 ]
 
 

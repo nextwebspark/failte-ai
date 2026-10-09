@@ -42,6 +42,7 @@ from api.services.pipecat.tracing_config import (
     load_all_org_langfuse_credentials,
 )
 from api.services.pipecat.tts_cache.runtime import close_speech_cache
+from api.services.tool_integrations.client import close_shared_http_client
 from api.services.worker_sync.manager import (
     WorkerSyncManager,
     set_worker_sync_manager,
@@ -100,6 +101,7 @@ async def lifespan(app: FastAPI):
                 finally:
                     await loop_lag.stop()
                     metrics.stop()
+                    await close_shared_http_client()
 
 
 app = FastAPI(

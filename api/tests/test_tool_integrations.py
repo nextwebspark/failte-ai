@@ -4,6 +4,8 @@ an install creates in the (real) test database."""
 
 from __future__ import annotations
 
+import asyncio
+import ipaddress
 import json
 import uuid
 from collections.abc import AsyncIterator, Callable, Iterator
@@ -35,6 +37,7 @@ from api.services.tool_integrations import resources as resources_module
 from api.services.tool_integrations.client import Caller, ToolsServiceClient
 from api.services.tool_management import ToolManagementError
 from api.utils import url_security
+from api.utils.trusted_origins import build_trusted_origins
 from api.utils.url_security import validate_user_configured_service_url
 
 pytestmark = pytest.mark.real_org_roles
@@ -250,44 +253,38 @@ async def test_catalog_forwards_internal_identity(client_as, org, tools_api):
 # -- RBAC -----------------------------------------------------------------------
 
 
+FIXED_ID = uuid.uuid4()
+WRITERS = {OrgRole.DEVELOPER, OrgRole.ADMIN}
+
+
 @pytest.mark.parametrize(
-    ("method", "path", "allowed"),
+    ("method", "path", "allowed", "success"),
     [
-        ("GET", "/api/v1/integrations/catalog", {OrgRole.DEVELOPER, OrgRole.ADMIN}),
-        ("GET", "/api/v1/integrations/connections", {OrgRole.DEVELOPER, OrgRole.ADMIN}),
-        (
-            "POST",
-            "/api/v1/integrations/connections",
-            {OrgRole.DEVELOPER, OrgRole.ADMIN},
-        ),
-        (
-            "PATCH",
-            f"/api/v1/integrations/connections/{uuid.uuid4()}",
-            {OrgRole.DEVELOPER, OrgRole.ADMIN},
-        ),
-        (
-            "POST",
-            f"/api/v1/integrations/connections/{uuid.uuid4()}/test",
-            {OrgRole.DEVELOPER, OrgRole.ADMIN},
-        ),
-        (
-            "DELETE",
-            f"/api/v1/integrations/connections/{uuid.uuid4()}",
-            {OrgRole.DEVELOPER, OrgRole.ADMIN},
-        ),
+        ("GET", "/api/v1/integrations/catalog", WRITERS, 200),
+        ("GET", "/api/v1/integrations/connections", WRITERS, 200),
+        ("POST", "/api/v1/integrations/connections", WRITERS, 201),
+        ("PATCH", f"/api/v1/integrations/connections/{FIXED_ID}", WRITERS, 200),
+        ("POST", f"/api/v1/integrations/connections/{FIXED_ID}/test", WRITERS, 200),
+        ("DELETE", f"/api/v1/integrations/connections/{FIXED_ID}", WRITERS, 204),
     ],
 )
-async def test_role_matrix(client_as, configured, method, path, allowed):
-    # Unmatched calls to the fake fail loudly; only denial is asserted here.
-    with respx.mock(base_url=TOOLS_URL, assert_all_called=False) as router:
-        router.route().respond(404, json={"detail": "connection not found"})
-        for role in OrgRole:
-            body = {"config": {}} if method == "PATCH" else _install_body()
-            response = await client_as(role).request(method, path, json=body)
-            denied = response.status_code == 403
-            assert denied is (role not in allowed), (
-                f"{role} {method} {path} -> {response.status_code} {response.text}"
-            )
+async def test_role_matrix(client_as, tools_api, method, path, allowed, success):
+    tools_api.get("/internal/connections").respond(
+        json={"connections": [_connection(FIXED_ID)]}
+    )
+    tools_api.patch(f"/internal/connections/{FIXED_ID}").respond(
+        json=_connection(FIXED_ID)
+    )
+    tools_api.post(f"/internal/connections/{FIXED_ID}/test").respond(
+        json={"ok": True, "message": "ok", "connection": _connection(FIXED_ID)}
+    )
+    for role in OrgRole:
+        body = {"config": {}} if method == "PATCH" else _install_body()
+        response = await client_as(role).request(method, path, json=body)
+        expected = success if role in allowed else 403
+        assert response.status_code == expected, (
+            f"{role} {method} {path} -> {response.status_code} {response.text}"
+        )
 
 
 async def test_viewer_cannot_install(client_as, org, tools_api):
@@ -423,12 +420,15 @@ async def test_install_rolls_back_when_tool_creation_fails(
     monkeypatch.setattr(
         resources_module,
         "create_tool_for_user",
-        AsyncMock(side_effect=ToolManagementError("boom", "Tool rejected")),
+        AsyncMock(
+            side_effect=ToolManagementError("boom", "Tool rejected", status_code=404)
+        ),
     )
     response = await client_as(OrgRole.ADMIN).post(
         "/api/v1/integrations/connections", json=_install_body()
     )
-    assert response.status_code == 422
+    # The tool-management status is preserved.
+    assert response.status_code == 404
     assert response.json()["detail"] == "Tool rejected"
 
     revoked = tools_api["revoke"].calls.last.request.url.path
@@ -601,7 +601,7 @@ def _client(handler: Callable[[httpx.Request], httpx.Response]) -> ToolsServiceC
     return ToolsServiceClient(
         base_url=TOOLS_URL,
         internal_secret=SECRET,
-        transport=httpx.MockTransport(handler),
+        http=httpx.AsyncClient(transport=httpx.MockTransport(handler)),
     )
 
 
@@ -653,15 +653,66 @@ async def test_issued_key_is_masked_in_repr():
 # -- URL allowlist --------------------------------------------------------------
 
 
-def test_tools_service_host_is_trusted_by_default():
-    host = httpx.URL(constants.TOOLS_SERVICE_URL).host
-    assert host in constants.TRUSTED_TOOL_HOSTS
+def test_trusted_origins_match_scheme_host_and_port():
+    trusted = build_trusted_origins(
+        ["http://fallcha-tools:8000", "https://tools.internal"],
+        tools_service_url=None,
+        tools_internal_secret=None,
+    )
+    assert trusted == {
+        ("http", "fallcha-tools", 8000),
+        ("https", "tools.internal", 443),
+    }
 
 
-def test_saas_url_guard_allows_only_trusted_internal_hosts(monkeypatch):
+def test_trusted_origins_refuse_loopback_ip_and_malformed_entries():
+    trusted = build_trusted_origins(
+        [
+            "http://localhost:8000",
+            "http://api.localhost",
+            "http://127.0.0.1:8010",
+            "http://169.254.169.254",
+            "http://[::1]:80",
+            "fallcha-tools",
+            "http://ok-host:9000",
+        ],
+        tools_service_url=None,
+        tools_internal_secret=None,
+    )
+    assert trusted == {("http", "ok-host", 9000)}
+
+
+def test_tools_service_origin_is_trusted_only_when_configured():
+    url = "http://fallcha-tools:8000"
+    assert (
+        build_trusted_origins([], tools_service_url=url, tools_internal_secret=None)
+        == set()
+    )
+    assert build_trusted_origins(
+        [], tools_service_url=url, tools_internal_secret=SECRET
+    ) == {("http", "fallcha-tools", 8000)}
+    # A loopback tools service URL is never trusted.
+    assert (
+        build_trusted_origins(
+            [],
+            tools_service_url="http://localhost:8010",
+            tools_internal_secret=SECRET,
+        )
+        == set()
+    )
+
+
+def test_saas_url_guard_allows_only_trusted_origins(monkeypatch):
     monkeypatch.setattr(url_security, "DEPLOYMENT_MODE", "saas")
     monkeypatch.setattr(
-        url_security, "TRUSTED_TOOL_HOSTS", frozenset({"fallcha-tools"})
+        url_security,
+        "TRUSTED_ORIGINS",
+        frozenset({("http", "fallcha-tools", 8000)}),
+    )
+    monkeypatch.setattr(
+        url_security,
+        "_resolve_hostname_ips",
+        lambda host, port: [ipaddress.ip_address("172.18.0.5")],
     )
 
     validate_user_configured_service_url(
@@ -670,7 +721,13 @@ def test_saas_url_guard_allows_only_trusted_internal_hosts(monkeypatch):
     validate_user_configured_service_url(
         "http://FALLCHA-TOOLS:8000/mcp/google-calendar", field_name="url"
     )
-    for url in ("http://localhost:8000/x", "http://10.0.0.5/x"):
+    for url in (
+        "http://fallcha-tools:8001/x",  # another port on the same host
+        "https://fallcha-tools:8000/x",  # another scheme
+        "http://fallcha-tools/x",  # default port
+        "http://localhost:8000/x",
+        "http://10.0.0.5/x",
+    ):
         with pytest.raises(ValueError):
             validate_user_configured_service_url(url, field_name="url")
 
@@ -690,3 +747,115 @@ async def test_credentials_without_metadata_are_ignored(org, sessions):
         await session.commit()
     resources = resources_module.DbIntegrationResources()
     assert await resources.list_linked_credentials(org.id) == []
+
+
+# -- review follow-ups --------------------------------------------------------------
+
+
+async def test_credentials_api_refuses_to_change_integration_credentials(
+    client_as, org, tools_api
+):
+    client = client_as(OrgRole.ADMIN)
+    installed = await _install(client)
+    path = f"/api/v1/credentials/{installed['credential_uuid']}"
+
+    response = await client.put(path, json={"credential_data": {"token": "x"}})
+    assert response.status_code == 409
+    assert "uninstall it from Integrations" in response.json()["detail"]
+    response = await client.delete(path)
+    assert response.status_code == 409
+
+    credential = await db_client.get_credential_by_uuid(
+        installed["credential_uuid"], org.id
+    )
+    assert credential.credential_data["token"] == ISSUED_KEY
+
+
+async def test_uninstall_archives_tools_of_an_already_deleted_credential(
+    client_as, org, tools_api
+):
+    """Orphan scenario: the credential was soft-deleted out of band (e.g.
+    before the credentials API refused it); its tool must still be archived."""
+    client = client_as(OrgRole.ADMIN)
+    installed = await _install(client)
+    await db_client.delete_credential(installed["credential_uuid"], org.id)
+
+    response = await client.delete(
+        f"/api/v1/integrations/connections/{installed['id']}"
+    )
+    assert response.status_code == 204
+    tool = await db_client.get_tool_by_uuid(
+        installed["tool_uuids"][0], org.id, include_archived=True
+    )
+    assert tool.status == ToolStatus.ARCHIVED.value
+
+
+async def test_uninstall_cleans_up_when_tools_service_forgot_the_connection(
+    client_as, org, tools_api
+):
+    client = client_as(OrgRole.ADMIN)
+    installed = await _install(client)
+    tools_api["revoke"].mock(
+        return_value=httpx.Response(404, json={"detail": "connection not found"})
+    )
+
+    response = await client.delete(
+        f"/api/v1/integrations/connections/{installed['id']}"
+    )
+    assert response.status_code == 204
+    tool = await db_client.get_tool_by_uuid(
+        installed["tool_uuids"][0], org.id, include_archived=True
+    )
+    assert tool.status == ToolStatus.ARCHIVED.value
+    assert (
+        await db_client.get_credential_by_uuid(installed["credential_uuid"], org.id)
+        is None
+    )
+
+
+async def test_double_uninstall_is_safe(client_as, org, tools_api):
+    client = client_as(OrgRole.ADMIN)
+    installed = await _install(client)
+    path = f"/api/v1/integrations/connections/{installed['id']}"
+
+    assert (await client.delete(path)).status_code == 204
+    assert (await client.delete(path)).status_code == 204
+    assert tools_api["revoke"].call_count == 2
+    tool = await db_client.get_tool_by_uuid(
+        installed["tool_uuids"][0], org.id, include_archived=True
+    )
+    assert tool.status == ToolStatus.ARCHIVED.value
+
+
+async def test_install_validation_errors_never_echo_the_secret(client_as, tools_api):
+    client = client_as(OrgRole.ADMIN)
+    for body in (
+        {k: v for k, v in _install_body().items() if k != "provider"},  # input=body
+        _install_body(secret=SA_SECRET["private_key"]),  # input=the secret itself
+        _install_body(auth_mode="oauth2"),
+    ):
+        response = await client.post("/api/v1/integrations/connections", json=body)
+        assert response.status_code == 422
+        assert SA_SECRET["private_key"] not in response.text
+        for err in response.json()["detail"]:
+            assert "input" not in err and "ctx" not in err
+    assert not tools_api["catalog"].called
+
+
+async def test_install_rolls_back_when_cancelled(org, tools_api, monkeypatch):
+    from api.schemas.integrations import InstallIntegrationRequest
+    from api.services.tool_integrations import Actor, get_integration_service
+
+    monkeypatch.setattr(
+        resources_module,
+        "create_tool_for_user",
+        AsyncMock(side_effect=asyncio.CancelledError()),
+    )
+    service = get_integration_service()
+    with pytest.raises(asyncio.CancelledError):
+        await service.install(
+            Actor(organization_id=org.id, user=org.members[OrgRole.ADMIN]),
+            InstallIntegrationRequest.model_validate(_install_body()),
+        )
+    assert tools_api["revoke"].call_count == 1
+    assert await _integration_credentials(org.id, active_only=True) == []

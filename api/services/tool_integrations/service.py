@@ -151,6 +151,8 @@ class IntegrationService:
     # -- reads -----------------------------------------------------------
 
     async def catalog(self, actor: Actor) -> IntegrationCatalogResponse:
+        # Thin on purpose: the route depends only on this service, which owns
+        # the actor -> tools-service identity mapping and client wiring.
         return await self._tools.get_catalog(actor.caller)
 
     async def list_connections(
@@ -178,6 +180,8 @@ class IntegrationService:
             ),
         )
         credential_uuid: str | None = None
+        tool_uuid: str | None = None
+        succeeded = False
         try:
             credential_uuid = await self._resources.create_credential(
                 organization_id=actor.organization_id,
@@ -208,13 +212,16 @@ class IntegrationService:
                     credential_uuid=credential_uuid,
                 ),
             )
-        except Exception as exc:
-            logger.warning(
-                f"Installing {provider.id} for org {actor.organization_id} failed "
-                f"({type(exc).__name__}); rolling back connection {connection.id}"
-            )
-            await self._compensate(actor, connection.id, credential_uuid)
-            raise
+            succeeded = True
+        finally:
+            # ``finally`` (not ``except Exception``) so a cancelled request is
+            # rolled back too.
+            if not succeeded:
+                logger.warning(
+                    f"Installing {provider.id} for org {actor.organization_id} "
+                    f"failed; rolling back connection {connection.id}"
+                )
+                await self._compensate(actor, connection.id, credential_uuid, tool_uuid)
 
         logger.info(
             f"Installed {provider.id} for org {actor.organization_id}: "
@@ -223,7 +230,7 @@ class IntegrationService:
         return IntegrationConnectionResponse(
             **connection.model_dump(),
             credential_uuid=credential_uuid,
-            tool_uuids=[tool_uuid],
+            tool_uuids=[tool_uuid] if tool_uuid else [],
         )
 
     async def update_config(
@@ -253,8 +260,9 @@ class IntegrationService:
         local cleanup fails; retrying is safe (revoke is idempotent)."""
         linked = [
             c
+            # Deleted credentials too, so no tool that used one stays active.
             for c in await self._resources.list_linked_credentials(
-                actor.organization_id
+                actor.organization_id, include_deleted=True
             )
             if c.connection_id == connection_id
         ]
@@ -309,10 +317,24 @@ class IntegrationService:
             )
 
     async def _compensate(
-        self, actor: Actor, connection_id: uuid.UUID, credential_uuid: str | None
+        self,
+        actor: Actor,
+        connection_id: uuid.UUID,
+        credential_uuid: str | None,
+        tool_uuid: str | None,
     ) -> None:
         """Best-effort rollback; failures are logged, never raised, so the
         caller sees the original error."""
+        if tool_uuid is not None:
+            try:
+                await self._resources.archive_tool(
+                    organization_id=actor.organization_id, tool_uuid=tool_uuid
+                )
+            except Exception as exc:  # noqa: BLE001 - rollback is best-effort
+                logger.error(
+                    f"Rollback could not archive tool {tool_uuid} for org "
+                    f"{actor.organization_id}: {type(exc).__name__}"
+                )
         try:
             await self._tools.revoke_connection(actor.caller, connection_id)
         except Exception as exc:  # noqa: BLE001 - rollback is best-effort

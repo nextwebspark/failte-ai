@@ -1,7 +1,6 @@
 import os
 from pathlib import Path
 from typing import Final
-from urllib.parse import urlparse
 
 from api.enums import Environment
 
@@ -102,16 +101,12 @@ TOOLS_SERVICE_URL = (
     os.getenv("TOOLS_SERVICE_URL") or "http://fallcha-tools:8000"
 ).rstrip("/")
 TOOLS_INTERNAL_SECRET = os.getenv("TOOLS_INTERNAL_SECRET") or None
-# Hostnames that user-configured tool URLs may point at even in SaaS mode,
-# where private/internal addresses are otherwise refused. Always includes the
-# tools service host.
-TRUSTED_TOOL_HOSTS: frozenset[str] = frozenset(
-    host
-    for host in (
-        *(h.strip().lower() for h in os.getenv("TRUSTED_TOOL_HOSTS", "").split(",")),
-        (urlparse(TOOLS_SERVICE_URL).hostname or "").lower(),
-    )
-    if host
+# Comma-separated origins (scheme://host[:port]) that user-configured tool
+# URLs may target even in SaaS mode, where private addresses are otherwise
+# refused. The tools service origin is added when TOOLS_INTERNAL_SECRET is set.
+# See api/utils/trusted_origins.py.
+TRUSTED_TOOL_HOSTS: tuple[str, ...] = tuple(
+    h.strip() for h in os.getenv("TRUSTED_TOOL_HOSTS", "").split(",") if h.strip()
 )
 # Who owns credit balances and charging: "stripe" (local ledger, paid through
 # Stripe), "mps" (the managed model service, MPS) or "none" (no billing). Defaults

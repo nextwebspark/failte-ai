@@ -35,6 +35,25 @@ _MAX_DETAIL_CHARS = 300
 _Model = TypeVar("_Model", bound=BaseModel)
 
 
+_shared_http: httpx.AsyncClient | None = None
+
+
+def shared_http_client() -> httpx.AsyncClient:
+    """One pooled client per worker, created on first use."""
+    global _shared_http
+    if _shared_http is None or _shared_http.is_closed:
+        _shared_http = httpx.AsyncClient(timeout=DEFAULT_TIMEOUT)
+    return _shared_http
+
+
+async def close_shared_http_client() -> None:
+    """Called on app shutdown."""
+    global _shared_http
+    if _shared_http is not None:
+        await _shared_http.aclose()
+        _shared_http = None
+
+
 @dataclass(frozen=True, slots=True)
 class Caller:
     """Who the tools service acts for."""
@@ -100,12 +119,12 @@ class ToolsServiceClient:
         base_url: str,
         internal_secret: str,
         timeout: httpx.Timeout = DEFAULT_TIMEOUT,
-        transport: httpx.AsyncBaseTransport | None = None,
+        http: httpx.AsyncClient | None = None,
     ) -> None:
         self._base_url = base_url.rstrip("/")
         self._secret = internal_secret
         self._timeout = timeout
-        self._transport = transport
+        self._http = http
 
     # -- catalog ---------------------------------------------------------
 
@@ -199,14 +218,14 @@ class ToolsServiceClient:
             "X-User-Id": str(caller.user_id),
         }
         try:
-            async with httpx.AsyncClient(
-                base_url=self._base_url,
+            http = self._http or shared_http_client()
+            response = await http.request(
+                method,
+                f"{self._base_url}{path}",
+                json=json,
+                headers=headers,
                 timeout=timeout or self._timeout,
-                transport=self._transport,
-            ) as client:
-                response = await client.request(
-                    method, path, json=json, headers=headers
-                )
+            )
         except httpx.TimeoutException:
             logger.warning(f"Tools service {method} {path} timed out")
             raise ToolsServiceUnavailableError(

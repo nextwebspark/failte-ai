@@ -17,7 +17,7 @@ from typing import Any, Protocol
 from api.db import db_client
 from api.db.models import UserModel
 from api.enums import ToolCategory, WebhookCredentialType
-from api.errors.integrations import IntegrationInvalidRequestError
+from api.errors.integrations import IntegrationConflictError, IntegrationToolError
 from api.schemas.tool import CreateToolRequest, McpToolConfig, McpToolDefinition
 from api.services.tool_management import ToolManagementError, create_tool_for_user
 
@@ -67,7 +67,7 @@ class IntegrationResources(Protocol):
     ) -> None: ...
 
     async def list_linked_credentials(
-        self, organization_id: int
+        self, organization_id: int, *, include_deleted: bool = False
     ) -> list[LinkedCredential]: ...
 
     async def mcp_tools_by_credential(
@@ -108,6 +108,15 @@ def _linked(credential_uuid: str, data: object) -> LinkedCredential | None:
         credential_uuid=credential_uuid,
         connection_id=connection_id,
         provider=provider,
+    )
+
+
+def is_integration_managed(credential_data: object) -> bool:
+    """True for a credential an installed integration owns. Such credentials
+    are changed or removed only through the integrations API."""
+    return (
+        isinstance(credential_data, dict)
+        and INTEGRATION_METADATA_KEY in credential_data
     )
 
 
@@ -165,7 +174,9 @@ class DbIntegrationResources:
             ),
         )
         if updated is None:
-            raise IntegrationInvalidRequestError("Integration credential disappeared")
+            raise IntegrationConflictError(
+                "The integration's credential was removed while installing"
+            )
 
     async def delete_credential(
         self, *, organization_id: int, credential_uuid: str
@@ -173,9 +184,11 @@ class DbIntegrationResources:
         await db_client.delete_credential(credential_uuid, organization_id)
 
     async def list_linked_credentials(
-        self, organization_id: int
+        self, organization_id: int, *, include_deleted: bool = False
     ) -> list[LinkedCredential]:
-        credentials = await db_client.get_credentials_for_organization(organization_id)
+        credentials = await db_client.get_credentials_for_organization(
+            organization_id, active_only=not include_deleted
+        )
         linked = (
             _linked(str(c.credential_uuid), c.credential_data) for c in credentials
         )
@@ -212,7 +225,9 @@ class DbIntegrationResources:
         try:
             created = await create_tool_for_user(request, user, source="integration")
         except ToolManagementError as exc:
-            raise IntegrationInvalidRequestError(exc.message) from exc
+            raise IntegrationToolError(
+                exc.message, status_code=exc.status_code
+            ) from exc
         return created.tool_uuid
 
     async def archive_tool(self, *, organization_id: int, tool_uuid: str) -> None:

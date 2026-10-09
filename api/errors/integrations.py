@@ -45,3 +45,13 @@ class IntegrationConflictError(IntegrationError):
 class IntegrationInvalidRequestError(IntegrationError):
     status_code = 422
     code = "integration_invalid_request"
+
+
+class IntegrationToolError(IntegrationError):
+    """Creating the integration's tool was refused; keeps the cause's status."""
+
+    code = "integration_tool_rejected"
+
+    def __init__(self, message: str, *, status_code: int) -> None:
+        super().__init__(message)
+        self.status_code = status_code
