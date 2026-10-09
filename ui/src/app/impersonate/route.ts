@@ -39,7 +39,7 @@ const SESSION_COOKIE_RE = /^(?:__Host-)?(?:stack|hexclave)-(?:access|refresh)(?:
 
 /**
  * Domains a cookie could have been scoped to from this host, e.g.
- * "app.dograh.com" -> ["app.dograh.com", "dograh.com"]. Returns [] for
+ * "app.fallcha.ai" -> ["app.fallcha.ai", "fallcha.ai"]. Returns [] for
  * localhost / IP hosts. Stops before the last label, which over-generates for
  * multi-label public suffixes (app.example.co.uk also yields co.uk) — the
  * browser just rejects those deletions, so the cost is a wasted header.

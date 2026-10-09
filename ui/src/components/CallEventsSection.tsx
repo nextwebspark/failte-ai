@@ -14,6 +14,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
+import { BRAND } from "@/config/brand";
 import { useOrgConfig } from "@/context/OrgConfigContext";
 import { detailFromError } from "@/lib/apiError";
 import { useAuth } from "@/lib/auth";
@@ -56,7 +57,7 @@ function BigQueryFields({ config, onChange, deploymentIdentityAvailable }: Desti
             <p className="text-sm text-muted-foreground">Saved keys are masked. Leave the masked value unchanged to keep the current key.</p>
           </div>
         </>
-      ) : <p className="text-sm text-muted-foreground">Uses the Google identity configured on your Dograh server.</p>}
+      ) : <p className="text-sm text-muted-foreground">Uses the Google identity configured on your {BRAND.name} server.</p>}
       <p className="text-sm text-muted-foreground">The identity needs permission to read the table schema and insert rows.</p>
     </div>
   );

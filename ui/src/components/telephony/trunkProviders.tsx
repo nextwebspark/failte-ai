@@ -12,6 +12,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { BRAND } from "@/config/brand";
 
 /**
  * Per-provider pieces of the trunk editor.
@@ -100,7 +101,7 @@ function CloudonixTrunkFields({
           </SelectContent>
         </Select>
         <p className="text-xs text-muted-foreground">
-          Sets the remote peer Failte AI dials for this trunk.
+          Sets the remote peer {BRAND.name} dials for this trunk.
           {originIp
             ? ` Calls leave from ${originIp} — allow it on your side.`
             : ""}

@@ -14,10 +14,11 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { BRAND } from "@/config/brand";
 import { useDispositionCodes } from "@/hooks/useDispositionCodes";
 
 type Row = {
-  /** The Dograh disposition being translated. Fixed for a built-in row. */
+  /** The Fallcha.ai disposition being translated. Fixed for a built-in row. */
   source: string;
   /** What this organization calls it. Seeded with `source`. */
   target: string;
@@ -28,7 +29,7 @@ type Row = {
 type Props = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  /** Overrides currently stored, keyed by Dograh disposition. */
+  /** Overrides currently stored, keyed by Fallcha.ai disposition. */
   mapping: Record<string, string>;
   /** Persist the mapping and report whether the dialog may close. */
   onSave: (mapping: Record<string, string>) => Promise<boolean>;
@@ -138,7 +139,7 @@ export function DispositionMappingDialog({
         <DialogHeader>
           <DialogTitle>Configure disposition mapping</DialogTitle>
           <DialogDescription>
-            Each Dograh disposition is sent as your own code wherever a call
+            Each {BRAND.name} disposition is sent as your own code wherever a call
             outcome is reported &mdash; webhooks, run filters, reports, and
             external PBX write-backs. Leave a row unchanged to send the
             disposition as-is. Saving here applies the mapping immediately.
@@ -152,7 +153,7 @@ export function DispositionMappingDialog({
         ) : (
           <>
             <div className="grid grid-cols-[1fr_1fr_auto] items-center gap-x-3 gap-y-1 px-1 text-xs font-medium text-muted-foreground">
-              <span>Dograh disposition</span>
+              <span>{BRAND.name} disposition</span>
               <span>Your code</span>
               <span className="w-8" />
             </div>
@@ -177,7 +178,7 @@ export function DispositionMappingDialog({
                       </Label>
                     ) : (
                       <Input
-                        aria-label="Dograh disposition"
+                        aria-label={`${BRAND.name} disposition`}
                         value={row.source}
                         disabled={isSaving}
                         onChange={(event) =>
@@ -208,7 +209,7 @@ export function DispositionMappingDialog({
                         // reflow as rows are edited.
                         disabled={isSaving || !changed}
                         onClick={() => updateRow(index, { target: row.source })}
-                        title="Reset to the Dograh disposition"
+                        title={`Reset to the ${BRAND.name} disposition`}
                       >
                         <RotateCcw className="h-3.5 w-3.5" />
                         <span className="sr-only">

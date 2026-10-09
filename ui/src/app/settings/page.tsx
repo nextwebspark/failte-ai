@@ -12,6 +12,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { BRAND } from "@/config/brand";
 import { useOrgConfig } from "@/context/OrgConfigContext";
 
 export default function SettingsPage() {
@@ -42,7 +43,7 @@ export default function SettingsPage() {
           <CardHeader>
             <CardTitle>MCP Server</CardTitle>
             <CardDescription>
-              Let AI agents access your Failte AI workspace and documentation via
+              Let AI agents access your {BRAND.name} workspace and documentation via
               the Model Context Protocol.
             </CardDescription>
           </CardHeader>

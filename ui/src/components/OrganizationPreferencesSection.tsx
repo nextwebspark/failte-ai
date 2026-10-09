@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { BRAND } from "@/config/brand";
 import { useUserConfig } from "@/context/UserConfigContext";
 import { detailFromError } from "@/lib/apiError";
 import { useAuth } from "@/lib/auth";
@@ -283,8 +284,8 @@ export function OrganizationPreferencesSection() {
               Disposition mapping
             </Label>
             <p className="text-xs text-muted-foreground">
-              Report call outcomes using your own disposition codes instead of
-              Dograh&apos;s. Applies to webhooks, run filters, reports, and
+              Report call outcomes using your own disposition codes instead of{" "}
+              {BRAND.name}&apos;s. Applies to webhooks, run filters, reports, and
               external PBX write-backs. Configuration is preserved when this is
               disabled.
             </p>

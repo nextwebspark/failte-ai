@@ -19,7 +19,7 @@ const defaults: ModelConfigurationDefaultsV2 = {
 
 const configuration = { version: 2, mode: "dograh", dograh: { api_key: "test-key" } };
 
-describe("Managed Dograh temperature", () => {
+describe("Managed model temperature", () => {
     it.each([0, 0.73, null])("saves and reloads %s", async temperature => {
         const onSave = vi.fn();
         const { rerender } = render(<AIModelConfigurationV2Editor defaults={defaults} configuration={configuration} onSave={onSave} />);

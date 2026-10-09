@@ -195,7 +195,7 @@ describe("TrunkCard", () => {
     const call = mocks.updateTrunk.mock.calls[0][0];
     expect(call.path).toEqual({ config_id: 42, trunk_id: 7 });
     // Saving without touching the region must not silently move the trunk to
-    // another region — that changes the remote peer Dograh dials.
+    // another region — that changes the remote peer Fallcha.ai dials.
     expect(call.body.settings).toEqual({
       region: "India",
       sip_domain: "sip.example.in",

@@ -22,6 +22,7 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
+import { BRAND } from "@/config/brand";
 
 import {
     type ContextDestinationRuleRow,
@@ -352,7 +353,7 @@ export function TransferCallToolConfig({
                                     <Label>Dynamic Transfer Resolver</Label>
                                 </div>
                                 <p className="text-xs text-muted-foreground">
-                                    Failte AI sends the resolved argument dictionary to this endpoint. The endpoint must return transfer_context.destination and may return transfer_context.custom_message.
+                                    {BRAND.name} sends the resolved argument dictionary to this endpoint. The endpoint must return transfer_context.destination and may return transfer_context.custom_message.
                                 </p>
                             </div>
 
@@ -365,7 +366,7 @@ export function TransferCallToolConfig({
                                     showValidation
                                 />
                                 <Label className="text-xs text-muted-foreground">
-                                    Failte AI sends a POST request with the resolved argument dictionary.
+                                    {BRAND.name} sends a POST request with the resolved argument dictionary.
                                 </Label>
                             </div>
 
@@ -421,7 +422,7 @@ export function TransferCallToolConfig({
                             <div className="grid gap-2 pt-4 border-t">
                                 <Label>Preset Parameters</Label>
                                 <p className="text-xs text-muted-foreground">
-                                    Add values Failte AI injects at runtime. These are not exposed to the LLM and can use templates like {`{{initial_context.state}}`} or {`{{gathered_context.state}}`}.
+                                    Add values {BRAND.name} injects at runtime. These are not exposed to the LLM and can use templates like {`{{initial_context.state}}`} or {`{{gathered_context.state}}`}.
                                 </p>
                                 <PresetParameterEditor
                                     parameters={presetParameters}

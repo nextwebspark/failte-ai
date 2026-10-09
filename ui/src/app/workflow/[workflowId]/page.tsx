@@ -9,6 +9,7 @@ import { getWorkflowApiV1WorkflowFetchWorkflowIdGet, getWorkflowVersionsApiV1Wor
 import type { WorkflowResponse, WorkflowVersionResponse } from '@/client/types.gen';
 import { FlowEdge, FlowNode } from '@/components/flow/types';
 import SpinLoader from '@/components/SpinLoader';
+import { BRAND } from "@/config/brand";
 import { PostHogEvent } from '@/constants/posthog-events';
 import { UnsavedChangesProvider } from '@/context/UnsavedChangesContext';
 import { detailFromError } from '@/lib/apiError';
@@ -68,7 +69,7 @@ export default function WorkflowDetailPage() {
 
                 if (response.error) {
                     const fallback = response.response?.status === 503
-                        ? 'Failte AI is temporarily unavailable. Please try again later.'
+                        ? `${BRAND.name} is temporarily unavailable. Please try again later.`
                         : 'Failed to fetch workflow';
                     setError(detailFromError(response.error, fallback));
                     return;
