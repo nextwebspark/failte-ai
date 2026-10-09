@@ -22,7 +22,7 @@
 //      endsAt: "2026-11-12T11:00:00-08:00",
 //      partner: { name: "Acme", logo: "/logos/acme.png" },
 //      analyticsId: "devday_ship_a_voice_agent",
-//      storageKey: "dograh_event_banner_devday_dismissed",
+//      storageKey: "fallcha_event_banner_devday_dismissed",
 //    }
 //
 // REMOVING AN EVENT
@@ -65,13 +65,17 @@ export type EventBannerEvent = {
   startsAt: string;
   /** ISO 8601 WITH offset. After this instant the bar retires itself. */
   endsAt: string;
-  /** Optional co-brand. Present: [Dograh] × [partner]. Absent: [Dograh]. */
+  /** Optional co-brand. Present: [Fallcha.ai] × [partner]. Absent: [Fallcha.ai]. */
   partner?: EventBannerPartner;
   /** PostHog `event` property on the `event_banner_clicked` capture. */
   analyticsId: string;
   /** localStorage key holding this event's dismissal. Must be unique per
    *  event, or a visitor who dismissed the last one never sees this one. */
   storageKey: string;
+  /** Pre-rename key (e.g. `dograh_event_banner_*`) whose dismissal is carried
+   *  over to `storageKey` on first read. Only needed for events that were live
+   *  before the Fallcha.ai rename. */
+  legacyStorageKey?: string;
 };
 
 export const events: EventBannerEvent[] = [
@@ -85,6 +89,7 @@ export const events: EventBannerEvent[] = [
     endsAt: "2026-10-06T13:30:00-07:00",
     partner: { name: "Cloudonix", logo: "/logos/cloudonix.png" },
     analyticsId: "sftechweek_own_your_agentic_voice",
-    storageKey: "dograh_event_banner_sftechweek_dismissed",
+    storageKey: "fallcha_event_banner_sftechweek_dismissed",
+    legacyStorageKey: "dograh_event_banner_sftechweek_dismissed",
   },
 ];

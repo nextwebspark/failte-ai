@@ -10,11 +10,11 @@ type HeadlessWidget = {
     sendMessage: (text: string) => Promise<unknown[]>;
 };
 
-type WidgetWindow = Window & { FailteWidget?: HeadlessWidget };
+type WidgetWindow = Window & { FallchaWidget?: HeadlessWidget };
 
 describe("headless chat embed example", () => {
     afterEach(() => {
-        delete (window as WidgetWindow).FailteWidget;
+        delete (window as WidgetWindow).FallchaWidget;
         vi.unstubAllGlobals();
         vi.restoreAllMocks();
         document.body.innerHTML = "";
@@ -22,7 +22,7 @@ describe("headless chat embed example", () => {
 
     it("waits for the async widget script before registering callbacks", () => {
         document.body.innerHTML = `
-            <script id="failte-widget"></script>
+            <script id="fallcha-widget"></script>
             <button id="open-chat"></button>
             <input id="chat-input" />
             <button id="send-btn"></button>
@@ -46,8 +46,8 @@ describe("headless chat embed example", () => {
         expect(onChatStateChange).not.toHaveBeenCalled();
         expect(onMessage).not.toHaveBeenCalled();
 
-        (window as WidgetWindow).FailteWidget = widget;
-        document.getElementById("failte-widget")?.dispatchEvent(new Event("load"));
+        (window as WidgetWindow).FallchaWidget = widget;
+        document.getElementById("fallcha-widget")?.dispatchEvent(new Event("load"));
 
         expect(onChatStateChange).toHaveBeenCalledOnce();
         expect(onMessage).toHaveBeenCalledOnce();

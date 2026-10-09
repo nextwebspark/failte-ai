@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 
+import { migrateStorageKey } from "@/lib/storageKeys";
+
 interface Options {
     enabled: boolean;
 }
@@ -12,7 +14,8 @@ interface Result {
     isLatest: boolean;
 }
 
-const CACHE_KEY = "dograh-latest-release";
+const CACHE_KEY = "fallcha_latest_release";
+const LEGACY_CACHE_KEY = "dograh-latest-release";
 const CACHE_TTL_MS = 6 * 60 * 60 * 1000;
 const SEMVER_RE = /^v?(\d+)\.(\d+)\.(\d+)$/;
 
@@ -42,6 +45,7 @@ export function useLatestReleaseVersion(
     useEffect(() => {
         if (!enabled || !currentVersion) return;
 
+        migrateStorageKey(LEGACY_CACHE_KEY, CACHE_KEY);
         try {
             const raw = localStorage.getItem(CACHE_KEY);
             if (raw) {

@@ -4,18 +4,21 @@ import { resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const widgetSource = readFileSync(
-    resolve(process.cwd(), 'public/embed/failte-widget.js'),
+    resolve(process.cwd(), 'public/embed/fallcha-widget.js'),
     'utf8',
 );
 
 type WidgetWindow = Window & {
-    FailteWidget?: {
+    FallchaWidget?: {
         init: () => Promise<void>;
         start: () => Promise<void>;
         startChat: () => Promise<void>;
         endChat: () => Promise<unknown[] | null>;
         getState: () => { chat: { status: string } };
+        getContext: () => Record<string, unknown>;
     };
+    FailteWidget?: unknown;
+    DograhWidget?: unknown;
 };
 
 // The embed config endpoint resolves every visitor-facing label server-side, so
@@ -51,7 +54,7 @@ function createFetchMock(autoStart: boolean) {
                     settings: {
                         widgetType: 'chat',
                         embedMode: 'inline',
-                        containerId: 'failte-inline-container',
+                        containerId: 'fallcha-inline-container',
                     },
                     texts: WIDGET_TEXTS,
                     auto_start: autoStart,
@@ -100,13 +103,13 @@ async function loadWidget(fetchMock: ReturnType<typeof createFetchMock>) {
     window.eval(widgetSource);
     await flushMicrotasks();
 
-    const widget = (window as WidgetWindow).FailteWidget;
+    const widget = (window as WidgetWindow).FallchaWidget;
     expect(widget).toBeDefined();
     if (fetchMock.mock.calls.length === 0) {
         await widget?.init();
     }
     await flushMicrotasks();
-    return widget as NonNullable<WidgetWindow['FailteWidget']>;
+    return widget as NonNullable<WidgetWindow['FallchaWidget']>;
 }
 
 describe('public embed widget chat lifecycle', () => {
@@ -114,13 +117,15 @@ describe('public embed widget chat lifecycle', () => {
         vi.useFakeTimers();
         document.head.innerHTML = '';
         document.body.innerHTML = `
-            <script src="http://widget.test/embed/failte-widget.js?token=emb_TEST"></script>
-            <div id="failte-inline-container"></div>
+            <script src="http://widget.test/embed/fallcha-widget.js?token=emb_TEST"></script>
+            <div id="fallcha-inline-container"></div>
         `;
     });
 
     afterEach(() => {
+        delete (window as WidgetWindow).FallchaWidget;
         delete (window as WidgetWindow).FailteWidget;
+        delete (window as WidgetWindow).DograhWidget;
         vi.useRealTimers();
         vi.unstubAllGlobals();
         vi.restoreAllMocks();
@@ -135,23 +140,23 @@ describe('public embed widget chat lifecycle', () => {
         await flushMicrotasks();
 
         expect(countInitCalls(fetchMock)).toBe(1);
-        expect(document.querySelector('.failte-chat-inline-cta')).toBeNull();
-        expect(document.querySelector('.failte-chat-panel--inline')).not.toBeNull();
+        expect(document.querySelector('.fallcha-chat-inline-cta')).toBeNull();
+        expect(document.querySelector('.fallcha-chat-panel--inline')).not.toBeNull();
     });
 
     it('public startChat opens the inline panel and reuses its session', async () => {
         const fetchMock = createFetchMock(false);
         const widget = await loadWidget(fetchMock);
 
-        expect(document.querySelector('.failte-chat-inline-cta')).not.toBeNull();
+        expect(document.querySelector('.fallcha-chat-inline-cta')).not.toBeNull();
         expect(countInitCalls(fetchMock)).toBe(0);
 
         await widget.startChat();
         await flushMicrotasks();
 
         expect(countInitCalls(fetchMock)).toBe(1);
-        expect(document.querySelector('.failte-chat-inline-cta')).toBeNull();
-        expect(document.querySelector('.failte-chat-panel--inline')).not.toBeNull();
+        expect(document.querySelector('.fallcha-chat-inline-cta')).toBeNull();
+        expect(document.querySelector('.fallcha-chat-panel--inline')).not.toBeNull();
 
         await widget.startChat();
         await flushMicrotasks();
@@ -165,7 +170,7 @@ describe('public embed widget chat lifecycle', () => {
         await widget.startChat();
         await flushMicrotasks();
 
-        const endButton = document.querySelector<HTMLButtonElement>('.failte-chat-end');
+        const endButton = document.querySelector<HTMLButtonElement>('.fallcha-chat-end');
         expect(endButton).not.toBeNull();
         expect(endButton?.disabled).toBe(false);
 
@@ -176,13 +181,13 @@ describe('public embed widget chat lifecycle', () => {
             String(url).endsWith('/api/v1/public/embed/chat/emb_session_TEST/end'),
         )).toBe(false);
 
-        expect(document.querySelector('.failte-chat-end-confirmation')?.textContent)
+        expect(document.querySelector('.fallcha-chat-end-confirmation')?.textContent)
             .toContain(WIDGET_TEXTS.endChatConfirmText);
-        expect(document.querySelector('.failte-chat-end-confirm-cancel')?.textContent)
+        expect(document.querySelector('.fallcha-chat-end-confirm-cancel')?.textContent)
             .toBe(WIDGET_TEXTS.endChatCancelText);
 
         const confirmEndButton = document.querySelector<HTMLButtonElement>(
-            '.failte-chat-end-confirm-submit',
+            '.fallcha-chat-end-confirm-submit',
         );
         expect(confirmEndButton).not.toBeNull();
         confirmEndButton?.click();
@@ -193,8 +198,8 @@ describe('public embed widget chat lifecycle', () => {
         );
         expect(endCalls).toHaveLength(1);
         expect(widget.getState().chat.status).toBe('ended');
-        expect(document.querySelector('.failte-chat-banner')?.textContent).toContain('Conversation ended.');
-        expect(document.querySelector<HTMLButtonElement>('.failte-chat-send')?.disabled).toBe(true);
+        expect(document.querySelector('.fallcha-chat-banner')?.textContent).toContain('Conversation ended.');
+        expect(document.querySelector<HTMLButtonElement>('.fallcha-chat-send')?.disabled).toBe(true);
     });
 
     it('generic start waits for chat configuration before choosing a flow', async () => {
@@ -237,7 +242,7 @@ describe('public embed widget chat lifecycle', () => {
 
         window.eval(widgetSource);
         await flushMicrotasks();
-        const widget = (window as WidgetWindow).FailteWidget;
+        const widget = (window as WidgetWindow).FallchaWidget;
         expect(widget).toBeDefined();
 
         const startPromise = widget?.start();
@@ -254,7 +259,7 @@ describe('public embed widget chat lifecycle', () => {
                 settings: {
                     widgetType: 'chat',
                     embedMode: 'inline',
-                    containerId: 'failte-inline-container',
+                    containerId: 'fallcha-inline-container',
                 },
                 auto_start: false,
             }),
@@ -268,6 +273,103 @@ describe('public embed widget chat lifecycle', () => {
         expect(configCalls).toHaveLength(1);
         expect(countInitCalls(fetchMock)).toBe(1);
         expect(getUserMedia).not.toHaveBeenCalled();
-        expect(document.querySelector('.failte-chat-panel--inline')).not.toBeNull();
+        expect(document.querySelector('.fallcha-chat-panel--inline')).not.toBeNull();
+    });
+});
+
+// Snippets and host pages written before the Failte AI and Dograh renames must
+// keep working against the canonical widget.
+describe('public embed widget legacy names', () => {
+    beforeEach(() => {
+        document.head.innerHTML = '';
+    });
+
+    afterEach(() => {
+        delete (window as WidgetWindow).FallchaWidget;
+        delete (window as WidgetWindow).FailteWidget;
+        delete (window as WidgetWindow).DograhWidget;
+        vi.unstubAllGlobals();
+        vi.restoreAllMocks();
+        document.head.innerHTML = '';
+        document.body.innerHTML = '';
+    });
+
+    function configOnlyFetch(settings: Record<string, unknown>) {
+        return vi.fn(async (input: RequestInfo | URL) => {
+            const url = String(input);
+            if (url.includes('/api/v1/public/embed/config/')) {
+                return {
+                    ok: true,
+                    status: 200,
+                    json: async () => ({
+                        workflow_id: 7,
+                        settings,
+                        texts: WIDGET_TEXTS,
+                        auto_start: false,
+                    }),
+                } as Response;
+            }
+            throw new Error(`Unexpected request: ${url}`);
+        });
+    }
+
+    it('aliases the legacy globals to the canonical widget', async () => {
+        document.body.innerHTML = `
+            <script src="http://widget.test/embed/fallcha-widget.js?token=emb_TEST"></script>
+            <div id="fallcha-inline-container"></div>
+        `;
+        const widget = await loadWidget(
+            configOnlyFetch({ widgetType: 'chat', embedMode: 'inline' }),
+        );
+
+        expect((window as WidgetWindow).FailteWidget).toBe(widget);
+        expect((window as WidgetWindow).DograhWidget).toBe(widget);
+    });
+
+    it.each(['data-failte-context', 'data-dograh-context'])(
+        'reads visitor context from the legacy %s attribute',
+        async (attribute) => {
+            document.body.innerHTML = `
+                <script src="http://widget.test/embed/fallcha-widget.js?token=emb_TEST"
+                    ${attribute}='{"plan":"pro"}'></script>
+                <div id="fallcha-inline-container"></div>
+            `;
+            const widget = await loadWidget(
+                configOnlyFetch({ widgetType: 'chat', embedMode: 'inline' }),
+            );
+
+            expect(widget.getContext()).toEqual({ plan: 'pro' });
+        },
+    );
+
+    it.each(['failte-inline-container', 'dograh-inline-container'])(
+        'renders into a legacy #%s when the config names no container',
+        async (containerId) => {
+            document.body.innerHTML = `
+                <script src="http://widget.test/embed/fallcha-widget.js?token=emb_TEST"></script>
+                <div id="${containerId}"></div>
+            `;
+            await loadWidget(configOnlyFetch({ widgetType: 'chat', embedMode: 'inline' }));
+
+            expect(
+                document.querySelector(`#${containerId} .fallcha-chat-inline-cta`),
+            ).not.toBeNull();
+        },
+    );
+
+    it('falls back to a legacy container when the saved default id is absent', async () => {
+        document.body.innerHTML = `
+            <script src="http://widget.test/embed/fallcha-widget.js?token=emb_TEST"></script>
+            <div id="failte-inline-container"></div>
+        `;
+        await loadWidget(configOnlyFetch({
+            widgetType: 'chat',
+            embedMode: 'inline',
+            containerId: 'fallcha-inline-container',
+        }));
+
+        expect(
+            document.querySelector('#failte-inline-container .fallcha-chat-inline-cta'),
+        ).not.toBeNull();
     });
 });

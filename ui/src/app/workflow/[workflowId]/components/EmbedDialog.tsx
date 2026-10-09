@@ -386,7 +386,7 @@ export function EmbedDialog({
                             ),
                             size: "medium",
                             autoStart: false,
-                            containerId: embedMode === "inline" ? "failte-inline-container" : undefined,
+                            containerId: embedMode === "inline" ? "fallcha-inline-container" : undefined,
                         },
                         usage_limit: null,
                         expires_in_days: null,
@@ -851,12 +851,12 @@ export function EmbedDialog({
                                                 <ul className="text-sm space-y-2 text-muted-foreground">
                                                     <li>• Add the embed script tag to your page (see below).</li>
                                                     <li>• The widget renders no UI - render your own chat interface.</li>
-                                                    <li>• Call <code className="text-xs">window.FailteWidget.startChat()</code> to start a conversation (the agent greeting arrives via <code className="text-xs">onMessage</code>).</li>
-                                                    <li>• Call <code className="text-xs">window.FailteWidget.sendMessage(text)</code> to send a visitor message; it resolves with the updated transcript, or <code className="text-xs">null</code> if the message could not be delivered.</li>
-                                                    <li>• Call <code className="text-xs">window.FailteWidget.endChat()</code> to end the active conversation and trigger its completion webhook.</li>
+                                                    <li>• Call <code className="text-xs">window.FallchaWidget.startChat()</code> to start a conversation (the agent greeting arrives via <code className="text-xs">onMessage</code>).</li>
+                                                    <li>• Call <code className="text-xs">window.FallchaWidget.sendMessage(text)</code> to send a visitor message; it resolves with the updated transcript, or <code className="text-xs">null</code> if the message could not be delivered.</li>
+                                                    <li>• Call <code className="text-xs">window.FallchaWidget.endChat()</code> to end the active conversation and trigger its completion webhook.</li>
                                                     <li>• Use <code className="text-xs">getMessages()</code> to read the transcript at any time.</li>
                                                     <li>• Subscribe to <code className="text-xs">onMessage</code> and <code className="text-xs">onChatStateChange</code> to drive your UI. States are <code className="text-xs">idle</code>, <code className="text-xs">starting</code>, <code className="text-xs">ready</code>, <code className="text-xs">waiting</code>, <code className="text-xs">ended</code>, <code className="text-xs">expired</code>, <code className="text-xs">error</code>.</li>
-                                                    <li>• Call <code className="text-xs">window.FailteWidget.setContext({"{ ... }"})</code> before <code className="text-xs">startChat()</code> to pass visitor details the page learned after load.</li>
+                                                    <li>• Call <code className="text-xs">window.FallchaWidget.setContext({"{ ... }"})</code> before <code className="text-xs">startChat()</code> to pass visitor details the page learned after load.</li>
                                                 </ul>
                                             </div>
 
@@ -877,11 +877,11 @@ export function EmbedDialog({
                                                 <ul className="text-sm space-y-2 text-muted-foreground">
                                                     <li>• Add the embed script tag to your page (see below).</li>
                                                     <li>• The widget renders no UI - render your own buttons.</li>
-                                                    <li>• Call <code className="text-xs">window.FailteWidget.start()</code> to begin a call.</li>
-                                                    <li>• Call <code className="text-xs">window.FailteWidget.end()</code> to end it.</li>
+                                                    <li>• Call <code className="text-xs">window.FallchaWidget.start()</code> to begin a call.</li>
+                                                    <li>• Call <code className="text-xs">window.FallchaWidget.end()</code> to end it.</li>
                                                     <li>• Subscribe to <code className="text-xs">onCallStart</code>, <code className="text-xs">onCallEnd</code>, <code className="text-xs">onStatusChange</code>, <code className="text-xs">onError</code> to drive your UI.</li>
                                                     <li>• <code className="text-xs">start()</code> must run inside a user-gesture handler (click) so the browser grants microphone access.</li>
-                                                    <li>• Call <code className="text-xs">window.FailteWidget.setContext({"{ ... }"})</code> before <code className="text-xs">start()</code> to pass visitor details the page learned after load.</li>
+                                                    <li>• Call <code className="text-xs">window.FallchaWidget.setContext({"{ ... }"})</code> before <code className="text-xs">start()</code> to pass visitor details the page learned after load.</li>
                                                 </ul>
                                             </div>
 
@@ -894,16 +894,16 @@ export function EmbedDialog({
                                                     <code className="text-blue-800 dark:text-blue-200">{`// Vanilla JS - keep your own state, render however you want
 let callStatus = 'idle';
 
-window.FailteWidget?.onStatusChange((status) => {
+window.FallchaWidget?.onStatusChange((status) => {
   callStatus = status;
   // ...trigger your render here (re-paint DOM, dispatch event, etc.)
 });
 
 document.getElementById('talk-btn').addEventListener('click', () => {
   if (callStatus === 'connected' || callStatus === 'connecting') {
-    window.FailteWidget.end();
+    window.FallchaWidget.end();
   } else {
-    window.FailteWidget.start();
+    window.FallchaWidget.start();
   }
 });`}</code>
                                                 </pre>
@@ -913,12 +913,12 @@ document.getElementById('talk-btn').addEventListener('click', () => {
   const [status, setStatus] = useState('idle');
 
   useEffect(() => {
-    window.FailteWidget?.onStatusChange(setStatus);
+    window.FallchaWidget?.onStatusChange(setStatus);
   }, []);
 
   const isLive = status === 'connected' || status === 'connecting';
   return (
-    <button onClick={() => isLive ? window.FailteWidget.end() : window.FailteWidget.start()}>
+    <button onClick={() => isLive ? window.FallchaWidget.end() : window.FallchaWidget.start()}>
       {/* render anything you want from \`status\` */}
     </button>
   );
@@ -934,15 +934,15 @@ document.getElementById('talk-btn').addEventListener('click', () => {
                                             <div className="rounded-lg bg-muted/50 p-4">
                                                 <h4 className="font-medium mb-2">Integration Instructions</h4>
                                                 <ul className="text-sm space-y-2 text-muted-foreground">
-                                                    <li>• Add a div with id=&quot;failte-inline-container&quot; where you want the widget</li>
+                                                    <li>• Add a div with id=&quot;fallcha-inline-container&quot; where you want the widget</li>
                                                     <li>• The widget will render inside this container</li>
                                                     <li>• You have full control over the container&apos;s styling</li>
                                                     {widgetType === "chat" ? (
                                                         <li>• The chat panel renders in the container; the conversation starts when the visitor clicks the button</li>
                                                     ) : (
                                                         <>
-                                                            <li>• Call window.FailteWidget.start() to begin the call</li>
-                                                            <li>• Call window.FailteWidget.end() to end the call</li>
+                                                            <li>• Call window.FallchaWidget.start() to begin the call</li>
+                                                            <li>• Call window.FallchaWidget.end() to end the call</li>
                                                         </>
                                                     )}
                                                 </ul>
@@ -953,7 +953,7 @@ document.getElementById('talk-btn').addEventListener('click', () => {
                                                     <h4 className="font-medium mb-2 text-blue-900 dark:text-blue-100">Example</h4>
                                                     <pre className="text-xs overflow-x-auto">
                                                         <code className="text-blue-800 dark:text-blue-200">{`<h2>Chat with Our Agent</h2>
-<div id="failte-inline-container" style="min-height: 480px">
+<div id="fallcha-inline-container" style="min-height: 480px">
   <!-- Chat panel renders here; no extra JS needed -->
 </div>`}</code>
                                                     </pre>
@@ -962,15 +962,15 @@ document.getElementById('talk-btn').addEventListener('click', () => {
                                                 <div className="rounded-lg bg-blue-50 dark:bg-blue-950/20 p-4 border border-blue-200 dark:border-blue-800">
                                                     <h4 className="font-medium mb-2 text-blue-900 dark:text-blue-100">Example React Component</h4>
                                                     <pre className="text-xs overflow-x-auto">
-                                                        <code className="text-blue-800 dark:text-blue-200">{`export function FailteAgent() {
+                                                        <code className="text-blue-800 dark:text-blue-200">{`export function FallchaAgent() {
   const [isCallActive, setIsCallActive] = useState(false);
 
   useEffect(() => {
     // Widget will auto-initialize when script loads
-    window.FailteWidget?.onCallStart(() => {
+    window.FallchaWidget?.onCallStart(() => {
       setIsCallActive(true);
     });
-    window.FailteWidget?.onCallEnd(() => {
+    window.FallchaWidget?.onCallEnd(() => {
       setIsCallActive(false);
     });
   }, []);
@@ -978,11 +978,11 @@ document.getElementById('talk-btn').addEventListener('click', () => {
   return (
     <div className="my-8">
       <h2>Talk to Our Agent</h2>
-      <div id="failte-inline-container" className="min-h-[400px]">
+      <div id="fallcha-inline-container" className="min-h-[400px]">
         {/* Widget renders here */}
       </div>
       <button
-        onClick={() => window.FailteWidget?.start()}
+        onClick={() => window.FallchaWidget?.start()}
         disabled={isCallActive}
       >
         Start Call
@@ -1056,8 +1056,8 @@ document.getElementById('talk-btn').addEventListener('click', () => {
                                             </p>
                                             <p className="text-xs text-muted-foreground">
                                                 To pass visitor details to the agent, edit the{" "}
-                                                <code className="text-xs">data-failte-context</code> values above — or call{" "}
-                                                <code className="text-xs">{"window.FailteWidget.setContext({ ... })"}</code> for
+                                                <code className="text-xs">data-fallcha-context</code> values above — or call{" "}
+                                                <code className="text-xs">{"window.FallchaWidget.setContext({ ... })"}</code> for
                                                 details your page learns later. Each one is available in your prompts as{" "}
                                                 <code className="text-xs">{"{{initial_context.page_url}}"}</code>.
                                             </p>

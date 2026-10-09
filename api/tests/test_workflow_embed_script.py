@@ -11,13 +11,16 @@ def _script() -> str:
 
 def test_script_loads_the_widget_with_the_token():
     script = _script()
-    assert "/embed/failte-widget.js?token=emb_TEST" in script
+    assert "/embed/fallcha-widget.js?token=emb_TEST" in script
+    assert "<!-- Fallcha.ai Widget -->" in script
+    assert "'script', 'fallcha-widget'" in script
+    assert "failte" not in script.lower() and "dograh" not in script.lower()
 
 
 def test_script_seeds_the_context_attribute():
     """The snippet teaches the context mechanism with editable sample values."""
     script = _script()
-    assert "js.setAttribute('data-failte-context', JSON.stringify({" in script
+    assert "js.setAttribute('data-fallcha-context', JSON.stringify({" in script
     assert "page_url: window.location.href" in script
     # The prompt reference is a comment, and the f-string must not leak its
     # own brace escaping into the copied snippet.
