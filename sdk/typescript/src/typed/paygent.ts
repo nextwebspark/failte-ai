@@ -17,7 +17,7 @@ export interface Paygent {
      */
     name?: string;
     /**
-     * When false, Dograh skips all Paygent tracking for this call.
+     * When false, Fallcha.ai skips all Paygent tracking for this call.
      */
     paygent_enabled?: boolean;
     /**

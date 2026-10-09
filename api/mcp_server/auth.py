@@ -7,7 +7,7 @@ from api.services.auth.depends import _handle_api_key_auth
 
 
 async def authenticate_mcp_request() -> UserModel:
-    """Resolve the authenticated Dograh user for an MCP tool invocation.
+    """Resolve the authenticated Fallcha.ai user for an MCP tool invocation.
 
     Accepts either `X-API-Key: <key>` or `Authorization: Bearer <key>`,
     reusing the API-key flow from `api.services.auth.depends`.

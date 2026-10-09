@@ -35,7 +35,7 @@ import { useShellChrome } from "./shellContext";
 /**
  * The canvas's 46px app header (app-doc/claude-design/Failte AI v2.dc.html):
  *
- *   [mark] FailteAI / Acme Voice / Page title  strapline   … [actions] [you]
+ *   [mark] Fallcha.ai / Acme Voice / Page title  strapline   … [actions] [you]
  *
  * It owns the identity the sidebar used to carry (brand, version, workspace
  * switcher, account menu) so the nav panel below can be nothing but nav, and
@@ -115,10 +115,8 @@ export function AppTopBar({
         className="notranslate flex shrink-0 items-center gap-1.5 rounded-[7px] py-1 pl-1 pr-1.5"
         translate="no"
       >
-        <BrandLogo mark className="h-[22px] rounded-md" />
-        <span className="font-mono text-[13px] font-semibold leading-none">
-          Failte<span className="font-normal opacity-60">AI</span>
-        </span>
+        {/* The kit lockup itself, at its 24px digital minimum. */}
+        <BrandLogo className="h-6" />
       </Link>
 
       {uiVersion && (

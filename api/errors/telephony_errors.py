@@ -58,7 +58,7 @@ def failure_from_telephony_error(
                 type=ErrorType.SYSTEM_ERROR,
                 code=f"{provider_code}-unknown-validation-error",
                 internal_message=f"Unknown inbound telephony validation result: {error}",
-                external_message="Dograh could not process the inbound telephony validation result.",
+                external_message="Fallcha.ai could not process the inbound telephony validation result.",
                 provider=provider,
                 retryable=None,
                 context={

@@ -1,9 +1,9 @@
 ---
 title: "Update"
-description: "Update your self-hosted Dograh stack to a newer image version"
+description: "Update your self-hosted Fallcha.ai stack to a newer image version"
 ---
 
-This guide covers updating a Dograh stack you've already deployed with [Docker](/deployment/docker) or a [custom domain](/deployment/custom-domain). You run commands from the same directory that contains your `docker-compose.yaml` (this is the `dograh/` directory if you used `setup_remote.sh`).
+This guide covers updating a Fallcha.ai stack you've already deployed with [Docker](/deployment/docker) or a [custom domain](/deployment/custom-domain). You run commands from the same directory that contains your `docker-compose.yaml` (this is the `dograh/` directory if you used `setup_remote.sh`).
 
 There are three update flows depending on how you deployed:
 
@@ -13,7 +13,7 @@ There are three update flows depending on how you deployed:
 
 ## Find an image version
 
-Dograh publishes two images — `dograh-api` and `dograh-ui` — to both container registries:
+Fallcha.ai publishes two images — `dograh-api` and `dograh-ui` — to both container registries:
 
 - **GitHub Container Registry** — [github.com/orgs/dograh-hq/packages](https://github.com/orgs/dograh-hq/packages)
 - **Docker Hub** — [hub.docker.com/u/dograhai](https://hub.docker.com/u/dograhai)
@@ -114,7 +114,7 @@ done
 Your Postgres data volume persists across `down`/`up` cycles, so agents and call history are preserved.
 
 <Warning>
-Rolling back across a database migration is not always safe — if the newer release ran a schema migration, downgrading may leave the DB in a state the older API doesn't understand. If in doubt, [open an issue](https://github.com/dograh-hq/dograh/issues) before rolling back.
+Rolling back across a database migration is not always safe — if the newer release ran a schema migration, downgrading may leave the DB in a state the older API doesn't understand. If in doubt, contact [support@fallcha.ai](mailto:support@fallcha.ai) before rolling back.
 </Warning>
 
 ## Updating a source build

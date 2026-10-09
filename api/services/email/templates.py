@@ -2,9 +2,10 @@
 
 from html import escape
 
+from api.constants import BRAND_NAME
 from api.services.email.base import EmailMessage
 
-PRODUCT_NAME = "Failte AI"
+PRODUCT_NAME = BRAND_NAME
 
 
 def _layout(heading: str, body_html: str, action_label: str, action_url: str) -> str:

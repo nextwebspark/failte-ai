@@ -6,7 +6,8 @@
  * `/auth` covers login, signup, email verification, password reset and the
  * Google callback; `/invite` previews an invitation before the visitor has an
  * account; `/embed` serves the public website widget (e.g.
- * /embed/dograh-widget.js), which third-party sites load without a session.
+ * /embed/fallcha-widget.js, plus the legacy failte-/dograh-widget.js shims),
+ * which third-party sites load without a session.
  */
 export const PUBLIC_PATHS = ["/auth", "/invite", "/embed"] as const;
 

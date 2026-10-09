@@ -1,7 +1,7 @@
 // Shared dark two-column auth shell, used by BOTH the Stack Auth handler
 // (/handler/[...stack], cloud) and the local/OSS auth pages (/auth/login,
 // /auth/signup). LEFT: a centered card that wraps the auth form (`children`).
-// RIGHT (lg+ only): a brand/value panel with the Failte AI logo, proof points, and
+// RIGHT (lg+ only): a brand/value panel with the Fallcha.ai logo, proof points, and
 // an enterprise pitch block at the bottom whose call-to-action is passed in as
 // `contactSlot` (a mailto — upstream's in-app lead-capture modal is deleted).
 // Mobile collapses to the single card column. The form column scrolls and stays
@@ -11,6 +11,7 @@
 import type { ReactNode } from "react";
 
 import { BrandLogo } from "@/components/BrandLogo";
+import { BRAND } from "@/config/brand";
 
 const HIGHLIGHTS = [
   "Done-for-you platform & configuration",
@@ -43,7 +44,8 @@ export function AuthShell({
         </div>
       </main>
 
-      {/* Brand / value panel (RIGHT) — hidden on mobile */}
+      {/* Brand / value panel (RIGHT) — hidden on mobile. Always dark in
+          both themes, so it carries the inverse lockup. */}
       <aside className="relative hidden flex-col justify-between overflow-hidden border-l border-border/60 bg-zinc-950 p-10 lg:flex xl:p-14">
         {/* Ambient depth: soft radial glow behind the content */}
         <div
@@ -79,7 +81,7 @@ export function AuthShell({
             Need on-prem, data residency &amp; a data perimeter?
           </h2>
           <p className="text-sm text-zinc-400">
-            We deploy Failte AI inside your environment for regulated and
+            We deploy {BRAND.name} inside your environment for regulated and
             high-scale teams.
           </p>
           {contactSlot}

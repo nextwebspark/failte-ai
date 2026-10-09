@@ -6,7 +6,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
-from api.constants import BACKEND_API_ENDPOINT, ENVIRONMENT, UI_APP_URL
+from api.constants import BACKEND_API_ENDPOINT, BRAND_NAME, ENVIRONMENT, UI_APP_URL
 from api.db import db_client
 from api.db.models import EmbedTokenModel, UserModel
 from api.enums import PostHogEvent
@@ -21,22 +21,22 @@ def generate_embed_script(token: EmbedTokenModel) -> str:
     """Generate the embed script for a given token."""
     base_url = str(UI_APP_URL).rstrip("/")
 
-    return f"""<!-- Failte AI Widget -->
+    return f"""<!-- {BRAND_NAME} Widget -->
 <script>
   (function(d, s, id) {{
     var js, fjs = d.getElementsByTagName(s)[0];
     if (d.getElementById(id)) return;
     js = d.createElement(s); js.id = id;
-    js.src = '{base_url}/embed/failte-widget.js?token={token.token}&environment={ENVIRONMENT}&apiEndpoint={BACKEND_API_ENDPOINT}';
+    js.src = '{base_url}/embed/fallcha-widget.js?token={token.token}&environment={ENVIRONMENT}&apiEndpoint={BACKEND_API_ENDPOINT}';
     // Details about this visitor, available in your prompts as
     // {{{{initial_context.page_url}}}}. Edit these or add your own.
-    js.setAttribute('data-failte-context', JSON.stringify({{
+    js.setAttribute('data-fallcha-context', JSON.stringify({{
       page_url: window.location.href,
       today: new Date().toISOString().slice(0, 10)
     }}));
     js.async = true;
     fjs.parentNode.insertBefore(js, fjs);
-  }}(document, 'script', 'failte-widget'));
+  }}(document, 'script', 'fallcha-widget'));
 </script>"""
 
 

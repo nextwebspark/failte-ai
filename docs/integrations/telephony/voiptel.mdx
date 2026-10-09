@@ -1,6 +1,6 @@
 ---
 title: "Voiptel Trunk Configuration"
-description: "Connect a Voiptel SIP trunk or PBX extension to Dograh AI voice agents"
+description: "Connect a Voiptel SIP trunk or PBX extension to Fallcha.ai voice agents"
 ---
 
 ## Overview
@@ -8,16 +8,16 @@ description: "Connect a Voiptel SIP trunk or PBX extension to Dograh AI voice ag
 [Voiptel](https://voiptel.ie/) is an Irish VoIP carrier — they sell numbers, PSTN
 termination, and hosted PBX service. They are **not** a CPaaS: there is no REST
 API, no call-control markup dialect, and no media-stream WebSocket. So there is
-no `voiptel` provider in Dograh's telephony provider list, and there never will
+no `voiptel` provider in Fallcha.ai's telephony provider list, and there never will
 be — there would be nothing for it to call.
 
-Voiptel connects to Dograh the way any plain SIP carrier does: **as a SIP trunk
-terminating into a programmable layer that Dograh already supports.** In
-practice that layer is **Asterisk**, and Dograh drives it through the existing
+Voiptel connects to Fallcha.ai the way any plain SIP carrier does: **as a SIP trunk
+terminating into a programmable layer that Fallcha.ai already supports.** In
+practice that layer is **Asterisk**, and Fallcha.ai drives it through the existing
 [Asterisk ARI](/integrations/telephony/asterisk-ari) provider.
 
 ```
-PSTN ──▶ Voiptel ──SIP──▶ your Asterisk ──ARI + externalMedia──▶ Dograh ──▶ Agent
+PSTN ──▶ Voiptel ──SIP──▶ your Asterisk ──ARI + externalMedia──▶ Fallcha.ai ──▶ Agent
 ```
 
 <Note>
@@ -65,16 +65,16 @@ without them.
 4. **The PSTN number that reaches you.** Without a dialable number there is no
    end-to-end test.
 5. **The exact string they will put in the Request-URI / To header** — bare
-   `7065`, `+7065`, a national DDI, or full E.164. Dograh matches this exactly.
+   `7065`, `+7065`, a national DDI, or full E.164. Fallcha.ai matches this exactly.
 6. **Concurrent channel limit.** A PBX extension is often limited to one
    simultaneous call.
-7. **Codec support** — confirm **G.711 µ-law**. Dograh's media path is µ-law; a
+7. **Codec support** — confirm **G.711 µ-law**. Fallcha.ai's media path is µ-law; a
    trunk locked to G.729 will not work.
 8. **DTMF method** — RFC 2833 / `telephone-event`, offered in SDP.
 9. **Caller ID format on inbound** — E.164, national, or bare digits.
 
 <Note>
-Question 5 matters more than it looks. Dograh matches the called number
+Question 5 matters more than it looks. Fallcha.ai matches the called number
 against the phone numbers on your configuration by **exact string equality**
 after normalisation, and there is no fuzzy fallback on the ARI path. `7065`,
 `+7065` and `sip:7065@host` are three different stored addresses.
@@ -113,7 +113,7 @@ challenge with `-v` and ask them to confirm it.
 ## Asterisk setup
 
 Complete the [Asterisk ARI guide](/integrations/telephony/asterisk-ari) first —
-`ari.conf`, `http.conf`, `websocket_client.conf` and the Dograh-side
+`ari.conf`, `http.conf`, `websocket_client.conf` and the Fallcha.ai-side
 configuration are all covered there and are Voiptel-independent. What follows is
 only the Voiptel trunk itself.
 
@@ -125,7 +125,7 @@ Most distribution packages do not include these, so expect to build from
 source.
 </Note>
 
-A working reference build lives at `deploy/asterisk-voiptel/` in the Dograh
+A working reference build lives at `deploy/asterisk-voiptel/` in the Fallcha.ai
 repository: a Dockerfile that builds Asterisk 22 with the required modules and
 **fails the build if either is missing**, plus templated configs, a
 `docker-compose.yaml` and a step-by-step runbook.
@@ -206,7 +206,7 @@ day of packet captures.
 **`direct_media = no`** is mandatory. With direct media on, RTP bypasses
 Asterisk and the externalMedia channel has nothing to tap.
 
-**`allow = ulaw`** is mandatory. Dograh's external media channel is G.711
+**`allow = ulaw`** is mandatory. Fallcha.ai's external media channel is G.711
 µ-law; a trunk that negotiates only a-law or G.729 will connect and the agent
 will hear nothing usable. Offering `ulaw`, `alaw` and `g722` and letting
 Asterisk transcode is fine.
@@ -228,7 +228,7 @@ in the range is a firewall rule and, in Docker, a published port.
 
 <Tabs>
   <Tab title="Short extensions">
-    The PBX presents `7065`. Dograh stores short numbers verbatim as
+    The PBX presents `7065`. Fallcha.ai stores short numbers verbatim as
     `sip_extension`, so pass them straight through:
 
     ```ini
@@ -238,7 +238,7 @@ in the range is a firewall rule and, in Docker, a published port.
      same => n,Hangup()
     ```
 
-    Register `7065` as the phone number in Dograh. **No rewriting.**
+    Register `7065` as the phone number in Fallcha.ai. **No rewriting.**
   </Tab>
   <Tab title="National-format DDIs">
     The carrier presents `014433000` and you want to store `+35314433000`.
@@ -261,7 +261,7 @@ in the range is a firewall rule and, in Docker, a published port.
 Replace `dograh` with the app name from your `ari.conf`.
 
 <Note>
-**Do not `Answer()` before `Stasis()`.** Dograh distinguishes inbound from
+**Do not `Answer()` before `Stasis()`.** Fallcha.ai distinguishes inbound from
 outbound purely by channel state: a `StasisStart` in `Ring` is treated as
 inbound, while an already-answered channel arrives as `Up` and is routed down
 the outbound path, where it looks for application arguments that do not exist.
@@ -279,7 +279,7 @@ asterisk -rx "pjsip show endpoint voiptel" # expect: Available
 
 ---
 
-## Dograh setup
+## Fallcha.ai setup
 
 1. Go to **/telephony-configurations → Add configuration → Asterisk ARI**.
 2. Fill in the ARI endpoint, Stasis app name, ARI password, and the
@@ -309,7 +309,7 @@ trunk, because the two legs that matter both originate from your side:
 - **Inbound SIP** returns down the TCP connection your REGISTER established —
   the same way a softphone behind NAT receives calls. No port forward needed,
   unless the carrier opens a fresh connection to your registered Contact.
-- **externalMedia** is Asterisk dialling *out* to Dograh, so pointing it at a
+- **externalMedia** is Asterisk dialling *out* to Fallcha.ai, so pointing it at a
   locally running backend needs no tunnel at all.
 
 What does not travel well is **RTP**: it is UDP, and audio depends on the far
@@ -326,7 +326,7 @@ nothing is wasted if you later move Asterisk to a VPS.
    stays that way across several expiry cycles.
 2. **Signalling reaches the dialplan.** `asterisk -rvvv` shows the
    `from-voiptel` NoOp and then the `Stasis` step.
-3. **Dograh created a run.** The call appears under workflow runs with
+3. **Fallcha.ai created a run.** The call appears under workflow runs with
    `direction: inbound`.
 4. **Audio is two-way** for at least a minute.
 5. **The right agent answered** — the workflow matches the number's **Inbound
@@ -352,10 +352,10 @@ nothing is wasted if you later move Asterisk to a VPS.
   </Accordion>
 
   <Accordion title="Number format mismatches">
-    The most common failure. The call arrives, Dograh sees it, but no phone
+    The most common failure. The call arrives, Fallcha.ai sees it, but no phone
     number matches so nothing answers.
 
-    Dograh matches the called number against the addresses on your
+    Fallcha.ai matches the called number against the addresses on your
     configuration by exact string equality after normalisation. Numbers of 8–15
     digits are treated as PSTN and get a `+` prefix; anything shorter is treated
     as a SIP extension and stored verbatim. So `7065` matches `7065`, but
@@ -402,7 +402,7 @@ nothing is wasted if you later move Asterisk to a VPS.
     - Confirm their media IP range is open inbound to your RTP port range.
   </Accordion>
 
-  <Accordion title="Inbound reaches Dograh but hangs up immediately">
+  <Accordion title="Inbound reaches Fallcha.ai but hangs up immediately">
     Exactly two log lines explain it:
 
     - *"no matching phone number registered for config"* — the number reaching
@@ -421,7 +421,7 @@ nothing is wasted if you later move Asterisk to a VPS.
       parked deliberately, because calls would otherwise be answered into
       silence.
     - **Five consecutive ARI authentication failures.** Check the password in
-      `ari.conf` against the Dograh configuration.
+      `ari.conf` against the Fallcha.ai configuration.
 
     Configurations are re-read every 60 seconds, so give a fix a minute before
     concluding it did not work.
@@ -456,6 +456,6 @@ nothing is wasted if you later move Asterisk to a VPS.
 ## Further reading
 
 - [Asterisk ARI Integration](/integrations/telephony/asterisk-ari) — Asterisk-side configuration in full
-- [Inbound Calling](/integrations/telephony/inbound) — how Dograh routes inbound calls to workflows
+- [Inbound Calling](/integrations/telephony/inbound) — how Fallcha.ai routes inbound calls to workflows
 - [Cloudonix Integration](/integrations/telephony/cloudonix) — for IP-authenticated carrier trunks, if you would rather not run Asterisk
 - [Custom Telephony Provider](/integrations/telephony/custom) — for carriers that *do* expose a programmable API

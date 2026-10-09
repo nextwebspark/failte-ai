@@ -32,7 +32,7 @@ from api.services.configuration.ai_model_configuration import (
 from api.services.mps_billing import ensure_hosted_mps_billing_account_v2
 from api.services.mps_service_key_client import mps_service_key_client
 
-MANAGED_SERVICE_KEY_NAME = "Default Dograh Model Service Key"
+MANAGED_SERVICE_KEY_NAME = "Default Fallcha.ai Model Service Key"
 
 # A holder that dies mid-provisioning leaves its lease pending. This bounds how
 # long the organization waits before another request is allowed to take over.

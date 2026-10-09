@@ -18,8 +18,8 @@ export const ConnectionStatus = ({ connectionStatus }: ConnectionStatusProps) =>
 
     if (connectionStatus === 'connected') {
         return (
-            <div className="flex items-center justify-center space-x-2 text-green-600">
-                <div className="h-2 w-2 bg-green-600 rounded-full animate-pulse" />
+            <div className="flex items-center justify-center space-x-2 text-live-text">
+                <div className="h-2 w-2 bg-live rounded-full animate-pulse" />
                 <span className="text-sm font-medium">Connected</span>
             </div>
         );

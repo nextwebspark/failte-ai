@@ -45,7 +45,7 @@ class Tuner(TypedNode):
 
     tuner_enabled: bool = True
     """
-    When false, Dograh skips exporting this call to Tuner.
+    When false, Fallcha.ai skips exporting this call to Tuner.
     """
 
     cost_calculation_enabled: bool = False

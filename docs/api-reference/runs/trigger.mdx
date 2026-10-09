@@ -12,7 +12,7 @@ Use `workflow_run_id` from the response to later [retrieve run details](/api-ref
 
 Pass `initial_context` to inject runtime data as template variables into the agent's prompt. See [Using initial context](/api-reference/runs#using-initial-context).
 
-Pass `telephony_configuration_id` to route the call through a specific telephony configuration instead of your organization's default. The id is shown on each row in **Telephony configurations** (`https://app.dograh.com/telephony-configurations` for hosted or `http://localhost:3010/telephony-configurations` for local).
+Pass `telephony_configuration_id` to route the call through a specific telephony configuration instead of your organization's default. The id is shown on each row in **Telephony configurations** (`https://app.fallcha.ai/telephony-configurations` for hosted or `http://localhost:3010/telephony-configurations` for local).
 
 Pass `from_phone_number_id` to use a specific active caller ID in the resolved telephony configuration. The number ID must belong to that configuration. Retrieve number IDs with [List phone numbers](/api-reference/telephony-configs/phone-numbers/list).
 

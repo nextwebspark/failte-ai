@@ -17,6 +17,7 @@ import type {
     TransferCallConfig,
     TransferCallToolDefinition,
 } from "@/client/types.gen";
+import { BRAND } from "@/config/brand";
 import { createUuid } from "@/lib/uuid";
 
 export type ToolCategory = "http_api" | "end_call" | "transfer_call" | "transfer_agent" | "calculator" | "native" | "integration" | "mcp";
@@ -129,7 +130,7 @@ export const TOOL_CATEGORIES: ToolCategoryConfig[] = [
     {
         value: "transfer_agent",
         label: "Transfer To Agent",
-        description: "Hand the live call to another Dograh agent, without dropping the caller",
+        description: `Hand the live call to another ${BRAND.name} agent, without dropping the caller`,
         icon: ArrowLeftRight,
         iconName: "arrow-left-right",
         iconColor: "#0EA5E9",

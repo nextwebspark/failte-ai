@@ -1,7 +1,7 @@
 <!-- Cartesia primary lockup, official asset from cartesia.ai/site/cartesia-wordmark.svg.
      Root sizing attributes normalised for <img> use (see EventBanner); art untouched.
      Ships near-black (#1E1E1E) on transparent, so it is rendered white on the dark
-     event bar with `brightness-0 invert`, matching the Dograh wordmark beside it. -->
+     event bar with `brightness-0 invert`, matching the Fallcha.ai wordmark beside it. -->
 <svg width="140" height="20" viewBox="0 0 140 20" fill="none" role="img" aria-label="Cartesia" xmlns="http://www.w3.org/2000/svg">
 <g id="cartesia-primarylockup-carbon 2" clip-path="url(#clip0_0_18)">
 <path id="Vector" d="M128.955 17.7154H123.897V16.6662H125.247L130.671 1.95423H133.212L138.591 16.6662H139.987V17.7154H133.533V16.6662H135.73L134.105 12.1272H128.337L126.735 16.6662H128.955V17.7154ZM128.68 11.1007H133.761C131.862 5.69494 131.496 4.6001 131.244 3.80178C130.992 4.5773 130.603 5.69494 128.68 11.1007Z" fill="var(--fill-0, #1E1E1E)"/>

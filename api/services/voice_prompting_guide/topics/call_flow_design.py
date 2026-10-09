@@ -65,7 +65,7 @@ the agent has to chase the rest, and the flow falls apart. Sequencing one
 question per turn is slower in theory but faster in practice because you never
 have to recover from a half-answered batch.
 
-Keep variable extraction out of the conversational prompt. Dograh gives each
+Keep variable extraction out of the conversational prompt. Fallcha.ai gives each
 agent/start/end node a separate `extraction_prompt` field — put the logic for
 capturing a value there. The call flow can say "ask for the order ID"; the
 rule for parsing and storing it belongs in extraction_prompt.

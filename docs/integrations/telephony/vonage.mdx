@@ -1,11 +1,11 @@
 ---
 title: "Vonage Integration"
-description: "Configure Vonage (Nexmo) for voice communication in Dograh AI"
+description: "Configure Vonage (Nexmo) for voice communication in Fallcha.ai"
 ---
 
 ## Overview
 
-Vonage (formerly Nexmo) is a cloud communications platform that provides global voice, messaging, and video capabilities. Dograh AI's Vonage integration enables high-quality voice interactions with your agents using Vonage's robust infrastructure.
+Vonage (formerly Nexmo) is a cloud communications platform that provides global voice, messaging, and video capabilities. Fallcha.ai's Vonage integration enables high-quality voice interactions with your agents using Vonage's robust infrastructure.
 
 ## Prerequisites
 
@@ -17,7 +17,7 @@ Before setting up Vonage integration, you'll need:
 - API Key and API Secret from your Vonage Dashboard
 - Signature Secret from your Vonage Dashboard
 - At least one Vonage phone number linked to the application
-- Dograh AI instance running and accessible
+- Fallcha.ai instance running and accessible
 
 ## Configuration
 
@@ -32,13 +32,13 @@ Before setting up Vonage integration, you'll need:
 ### Step 2: Get API Credentials
 
 1. Find your **API Key** and **API Secret** in the dashboard under **API Settings**
-2. Copy your **Signature Secret** from the same Vonage account. Dograh uses it
+2. Copy your **Signature Secret** from the same Vonage account. Fallcha.ai uses it
    to verify [Vonage signed webhooks](https://developer.vonage.com/en/getting-started/concepts/webhooks).
 3. Navigate to **Numbers** → **Your Numbers**
 4. Copy your phone number(s)
 5. Link each inbound number to your Voice application
 
-### Step 3: Configure in Dograh AI
+### Step 3: Configure in Fallcha.ai
 
 1. Navigate to **/telephony-configurations** and click **Add configuration**
 2. Select **Vonage** as your provider
@@ -59,14 +59,14 @@ Before setting up Vonage integration, you'll need:
 
 ## Inbound Calling Setup
 
-Vonage routes inbound Voice API calls through a Voice application. The application owns the Answer URL and Event URL, and the phone number must be linked to that application. Dograh routes the call to the right agent based on the called number's inbound workflow assignment inside Dograh.
+Vonage routes inbound Voice API calls through a Voice application. The application owns the Answer URL and Event URL, and the phone number must be linked to that application. Fallcha.ai routes the call to the right agent based on the called number's inbound workflow assignment inside Fallcha.ai.
 
-When you save an inbound workflow on a phone number, Dograh updates the configured Vonage application's Voice webhooks and enables signed callbacks, provided the API Key, API Secret, and Application ID are correct and a Signature Secret is configured.
+When you save an inbound workflow on a phone number, Fallcha.ai updates the configured Vonage application's Voice webhooks and enables signed callbacks, provided the API Key, API Secret, and Application ID are correct and a Signature Secret is configured.
 
 <Warning>
   Linking the phone number to the Voice application is required. If the number
-  is not linked, Vonage will not call Dograh's Answer URL, and you may hear a
-  busy or disconnected tone without seeing any Dograh application logs.
+  is not linked, Vonage will not call Fallcha.ai's Answer URL, and you may hear a
+  busy or disconnected tone without seeing any Fallcha.ai application logs.
 </Warning>
 
 ### Step 1: Link Phone Numbers to Your Vonage Application
@@ -74,11 +74,11 @@ When you save an inbound workflow on a phone number, Dograh updates the configur
 1. Open the [Vonage Dashboard](https://dashboard.nexmo.com/)
 2. Go to **Numbers** → **Your Numbers**
 3. Open each number you want to use for inbound calls
-4. Set the number's Voice application to the same Vonage Application whose ID you configured in Dograh
+4. Set the number's Voice application to the same Vonage Application whose ID you configured in Fallcha.ai
 
 Vonage's Numbers API describes this as the number's `app_id`: the application that handles inbound traffic to that number. See the [Numbers API reference](https://developer.vonage.com/en/api/numbers).
 
-### Step 2: Assign an Inbound Workflow to the Phone Number in Dograh
+### Step 2: Assign an Inbound Workflow to the Phone Number in Fallcha.ai
 
 1. Go to **/telephony-configurations** and open your Vonage configuration
 2. In the **Phone numbers** section, edit the number that should receive inbound calls
@@ -96,25 +96,25 @@ Vonage's Numbers API describes this as the number's `app_id`: the application th
    - **Signed callbacks** are enabled
 
    <Note>
-     Dograh pushes these settings automatically when you save the inbound
+     Fallcha.ai pushes these settings automatically when you save the inbound
      workflow in Step 2. If the fields are empty, show a different URL, or
-     Dograh surfaced a sync warning on save, check the API Key, API Secret,
-     Application ID, and Signature Secret in Dograh, then save the inbound
-     workflow again. On self-hosted Dograh, the backend domain must be publicly
+     Fallcha.ai surfaced a sync warning on save, check the API Key, API Secret,
+     Application ID, and Signature Secret in Fallcha.ai, then save the inbound
+     workflow again. On self-hosted Fallcha.ai, the backend domain must be publicly
      reachable by Vonage.
    </Note>
 
 ### Step 4: Verify Setup
 
-- Ensure your Dograh AI instance is publicly accessible
+- Ensure your Fallcha.ai instance is publicly accessible
 - Verify your public backend URL is reachable from the internet
-- Use the [Vonage logs](https://dashboard.nexmo.com/logs) or Voice Inspector to confirm Vonage is sending the Answer webhook to Dograh
+- Use the [Vonage logs](https://dashboard.nexmo.com/logs) or Voice Inspector to confirm Vonage is sending the Answer webhook to Fallcha.ai
 
 ### Test Inbound Calling
 
 1. Call your configured Vonage phone number from another phone
-2. Verify your Dograh AI voice agent answers and responds
-3. Check call logs in both Dograh AI dashboard and Vonage Dashboard
+2. Verify your Fallcha.ai voice agent answers and responds
+3. Check call logs in both Fallcha.ai dashboard and Vonage Dashboard
 
 ## Audio Quality Optimization
 
@@ -140,10 +140,10 @@ Vonage uses higher quality audio (16kHz) which provides:
   </Accordion>
 
   <Accordion title="Signed webhook validation failed">
-    - Verify the Signature Secret in Dograh matches the Vonage account's signature secret
+    - Verify the Signature Secret in Fallcha.ai matches the Vonage account's signature secret
     - Ensure signed callbacks are enabled on the Vonage Voice application
     - Check that the webhook request includes an `Authorization` header
-    - Confirm the application belongs to the same API Key saved in Dograh
+    - Confirm the application belongs to the same API Key saved in Fallcha.ai
   </Accordion>
   
   <Accordion title="Invalid phone number error">
@@ -170,19 +170,19 @@ Vonage uses higher quality audio (16kHz) which provides:
     - Verify the Vonage application's Answer URL is set to `https://<your-backend-domain>/api/v1/telephony/inbound/run`
     - Ensure the Answer URL is publicly accessible
     - Confirm the called number is linked to the correct Vonage application
-    - Confirm the called number exists in your Dograh telephony configuration and has an **Inbound workflow** assigned
+    - Confirm the called number exists in your Fallcha.ai telephony configuration and has an **Inbound workflow** assigned
   </Accordion>
 
-  <Accordion title="Inbound call gives busy tone and Dograh shows no logs">
-    - Confirm the Vonage number is linked to the Voice application configured in Dograh
-    - Confirm the Voice application has the Dograh Answer URL set with method `POST`
+  <Accordion title="Inbound call gives busy tone and Fallcha.ai shows no logs">
+    - Confirm the Vonage number is linked to the Voice application configured in Fallcha.ai
+    - Confirm the Voice application has the Fallcha.ai Answer URL set with method `POST`
     - Confirm your backend domain is public; Vonage cannot call `localhost`
-    - Check Vonage logs for Answer URL delivery errors before debugging Dograh
+    - Check Vonage logs for Answer URL delivery errors before debugging Fallcha.ai
   </Accordion>
   
   <Accordion title="Voice agent doesn't respond to inbound calls">
     - Confirm the phone number has an **Inbound workflow** assigned in /telephony-configurations
-    - Verify API Key matches the one stored in your Dograh telephony configuration (used to identify the org from the inbound webhook)
+    - Verify API Key matches the one stored in your Fallcha.ai telephony configuration (used to identify the org from the inbound webhook)
     - Verify WebSocket connection establishes successfully
     - Review call logs for error messages
   </Accordion>
@@ -191,7 +191,7 @@ Vonage uses higher quality audio (16kHz) which provides:
 ## Best Practices
 
 - **Security**: Private keys are stored securely in the database
-- **Signed callbacks**: Keep Vonage signed callbacks enabled and keep the Signature Secret in Dograh up to date
+- **Signed callbacks**: Keep Vonage signed callbacks enabled and keep the Signature Secret in Fallcha.ai up to date
 - **Testing**: Use Vonage Voice Inspector for debugging call issues
 - **Numbers**: Configure multiple numbers for redundancy
 - **Monitoring**: Set up alerts in Vonage Dashboard for failures

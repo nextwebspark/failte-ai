@@ -1,6 +1,6 @@
 # API - Backend Service
 
-FastAPI backend for the Dograh voice AI platform.
+FastAPI backend for the Fallcha.ai voice AI platform.
 
 ## Project Structure
 

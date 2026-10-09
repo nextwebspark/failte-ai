@@ -255,6 +255,36 @@ services:
 
       OSS_JWT_SECRET: "${OSS_JWT_SECRET:?OSS_JWT_SECRET must be set to a strong secret}"
 
+      # Auth. UI_APP_URL is where emailed links (verify, reset, invite) and
+      # Stripe's return URLs point; nginx serves the UI on PUBLIC_BASE_URL, so
+      # that is the default for remote installs.
+      AUTH_PROVIDER: "${AUTH_PROVIDER:-local}"
+      UI_APP_URL: "${UI_APP_URL:-${PUBLIC_BASE_URL:-http://localhost:3010}}"
+      CORS_ALLOWED_ORIGINS: "${CORS_ALLOWED_ORIGINS:-}"
+      REQUIRE_EMAIL_VERIFICATION: "${REQUIRE_EMAIL_VERIFICATION:-true}"
+      GOOGLE_CLIENT_ID: "${GOOGLE_CLIENT_ID:-}"
+      GOOGLE_CLIENT_SECRET: "${GOOGLE_CLIENT_SECRET:-}"
+
+      # Outgoing email (verification, password reset, invitations, low-balance
+      # warnings). "none" only logs messages, links included. Use "resend" or
+      # "smtp" in production.
+      EMAIL_PROVIDER: "${EMAIL_PROVIDER:-none}"
+      EMAIL_FROM: "${EMAIL_FROM:-Fallcha.ai <no-reply@localhost>}"
+      RESEND_API_KEY: "${RESEND_API_KEY:-}"
+      SMTP_HOST: "${SMTP_HOST:-}"
+      SMTP_PORT: "${SMTP_PORT:-587}"
+      SMTP_USERNAME: "${SMTP_USERNAME:-}"
+      SMTP_PASSWORD: "${SMTP_PASSWORD:-}"
+      SMTP_SECURITY: "${SMTP_SECURITY:-starttls}"
+
+      # Billing. "stripe" turns on prepaid credit through Stripe Checkout; see
+      # docs/deployment/stripe-billing.mdx. Empty keeps the mode default.
+      BILLING_PROVIDER: "${BILLING_PROVIDER:-}"
+      STRIPE_SECRET_KEY: "${STRIPE_SECRET_KEY:-}"
+      STRIPE_WEBHOOK_SECRET: "${STRIPE_WEBHOOK_SECRET:-}"
+      STRIPE_AUTOMATIC_TAX: "${STRIPE_AUTOMATIC_TAX:-true}"
+      BILLING_SALES_CONTACT: "${BILLING_SALES_CONTACT:-}"
+
       # Telephony media WebSocket capability token. The carrier dials the media
       # socket back, so its URL is caller-visible and the ids in it are otherwise
       # guessable. Set a secret in .env to have providers sign that URL and the

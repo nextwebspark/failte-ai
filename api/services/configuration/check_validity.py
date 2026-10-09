@@ -366,7 +366,7 @@ class UserConfigurationValidator:
     def _check_dograh_api_key(self, model: str, api_key: str) -> bool:
         if api_key.startswith("dgr"):
             raise ValueError(
-                "You provided a Dograh API key (dgr...) instead of a service key. "
+                "You provided a Fallcha.ai API key (dgr...) instead of a service key. "
                 "Please use a service key (mps...)."
             )
         auth = getattr(self, "_auth_context", {})

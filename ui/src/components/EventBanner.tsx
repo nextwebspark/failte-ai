@@ -5,6 +5,7 @@ import { useEffect, useRef, useSyncExternalStore } from "react";
 
 import { BrandLogo } from "@/components/BrandLogo";
 import { type EventBannerEvent, events } from "@/config/event-banner.config";
+import { migrateStorageKey } from "@/lib/storageKeys";
 
 // Site-wide event announcement bar, ported from the dograh.com landing page.
 // Sits ABOVE the app chrome in the root layout and is sticky at top-0, so the
@@ -65,6 +66,9 @@ function readActiveEventId() {
     // false, so a typo hides that entry rather than pinning a dead banner to
     // the top of every page.
     if (!(now >= start && now <= end)) continue;
+    if (event.legacyStorageKey) {
+      migrateStorageKey(event.legacyStorageKey, event.storageKey);
+    }
     try {
       if (localStorage.getItem(event.storageKey) === "1") continue;
     } catch {
@@ -195,19 +199,19 @@ export function EventBanner() {
   );
 }
 
-// Dograh alone, or [Dograh] × [partner] when the event has one. Shown from xl
+// Fallcha.ai alone, or [Fallcha.ai] × [partner] when the event has one. Shown from xl
 // only, which is the narrowest width where the lockup and the subtitle both
 // fit: measured at 1024 the row has ~110px of slack, the subtitle needs ~250px
 // and the lockup costs ~236px, so one of them has to go and the event's date
 // beats the co-brand. Below 768 the lockup would have eaten into the title
 // itself.
 //
-// Dograh sits in a 20px box and the partner in a 13.6px one. Partner wordmarks
-// tend to run wider and heavier than the Dograh mark, so equal boxes let the
+// Fallcha.ai sits in a 20px box and the partner in a 13.6px one. Partner wordmarks
+// tend to run wider and heavier than the Fallcha.ai mark, so equal boxes let the
 // guest outweigh the host; if a future partner's art is light or narrow, raise
 // that number here.
 //
-// BrandLogo swaps the Dograh wordmark by theme on its own. Partner artwork is
+// BrandLogo swaps the Fallcha.ai wordmark by theme on its own. Partner artwork is
 // white on transparent (see the config's `logo` note), which is right for the
 // dark theme but invisible on the light one, so `brightness-0` flattens it to
 // black there and `dark:brightness-100` hands the original back. No `invert`:

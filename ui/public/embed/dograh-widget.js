@@ -1,13 +1,13 @@
 /**
- * Compatibility shim for the pre-rename widget filename.
+ * Compatibility shim for a pre-rename widget filename (dograh-widget.js).
  *
- * The real widget now ships as failte-widget.js. Snippets pasted onto customer
+ * The real widget now ships as fallcha-widget.js. Snippets pasted onto customer
  * sites before the rename still request THIS path, so it must keep working
  * indefinitely: it re-injects the real widget with the same query string and
  * data-* attributes, then re-fires `load` on the legacy tag so host pages that
  * wait for it (the documented headless bootstrap) still see the widget ready.
  *
- * Do not add behaviour here. All widget logic lives in failte-widget.js.
+ * Do not add behaviour here. All widget logic lives in fallcha-widget.js.
  */
 
 (function () {
@@ -18,7 +18,7 @@
     document.querySelector('script[src*="dograh-widget.js"]');
   if (!legacy) return;
 
-  if (window.FailteWidget || document.querySelector('script[src*="failte-widget.js"]')) {
+  if (window.FallchaWidget || document.querySelector('script[src*="fallcha-widget.js"]')) {
     return;
   }
 
@@ -26,10 +26,10 @@
   try {
     src = new URL(legacy.src, window.location.href);
   } catch {
-    console.error('Failte AI Widget: could not resolve the legacy script URL');
+    console.error('Fallcha.ai Widget: could not resolve the legacy script URL');
     return;
   }
-  src.pathname = src.pathname.replace(/dograh-widget\.js$/, 'failte-widget.js');
+  src.pathname = src.pathname.replace(/dograh-widget\.js$/, 'fallcha-widget.js');
 
   var script = document.createElement('script');
   script.src = src.toString();

@@ -233,7 +233,7 @@ class ModelConfigurationPricingResponse(BaseModel):
 
 @router.get("/context", response_model=OrganizationContextResponse)
 async def get_current_organization_context(user: UserModel = Depends(get_user)):
-    """Return organization-scoped configuration signals owned by Dograh."""
+    """Return organization-scoped configuration signals owned by Fallcha.ai."""
     return await get_organization_context(user)
 
 
@@ -1236,7 +1236,7 @@ def _require_trunk_support(provider: str):
         raise HTTPException(
             status_code=400,
             detail=(
-                f"Dograh does not model trunks on {provider} configurations — "
+                f"Fallcha.ai does not model trunks on {provider} configurations — "
                 f"calls route through the provider account itself. Numbers on "
                 f"this configuration need no trunk."
             ),

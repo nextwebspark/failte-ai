@@ -1,6 +1,6 @@
 ---
 title: "Tuner Integration"
-description: "Connect Dograh to Tuner — the observability, simulation, and testing layer for voice"
+description: "Connect Fallcha.ai to Tuner — the observability, simulation, and testing layer for voice"
 ---
 
 <iframe
@@ -22,13 +22,13 @@ Once the node is configured, you can also let Tuner **call your agent** with gen
 ## Prerequisites
 
 - A [Tuner account](https://app.usetuner.ai) with an active workspace
-- A Dograh voice agent workflow
+- A Fallcha.ai voice agent workflow
 
 ## Setup
 
 ### 1. Create an agent in Tuner
 
-Log in to [Tuner](https://app.usetuner.ai) and create a new agent. When configuring the agent, set the **Provider** to **Dograh**. Enter your **Agent Name** and choose the **Call Direction** (Inbound or Outbound) for your setup. The **Agent Remote ID** is auto-generated after you create the agent.
+Log in to [Tuner](https://app.usetuner.ai) and create a new agent. When configuring the agent, set the **Provider** to **Dograh** (Fallcha.ai is built on Dograh, so Tuner's Dograh provider is the one to pick). Enter your **Agent Name** and choose the **Call Direction** (Inbound or Outbound) for your setup. The **Agent Remote ID** is auto-generated after you create the agent.
 
 <img
   src="/images/tuner-create-agent.png"
@@ -62,18 +62,18 @@ You'll need three values from your Tuner account:
 
 ### 3. Add the Tuner node to your workflow
 
-In your Dograh workflow editor, click **Add node** and scroll to the **Integrations** section. Select **Tuner**.
+In your Fallcha.ai workflow editor, click **Add node** and scroll to the **Integrations** section. Select **Tuner**.
 
 <img
   src="/images/tuner-dograh-workflow-builder.png"
-  alt="Dograh voice workflow builder — click Add node"
+  alt="Fallcha.ai voice workflow builder — click Add node"
 />
 
 Scroll to **Integrations** and select **Tuner**:
 
 <img
   src="/images/tuner-integrations-panel.png"
-  alt="Dograh Integrations panel showing QA Analysis, Tuner, and Webhook"
+  alt="Fallcha.ai Integrations panel showing QA Analysis, Tuner, and Webhook"
 />
 
 The node appears on your canvas with a **Not configured** badge:
@@ -94,7 +94,7 @@ Click on the Tuner node and fill in the following fields:
 
 <img
   src="/images/tuner-edit-modal.png"
-  alt="Dograh Edit Tuner modal with credential fields and Enabled toggle"
+  alt="Fallcha.ai Edit Tuner modal with credential fields and Enabled toggle"
 />
 
 Click **Save**, then **Publish** your workflow.
@@ -112,13 +112,13 @@ Make a test call through your agent. Once the call completes, check the **Call L
 
 Everything above sends *real* calls to Tuner. Simulations run the other direction: Tuner places a call **into** your agent over SIP, plays the part of a caller following a generated scenario, and scores the result. Your agent answers exactly as it would for a customer.
 
-Dograh does not speak SIP itself — Cloudonix does it on Dograh's behalf. So the address Tuner dials belongs to Cloudonix, and what you set up below is a route through it to one specific agent.
+Fallcha.ai does not speak SIP itself — Cloudonix does it on Fallcha.ai's behalf. So the address Tuner dials belongs to Cloudonix, and what you set up below is a route through it to one specific agent.
 
 <Note>
   Simulations use the **inbound** path, which runs on the Cloudonix SIP domain
-  Dograh provisions for every organization. You do not need a SIP carrier or a
+  Fallcha.ai provisions for every organization. You do not need a SIP carrier or a
   phone number — unlike outbound calling, which requires your own trunk. See
-  [Dograh Managed SIP](/integrations/telephony/dograh-sip).
+  [Fallcha.ai Managed SIP](/integrations/telephony/dograh-sip).
 </Note>
 
 ### Before you start
@@ -135,9 +135,9 @@ Dograh does not speak SIP itself — Cloudonix does it on Dograh's behalf. So th
 
 ### 1. Add an extension for simulations
 
-Go to **Telephony configurations** and open **Dograh Cloudonix SIP**. Under **Phone numbers**, choose **Add phone number** and enter a short extension such as `9001`.
+Go to **Telephony configurations** and open **Fallcha.ai Cloudonix SIP**. Under **Phone numbers**, choose **Add phone number** and enter a short extension such as `9001`.
 
-You do not need a real phone number. That field accepts SIP URIs and plain extensions alongside PSTN numbers, and an extension is the simplest thing to point a simulation at. Dograh registers it with Cloudonix for you.
+You do not need a real phone number. That field accepts SIP URIs and plain extensions alongside PSTN numbers, and an extension is the simplest thing to point a simulation at. Fallcha.ai registers it with Cloudonix for you.
 
 ### 2. Point the extension at your agent
 
@@ -194,12 +194,12 @@ Set the region **before** copying anything — every value on the panel is regio
 
 In Tuner, open **Agent Settings → SIP Settings**, paste the address into **SIP URI**, and choose **Verify & Save**. Tuner immediately places a short test call, so this single action checks the whole path.
 
-Leave **Username** and **Password** empty — Dograh's inbound endpoint does not use SIP authentication.
+Leave **Username** and **Password** empty — Fallcha.ai's inbound endpoint does not use SIP authentication.
 
 <Note>
   **Known issue in Tuner.** With both auth fields blank, verification currently
   fails with "endpoint did not answer". Entering any non-empty values — for
-  example `tuner` and `tuner` — works around it. Dograh never checks them, so
+  example `tuner` and `tuner` — works around it. Fallcha.ai never checks them, so
   the values are irrelevant. Clear both fields once Tuner ships the fix.
 </Note>
 
@@ -209,7 +209,7 @@ Start a run from Tuner's **Simulations** tab. Each scenario becomes a real call 
 
 ### How calls are matched to scenarios
 
-Nothing to configure — this is automatic. Cloudonix reports the caller's SIP call id to Dograh, and Dograh includes it when it exports the finished call. Tuner uses it to attach the call to the scenario that placed it. Without it, the call would still be ingested, just filed as ordinary production traffic.
+Nothing to configure — this is automatic. Cloudonix reports the caller's SIP call id to Fallcha.ai, and Fallcha.ai includes it when it exports the finished call. Tuner uses it to attach the call to the scenario that placed it. Without it, the call would still be ingested, just filed as ordinary production traffic.
 
 ## Disabling the integration
 
@@ -228,7 +228,7 @@ To temporarily stop exporting calls to Tuner, open the Tuner node configuration 
 
 | Issue | Solution |
 |---|---|
-| `603 Declined` | Cloudonix found the route but could not fetch call instructions from Dograh. On a self-hosted deployment, check that your backend is publicly reachable — see below |
+| `603 Declined` | Cloudonix found the route but could not fetch call instructions from Fallcha.ai. On a self-hosted deployment, check that your backend is publicly reachable — see below |
 | "Endpoint did not answer" on Verify & Save | With blank auth fields this is the [known Tuner issue](#5-save-the-uri-in-tuner). Otherwise confirm the extension exists, has an inbound workflow assigned, and that the region's port is in the URI |
 | Agent answers but nothing reaches Tuner | The Tuner node is not in the **published** version of the workflow. Publish and try again |
 | Calls land in Call Logs instead of Simulations | Confirm the Tuner agent's **Call Direction** is **Inbound** |

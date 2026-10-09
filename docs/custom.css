@@ -7,9 +7,9 @@
 button[data-testid*="search"],
 .mintlify-search,
 .DocSearch-Button {
-  background: rgba(22, 163, 74, 0.05) !important;
-  border: 3px solid #16A34A !important;
-  box-shadow: 0 0 0 2px rgba(22, 163, 74, 0.2), 0 4px 12px rgba(22, 163, 74, 0.15) !important;
+  background: rgba(22, 155, 98, 0.05) !important;
+  border: 3px solid #169B62 !important;
+  box-shadow: 0 0 0 2px rgba(22, 155, 98, 0.2), 0 4px 12px rgba(22, 155, 98, 0.15) !important;
   border-radius: 10px !important;
   transition: all 0.3s ease !important;
   min-width: 280px !important;
@@ -24,7 +24,7 @@ button[data-testid*="search"]:hover,
 .mintlify-search:hover,
 .DocSearch-Button:hover {
   transform: translateY(-2px) !important;
-  box-shadow: 0 6px 20px rgba(22, 163, 74, 0.4) !important;
+  box-shadow: 0 6px 20px rgba(22, 155, 98, 0.4) !important;
 }
 
 /* Search text and icon styling - Better visibility */
@@ -35,15 +35,15 @@ button[data-testid*="search"]:hover,
 button[data-testid*="search"] *,
 .mintlify-search *,
 .DocSearch-Button * {
-  color: #16A34A !important;
+  color: #0F7547 !important;
   font-weight: 500 !important;
 }
 
 /* Pulse animation */
 @keyframes search-pulse {
-  0% { box-shadow: 0 4px 12px rgba(22, 163, 74, 0.3); }
-  50% { box-shadow: 0 4px 12px rgba(22, 163, 74, 0.6); }
-  100% { box-shadow: 0 4px 12px rgba(22, 163, 74, 0.3); }
+  0% { box-shadow: 0 4px 12px rgba(22, 155, 98, 0.3); }
+  50% { box-shadow: 0 4px 12px rgba(22, 155, 98, 0.6); }
+  100% { box-shadow: 0 4px 12px rgba(22, 155, 98, 0.3); }
 }
 
 /* Apply animation to all search elements */
@@ -63,7 +63,7 @@ button[data-testid*="search"],
 /* Firefox */
 * {
   scrollbar-width: thin;
-  scrollbar-color: #16A34A transparent;
+  scrollbar-color: #169B62 transparent;
 }
 
 /* WebKit: Chrome, Edge, Safari, mobile */
@@ -75,9 +75,9 @@ button[data-testid*="search"],
   background: transparent;
 }
 *::-webkit-scrollbar-thumb {
-  background: #16A34A;
+  background: #169B62;
   border-radius: 4px;
 }
 *::-webkit-scrollbar-thumb:hover {
-  background: #15803D;
+  background: #0F7547;
 }

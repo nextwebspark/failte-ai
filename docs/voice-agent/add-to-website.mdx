@@ -1,6 +1,6 @@
 ---
 title: Add to Website
-description: Add your Dograh agent to any website so visitors can talk to it by voice or chat with it by text.
+description: Add your Fallcha.ai agent to any website so visitors can talk to it by voice or chat with it by text.
 tag: "NEW"
 ---
 
@@ -46,8 +46,8 @@ How chat conversations behave:
 | Mode                  | What it renders                                                                                    | When to use                                                                                          |
 | --------------------- | -------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
 | **Floating Widget**   | A pill-shaped CTA button anchored to a corner of the page. For chat widgets it toggles a chat panel. | You want a turn-key experience that doesn't disturb your existing layout.                            |
-| **Inline Component**  | A panel rendered inside a `<div id="dograh-inline-container">` that you place in your page.        | You want the agent embedded in a specific section (landing-page hero, support tab, etc.).            |
-| **Headless**          | No UI. Only the audio/chat pipeline plus a JavaScript API on `window.DograhWidget`.                | You want full control over the UI — your own buttons, design system, framework state, animations.    |
+| **Inline Component**  | A panel rendered inside a `<div id="fallcha-inline-container">` that you place in your page.        | You want the agent embedded in a specific section (landing-page hero, support tab, etc.).            |
+| **Headless**          | No UI. Only the audio/chat pipeline plus a JavaScript API on `window.FallchaWidget`.                | You want full control over the UI — your own buttons, design system, framework state, animations.    |
 
 ## Prerequisites
 
@@ -55,7 +55,7 @@ These apply to all three modes:
 
 - **Voice widgets:** serve your page over **HTTPS** or from `http://localhost`. Browsers refuse microphone access on plain HTTP origins or `file://`. Chat widgets have no microphone requirement, though HTTPS is still recommended.
 - If you set **Allowed Domains** in the dashboard, include your test origin (e.g. `localhost`) — otherwise the widget's requests are rejected. Leave the list empty to allow all domains.
-- The embed snippet you copy from the dashboard is a single `<script>` tag that loads `dograh-widget.js` **asynchronously**. The widget auto-initializes once it loads and exposes `window.DograhWidget`. Code that registers callbacks must wait for the widget to be available.
+- The embed snippet you copy from the dashboard is a single `<script>` tag that loads `fallcha-widget.js` **asynchronously**. The widget auto-initializes once it loads and exposes `window.FallchaWidget`. Code that registers callbacks must wait for the widget to be available.
 
 ## Pass context to the agent
 
@@ -68,7 +68,7 @@ dropped without preventing the conversation from starting.
 </Warning>
 
 
-The snippet you copy from the dashboard carries a `data-dograh-context` attribute — a JSON object of details about the visitor. The snippet is a small bootstrap function: `js` is the widget `<script>` element it creates, and the context is attached to that element before it is added to the page. The relevant part of the generated snippet looks like this (keep the generated `js.src` value, which contains your embed token):
+The snippet you copy from the dashboard carries a `data-fallcha-context` attribute — a JSON object of details about the visitor. The snippet is a small bootstrap function: `js` is the widget `<script>` element it creates, and the context is attached to that element before it is added to the page. The relevant part of the generated snippet looks like this (keep the generated `js.src` value, which contains your embed token):
 
 ```html
 <script>
@@ -78,13 +78,13 @@ The snippet you copy from the dashboard carries a `data-dograh-context` attribut
     js = d.createElement(s);
     js.id = id;
     js.src = '<dashboard-generated widget URL>';
-    js.setAttribute('data-dograh-context', JSON.stringify({
+    js.setAttribute('data-fallcha-context', JSON.stringify({
       page_url: window.location.href,
       today: new Date().toISOString().slice(0, 10)
     }));
     js.async = true;
     fjs.parentNode.insertBefore(js, fjs);
-  }(document, 'script', 'dograh-widget'));
+  }(document, 'script', 'fallcha-widget'));
 </script>
 ```
 
@@ -111,7 +111,7 @@ Values can be strings, numbers, booleans, or nested objects. This works for voic
 The attribute is fixed at page load, which doesn't fit a single-page app — the visitor logs in, changes route, or fills a cart long after the snippet ran. For that, call `setContext()`:
 
 ```js
-window.DograhWidget.setContext({
+window.FallchaWidget.setContext({
   customer_name: user.firstName,
   plan: user.plan
 });
@@ -122,13 +122,13 @@ Each call merges into the context already collected, so you can add details as t
 Context is read when a conversation starts, so `setContext()` applies to the **next** conversation — calling it mid-call or mid-chat doesn't change the one in progress (the widget logs a console warning if you do). For chat widgets, "next" includes the fresh conversation started by **Start new chat** after a session expires.
 
 <Note>
-The widget script loads asynchronously, so `window.DograhWidget` may not exist yet when your app's code first runs. Call `setContext()` from an event that fires after load — a `window.load` listener, or a user action like clicking your own "Chat with us" button. See [Lifecycle callbacks](#lifecycle-callbacks-all-modes) for the same timing rule.
+The widget script loads asynchronously, so `window.FallchaWidget` may not exist yet when your app's code first runs. Call `setContext()` from an event that fires after load — a `window.load` listener, or a user action like clicking your own "Chat with us" button. See [Lifecycle callbacks](#lifecycle-callbacks-all-modes) for the same timing rule.
 </Note>
 
-Use whichever fits: `data-dograh-context` for what the page knows at render, `setContext()` for what it learns later. They merge, and `setContext()` wins on a repeated name.
+Use whichever fits: `data-fallcha-context` for what the page knows at render, `setContext()` for what it learns later. They merge, and `setContext()` wins on a repeated name.
 
 <Warning>
-Context comes from the page, so a visitor can both read it and change it before it reaches your agent. Never pass secrets, and don't let it gate what the agent will do or disclose — treat `plan: "pro"` as a hint for phrasing, not proof of entitlement. For data the agent must trust, pass an opaque id like `customer_id` and let Dograh fetch the real details from your API with [Pre-Call Data Fetch](/voice-agent/pre-call-data-fetch).
+Context comes from the page, so a visitor can both read it and change it before it reaches your agent. Never pass secrets, and don't let it gate what the agent will do or disclose — treat `plan: "pro"` as a hint for phrasing, not proof of entitlement. For data the agent must trust, pass an opaque id like `customer_id` and let Fallcha.ai fetch the real details from your API with [Pre-Call Data Fetch](/voice-agent/pre-call-data-fetch).
 </Warning>
 
 Limits, applied per conversation: up to 50 variables, 64 characters per name, 2000 characters per value, and 8 KB in total. Anything past a limit is dropped and the conversation still starts. The names `provider` and `runtime_configuration` are reserved and ignored.
@@ -164,20 +164,20 @@ Configure **Button Text**, **Button Color**, and **Call to Action Text** from th
 Place a container `<div>` where you want the widget to render. The widget auto-attaches to it.
 
 ```html
-<!-- Paste the dograh embed snippet from the dashboard somewhere on the page -->
-<div id="dograh-inline-container"></div>
+<!-- Paste the Fallcha.ai embed snippet from the dashboard somewhere on the page -->
+<div id="fallcha-inline-container"></div>
 ```
 
 ### React
 
-Because React mounts after the widget script may have already loaded, integrate via `initInline` on first mount and `refresh` on remount. Poll for `window.DograhWidget` to handle the async script load.
+Because React mounts after the widget script may have already loaded, integrate via `initInline` on first mount and `refresh` on remount. Poll for `window.FallchaWidget` to handle the async script load.
 
 ```tsx
 import { useEffect } from 'react';
 
 declare global {
   interface Window {
-    DograhWidget?: {
+    FallchaWidget?: {
       initInline: (options: { container: HTMLElement }) => void;
       refresh: () => void;
       getState: () => { isInitialized: boolean };
@@ -189,11 +189,11 @@ export function Assistant() {
   useEffect(() => {
     let retries = 0;
     const tryInit = () => {
-      const container = document.getElementById('dograh-inline-container');
-      if (window.DograhWidget && container) {
-        const { isInitialized } = window.DograhWidget.getState();
-        if (isInitialized) window.DograhWidget.refresh();
-        else window.DograhWidget.initInline({ container });
+      const container = document.getElementById('fallcha-inline-container');
+      if (window.FallchaWidget && container) {
+        const { isInitialized } = window.FallchaWidget.getState();
+        if (isInitialized) window.FallchaWidget.refresh();
+        else window.FallchaWidget.initInline({ container });
       } else if (retries++ < 50) {
         setTimeout(tryInit, 100);
       }
@@ -201,7 +201,7 @@ export function Assistant() {
     tryInit();
   }, []);
 
-  return <div id="dograh-inline-container" />;
+  return <div id="fallcha-inline-container" />;
 }
 ```
 
@@ -215,15 +215,15 @@ In Headless mode the widget injects no UI of its own. You render whatever button
 
 | Method / Callback                              | Description                                                                                                                                                  |
 | ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `window.DograhWidget.start()`                  | Begin a voice call. Must be called from inside a user-gesture handler (e.g. `click`) so the browser grants microphone access.                                |
-| `window.DograhWidget.end()`                    | End the active call.                                                                                                                                         |
-| `window.DograhWidget.onCallStart(cb)`          | Fires when `start()` is invoked (status `connecting`). No payload.                                                                                           |
-| `window.DograhWidget.onCallConnected(cb)`      | Fires when the WebRTC connection is established. Payload: `{ agentId, workflowRunId, token }`.                                                               |
-| `window.DograhWidget.onCallDisconnected(cb)`   | Fires only if the call had connected, when teardown runs. Payload: `{ agentId, workflowRunId, token, durationSeconds }`.                                     |
-| `window.DograhWidget.onCallEnd(cb)`            | Fires whenever the call session is torn down (including failed-to-connect attempts). No payload.                                                             |
-| `window.DograhWidget.onStatusChange(cb)`       | Fires on every status change. Callback receives `(status, text, subtext)`. Status values: `idle`, `connecting`, `connected`, `failed`.                       |
-| `window.DograhWidget.onError(cb)`              | Fires on errors (mic permission denied, server error, etc.). Callback receives an `Error` object.                                                            |
-| `window.DograhWidget.setContext(vars)`         | Merge visitor context for the next call — see [Pass context to the agent](#pass-context-to-the-agent). Works in every embed mode, not just headless.         |
+| `window.FallchaWidget.start()`                  | Begin a voice call. Must be called from inside a user-gesture handler (e.g. `click`) so the browser grants microphone access.                                |
+| `window.FallchaWidget.end()`                    | End the active call.                                                                                                                                         |
+| `window.FallchaWidget.onCallStart(cb)`          | Fires when `start()` is invoked (status `connecting`). No payload.                                                                                           |
+| `window.FallchaWidget.onCallConnected(cb)`      | Fires when the WebRTC connection is established. Payload: `{ agentId, workflowRunId, token }`.                                                               |
+| `window.FallchaWidget.onCallDisconnected(cb)`   | Fires only if the call had connected, when teardown runs. Payload: `{ agentId, workflowRunId, token, durationSeconds }`.                                     |
+| `window.FallchaWidget.onCallEnd(cb)`            | Fires whenever the call session is torn down (including failed-to-connect attempts). No payload.                                                             |
+| `window.FallchaWidget.onStatusChange(cb)`       | Fires on every status change. Callback receives `(status, text, subtext)`. Status values: `idle`, `connecting`, `connected`, `failed`.                       |
+| `window.FallchaWidget.onError(cb)`              | Fires on errors (mic permission denied, server error, etc.). Callback receives an `Error` object.                                                            |
+| `window.FallchaWidget.setContext(vars)`         | Merge visitor context for the next call — see [Pass context to the agent](#pass-context-to-the-agent). Works in every embed mode, not just headless.         |
 
 All `on*` setters are single-listener — calling the same one again replaces the previous handler.
 
@@ -231,13 +231,13 @@ All `on*` setters are single-listener — calling the same one again replaces th
 
 | Method / Callback                              | Description                                                                                                                                                  |
 | ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `window.DograhWidget.startChat()`              | Start a conversation. The agent's greeting arrives via `onMessage`.                                                                                          |
-| `window.DograhWidget.sendMessage(text)`        | Send a visitor message. Returns a Promise that resolves with the updated transcript (array of turns), or `null` if the message couldn't be delivered.        |
-| `window.DograhWidget.getMessages()`            | Current transcript as an array of turns: `{ id, status, user_message, assistant_message }`, each message being `{ text, created_at }`.                       |
-| `window.DograhWidget.onMessage(cb)`            | Fires once per new agent reply. Callback receives `(text, turn)`.                                                                                            |
-| `window.DograhWidget.onChatStateChange(cb)`    | Fires on every chat state change. States: `idle`, `starting`, `ready`, `waiting` (agent is replying), `ended`, `expired`, `error`.                           |
-| `window.DograhWidget.onError(cb)`              | Fires on errors. Callback receives an `Error` object.                                                                                                        |
-| `window.DograhWidget.setContext(vars)`         | Merge visitor context for the next conversation — see [Pass context to the agent](#pass-context-to-the-agent). Works in every embed mode, not just headless. |
+| `window.FallchaWidget.startChat()`              | Start a conversation. The agent's greeting arrives via `onMessage`.                                                                                          |
+| `window.FallchaWidget.sendMessage(text)`        | Send a visitor message. Returns a Promise that resolves with the updated transcript (array of turns), or `null` if the message couldn't be delivered.        |
+| `window.FallchaWidget.getMessages()`            | Current transcript as an array of turns: `{ id, status, user_message, assistant_message }`, each message being `{ text, created_at }`.                       |
+| `window.FallchaWidget.onMessage(cb)`            | Fires once per new agent reply. Callback receives `(text, turn)`.                                                                                            |
+| `window.FallchaWidget.onChatStateChange(cb)`    | Fires on every chat state change. States: `idle`, `starting`, `ready`, `waiting` (agent is replying), `ended`, `expired`, `error`.                           |
+| `window.FallchaWidget.onError(cb)`              | Fires on errors. Callback receives an `Error` object.                                                                                                        |
+| `window.FallchaWidget.setContext(vars)`         | Merge visitor context for the next conversation — see [Pass context to the agent](#pass-context-to-the-agent). Works in every embed mode, not just headless. |
 
 In chat mode `start()` aliases `startChat()` and `end()` is a no-op teardown (chat sessions need none), so generic snippets keep working. Sends are serialized — `sendMessage` while a reply is pending (`waiting`) resolves to `null`.
 
@@ -248,14 +248,14 @@ In chat mode `start()` aliases `startChat()` and `end()` is a no-op teardown (ch
 
 <script>
   window.addEventListener('load', () => {
-    window.DograhWidget.onMessage((text) => {
+    window.FallchaWidget.onMessage((text) => {
       const p = document.createElement('p');
       p.textContent = 'Agent: ' + text;
       document.getElementById('transcript').appendChild(p);
     });
 
     document.getElementById('open-chat').addEventListener('click', () => {
-      window.DograhWidget.startChat();
+      window.FallchaWidget.startChat();
     });
 
     document.getElementById('send-btn').addEventListener('click', async () => {
@@ -263,7 +263,7 @@ In chat mode `start()` aliases `startChat()` and `end()` is a no-op teardown (ch
       const p = document.createElement('p');
       p.textContent = 'You: ' + input.value;
       document.getElementById('transcript').appendChild(p);
-      await window.DograhWidget.sendMessage(input.value);
+      await window.FallchaWidget.sendMessage(input.value);
       input.value = '';
     });
   });
@@ -271,7 +271,7 @@ In chat mode `start()` aliases `startChat()` and `end()` is a no-op teardown (ch
 ```
 
 <Note>
-**About timing.** The widget script loads asynchronously, so `window.DograhWidget` may not exist at the moment your inline `<script>` first runs. The examples below assume `window.DograhWidget` is already available when registration runs. To guarantee that:
+**About timing.** The widget script loads asynchronously, so `window.FallchaWidget` may not exist at the moment your inline `<script>` first runs. The examples below assume `window.FallchaWidget` is already available when registration runs. To guarantee that:
 
 - **Vanilla JS:** wrap your registration code in `window.addEventListener('load', () => { /* register here */ })`.
 - **React:** inside `useEffect`, register immediately if `document.readyState === 'complete'`, otherwise add a one-time `window.load` listener that registers on fire.
@@ -295,20 +295,20 @@ In chat mode `start()` aliases `startChat()` and `end()` is a no-op teardown (ch
       : 'Talk to AI';
   }
 
-  window.DograhWidget.onStatusChange((status) => {
+  window.FallchaWidget.onStatusChange((status) => {
     callStatus = status;
     render();
   });
 
-  window.DograhWidget.onError((err) => {
-    console.error('Dograh error:', err.message);
+  window.FallchaWidget.onError((err) => {
+    console.error('Fallcha.ai error:', err.message);
   });
 
   btn.addEventListener('click', () => {
     if (callStatus === 'connected' || callStatus === 'connecting') {
-      window.DograhWidget.end();
+      window.FallchaWidget.end();
     } else {
-      window.DograhWidget.start();
+      window.FallchaWidget.start();
     }
   });
 </script>
@@ -323,7 +323,7 @@ type CallStatus = 'idle' | 'connecting' | 'connected' | 'failed';
 
 declare global {
   interface Window {
-    DograhWidget: {
+    FallchaWidget: {
       start: () => void;
       end: () => void;
       onStatusChange: (cb: (status: CallStatus, text?: string, subtext?: string) => void) => void;
@@ -336,15 +336,15 @@ export function TalkButton() {
   const [status, setStatus] = useState<CallStatus>('idle');
 
   useEffect(() => {
-    window.DograhWidget.onStatusChange((s) => setStatus(s));
-    window.DograhWidget.onError((err) => console.error('Dograh error:', err.message));
+    window.FallchaWidget.onStatusChange((s) => setStatus(s));
+    window.FallchaWidget.onError((err) => console.error('Fallcha.ai error:', err.message));
   }, []);
 
   const isLive = status === 'connected' || status === 'connecting';
   const label = { idle: 'Talk to AI', connecting: 'Connecting…', connected: 'End Call', failed: 'Retry' }[status];
 
   return (
-    <button onClick={() => (isLive ? window.DograhWidget.end() : window.DograhWidget.start())}>
+    <button onClick={() => (isLive ? window.FallchaWidget.end() : window.FallchaWidget.start())}>
       {label}
     </button>
   );
@@ -360,13 +360,17 @@ export function TalkButton() {
 The `on*` callbacks in the [Headless JavaScript API](#javascript-api-voice-widgets) work in **all three embed modes**, not just Headless. Use them for analytics or to trigger UI in the host page even when the widget is rendering its own UI (Floating or Inline). The call callbacks (`onCall*`) fire for voice widgets; for chat widgets use `onMessage` and `onChatStateChange` the same way.
 
 ```js
-window.DograhWidget.onCallConnected(({ agentId, workflowRunId }) => {
+window.FallchaWidget.onCallConnected(({ agentId, workflowRunId }) => {
   analytics.track('voice_call_started', { agentId, workflowRunId });
 });
 
-window.DograhWidget.onCallDisconnected(({ workflowRunId, durationSeconds }) => {
+window.FallchaWidget.onCallDisconnected(({ workflowRunId, durationSeconds }) => {
   analytics.track('voice_call_ended', { workflowRunId, durationSeconds });
 });
 ```
 
 `onCallConnected` and `onCallDisconnected` only fire when the call actually establishes a media connection — failed-to-connect attempts (e.g. denied mic, network failure) don't trigger them, so analytics stay clean.
+
+## Older embed snippets
+
+Snippets copied before the rename to Fallcha.ai keep working without changes. `failte-widget.js` and `dograh-widget.js` load `fallcha-widget.js`, the `data-failte-context` / `data-dograh-context` attributes and the `failte-inline-container` / `dograh-inline-container` ids are still read, and `window.FailteWidget` / `window.DograhWidget` point at `window.FallchaWidget`. New embeds should use the `fallcha` names shown above.

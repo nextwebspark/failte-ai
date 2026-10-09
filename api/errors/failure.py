@@ -179,7 +179,7 @@ def _external_message(source: ErrorSource, error_type: ErrorType) -> str:
         return f"The {label} account has insufficient quota or credits."
     if error_type == ErrorType.PROVIDER_ERROR:
         return f"The external {label} service is temporarily unavailable."
-    return f"Dograh encountered an internal error while processing {label}."
+    return f"Fallcha.ai encountered an internal error while processing {label}."
 
 
 def _valid_http_status(value: object) -> int | None:

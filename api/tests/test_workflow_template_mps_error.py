@@ -48,10 +48,10 @@ def test_create_workflow_from_template_mps_unreachable_returns_503():
 
     assert response.status_code == 503
     detail = response.json()["detail"]
-    assert "Dograh cloud service" in detail
+    assert "Fallcha.ai cloud service" in detail
     assert "could not be reached" in detail
     assert "MPS_API_URL" in detail
-    assert "manually or with the Dograh SDK" in detail
+    assert "manually or with the Fallcha.ai SDK" in detail
 
 
 def test_create_workflow_from_template_mps_http_error_preserves_status():

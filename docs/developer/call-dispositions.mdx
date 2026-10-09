@@ -1,6 +1,6 @@
 ---
 title: "Call Dispositions"
-description: "Configure workflow-specific business outcomes and use them consistently across Dograh"
+description: "Configure workflow-specific business outcomes and use them consistently across Fallcha.ai"
 ---
 
 A call disposition is a stable code that describes the business outcome of a
@@ -11,7 +11,7 @@ achieved.
 
 <Note>
   Call disposition extraction is disabled by default for every workflow. Until
-  you enable it, Dograh keeps the disposition recorded by the event that ended
+  you enable it, Fallcha.ai keeps the disposition recorded by the event that ended
   the call.
 </Note>
 
@@ -51,7 +51,7 @@ removes the configured options from the workflow after you save and publish.
 
 ### Define effective custom outcomes
 
-The code is the value Dograh stores for the run. Keep it stable and
+The code is the value Fallcha.ai stores for the run. Keep it stable and
 machine-readable. The description tells the classifier when it should select
 that code.
 
@@ -74,12 +74,12 @@ the workflow.
 
 ## How extraction works
 
-At the end of an eligible call, Dograh analyzes the complete conversation and
+At the end of an eligible call, Fallcha.ai analyzes the complete conversation and
 selects exactly one of the configured codes. It cannot invent a code that is
 not in the workflow configuration.
 
 If the conversation does not support any configured outcome, contains no user
-speech, or classification fails, Dograh keeps the disposition already recorded
+speech, or classification fails, Fallcha.ai keeps the disposition already recorded
 for the call. A disposition explicitly set by an end-call or transfer tool is
 also preserved rather than overwritten by final classification.
 
@@ -90,7 +90,7 @@ as a whole.
 
 ## Understand the stored fields
 
-Dograh stores the termination mechanism, raw business outcome, and optional
+Fallcha.ai stores the termination mechanism, raw business outcome, and optional
 organization-specific code separately:
 
 | Field | Meaning | Example |
@@ -116,7 +116,7 @@ template:
 }
 ```
 
-Dograh automatically adds a top-level `call_disposition` containing the raw
+Fallcha.ai automatically adds a top-level `call_disposition` containing the raw
 value when your webhook template does not define that key. To send your
 organization-specific code instead, reference
 `{{gathered_context.mapped_call_disposition}}` explicitly. See
@@ -131,12 +131,12 @@ for filtering and reporting.
 1. Open **Platform Settings**.
 2. Under **Preferences**, turn on **Disposition mapping**.
 3. Select **Configure mapping**.
-4. Map each raw Dograh or workflow disposition to your preferred organization
+4. Map each raw Fallcha.ai or workflow disposition to your preferred organization
    code.
 5. Select **Add disposition** if a custom workflow code is not already listed.
 6. Save the mapping.
 
-For example, you can map `callback_requested` to `follow_up`. Dograh preserves
+For example, you can map `callback_requested` to `follow_up`. Fallcha.ai preserves
 `call_disposition` as `callback_requested` and writes `follow_up` to
 `mapped_call_disposition`. Run filters and reports use the mapped value. In a
 webhook, you can choose either the raw or mapped field explicitly. Mapping

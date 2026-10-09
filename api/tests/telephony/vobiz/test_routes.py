@@ -306,9 +306,9 @@ async def test_vobiz_configure_inbound_does_not_update_application_when_attach_f
     assert not result.ok
     assert result.message == (
         "Vobiz indicates that this phone number is already attached to an "
-        "application. To enable inbound calls in Dograh, review the phone number "
+        "application. To enable inbound calls in Fallcha.ai, review the phone number "
         "configuration in Vobiz and ensure that the number is attached to the "
-        "Application ID configured in Dograh (12345678901234567)."
+        "Application ID configured in Fallcha.ai (12345678901234567)."
     )
     assert session.requests == [
         (

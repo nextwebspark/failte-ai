@@ -13,6 +13,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { BRAND } from "@/config/brand";
 
 interface SetupChecklistCardProps {
   checklist: ProviderSetupChecklist;
@@ -56,7 +57,7 @@ export function SetupChecklistCard({
         </div>
         <CardDescription>
           {connectivity === "sip"
-            ? "Failte AI provides the SIP connection; you connect your own carrier and numbers to it."
+            ? `${BRAND.name} provides the SIP connection; you connect your own carrier and numbers to it.`
             : "Finish these steps to place and receive calls on this configuration."}
         </CardDescription>
       </CardHeader>

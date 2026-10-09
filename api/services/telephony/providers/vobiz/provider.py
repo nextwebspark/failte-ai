@@ -603,9 +603,9 @@ class VobizProvider(TelephonyProvider):
                             message = (
                                 "Vobiz indicates that this phone number is already "
                                 "attached to an application. To enable inbound calls "
-                                "in Dograh, review the phone number configuration in "
+                                "in Fallcha.ai, review the phone number configuration in "
                                 "Vobiz and ensure that the number is attached to the "
-                                "Application ID configured in Dograh "
+                                "Application ID configured in Fallcha.ai "
                                 f"({self.application_id})."
                             )
                         elif response.status == 404:

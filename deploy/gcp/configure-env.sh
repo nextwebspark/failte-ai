@@ -76,6 +76,33 @@ set_key TELEPHONY_WS_TOKEN_SECRET "$(sm dograh-telephony-ws-token-secret)"
 # Enforcement stays off until the carrier leg is proven end to end.
 set_key TELEPHONY_WS_TOKEN_ENFORCE false
 
+# Billing and email are opt-in: each is configured only when its secret exists
+# in Secret Manager, so an install without them keeps working unchanged.
+#   gcloud secrets create dograh-stripe-secret-key --data-file=-     # sk_test_/sk_live_
+#   gcloud secrets create dograh-stripe-webhook-secret --data-file=- # whsec_ of the dashboard endpoint
+#   gcloud secrets create dograh-resend-api-key --data-file=-        # re_...
+sm_optional() { sm "$1" 2>/dev/null || true; }
+
+STRIPE_KEY="$(sm_optional dograh-stripe-secret-key)"
+if [[ -n "$STRIPE_KEY" ]]; then
+  set_key BILLING_PROVIDER stripe
+  set_key STRIPE_SECRET_KEY "$STRIPE_KEY"
+  set_key STRIPE_WEBHOOK_SECRET "$(sm dograh-stripe-webhook-secret)"
+  set_key STRIPE_AUTOMATIC_TAX "${DOGRAH_STRIPE_AUTOMATIC_TAX:-false}"
+  if [[ -n "${DOGRAH_BILLING_SALES_CONTACT:-}" ]]; then
+    set_key BILLING_SALES_CONTACT "$DOGRAH_BILLING_SALES_CONTACT"
+  fi
+fi
+
+RESEND_KEY="$(sm_optional dograh-resend-api-key)"
+if [[ -n "$RESEND_KEY" ]]; then
+  set_key EMAIL_PROVIDER resend
+  set_key RESEND_API_KEY "$RESEND_KEY"
+  # Must be on a domain verified in Resend; onboarding@resend.dev only reaches
+  # the Resend account owner's own address.
+  set_key EMAIL_FROM "${DOGRAH_EMAIL_FROM:?DOGRAH_EMAIL_FROM is required with Resend, e.g. 'Fallcha.ai <no-reply@mail.example.com>'}"
+fi
+
 set_key ENABLE_SIGNUP true
 set_key FASTAPI_WORKERS 2
 

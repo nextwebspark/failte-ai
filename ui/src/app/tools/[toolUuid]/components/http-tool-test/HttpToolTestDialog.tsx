@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { BRAND } from "@/config/brand";
 import { detailFromError } from "@/lib/apiError";
 import { useAuth } from "@/lib/auth";
 
@@ -395,7 +396,7 @@ export function HttpToolTestDialog({
                             <div>
                                 <p className="text-sm font-medium">Preset Parameters</p>
                                 <p className="text-xs text-muted-foreground">
-                                    Resolved values that Failte AI would normally derive from each configured preset.
+                                    Resolved values that {BRAND.name} would normally derive from each configured preset.
                                 </p>
                             </div>
                             <ParameterFields

@@ -1,6 +1,7 @@
-# Dograh - Project Overview
+# Fallcha.ai - Project Overview
 
-Dograh is a voice AI platform for building and deploying conversational AI agents with telephony and WebRTC support.
+Fallcha.ai is a voice AI platform for building and deploying conversational AI agents with telephony and WebRTC support.
+It is a private fork of the open-source [Dograh](https://github.com/dograh-hq/dograh) project (BSD 2-Clause), so many code identifiers still use the `dograh` name.
 
 ## Project Structure
 

@@ -32,7 +32,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from loguru import logger
 
-from api.constants import REDIS_URL
+from api.constants import BRAND_APP_URL, BRAND_NAME, REDIS_URL
 from api.errors.domain import DomainError
 from api.errors.mps import MPS_UNAVAILABLE_PUBLIC_MESSAGE, MPSUnavailableError
 from api.mcp_server import mcp
@@ -103,13 +103,13 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="Dograh API",
-    description="API for the Dograh app",
+    title=f"{BRAND_NAME} API",
+    description=f"API for the {BRAND_NAME} app",
     version="1.0.0",
     openapi_url=f"{API_PREFIX}/openapi.json",
     lifespan=lifespan,
     servers=[
-        {"url": "https://app.dograh.com", "description": "Production"},
+        {"url": BRAND_APP_URL, "description": "Production"},
         {"url": "http://localhost:8000", "description": "Local development"},
     ],
 )
@@ -120,7 +120,7 @@ async def handle_mps_unavailable_error(
     _request: Request,
     _exc: MPSUnavailableError,
 ) -> JSONResponse:
-    """Tell callers this is a Dograh outage, not invalid customer config."""
+    """Tell callers this is a Fallcha.ai outage, not invalid customer config."""
 
     return JSONResponse(
         status_code=503,

@@ -48,6 +48,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { BRAND } from "@/config/brand";
 import { detailFromError } from "@/lib/apiError";
 
 interface TrunkCardProps {
@@ -302,7 +303,7 @@ export function TrunkCard({
           <DialogHeader>
             <DialogTitle>{editing ? "Edit trunk" : "Add trunk"}</DialogTitle>
             <DialogDescription>
-              Failte AI provisions this trunk with {configuration.provider} and dials
+              {BRAND.name} provisions this trunk with {configuration.provider} and dials
               your carrier over it.
             </DialogDescription>
           </DialogHeader>

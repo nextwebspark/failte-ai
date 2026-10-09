@@ -68,7 +68,7 @@ interface AppLayoutProps {
  * (app-doc/claude-design/Failte AI v2.dc.html):
  *
  *   ┌──────────────────────────────────────────────┐  46px header — brand,
- *   │ FailteAI / Workspace / Page  strapline   ⋯ ● │  breadcrumb, actions, you
+ *   │ Fallcha.ai / Workspace / Page strapline  ⋯ ● │  breadcrumb, actions, you
  *   ├────────────┬──────────────────┬──────────────┤
  *   │  nav panel │  content panel   │  test rail   │  14px gutter + 14px gap,
  *   └────────────┴──────────────────┴──────────────┘  all rounded surfaces

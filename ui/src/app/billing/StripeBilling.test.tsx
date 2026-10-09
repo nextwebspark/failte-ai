@@ -37,7 +37,7 @@ const account = {
     currency: "eur", plan: "payg", balance_eur: "19.8765", credit_limit_eur: "0.0000",
     price_per_minute_eur: "0.12", min_balance_for_call_eur: "0.50",
     topup_packs_eur: ["20", "50", "100", "250"], min_topup_eur: "20", max_topup_eur: "5000",
-    setup_fee_eur: "550.00", setup_fee_included_credit_eur: "50.00", sales_contact: "sales@failte.ai",
+    setup_fee_eur: "550.00", setup_fee_included_credit_eur: "50.00", sales_contact: "sales@fallcha.ai",
 };
 const ledger = {
     entries: [{
@@ -64,7 +64,7 @@ describe("Stripe billing page", () => {
         expect(screen.getByText("€0.12")).toBeTruthy();
         expect(screen.getByText("Call 9: 90s at EUR 0.12/min")).toBeTruthy();
         expect(screen.getByText("Contact sales").closest("a")?.getAttribute("href"))
-            .toBe("mailto:sales@failte.ai");
+            .toBe("mailto:sales@fallcha.ai");
         expect(mocks.getCredits).not.toHaveBeenCalled();
     });
 

@@ -3,7 +3,7 @@ title: "Stripe Billing"
 description: "Configure prepaid EUR billing with Stripe, and the checklist for going live"
 ---
 
-Fáilte AI can bill customers itself: organizations prepay credit in euro through Stripe Checkout, and every call is charged per second against that credit. Balances live in the Fáilte AI database (`billing_accounts` and `billing_ledger_entries`). Stripe only collects payments and issues invoices.
+Fallcha.ai can bill customers itself: organizations prepay credit in euro through Stripe Checkout, and every call is charged per second against that credit. Balances live in the Fallcha.ai database (`billing_accounts` and `billing_ledger_entries`). Stripe only collects payments and issues invoices.
 
 For how this looks to customers, see [Billing and Plans](../configurations/billing).
 
@@ -19,7 +19,7 @@ Set these in `api/.env`:
 
 | Variable | Description |
 |---|---|
-| `BILLING_PROVIDER` | `stripe` turns on Fáilte AI billing. `mps` uses Dograh's managed credits, and `none` disables billing. If unset, it is `none` in OSS mode and `mps` otherwise |
+| `BILLING_PROVIDER` | `stripe` turns on Fallcha.ai billing. `mps` uses Dograh MPS managed credits, and `none` disables billing. If unset, it is `none` in OSS mode and `mps` otherwise |
 | `STRIPE_SECRET_KEY` | Stripe secret key (`sk_test_...` in test mode) |
 | `STRIPE_WEBHOOK_SECRET` | Signing secret of your webhook endpoint (`whsec_...`) |
 | `STRIPE_AUTOMATIC_TAX` | `true` (default) lets Stripe Tax add VAT at checkout. Set `false` only while Stripe Tax is not set up yet |

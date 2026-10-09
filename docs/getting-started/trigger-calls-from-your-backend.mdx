@@ -3,7 +3,7 @@ title: "Trigger Calls using API"
 description: "Kick off a call the moment a lead lands in your CRM or spreadsheet, no manual dialing."
 ---
 
-If your team is manually dialing leads one by one, or your CRM needs to kick off a call the moment a lead comes in, this is how you automate that with Dograh.
+If your team is manually dialing leads one by one, or your CRM needs to kick off a call the moment a lead comes in, this is how you automate that with Fallcha.ai.
 
 Say you've got leads or accounts sitting in a CRM or a Google Sheet. Each row has details like customer name, company name, amount due. The **API Trigger** node lets you take that row of data and turn it into a personalized call, automatically.
 
@@ -46,7 +46,7 @@ If you change the agent and want the production URL to reflect it, publish first
 Trigger the call from Postman, or wherever your backend lives. In the body, send `phone_number` and `initial_context`:
 
 ```bash
-curl -X POST https://api.dograh.com/api/v1/public/agent/test/{uuid} \
+curl -X POST https://api.fallcha.ai/api/v1/public/agent/test/{uuid} \
   -H "Content-Type: application/json" \
   -H "X-API-Key: dg_your_api_key" \
   -d '{

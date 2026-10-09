@@ -21,7 +21,7 @@ class OrganizationPreferences(BaseModel):
     disposition_mapping: dict[str, str] = Field(
         default_factory=dict,
         description=(
-            "Dograh disposition -> the code this organization uses for it. "
+            "Fallcha.ai disposition -> the code this organization uses for it. "
             "Applied when writing `gathered_context.mapped_call_disposition`, "
             "so webhooks, run filters, reports and external-PBX write-backs all "
             "read the organization's own vocabulary. Dispositions absent from "

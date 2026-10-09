@@ -185,13 +185,13 @@ export async function impersonateAsSuperadmin(params: {
   // ---------------------------------------------------------------------------------
   // Instead of setting the cookie here (which would also affect the superadmin
   // sub-domain), redirect the browser to the dedicated impersonation helper route
-  // (served from the target sub-domain, e.g. app.dograh.com). The route will set the
+  // (served from the target sub-domain, e.g. app.fallcha.ai). The route will set the
   // cookie for the *current* sub-domain only and then forward the user to the final
   // destination.
   // ---------------------------------------------------------------------------------
 
   // Determine the base URL that should handle the impersonation cookie. Configured
-  // via NEXT_PUBLIC_APP_URL (e.g. https://app.dograh.com); falls back to the current
+  // via NEXT_PUBLIC_APP_URL (e.g. https://app.fallcha.ai); falls back to the current
   // origin (e.g. localhost, staging, or already on the app).
   const appBaseUrl = process.env.NEXT_PUBLIC_APP_URL || window.location.origin;
 

@@ -1,8 +1,8 @@
 // Upstream linked this footer to dograh.com/privacy-policy and
 // dograh.com/terms-of-service. Those are the upstream project's legal
-// documents, not ours — presenting them under the Failte AI wordmark would tell
+// documents, not ours — presenting them under the Fallcha.ai wordmark would tell
 // users another company's terms govern this service. They are removed until
-// Failte AI has its own policies; restore by putting our URLs in the array
+// Fallcha.ai has its own policies; restore by putting our URLs in the array
 // below and the links render again.
 const LEGAL_LINKS: { label: string; href: string }[] = [];
 

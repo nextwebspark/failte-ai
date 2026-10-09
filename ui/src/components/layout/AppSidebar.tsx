@@ -293,15 +293,12 @@ export function AppSidebar({ docked = true }: { docked?: boolean }) {
             )}
             translate="no"
           >
-            <BrandLogo mark className="h-[22px] rounded-md" />
-            <span
-              className={cn(
-                "font-mono text-[13px] font-semibold leading-none",
-                isCollapsed && "sr-only"
-              )}
-            >
-              Failte<span className="font-normal opacity-60">AI</span>
-            </span>
+            {/* Collapsed rail fits only the mark; open, the full kit lockup. */}
+            {isCollapsed ? (
+              <BrandLogo mark className="h-[22px]" />
+            ) : (
+              <BrandLogo className="h-6" />
+            )}
           </Link>
         </SidebarHeader>
       )}

@@ -9,7 +9,7 @@ Pre-Call Data Fetch allows you to enrich the call context with external data bef
 ## How It Works
 
 1. A call arrives (inbound) or is initiated (outbound).
-2. Dograh sends a **POST** request to your configured endpoint with a standardized payload.
+2. Fallcha.ai sends a **POST** request to your configured endpoint with a standardized payload.
 3. The caller hears a ring-back tone while waiting for the response.
 4. Your API responds with a JSON object containing an `initial_context` object.
 5. The variables are merged into the call's initial context.
@@ -22,12 +22,12 @@ Open the [**Start Call**](/voice-agent/start-call) node editor and expand **Adva
 | Field | Description |
 | --- | --- |
 | **Pre-Call Data Fetch** | **Disabled**, **Always**, **Inbound calls only**, or **Outbound calls only**. Calls without an inbound or outbound direction run the fetch only in **Always** mode. |
-| **Endpoint URL** | The URL Dograh will send the POST request to. |
+| **Endpoint URL** | The URL Fallcha.ai will send the POST request to. |
 | **Authentication** | Optional credential for authenticating the request. Supports API key, bearer token, basic auth, and custom header. |
 
 ## Request Format
 
-Dograh sends a `POST` request with the following JSON payload:
+Fallcha.ai sends a `POST` request with the following JSON payload:
 
 ```json
 {

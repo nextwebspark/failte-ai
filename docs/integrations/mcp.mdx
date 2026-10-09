@@ -1,23 +1,23 @@
 ---
 title: "MCP Server"
-description: "Connect Codex, Claude, and other AI assistants to your Dograh workspace via the Model Context Protocol"
+description: "Connect Codex, Claude, and other AI assistants to your Fallcha.ai workspace via the Model Context Protocol"
 ---
 
 ## Overview
 
-Dograh exposes an [MCP (Model Context Protocol)](https://modelcontextprotocol.io/) server that lets AI assistants like Codex, Claude Code, Claude Desktop, and Cursor access your workspace and documentation. Once connected, an assistant can list your agents, fetch agent definitions, and search Dograh docs on your behalf.
+Fallcha.ai exposes an [MCP (Model Context Protocol)](https://modelcontextprotocol.io/) server that lets AI assistants like Codex, Claude Code, Claude Desktop, and Cursor access your workspace and documentation. Once connected, an assistant can list your agents, fetch agent definitions, and search Fallcha.ai docs on your behalf.
 
 ## Prerequisites
 
-- A Dograh API key. Generate one at [`/api-keys`](https://app.dograh.com/api-keys) (or `http://localhost:3010/api-keys` for self-hosted). See [API Keys](/configurations/api-keys).
-- Your Dograh MCP endpoint:
-  - Hosted: `https://app.dograh.com/api/v1/mcp/`
+- A Fallcha.ai API key. Generate one at [`/api-keys`](https://app.fallcha.ai/api-keys) (or `http://localhost:3010/api-keys` for self-hosted). See [API Keys](/configurations/api-keys).
+- Your Fallcha.ai MCP endpoint:
+  - Hosted: `https://app.fallcha.ai/api/v1/mcp/`
   - Self-hosted: `<YOUR_BACKEND_URL>/api/v1/mcp/`
 
-The endpoint is also shown in **Platform Settings → MCP Server** inside the Dograh UI.
+The endpoint is also shown in **Platform Settings → MCP Server** inside the Fallcha.ai UI.
 
 <Note>
-If you deployed Dograh to a remote server using [`setup_remote.sh`](/deployment/docker#option-2%3A-remote-server-deployment), your endpoint is served with a self-signed SSL certificate. Claude Code will refuse MCP connections to it unless you start the CLI with TLS verification disabled:
+If you deployed Fallcha.ai to a remote server using [`setup_remote.sh`](/deployment/docker#option-2%3A-remote-server-deployment), your endpoint is served with a self-signed SSL certificate. Claude Code will refuse MCP connections to it unless you start the CLI with TLS verification disabled:
 
 ```bash
 NODE_TLS_REJECT_UNAUTHORIZED=0 claude
@@ -28,10 +28,10 @@ This is only required for self-signed certificates. If you have set up a [custom
 
 ## Claude Code
 
-Register Dograh as an MCP server with the Claude Code CLI:
+Register Fallcha.ai as an MCP server with the Claude Code CLI:
 
 ```bash
-claude mcp add --transport http dograh https://app.dograh.com/api/v1/mcp/ \
+claude mcp add --transport http dograh https://app.fallcha.ai/api/v1/mcp/ \
   --header "X-API-Key: YOUR_API_KEY"
 ```
 
@@ -49,7 +49,7 @@ Open Codex's config file (`~/.codex/config.toml`) and add a `dograh` MCP server:
 
 ```toml
 [mcp_servers.dograh]
-url = "https://app.dograh.com/api/v1/mcp/"
+url = "https://app.fallcha.ai/api/v1/mcp/"
 http_headers = { "X-API-Key" = "YOUR_API_KEY" }
 ```
 
@@ -59,7 +59,7 @@ If you prefer to keep the API key out of `config.toml`, store it in an environme
 
 ```toml
 [mcp_servers.dograh]
-url = "https://app.dograh.com/api/v1/mcp/"
+url = "https://app.fallcha.ai/api/v1/mcp/"
 env_http_headers = { "X-API-Key" = "DOGRAH_API_KEY" }
 ```
 
@@ -85,7 +85,7 @@ Open Claude Desktop's config file (`claude_desktop_config.json`) and add the `do
 {
   "mcpServers": {
     "dograh": {
-      "url": "https://app.dograh.com/api/v1/mcp/",
+      "url": "https://app.fallcha.ai/api/v1/mcp/",
       "headers": {
         "X-API-Key": "YOUR_API_KEY"
       }
@@ -94,7 +94,7 @@ Open Claude Desktop's config file (`claude_desktop_config.json`) and add the `do
 }
 ```
 
-Restart Claude Desktop after saving. The Dograh tools should appear in the tool picker.
+Restart Claude Desktop after saving. The Fallcha.ai tools should appear in the tool picker.
 
 ## Cursor and other MCP clients
 
@@ -102,13 +102,13 @@ Any MCP client that supports Streamable HTTP transport can connect with the same
 
 ## Example prompts
 
-Once the MCP server is connected, you can drive Dograh from your coding agent in plain English. A few prompts to try:
+Once the MCP server is connected, you can drive Fallcha.ai from your coding agent in plain English. A few prompts to try:
 
 **Explore your workspace**
 
-- "List my agents in Dograh."
+- "List my agents in Fallcha.ai."
 - "Show me the definition of the agent called *Lead Qualifier*."
-- "Which credentials and tools are configured in my Dograh workspace?"
+- "Which credentials and tools are configured in my Fallcha.ai workspace?"
 - "List the recordings from my most recent agent."
 
 **Edit an agent**
@@ -120,12 +120,12 @@ Once the MCP server is connected, you can drive Dograh from your coding agent in
 
 **Learn the platform**
 
-- "Search the Dograh docs for how to configure a TURN server."
-- "What node types does Dograh support, and what fields does a `knowledge_base` node take?"
-- "How do I deploy Dograh on a custom domain with HTTPS?"
+- "Search the Fallcha.ai docs for how to configure a TURN server."
+- "What node types does Fallcha.ai support, and what fields does a `knowledge_base` node take?"
+- "How do I deploy Fallcha.ai on a custom domain with HTTPS?"
 
 <Note>
-Agent edits are saved as a new **draft** version — your published agent keeps serving calls until you explicitly publish the draft from the Dograh UI.
+Agent edits are saved as a new **draft** version — your published agent keeps serving calls until you explicitly publish the draft from the Fallcha.ai UI.
 </Note>
 
 <Note>

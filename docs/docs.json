@@ -1,13 +1,16 @@
 {
   "$schema": "https://mintlify.com/docs.json",
   "theme": "mint",
-  "name": "Dograh AI",
+  "name": "Fallcha.ai",
   "colors": {
-    "primary": "#16A34A",
-    "light": "#07C983",
-    "dark": "#15803D"
+    "primary": "#169B62",
+    "light": "#4FD49A",
+    "dark": "#0F7547"
   },
-  "favicon": "/favicon.ico",
+  "favicon": "/favicon.svg",
+  "fonts": {
+    "family": "Montserrat"
+  },
   "navigation": {
     "tabs": [
       {
@@ -30,11 +33,11 @@
           {
             "group": "Build your First Agent",
             "pages": [
-                  "getting-started/first-agent",
-                  "getting-started/trigger-calls-from-your-backend",
-                  "getting-started/send-call-data-with-webhooks",
-                  "getting-started/connect-telephony",
-                  "getting-started/add-tools-and-knowledge-base"
+              "getting-started/first-agent",
+              "getting-started/trigger-calls-from-your-backend",
+              "getting-started/send-call-data-with-webhooks",
+              "getting-started/connect-telephony",
+              "getting-started/add-tools-and-knowledge-base"
             ]
           },
           {
@@ -292,24 +295,24 @@
   "logo": {
     "light": "/logo/light.svg",
     "dark": "/logo/dark.svg",
-    "href": "https://docs.dograh.com"
+    "href": "https://fallcha.ai"
   },
   "navbar": {
     "links": [
       {
         "label": "Support",
-        "href": "https://github.com/dograh-hq/dograh/issues/new/choose"
+        "href": "mailto:support@fallcha.ai"
+      },
+      {
+        "label": "Website",
+        "href": "https://fallcha.ai"
       }
     ],
     "primary": {
       "type": "button",
       "label": "Dashboard",
-      "href": "https://app.dograh.com"
+      "href": "https://app.fallcha.ai"
     }
-  },
-  "banner": {
-    "content": "🎉 **New: MCP Server & SDKs Released** — Drive Dograh from Claude, Cursor, or your own Python/TypeScript code. [MCP →](/integrations/mcp) · [SDKs →](/sdks/introduction)",
-    "dismissible": true
   },
   "search": {
     "prompt": "Search for Tools, Webhook, Deployment, etc..."
@@ -329,8 +332,7 @@
   },
   "footer": {
     "socials": {
-      "github": "https://github.com/dograh-hq",
-      "linkedin": "https://linkedin.com/company/dograh"
+      "website": "https://fallcha.ai"
     }
   },
   "api": {

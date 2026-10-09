@@ -25,7 +25,7 @@ from api.services.workflow.node_specs.model_spec import (
         "Paygent is a post-call usage-tracking and billing integration. "
         "It does not participate in the conversation graph and should not be connected to other nodes."
     ),
-    docs_url="https://docs.dograh.com/integrations/paygent",
+    docs_url="https://docs.fallcha.ai/integrations/paygent",
     category=NodeCategory.integration,
     icon="CreditCard",
     examples=[
@@ -59,7 +59,7 @@ from api.services.workflow.node_specs.model_spec import (
         },
         "paygent_enabled": {
             "display_name": "Enabled",
-            "description": "When false, Dograh skips all Paygent tracking for this call.",
+            "description": "When false, Fallcha.ai skips all Paygent tracking for this call.",
         },
         "paygent_api_key": {
             "display_name": "Paygent API Key",
@@ -89,7 +89,7 @@ class PaygentNodeData(BaseNodeData):
         default=True,
         ui_type=PropertyType.boolean,
         display_name="Enabled",
-        description="When false, Dograh skips all Paygent tracking for this call.",
+        description="When false, Fallcha.ai skips all Paygent tracking for this call.",
     )
     paygent_api_key: str | None = spec_field(
         default=None,

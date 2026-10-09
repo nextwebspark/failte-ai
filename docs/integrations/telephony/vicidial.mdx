@@ -1,12 +1,12 @@
 ---
 title: "VICIdial Integration"
-description: "Connect Dograh to VICIdial through Asterisk ARI for call control, in-group transfers, and lead updates"
+description: "Connect Fallcha.ai to VICIdial through Asterisk ARI for call control, in-group transfers, and lead updates"
 ---
 
 ## Overview
 
-Use this integration when VICIdial owns the customer call and connects Dograh
-to it through Asterisk. Dograh uses Asterisk ARI for audio and VICIdial APIs for
+Use this integration when VICIdial owns the customer call and connects Fallcha.ai
+to it through Asterisk. Fallcha.ai uses Asterisk ARI for audio and VICIdial APIs for
 operations that must affect the original customer leg:
 
 - Hang up the customer call when the agent ends the conversation
@@ -21,10 +21,10 @@ also route calls for telephony providers that are not connected to VICIdial.
 
 Before configuring VICIdial, ensure that:
 
-- Asterisk ARI is connected to Dograh as described in the
+- Asterisk ARI is connected to Fallcha.ai as described in the
   [Asterisk ARI integration](./asterisk-ari)
 - VICIdial sends the customer call to the Asterisk dialplan that enters the
-  Dograh Stasis application
+  Fallcha.ai Stasis application
 - You have VICIdial agent API credentials with permission to hang up and
   perform in-group transfers
 - If workflows will update leads, you also have non-agent API credentials with
@@ -32,7 +32,7 @@ Before configuring VICIdial, ensure that:
 
 ## Enable the organization feature
 
-1. Open **Platform Settings** by going to https://app.dograh.com/settings
+1. Open **Platform Settings** by going to https://app.fallcha.ai/settings
 2. Enable **External PBX integrations**.
 
 This switch reveals VICIdial credentials in Asterisk telephony configurations
@@ -57,13 +57,13 @@ Mapping remains available in Transfer Call tools.
 
 The non-agent API is optional when no lead updates are required. If it is used,
 its URL, user, and password must all be present. Credentials are stored with the
-telephony configuration and are returned masked by the Dograh API.
+telephony configuration and are returned masked by the Fallcha.ai API.
 
 ## Pass VICIdial call identity to Asterisk
 
-Dograh needs VICIdial's call identity to control the original customer leg.
+Fallcha.ai needs VICIdial's call identity to control the original customer leg.
 Configure VICIdial or the connecting dialplan to preserve these SIP headers on
-the call that enters the Dograh Stasis application:
+the call that enters the Fallcha.ai Stasis application:
 
 | Header | Purpose |
 | --- | --- |
@@ -83,7 +83,7 @@ Configure VICIdial or the dialplan to attach lead fields as headers, for example
 `X-VICIDIAL-first_name`, `X-VICIDIAL-city`, or `X-VICIDIAL-vendor_lead_code`.
 Headers with empty values are ignored.
 
-Each lead field is then read individually during call setup, so Dograh captures
+Each lead field is then read individually during call setup, so Fallcha.ai captures
 only the fields you list:
 
 1. Open the workflow's **General Settings**.
@@ -137,7 +137,7 @@ the agent during a call.
 
 Rules are evaluated top to bottom. The first rule whose context value matches
 one of its routes wins, so put the most specific routing first; the fallback
-applies only after every rule misses. The match is case-insensitive. Dograh
+applies only after every rule misses. The match is case-insensitive. Fallcha.ai
 performs final variable extraction before resolving the mapping. If no rule or
 fallback matches, the transfer fails and the agent can recover instead of
 silently hanging up the caller.
@@ -159,12 +159,12 @@ whose source value is absent are skipped.
 The VICIdial adapter ignores mappings that target the API control parameters
 `source`, `user`, `pass`, `function`, and `lead_id`. The non-agent API
 configuration is required for mappings to be applied. A lead-update failure
-does not prevent Dograh from attempting the requested transfer or hangup.
+does not prevent Fallcha.ai from attempting the requested transfer or hangup.
 
 ## Configure disposition mapping
 
-Dograh can record a completed call's outcome on the VICIdial lead's `status`
-column, so a call Dograh handled appears in the same reports as one an agent
+Fallcha.ai can record a completed call's outcome on the VICIdial lead's `status`
+column, so a call Fallcha.ai handled appears in the same reports as one an agent
 handled. First,
 [configure the business outcomes for each workflow](../../developer/call-dispositions#configure-outcomes-for-a-workflow).
 You can then map those raw outcomes to the status codes used by your VICIdial
@@ -173,12 +173,12 @@ deployment:
 1. Open **Platform Settings** and enable **Disposition mapping** under
    Preferences.
 2. Select **Configure mapping**.
-3. Choose the VICIdial status code you want recorded for each Dograh
+3. Choose the VICIdial status code you want recorded for each Fallcha.ai
    disposition. A disposition left as itself is sent unchanged.
 4. Select **Add disposition** for any custom workflow outcome or end-call tool
    reason that is not already listed, then save your preferences.
 
-Use the status codes already configured in your VICIdial deployment. Dograh
+Use the status codes already configured in your VICIdial deployment. Fallcha.ai
 does not prescribe the mapping, and VICIdial exposes no API for discovering
 those codes automatically. Consult your own VICIdial status configuration or
 report when choosing each target value.
@@ -191,7 +191,7 @@ See [Call Dispositions](../../developer/call-dispositions#understand-the-stored-
 for the complete data model.
 
 <Note>
-  Map your do-not-call outcomes to `DNC` to have Dograh add the customer's
+  Map your do-not-call outcomes to `DNC` to have Fallcha.ai add the customer's
   number to VICIdial's `SYSTEM_INTERNAL` do-not-call list. A lead status stops
   the current list being redialed; only the DNC entry travels with the number.
 </Note>
@@ -199,16 +199,16 @@ for the complete data model.
 A disposition that does not contain one to six letters, numbers, underscores,
 or hyphens is not written at all. VICIdial keeps whatever it recorded for the
 call, usually `RAXFER`. An unmapped disposition that already fits this format is
-written unchanged. Dograh never truncates a longer outcome into a
+written unchanged. Fallcha.ai never truncates a longer outcome into a
 plausible-looking but incorrect status.
 
 ## Runtime behavior
 
-When the workflow transfers the call, Dograh resolves the configured in-group,
+When the workflow transfers the call, Fallcha.ai resolves the configured in-group,
 applies available lead updates, asks VICIdial to transfer the customer leg, and
 then closes only the local Asterisk media leg.
 
-When the conversation ends without a transfer, Dograh persists final gathered
+When the conversation ends without a transfer, Fallcha.ai persists final gathered
 context, applies available lead updates, asks VICIdial to hang up the customer
 leg, and then closes the local Asterisk leg.
 

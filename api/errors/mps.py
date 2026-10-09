@@ -1,12 +1,12 @@
 """Errors raised at the Model Proxy Service boundary."""
 
 MPS_UNAVAILABLE_PUBLIC_MESSAGE = (
-    "A Dograh service is temporarily unavailable. Please try again later."
+    "A Fallcha.ai service is temporarily unavailable. Please try again later."
 )
 
 
 class MPSUnavailableError(ConnectionError):
-    """MPS could not complete an operation for a Dograh-owned reason.
+    """MPS could not complete an operation for a platform-owned reason.
 
     ``status_code`` is retained as structured classifier input. Response bodies are
     deliberately excluded because upstream payloads may contain sensitive details.

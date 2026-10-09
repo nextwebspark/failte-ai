@@ -6,6 +6,7 @@ import { SupportLink } from '@/components/SupportLink';
 import { Button } from '@/components/ui/button';
 import { Panel, PanelDescription, PanelTitle } from '@/components/ui/panel';
 import { SectionHeading, SectionHint } from '@/components/ui/section-heading';
+import { BRAND } from "@/config/brand";
 import { useAuth } from '@/lib/auth';
 
 export default function OverviewPage() {
@@ -19,7 +20,7 @@ export default function OverviewPage() {
                 <div className="mb-8">
                     <h1 className="text-2xl font-bold tracking-tight">
                         {isOSSMode ? (
-                            "Welcome to Failte AI"
+                            `Welcome to ${BRAND.name}`
                         ) : (
                             `Welcome${user?.displayName ? `, ${user.displayName.split(' ')[0]}` : ''}!`
                         )}

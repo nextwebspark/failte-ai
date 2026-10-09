@@ -56,7 +56,7 @@ from api.services.workflow.node_specs.model_spec import (
         },
         "noveum_enabled": {
             "display_name": "Enabled",
-            "description": "When false, Dograh skips exporting this call to Noveum.",
+            "description": "When false, Fallcha.ai skips exporting this call to Noveum.",
         },
         "noveum_api_key": {
             "display_name": "Noveum API Key",
@@ -75,7 +75,7 @@ class NoveumNodeData(BaseNodeData):
         default=True,
         ui_type=PropertyType.boolean,
         display_name="Enabled",
-        description="When false, Dograh skips exporting this call to Noveum.",
+        description="When false, Fallcha.ai skips exporting this call to Noveum.",
     )
     noveum_api_key: str | None = spec_field(
         default=None,

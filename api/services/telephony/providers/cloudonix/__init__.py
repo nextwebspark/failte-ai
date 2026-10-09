@@ -716,7 +716,7 @@ async def _preprocess_credentials_on_save(
 
 _UI_METADATA = ProviderUIMetadata(
     display_name="Cloudonix",
-    docs_url="https://docs.dograh.com/integrations/telephony/cloudonix",
+    docs_url="https://docs.fallcha.ai/integrations/telephony/cloudonix",
     fields=[
         ProviderUIField(
             name="bearer_token",
@@ -731,7 +731,7 @@ _UI_METADATA = ProviderUIMetadata(
             type="text",
             description=(
                 "Your Cloudonix domain (for example, acme.cloudonix.net). "
-                "Dograh fetches and stores its UUID automatically."
+                "Fallcha.ai fetches and stores its UUID automatically."
             ),
         ),
         ProviderUIField(

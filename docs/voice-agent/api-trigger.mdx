@@ -3,7 +3,7 @@ title: "API Trigger"
 description: "Trigger outbound calls from external systems like n8n, Zapier, or your own backend"
 ---
 
-The API Trigger node lets you initiate outbound calls to your voice agent programmatically. When you add an API Trigger node to your workflow, Dograh generates a unique endpoint URL that external systems can call to start a conversation.
+The API Trigger node lets you initiate outbound calls to your voice agent programmatically. When you add an API Trigger node to your workflow, Fallcha.ai generates a unique endpoint URL that external systems can call to start a conversation.
 
 This is useful when you want to trigger calls from your own backend, a CRM, or workflow tools like n8n and Zapier.
 
@@ -14,7 +14,7 @@ This is useful when you want to trigger calls from your own backend, a CRM, or w
 
 ## Finding your trigger URL
 
-When you add an API Trigger node to your workflow, Dograh assigns it a unique UUID. The trigger node exposes two URLs that share this UUID:
+When you add an API Trigger node to your workflow, Fallcha.ai assigns it a unique UUID. The trigger node exposes two URLs that share this UUID:
 
 - A **production URL** for the published workflow
 - A **test URL** for the latest draft
@@ -22,11 +22,11 @@ When you add an API Trigger node to your workflow, Dograh assigns it a unique UU
 You can copy either URL from the trigger node's settings dialog.
 
 ```
-POST https://your-dograh-instance/api/v1/public/agent/{uuid}        # Production
-POST https://your-dograh-instance/api/v1/public/agent/test/{uuid}   # Test
+POST https://your-fallcha-instance/api/v1/public/agent/{uuid}        # Production
+POST https://your-fallcha-instance/api/v1/public/agent/test/{uuid}   # Test
 ```
 
-If you are using the hosted version, replace `your-dograh-instance` with `api.dograh.com`.
+If you are using the hosted version, replace `your-fallcha-instance` with `api.fallcha.ai`.
 
 ### Test vs production
 
@@ -53,7 +53,7 @@ Authenticate by passing your API key in the `X-API-Key` header. The request body
 
 <CodeGroup>
 ```bash Production URL
-curl -X POST https://your-dograh-instance/api/v1/public/agent/{uuid} \
+curl -X POST https://your-fallcha-instance/api/v1/public/agent/{uuid} \
   -H "Content-Type: application/json" \
   -H "X-API-Key: dg_your_api_key" \
   -d '{
@@ -66,7 +66,7 @@ curl -X POST https://your-dograh-instance/api/v1/public/agent/{uuid} \
 ```
 
 ```bash Test URL
-curl -X POST https://your-dograh-instance/api/v1/public/agent/test/{uuid} \
+curl -X POST https://your-fallcha-instance/api/v1/public/agent/test/{uuid} \
   -H "Content-Type: application/json" \
   -H "X-API-Key: dg_your_api_key" \
   -d '{
@@ -124,7 +124,7 @@ See [Context & Variables](/core-concepts/context-and-variables) for more on how 
 
 ### Override the greeting for one call
 
-Pass `greeting_override` inside `initial_context` to replace the Start Call node's saved greeting for one API-triggered call. A valid override takes precedence over the saved greeting. If you omit it, Dograh uses the saved greeting; if neither exists, the Start node follows its normal no-greeting behavior.
+Pass `greeting_override` inside `initial_context` to replace the Start Call node's saved greeting for one API-triggered call. A valid override takes precedence over the saved greeting. If you omit it, Fallcha.ai uses the saved greeting; if neither exists, the Start node follows its normal no-greeting behavior.
 
 For a text greeting:
 
@@ -154,7 +154,7 @@ For a pre-recorded greeting, pass the recording's string ID from the Recordings 
 }
 ```
 
-Dograh renders a text override after Pre-Call Data Fetch completes, so the override can reference variables returned by the fetch. The override follows the same playback restrictions as a saved greeting. In particular, static text greetings are not spoken by realtime speech-to-speech models; use an audio override for those configurations.
+Fallcha.ai renders a text override after Pre-Call Data Fetch completes, so the override can reference variables returned by the fetch. The override follows the same playback restrictions as a saved greeting. In particular, static text greetings are not spoken by realtime speech-to-speech models; use an audio override for those configurations.
 
 Pre-Call Data Fetch can also return `greeting_override`. Because fetched context is applied after trigger context, a valid fetched override replaces one supplied by the trigger.
 
@@ -169,7 +169,7 @@ By default, calls are placed through your organization's default outbound [telep
 }
 ```
 
-The id is shown on each row in **Telephony configurations** (`https://app.dograh.com/telephony-configurations` for hosted or `http://localhost:3010/telephony-configurations` for local). The configuration must belong to the same organization as the API Trigger; otherwise the request returns `404`.
+The id is shown on each row in **Telephony configurations** (`https://app.fallcha.ai/telephony-configurations` for hosted or `http://localhost:3010/telephony-configurations` for local). The configuration must belong to the same organization as the API Trigger; otherwise the request returns `404`.
 
 To use a specific caller ID from that configuration, also pass `from_phone_number_id`:
 

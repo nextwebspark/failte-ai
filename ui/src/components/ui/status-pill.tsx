@@ -7,7 +7,7 @@ import { cn } from "@/lib/utils"
  * The canvas status pill (`pill()` in app-doc/claude-design/Failte AI v2.dc.html):
  * uppercase mono on a dim wash of its accent.
  *
- * Five tones cover every status the app shows, so screens pick a tone instead of
+ * Six tones cover every status the app shows, so screens pick a tone instead of
  * inventing a colour. Prefer this over a per-screen status→colour map.
  */
 const statusPillVariants = cva(
@@ -19,6 +19,8 @@ const statusPillVariants = cva(
                 info: "bg-sky-dim text-sky",
                 warn: "bg-amber-dim text-amber",
                 bad: "bg-danger-dim text-danger",
+                // Brand kit Tricolour orange: a call or agent that is live right now.
+                live: "bg-live-dim text-live-text",
                 mute: "bg-panel text-ink-3",
             },
         },

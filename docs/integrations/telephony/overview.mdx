@@ -5,9 +5,9 @@ description: "Connect voice agents with telephony providers for inbound and outb
 
 ## Overview
 
-Dograh AI's telephony integration system provides a unified interface for connecting with various telephony providers. The same configuration powers both outbound calls (initiated from Dograh) and inbound calls (received on a phone number you own).
+Fallcha.ai's telephony integration system provides a unified interface for connecting with various telephony providers. The same configuration powers both outbound calls (initiated from Fallcha.ai) and inbound calls (received on a phone number you own).
 
-Dograh does not sell phone numbers or minutes. The phone service is always
+Fallcha.ai does not sell phone numbers or minutes. The phone service is always
 yours — there are two ways to bring it.
 
 ## Two ways to connect
@@ -15,14 +15,14 @@ yours — there are two ways to bring it.
 <CardGroup cols={2}>
   <Card title="Use a telephony provider" icon="phone">
     Open an account with Twilio, Plivo, Telnyx, Vonage or Vobiz, paste the
-    credentials into Dograh, and call using their numbers. **Start here if you
+    credentials into Fallcha.ai, and call using their numbers. **Start here if you
     don't already run phone infrastructure.** Pick your provider from the list
     below.
   </Card>
   <Card title="Bring your own SIP" icon="server" href="/integrations/telephony/dograh-sip">
-    Already have a SIP trunk or a PBX? Point it at Dograh and keep your existing
+    Already have a SIP trunk or a PBX? Point it at Fallcha.ai and keep your existing
     carrier and numbers. Every organization is provisioned with a
-    **Dograh Cloudonix SIP** connection for exactly this; self-hosted
+    **Fallcha.ai Cloudonix SIP** connection for exactly this; self-hosted
     deployments can use [Asterisk ARI](/integrations/telephony/asterisk-ari)
     instead.
   </Card>
@@ -59,7 +59,7 @@ yours — there are two ways to bring it.
 
 ## Configuration
 
-All telephony providers are configured from a single page in Dograh:
+All telephony providers are configured from a single page in Fallcha.ai:
 
 1. Navigate to **/telephony-configurations** and click **Add configuration**
 2. Select your provider
@@ -70,7 +70,7 @@ All telephony providers are configured from a single page in Dograh:
 <iframe
   className="w-full aspect-video rounded-xl"
   src="https://www.tella.tv/video/setting-up-telephony-configurations-in-dobra-f6zj/embed"
-  title="Setting up telephony configurations in Dograh"
+  title="Setting up telephony configurations in Fallcha.ai"
   allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
   allowFullScreen
 ></iframe>
@@ -79,7 +79,7 @@ A single org can hold multiple configurations (for example, separate Twilio sub-
 
 ## Common Features
 
-The telephony integration in Dograh AI supports:
+The telephony integration in Fallcha.ai supports:
 
 - **Outbound Calls**: Initiate calls to any phone number from a workflow or campaign
 - **Inbound Calls**: Route incoming calls to the right voice agent — see the [Inbound Calling guide](/integrations/telephony/inbound)
@@ -93,10 +93,10 @@ The telephony integration in Dograh AI supports:
 Inbound calls use a **single org-wide webhook URL**:
 
 ```
-https://api.dograh.com/api/v1/telephony/inbound/run
+https://api.fallcha.ai/api/v1/telephony/inbound/run
 ```
 
-Dograh resolves the org from the webhook's account credentials and the agent from the called number's **Inbound workflow** assignment. See [Inbound Calling](/integrations/telephony/inbound) for the full setup.
+Fallcha.ai resolves the org from the webhook's account credentials and the agent from the called number's **Inbound workflow** assignment. See [Inbound Calling](/integrations/telephony/inbound) for the full setup.
 
 ## Troubleshooting
 
@@ -115,7 +115,7 @@ Dograh resolves the org from the webhook's account credentials and the agent fro
   </Accordion>
   
   <Accordion title="Webhook signature validation failing">
-    - Confirm auth tokens / API secrets match between provider and Dograh configuration
+    - Confirm auth tokens / API secrets match between provider and Fallcha.ai configuration
     - Verify webhook URL matches exactly (including the `/inbound/run` path)
     - Check for proxy or load balancer modifications
   </Accordion>

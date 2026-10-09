@@ -7,7 +7,7 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-inter);
+  --font-sans: var(--font-montserrat);
   --font-mono: var(--font-jetbrains-mono);
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
@@ -59,6 +59,9 @@
   --color-brand: var(--brand);
   --color-brand-dim: var(--brand-dim);
   --color-brand-ink: var(--brand-ink);
+  --color-live: var(--live);
+  --color-live-dim: var(--live-dim);
+  --color-live-text: var(--live-text);
   --color-sky: var(--sky);
   --color-sky-dim: var(--sky-dim);
   --color-amber: var(--amber);
@@ -101,17 +104,18 @@
      is 46px tall and the body sits in a 14px gutter with a 14px column gap. */
   --app-topbar-h: 46px;
 
-  /* Surfaces */
-  --bg: #f4f5f8;
+  /* Surfaces — near-white with a faint green cast so the Fallcha.ai greens
+     sit on a related neutral rather than a cool blue-grey. */
+  --bg: #f3f6f4;
   --panel: #ffffff;
-  --panel-2: #f7f8fa;
-  --line: #e3e6ee;
-  --line-soft: #edeff5;
+  --panel-2: #f6f8f7;
+  --line: #dde5e1;
+  --line-soft: #eaf0ed;
 
-  /* Ink */
-  --ink: #141b29;
-  --ink-2: #47505f;
-  --ink-3: #667087;
+  /* Ink — brand kit "Forest ink" (#0B2E22) and two greyed steps of it. */
+  --ink: #0b2e22;
+  --ink-2: #3d5249;
+  --ink-3: #5b6e66;
 
   /* Accents + their dim washes (pill/chip backgrounds).
 
@@ -122,14 +126,23 @@
      rederived from its new accent so the pair stays in step. The shift is not
      perceptible; the canvas hues are preserved.
 
-     Canvas originals, for reference: brand #169b62, sky #1a73c7, amber #b47708,
-     ok(green) #1f8f60, danger(red) #cc3a33.
+     Brand kit originals, for reference (brand-kit/…/Fallcha Brand Kit.dc.html):
+     Irish green #169b62, Forest ink #0b2e22, Tricolour orange #ff883e,
+     Night #071f17, Mint #4fd49a. Canvas originals: sky #1a73c7,
+     amber #b47708, ok(green) #1f8f60, danger(red) #cc3a33.
 
-     DARK keeps the canvas values — they already pass — except --danger, which
-     was 4.10:1 on its own wash and is nudged likewise. */
-  --brand: #11764b;
-  --brand-dim: rgba(17, 118, 75, 0.1);
+     --brand is Irish green darkened to clear 4.5:1 on its own wash (white on
+     it is 5.7:1). --live is the kit's Tricolour orange, reserved for the
+     speaking / live-call state; --live-text is its AA-safe text variant.
+
+     DARK keeps neutral charcoal surfaces with Mint as the brand; --danger was
+     4.10:1 on its own wash and is nudged likewise. */
+  --brand: #0f7547;
+  --brand-dim: rgba(15, 117, 71, 0.1);
   --brand-ink: #ffffff;
+  --live: #ff883e;
+  --live-dim: rgba(255, 136, 62, 0.12);
+  --live-text: #a84c0c;
   --sky: #1869b5;
   --sky-dim: rgba(24, 105, 181, 0.1);
   --amber: #8d5d06;
@@ -189,13 +202,15 @@
      column (consumed by .app-surface and .auth-imprint, theme-switched here).
      Disabled: upstream's traced wordmark SVGs wrote another brand across every
      screen and have been deleted. To restore the effect with our own artwork,
-     export a Failte AI wordmark at roughly 1000x282 with the fill and ~0.9%
-     opacity baked in, then point this at url("/brand/failte-imprint-light.svg")
+     export a Fallcha.ai wordmark at roughly 1000x282 with the fill and ~0.9%
+     opacity baked in, then point this at url("/brand/fallcha-imprint-light.svg")
      (and the .dark override at the dark variant). */
   --brand-imprint: none;
 }
 
 .dark {
+  /* Neutral charcoal surfaces: green is reserved for the brand accents
+     (logo, primary actions, active states), not the whole canvas. */
   --bg: #0b0d11;
   --panel: #12151b;
   --panel-2: #171b22;
@@ -206,9 +221,12 @@
   --ink-2: #b8c0cc;
   --ink-3: #8d96a6;
 
-  --brand: #2fc584;
-  --brand-dim: rgba(47, 197, 132, 0.14);
-  --brand-ink: #07130d;
+  --brand: #4fd49a;
+  --brand-dim: rgba(79, 212, 154, 0.14);
+  --brand-ink: #071f17;
+  --live: #ff883e;
+  --live-dim: rgba(255, 136, 62, 0.14);
+  --live-text: #ff883e;
   --sky: #5cb3ff;
   --sky-dim: rgba(92, 179, 255, 0.12);
   --amber: #f0b429;
@@ -336,12 +354,22 @@
 
   .auth-waveform span:nth-child(1) { animation-delay: 0s; height: 35%; }
   .auth-waveform span:nth-child(2) { animation-delay: 0.15s; height: 65%; }
-  .auth-waveform span:nth-child(3) { animation-delay: 0.3s; height: 100%; }
-  .auth-waveform span:nth-child(4) { animation-delay: 0.45s; height: 55%; }
+  .auth-waveform span:nth-child(3) { animation-delay: 0.3s; height: 75%; }
+  .auth-waveform span:nth-child(4) { animation-delay: 0.45s; height: 100%; }
   .auth-waveform span:nth-child(5) { animation-delay: 0.6s; height: 80%; }
   .auth-waveform span:nth-child(6) { animation-delay: 0.3s; height: 45%; }
   .auth-waveform span:nth-child(7) { animation-delay: 0.15s; height: 70%; }
   .auth-waveform span:nth-child(8) { animation-delay: 0s; height: 30%; }
+
+  /* The tallest bar is the agent speaking, in the kit's Tricolour orange —
+     the same accent the logo mark carries on its centre bar. */
+  .auth-waveform span:nth-child(4) {
+    background: linear-gradient(
+      to top,
+      var(--live),
+      color-mix(in srgb, var(--live) 45%, transparent)
+    );
+  }
 
   @keyframes auth-wave {
     0%, 100% { transform: scaleY(0.4); opacity: 0.7; }
