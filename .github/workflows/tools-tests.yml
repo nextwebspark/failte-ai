@@ -1,0 +1,68 @@
+name: Tools service tests
+
+on:
+  pull_request:
+    paths:
+      - "tools/**"
+      - ".github/workflows/tools-tests.yml"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    if: ${{ !startsWith(github.head_ref, 'release-please--') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    services:
+      postgres:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          # Tests only run against a database named *_test.
+          POSTGRES_DB: fallcha_tools_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      TOOLS_TEST_DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/fallcha_tools_test
+
+    defaults:
+      run:
+        working-directory: tools
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v6
+
+      - name: Set up Python 3.13 and install tools[dev]
+        run: |
+          uv venv .venv --python 3.13
+          VIRTUAL_ENV=.venv uv pip install -e '.[dev]'
+          echo "$GITHUB_WORKSPACE/tools/.venv/bin" >> "$GITHUB_PATH"
+
+      - name: Ruff lint
+        run: ruff check .
+
+      - name: Ruff format
+        run: ruff format --check .
+
+      - name: Mypy (strict)
+        run: mypy --strict fallcha_tools
+
+      - name: Pytest
+        run: pytest -v
+
+      - name: Docker image builds
+        run: docker build -t fallcha-tools:ci .
