@@ -175,6 +175,8 @@ class WorkflowRunUsageResponse(BaseModel):
     gathered_context: Optional[Dict[str, Any]] = None
     # New USD field
     charge_usd: Optional[float] = None
+    # Amount charged to the prepaid credit balance, when billed through Stripe
+    charge_eur: Optional[float] = None
 
 
 class UsageHistoryResponse(BaseModel):

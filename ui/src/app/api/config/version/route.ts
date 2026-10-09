@@ -33,6 +33,7 @@ export async function GET() {
   let apiVersion = "unknown";
   let deploymentMode = "oss";
   let authProvider = "local";
+  let billingProvider = "none";
   let turnEnabled = false;
   let forceTurnRelay = false;
   let tunnelUrl: string | null = null;
@@ -53,6 +54,7 @@ export async function GET() {
       apiVersion = data.version;
       deploymentMode = data.deployment_mode;
       authProvider = data.auth_provider;
+      billingProvider = data.billing_provider ?? "none";
       turnEnabled = Boolean(data.turn_enabled);
       forceTurnRelay = Boolean(data.force_turn_relay);
       tunnelUrl = data.tunnel_url ?? null;
@@ -74,6 +76,7 @@ export async function GET() {
     api: apiVersion,
     deploymentMode,
     authProvider,
+    billingProvider,
     turnEnabled,
     forceTurnRelay,
     tunnelUrl,

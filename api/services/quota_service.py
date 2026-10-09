@@ -10,7 +10,7 @@ from typing import Any
 import httpx
 from loguru import logger
 
-from api.constants import DEPLOYMENT_MODE
+from api.constants import BILLING_PROVIDER, DEPLOYMENT_MODE
 from api.db import db_client
 from api.db.models import UserModel
 from api.errors.failure import (
@@ -20,6 +20,8 @@ from api.errors.failure import (
     classify_exception,
     log_failure,
 )
+from api.services.billing.accounts import ensure_billing_account
+from api.services.billing.pricing import MIN_BALANCE_FOR_CALL_EUR
 from api.services.configuration.ai_model_configuration import (
     get_effective_ai_model_configuration_for_workflow,
 )
@@ -55,6 +57,10 @@ HOSTED_QUOTA_EXCEEDED_MESSAGE = (
 OSS_HOSTED_KEY_QUOTA_EXCEEDED_MESSAGE = (
     "The organization linked to this Dograh service key has insufficient credits. "
     "Please add credits at app.dograh.com or change providers in Models configurations."
+)
+
+STRIPE_BILLING_INSUFFICIENT_CREDIT_MESSAGE = (
+    "Your organization is out of call credit. Top up at /billing to continue."
 )
 
 SERVICE_TOKEN_ORG_MISMATCH_MESSAGE = (
@@ -408,6 +414,45 @@ async def _authorize_hosted_workflow_run_start(
         organization_id,
         remaining,
     )
+    return QuotaCheckResult(has_quota=True)
+
+
+async def _authorize_stripe_billing_run_start(
+    *,
+    organization_id: int,
+    workflow_id: int,
+    workflow_run_id: int | None,
+) -> QuotaCheckResult:
+    """Authorize a run against the organization's prepaid credit balance."""
+    try:
+        account = await ensure_billing_account(organization_id)
+    except Exception as e:
+        log_failure(
+            classify_exception(e, source=ErrorSource.PLATFORM),
+            organization_id=organization_id,
+            workflow_run_id=workflow_run_id,
+            workflow_id=workflow_id,
+            operation="load billing account for run authorization",
+        )
+        return QuotaCheckResult(
+            has_quota=False,
+            error_code="quota_check_failed",
+            error_message="Could not verify your credit balance. Please try again.",
+        )
+
+    available = account.balance_eur + account.credit_limit_eur
+    if available < MIN_BALANCE_FOR_CALL_EUR:
+        logger.info(
+            "Run authorization denied for org {}: EUR {} available, EUR {} needed",
+            organization_id,
+            available,
+            MIN_BALANCE_FOR_CALL_EUR,
+        )
+        return QuotaCheckResult(
+            has_quota=False,
+            error_code="insufficient_credits",
+            error_message=STRIPE_BILLING_INSUFFICIENT_CREDIT_MESSAGE,
+        )
     return QuotaCheckResult(has_quota=True)
 
 
@@ -773,12 +818,24 @@ async def authorize_workflow_run_start(
                 )
             workflow_configurations = definition.workflow_configurations
 
+        if BILLING_PROVIDER == "stripe":
+            billing_result = await _authorize_stripe_billing_run_start(
+                organization_id=organization_id,
+                workflow_id=workflow.id,
+                workflow_run_id=workflow_run_id,
+            )
+            if not billing_result.has_quota:
+                return billing_result
+            # Stripe replaces MPS organization billing only. Any Dograh service
+            # keys in the model configuration are still checked below, and a
+            # managed-v2 run still gets its MPS correlation id.
+
         user_config = await get_effective_ai_model_configuration_for_workflow(
             organization_id=organization_id,
             workflow_configurations=workflow_configurations,
         )
 
-        if DEPLOYMENT_MODE != "oss":
+        if DEPLOYMENT_MODE != "oss" and BILLING_PROVIDER == "mps":
             return await _authorize_hosted_workflow_run_start(
                 workflow_owner=workflow_owner,
                 organization_id=organization_id,

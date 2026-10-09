@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import React, { ReactNode, useState } from "react";
 
 import { NoAccess } from "@/components/auth/NoAccess";
+import { LowBalanceBanner } from "@/components/billing/LowBalanceBanner";
 import { Button } from "@/components/ui/button";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { AgentShellProvider } from "@/context/AgentShellContext";
@@ -122,6 +123,7 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
                 <AppSidebar />
                 <main className="app-content-panel min-w-0 flex-1 overflow-y-auto rounded-[10px] border border-line bg-panel">
                   <BackendStatusBanner />
+                  <LowBalanceBanner />
                   {awaitingRole ? null : blocked ? <NoAccess role={role} /> : children}
                 </main>
                 {showTestRail && <AgentTestRail />}

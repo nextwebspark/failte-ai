@@ -1,0 +1,454 @@
+"""Data access for billing accounts and the credit ledger."""
+
+from dataclasses import dataclass
+from datetime import datetime
+from decimal import ROUND_HALF_UP, Decimal
+from typing import Any
+
+from sqlalchemy import and_, exists, func, update
+from sqlalchemy.dialects.postgresql import insert
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.future import select
+
+from api.db.base_client import BaseDBClient
+from api.db.models import (
+    BillingAccountModel,
+    BillingLedgerEntryModel,
+    OrganizationModel,
+    WorkflowModel,
+    WorkflowRunModel,
+)
+from api.enums import BillingLedgerEntryType, BillingPlan
+
+_Entry = BillingLedgerEntryModel
+
+# Matches the Numeric(14, 4) ledger columns.
+_LEDGER_QUANTUM = Decimal("0.0001")
+
+
+@dataclass(frozen=True, slots=True)
+class BillingAccount:
+    id: int
+    organization_id: int
+    plan: BillingPlan
+    balance_eur: Decimal
+    credit_limit_eur: Decimal
+    price_per_minute_eur: Decimal | None
+    stripe_customer_id: str | None
+    created_at: datetime
+
+
+@dataclass(frozen=True, slots=True)
+class ChargedRun:
+    organization_id: int
+    organization_name: str | None
+    workflow_run_id: int | None
+    charged_eur: Decimal
+    cost_info: dict[str, Any]
+
+
+@dataclass(frozen=True, slots=True)
+class BillingLedgerEntry:
+    id: int
+    organization_id: int
+    entry_type: BillingLedgerEntryType
+    amount_eur: Decimal
+    balance_after_eur: Decimal
+    description: str | None
+    workflow_run_id: int | None
+    stripe_checkout_session_id: str | None
+    stripe_reference: str | None
+    created_by: int | None
+    metadata: dict[str, Any]
+    created_at: datetime
+
+
+def _to_account(row: BillingAccountModel) -> BillingAccount:
+    return BillingAccount(
+        id=row.id,
+        organization_id=row.organization_id,
+        plan=BillingPlan(row.plan),
+        balance_eur=row.balance_eur,
+        credit_limit_eur=row.credit_limit_eur,
+        price_per_minute_eur=row.price_per_minute_eur,
+        stripe_customer_id=row.stripe_customer_id,
+        created_at=row.created_at,
+    )
+
+
+def _to_entry(row: BillingLedgerEntryModel) -> BillingLedgerEntry:
+    return BillingLedgerEntry(
+        id=row.id,
+        organization_id=row.organization_id,
+        entry_type=BillingLedgerEntryType(row.entry_type),
+        amount_eur=row.amount_eur,
+        balance_after_eur=row.balance_after_eur,
+        description=row.description,
+        workflow_run_id=row.workflow_run_id,
+        stripe_checkout_session_id=row.stripe_checkout_session_id,
+        stripe_reference=row.stripe_reference,
+        created_by=row.created_by,
+        metadata=row.entry_metadata or {},
+        created_at=row.created_at,
+    )
+
+
+async def _insert_account_if_missing(session: AsyncSession, organization_id: int):
+    result = await session.execute(
+        insert(BillingAccountModel)
+        .values(organization_id=organization_id)
+        .on_conflict_do_nothing(index_elements=["organization_id"])
+        .returning(BillingAccountModel.id)
+    )
+    return result.scalar_one_or_none() is not None
+
+
+async def _is_duplicate_entry(
+    session: AsyncSession,
+    *,
+    entry_type: BillingLedgerEntryType,
+    workflow_run_id: int | None,
+    stripe_checkout_session_id: str | None,
+    stripe_reference: str | None,
+) -> bool:
+    if entry_type == BillingLedgerEntryType.USAGE and workflow_run_id is not None:
+        existing = await session.execute(
+            select(_Entry.id).where(
+                _Entry.workflow_run_id == workflow_run_id,
+                _Entry.entry_type == BillingLedgerEntryType.USAGE.value,
+            )
+        )
+        if existing.first() is not None:
+            return True
+    if stripe_checkout_session_id is not None:
+        existing = await session.execute(
+            select(_Entry.id).where(
+                _Entry.stripe_checkout_session_id == stripe_checkout_session_id
+            )
+        )
+        if existing.first() is not None:
+            return True
+    if stripe_reference is not None:
+        existing = await session.execute(
+            select(_Entry.id).where(_Entry.stripe_reference == stripe_reference)
+        )
+        if existing.first() is not None:
+            return True
+    return False
+
+
+class BillingClient(BaseDBClient):
+    async def ensure_billing_account(
+        self, organization_id: int
+    ) -> tuple[BillingAccount, bool]:
+        """Return the organization's billing account, creating it if needed.
+
+        The second value is True only for the call that created the account,
+        so one-off setup (trial credit, Stripe customer) runs exactly once.
+        """
+        async with self.async_session() as session:
+            created = await _insert_account_if_missing(session, organization_id)
+            await session.commit()
+            row = (
+                await session.execute(
+                    select(BillingAccountModel).where(
+                        BillingAccountModel.organization_id == organization_id
+                    )
+                )
+            ).scalar_one()
+            return _to_account(row), created
+
+    async def get_billing_account(self, organization_id: int) -> BillingAccount | None:
+        async with self.async_session() as session:
+            row = (
+                await session.execute(
+                    select(BillingAccountModel).where(
+                        BillingAccountModel.organization_id == organization_id
+                    )
+                )
+            ).scalar_one_or_none()
+            return _to_account(row) if row else None
+
+    async def update_billing_account(
+        self, organization_id: int, **changes: Any
+    ) -> BillingAccount:
+        """Set any of ``plan``, ``price_per_minute_eur`` (None clears the
+        override) and ``credit_limit_eur`` on the organization's account."""
+        allowed = {"plan", "price_per_minute_eur", "credit_limit_eur"}
+        unknown = set(changes) - allowed
+        if unknown:
+            raise ValueError(f"Cannot update billing account fields: {unknown}")
+        if "plan" in changes:
+            changes["plan"] = BillingPlan(changes["plan"]).value
+        async with self.async_session() as session:
+            await _insert_account_if_missing(session, organization_id)
+            if changes:
+                await session.execute(
+                    update(BillingAccountModel)
+                    .where(BillingAccountModel.organization_id == organization_id)
+                    .values(**changes)
+                )
+            await session.commit()
+            row = (
+                await session.execute(
+                    select(BillingAccountModel)
+                    .where(BillingAccountModel.organization_id == organization_id)
+                    .execution_options(populate_existing=True)
+                )
+            ).scalar_one()
+            return _to_account(row)
+
+    async def set_billing_stripe_customer_id(
+        self, organization_id: int, stripe_customer_id: str
+    ) -> str:
+        """Record the organization's Stripe customer unless one is already set.
+
+        Returns the customer id that ends up stored, which is the existing one
+        if a concurrent caller got there first.
+        """
+        async with self.async_session() as session:
+            await _insert_account_if_missing(session, organization_id)
+            await session.execute(
+                update(BillingAccountModel)
+                .where(
+                    BillingAccountModel.organization_id == organization_id,
+                    BillingAccountModel.stripe_customer_id.is_(None),
+                )
+                .values(stripe_customer_id=stripe_customer_id)
+            )
+            await session.commit()
+            return (
+                await session.execute(
+                    select(BillingAccountModel.stripe_customer_id).where(
+                        BillingAccountModel.organization_id == organization_id
+                    )
+                )
+            ).scalar_one()
+
+    async def add_billing_ledger_entry(
+        self,
+        *,
+        organization_id: int,
+        entry_type: BillingLedgerEntryType,
+        amount_eur: Decimal,
+        description: str | None = None,
+        workflow_run_id: int | None = None,
+        stripe_checkout_session_id: str | None = None,
+        stripe_reference: str | None = None,
+        created_by: int | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> BillingLedgerEntry | None:
+        """Append a ledger entry and move the cached balance with it.
+
+        Idempotent: returns None, changing nothing, when this run was already
+        charged or this Checkout session was already credited.
+        """
+        amount = Decimal(amount_eur).quantize(_LEDGER_QUANTUM, rounding=ROUND_HALF_UP)
+        async with self.async_session() as session:
+            await _insert_account_if_missing(session, organization_id)
+            # The row lock serializes every balance change for the
+            # organization, which also makes the duplicate check below safe.
+            account = (
+                await session.execute(
+                    select(BillingAccountModel)
+                    .where(BillingAccountModel.organization_id == organization_id)
+                    .with_for_update()
+                    .execution_options(populate_existing=True)
+                )
+            ).scalar_one()
+
+            if await _is_duplicate_entry(
+                session,
+                entry_type=entry_type,
+                workflow_run_id=workflow_run_id,
+                stripe_checkout_session_id=stripe_checkout_session_id,
+                stripe_reference=stripe_reference,
+            ):
+                # Nothing was changed; leaving the block releases the lock.
+                return None
+
+            account.balance_eur = account.balance_eur + amount
+            row = BillingLedgerEntryModel(
+                organization_id=organization_id,
+                entry_type=entry_type.value,
+                amount_eur=amount,
+                balance_after_eur=account.balance_eur,
+                description=description,
+                workflow_run_id=workflow_run_id,
+                stripe_checkout_session_id=stripe_checkout_session_id,
+                stripe_reference=stripe_reference,
+                created_by=created_by,
+                entry_metadata=metadata or {},
+            )
+            session.add(row)
+            try:
+                await session.commit()
+            except IntegrityError:
+                # The unique indexes are the backstop for the check above.
+                await session.rollback()
+                return None
+            await session.refresh(row)
+            return _to_entry(row)
+
+    async def list_billing_ledger_entries(
+        self,
+        organization_id: int,
+        *,
+        limit: int = 50,
+        offset: int = 0,
+        entry_type: BillingLedgerEntryType | None = None,
+    ) -> tuple[list[BillingLedgerEntry], int]:
+        """Newest-first page of the organization's ledger, and the total count."""
+        conditions = [_Entry.organization_id == organization_id]
+        if entry_type is not None:
+            conditions.append(_Entry.entry_type == entry_type.value)
+        async with self.async_session() as session:
+            total = (
+                await session.execute(
+                    select(func.count()).select_from(_Entry).where(*conditions)
+                )
+            ).scalar_one()
+            rows = (
+                (
+                    await session.execute(
+                        select(_Entry)
+                        .where(*conditions)
+                        .order_by(_Entry.created_at.desc(), _Entry.id.desc())
+                        .limit(limit)
+                        .offset(offset)
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            return [_to_entry(row) for row in rows], total
+
+    async def list_charged_runs(
+        self, *, start: datetime, end: datetime
+    ) -> list[ChargedRun]:
+        """Every call charged in ``[start, end)`` across all organizations,
+        with its cost_info. For internal margin reporting only."""
+        async with self.async_session() as session:
+            result = await session.execute(
+                select(
+                    _Entry.organization_id,
+                    OrganizationModel.name,
+                    _Entry.workflow_run_id,
+                    _Entry.amount_eur,
+                    _Entry.entry_metadata,
+                    WorkflowRunModel.cost_info,
+                )
+                .join(OrganizationModel, OrganizationModel.id == _Entry.organization_id)
+                # Outer join: a charge stays revenue after its run is deleted
+                # (the entry's workflow_run_id is then NULL).
+                .outerjoin(
+                    WorkflowRunModel, WorkflowRunModel.id == _Entry.workflow_run_id
+                )
+                .where(
+                    _Entry.entry_type == BillingLedgerEntryType.USAGE.value,
+                    _Entry.created_at >= start,
+                    _Entry.created_at < end,
+                )
+                .order_by(_Entry.organization_id, _Entry.id)
+            )
+            return [
+                ChargedRun(
+                    organization_id=row.organization_id,
+                    organization_name=row.name,
+                    workflow_run_id=row.workflow_run_id,
+                    charged_eur=-row.amount_eur,
+                    # The entry's own record of what was billed, for runs that
+                    # were deleted or lost their cost_info.
+                    cost_info={**(row.entry_metadata or {}), **(row.cost_info or {})},
+                )
+                for row in result.all()
+            ]
+
+    async def get_usage_ledger_entry_for_run(
+        self, workflow_run_id: int
+    ) -> BillingLedgerEntry | None:
+        async with self.async_session() as session:
+            row = (
+                await session.execute(
+                    select(_Entry).where(
+                        _Entry.workflow_run_id == workflow_run_id,
+                        _Entry.entry_type == BillingLedgerEntryType.USAGE.value,
+                    )
+                )
+            ).scalar_one_or_none()
+            return _to_entry(row) if row else None
+
+    async def list_uncharged_workflow_run_ids(
+        self,
+        *,
+        completed_before: datetime,
+        created_after: datetime,
+        text_chat_mode: str,
+        limit: int = 200,
+    ) -> list[int]:
+        """Completed calls with talk time but no usage charge, for the sweep.
+
+        Only runs created after their organization's billing account are
+        considered, so turning on Stripe billing never charges for calls
+        made before it.
+        """
+        duration = WorkflowRunModel.usage_info["call_duration_seconds"].as_float()
+        charged = exists().where(
+            _Entry.workflow_run_id == WorkflowRunModel.id,
+            _Entry.entry_type == BillingLedgerEntryType.USAGE.value,
+        )
+        async with self.async_session() as session:
+            result = await session.execute(
+                select(WorkflowRunModel.id)
+                .join(WorkflowModel, WorkflowModel.id == WorkflowRunModel.workflow_id)
+                .join(
+                    BillingAccountModel,
+                    BillingAccountModel.organization_id
+                    == WorkflowModel.organization_id,
+                )
+                .where(
+                    WorkflowRunModel.is_completed.is_(True),
+                    WorkflowRunModel.mode != text_chat_mode,
+                    WorkflowRunModel.created_at >= created_after,
+                    WorkflowRunModel.created_at < completed_before,
+                    WorkflowRunModel.created_at >= BillingAccountModel.created_at,
+                    and_(duration.isnot(None), duration > 0),
+                    ~charged,
+                )
+                .order_by(WorkflowRunModel.id)
+                .limit(limit)
+            )
+            return list(result.scalars().all())
+
+    async def get_paid_ledger_entry_for_payment_intent(
+        self, payment_intent: str
+    ) -> BillingLedgerEntry | None:
+        """The top-up or setup-fee credit a Stripe payment produced."""
+        async with self.async_session() as session:
+            row = (
+                await session.execute(
+                    select(_Entry).where(
+                        _Entry.stripe_checkout_session_id.isnot(None),
+                        _Entry.entry_metadata["payment_intent"].as_string()
+                        == payment_intent,
+                    )
+                )
+            ).scalar_one_or_none()
+            return _to_entry(row) if row else None
+
+    async def sum_ledger_entries_with_reference_prefix(
+        self, organization_id: int, prefix: str
+    ) -> Decimal:
+        """Total of the organization's entries whose stripe_reference starts
+        with ``prefix`` (e.g. every refund applied for one charge)."""
+        async with self.async_session() as session:
+            total = (
+                await session.execute(
+                    select(func.coalesce(func.sum(_Entry.amount_eur), 0)).where(
+                        _Entry.organization_id == organization_id,
+                        _Entry.stripe_reference.startswith(prefix, autoescape=True),
+                    )
+                )
+            ).scalar_one()
+            return Decimal(total)

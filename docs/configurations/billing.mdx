@@ -1,0 +1,53 @@
+---
+title: "Billing and Plans"
+description: "How prepaid call credit, per-second billing, VAT invoices and the Fáilte AI plans work"
+---
+
+Fáilte AI is pay as you go. You buy call credit in euro, and each call takes credit from your balance by the second. There is no monthly fee on the Self-serve plan.
+
+You manage billing on the **Billing** page (`/billing`). Admins can buy credit and open invoices; other roles can see the balance and history.
+
+## Plans
+
+| Plan | Price | Best for |
+|---|---|---|
+| **Self-serve** | €0.12 per minute, billed per second | You build and run your own agents |
+| **Done-for-you** | €550 one-time setup, then €0.12 per minute | We design and build your agent. The setup includes €50 of call credit |
+| **Enterprise** | Custom | Single sign-on, dedicated hosting and data residency, a data processing agreement, a monthly support retainer and custom rates. Use **Contact sales** on the Billing page |
+
+All prices exclude VAT.
+
+<Note>
+The per-minute rate covers the platform and the AI models. If you connect your own telephony provider (for example Twilio), that provider bills you separately for phone numbers and carrier minutes.
+</Note>
+
+## How credit works
+
+- New accounts start with **€5 of welcome credit**.
+- A call needs at least **€0.50** of credit to start. With less, new calls are paused and the caller hears nothing from your agent, so keep your balance topped up.
+- Calls are charged when they end: the call length is rounded up to the next whole second and multiplied by your per-minute rate. A 90-second call at €0.12 per minute costs €0.18.
+- Calls that never connect (no answer, busy, failed) are free. Text chat test sessions are free.
+- A call cannot run longer than your remaining credit covers when it starts. That credit is shared between all of your calls in progress. If your balance would run out, the call ends at that point, and never earlier than one minute in.
+
+## Buy credit
+
+1. Open **Billing**.
+2. Under **Add credit**, choose €20, €50, €100 or €250, or enter another amount between €20 and €5,000.
+3. Pay on the secure Stripe checkout page.
+
+You return to the Billing page when payment completes, and the credit appears within a few seconds.
+
+## VAT and invoices
+
+Fáilte AI is an Irish company. Irish VAT is added at checkout. If you are a business elsewhere in the EU, enter your VAT number at checkout and the reverse charge applies.
+
+Stripe emails a VAT invoice for every payment. To download past invoices and receipts, select **Invoices & receipts** on the Billing page.
+
+## Low-balance alerts
+
+- The app shows a banner when your credit falls below €5.
+- Organization admins get an email when a call takes your credit below €5, and another when credit drops below the €0.50 needed to start a call.
+
+## Billing history
+
+The **Billing history** table lists every top-up, call charge, welcome credit and adjustment, with the balance after each one. The **Usage** page shows the euro cost of each call, and the usage CSV export includes a **Charge (EUR)** column.

@@ -7,6 +7,9 @@ from pydantic import BaseModel
 
 from api.routes.agent_stream import router as agent_stream_router
 from api.routes.auth import router as auth_router
+from api.routes.billing import router as billing_router
+from api.routes.billing_admin import router as billing_admin_router
+from api.routes.billing_webhooks import router as billing_webhooks_router
 from api.routes.campaign import router as campaign_router
 from api.routes.credentials import router as credentials_router
 from api.routes.folder import router as folder_router
@@ -70,6 +73,9 @@ router.include_router(folder_router)
 router.include_router(auth_router)
 router.include_router(node_types_router)
 router.include_router(agent_stream_router)
+router.include_router(billing_router)
+router.include_router(billing_admin_router)
+router.include_router(billing_webhooks_router)
 
 for _integration_router in all_routers():
     router.include_router(_integration_router)
@@ -85,6 +91,8 @@ class HealthResponse(BaseModel):
     tunnel_url: str | None = None
     deployment_mode: str
     auth_provider: str
+    # Who handles credits: "stripe", "mps" or "none" (see api.constants).
+    billing_provider: str = "none"
     turn_enabled: bool
     force_turn_relay: bool
     signup_enabled: bool
@@ -105,6 +113,7 @@ async def health() -> HealthResponse:
         APP_VERSION,
         AUTH_PROVIDER,
         BACKEND_API_ENDPOINT,
+        BILLING_PROVIDER,
         DEPLOYMENT_MODE,
         ENABLE_COTURN,
         ENABLE_SIGNUP,
@@ -136,6 +145,7 @@ async def health() -> HealthResponse:
         tunnel_url=tunnel_url,
         deployment_mode=DEPLOYMENT_MODE,
         auth_provider=AUTH_PROVIDER,
+        billing_provider=BILLING_PROVIDER,
         turn_enabled=ENABLE_COTURN,
         force_turn_relay=FORCE_TURN_RELAY,
         signup_enabled=ENABLE_SIGNUP,

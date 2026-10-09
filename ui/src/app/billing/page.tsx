@@ -40,6 +40,7 @@ import { getBillingActivity, getBillingDateRange, getBillingPeriod } from "@/lib
 import { formatDateTime } from "@/lib/dateTime";
 
 import { BillingLedgerFilters } from "./BillingLedgerFilters";
+import { StripeBilling } from "./StripeBilling";
 
 const LEDGER_PAGE_SIZE = 50;
 
@@ -113,7 +114,7 @@ const getPageFromSearchParams = (
     return Number.isFinite(page) && page > 0 ? page : 1;
 };
 
-export default function BillingPage() {
+function MpsBillingPage() {
     const router = useRouter();
     const searchParams = useSearchParams();
     const auth = useAuth();
@@ -453,4 +454,13 @@ export default function BillingPage() {
             )}
         </div>
     );
+}
+
+export default function BillingPage() {
+    const { config } = useAppConfig();
+    // Under Stripe billing, credits live in this app's own EUR ledger.
+    if (config?.billingProvider === "stripe") {
+        return <StripeBilling />;
+    }
+    return <MpsBillingPage />;
 }

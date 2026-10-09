@@ -286,3 +286,23 @@ class InvitationStatus(StrEnum):
 class TokenPurpose(StrEnum):
     EMAIL_VERIFICATION = "email_verification"
     PASSWORD_RESET = "password_reset"
+
+
+class BillingPlan(StrEnum):
+    """Commercial plan an organization is billed under."""
+
+    # Self-serve pay-as-you-go: prepaid credits, charged per second of call.
+    PAYG = "payg"
+    # One-time setup fee for a workflow we build, then pay-as-you-go.
+    DONE_FOR_YOU = "done_for_you"
+    # Custom rate and credit limit, invoiced manually.
+    ENTERPRISE = "enterprise"
+
+
+class BillingLedgerEntryType(StrEnum):
+    TOPUP = "topup"
+    USAGE = "usage"
+    SETUP_FEE = "setup_fee"
+    TRIAL_CREDIT = "trial_credit"
+    ADJUSTMENT = "adjustment"
+    REFUND = "refund"

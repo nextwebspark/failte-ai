@@ -1,5 +1,6 @@
 import uuid
 from datetime import UTC, datetime
+from decimal import Decimal
 
 from pgvector.sqlalchemy import Vector
 from sqlalchemy import (
@@ -13,6 +14,7 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    Numeric,
     String,
     Table,
     Text,
@@ -866,6 +868,124 @@ class OrganizationUsageCycleModel(Base):
             "organization_id", "period_start", "period_end", name="unique_org_period"
         ),
         Index("idx_usage_cycles_org_period", "organization_id", "period_end"),
+    )
+
+
+class BillingAccountModel(Base):
+    """An organization's prepaid credit wallet (Stripe billing).
+
+    ``balance_eur`` is a cache of the sum of the organization's ledger entries,
+    updated in the same transaction that appends an entry.
+    """
+
+    __tablename__ = "billing_accounts"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    organization_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("organizations.id", ondelete="CASCADE"), unique=True
+    )
+    # BillingPlan value.
+    plan: Mapped[str] = mapped_column(
+        String(32), default="payg", server_default=text("'payg'")
+    )
+    balance_eur: Mapped[Decimal] = mapped_column(
+        Numeric(14, 4), default=Decimal("0"), server_default=text("0")
+    )
+    # How far below zero the balance may go before calls are blocked.
+    credit_limit_eur: Mapped[Decimal] = mapped_column(
+        Numeric(14, 4), default=Decimal("0"), server_default=text("0")
+    )
+    # Overrides the plan's default per-minute rate when set.
+    price_per_minute_eur: Mapped[Decimal | None] = mapped_column(Numeric(10, 4))
+    stripe_customer_id: Mapped[str | None] = mapped_column(String, unique=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        server_default=func.now(),
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        onupdate=lambda: datetime.now(UTC),
+        server_default=func.now(),
+    )
+
+    __table_args__ = (
+        CheckConstraint(
+            "plan IN ('payg', 'done_for_you', 'enterprise')",
+            name="ck_billing_accounts_plan",
+        ),
+        CheckConstraint(
+            "credit_limit_eur >= 0", name="ck_billing_accounts_credit_limit"
+        ),
+    )
+
+
+class BillingLedgerEntryModel(Base):
+    """Append-only record of every change to an organization's credit balance."""
+
+    __tablename__ = "billing_ledger_entries"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    organization_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("organizations.id", ondelete="CASCADE")
+    )
+    # BillingLedgerEntryType value.
+    entry_type: Mapped[str] = mapped_column(String(32))
+    # Signed: credits are positive, charges negative.
+    amount_eur: Mapped[Decimal] = mapped_column(Numeric(14, 4))
+    balance_after_eur: Mapped[Decimal] = mapped_column(Numeric(14, 4))
+    description: Mapped[str | None] = mapped_column(Text)
+    workflow_run_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("workflow_runs.id", ondelete="SET NULL")
+    )
+    stripe_checkout_session_id: Mapped[str | None] = mapped_column(String)
+    # Stripe refund/dispute event this entry applies, for idempotency.
+    stripe_reference: Mapped[str | None] = mapped_column(String)
+    created_by: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="SET NULL")
+    )
+    entry_metadata: Mapped[dict] = mapped_column(
+        "metadata", JSON, default=dict, server_default=text("'{}'::json")
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        server_default=func.now(),
+    )
+
+    __table_args__ = (
+        CheckConstraint(
+            "entry_type IN ('topup', 'usage', 'setup_fee', 'trial_credit', "
+            "'adjustment', 'refund')",
+            name="ck_billing_ledger_entries_entry_type",
+        ),
+        # A run is charged at most once.
+        Index(
+            "uq_billing_ledger_entries_usage_run",
+            "workflow_run_id",
+            unique=True,
+            postgresql_where=text("entry_type = 'usage'"),
+        ),
+        # A Stripe Checkout session is credited at most once.
+        Index(
+            "uq_billing_ledger_entries_checkout_session",
+            "stripe_checkout_session_id",
+            unique=True,
+            postgresql_where=text("stripe_checkout_session_id IS NOT NULL"),
+        ),
+        # A Stripe refund or dispute is applied at most once.
+        Index(
+            "uq_billing_ledger_entries_stripe_reference",
+            "stripe_reference",
+            unique=True,
+            postgresql_where=text("stripe_reference IS NOT NULL"),
+        ),
+        Index(
+            "ix_billing_ledger_entries_org_created",
+            "organization_id",
+            "created_at",
+        ),
     )
 
 

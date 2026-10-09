@@ -1,18 +1,23 @@
 """Workflow-run billing hooks.
 
-Dograh does not rate or deduct credits locally. MPS owns credit accounting.
-For hosted deployments, Dograh reports completed platform usage to MPS.
-When a server-minted MPS correlation id exists, MPS uses model-service usage
-as the canonical duration. Otherwise Dograh reports the completed run duration.
+Under BILLING_PROVIDER=stripe, completed calls are charged to the
+organization's prepaid credit ledger (``api.services.billing.charging``).
+
+Otherwise Dograh does not rate or deduct credits locally: MPS owns credit
+accounting. For hosted deployments, Dograh reports completed platform usage
+to MPS. When a server-minted MPS correlation id exists, MPS uses
+model-service usage as the canonical duration. Otherwise Dograh reports the
+completed run duration.
 """
 
 from typing import Any
 
 from loguru import logger
 
-from api.constants import DEPLOYMENT_MODE
+from api.constants import BILLING_PROVIDER, DEPLOYMENT_MODE
 from api.db import db_client
 from api.enums import WorkflowRunMode
+from api.services.billing.charging import charge_workflow_run
 from api.services.managed_model_services import get_mps_correlation_id
 from api.services.mps_service_key_client import mps_service_key_client
 
@@ -41,8 +46,11 @@ def _is_usage_not_ready_error(exc: Exception) -> bool:
 
 
 async def report_workflow_run_platform_usage(workflow_run) -> None:
-    """Report hosted platform usage for a completed workflow run to MPS."""
-    if DEPLOYMENT_MODE == "oss":
+    """Bill a completed workflow run: charge the ledger, or report to MPS."""
+    # Only Stripe billing and hosted MPS billing account for usage.
+    if BILLING_PROVIDER == "none" or (
+        BILLING_PROVIDER == "mps" and DEPLOYMENT_MODE == "oss"
+    ):
         return
 
     if getattr(workflow_run, "mode", None) == WorkflowRunMode.TEXTCHAT.value:
@@ -64,6 +72,10 @@ async def report_workflow_run_platform_usage(workflow_run) -> None:
             "Skipping platform usage report for workflow run {}: no organization_id",
             workflow_run.id,
         )
+        return
+
+    if BILLING_PROVIDER == "stripe":
+        await charge_workflow_run(workflow_run, organization_id)
         return
 
     correlation_id = get_mps_correlation_id(

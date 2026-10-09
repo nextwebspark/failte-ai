@@ -12,6 +12,13 @@ from api.services.workflow_run_billing import (
 )
 
 
+@pytest.fixture(autouse=True)
+def _mps_billing(monkeypatch):
+    """These tests cover MPS billing, the provider a hosted deployment
+    defaults to; the test environment itself defaults to OSS ("none")."""
+    monkeypatch.setattr(workflow_run_billing_mod, "BILLING_PROVIDER", "mps")
+
+
 def _make_workflow_run():
     return SimpleNamespace(
         id=123,

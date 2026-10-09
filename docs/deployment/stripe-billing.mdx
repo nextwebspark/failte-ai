@@ -1,0 +1,96 @@
+---
+title: "Stripe Billing"
+description: "Configure prepaid EUR billing with Stripe, and the checklist for going live"
+---
+
+Fáilte AI can bill customers itself: organizations prepay credit in euro through Stripe Checkout, and every call is charged per second against that credit. Balances live in the Fáilte AI database (`billing_accounts` and `billing_ledger_entries`). Stripe only collects payments and issues invoices.
+
+For how this looks to customers, see [Billing and Plans](../configurations/billing).
+
+## Prerequisites
+
+- A Stripe account. Use test mode until you have finished the checklist below.
+- The [Stripe CLI](https://docs.stripe.com/stripe-cli), to forward webhooks during local development.
+- Bring-your-own model keys (for example Gemini) in **Model Configurations**. Under Stripe billing, Dograh-managed MPS credits are not consulted.
+
+## Environment variables
+
+Set these in `api/.env`:
+
+| Variable | Description |
+|---|---|
+| `BILLING_PROVIDER` | `stripe` turns on Fáilte AI billing. `mps` uses Dograh's managed credits, and `none` disables billing. If unset, it is `none` in OSS mode and `mps` otherwise |
+| `STRIPE_SECRET_KEY` | Stripe secret key (`sk_test_...` in test mode) |
+| `STRIPE_WEBHOOK_SECRET` | Signing secret of your webhook endpoint (`whsec_...`) |
+| `STRIPE_AUTOMATIC_TAX` | `true` (default) lets Stripe Tax add VAT at checkout. Set `false` only while Stripe Tax is not set up yet |
+| `BILLING_SALES_CONTACT` | Email address or URL that the **Contact sales** button opens |
+
+Prices, top-up packs, the welcome credit and the minimum balance are defined in `api/services/billing/pricing.py`.
+
+## Local development
+
+1. Set `BILLING_PROVIDER=stripe` and `STRIPE_SECRET_KEY` in `api/.env`.
+2. Forward Stripe events to your backend:
+
+   ```bash
+   stripe listen --forward-to localhost:8000/api/v1/billing/stripe/webhook
+   ```
+
+3. Copy the `whsec_...` secret it prints into `STRIPE_WEBHOOK_SECRET` and restart the backend.
+4. In the Stripe dashboard (test mode), save a [Customer Portal](https://dashboard.stripe.com/test/settings/billing/portal) configuration. The **Invoices & receipts** button needs one.
+5. Open `/billing`, buy a pack and pay with the test card `4242 4242 4242 4242`, any future expiry date and any CVC.
+
+## Webhook
+
+In production, add an endpoint in **Developers → Webhooks** pointing at:
+
+```text
+https://<your-api-domain>/api/v1/billing/stripe/webhook
+```
+
+Subscribe it to these events:
+
+- `checkout.session.completed`
+- `checkout.session.async_payment_succeeded`
+- `charge.refunded`
+- `charge.dispute.created`
+- `charge.dispute.closed`
+
+The endpoint verifies Stripe's signature and returns `400` for anything else. Each Checkout session is credited at most once, so Stripe's retries are safe.
+
+Refunds and disputes take credit back:
+
+- A refund made in the Stripe dashboard removes the refunded share of the credit that payment added.
+- A dispute (chargeback) removes the disputed share when it opens, and gives it back if the dispute is closed in your favour.
+
+## Missed charges
+
+Every 10 minutes the background worker (`arq`) looks for completed calls from the last 7 days that were never charged, for example because the database was briefly unavailable when the call ended, and charges them. Calls made before an organization's billing account existed are never charged retroactively.
+
+## Enterprise accounts
+
+Enterprise terms are set by a superuser through internal endpoints. These endpoints are not in the public API reference:
+
+| Request | Purpose |
+|---|---|
+| `GET /api/v1/superuser/billing/organizations/{id}` | View an organization's plan, balance, rate and credit limit |
+| `PATCH /api/v1/superuser/billing/organizations/{id}` | Set `plan`, `price_per_minute_eur` (`null` returns to the plan rate) and `credit_limit_eur` |
+| `POST /api/v1/superuser/billing/organizations/{id}/adjustments` | Add an `adjustment` or `refund` entry. A positive `amount_eur` adds credit, for example when an Enterprise invoice is paid by bank transfer |
+
+A credit limit lets an organization's balance go below zero by that amount before calls are paused, which is how postpaid Enterprise accounts work.
+
+## Margin report
+
+`GET /api/v1/superuser/billing/margins?month=2026-10` returns, per organization, the calls, billed minutes, revenue, estimated model cost and margin for that month. Add `&format=csv` to download the report as a CSV file.
+
+Model costs are estimated from the token usage recorded for each call, using the Gemini list prices in `api/services/billing/provider_costs.py`. Keep that table and its USD-to-EUR rate up to date. Calls on models without a price are counted separately and left out of the margin.
+
+## Go-live checklist
+
+- [ ] Activate your Stripe account and switch the backend to live keys (`sk_live_...`).
+- [ ] Create the live webhook endpoint and set its `whsec_...` secret.
+- [ ] Register for Irish VAT in **Stripe Tax** and enable it. Add EU OSS registration if you sell to EU consumers.
+- [ ] Set your business name, address, VAT number and logo for invoices under **Settings → Business** and **Branding**.
+- [ ] Save the live Customer Portal configuration.
+- [ ] Publish terms of service and a refund policy, and link them in the Stripe checkout settings.
+- [ ] Make one real top-up, place a call, and check the balance, the billing history and the emailed invoice.

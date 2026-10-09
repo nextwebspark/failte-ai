@@ -12,6 +12,8 @@ interface AppConfig {
     apiVersion: string;
     deploymentMode: string;
     authProvider: string;
+    // "stripe" (prepaid EUR credits), "mps" or "none".
+    billingProvider: string;
     turnEnabled: boolean;
     forceTurnRelay: boolean;
     // Public URL when the deployment is reached through a Cloudflare tunnel
@@ -38,6 +40,7 @@ const defaultConfig: AppConfig = {
     apiVersion: 'unavailable',
     deploymentMode: 'oss',
     authProvider: 'local',
+    billingProvider: 'none',
     turnEnabled: false,
     forceTurnRelay: false,
     tunnelUrl: null,
@@ -90,6 +93,7 @@ export function AppConfigProvider({ children }: { children: ReactNode }) {
                 apiVersion: data.api || 'unknown',
                 deploymentMode: data.deploymentMode || 'oss',
                 authProvider: data.authProvider || 'local',
+                billingProvider: data.billingProvider || 'none',
                 turnEnabled: Boolean(data.turnEnabled),
                 forceTurnRelay: Boolean(data.forceTurnRelay),
                 tunnelUrl: typeof data.tunnelUrl === 'string' ? data.tunnelUrl : null,
