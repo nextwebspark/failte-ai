@@ -1,26 +1,26 @@
 ---
-title: "Dograh Managed SIP"
-description: "Connect your own SIP carrier or PBX to the SIP domain Dograh provisions for your organization"
+title: "Fallcha.ai Managed SIP"
+description: "Connect your own SIP carrier or PBX to the SIP domain Fallcha.ai provisions for your organization"
 ---
 
 ## What you get, and what you bring
 
-Every Dograh organization is provisioned with a telephony configuration named
-**Dograh Cloudonix SIP**. It gives you a SIP domain that is already connected
-to the Dograh voice pipeline — you do not need a Cloudonix account, and there
+Every Fallcha.ai organization is provisioned with a telephony configuration named
+**Fallcha.ai Cloudonix SIP**. It gives you a SIP domain that is already connected
+to the Fallcha.ai voice pipeline — you do not need a Cloudonix account, and there
 is nothing to pay for or set up on the Cloudonix side.
 
-What it does **not** include is phone service. Dograh does not sell or resell
+What it does **not** include is phone service. Fallcha.ai does not sell or resell
 phone numbers, and no calls flow until you connect a carrier:
 
-| Dograh provides                                     | You provide                                    |
+| Fallcha.ai provides                                     | You provide                                    |
 | --------------------------------------------------- | ---------------------------------------------- |
 | A SIP domain and its inbound SIP endpoint            | A SIP trunk from your carrier, or your own PBX |
 | A fixed outbound origin IP to allow on your side     | Phone numbers (DIDs) on that trunk             |
 | The voice agent runtime on both call directions      | Any per-minute charges your carrier bills      |
 
 <Note>
-  Until you finish the steps below, **Dograh Cloudonix SIP** cannot place a
+  Until you finish the steps below, **Fallcha.ai Cloudonix SIP** cannot place a
   call. The configuration page shows a setup checklist that tracks exactly
   which of these steps are still outstanding.
 </Note>
@@ -44,17 +44,17 @@ own Asterisk via [Asterisk ARI](/integrations/telephony/asterisk-ari).
 - At least one phone number (DID) on that trunk
 - Permission to change the trunk's IP allowlist and routing on the carrier side
 
-## Step 1: Read your SIP endpoints from Dograh
+## Step 1: Read your SIP endpoints from Fallcha.ai
 
-1. Go to **Telephony configurations** and open **Dograh Cloudonix SIP**
+1. Go to **Telephony configurations** and open **Fallcha.ai Cloudonix SIP**
 2. Expand **SIP connectivity**
 3. Choose the **region** closest to your carrier — `Global`, `India`, or `UAE`.
    Every value on the panel is region-specific, so set this first
 4. Note the two values you will need on the carrier side:
-   - **Inbound hostname** and **ports** — where your carrier sends calls *to* Dograh
-   - **Outbound origin IP address** — the address Dograh's calls arrive *from*
+   - **Inbound hostname** and **ports** — where your carrier sends calls *to* Fallcha.ai
+   - **Outbound origin IP address** — the address Fallcha.ai's calls arrive *from*
 
-## Step 2: Point your carrier at Dograh (inbound)
+## Step 2: Point your carrier at Fallcha.ai (inbound)
 
 On your carrier or PBX, route your DIDs to the inbound hostname and port shown
 in **SIP connectivity**. UDP and TCP share one port; TLS uses a separate one.
@@ -63,17 +63,17 @@ This is the direction that makes your agent answer calls.
 
 ## Step 3: Create the outbound trunk (outbound)
 
-Dograh needs to know where to send calls when your agent dials out.
+Fallcha.ai needs to know where to send calls when your agent dials out.
 
 1. On your carrier, allow the **origin IP address** from Step 1 to send SIP
-   traffic to your trunk. Calls from Dograh are unauthenticated and identified
+   traffic to your trunk. Calls from Fallcha.ai are unauthenticated and identified
    by source IP, so this step is required
-2. Back in Dograh, under **Outbound trunks**, choose **Add trunk** and fill in:
+2. Back in Fallcha.ai, under **Outbound trunks**, choose **Add trunk** and fill in:
    - **Name** — any name you choose. Letters, digits and hyphens only
    - **SIP domain** — the hostname of your carrier or PBX, for example
-     `sip.example.com`. Dograh puts this in both the SIP `To` header and the
+     `sip.example.com`. Fallcha.ai puts this in both the SIP `To` header and the
      Request-URI
-   - **Region** — the edge Dograh dials your carrier from. The dialog shows
+   - **Region** — the edge Fallcha.ai dials your carrier from. The dialog shows
      the origin IP that region uses, which is the one to allowlist above
 3. Leave **Enabled** on and choose **Save trunk**
 
@@ -100,9 +100,9 @@ without one, so this step is required even if you only care about inbound.
 3. Mark the number you want outbound calls to present as the **default caller ID**
 
 Add every DID you intend to use. A number your carrier does not own will be
-rejected by the carrier even though Dograh accepts it — which is why the trunk
+rejected by the carrier even though Fallcha.ai accepts it — which is why the trunk
 assignment matters as soon as you have more than one carrier. With a single
-trunk, Dograh uses it for every number and the field can be left alone.
+trunk, Fallcha.ai uses it for every number and the field can be left alone.
 
 ## Step 5: Route inbound calls to an agent
 
@@ -112,7 +112,7 @@ Only needed if you want to receive calls.
 2. Set its **Inbound workflow** to the agent that should pick up
 3. Save
 
-Dograh pushes the inbound webhook URL to the Voice Application on the
+Fallcha.ai pushes the inbound webhook URL to the Voice Application on the
 provisioned domain automatically. You still need the DID bound to that
 application — see
 [Step 2 of the Cloudonix inbound setup](/integrations/telephony/cloudonix#step-2-create-the-voice-application-and-link-dnids).
@@ -121,7 +121,7 @@ application — see
 
 1. Open an agent, and make sure it is saved with no validation errors
 2. Choose **Phone Call**
-3. Select **Dograh Cloudonix SIP**, pick your caller ID, enter a destination
+3. Select **Fallcha.ai Cloudonix SIP**, pick your caller ID, enter a destination
    number, and start the call
 
 ## Troubleshooting

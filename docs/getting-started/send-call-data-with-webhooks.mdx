@@ -1,16 +1,16 @@
 ---
 title: "Sync Data using Webhook"
-description: "Get everything Dograh learned during the call back into your system the moment it ends."
+description: "Get everything Fallcha.ai learned during the call back into your system the moment it ends."
 ---
 
-The last page covered sending data into a call with API Trigger and `initial_context`. Now the opposite side: how Dograh sends what it learned back out to your system once the call ends.
+The last page covered sending data into a call with API Trigger and `initial_context`. Now the opposite side: how Fallcha.ai sends what it learned back out to your system once the call ends.
 
-That extracted data lives in `gathered_context`. So the full picture is: `initial_context` is what your backend sends into the call, `gathered_context` is what Dograh extracts from it. A **Webhook** node is how you get `gathered_context` back out.
+That extracted data lives in `gathered_context`. So the full picture is: `initial_context` is what your backend sends into the call, `gathered_context` is what Fallcha.ai extracts from it. A **Webhook** node is how you get `gathered_context` back out.
 
 <iframe
   className="w-full aspect-video rounded-xl"
   src="https://www.youtube.com/embed/w4XvzPWoFv4"
-  title="Dograh Webhook Node Explained, Get Call Data Into Your Backend"
+  title="Fallcha.ai Webhook Node Explained, Get Call Data Into Your Backend"
   allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
   allowFullScreen
 ></iframe>
@@ -21,13 +21,13 @@ Click **Add node**, scroll down, and you'll find the **Webhook** node. Add it an
 
 ## Step 2: Set the endpoint
 
-First thing you'll see is the endpoint URL. Paste your backend's webhook URL here. Still testing? Use a free URL from [webhook.site](https://webhook.site), copy your unique URL there and paste it into Dograh.
+First thing you'll see is the endpoint URL. Paste your backend's webhook URL here. Still testing? Use a free URL from [webhook.site](https://webhook.site), copy your unique URL there and paste it into Fallcha.ai.
 
 Set the method to **POST**. If your backend needs auth, add a bearer token or API key right here too.
 
 ## Step 3: Build the payload template
 
-This is the important part, it decides exactly what JSON Dograh sends. Include both kinds of context: `initial_context` fields like debtor name, client name, and debt amount, and `gathered_context` fields like amount to pay, payment method, and sentiment. You can also include the final business outcome with `{{gathered_context.call_disposition}}`, such as `qualified` or `callback_requested`. If workflow-level extraction is disabled or no custom outcome is recorded, this value falls back to the reason the call ended. See [Call Dispositions](../developer/call-dispositions) to configure the outcomes.
+This is the important part, it decides exactly what JSON Fallcha.ai sends. Include both kinds of context: `initial_context` fields like debtor name, client name, and debt amount, and `gathered_context` fields like amount to pay, payment method, and sentiment. You can also include the final business outcome with `{{gathered_context.call_disposition}}`, such as `qualified` or `callback_requested`. If workflow-level extraction is disabled or no custom outcome is recorded, this value falls back to the reason the call ended. See [Call Dispositions](../developer/call-dispositions) to configure the outcomes.
 
 ```json
 {
@@ -53,9 +53,9 @@ Save the webhook node, then publish the agent.
 
 ## Step 5: Test it
 
-Run a test call. When it ends, go back to your webhook receiver. You'll see one request with both `initial_context`, the data you sent into the call, and `gathered_context`, what Dograh extracted from the conversation, sitting in the same JSON payload.
+Run a test call. When it ends, go back to your webhook receiver. You'll see one request with both `initial_context`, the data you sent into the call, and `gathered_context`, what Fallcha.ai extracted from the conversation, sitting in the same JSON payload.
 
-That's the complete loop: your backend sends `initial_context` into Dograh, Dograh runs the call and extracts `gathered_context`, and the webhook node sends the final structured data back to your backend. For production, swap the webhook.site URL for your real backend URL.
+That's the complete loop: your backend sends `initial_context` into Fallcha.ai, Fallcha.ai runs the call and extracts `gathered_context`, and the webhook node sends the final structured data back to your backend. For production, swap the webhook.site URL for your real backend URL.
 
 ## Next Steps
 

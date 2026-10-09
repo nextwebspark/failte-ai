@@ -85,3 +85,23 @@ Decisions are recorded in FORK.md (`487483a1`).
 
 The voice-picker dialog wiring in `ServiceConfigurationForm.tsx` /
 `VoiceSelectorModal.tsx` (track 1) is the other substantive UI change to date.
+
+## 4. Fallcha.ai rebrand (branch `feat/fallcha-rebrand`)
+
+The product is renamed from Failte AI to **Fallcha.ai** and adopts the
+official brand kit (`brand-kit/fallcha-ai-logo-and-brand-kit/`).
+
+- Name lives in one place per app: `ui/src/config/brand.ts` (`BRAND`) and
+  `api/constants.py` (`BRAND_NAME`, `BRAND_DOMAIN`, `BRAND_APP_URL`).
+- Kit logos, mark, favicon and apple icon in `ui/public/brand/` and
+  `ui/src/app/`; `BrandLogo.tsx` renders the light/dark lockups.
+- Theme: kit palette (Irish green, Forest ink, Night, Mint) with AA-adjusted
+  `--brand`, a new `--live` token (Tricolour orange) for speaking/live state,
+  and Montserrat as the UI typeface.
+- Embed widget canonical file is `fallcha-widget.js` (`window.FallchaWidget`,
+  `data-fallcha-context`); `failte-widget.js` and `dograh-widget.js` forward to
+  it and the legacy attributes/ids/globals keep working.
+- User-facing copy in UI, API errors, MCP/LLM text, emails and the docs site.
+- Deliberately unchanged: `DOGRAH_*` env vars, `dograh_auth_*` cookies, the
+  `"dograh"` provider mode, `*_dograh_tokens` columns, metrics, SDK package
+  names, upstream class names, `X-Dograh-*` headers, `services.dograh.com`.

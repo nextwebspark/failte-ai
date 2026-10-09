@@ -1,37 +1,36 @@
 ---
 title: "Agent Stream"
-description: "Stream audio to a Dograh agent over a WebSocket"
+description: "Stream audio to a Fallcha.ai agent over a WebSocket"
 ---
 
 ## Overview
 
-Agent Stream is a WebSocket endpoint that lets a telephony provider point its media stream at a single URL and drive a Dograh agent run. The agent UUID in the URL selects the agent, and the provider path segment selects the streaming protocol. Provider-specific identifiers come from the stream protocol itself. For Cloudonix, Dograh reads the domain from the `start.accountSid` field, then uses the matching stored telephony configuration to validate the session and issue provider API calls (hangup, transfer) during the call.
+Agent Stream is a WebSocket endpoint that lets a telephony provider point its media stream at a single URL and drive a Fallcha.ai agent run. The agent UUID in the URL selects the agent, and the provider path segment selects the streaming protocol. Provider-specific identifiers come from the stream protocol itself. For Cloudonix, Fallcha.ai reads the domain from the `start.accountSid` field, then uses the matching stored telephony configuration to validate the session and issue provider API calls (hangup, transfer) during the call.
 
 This is useful when:
 
-- You're integrating Dograh into a SIP gateway or in-house dialer that already speaks a supported provider's streaming protocol
+- You're integrating Fallcha.ai into a SIP gateway or in-house dialer that already speaks a supported provider's streaming protocol
 - You want one stable endpoint per agent rather than wiring up an inbound webhook per phone number
 
 <Warning>
   Agent Stream currently supports the **Cloudonix** provider only. Other providers
   return `NotImplementedError` until a per-provider implementation lands. If you
-  need Twilio, Plivo, Telnyx, Vonage, ARI, or another provider, please open a
-  request on [GitHub Discussions](https://github.com/dograh-hq/dograh/discussions)
-  with your use case.
+  need Twilio, Plivo, Telnyx, Vonage, ARI, or another provider, please email
+  [support@fallcha.ai](mailto:support@fallcha.ai) with your use case.
 </Warning>
 
 ## Endpoint
 
 ```
-wss://api.dograh.com/api/v1/agent-stream/{provider}/{agent_uuid}
+wss://api.fallcha.ai/api/v1/agent-stream/{provider}/{agent_uuid}
 ```
 
-`{provider}` is the registered provider name, currently `cloudonix`. `{agent_uuid}` is the agent's stable UUID (see [Get the Agent UUID](#get-the-agent-uuid) below). On self-hosted deployments, replace `api.dograh.com` with your backend host.
+`{provider}` is the registered provider name, currently `cloudonix`. `{agent_uuid}` is the agent's stable UUID (see [Get the Agent UUID](#get-the-agent-uuid) below). On self-hosted deployments, replace `api.fallcha.ai` with your backend host.
 
 ## Prerequisites
 
-- A Dograh agent (workflow) — published or in draft is fine
-- A Cloudonix telephony configuration in your Dograh organization whose `domain_id` matches the `accountSid` Cloudonix sends in the stream `start` message. Dograh uses the bearer token from this configuration to validate the call session and to issue provider API calls (hangup, transfer).
+- A Fallcha.ai agent (workflow) — published or in draft is fine
+- A Cloudonix telephony configuration in your Fallcha.ai organization whose `domain_id` matches the `accountSid` Cloudonix sends in the stream `start` message. Fallcha.ai uses the bearer token from this configuration to validate the call session and to issue provider API calls (hangup, transfer).
 
 ## Get the Agent UUID
 
@@ -46,31 +45,31 @@ To find and copy it in the UI, see [Agent UUID](/configurations/agent-uuid).
 | Param | Required | Description |
 | --- | --- | --- |
 | `provider` | Yes | Provider name. Currently only `cloudonix` is supported. |
-| `agent_uuid` | Yes | Stable UUID of the Dograh agent to run. |
+| `agent_uuid` | Yes | Stable UUID of the Fallcha.ai agent to run. |
 
 ### Cloudonix example
 
 ```
-wss://api.dograh.com/api/v1/agent-stream/cloudonix/{agent_uuid}
+wss://api.fallcha.ai/api/v1/agent-stream/cloudonix/{agent_uuid}
 ```
 
-Use this URL inside the CXML `<Stream>` your Cloudonix Voice Application returns when the call needs to be bridged to the Dograh agent:
+Use this URL inside the CXML `<Stream>` your Cloudonix Voice Application returns when the call needs to be bridged to the Fallcha.ai agent:
 
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
 <Response>
   <Connect>
-    <Stream url="wss://api.dograh.com/api/v1/agent-stream/cloudonix/{agent_uuid}"/>
+    <Stream url="wss://api.fallcha.ai/api/v1/agent-stream/cloudonix/{agent_uuid}"/>
   </Connect>
   <Pause length="40"/>
 </Response>
 ```
 
-The first two messages on the socket should be Cloudonix's standard `connected` and `start` events (Twilio-compatible framing). Dograh extracts `streamSid`, `callSid`, `session`, `accountSid`, `from`, `to`, `context`, `tracks`, and `mediaFormat` from the `start` event payload. It validates the session against Cloudonix using the bearer token from the stored telephony configuration matched by `accountSid`, then begins streaming audio.
+The first two messages on the socket should be Cloudonix's standard `connected` and `start` events (Twilio-compatible framing). Fallcha.ai extracts `streamSid`, `callSid`, `session`, `accountSid`, `from`, `to`, `context`, `tracks`, and `mediaFormat` from the `start` event payload. It validates the session against Cloudonix using the bearer token from the stored telephony configuration matched by `accountSid`, then begins streaming audio.
 
 ## Workflow run lifecycle
 
-When the WebSocket is accepted, Dograh:
+When the WebSocket is accepted, Fallcha.ai:
 
 1. Looks up the workflow by `agent_uuid`
 2. Runs a quota check against the workflow's owning user
@@ -92,4 +91,4 @@ The run is visible under the agent's **Runs** tab as soon as it's minted, just l
 ## Security notes
 
 - Treat the URL as a secret — the agent UUID itself authorizes the connection. Store and transmit it only over TLS, and avoid logging the raw URL in places where access is broader than your operations team.
-- No bearer tokens or provider secrets are passed in the URL. Provider credentials live in the stored telephony configuration (matched by `start.accountSid` for Cloudonix) and are used server-side by Dograh to validate the session and issue provider API calls.
+- No bearer tokens or provider secrets are passed in the URL. Provider credentials live in the stored telephony configuration (matched by `start.accountSid` for Cloudonix) and are used server-side by Fallcha.ai to validate the session and issue provider API calls.

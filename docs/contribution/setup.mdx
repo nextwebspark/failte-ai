@@ -1,12 +1,12 @@
 ---
 title: Setup
-description: Get a Dograh dev environment running and learn the daily commands.
+description: Get a Fallcha.ai dev environment running and learn the daily commands.
 ---
 
-Dograh is a Next.js UI (`ui/`), a FastAPI backend (`api/`), and a [Pipecat](https://github.com/pipecat-ai/pipecat)-based voice pipeline (`pipecat/`, a git submodule), backed by Postgres, Redis, and MinIO.
+Fallcha.ai is a Next.js UI (`ui/`), a FastAPI backend (`api/`), and a [Pipecat](https://github.com/pipecat-ai/pipecat)-based voice pipeline (`pipecat/`, a git submodule), backed by Postgres, Redis, and MinIO.
 
 <Tip>
-**Using Claude Code or Codex?** Install the [Dograh setup skill](https://github.com/dograh-hq/dograh-plugins) (`/plugin marketplace add dograh-hq/dograh-plugins`, then `/plugin install dograh@dograh`) and ask your agent to *"set up Dograh for development"* — it runs the steps below for you and verifies the stack is healthy.
+**Using Claude Code or Codex?** Install the [upstream Dograh setup skill](https://github.com/dograh-hq/dograh-plugins) (`/plugin marketplace add dograh-hq/dograh-plugins`, then `/plugin install dograh@dograh`) and ask your agent to *"set up Dograh for development"* — it runs the steps below for you and verifies the stack is healthy.
 </Tip>
 
 ## Set up
@@ -36,7 +36,7 @@ cd ui && npm run dev -- --hostname 0.0.0.0
 
 5. Open the app at `http://localhost:3000`.
 
-If these steps do not work for you, please open an issue on [GitHub](https://github.com/dograh-hq/dograh/issues).
+If these steps do not work for you, email [support@fallcha.ai](mailto:support@fallcha.ai).
 
 <AccordionGroup>
 <Accordion title="Cloned dograh-hq/dograh directly instead of your fork?">
@@ -87,7 +87,7 @@ All configurations load `api/.env` (test configs use `api/.env.test`) and set `j
 | `api/` | FastAPI backend — REST API, campaign orchestration, telephony, ARQ background workers |
 | `pipecat/` | Git submodule for the voice pipeline (STT → LLM → TTS) |
 | `docs/` | This documentation site, written in MDX, previewed with `mint dev` |
-| `sdk/` | Python/TypeScript SDKs for driving Dograh programmatically |
+| `sdk/` | Python/TypeScript SDKs for driving Fallcha.ai programmatically |
 | `scripts/` | Setup, deployment, and update scripts |
 | `deploy/` | nginx and coturn config templates used by remote deployment |
 
@@ -97,6 +97,6 @@ All configurations load `api/.env` (test configs use `api/.env.test`) and set `j
 2. Push to your fork (`origin`) and open a pull request against `dograh-hq/dograh:main`.
 3. A maintainer reviews and merges.
 
-Bug reports and feature ideas go through [GitHub Issues](https://github.com/dograh-hq/dograh/issues) and [Ideas](https://github.com/orgs/dograh-hq/discussions/categories/ideas). Issues tagged `good first issue` are a good place to start. For questions while you're working, use the [Dograh Community Slack](https://join.slack.com/t/dograh-community/shared_invite/zt-4anp45mlu-ukR3jTqwdDFMEpqeBhKn6g).
+Bug reports and feature ideas for upstream Dograh go through its [GitHub Issues](https://github.com/dograh-hq/dograh/issues) and [Ideas](https://github.com/orgs/dograh-hq/discussions/categories/ideas). Issues tagged `good first issue` are a good place to start. For questions about Fallcha.ai while you're working, email [support@fallcha.ai](mailto:support@fallcha.ai).
 
 Deploying your own build instead of contributing upstream? See [Deployments](/deployment/introduction) instead.

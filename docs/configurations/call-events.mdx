@@ -11,7 +11,7 @@ you configure it in **Settings → Call events**.
 2. Enter the table as `project.dataset.table`.
 3. Choose a service account and enter its email and PEM private key. On a
    self-hosted installation, you can instead select **Deployment identity** to
-   use the Google credentials configured on your Dograh server.
+   use the Google credentials configured on your Fallcha.ai server.
 4. Select **Test connection** to check authentication and table compatibility.
    This reads table metadata without inserting events; successful exports also
    require write permission.
@@ -47,7 +47,7 @@ and empty/finalized flags; it does not contain transcript text or audio.
 
 Events are sent after a call finishes, with their original timestamps.
 Capture and export are separate from the real-time feedback logs.
-Dograh stores the destination settings in its organization configuration;
+Fallcha.ai stores the destination settings in its organization configuration;
 event payloads are not persisted in Postgres or Redis.
 
 Exports use bounded retries for retryable row and HTTP errors. BigQuery's

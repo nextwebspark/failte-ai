@@ -1,20 +1,20 @@
 ---
 title: "Custom Telephony Provider"
-description: "Build your own telephony provider integration for Dograh AI"
+description: "Build your own telephony provider integration for Fallcha.ai"
 ---
 
 ## Prerequisites
 
 This guide assumes familiarity with two libraries the provider interface is built on:
 
-- **[Pipecat](https://docs.pipecat.ai)** — the open-source real-time voice/multimodal pipeline framework Dograh's call pipeline is built on. Its [`FastAPIWebsocketTransport`](https://docs.pipecat.ai/server/services/transport/fastapi-websocket) is what streams audio between the telephony provider and Dograh's pipeline — you'll be constructing one of these in your transport factory. If you haven't built a Pipecat transport or frame serializer before, skim their [transports guide](https://docs.pipecat.ai/server/base-classes/transport) first.
+- **[Pipecat](https://docs.pipecat.ai)** — the open-source real-time voice/multimodal pipeline framework Fallcha.ai's call pipeline is built on. Its [`FastAPIWebsocketTransport`](https://docs.pipecat.ai/server/services/transport/fastapi-websocket) is what streams audio between the telephony provider and Fallcha.ai's pipeline — you'll be constructing one of these in your transport factory. If you haven't built a Pipecat transport or frame serializer before, skim their [transports guide](https://docs.pipecat.ai/server/base-classes/transport) first.
 - **[Pydantic](https://docs.pydantic.dev)** — used for the request/response schemas that define a provider's stored credentials (`config.py` below). If you're new to Pydantic, its [models documentation](https://docs.pydantic.dev/latest/concepts/models/) covers everything used here (`BaseModel`, `Field`, `Literal` discriminators).
 
 You don't need deep expertise in either — enough to read a `BaseModel` and a Pipecat transport class is sufficient to follow this guide.
 
 ## Overview
 
-A telephony provider is implemented as a **self-registering package** under `api/services/telephony/providers/<name>/`. The package contributes everything Dograh needs to wire the provider in — the provider class, transport factory, audio config, request/response schemas, optional HTTP routes, and the form metadata used to render its configuration UI — through a single `ProviderSpec` registered at import time.
+A telephony provider is implemented as a **self-registering package** under `api/services/telephony/providers/<name>/`. The package contributes everything Fallcha.ai needs to wire the provider in — the provider class, transport factory, audio config, request/response schemas, optional HTTP routes, and the form metadata used to render its configuration UI — through a single `ProviderSpec` registered at import time.
 
 Adding a new provider should not require touching the factory, the audio config, the API routes module, the run-pipeline module, or the frontend. The only edits outside the provider folder are:
 
@@ -205,7 +205,7 @@ async def create_transport(
 
 ### 3. Routes (optional)
 
-If your provider POSTs webhooks to Dograh (answer URL, status callbacks, hangup callbacks), expose them through a module-level `router`. The routes are auto-mounted under `/api/v1/telephony`.
+If your provider POSTs webhooks to Fallcha.ai (answer URL, status callbacks, hangup callbacks), expose them through a module-level `router`. The routes are auto-mounted under `/api/v1/telephony`.
 
 ```python
 # providers/your_provider/routes.py

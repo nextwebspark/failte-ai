@@ -1,6 +1,6 @@
 ---
 title: "Connect with Telephony"
-description: "Hook up Twilio so Dograh can make and receive real calls, not just browser test calls."
+description: "Hook up Twilio so Fallcha.ai can make and receive real calls, not just browser test calls."
 ---
 
 You've covered API Trigger and Webhooks. Both of those work on real calls, which means you need a real phone number connected first. This page walks through Twilio specifically, since it's the fastest way to get a number and test with free trial credits.
@@ -8,7 +8,7 @@ You've covered API Trigger and Webhooks. Both of those work on real calls, which
 <iframe
   className="w-full aspect-video rounded-xl"
   src="https://www.youtube.com/embed/w8EhcqDjZKI"
-  title="How to Set Up Telephony for Dograh AI Voice Agents"
+  title="How to Set Up Telephony for Fallcha.ai Voice Agents"
   allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
   allowFullScreen
 ></iframe>
@@ -21,9 +21,9 @@ Sign up at Twilio. You'll land on their dashboard with free trial credits you ca
 
 Back on the Twilio dashboard, copy your **Account SID**.
 
-## Step 3: Add the configuration in Dograh
+## Step 3: Add the configuration in Fallcha.ai
 
-Open **Telephony** in Dograh, click **Add Configuration**, and select **Twilio** as the provider. Name it something you'll recognize later, your workflow name works well. Paste the Account SID.
+Open **Telephony** in Fallcha.ai, click **Add Configuration**, and select **Twilio** as the provider. Name it something you'll recognize later, your workflow name works well. Paste the Account SID.
 
 Go back to Twilio, copy your **Auth Token**, and paste it in. Keep that token private.
 
@@ -43,13 +43,13 @@ Before testing from a Twilio trial account, verify the destination number you pl
 
 ## Step 6: Test it
 
-Once verified, trigger a call the same way you did in [Trigger Calls using API](/getting-started/trigger-calls-from-your-backend), from Postman or your backend. Dograh places the outbound call through Twilio. The phone rings, the agent answers, and the connection is live.
+Once verified, trigger a call the same way you did in [Trigger Calls using API](/getting-started/trigger-calls-from-your-backend), from Postman or your backend. Fallcha.ai places the outbound call through Twilio. The phone rings, the agent answers, and the connection is live.
 
 <Note>
 On a trial account, Twilio plays a default message before connecting to your agent. Press any key to skip it and go straight to the agent.
 </Note>
 
-Inbound calls work the same way in reverse, routed through Twilio's webhook into your Dograh workflow.
+Inbound calls work the same way in reverse, routed through Twilio's webhook into your Fallcha.ai workflow.
 
 ## Next Steps
 

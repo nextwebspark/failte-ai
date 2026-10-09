@@ -1,15 +1,15 @@
 ---
 title: "Model Configurations"
-description: "Configure the speech-to-speech, Dograh-managed, or bring-your-own-key models your Dograh agents use."
+description: "Configure the speech-to-speech, Fallcha.ai-managed, or bring-your-own-key models your Fallcha.ai agents use."
 ---
 
 ## How model configurations work
 
 Model Configurations define the default AI model setup for your organization. Agents use this configuration unless you set agent-level model overrides in the agent settings.
 
-To configure models, open **Models** in your Dograh dashboard:
+To configure models, open **Models** in your Fallcha.ai dashboard:
 
-- **Hosted:** `https://app.dograh.com/model-configurations`
+- **Hosted:** `https://app.fallcha.ai/model-configurations`
 - **Self-hosted:** `http://localhost:3010/model-configurations`
 - **Local development:** `http://localhost:3000/model-configurations`
 
@@ -18,7 +18,7 @@ The Models page has three top-level sections:
 | Section | When to use it |
 |---------|----------------|
 | **Speech to Speech** | Use a realtime speech-to-speech model for the live conversation. You still configure an LLM alongside it for variable extraction and QA. |
-| **Dograh** | Use Dograh-managed LLM, voice, and transcriber models behind one Dograh Service Key. |
+| **Fallcha.ai** | Use Fallcha.ai-managed LLM, voice, and transcriber models behind one Fallcha.ai Service Key. |
 | **BYOK** | Bring your own provider keys and configure LLM, Voice, Transcriber, and Embedding models separately. |
 
 <Note>
@@ -40,23 +40,23 @@ The Speech to Speech section has nested tabs:
 | **Embedding** | An embedding model used by features that need embeddings, such as retrieval from knowledge base content. |
 
 <Warning>
-An LLM is still required when you use Speech to Speech. The realtime model handles the live voice conversation, but Dograh uses the LLM for analysis tasks that happen outside the live audio stream.
+An LLM is still required when you use Speech to Speech. The realtime model handles the live voice conversation, but Fallcha.ai uses the LLM for analysis tasks that happen outside the live audio stream.
 </Warning>
 
-## Dograh
+## Fallcha.ai
 
-Use **Dograh** when you want Dograh to manage the model providers for you. This path uses one Dograh Service Key for Dograh-managed models instead of separate provider keys for LLM, Voice, and Transcriber.
+Use **Fallcha.ai** when you want Fallcha.ai to manage the model providers for you. This path uses one Fallcha.ai Service Key for Fallcha.ai-managed models instead of separate provider keys for LLM, Voice, and Transcriber.
 
-![Dograh model configuration](../images/model-configuration-dograh.png)
+![Fallcha.ai model configuration](../images/model-configuration-dograh.png)
 
 Configure:
 
 | Field | What it controls |
 |-------|------------------|
-| **Voice** | The Dograh-managed voice to use. |
+| **Voice** | The Fallcha.ai-managed voice to use. |
 | **Speed** | The voice playback speed. |
 | **Language** | The language behavior, including multilingual auto-detect when available. |
-| **API Key** | Your Dograh Service Key. Create Service Keys from **Developers**. |
+| **API Key** | Your Fallcha.ai Service Key. Create Service Keys from **Developers**. |
 
 For details on creating and using Service Keys, see [API Keys and Service Keys](api-keys#service-keys).
 
@@ -65,7 +65,7 @@ For details on creating and using Service Keys, see [API Keys and Service Keys](
 Use **BYOK** when you want to bring your own provider accounts and API keys. This gives you separate control over each model category.
 
 <Warning>
-When you use BYOK or external model providers, Dograh sends only the data required for the selected service to operate. Depending on the provider and service type, this may include prompts, conversation history, transcripts, audio, generated text, tool/function definitions, tool inputs or results, and request metadata.
+When you use BYOK or external model providers, Fallcha.ai sends only the data required for the selected service to operate. Depending on the provider and service type, this may include prompts, conversation history, transcripts, audio, generated text, tool/function definitions, tool inputs or results, and request metadata.
 
 Provider data handling varies. Review each provider's data processing, retention, model training, and regional hosting policies before using sensitive data.
 </Warning>

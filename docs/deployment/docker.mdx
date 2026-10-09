@@ -1,15 +1,15 @@
 ---
 title: "Docker"
-description: "Deploy Dograh AI using Docker for local development and remote server environments"
+description: "Deploy Fallcha.ai using Docker for local development and remote server environments"
 ---
 
-Dograh AI can be deployed using Docker in two main configurations. Choose the option that best fits your needs:
+Fallcha.ai can be deployed using Docker in two main configurations. Choose the option that best fits your needs:
 
 - **Option 1**: For local development and testing on your own machine
-- **Option 2**: For remote server deployment with HTTPS (using IP address). If you also have a custom domain, you can first deploy Dograh stack on your server using steps in this document and then proceed to the [Custom Domain](deployment/custom-domain) section.
+- **Option 2**: For remote server deployment with HTTPS (using IP address). If you also have a custom domain, you can first deploy Fallcha.ai stack on your server using steps in this document and then proceed to the [Custom Domain](deployment/custom-domain) section.
 
 <Tip>
-**Using Claude Code or Codex?** Install the official Dograh setup skill and let your agent drive either deployment below — it orients to your OS, picks local vs remote, runs Dograh's own setup scripts, and verifies the result with a built-in health check.
+**Using Claude Code or Codex?** Install the setup skill from upstream Dograh (the open-source project Fallcha.ai is built on) and let your agent drive either deployment below — it orients to your OS, picks local vs remote, runs the repo's own setup scripts, and verifies the result with a built-in health check.
 
 <CodeGroup>
 ```text Claude Code
@@ -27,21 +27,21 @@ Start a new session, then ask it to *"set up Dograh"* (or run `/dograh-setup` in
 
 ## Option 1: Local Docker Deployment
 
-Watch the video tutorial below for a step-by-step walkthrough of setting up Dograh AI locally with Docker.
+Watch the video tutorial below for a step-by-step walkthrough of setting up Fallcha.ai locally with Docker.
 
 <iframe
   className="w-full aspect-video rounded-xl"
   src="https://www.tella.tv/video/dograh-local-setup-with-docker-5wsf/embed?b=1&title=1&a=1&loop=0&t=0&muted=0&wt=1"
-  title="Dograh Local Setup with Docker"
+  title="Fallcha.ai Local Setup with Docker"
   allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
   allowFullScreen
 ></iframe>
 
-For local development and testing, you can run Dograh AI directly on your machine using Docker with a small startup script.
+For local development and testing, you can run Fallcha.ai directly on your machine using Docker with a small startup script.
 
 ### Quick Start
 
-Download the compose file and starter script, then confirm the prompt to start Dograh AI:
+Download the compose file and starter script, then confirm the prompt to start Fallcha.ai:
 
 <CodeGroup>
 ```bash macOS/Linux
@@ -110,17 +110,17 @@ To verify that media is actually traversing TURN (and not silently falling back 
 
 ## Option 2: Remote Server Deployment
 
-Watch the video tutorial below for a step-by-step walkthrough of deploying Dograh AI to a remote server.
+Watch the video tutorial below for a step-by-step walkthrough of deploying Fallcha.ai to a remote server.
 
 <iframe
   className="w-full aspect-video rounded-xl"
   src="https://www.tella.tv/video/deploying-dogra-to-a-remote-server-80ai/embed?b=1&title=1&a=1&loop=0&t=0&muted=0&wt=1"
-  title="Deploying Dograh to a Remote Server"
+  title="Deploying Fallcha.ai to a Remote Server"
   allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
   allowFullScreen
 ></iframe>
 
-Deploy Dograh AI on a remote server to make it accessible from anywhere. If your server has a **public IP**, setup obtains a free, trusted HTTPS certificate automatically via [sslip.io](https://sslip.io) and Let's Encrypt — no domain name or DNS configuration required, and no browser warning. On a private/reserved IP it falls back to a self-signed certificate. **We need to serve the application over HTTPS, since modern browsers only allow microphone permissions for websites being served over HTTPS**.
+Deploy Fallcha.ai on a remote server to make it accessible from anywhere. If your server has a **public IP**, setup obtains a free, trusted HTTPS certificate automatically via [sslip.io](https://sslip.io) and Let's Encrypt — no domain name or DNS configuration required, and no browser warning. On a private/reserved IP it falls back to a self-signed certificate. **We need to serve the application over HTTPS, since modern browsers only allow microphone permissions for websites being served over HTTPS**.
 
 <Warning>We highly recommend you set up the platform on a fresh server, so that there are less chances of confliciting dependencies, and ports from other applications.</Warning>
 
@@ -166,7 +166,7 @@ It will automatically:
 Please ensure that Docker Compose is installed on your machine before proceeding further. You can check whether its installed by running `docker compose version` command. If its not installed, please install it by following your server provider documentation.
 </Note>
 
-After the setup script completes, start Dograh. For a **public-IP install the trusted-certificate flow already started the stack** and printed your `https://…sslip.io` URL — you can skip to [Access Your Application](#access-your-application). For a self-signed install, start it yourself (the script prints the exact command at the end — it differs slightly between modes):
+After the setup script completes, start Fallcha.ai. For a **public-IP install the trusted-certificate flow already started the stack** and printed your `https://…sslip.io` URL — you can skip to [Access Your Application](#access-your-application). For a self-signed install, start it yourself (the script prints the exact command at the end — it differs slightly between modes):
 
 <CodeGroup>
 ```bash Prebuilt mode
@@ -227,7 +227,7 @@ If you maintain a fork or want to ship local code changes without waiting for an
 In this mode the script:
 
 1. Clones the repo into `dograh/` (default: `dograh-hq/dograh@main`; the script will ask for an `owner/name` and `branch` so a fork can point at its own).
-2. If you run the script from inside an existing dograh checkout, offers to use that checkout instead of cloning.
+2. If you run the script from inside an existing checkout of the repo, offers to use that checkout instead of cloning.
 3. Generates a `docker-compose.override.yaml` next to `docker-compose.yaml` that swaps the `image:` directives for local `build:` directives. Docker Compose auto-loads the override file — you don't need to pass any `-f` flags.
 
 #### Updating after a code change

@@ -1,6 +1,6 @@
 ---
 title: "Paygent Integration"
-description: "Connect Dograh to Paygent — real-time cost tracking, multimodal usage monitoring, and billing for voice agents"
+description: "Connect Fallcha.ai to Paygent — real-time cost tracking, multimodal usage monitoring, and billing for voice agents"
 ---
 
 <iframe
@@ -21,20 +21,20 @@ If you are building voice agents for clients or offering them as a SaaS product,
 
 ### How you charge your customers
 
-Instead of building custom tracking infrastructure, you simply connect your Dograh workflow to Paygent. As your agents handle calls, Dograh passively calculates the exact multimodal token usage and audio duration. 
+Instead of building custom tracking infrastructure, you simply connect your Fallcha.ai workflow to Paygent. As your agents handle calls, Fallcha.ai passively calculates the exact multimodal token usage and audio duration. 
 
 This data is securely exported to Paygent after every call, where your custom pricing margins (rate cards) are applied. This seamless flow allows you to automatically invoice your end-users for the exact infrastructure they consume — turning your AI agents into a scalable, profitable business with zero engineering overhead.
 
 ## Prerequisites
 
 - A [Paygent account](https://withpaygent.com)
-- A Dograh voice agent workflow
+- A Fallcha.ai voice agent workflow
 
 ## Setup
 
 ### 1. Create an agent and configure pricing in Paygent
 
-Before connecting Dograh, you must register your agent in Paygent and define how you want to charge your customers.
+Before connecting Fallcha.ai, you must register your agent in Paygent and define how you want to charge your customers.
 
 Log in to [Paygent](https://withpaygent.com) and click **Create Agent**. You will be prompted to define your agent's core details, including the **Agent Name** and **Agent ID**:
 
@@ -43,7 +43,7 @@ Log in to [Paygent](https://withpaygent.com) and click **Create Agent**. You wil
   alt="Creating a new agent in Paygent - Agent Name and ID"
 />
 
-Next, set the **Indicator Name**. This is the billing event identifier you will pass from Dograh (e.g. `per-minute-call`) to tell Paygent which rate to apply for this agent's calls:
+Next, set the **Indicator Name**. This is the billing event identifier you will pass from Fallcha.ai (e.g. `per-minute-call`) to tell Paygent which rate to apply for this agent's calls:
 
 <img
   src="/images/paygent-create-agent-image-2.webp"
@@ -57,11 +57,11 @@ Finally, you will configure your **Pricing Strategy**. Paygent allows you to set
   alt="Configuring custom pricing margins and rate cards in Paygent"
 />
 
-Once your pricing is configured, confirm your setup. You will use the **Agent ID** and **Indicator** from this process to connect your Dograh workflow.
+Once your pricing is configured, confirm your setup. You will use the **Agent ID** and **Indicator** from this process to connect your Fallcha.ai workflow.
 
 ### 2. Gather your Paygent credentials
 
-You'll need three core values from your Paygent dashboard to link your Dograh agent:
+You'll need three core values from your Paygent dashboard to link your Fallcha.ai agent:
 
 | Credential | Where to find it / Description |
 |---|---|
@@ -71,7 +71,7 @@ You'll need three core values from your Paygent dashboard to link your Dograh ag
 
 ### 3. Add the Paygent node to your workflow
 
-In your Dograh workflow editor, click **Add node** and scroll to the **Integrations** section. Select **Paygent**. The node will appear on your canvas with a **Not configured** badge.
+In your Fallcha.ai workflow editor, click **Add node** and scroll to the **Integrations** section. Select **Paygent**. The node will appear on your canvas with a **Not configured** badge.
 
 ### 4. Configure the node
 

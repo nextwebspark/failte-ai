@@ -8,7 +8,7 @@ The Call Transfer tool lets your AI agent transfer an active telephony call to a
 Use this tool when the caller should speak to a human operator, department, escalation queue, support queue, or another phone system.
 
 <Note>
-To hand the caller to **another Dograh agent** rather than to a phone number, use [Transfer to Agent](/voice-agent/tools/transfer-agent) instead. It carries conversation history as a labeled transcript across the handoff and works on web calls as well as telephony.
+To hand the caller to **another Fallcha.ai agent** rather than to a phone number, use [Transfer to Agent](/voice-agent/tools/transfer-agent) instead. It carries conversation history as a labeled transcript across the handoff and works on web calls as well as telephony.
 </Note>
 
 ## Supported providers
@@ -21,16 +21,16 @@ Web calls do not support call transfer.
 
 ## How call transfer works
 
-When the LLM decides a transfer is needed, it calls the Call Transfer tool. Dograh resolves the destination, validates the transfer setup, and then starts the provider transfer.
+When the LLM decides a transfer is needed, it calls the Call Transfer tool. Fallcha.ai resolves the destination, validates the transfer setup, and then starts the provider transfer.
 
 For a successful transfer:
 
 1. The agent calls the Call Transfer tool.
-2. Dograh resolves the destination from static configuration, ordered context mappings, or a dynamic HTTP resolver.
-3. Dograh optionally plays a pre-transfer message.
-4. Dograh starts dialing the destination through the telephony provider.
+2. Fallcha.ai resolves the destination from static configuration, ordered context mappings, or a dynamic HTTP resolver.
+3. Fallcha.ai optionally plays a pre-transfer message.
+4. Fallcha.ai starts dialing the destination through the telephony provider.
 5. The caller hears hold music while the destination leg is connecting.
-6. When the destination answers, Dograh connects the caller and ends the AI agent's involvement.
+6. When the destination answers, Fallcha.ai connects the caller and ends the AI agent's involvement.
 
 By default, the receiving person joins without a conversation summary. For Twilio calls, you can enable a spoken introduction before the two parties are connected.
 
@@ -40,11 +40,11 @@ In your Call Transfer tool, enable **Play a transfer introduction to both partie
 
 The default instructions ask for a short summary of the caller's request, essential details, and language preference. Edit **Introduction instructions** to change what is included or request a language, such as Brazilian Portuguese. Your configured TTS voice must support that language.
 
-Dograh uses the current conversation, including history from earlier agents, and generates audio with the active agent's TTS configuration. After the destination answers, each party hears the same recording on their own line. Speaking does not interrupt playback. They can talk to each other once both have finished hearing it; playback may start at slightly different times on the two lines.
+Fallcha.ai uses the current conversation, including history from earlier agents, and generates audio with the active agent's TTS configuration. After the destination answers, each party hears the same recording on their own line. Speaking does not interrupt playback. They can talk to each other once both have finished hearing it; playback may start at slightly different times on the two lines.
 
 Preparation has an eight-second budget while the caller hears hold music. Introductions are limited to 25 words and 15 seconds of audio. If preparation fails or exceeds its budget, the transfer proceeds without the introduction. If Twilio cannot fetch or play the audio, a fallback connects the parties without it.
 
-Twilio fetches the recording from your publicly reachable Dograh backend using a temporary URL. The recording expires after five minutes; no public storage bucket is required.
+Twilio fetches the recording from your publicly reachable Fallcha.ai backend using a temporary URL. The recording expires after five minutes; no public storage bucket is required.
 
 <Note>
 Both the caller and whoever answers the destination hear the introduction. For a ring group, that can be any member who picks up. Include only details you intend to share with both parties.
@@ -68,7 +68,7 @@ This is the simplest option for fixed support lines, fixed departments, or cases
 
 ### Context Mapping
 
-Use this when a finite set of context values should select the transfer destination. You can add multiple rules and order them. Dograh evaluates the rules from top to bottom and uses the first route whose value matches, ignoring case and surrounding whitespace.
+Use this when a finite set of context values should select the transfer destination. You can add multiple rules and order them. Fallcha.ai evaluates the rules from top to bottom and uses the first route whose value matches, ignoring case and surrounding whitespace.
 
 For each rule, enter a context field and one or more value-to-destination mappings. An unprefixed field such as `department` reads `gathered_context.department` first and falls back to `initial_context.department` when the gathered value is absent. You can use `gathered_context.department` or `initial_context.department` when you want to read only one context.
 
@@ -79,13 +79,13 @@ Mapped and fallback destinations can be:
 - An E.164 PSTN number, such as `+1234567890`
 - A context template, such as `{{initial_context.transfer_destination}}`
 
-Dograh performs final variable extraction before evaluating context mappings. If no rule matches, it uses the optional fallback destination. If there is no fallback, or a selected destination template resolves to an empty value, the transfer fails before dialing and the agent can continue the call.
+Fallcha.ai performs final variable extraction before evaluating context mappings. If no rule matches, it uses the optional fallback destination. If there is no fallback, or a selected destination template resolves to an empty value, the transfer fails before dialing and the agent can continue the call.
 
 ### Dynamic HTTP Resolver
 
 Use this when the destination must be decided during the conversation.
 
-Dograh sends a `POST` request to your resolver endpoint before starting the transfer. Your endpoint returns the destination and may return a custom message to play before dialing.
+Fallcha.ai sends a `POST` request to your resolver endpoint before starting the transfer. Your endpoint returns the destination and may return a custom message to play before dialing.
 
 Common use cases:
 
@@ -93,16 +93,16 @@ Common use cases:
 - Look up the right account team in your customer system
 - Route by customer tier or account status
 - Route by issue type, language, or department
-- Use business logic from your backend instead of hardcoding numbers in Dograh
+- Use business logic from your backend instead of hardcoding numbers in Fallcha.ai
 
 ## Dynamic resolver request
 
 The resolver request body is a flat JSON object.
 
-Dograh builds it from:
+Fallcha.ai builds it from:
 
 - **LLM parameters**: values the agent extracts from the conversation when it calls the transfer tool
-- **Preset parameters**: values Dograh injects from fixed values or templates such as `{{initial_context.account_id}}` or `{{gathered_context.billing_issue_type}}`
+- **Preset parameters**: values Fallcha.ai injects from fixed values or templates such as `{{initial_context.account_id}}` or `{{gathered_context.billing_issue_type}}`
 
 If both define the same key, preset parameters take precedence.
 
@@ -117,7 +117,7 @@ Example request body:
 ```
 
 <Note>
-Dograh does not send the full conversation transcript to the resolver. Add the specific values you need as LLM parameters or preset parameters.
+Fallcha.ai does not send the full conversation transcript to the resolver. Add the specific values you need as LLM parameters or preset parameters.
 </Note>
 
 ## Dynamic resolver response
@@ -136,7 +136,7 @@ Your resolver must return a JSON object with `transfer_context.destination`.
 ```
 
 <Warning>
-Follow this response shape exactly. Dograh reads specific keys from the resolver response. For dynamic transfer resolution, an invalid response does not fall back silently: the transfer fails before dialing.
+Follow this response shape exactly. Fallcha.ai reads specific keys from the resolver response. For dynamic transfer resolution, an invalid response does not fall back silently: the transfer fails before dialing.
 </Warning>
 
 Field behavior:
@@ -150,11 +150,11 @@ If the resolver fails, times out, returns invalid JSON, or omits `transfer_conte
 
 When using a dynamic resolver, configure:
 
-- **Resolver URL**: HTTPS or HTTP endpoint Dograh calls with `POST`
-- **Resolver Timeout**: How long Dograh waits for the resolver response
-- **Resolver Wait Message**: Optional message spoken while Dograh waits, such as "One moment while I find the right team."
+- **Resolver URL**: HTTPS or HTTP endpoint Fallcha.ai calls with `POST`
+- **Resolver Timeout**: How long Fallcha.ai waits for the resolver response
+- **Resolver Wait Message**: Optional message spoken while Fallcha.ai waits, such as "One moment while I find the right team."
 - **LLM Parameters**: Values the agent should extract from the conversation, such as `billing_issue_type` or `requested_department`
-- **Preset Parameters**: Values injected by Dograh from context or fixed values
+- **Preset Parameters**: Values injected by Fallcha.ai from context or fixed values
 - **Custom Headers**: Static headers sent to your resolver endpoint
 - **Credential**: Optional saved credential used to authenticate the resolver request
 
@@ -168,26 +168,26 @@ Call Transfer supports a common pre-transfer message setting for static, context
 
 For static transfers:
 
-1. Dograh resolves the static or template destination.
-2. Dograh plays the configured pre-transfer message, if any.
-3. Dograh starts the provider transfer.
+1. Fallcha.ai resolves the static or template destination.
+2. Fallcha.ai plays the configured pre-transfer message, if any.
+3. Fallcha.ai starts the provider transfer.
 
 For dynamic transfers:
 
-1. Dograh may play the resolver wait message while calling your resolver.
-2. If the resolver returns `custom_message`, Dograh plays that message.
-3. If the resolver does not return `custom_message`, Dograh uses the configured pre-transfer message.
-4. Dograh starts the provider transfer.
+1. Fallcha.ai may play the resolver wait message while calling your resolver.
+2. If the resolver returns `custom_message`, Fallcha.ai plays that message.
+3. If the resolver does not return `custom_message`, Fallcha.ai uses the configured pre-transfer message.
+4. Fallcha.ai starts the provider transfer.
 
 Resolver `custom_message` overrides the configured pre-transfer message for that transfer attempt.
 
 ## Transfer timeout
 
-Transfer timeout is the maximum time Dograh waits for the destination to answer after the provider transfer starts.
+Transfer timeout is the maximum time Fallcha.ai waits for the destination to answer after the provider transfer starts.
 
 This timeout applies to static, context-mapped, and dynamic transfers.
 
-The resolver timeout is separate. It controls only how long Dograh waits for your HTTP resolver before dialing starts.
+The resolver timeout is separate. It controls only how long Fallcha.ai waits for your HTTP resolver before dialing starts.
 
 ## Destination formats
 
@@ -318,7 +318,7 @@ Also verify the resolver URL, authentication headers, credential, and timeout.
 Confirm the parameter is configured as either:
 
 - an LLM parameter, if the agent should extract it from the conversation
-- a preset parameter, if Dograh should inject it from context
+- a preset parameter, if Fallcha.ai should inject it from context
 
 For known context values, prefer preset parameters like `{{initial_context.account_id}}` or `{{gathered_context.billing_issue_type}}`.
 

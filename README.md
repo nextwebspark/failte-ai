@@ -1,6 +1,6 @@
-# Failte AI
+# Fallcha.ai
 
-The Ireland-based voice agent platform. Build, test and deploy voice agents with a visual workflow builder, telephony, and your own choice of LLM / STT / TTS providers.
+The Ireland-based voice agent platform ([fallcha.ai](https://fallcha.ai)). Build, test and deploy voice agents with a visual workflow builder, telephony, and your own choice of LLM / STT / TTS providers.
 
 This repository is the platform itself — a private fork of [Dograh](https://github.com/dograh-hq/dograh) (BSD 2-Clause), extended into a multi-tenant SaaS. See [NOTICE.md](NOTICE.md) for attribution.
 
@@ -59,5 +59,5 @@ inbound assistant is at `~/dev/voiptel-agent`.
 
 ## License
 
-Upstream code is BSD 2-Clause — see [LICENSE](LICENSE). The Failte AI additions in
+Upstream code is BSD 2-Clause — see [LICENSE](LICENSE). The Fallcha.ai additions in
 this repository are proprietary; see [NOTICE.md](NOTICE.md).
