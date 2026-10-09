@@ -219,6 +219,16 @@ async def update_user_configurations(
     if incoming_dict:
         if not user.selected_organization_id:
             raise HTTPException(status_code=400, detail="No organization selected")
+        if existing_config.platform_managed:
+            # This legacy endpoint would store the platform services as BYOK,
+            # copying the operator's project onto the organization.
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    "This organization uses platform models. Change models in "
+                    "/organizations/model-configurations/v2."
+                ),
+            )
 
         # Merge via helper
         try:

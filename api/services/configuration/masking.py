@@ -27,6 +27,9 @@ SERVICE_SECRET_FIELDS = (
     "aws_session_token",
 )
 MODEL_OVERRIDE_FIELDS = ("llm", "tts", "stt", "realtime")
+# Operator infrastructure behind platform-managed services. Customers choose
+# models and voices; where and as whom they run is not theirs to see.
+PLATFORM_HIDDEN_FIELDS = ("project_id", "location", "credentials")
 
 
 def contains_masked_key(value: str | list[str] | None) -> bool:
@@ -136,14 +139,25 @@ def _mask_service(service_cfg: Optional[ServiceConfig]) -> Optional[Dict[str, An
 
 
 def mask_user_config(config: EffectiveAIModelConfiguration) -> Dict[str, Any]:
-    """Return a JSON-serialisable dict of *config* with every api_key masked."""
+    """Return a JSON-serialisable dict of *config* with every api_key masked.
+
+    Platform-managed services also lose their project, location and
+    credentials entirely, since those belong to the operator.
+    """
+
+    def service(service_cfg: Optional[ServiceConfig]) -> Optional[Dict[str, Any]]:
+        data = _mask_service(service_cfg)
+        if data is not None and config.platform_managed:
+            for field in PLATFORM_HIDDEN_FIELDS:
+                data.pop(field, None)
+        return data
 
     return {
-        "llm": _mask_service(config.llm),
-        "tts": _mask_service(config.tts),
-        "stt": _mask_service(config.stt),
-        "embeddings": _mask_service(config.embeddings),
-        "realtime": _mask_service(config.realtime),
+        "llm": service(config.llm),
+        "tts": service(config.tts),
+        "stt": service(config.stt),
+        "embeddings": service(config.embeddings),
+        "realtime": service(config.realtime),
         "is_realtime": config.is_realtime,
         "test_phone_number": config.test_phone_number,
         "timezone": config.timezone,

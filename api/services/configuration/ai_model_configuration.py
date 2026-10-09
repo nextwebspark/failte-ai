@@ -9,6 +9,7 @@ from fastapi import HTTPException
 from loguru import logger
 from pydantic import ValidationError
 
+from api import constants
 from api.constants import MPS_API_URL
 from api.db import db_client
 from api.db.models import OrganizationConfigurationModel
@@ -32,11 +33,32 @@ from api.services.configuration.masking import (
     mask_key,
     resolve_masked_api_keys,
 )
+from api.services.configuration.platform.settings import (
+    PlatformModelsNotConfiguredError,
+)
 from api.services.configuration.registry import ServiceProviders
 from api.services.configuration.resolve import resolve_effective_config
 
 AIModelConfigurationSource = Literal["organization_v2", "legacy_user_v1", "empty"]
 WORKFLOW_MODEL_CONFIGURATION_V2_OVERRIDE_KEY = "model_configuration_v2_override"
+
+
+class PlatformModelsDisabledError(ValueError):
+    """A platform configuration was submitted while platform models are off."""
+
+
+def ensure_platform_mode_allowed(
+    configuration: OrganizationAIModelConfigurationV2,
+) -> None:
+    """Reject platform configurations unless this server offers them.
+
+    Platform services run on the operator's Vertex project, so a server that
+    has not opted in must not let anyone select them.
+    """
+    if configuration.mode == "platform" and not constants.PLATFORM_MODELS_ENABLED:
+        raise PlatformModelsDisabledError(
+            "Platform models are not enabled on this server"
+        )
 
 
 @dataclass
@@ -66,7 +88,16 @@ async def get_resolved_ai_model_configuration(
         organization_id,
     )
     if organization_configuration is not None:
-        effective = compile_ai_model_configuration_v2(organization_configuration)
+        try:
+            effective = compile_ai_model_configuration_v2(organization_configuration)
+        except PlatformModelsNotConfiguredError:
+            # Keep the app usable (settings, agents, history) when the server
+            # lost its platform settings; calls fail at start instead.
+            logger.error(
+                f"Organization {organization_id} uses platform models, but this "
+                "server has no PLATFORM_VERTEX_PROJECT_ID"
+            )
+            effective = EffectiveAIModelConfiguration(platform_managed=True)
         if organization_configuration_row is not None:
             effective.last_validated_at = (
                 organization_configuration_row.last_validated_at
@@ -101,10 +132,21 @@ async def get_effective_ai_model_configuration_for_workflow(
         resolved_config = await get_resolved_ai_model_configuration(
             organization_id=organization_id,
         )
-        return resolve_effective_config(
-            resolved_config.effective,
-            workflow_configurations.get("model_overrides"),
-        )
+        model_overrides = workflow_configurations.get("model_overrides")
+        if model_overrides and resolved_config.effective.platform_managed:
+            # A provider overlay would run arbitrary models or locations on the
+            # operator's project; platform agents override via v2 only.
+            logger.warning(
+                f"Ignoring legacy model_overrides on platform organization "
+                f"{organization_id}"
+            )
+            model_overrides = None
+        return resolve_effective_config(resolved_config.effective, model_overrides)
+    except PlatformModelsNotConfiguredError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="Platform models are not configured on this server.",
+        ) from exc
     except ValidationError as exc:
         # Stored overrides may become incompatible with updated global settings
         # or schemas. Do not include Pydantic's input data, which contains secrets.

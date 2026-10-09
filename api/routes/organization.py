@@ -9,6 +9,7 @@ from api.constants import (
     DEFAULT_CAMPAIGN_RETRY_CONFIG,
     DEFAULT_ORG_CONCURRENCY_LIMIT,
     DEPLOYMENT_MODE,
+    PLATFORM_MODELS_ENABLED,
 )
 from api.db import db_client
 from api.db.models import UserModel
@@ -36,6 +37,7 @@ from api.schemas.organization_preferences import (
     OrganizationPreferences,
     OrganizationPreferencesResponse,
 )
+from api.schemas.platform_models import ModelConfigurationV2Defaults
 from api.schemas.telephony_config import (
     TelephonyConfigRequest,
     TelephonyConfigurationCreateRequest,
@@ -62,9 +64,11 @@ from api.services.auth.depends import (
 )
 from api.services.auth.permissions import Permission
 from api.services.configuration.ai_model_configuration import (
+    PlatformModelsDisabledError,
     check_for_masked_keys_in_ai_model_configuration_v2,
     compile_ai_model_configuration_v2,
     convert_legacy_ai_model_configuration_to_v2,
+    ensure_platform_mode_allowed,
     get_organization_ai_model_configuration_v2,
     get_resolved_ai_model_configuration,
     mask_ai_model_configuration_v2,
@@ -75,6 +79,9 @@ from api.services.configuration.ai_model_configuration import (
 from api.services.configuration.check_validity import UserConfigurationValidator
 from api.services.configuration.defaults import DEFAULT_SERVICE_PROVIDERS
 from api.services.configuration.masking import is_mask_of, mask_key, mask_user_config
+from api.services.configuration.platform.catalog_view import (
+    build_platform_model_catalog,
+)
 from api.services.configuration.registry import (
     DOGRAH_MULTILINGUAL_AUTODETECT_LANGUAGES,
     DOGRAH_STT_LANGUAGES,
@@ -370,18 +377,20 @@ async def _model_configuration_v2_response(
 
 @router.get(
     "/model-configurations/v2/defaults",
+    response_model=ModelConfigurationV2Defaults,
     dependencies=requires(Permission.AGENTS_READ),
 )
 async def get_model_configuration_v2_defaults(
     user: UserModel = Depends(get_user_with_selected_organization),
-):
+) -> ModelConfigurationV2Defaults:
     byok_default_providers = {
         service: provider
         for service, provider in DEFAULT_SERVICE_PROVIDERS.items()
         if provider != ServiceProviders.DOGRAH.value
     }
-    return {
-        "dograh": {
+    return ModelConfigurationV2Defaults(
+        platform=build_platform_model_catalog(enabled=PLATFORM_MODELS_ENABLED),
+        dograh={
             "voices": [DOGRAH_DEFAULT_VOICE],
             "allow_custom_input": _dograh_allows_custom_voice(),
             "speeds": list(DOGRAH_SPEED_OPTIONS),
@@ -398,7 +407,7 @@ async def get_model_configuration_v2_defaults(
                 "language": DOGRAH_DEFAULT_LANGUAGE,
             },
         },
-        "byok": {
+        byok={
             "pipeline": {
                 "llm": _byok_provider_schemas(ServiceType.LLM),
                 "tts": _byok_provider_schemas(ServiceType.TTS),
@@ -413,7 +422,7 @@ async def get_model_configuration_v2_defaults(
                 "default_providers": byok_default_providers,
             },
         },
-    }
+    )
 
 
 @router.get(
@@ -475,6 +484,10 @@ async def save_model_configuration_v2(
     user: UserModel = Depends(get_user_with_selected_organization),
 ):
     organization_id = user.selected_organization_id
+    try:
+        ensure_platform_mode_allowed(request)
+    except PlatformModelsDisabledError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
     existing = await get_organization_ai_model_configuration_v2(organization_id)
     configuration = merge_ai_model_configuration_v2_secrets(request, existing)
     try:

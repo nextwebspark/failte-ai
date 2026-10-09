@@ -105,6 +105,38 @@ if BILLING_PROVIDER not in ("stripe", "mps", "none"):
     raise ValueError(
         f"BILLING_PROVIDER must be stripe, mps or none, not {BILLING_PROVIDER!r}"
     )
+# Platform-managed models: every org runs on the operator's own Vertex AI
+# project, so customers pick models and voices but never hold keys. Each service
+# gets its own location because Google serves them from different places:
+# Gemini 3.x text models only from the "eu" multi-region, Gemini Live only from
+# single regions such as europe-west1, and Speech-to-Text/Text-to-Speech from
+# "eu". Credentials default to Application Default Credentials
+# (GOOGLE_APPLICATION_CREDENTIALS or the VM service account).
+PLATFORM_MODELS_ENABLED = (
+    os.getenv("PLATFORM_MODELS_ENABLED", "false").strip().lower() == "true"
+)
+PLATFORM_VERTEX_PROJECT_ID = (os.getenv("PLATFORM_VERTEX_PROJECT_ID") or "").strip()
+PLATFORM_VERTEX_LLM_LOCATION = (
+    os.getenv("PLATFORM_VERTEX_LLM_LOCATION") or ""
+).strip() or "eu"
+PLATFORM_VERTEX_REALTIME_LOCATION = (
+    os.getenv("PLATFORM_VERTEX_REALTIME_LOCATION") or ""
+).strip() or "europe-west1"
+PLATFORM_GOOGLE_SPEECH_LOCATION = (
+    os.getenv("PLATFORM_GOOGLE_SPEECH_LOCATION") or ""
+).strip() or "eu"
+PLATFORM_GOOGLE_CREDENTIALS_JSON = (
+    os.getenv("PLATFORM_GOOGLE_CREDENTIALS_JSON") or ""
+).strip() or None
+if PLATFORM_MODELS_ENABLED and not PLATFORM_VERTEX_PROJECT_ID:
+    raise ValueError(
+        "PLATFORM_VERTEX_PROJECT_ID is required when PLATFORM_MODELS_ENABLED is true"
+    )
+if PLATFORM_MODELS_ENABLED and BILLING_PROVIDER == "mps":
+    # MPS bills through per-org MPS accounts, which platform orgs never get.
+    raise ValueError(
+        "PLATFORM_MODELS_ENABLED requires BILLING_PROVIDER stripe or none, not mps"
+    )
 STRIPE_SECRET_KEY = os.getenv("STRIPE_SECRET_KEY") or None
 STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET") or None
 # Let Stripe Tax compute VAT at checkout. Needs Stripe Tax set up on the account.

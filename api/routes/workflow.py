@@ -30,9 +30,11 @@ from api.services.auth.depends import get_user, requires
 from api.services.auth.permissions import Permission
 from api.services.configuration.ai_model_configuration import (
     WORKFLOW_MODEL_CONFIGURATION_V2_OVERRIDE_KEY,
+    PlatformModelsDisabledError,
     check_for_masked_keys_in_ai_model_configuration_v2,
     compile_ai_model_configuration_v2,
     convert_legacy_ai_model_configuration_to_v2,
+    ensure_platform_mode_allowed,
     get_resolved_ai_model_configuration,
     merge_ai_model_configuration_v2_secrets,
 )
@@ -1233,6 +1235,7 @@ async def update_workflow(
                         ]
                     )
                 )
+                ensure_platform_mode_allowed(incoming_v2_override)
                 existing_v2_override_config = (
                     OrganizationAIModelConfigurationV2.model_validate(
                         existing_v2_override
@@ -1259,6 +1262,8 @@ async def update_workflow(
                     organization_id=user.selected_organization_id,
                     created_by=user.provider_id,
                 )
+            except PlatformModelsDisabledError as e:
+                raise HTTPException(status_code=403, detail=str(e)) from e
             except (ValidationError, ValueError) as e:
                 raise HTTPException(status_code=422, detail=str(e))
             workflow_configurations = {
@@ -1290,6 +1295,16 @@ async def update_workflow(
             resolved_config = await get_resolved_ai_model_configuration(
                 organization_id=user.selected_organization_id,
             )
+            if resolved_config.effective.platform_managed:
+                # Converting a provider overlay would store a BYOK copy of the
+                # operator's platform services on the workflow.
+                raise HTTPException(
+                    status_code=422,
+                    detail=(
+                        "This organization uses platform models. Override the "
+                        "agent's models with model_configuration_v2_override."
+                    ),
+                )
             effective_config = resolved_config.effective
             try:
                 enriched_overrides = enrich_overrides_with_api_keys(

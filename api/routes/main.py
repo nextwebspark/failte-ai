@@ -93,6 +93,8 @@ class HealthResponse(BaseModel):
     auth_provider: str
     # Who handles credits: "stripe", "mps" or "none" (see api.constants).
     billing_provider: str = "none"
+    # Customers pick from the platform model catalog instead of entering keys.
+    platform_models_enabled: bool = False
     turn_enabled: bool
     force_turn_relay: bool
     signup_enabled: bool
@@ -118,6 +120,7 @@ async def health() -> HealthResponse:
         ENABLE_COTURN,
         ENABLE_SIGNUP,
         FORCE_TURN_RELAY,
+        PLATFORM_MODELS_ENABLED,
         REQUIRE_EMAIL_VERIFICATION,
         STACK_AUTH_PROJECT_ID,
         STACK_PUBLISHABLE_CLIENT_KEY,
@@ -146,6 +149,7 @@ async def health() -> HealthResponse:
         deployment_mode=DEPLOYMENT_MODE,
         auth_provider=AUTH_PROVIDER,
         billing_provider=BILLING_PROVIDER,
+        platform_models_enabled=PLATFORM_MODELS_ENABLED,
         turn_enabled=ENABLE_COTURN,
         force_turn_relay=FORCE_TURN_RELAY,
         signup_enabled=ENABLE_SIGNUP,
