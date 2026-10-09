@@ -222,6 +222,31 @@ Then configure the telephony row in the Dograh UI: ARI provider at
 **Blocked on VoIPTel** for the SIP password, the registrar address discrepancy, and
 the full carrier source-IP list. Everything else ships without it.
 
+## Billing (Stripe) and email (Resend)
+
+Both are optional. `configure-env.sh` turns each on only when its secret exists:
+
+```bash
+printf 'sk_test_...' | gcloud secrets create dograh-stripe-secret-key --data-file=- --project=dograh-eu
+printf 'whsec_...'   | gcloud secrets create dograh-stripe-webhook-secret --data-file=- --project=dograh-eu
+printf 're_...'      | gcloud secrets create dograh-resend-api-key --data-file=- --project=dograh-eu
+
+DOGRAH_SQL_IP=<ip> DOGRAH_EMAIL_FROM='Failte AI <no-reply@mail.<domain>>' \
+  ./deploy/gcp/configure-env.sh
+docker compose up -d api
+```
+
+- **Stripe webhook:** add a dashboard endpoint at
+  `https://<PUBLIC_BASE_URL>/api/v1/billing/stripe/webhook` with the five events
+  listed in `docs/deployment/stripe-billing.mdx`. Its `whsec_` differs from the one
+  `stripe listen` prints locally; store the dashboard one.
+- **Resend:** the sending domain must be verified (SPF + DKIM records) before
+  real users get mail. `onboarding@resend.dev` only reaches the Resend account
+  owner.
+- `UI_APP_URL` defaults to `PUBLIC_BASE_URL`, which is where emailed links and
+  Stripe's return URLs land. For Google sign-in, add
+  `<PUBLIC_BASE_URL>/auth/google/callback` to the OAuth client's redirect URIs.
+
 ## Before go-live
 
 - [ ] **Remove the pre-launch instance schedule** — do this *first*, before adding
