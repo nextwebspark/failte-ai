@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 from fallcha_tools.core.provider import ProviderRegistry
+from fallcha_tools.providers.google_calendar import GoogleCalendarProvider
 
 
 def build_registry() -> ProviderRegistry:
-    """The providers this deployment serves (none yet: see the README)."""
-    return ProviderRegistry([])
+    """The providers this deployment serves."""
+    return ProviderRegistry([GoogleCalendarProvider()])
