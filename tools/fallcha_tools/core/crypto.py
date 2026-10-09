@@ -11,6 +11,8 @@ import json
 from collections.abc import Sequence
 
 from cryptography.fernet import Fernet, InvalidToken, MultiFernet
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 from pydantic import JsonValue
 
 
@@ -56,3 +58,14 @@ class SecretBox:
 def generate_key() -> str:
     """A fresh Fernet key, for operators and tests."""
     return Fernet.generate_key().decode()
+
+
+def derive_key(secret: str, label: str) -> bytes:
+    """A 32-byte subkey of ``secret`` for one purpose (HKDF-SHA256, ``label``).
+
+    Lets features key their HMACs off an existing shared secret without new
+    configuration, and without ever using the secret itself as a key.
+    """
+    return HKDF(
+        algorithm=hashes.SHA256(), length=32, salt=None, info=label.encode()
+    ).derive(secret.encode())

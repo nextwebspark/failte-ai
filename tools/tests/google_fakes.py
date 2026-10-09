@@ -20,6 +20,7 @@ from fallcha_tools.providers.google_calendar.credentials import GOOGLE_TOKEN_URL
 CALENDAR_ID = "bookings@group.calendar.google.com"
 SA_EMAIL = "agent@acme-project.iam.gserviceaccount.com"
 SHEET_ID = "sheet-123"
+BOOKING_KEY = b"test-booking-id-key-0123456789ab"
 # Monday 2026-10-12, 07:00 in Dublin (IST, UTC+1).
 MONDAY_7AM_DUBLIN = datetime(2026, 10, 12, 6, 0, tzinfo=UTC)
 

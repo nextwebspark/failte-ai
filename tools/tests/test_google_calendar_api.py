@@ -15,13 +15,18 @@ from pydantic import JsonValue
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine
 
+from fallcha_tools.config import Settings
 from fallcha_tools.core.provider import ProviderRegistry
 from fallcha_tools.providers import build_registry
-from fallcha_tools.providers.google_calendar import GoogleCalendarProvider
+from fallcha_tools.providers.google_calendar import (
+    GoogleCalendarProvider,
+    booking_id_key_from,
+)
 from fallcha_tools.providers.google_calendar.credentials import TokenCache
 from tests.conftest import create_echo_connection, internal_headers, issue_key
 from tests.echo_provider import EchoProvider
 from tests.google_fakes import (
+    BOOKING_KEY,
     CALENDAR_ID,
     PRIVATE_KEY_PEM,
     SA_EMAIL,
@@ -48,7 +53,11 @@ def registry() -> ProviderRegistry:
     clock = FakeClock()
     return ProviderRegistry(
         [
-            GoogleCalendarProvider(token_cache=TokenCache(clock=clock), clock=clock),
+            GoogleCalendarProvider(
+                booking_id_key=BOOKING_KEY,
+                token_cache=TokenCache(clock=clock),
+                clock=clock,
+            ),
             EchoProvider(),
         ]
     )
@@ -89,8 +98,16 @@ async def connected_key(
     return await issue_key(client, response.json()["id"], org_id=org_id)
 
 
-def test_build_registry_serves_google_calendar() -> None:
-    assert [p.id for p in build_registry()] == [PROVIDER]
+def test_build_registry_serves_google_calendar(settings: Settings) -> None:
+    registry = build_registry(settings)
+    assert [p.id for p in registry] == [PROVIDER]
+    provider = registry.get(PROVIDER)
+    assert isinstance(provider, GoogleCalendarProvider)
+    secret = settings.internal_secret.get_secret_value()
+    # Same secret on every replica -> same booking ids; never the raw secret.
+    assert provider.booking_id_key == booking_id_key_from(secret)
+    assert provider.booking_id_key != secret.encode()
+    assert BOOKING_KEY not in repr(provider).encode()
 
 
 # --- connections ----------------------------------------------------------

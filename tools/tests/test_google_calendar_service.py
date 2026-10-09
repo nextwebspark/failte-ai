@@ -44,6 +44,7 @@ from fallcha_tools.providers.google_calendar.service import (
 )
 from fallcha_tools.providers.google_calendar.settings import ServiceAccountKey
 from tests.google_fakes import (
+    BOOKING_KEY,
     CALENDAR_ID,
     PRIVATE_KEY_PEM,
     PUBLIC_KEY,
@@ -88,7 +89,9 @@ def clock() -> FakeClock:
 
 @pytest.fixture
 def provider(clock: FakeClock) -> GoogleCalendarProvider:
-    return GoogleCalendarProvider(token_cache=TokenCache(clock=clock), clock=clock)
+    return GoogleCalendarProvider(
+        booking_id_key=BOOKING_KEY, token_cache=TokenCache(clock=clock), clock=clock
+    )
 
 
 @pytest.fixture
@@ -245,6 +248,7 @@ async def test_book_inserts_event_with_prefix_timezone_and_marker(
     )
 
     expected_id = booking_event_id(
+        BOOKING_KEY,
         connection_id,
         datetime.fromisoformat("2026-10-12T10:00:00+01:00"),
         "Jane Doe",
@@ -496,9 +500,7 @@ async def test_network_timeout_and_deadline(
         return httpx.Response(200, json={})
 
     google.free_busy.mock(side_effect=stall)
-    impatient = GoogleCalendarProvider(
-        token_cache=provider.token_cache, clock=provider.clock, deadline_seconds=0.05
-    )
+    impatient = dataclasses.replace(provider, deadline_seconds=0.05)
     with pytest.raises(GoogleApiError, match="did not respond in time"):
         await make_service(impatient, http, connection_id).availability(None, None)
 
@@ -654,7 +656,7 @@ async def test_duplicate_insert_409_counts_as_booked(
     service: CalendarService, google: FakeGoogle, connection_id: uuid.UUID
 ) -> None:
     event_id = booking_event_id(
-        connection_id, datetime.fromisoformat(SLOT), "Jane", "087"
+        BOOKING_KEY, connection_id, datetime.fromisoformat(SLOT), "Jane", "087"
     )
     # Created by a racing attempt that free/busy does not show yet.
     google.events[event_id] = {
@@ -894,3 +896,96 @@ async def test_slots_and_bookings_across_the_dst_change(
         "timeZone": "Europe/Dublin",
     }
     assert event["end"]["dateTime"] == "2026-10-26T10:30:00+00:00"
+
+
+# --- re-review follow-ups ---------------------------------------------------
+
+
+def _forget_events_after_409(google: FakeGoogle, *, ids: int) -> None:
+    """Google keeps the first ``ids`` ids reserved (409) but cannot read them."""
+    reserved: set[str] = set()
+
+    def insert(request: httpx.Request) -> httpx.Response:
+        event_id = json_body(request)["id"]
+        if len(reserved) < ids and event_id not in reserved:
+            reserved.add(event_id)
+            return httpx.Response(409, json={"error": {"code": 409}})
+        return google._insert(request)
+
+    google.insert.mock(side_effect=insert)
+
+
+async def test_unreadable_duplicate_falls_back_to_salted_id(
+    service: CalendarService, google: FakeGoogle, connection_id: uuid.UUID
+) -> None:
+    _forget_events_after_409(google, ids=1)
+    result = await service.book(SLOT, "Jane", "087", None)
+
+    base = booking_event_id(
+        BOOKING_KEY, connection_id, datetime.fromisoformat(SLOT), "Jane", "087"
+    )
+    assert result.booked is True
+    assert result.event_id == base + "v1"
+    assert [json_body(c.request)["id"] for c in google.insert.calls] == [
+        base,
+        base + "v1",
+    ]
+    # A later retry of the same booking finds the salted event, no third id.
+    again = await service.book(SLOT, "Jane", "087", None)
+    assert again.booked is True and again.event_id == base + "v1"
+    assert google.insert.call_count == 2
+
+
+async def test_both_ids_unusable_answers_not_available(
+    service: CalendarService, google: FakeGoogle
+) -> None:
+    _forget_events_after_409(google, ids=2)
+    result = await service.book(SLOT, "Jane", "087", None)
+    assert result.booked is False
+    assert result.say.startswith("That one has just gone. I have Monday the twelfth")
+    assert google.insert.call_count == 2  # no loop, no "try again"
+
+
+async def test_confirm_path_uses_the_remaining_budget(
+    service: CalendarService, google: FakeGoogle, connection_id: uuid.UUID
+) -> None:
+    event_id = booking_event_id(
+        BOOKING_KEY, connection_id, datetime.fromisoformat(SLOT), "Jane", "087"
+    )
+    google.events[event_id] = {
+        "id": event_id,
+        "status": "cancelled",
+        "extendedProperties": {"private": {BOOKING_MARKER: str(connection_id)}},
+    }
+    hurried = dataclasses.replace(service, deadline_seconds=0.6, min_insert_seconds=0.1)
+    result = await hurried.book(SLOT, "Jane", "087", None)
+    assert result.booked is True and result.event_id == event_id
+    for route in (google.insert, google.get_event, google.patch_event):
+        read = route.calls.last.request.extensions["timeout"]["read"]
+        assert 0 < read <= 0.6
+
+
+async def test_low_budget_skips_401_retry_and_token_mint(
+    service: CalendarService, google: FakeGoogle
+) -> None:
+    async def slow_unauthorised_insert(request: httpx.Request) -> httpx.Response:
+        await asyncio.sleep(0.25)  # eats the budget, then says 401
+        return google_error(401, "authError")
+
+    google.insert.mock(side_effect=slow_unauthorised_insert)
+    hurried = dataclasses.replace(service, deadline_seconds=0.4, min_insert_seconds=0.2)
+    with pytest.raises(GoogleApiError, match="rejected the connection's credentials"):
+        await hurried.book(SLOT, "Jane", "087", None)
+    assert google.insert.call_count == 1
+    assert google.token.call_count == 1  # no second mint was started
+
+
+def test_booking_ids_are_keyed_and_deterministic(connection_id: uuid.UUID) -> None:
+    slot = datetime.fromisoformat(SLOT)
+    first = booking_event_id(BOOKING_KEY, connection_id, slot, "Jane", "087 1")
+    assert first == booking_event_id(BOOKING_KEY, connection_id, slot, " jane", "0871")
+    assert first != booking_event_id(
+        b"another-key", connection_id, slot, "Jane", "0871"
+    )
+    assert set(first) <= set("0123456789abcdefghijklmnopqrstuv")  # base32hex
+    assert 5 <= len(first) <= 1024

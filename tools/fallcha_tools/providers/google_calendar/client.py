@@ -7,6 +7,7 @@ message. Raw Google bodies are never returned or logged.
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -41,6 +42,28 @@ class Resource(StrEnum):
 
 
 Busy = tuple[datetime, datetime]
+
+
+@dataclass(frozen=True, slots=True)
+class Budget:
+    """Time left for a sequence of requests that must not be cut off midway.
+
+    Each request gets the remaining time as its timeout; callers check
+    :meth:`allows_request` before starting another one.
+    """
+
+    deadline_at: float  # event-loop time
+    min_seconds: float
+
+    def remaining(self) -> float:
+        return self.deadline_at - asyncio.get_running_loop().time()
+
+    def allows_request(self) -> bool:
+        return self.remaining() >= self.min_seconds
+
+    def timeout(self) -> httpx.Timeout:
+        left = max(self.remaining(), 0.001)
+        return httpx.Timeout(left, connect=min(2.0, left))
 
 
 def _path(segment: str) -> str:
@@ -108,7 +131,7 @@ class GoogleClient:
         calendar_id: str,
         event: Mapping[str, JsonValue],
         *,
-        request_timeout: httpx.Timeout | None = None,
+        budget: Budget | None = None,
     ) -> bool:
         """Insert ``event`` (which carries a client-chosen ``id``).
 
@@ -120,7 +143,7 @@ class GoogleClient:
             f"{CALENDAR_API}/calendars/{_path(calendar_id)}/events",
             (CALENDAR_SCOPE,),
             json=dict(event),
-            request_timeout=request_timeout,
+            budget=budget,
         )
         if response.status_code == 409:
             return False
@@ -133,7 +156,7 @@ class GoogleClient:
         calendar_id: str,
         event: Mapping[str, JsonValue],
         *,
-        request_timeout: httpx.Timeout | None = None,
+        budget: Budget | None = None,
     ) -> None:
         """Re-confirm a cancelled event with ``event``'s id and contents."""
         event_id = str(event["id"])
@@ -142,12 +165,14 @@ class GoogleClient:
             self._event_url(calendar_id, event_id),
             (CALENDAR_SCOPE,),
             json={**event, "status": "confirmed"},
-            request_timeout=request_timeout,
+            budget=budget,
         )
         if response.status_code >= 400:
             raise self._error(response, Resource.EVENT)
 
-    async def get_event(self, calendar_id: str, event_id: str) -> dict[str, Any] | None:
+    async def get_event(
+        self, calendar_id: str, event_id: str, *, budget: Budget | None = None
+    ) -> dict[str, Any] | None:
         """The event, or None if it does not exist (or was deleted)."""
         body = await self._json(
             "GET",
@@ -155,6 +180,7 @@ class GoogleClient:
             (CALENDAR_SCOPE,),
             Resource.EVENT,
             missing_ok=True,
+            budget=budget,
         )
         return body or None
 
@@ -212,17 +238,17 @@ class GoogleClient:
         *,
         json: Mapping[str, Any] | None = None,
         params: Mapping[str, str] | None = None,
-        request_timeout: httpx.Timeout | None = None,
+        budget: Budget | None = None,
     ) -> httpx.Response:
-        response = await self._attempt(
-            method, url, scopes, json, params, request_timeout
-        )
+        response = await self._attempt(method, url, scopes, json, params, budget)
         if response.status_code == 401:
-            # The cached token may have been revoked early: mint once more.
+            # The cached token may have been revoked early: mint once more,
+            # unless a budgeted call has no time left for a mint and a retry.
             self.credentials.invalidate(scopes)
-            response = await self._attempt(
-                method, url, scopes, json, params, request_timeout
-            )
+            if budget is None or budget.allows_request():
+                response = await self._attempt(
+                    method, url, scopes, json, params, budget
+                )
         return response
 
     async def _attempt(
@@ -232,7 +258,7 @@ class GoogleClient:
         scopes: Sequence[str],
         json: Mapping[str, Any] | None,
         params: Mapping[str, str] | None,
-        request_timeout: httpx.Timeout | None,
+        budget: Budget | None,
     ) -> httpx.Response:
         token = await self.credentials.access_token(scopes)
         try:
@@ -242,7 +268,7 @@ class GoogleClient:
                 headers={"Authorization": f"Bearer {token}"},
                 json=json,
                 params=params,
-                timeout=request_timeout or self.timeout,
+                timeout=budget.timeout() if budget is not None else self.timeout,
             )
         except httpx.TimeoutException:
             raise GoogleApiError(
@@ -261,8 +287,11 @@ class GoogleClient:
         json: Mapping[str, Any] | None = None,
         params: Mapping[str, str] | None = None,
         missing_ok: bool = False,
+        budget: Budget | None = None,
     ) -> dict[str, Any]:
-        response = await self._send(method, url, scopes, json=json, params=params)
+        response = await self._send(
+            method, url, scopes, json=json, params=params, budget=budget
+        )
         if missing_ok and response.status_code in (404, 410):
             return {}
         if response.status_code >= 400:

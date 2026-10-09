@@ -75,7 +75,7 @@ def create_app(
     settings: Settings | None = None, registry: ProviderRegistry | None = None
 ) -> FastAPI:
     settings = settings or get_settings()
-    registry = registry if registry is not None else build_registry()
+    registry = registry if registry is not None else build_registry(settings)
 
     logger.remove()
     # No variable values in tracebacks: they could include decrypted secrets.

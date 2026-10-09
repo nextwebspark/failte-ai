@@ -11,6 +11,7 @@ from fastapi import APIRouter
 from fastmcp import FastMCP
 from pydantic import BaseModel, JsonValue, ValidationError
 
+from fallcha_tools.core.crypto import derive_key
 from fallcha_tools.core.errors import InvalidRequestError, describe_validation_error
 from fallcha_tools.core.models import AuthMode
 from fallcha_tools.core.provider import (
@@ -48,11 +49,23 @@ from fallcha_tools.providers.google_calendar.settings import (
 )
 from fallcha_tools.providers.google_calendar.tools import register_calendar_tools
 
+BOOKING_ID_LABEL = "fallcha-tools/google-calendar/booking-event-id/v1"
+
+
+def booking_id_key_from(internal_secret: str) -> bytes:
+    """The booking-id HMAC key, derived from the service's internal secret."""
+    return derive_key(internal_secret, BOOKING_ID_LABEL)
+
 
 @dataclass(frozen=True)
 class GoogleCalendarProvider:
-    """Check availability, book, cancel, and look up orders in a Google Sheet."""
+    """Check availability, book, cancel, and look up orders in a Google Sheet.
 
+    ``booking_id_key`` keys the HMAC behind booking event ids; it must be the
+    same on every replica (see :func:`booking_id_key_from`).
+    """
+
+    booking_id_key: bytes = field(repr=False)
     token_cache: TokenCache = field(default_factory=TokenCache)
     signer_cache: SignerCache = field(default_factory=SignerCache)
     orders_cache: OrdersCache = field(default_factory=OrdersCache)
@@ -134,6 +147,7 @@ class GoogleCalendarProvider:
             connection_id=ctx.connection_id,
             clock=self.clock,
             orders_cache=self.orders_cache,
+            booking_id_key=self.booking_id_key,
             deadline_seconds=self.deadline_seconds,
         )
 

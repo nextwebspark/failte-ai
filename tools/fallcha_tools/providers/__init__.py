@@ -2,10 +2,17 @@
 
 from __future__ import annotations
 
+from fallcha_tools.config import Settings
 from fallcha_tools.core.provider import ProviderRegistry
-from fallcha_tools.providers.google_calendar import GoogleCalendarProvider
+from fallcha_tools.providers.google_calendar import (
+    GoogleCalendarProvider,
+    booking_id_key_from,
+)
 
 
-def build_registry() -> ProviderRegistry:
+def build_registry(settings: Settings) -> ProviderRegistry:
     """The providers this deployment serves."""
-    return ProviderRegistry([GoogleCalendarProvider()])
+    secret = settings.internal_secret.get_secret_value()
+    return ProviderRegistry(
+        [GoogleCalendarProvider(booking_id_key=booking_id_key_from(secret))]
+    )

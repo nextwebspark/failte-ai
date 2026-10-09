@@ -100,7 +100,8 @@ needs a new URL and a connection key in place of the old `X-API-Key`. Errors
 are 400 (bad argument), 409 (not configured) or 502 (Google failure). Each
 Google request times out after 4 s, and each tool call after 5 s.
 
-Bookings use a deterministic event id (connection, slot, caller), so retrying
+Bookings use a deterministic event id (an HMAC of connection, slot and caller,
+keyed by a subkey derived from `TOOLS_INTERNAL_SECRET`), so retrying
 a booking whose reply was lost never creates a duplicate. Only slots between
 the lead time and the horizon can be booked. Caller-facing errors never name
 the service account; the connection test does, so admins know whom to share

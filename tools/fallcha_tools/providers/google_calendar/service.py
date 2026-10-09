@@ -5,17 +5,17 @@ from __future__ import annotations
 import asyncio
 import base64
 import hashlib
+import hmac
 import uuid
 from collections.abc import AsyncIterator, Callable, Mapping, Sequence
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
-import httpx
 from pydantic import JsonValue
 
 from fallcha_tools.core.provider import ConnectionContext
-from fallcha_tools.providers.google_calendar.client import GoogleClient
+from fallcha_tools.providers.google_calendar.client import Budget, GoogleClient
 from fallcha_tools.providers.google_calendar.credentials import Clock
 from fallcha_tools.providers.google_calendar.errors import (
     BadArgumentError,
@@ -62,19 +62,29 @@ UNCONFIRMED_BOOKING = (
 )
 
 
+# Appended to a booking's id for the one re-insert allowed when Google says
+# the id exists (409) but the event cannot be read (deleted for good).
+SALTED_SUFFIX = "v1"
+
+
 def booking_event_id(
-    connection_id: uuid.UUID, slot: datetime, caller_name: str, caller_phone: str
+    key: bytes,
+    connection_id: uuid.UUID,
+    slot: datetime,
+    caller_name: str,
+    caller_phone: str,
 ) -> str:
     """Deterministic Google event id (base32hex) for one booking request.
 
     Retrying the same booking re-sends the same id, so Google answers 409
-    instead of creating a duplicate.
+    instead of creating a duplicate. The id is an HMAC under a server key, so
+    it reveals nothing about the caller and cannot be predicted from outside.
     """
     phone = "".join(ch for ch in caller_phone if ch.isdigit()) or caller_phone
     seed = "|".join(
         [str(connection_id), slot.isoformat(), caller_name.strip().lower(), phone]
     )
-    digest = hashlib.sha256(seed.encode()).digest()
+    digest = hmac.new(key, seed.encode(), hashlib.sha256).digest()
     return base64.b32hexencode(digest).decode().rstrip("=").lower()
 
 
@@ -96,6 +106,7 @@ class CalendarService:
     connection_id: uuid.UUID
     clock: Clock
     orders_cache: OrdersCache
+    booking_id_key: bytes
     deadline_seconds: float = DEFAULT_DEADLINE_SECONDS
     min_insert_seconds: float = DEFAULT_MIN_INSERT_SECONDS
 
@@ -131,58 +142,82 @@ class CalendarService:
         cfg = self.config
         slot = self._parse_slot(slot_id)
         slot_end = slot + timedelta(minutes=cfg.slot_minutes)
-        event_id = booking_event_id(self.connection_id, slot, caller_name, caller_phone)
-        loop = asyncio.get_running_loop()
-        started = loop.time()
+        event_id = booking_event_id(
+            self.booking_id_key, self.connection_id, slot, caller_name, caller_phone
+        )
+        candidate_ids = (event_id, event_id + SALTED_SUFFIX)
+        budget = Budget(
+            deadline_at=asyncio.get_running_loop().time() + self.deadline_seconds,
+            min_seconds=self.min_insert_seconds,
+        )
         async with self._deadline():
             now = self._now()
             earliest, horizon = wide = bookable_window(now, cfg)
             check: Window = (slot, slot_end + timedelta(minutes=1))
             busy = await self._busy([check, wide])
+            alternatives = free_slots(*wide, None, cfg.max_slots_returned, busy, cfg)
             still_free = earliest <= slot < horizon and slot in free_slots(
                 *check, None, 5, busy, cfg
             )
             if not still_free:
                 # A retry of a booking that did go through finds its own event.
-                existing = await self.client.get_event(cfg.calendar_id, event_id)
-                if existing is not None and self._is_ours(existing):
-                    return self._booked(event_id, slot)
-                alternatives = free_slots(
-                    *wide, None, cfg.max_slots_returned, busy, cfg
-                )
-                return BookingResult(
-                    booked=False,
-                    slots=_slots(alternatives),
-                    say=f"That one has just gone. {join_spoken(alternatives)}",
-                )
+                for candidate in candidate_ids:
+                    existing = await self.client.get_event(cfg.calendar_id, candidate)
+                    if existing is not None and self._is_ours(existing):
+                        return self._booked(candidate, slot)
+                return self._gone(alternatives)
         # The insert runs outside the deadline so it is never cancelled half
-        # way; it is bounded by its own timeout, from the time that is left.
-        remaining = self.deadline_seconds - (loop.time() - started)
-        if remaining < self.min_insert_seconds:
-            raise GoogleApiError(UNCONFIRMED_BOOKING, retryable=True)
-        event = self._event(event_id, slot, slot_end, caller_name, caller_phone, reason)
-        timeout = httpx.Timeout(remaining, connect=min(2.0, remaining))
+        # way; each request gets the time that is left as its timeout, and no
+        # request starts with less than ``min_insert_seconds`` left.
         try:
-            created = await self.client.insert_event(
-                cfg.calendar_id, event, request_timeout=timeout
-            )
-            if not created:
-                await self._confirm_existing(event)
+            for candidate in candidate_ids:
+                event = self._event(
+                    candidate, slot, slot_end, caller_name, caller_phone, reason
+                )
+                if await self._insert_or_confirm(event, budget):
+                    return self._booked(candidate, slot)
         except GoogleApiError as exc:
             if exc.retryable:
                 raise GoogleApiError(UNCONFIRMED_BOOKING, retryable=True) from None
             raise
-        return self._booked(event_id, slot)
+        # Both ids exist on Google but neither can be read: give up cleanly.
+        return self._gone(alternatives)
 
-    async def _confirm_existing(self, event: dict[str, JsonValue]) -> None:
-        """Google already has this id: an earlier attempt, or a cancelled copy."""
+    async def _insert_or_confirm(
+        self, event: dict[str, JsonValue], budget: Budget
+    ) -> bool:
+        """True if ``event`` is (now) booked; False if its id is unusable.
+
+        Google answers 409 when the id exists: an earlier attempt (booked), a
+        cancelled copy (restored), or a deleted-for-good event that can no
+        longer be read (False: the caller tries the next id).
+        """
+        calendar_id = self.config.calendar_id
+        self._require_time(budget)
+        if await self.client.insert_event(calendar_id, event, budget=budget):
+            return True
+        self._require_time(budget)
         existing = await self.client.get_event(
-            self.config.calendar_id, str(event["id"])
+            calendar_id, str(event["id"]), budget=budget
         )
-        if existing is None:
-            raise GoogleApiError(UNCONFIRMED_BOOKING, retryable=True)
+        if existing is None or not self._is_ours(existing, include_cancelled=True):
+            return False
         if existing.get("status") == "cancelled":
-            await self.client.restore_event(self.config.calendar_id, event)
+            self._require_time(budget)
+            await self.client.restore_event(calendar_id, event, budget=budget)
+        return True
+
+    @staticmethod
+    def _require_time(budget: Budget) -> None:
+        if not budget.allows_request():
+            raise GoogleApiError(UNCONFIRMED_BOOKING, retryable=True)
+
+    def _gone(self, alternatives: Sequence[datetime]) -> BookingResult:
+        return BookingResult(
+            booked=False,
+            slots=_slots(alternatives),
+            say=f"That one has just gone. {join_spoken(alternatives)}",
+        )
 
     def _booked(self, event_id: str, slot: datetime) -> BookingResult:
         return BookingResult(
@@ -291,8 +326,10 @@ class CalendarService:
             },
         }
 
-    def _is_ours(self, event: Mapping[str, object]) -> bool:
-        if event.get("status") == "cancelled":
+    def _is_ours(
+        self, event: Mapping[str, object], *, include_cancelled: bool = False
+    ) -> bool:
+        if event.get("status") == "cancelled" and not include_cancelled:
             return False
         props = event.get("extendedProperties")
         private = props.get("private") if isinstance(props, dict) else None
