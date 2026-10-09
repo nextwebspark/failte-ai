@@ -12,6 +12,7 @@ from api.services.mps_service_key_client import mps_service_key_client
 
 from . import _preprocess_credentials_on_save
 from .config import (
+    LEGACY_MANAGED_CONFIGURATION_NAMES,
     MANAGED_BY,
     MANAGED_CONFIGURATION_NAME,
     normalize_cloudonix_domain,
@@ -23,7 +24,10 @@ def _managed_configuration(rows: list[Any]):
     for row in rows:
         credentials = row.credentials or {}
         if (
-            row.name == MANAGED_CONFIGURATION_NAME
+            (
+                row.name == MANAGED_CONFIGURATION_NAME
+                or row.name in LEGACY_MANAGED_CONFIGURATION_NAMES
+            )
             and row.provider == "cloudonix"
             and credentials.get("managed_by") == MANAGED_BY
         ):

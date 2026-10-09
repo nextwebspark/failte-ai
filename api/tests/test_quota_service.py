@@ -235,7 +235,7 @@ async def test_authorize_workflow_run_oss_exhausted_key_blocks_run(
 
     assert result.has_quota is False
     assert result.error_code == "quota_exceeded"
-    assert "app.dograh.com" in result.error_message
+    assert "https://app.fallcha.ai" in result.error_message
     assert "/billing" not in result.error_message
     check_usage.assert_awaited_once_with(api_key)
 

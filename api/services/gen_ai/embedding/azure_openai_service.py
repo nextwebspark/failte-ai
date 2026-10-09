@@ -102,7 +102,7 @@ class AzureOpenAIEmbeddingService(BaseEmbeddingService):
                 raise ValueError(
                     "Azure OpenAI embedding deployment "
                     f"{self.model_id!r} returned {len(embedding)} dimensions; "
-                    "Dograh knowledge base storage currently supports "
+                    "Fallcha.ai knowledge base storage currently supports "
                     f"{EMBEDDING_DIMENSION}-dimensional embeddings."
                 )
 

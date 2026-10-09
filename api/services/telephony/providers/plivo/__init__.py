@@ -104,7 +104,7 @@ async def _ensure_application_id(
 
 _UI_METADATA = ProviderUIMetadata(
     display_name="Plivo",
-    docs_url="https://docs.dograh.com/integrations/telephony/plivo",
+    docs_url="https://docs.fallcha.ai/integrations/telephony/plivo",
     fields=[
         ProviderUIField(name="auth_id", label="Auth ID", type="text", sensitive=True),
         ProviderUIField(

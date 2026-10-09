@@ -368,7 +368,7 @@ GOOGLE_PROVIDER_MODEL_CONFIG = provider_model_config("Google")
 GROQ_PROVIDER_MODEL_CONFIG = provider_model_config("Groq")
 OPENROUTER_PROVIDER_MODEL_CONFIG = provider_model_config("Open Router")
 AZURE_OPENAI_PROVIDER_MODEL_CONFIG = provider_model_config("Azure OpenAI")
-DOGRAH_PROVIDER_MODEL_CONFIG = provider_model_config("Dograh")
+DOGRAH_PROVIDER_MODEL_CONFIG = provider_model_config("Fallcha.ai")
 AWS_BEDROCK_PROVIDER_MODEL_CONFIG = provider_model_config("AWS Bedrock")
 GOOGLE_VERTEX_PROVIDER_MODEL_CONFIG = provider_model_config("Google Vertex")
 OPENAI_REALTIME_PROVIDER_MODEL_CONFIG = provider_model_config("OpenAI")
@@ -657,7 +657,7 @@ class DograhLLMService(BaseChatLLMConfiguration):
     provider: Literal[ServiceProviders.DOGRAH] = ServiceProviders.DOGRAH
     model: str = Field(
         default="default",
-        description="Dograh-hosted model tier.",
+        description="Fallcha.ai-hosted model tier.",
         json_schema_extra={"examples": DOGRAH_LLM_MODELS, "allow_custom_input": True},
     )
 
@@ -1312,7 +1312,7 @@ class GoogleTTSConfiguration(BaseTTSConfiguration):
     model: str = Field(
         default="chirp_3_hd",
         description=(
-            "Google Cloud low-latency TTS engine. Dograh maps this to Pipecat's "
+            "Google Cloud low-latency TTS engine. Fallcha.ai maps this to Pipecat's "
             "streaming Google TTS service for Chirp 3 HD and Journey voices."
         ),
         json_schema_extra={
@@ -1394,7 +1394,7 @@ class DograhTTSService(BaseTTSConfiguration):
     provider: Literal[ServiceProviders.DOGRAH] = ServiceProviders.DOGRAH
     model: str = Field(
         default="default",
-        description="Dograh TTS tier.",
+        description="Fallcha.ai TTS tier.",
         json_schema_extra={"examples": DOGRAH_TTS_MODELS},
     )
     voice: str = Field(
@@ -2030,7 +2030,7 @@ class DograhSTTService(BaseSTTConfiguration):
     provider: Literal[ServiceProviders.DOGRAH] = ServiceProviders.DOGRAH
     model: str = Field(
         default="default",
-        description="Dograh STT tier.",
+        description="Fallcha.ai STT tier.",
         json_schema_extra={"examples": DOGRAH_STT_MODELS},
     )
     language: str = Field(
@@ -2414,7 +2414,7 @@ class DograhEmbeddingsConfiguration(BaseEmbeddingsConfiguration):
     provider: Literal[ServiceProviders.DOGRAH] = ServiceProviders.DOGRAH
     model: str = Field(
         default="dograh_embedding_v1",
-        description="Dograh-managed embedding model.",
+        description="Fallcha.ai-managed embedding model.",
         json_schema_extra={"examples": DOGRAH_EMBEDDING_MODELS},
     )
 

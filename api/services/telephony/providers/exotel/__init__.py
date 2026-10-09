@@ -28,7 +28,7 @@ def _config_loader(value: Dict[str, Any]) -> Dict[str, Any]:
 
 _UI_METADATA = ProviderUIMetadata(
     display_name="Exotel",
-    docs_url="https://docs.dograh.com/integrations/telephony/exotel",
+    docs_url="https://docs.fallcha.ai/integrations/telephony/exotel",
     fields=[
         ProviderUIField(
             name="account_sid",

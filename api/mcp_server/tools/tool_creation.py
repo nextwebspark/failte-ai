@@ -1,4 +1,4 @@
-"""MCP tool for creating reusable Dograh tools."""
+"""MCP tool for creating reusable Fallcha.ai tools."""
 
 from __future__ import annotations
 
@@ -26,7 +26,7 @@ async def create_tool(request: CreateToolRequest) -> dict[str, Any]:
     `calculator`, and `mcp`. Read the `definition` union rather than this
     list if the two ever disagree.
 
-    `transfer_agent` hands the live call to another Dograh agent by
+    `transfer_agent` hands the live call to another Fallcha.ai agent by
     `config.workflow_id` (an integer agent id, not a phone number or SIP
     endpoint). Create the destination agent first so its id exists, then the
     tool, then the agent that routes to it. For authenticated HTTP or MCP tools,

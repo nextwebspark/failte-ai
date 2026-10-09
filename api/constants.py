@@ -1,9 +1,17 @@
 import os
 from pathlib import Path
+from typing import Final
 
 from api.enums import Environment
 
 ENVIRONMENT = os.getenv("ENVIRONMENT", Environment.LOCAL.value)
+
+# Product branding shown to users, LLM agents and email recipients. Internal
+# identifiers (env vars, headers, DB columns, class names) keep the upstream
+# "dograh" naming so merges from the upstream fork stay clean.
+BRAND_NAME: Final = "Fallcha.ai"
+BRAND_DOMAIN: Final = "fallcha.ai"
+BRAND_APP_URL: Final = f"https://app.{BRAND_DOMAIN}"
 # Absolute path to the project root directory (i.e. the directory containing
 # the top-level api/ package). Having a single canonical location helps
 # when constructing file-system paths elsewhere in the codebase.
@@ -88,7 +96,7 @@ DOGRAH_MPS_SECRET_KEY = os.getenv("DOGRAH_MPS_SECRET_KEY", None)
 MPS_API_URL = os.getenv("MPS_API_URL", "https://services.dograh.com")
 DOGRAH_DEVOPS_SECRET = os.getenv("DOGRAH_DEVOPS_SECRET") or None
 # Who owns credit balances and charging: "stripe" (local ledger, paid through
-# Stripe), "mps" (Dograh's managed service) or "none" (no billing). Defaults
+# Stripe), "mps" (the managed model service, MPS) or "none" (no billing). Defaults
 # keep the pre-existing behavior: no billing in OSS mode, MPS when hosted.
 BILLING_PROVIDER = (os.getenv("BILLING_PROVIDER") or "").strip().lower() or (
     "none" if DEPLOYMENT_MODE == "oss" else "mps"

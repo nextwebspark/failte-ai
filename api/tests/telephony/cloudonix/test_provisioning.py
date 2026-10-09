@@ -136,6 +136,26 @@ async def test_has_managed_configuration_only_counts_our_own(
 
 
 @pytest.mark.asyncio
+async def test_managed_configuration_recognizes_pre_rebrand_name(monkeypatch):
+    """Rows provisioned before the rebrand keep their name and stay managed."""
+    monkeypatch.setattr(
+        provisioning.db_client,
+        "list_telephony_configurations",
+        AsyncMock(
+            return_value=[
+                SimpleNamespace(
+                    name="Dograh Cloudonix SIP",
+                    provider="cloudonix",
+                    credentials={"managed_by": provisioning.MANAGED_BY},
+                )
+            ]
+        ),
+    )
+
+    assert await provisioning.has_managed_cloudonix_configuration(42) is True
+
+
+@pytest.mark.asyncio
 async def test_oss_sip_provisioning_failure_is_contained(monkeypatch):
     """A Cloudonix outage must not propagate into organization bootstrap."""
     monkeypatch.setattr(organization_bootstrap, "DEPLOYMENT_MODE", "oss")
