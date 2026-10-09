@@ -44,6 +44,9 @@ class PlatformOption:
     preview_url: str | None = None
     # For speech-to-text models: the languages this model accepts.
     languages: tuple[str, ...] | None = None
+    # For text-to-speech models: the family token in the model's voice names,
+    # which are "<locale>-<family>-<Name>".
+    voice_family: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -160,6 +163,7 @@ TTS_MODELS: Final[tuple[PlatformOption, ...]] = (
         label="Chirp 3 HD",
         description="Natural, expressive streaming voices.",
         recommended=True,
+        voice_family="Chirp3-HD",
     ),
 )
 
@@ -170,7 +174,11 @@ TTS_VOICE_CATALOG: Final = "google"
 
 # Voice names carry the model family: "<locale>-Chirp3-HD-<Name>".
 _TTS_VOICE_PATTERN: Final = {
-    "chirp_3_hd": re.compile(r"^(?P<locale>[a-z]{2,3}-[A-Z]{2})-Chirp3-HD-[A-Za-z]+$"),
+    option.id: re.compile(
+        rf"^(?P<locale>[a-z]{{2,3}}-[A-Z]{{2}})-{re.escape(option.voice_family)}-[A-Za-z]+$"
+    )
+    for option in TTS_MODELS
+    if option.voice_family
 }
 
 # --- Defaults ----------------------------------------------------------------

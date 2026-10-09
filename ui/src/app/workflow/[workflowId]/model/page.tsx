@@ -16,7 +16,9 @@ import type {
 } from "@/client/types.gen";
 import {
     AIModelConfigurationV2Editor,
-legacyModelConfigurationDefaults,    type ModelConfigurationDefaultsV2 } from "@/components/AIModelConfigurationV2Editor";
+    legacyModelConfigurationDefaults,
+    type ModelConfigurationDefaultsV2,
+} from "@/components/AIModelConfigurationV2Editor";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";

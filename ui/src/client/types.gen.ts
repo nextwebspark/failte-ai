@@ -5454,6 +5454,10 @@ export type PlatformCatalogOption = {
      * Languages
      */
     languages?: Array<string> | null;
+    /**
+     * Voice Family
+     */
+    voice_family?: string | null;
 };
 
 /**

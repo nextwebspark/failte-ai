@@ -224,6 +224,8 @@ class PlatformCatalogOption(BaseModel):
     preview_url: str | None = None
     # Speech-to-text models: the languages this model accepts.
     languages: list[str] | None = None
+    # Text-to-speech models: voice names are "<locale>-<voice_family>-<Name>".
+    voice_family: str | None = None
 
 
 class PlatformCatalogRange(BaseModel):

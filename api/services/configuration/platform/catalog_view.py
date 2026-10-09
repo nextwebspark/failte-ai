@@ -113,6 +113,7 @@ def options_for(options: tuple[PlatformOption, ...]) -> list[PlatformCatalogOpti
             gender=option.gender,
             preview_url=option.preview_url,
             languages=list(option.languages) if option.languages else None,
+            voice_family=option.voice_family,
         )
         for option in options
     ]

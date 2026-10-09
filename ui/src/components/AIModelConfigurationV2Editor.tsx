@@ -71,6 +71,8 @@ export function legacyModelConfigurationDefaults(
     defaults: ModelConfigurationV2Defaults | undefined,
 ): ModelConfigurationDefaultsV2 | null {
     if (!defaults?.dograh || !defaults.byok) return null;
+    // The API types these sections as open dicts (they are generated JSON
+    // schemas); this editor has always read them through its own types.
     return {
         dograh: defaults.dograh as unknown as DograhDefaults,
         byok: defaults.byok as unknown as ModelConfigurationDefaultsV2["byok"],

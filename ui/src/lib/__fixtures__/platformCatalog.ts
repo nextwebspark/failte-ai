@@ -36,7 +36,7 @@ export const platformCatalogFixture: PlatformModelCatalog = {
             defaults: { model: "chirp_3", language: "en-US" },
         },
         tts: {
-            models: [{ id: "chirp_3_hd", label: "Chirp 3 HD", recommended: true }],
+            models: [{ id: "chirp_3_hd", label: "Chirp 3 HD", recommended: true, voice_family: "Chirp3-HD" }],
             languages: ["en-GB", "en-US"],
             speed_range: { min: 0.25, max: 2, step: 0.05 },
             voice_catalog: "google",
