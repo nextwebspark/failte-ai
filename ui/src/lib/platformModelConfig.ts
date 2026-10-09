@@ -190,6 +190,22 @@ export function isVoiceFor(
     return voice.startsWith(prefix) && /^[A-Za-z]+$/.test(voice.slice(prefix.length));
 }
 
+/**
+ * The same voice persona in another language, where the model has it
+ * ("en-US-Chirp3-HD-Kore" → "en-GB-Chirp3-HD-Kore"); otherwise *voice*.
+ */
+export function voiceInLanguage(
+    catalog: PlatformModelCatalog,
+    model: string,
+    voice: string,
+    language: string,
+): string {
+    const family = catalog.pipeline.tts.models.find((item) => item.id === model)?.voice_family;
+    const name = voice.split("-").pop() ?? "";
+    const translated = family ? `${language}-${family}-${name}` : voice;
+    return isVoiceFor(catalog, model, language, translated) ? translated : voice;
+}
+
 /** Human-readable problems with *state*; empty when it can be saved. */
 export function validatePlatformFormState(
     state: PlatformFormState,

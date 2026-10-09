@@ -9,6 +9,7 @@ import {
     platformFormStateFromConfiguration,
     sttLanguagesFor,
     validatePlatformFormState,
+    voiceInLanguage,
     voiceLocale,
 } from "@/lib/platformModelConfig";
 
@@ -178,6 +179,15 @@ describe("platform model configuration", () => {
             "Temperature must be between 0 and 2.",
             "Speed must be between 0.25 and 2.",
         ]);
+    });
+
+    it("keeps the voice persona when the voice language changes", () => {
+        expect(voiceInLanguage(catalog, "chirp_3_hd", "en-US-Chirp3-HD-Kore", "en-GB")).toBe(
+            "en-GB-Chirp3-HD-Kore",
+        );
+        expect(voiceInLanguage(catalog, "other", "en-US-Chirp3-HD-Kore", "en-GB")).toBe(
+            "en-US-Chirp3-HD-Kore",
+        );
     });
 
     it("reads voice locales and language names", () => {
