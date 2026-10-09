@@ -23,7 +23,7 @@ const STATUS_CONFIG = {
     live: {
         icon: Mic,
         label: "Live",
-        className: "bg-green-500/10 text-green-600 dark:text-green-400",
+        className: "bg-live-dim text-live-text",
     },
     ended: {
         icon: MicOff,

@@ -1,25 +1,22 @@
+import { BRAND } from "@/config/brand";
 import { cn } from "@/lib/utils";
 
-// Reusable Failte AI lockup. `mark` renders the square icon on its own (app
-// sidebar header); the default renders icon + wordmark. Pass `inverse` to force
-// light type on an always-dark surface (e.g. the auth brand panel). Height is
-// controlled by the caller via className (e.g. "h-7"); the icon tracks that
-// height and the type is sized to sit with it.
+// Fallcha.ai lockup, from the official brand kit (brand-kit/, copied into
+// public/brand/). `mark` renders the call-bubble icon on its own (sidebar and
+// top bar); the default renders the full lockup. Height is set by the caller
+// via className (e.g. "h-7"); width follows the artwork's aspect ratio.
 //
-// ---------------------------------------------------------------------------
-// SWAPPING IN REAL ARTWORK
-// ---------------------------------------------------------------------------
-// The icon is a placeholder at `public/brand/failte-mark.svg` — a voice
-// waveform in a rounded badge, kept simple so it survives 16px. To replace it,
-// overwrite that file (same viewBox) and `src/app/icon.svg`, which is the same
-// artwork serving as the browser-tab icon via Next's app-router convention.
+// The kit ships the lockup in two inks and forbids the light-background logo
+// on dark surfaces, so the default renders both and lets the theme pick one.
+// Pass `inverse` on surfaces that are dark in every theme (the auth brand
+// panel) to force the dark-background lockup. The mark is a single file: its
+// green bubble reads on both backgrounds.
 //
-// If a designed wordmark lockup arrives as a single image, drop it in
-// `public/brand/` and swap the <span> below for an <img> pair — one with
-// `dark:hidden` and one with `hidden dark:block` — so the theme picks the ink.
+// Kit rules worth keeping in mind at call sites: the lockup must stay at least
+// 24px tall and the mark 16px; leave clear space of half the mark's height.
 //
-// BrandLogo is used in exactly two places: AppSidebar renders `mark`, AuthShell
-// renders the wordmark and its inverse.
+// Used by AppSidebar and AppTopBar (`mark`), AuthShell (default + `inverse`)
+// and EventBanner (default).
 export function BrandLogo({
   className,
   inverse = false,
@@ -33,25 +30,35 @@ export function BrandLogo({
     return (
       // eslint-disable-next-line @next/next/no-img-element
       <img
-        src="/brand/failte-mark.svg"
-        alt="Failte AI"
+        src={BRAND.assets.mark}
+        alt={BRAND.name}
         className={cn("aspect-square w-auto select-none", className)}
       />
     );
   }
 
+  if (inverse) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src={BRAND.assets.logoDark}
+        alt={BRAND.name}
+        className={cn("w-auto select-none", className)}
+      />
+    );
+  }
+
   return (
-    <span className={cn("inline-flex select-none items-center gap-2", className)}>
+    <span className={cn("inline-flex select-none", className)}>
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src="/brand/failte-mark.svg" alt="" aria-hidden className="h-full w-auto" />
-      <span
-        className={cn(
-          "whitespace-nowrap text-xl font-semibold leading-none tracking-tight",
-          inverse ? "text-white" : "text-foreground",
-        )}
-      >
-        Failte<span className="ml-[0.25em] font-normal opacity-70">AI</span>
-      </span>
+      <img src={BRAND.assets.logoLight} alt={BRAND.name} className="h-full w-auto dark:hidden" />
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={BRAND.assets.logoDark}
+        alt=""
+        aria-hidden
+        className="hidden h-full w-auto dark:block"
+      />
     </span>
   );
 }

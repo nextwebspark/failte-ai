@@ -50,7 +50,7 @@ export function MessageBubble({
                         <div
                             className={cn(
                                 "mt-1 text-[10px] italic",
-                                isUser ? "text-primary-foreground/70" : "text-muted-foreground",
+                                isUser ? "text-primary-foreground/70" : "text-live-text not-italic font-medium",
                             )}
                         >
                             speaking...

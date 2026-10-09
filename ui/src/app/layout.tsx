@@ -1,7 +1,7 @@
 import "./globals.css";
 
 import type { Metadata } from "next";
-import { Inter, JetBrains_Mono } from "next/font/google";
+import { JetBrains_Mono, Montserrat } from "next/font/google";
 import { Suspense } from "react";
 
 import AppLayout from "@/components/layout/AppLayout";
@@ -10,6 +10,7 @@ import { SentryErrorBoundary } from "@/components/SentryErrorBoundary";
 import SpinLoader from "@/components/SpinLoader";
 import { ThemeProvider } from "@/components/ThemeProvider";
 import { Toaster } from "@/components/ui/sonner";
+import { BRAND } from "@/config/brand";
 import { AppConfigProvider } from "@/context/AppConfigContext";
 import { OnboardingProvider } from "@/context/OnboardingContext";
 import { OrgConfigProvider } from "@/context/OrgConfigContext";
@@ -17,12 +18,13 @@ import { TelephonyConfigWarningsProvider } from "@/context/TelephonyConfigWarnin
 import { AuthProvider } from "@/lib/auth";
 
 
-// Inter for prose, JetBrains Mono for data, metadata and numerals — the type
-// pairing the design canvas is built on (app-doc/claude-design/). Both are
-// wired to --font-sans / --font-mono in globals.css.
-const inter = Inter({
-  variable: "--font-inter",
+// Montserrat is the brand kit's typeface: 700 for headings and the wordmark,
+// 500/400 for interface and body copy. JetBrains Mono stays for data, metadata
+// and numerals. Both are wired to --font-sans / --font-mono in globals.css.
+const montserrat = Montserrat({
+  variable: "--font-montserrat",
   subsets: ["latin"],
+  weight: ["400", "500", "600", "700"],
 });
 
 const jetbrainsMono = JetBrains_Mono({
@@ -31,8 +33,16 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Failte AI",
-  description: "Build, test and deploy voice AI agents",
+  metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL || BRAND.appUrl),
+  applicationName: BRAND.name,
+  title: { default: BRAND.name, template: `%s · ${BRAND.name}` },
+  description: BRAND.tagline,
+  openGraph: {
+    siteName: BRAND.name,
+    title: BRAND.name,
+    description: BRAND.tagline,
+    images: [{ url: BRAND.assets.ogImage, width: 2016, height: 512, alt: BRAND.name }],
+  },
 };
 
 export default function RootLayout({
@@ -47,7 +57,7 @@ export default function RootLayout({
     // reach it and the sans stack silently falls back to system-ui.
     <html
       lang="en"
-      className={`dark ${inter.variable} ${jetbrainsMono.variable}`}
+      className={`dark ${montserrat.variable} ${jetbrainsMono.variable}`}
       suppressHydrationWarning
     >
       <head>

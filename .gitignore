@@ -32,3 +32,8 @@ node_modules/
 docs/superpowers/
 .gstack/
 failte_voice_previews/
+
+# Brand kit: keep logos + guidelines, skip design-tool runtime bundle
+brand-kit/**/_ds/
+brand-kit/**/support.js
+brand-kit/**/.thumbnail
