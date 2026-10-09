@@ -44,13 +44,17 @@ def bookable_window(now: datetime, config: CalendarConfig) -> Window:
 def resolve_window(
     relative_day: str | None, now: datetime, config: CalendarConfig
 ) -> Window:
-    """Turn a spoken date phrase into a [start, end) search window."""
+    """Turn a spoken date phrase into a [start, end) search window.
+
+    The window never leaves [earliest, horizon); it may be empty (start >= end).
+    """
     earliest, horizon = bookable_window(now, config)
     phrase = (relative_day or "").strip().lower()
 
     def day_bounds(day: datetime) -> Window:
+        # Clamped to what is bookable: a day past the horizon is empty.
         start = _midnight(day)
-        return max(start, earliest), start + timedelta(days=1)
+        return max(start, earliest), min(start + timedelta(days=1), horizon)
 
     if not phrase or "week" in phrase or "any" in phrase or "soon" in phrase:
         return earliest, horizon

@@ -29,9 +29,10 @@ from fallcha_tools.providers.google_calendar.schemas import (
     OrderLookupRequest,
     OrderLookupResult,
 )
-from fallcha_tools.providers.google_calendar.service import CalendarService
-
-ServiceFactory = Callable[[ConnectionContext], CalendarService]
+from fallcha_tools.providers.google_calendar.service import (
+    CalendarService,
+    ServiceFactory,
+)
 
 
 def _status_for(exc: CalendarToolError) -> int:

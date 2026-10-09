@@ -11,7 +11,7 @@ from fastapi import APIRouter
 from fastmcp import FastMCP
 from pydantic import BaseModel, JsonValue, ValidationError
 
-from fallcha_tools.core.errors import InvalidRequestError
+from fallcha_tools.core.errors import InvalidRequestError, describe_validation_error
 from fallcha_tools.core.models import AuthMode
 from fallcha_tools.core.provider import (
     ConnectionContext,
@@ -28,6 +28,7 @@ from fallcha_tools.providers.google_calendar.client import (
 from fallcha_tools.providers.google_calendar.credentials import (
     Clock,
     ServiceAccountCredentials,
+    SignerCache,
     TokenCache,
     utc_now,
 )
@@ -48,19 +49,12 @@ from fallcha_tools.providers.google_calendar.settings import (
 from fallcha_tools.providers.google_calendar.tools import register_calendar_tools
 
 
-def _problems(exc: ValidationError) -> str:
-    # Locations and reasons only: inputs may be secret.
-    return "; ".join(
-        f"{'.'.join(str(part) for part in err['loc'])}: {err['msg']}"
-        for err in exc.errors(include_input=False, include_url=False)
-    )
-
-
 @dataclass(frozen=True)
 class GoogleCalendarProvider:
     """Check availability, book, cancel, and look up orders in a Google Sheet."""
 
     token_cache: TokenCache = field(default_factory=TokenCache)
+    signer_cache: SignerCache = field(default_factory=SignerCache)
     orders_cache: OrdersCache = field(default_factory=OrdersCache)
     clock: Clock = utc_now
     request_timeout: httpx.Timeout = field(default_factory=lambda: DEFAULT_TIMEOUT)
@@ -106,7 +100,7 @@ class GoogleCalendarProvider:
             ServiceAccountKey.model_validate(dict(secret))
         except ValidationError as exc:
             raise InvalidRequestError(
-                f"invalid service-account key: {_problems(exc)}"
+                f"invalid service-account key: {describe_validation_error(exc)}"
             ) from None
 
     def register_tools(
@@ -149,14 +143,14 @@ class GoogleCalendarProvider:
                 f"{ctx.auth_mode} connections are not supported by Google Calendar yet"
             )
         try:
-            key = ServiceAccountKey.model_validate(dict(ctx.secret))
+            signer = self.signer_cache.get(ctx.connection_id, ctx.secret)
         except ValidationError:
             raise NotConfiguredError(
                 "the service-account key for this connection is invalid"
             ) from None
         credentials = ServiceAccountCredentials(
             connection_id=ctx.connection_id,
-            key=key,
+            signer=signer,
             http=ctx.http,
             cache=self.token_cache,
             timeout=self.request_timeout,
@@ -165,6 +159,6 @@ class GoogleCalendarProvider:
         return GoogleClient(
             http=ctx.http,
             credentials=credentials,
-            account_hint=key.client_email,
+            account_hint=signer.client_email,
             timeout=self.request_timeout,
         )

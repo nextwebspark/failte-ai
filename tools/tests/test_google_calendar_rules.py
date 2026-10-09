@@ -40,10 +40,17 @@ def local(day: int, hour: int = 0, minute: int = 0) -> datetime:
         ("on 2026-10-15 please", local(15), local(16)),
         ("2026-02-30", local(12, 9), local(26, 7)),  # impossible date: anytime
         ("whenever suits", local(12, 9), local(26, 7)),
+        ("sunday 2026-10-25", local(18), local(19)),  # weekday wins, as in the shim
+        ("2026-10-26", local(26), local(26, 7)),  # clamped to the horizon
     ],
 )
 def test_resolve_window(phrase: str | None, start: datetime, end: datetime) -> None:
     assert resolve_window(phrase, NOW, CONFIG) == (start, end)
+
+
+def test_dates_past_the_horizon_give_an_empty_window() -> None:
+    start, end = resolve_window("2026-12-01", NOW, CONFIG)
+    assert start >= end
 
 
 def test_speech() -> None:

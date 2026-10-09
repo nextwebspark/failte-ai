@@ -103,6 +103,9 @@ class FakeGoogle:
         self.delete_event = router.delete(url__regex=rf"^{events}/[^/?]+").mock(
             side_effect=self._delete_event
         )
+        self.patch_event = router.patch(url__regex=rf"^{events}/[^/?]+").mock(
+            side_effect=self._patch_event
+        )
         self.calendar = router.get(
             f"{CALENDAR_API}/calendars/{CALENDAR_ID.replace('@', '%40')}"
         ).mock(return_value=httpx.Response(200, json={"summary": "Bookings"}))
@@ -115,16 +118,45 @@ class FakeGoogle:
             return_value=httpx.Response(200, json={"properties": {"title": "Orders"}})
         )
 
+    def busy_blocks(self) -> list[dict[str, str]]:
+        """Configured busy blocks plus every confirmed event, like Google."""
+        booked = [
+            {"start": e["start"]["dateTime"], "end": e["end"]["dateTime"]}
+            for e in self.events.values()
+            if e.get("status") == "confirmed" and "start" in e
+        ]
+        return [*self.busy, *booked]
+
     def _free_busy(self, request: httpx.Request) -> httpx.Response:
+        body = json_body(request)
+        lo = datetime.fromisoformat(body["timeMin"])
+        hi = datetime.fromisoformat(body["timeMax"])
+        if lo >= hi:
+            return httpx.Response(400, json={"error": {"code": 400}})
+        overlapping = [
+            block
+            for block in self.busy_blocks()
+            if datetime.fromisoformat(block["start"]) < hi
+            and datetime.fromisoformat(block["end"]) > lo
+        ]
         return httpx.Response(
-            200, json={"calendars": {CALENDAR_ID: {"busy": self.busy}}}
+            200, json={"calendars": {CALENDAR_ID: {"busy": overlapping}}}
         )
 
     def _insert(self, request: httpx.Request) -> httpx.Response:
         event = json_body(request)
-        event_id = f"evt{len(self.events) + 1}"
+        event_id = event.get("id") or f"evt{len(self.events) + 1}"
+        if event_id in self.events:
+            return httpx.Response(409, json={"error": {"code": 409}})
         self.events[event_id] = {**event, "id": event_id, "status": "confirmed"}
         return httpx.Response(200, json=self.events[event_id])
+
+    def _patch_event(self, request: httpx.Request) -> httpx.Response:
+        event = self.events.get(self._event_id(request))
+        if event is None:
+            return httpx.Response(404, json={"error": {"code": 404}})
+        event.update(json_body(request))
+        return httpx.Response(200, json=event)
 
     def _event_id(self, request: httpx.Request) -> str:
         return request.url.path.rsplit("/", 1)[-1]

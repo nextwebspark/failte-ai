@@ -61,8 +61,7 @@ def _reason(response: httpx.Response) -> str:
 @dataclass(frozen=True, slots=True)
 class GoogleClient:
     """Calls Google as one connection. ``account_hint`` (e.g. the service
-    account's email) is named in access errors so an admin knows whom to
-    share the calendar or sheet with."""
+    account's email) is only logged; see ``CalendarService.check_access``."""
 
     http: httpx.AsyncClient
     credentials: GoogleCredentialsSource
@@ -87,7 +86,11 @@ class GoogleClient:
         entry = (body.get("calendars") or {}).get(calendar_id) or {}
         if entry.get("errors"):
             reasons = {str(e.get("reason", "")) for e in entry["errors"]}
-            logger.warning("google freeBusy calendar errors: {}", sorted(reasons))
+            logger.warning(
+                "google freeBusy calendar errors: {} (as {})",
+                sorted(reasons),
+                self.account_hint,
+            )
             raise self._access_error(Resource.CALENDAR, not_found="notFound" in reasons)
         try:
             return [
@@ -101,17 +104,48 @@ class GoogleClient:
             raise GoogleApiError("Google returned unreadable free/busy data") from None
 
     async def insert_event(
-        self, calendar_id: str, event: Mapping[str, JsonValue]
-    ) -> str | None:
-        body = await self._json(
+        self,
+        calendar_id: str,
+        event: Mapping[str, JsonValue],
+        *,
+        request_timeout: httpx.Timeout | None = None,
+    ) -> bool:
+        """Insert ``event`` (which carries a client-chosen ``id``).
+
+        True if created now; False if an event with that id already exists
+        (Google answers 409), which makes retries idempotent.
+        """
+        response = await self._send(
             "POST",
             f"{CALENDAR_API}/calendars/{_path(calendar_id)}/events",
             (CALENDAR_SCOPE,),
-            Resource.CALENDAR,
             json=dict(event),
+            request_timeout=request_timeout,
         )
-        event_id = body.get("id")
-        return str(event_id) if event_id else None
+        if response.status_code == 409:
+            return False
+        if response.status_code >= 400:
+            raise self._error(response, Resource.CALENDAR)
+        return True
+
+    async def restore_event(
+        self,
+        calendar_id: str,
+        event: Mapping[str, JsonValue],
+        *,
+        request_timeout: httpx.Timeout | None = None,
+    ) -> None:
+        """Re-confirm a cancelled event with ``event``'s id and contents."""
+        event_id = str(event["id"])
+        response = await self._send(
+            "PATCH",
+            self._event_url(calendar_id, event_id),
+            (CALENDAR_SCOPE,),
+            json={**event, "status": "confirmed"},
+            request_timeout=request_timeout,
+        )
+        if response.status_code >= 400:
+            raise self._error(response, Resource.EVENT)
 
     async def get_event(self, calendar_id: str, event_id: str) -> dict[str, Any] | None:
         """The event, or None if it does not exist (or was deleted)."""
@@ -178,6 +212,27 @@ class GoogleClient:
         *,
         json: Mapping[str, Any] | None = None,
         params: Mapping[str, str] | None = None,
+        request_timeout: httpx.Timeout | None = None,
+    ) -> httpx.Response:
+        response = await self._attempt(
+            method, url, scopes, json, params, request_timeout
+        )
+        if response.status_code == 401:
+            # The cached token may have been revoked early: mint once more.
+            self.credentials.invalidate(scopes)
+            response = await self._attempt(
+                method, url, scopes, json, params, request_timeout
+            )
+        return response
+
+    async def _attempt(
+        self,
+        method: str,
+        url: str,
+        scopes: Sequence[str],
+        json: Mapping[str, Any] | None,
+        params: Mapping[str, str] | None,
+        request_timeout: httpx.Timeout | None,
     ) -> httpx.Response:
         token = await self.credentials.access_token(scopes)
         try:
@@ -187,12 +242,14 @@ class GoogleClient:
                 headers={"Authorization": f"Bearer {token}"},
                 json=json,
                 params=params,
-                timeout=self.timeout,
+                timeout=request_timeout or self.timeout,
             )
         except httpx.TimeoutException:
-            raise GoogleApiError("Google did not respond in time") from None
+            raise GoogleApiError(
+                "Google did not respond in time", retryable=True
+            ) from None
         except httpx.HTTPError:
-            raise GoogleApiError("could not reach Google") from None
+            raise GoogleApiError("could not reach Google", retryable=True) from None
 
     async def _json(
         self,
@@ -220,7 +277,13 @@ class GoogleClient:
 
     def _error(self, response: httpx.Response, resource: Resource) -> GoogleApiError:
         status, reason = response.status_code, _reason(response)
-        logger.warning("google api {} failed: {} {}", resource, status, reason)
+        logger.warning(
+            "google api {} failed: {} {} (as {})",
+            resource,
+            status,
+            reason,
+            self.account_hint,
+        )
         if status == 429 or reason in _RATE_LIMIT_REASONS:
             return GoogleApiError("Google is rate limiting requests; please try again")
         if status == 401:
@@ -233,9 +296,12 @@ class GoogleClient:
 
     def _access_error(self, resource: Resource, *, not_found: bool) -> GoogleApiError:
         problem = "was not found" if not_found else "is not accessible"
-        hint = (
-            f"; make sure it is shared with {self.account_hint}"
-            if self.account_hint and resource != Resource.EVENT
-            else ""
+        if resource == Resource.EVENT:
+            return GoogleApiError(f"the {resource} {problem}")
+        # Callers never see which Google account is used; admins get it from
+        # the connection test (see CalendarService.check_access).
+        bare = f"the {resource} {problem}"
+        return GoogleApiError(
+            f"{bare}; it may not be shared with this connection",
+            access_problem=bare,
         )
-        return GoogleApiError(f"the {resource} {problem}{hint}")

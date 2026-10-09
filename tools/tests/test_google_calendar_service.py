@@ -4,11 +4,12 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import dataclasses
 import json
 import re
 import uuid
 from collections.abc import AsyncIterator, Iterator
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import httpx
@@ -27,6 +28,7 @@ from fallcha_tools.providers.google_calendar.client import (
 )
 from fallcha_tools.providers.google_calendar.credentials import (
     GOOGLE_TOKEN_URL,
+    CachedToken,
     TokenCache,
 )
 from fallcha_tools.providers.google_calendar.errors import (
@@ -34,10 +36,13 @@ from fallcha_tools.providers.google_calendar.errors import (
     GoogleApiError,
     NotConfiguredError,
 )
+from fallcha_tools.providers.google_calendar.orders import OrdersCache
 from fallcha_tools.providers.google_calendar.service import (
     BOOKING_MARKER,
     CalendarService,
+    booking_event_id,
 )
+from fallcha_tools.providers.google_calendar.settings import ServiceAccountKey
 from tests.google_fakes import (
     CALENDAR_ID,
     PRIVATE_KEY_PEM,
@@ -239,13 +244,20 @@ async def test_book_inserts_event_with_prefix_timezone_and_marker(
         "2026-10-12T10:00:00+01:00", "Jane Doe", "0871234567", "New router"
     )
 
+    expected_id = booking_event_id(
+        connection_id,
+        datetime.fromisoformat("2026-10-12T10:00:00+01:00"),
+        "Jane Doe",
+        "0871234567",
+    )
     assert result.booked is True
-    assert result.event_id == "evt1"
+    assert result.event_id == expected_id
     assert (
         result.say == "That is booked in for Monday the twelfth at ten in the morning."
     )
     event = json_body(google.insert.calls.last.request)
     assert event == {
+        "id": expected_id,
         "summary": "Acme call — Jane Doe",
         "description": (
             "Booked by the Fallcha.ai voice agent.\nCaller: Jane Doe\n"
@@ -425,7 +437,7 @@ async def test_empty_or_header_only_sheet(
     [
         (
             google_error(403, "forbidden"),
-            f"not accessible; make sure it is shared with {SA_EMAIL}",
+            "the calendar is not accessible; it may not be shared",
         ),
         (google_error(404, "notFound"), "the calendar was not found"),
         (google_error(429, "rateLimitExceeded"), "rate limiting"),
@@ -448,6 +460,7 @@ async def test_google_errors_become_clear_messages(
     message = str(caught.value)
     assert expected in message
     assert "secret detail" not in message and "ya29" not in message
+    assert SA_EMAIL not in message  # callers never learn the Google account
 
 
 async def test_freebusy_calendar_level_errors(
@@ -462,7 +475,7 @@ async def test_freebusy_calendar_level_errors(
     )
     with pytest.raises(
         GoogleApiError,
-        match=re.escape(f"was not found; make sure it is shared with {SA_EMAIL}"),
+        match=re.escape("the calendar was not found; it may not be shared"),
     ):
         await service.availability(None, None)
 
@@ -610,3 +623,274 @@ async def test_invalid_stored_config_or_secret_is_reported(
     assert PRIVATE_KEY_PEM not in str(caught.value)
     with pytest.raises(NotConfiguredError, match="not supported"):
         provider.service_for(ctx(auth_mode=AuthMode.OAUTH2))
+
+
+# --- review follow-ups: idempotent booking ---------------------------------
+
+SLOT = "2026-10-12T10:00:00+01:00"
+
+
+async def test_timeout_mid_insert_then_retry_books_once(
+    service: CalendarService, google: FakeGoogle
+) -> None:
+    def lands_then_times_out(request: httpx.Request) -> httpx.Response:
+        google._insert(request)  # Google stored it, but the reply was lost
+        raise httpx.ReadTimeout("lost reply")
+
+    google.insert.mock(side_effect=lands_then_times_out)
+    with pytest.raises(GoogleApiError, match="try booking the same slot again"):
+        await service.book(SLOT, "Jane", "087 123", None)
+    assert len(google.events) == 1
+
+    google.insert.mock(side_effect=google._insert)
+    retried = await service.book(SLOT, "Jane", "087123", None)
+    assert retried.booked is True
+    assert retried.event_id == next(iter(google.events))
+    assert google.insert.call_count == 1  # the retry found its own event
+    assert len(google.events) == 1
+
+
+async def test_duplicate_insert_409_counts_as_booked(
+    service: CalendarService, google: FakeGoogle, connection_id: uuid.UUID
+) -> None:
+    event_id = booking_event_id(
+        connection_id, datetime.fromisoformat(SLOT), "Jane", "087"
+    )
+    # Created by a racing attempt that free/busy does not show yet.
+    google.events[event_id] = {
+        "id": event_id,
+        "status": "confirmed",
+        "extendedProperties": {"private": {BOOKING_MARKER: str(connection_id)}},
+    }
+    result = await service.book(SLOT, "Jane", "087", None)
+    assert result.booked is True and result.event_id == event_id
+    assert google.insert.calls.last.response.status_code == 409
+    assert not google.patch_event.called
+
+
+async def test_rebooking_a_cancelled_booking_restores_it(
+    service: CalendarService, google: FakeGoogle
+) -> None:
+    first = await service.book(SLOT, "Jane", "087", None)
+    assert first.event_id is not None
+    assert (await service.cancel(first.event_id)).cancelled is True
+
+    again = await service.book(SLOT, "Jane", "087", None)
+    assert again.booked is True and again.event_id == first.event_id
+    assert google.patch_event.called
+    assert google.events[first.event_id]["status"] == "confirmed"
+
+
+async def test_insert_not_started_without_time_left(
+    service: CalendarService, google: FakeGoogle
+) -> None:
+    async def slow_free_busy(request: httpx.Request) -> httpx.Response:
+        await asyncio.sleep(0.1)
+        return google._free_busy(request)
+
+    google.free_busy.mock(side_effect=slow_free_busy)
+    hurried = dataclasses.replace(
+        service, deadline_seconds=0.5, min_insert_seconds=0.45
+    )
+    with pytest.raises(GoogleApiError, match="try booking the same slot again"):
+        await hurried.book(SLOT, "Jane", "087", None)
+    assert not google.insert.called
+
+
+async def test_insert_runs_outside_the_deadline_with_remaining_time(
+    service: CalendarService, google: FakeGoogle
+) -> None:
+    async def slow_insert(request: httpx.Request) -> httpx.Response:
+        await asyncio.sleep(0.3)  # longer than the deadline has left
+        return google._insert(request)
+
+    google.insert.mock(side_effect=slow_insert)
+    hurried = dataclasses.replace(
+        service, deadline_seconds=0.4, min_insert_seconds=0.05
+    )
+    result = await hurried.book(SLOT, "Jane", "087", None)
+    assert result.booked is True  # not cancelled half way
+    read_timeout = google.insert.calls.last.request.extensions["timeout"]["read"]
+    assert 0 < read_timeout <= 0.4
+
+
+# --- review follow-ups: booking window --------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("slot_id", "booked"),
+    [
+        ("2026-10-12T10:00:00+01:00", False),  # inside the 4h lead time
+        ("2026-10-12T11:00:00+01:00", True),
+        ("2026-10-23T16:30:00+01:00", True),  # last slot before the horizon
+        ("2026-10-26T10:00:00+00:00", False),  # past the 14-day horizon
+    ],
+)
+async def test_book_enforces_lead_time_and_horizon(
+    provider: GoogleCalendarProvider,
+    http: httpx.AsyncClient,
+    connection_id: uuid.UUID,
+    google: FakeGoogle,
+    slot_id: str,
+    booked: bool,
+) -> None:
+    service = make_service(provider, http, connection_id, min_lead_hours=4)
+    result = await service.book(slot_id, "Jane", "087", None)
+    assert result.booked is booked
+    assert google.insert.called is booked
+
+
+async def test_far_future_date_is_clamped_then_widened(
+    service: CalendarService, google: FakeGoogle
+) -> None:
+    result = await service.availability("2026-12-01", None)
+    assert result.say.startswith("Nothing free then, but I have Monday the twelfth")
+    for call in google.free_busy.calls:
+        assert json_body(call.request)["timeMax"] <= "2026-10-26T07:00:00+00:00"
+
+
+# --- review follow-ups: credentials and caches ------------------------------
+
+
+async def test_google_401_invalidates_token_and_retries_once(
+    service: CalendarService, google: FakeGoogle
+) -> None:
+    rejected_once: list[bool] = []
+
+    def revoked_then_ok(request: httpx.Request) -> httpx.Response:
+        if not rejected_once:
+            rejected_once.append(True)
+            return google_error(401, "authError")
+        return google._free_busy(request)
+
+    google.free_busy.mock(side_effect=revoked_then_ok)
+    result = await service.availability(None, None)
+    assert len(result.slots) == 3
+    assert google.token.call_count == 2
+    assert google.free_busy.call_count == 2
+
+    google.free_busy.mock(side_effect=None, return_value=google_error(401, "authError"))
+    with pytest.raises(GoogleApiError, match="rejected the connection's credentials"):
+        await service.availability(None, None)
+    assert google.free_busy.call_count == 4  # one retry, not a loop
+
+
+async def test_signer_is_parsed_once_per_connection(
+    provider: GoogleCalendarProvider,
+    http: httpx.AsyncClient,
+    connection_id: uuid.UUID,
+    google: FakeGoogle,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    parses = 0
+    original = ServiceAccountKey.signer
+
+    def counting(self: ServiceAccountKey) -> Any:
+        nonlocal parses
+        parses += 1
+        return original(self)
+
+    monkeypatch.setattr(ServiceAccountKey, "signer", counting)
+    for _ in range(3):
+        await make_service(provider, http, connection_id).availability(None, None)
+    assert parses == 1
+    make_service(provider, http, uuid.uuid4())
+    assert parses == 2
+
+
+async def test_token_cache_single_flight_survives_cancelled_waiter(
+    clock: FakeClock,
+) -> None:
+    cache = TokenCache(clock=clock)
+    key = (uuid.uuid4(), SA_EMAIL, (CALENDAR_SCOPE,))
+    mints = 0
+
+    async def mint() -> CachedToken:
+        nonlocal mints
+        mints += 1
+        await asyncio.sleep(0.05)
+        return CachedToken("tok", clock() + timedelta(hours=1))
+
+    first = asyncio.create_task(cache.get_or_mint(key, mint))
+    second = asyncio.create_task(cache.get_or_mint(key, mint))
+    await asyncio.sleep(0.01)
+    first.cancel()
+    assert await second == "tok"
+    assert mints == 1
+    assert cache.minting == 0  # nothing left behind
+
+
+async def test_token_cache_failed_mint_is_not_sticky(clock: FakeClock) -> None:
+    cache = TokenCache(clock=clock)
+    key = (uuid.uuid4(), SA_EMAIL, (CALENDAR_SCOPE,))
+
+    async def failing() -> CachedToken:
+        raise GoogleApiError("nope")
+
+    async def working() -> CachedToken:
+        return CachedToken("tok", clock() + timedelta(hours=1))
+
+    with pytest.raises(GoogleApiError):
+        await cache.get_or_mint(key, failing)
+    assert cache.minting == 0
+    assert await cache.get_or_mint(key, working) == "tok"
+
+
+async def test_token_cache_is_bounded(clock: FakeClock) -> None:
+    cache = TokenCache(clock=clock, max_entries=2)
+    for _ in range(5):
+
+        async def mint() -> CachedToken:
+            return CachedToken("t", clock() + timedelta(hours=1))
+
+        await cache.get_or_mint((uuid.uuid4(), SA_EMAIL, (CALENDAR_SCOPE,)), mint)
+    assert len(cache) == 2
+
+
+async def test_orders_cache_bounded_and_drops_stale(clock: FakeClock) -> None:
+    cache = OrdersCache(max_entries=2)
+
+    async def fetch() -> list[dict[str, str]]:
+        return []
+
+    for n in range(3):
+        await cache.rows((uuid.uuid4(), f"s{n}", "Orders"), clock(), fetch)
+    assert len(cache) == 2
+    clock.advance(timedelta(minutes=5))
+    await cache.rows((uuid.uuid4(), "fresh", "Orders"), clock(), fetch)
+    assert len(cache) == 1
+
+
+# --- review follow-ups: DST ------------------------------------------------
+
+
+async def test_slots_and_bookings_across_the_dst_change(
+    provider: GoogleCalendarProvider,
+    http: httpx.AsyncClient,
+    connection_id: uuid.UUID,
+    clock: FakeClock,
+    google: FakeGoogle,
+) -> None:
+    clock.now = datetime(2026, 10, 23, 14, 0, tzinfo=UTC)  # Fri 15:00 IST
+    service = make_service(
+        provider, http, connection_id, booking_days=[0, 1, 2, 3, 4, 5, 6]
+    )
+
+    sunday = await service.availability("sunday", None)  # Irish clocks go back
+    assert sunday.slots[0].id == "2026-10-25T09:00:00+00:00"
+    saturday = await service.availability("saturday", None)
+    assert saturday.slots[0].id == "2026-10-24T09:00:00+01:00"
+
+    google.busy = [{"start": "2026-10-26T09:00:00Z", "end": "2026-10-26T09:30:00Z"}]
+    monday = await service.availability("monday", None)
+    assert monday.slots[0].id == "2026-10-26T10:00:00+00:00"
+    assert monday.slots[0].say == "Monday the twenty sixth at ten in the morning"
+
+    booked = await service.book(monday.slots[0].id, "Jane", "087", None)
+    assert booked.booked is True
+    event = json_body(google.insert.calls.last.request)
+    assert event["start"] == {
+        "dateTime": "2026-10-26T10:00:00+00:00",
+        "timeZone": "Europe/Dublin",
+    }
+    assert event["end"]["dateTime"] == "2026-10-26T10:30:00+00:00"

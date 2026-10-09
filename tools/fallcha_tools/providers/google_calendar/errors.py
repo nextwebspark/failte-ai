@@ -21,4 +21,22 @@ class NotConfiguredError(CalendarToolError):
 
 
 class GoogleApiError(CalendarToolError):
-    """Google refused, failed or timed out (REST: 502)."""
+    """Google refused, failed or timed out (REST: 502).
+
+    ``access_problem`` is set for "not shared / not found" failures to the bare
+    problem (e.g. "the calendar was not found"), so an admin, but not a
+    caller, can be told which Google account needs access.
+    ``retryable`` marks failures where Google may still have acted (timeouts,
+    network errors), so a write must be retried rather than assumed lost.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        access_problem: str | None = None,
+        retryable: bool = False,
+    ) -> None:
+        super().__init__(message)
+        self.access_problem = access_problem
+        self.retryable = retryable

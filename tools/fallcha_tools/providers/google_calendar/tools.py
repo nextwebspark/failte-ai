@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable
 from typing import Any
 
 from fastmcp import FastMCP
 from fastmcp.exceptions import ToolError
 
-from fallcha_tools.core.provider import ConnectionContext, ConnectionContextFactory
+from fallcha_tools.core.provider import ConnectionContextFactory
 from fallcha_tools.providers.google_calendar.errors import CalendarToolError
 from fallcha_tools.providers.google_calendar.schemas import (
     AccountName,
@@ -26,9 +26,10 @@ from fallcha_tools.providers.google_calendar.schemas import (
     RelativeDay,
     SlotId,
 )
-from fallcha_tools.providers.google_calendar.service import CalendarService
-
-ServiceFactory = Callable[[ConnectionContext], CalendarService]
+from fallcha_tools.providers.google_calendar.service import (
+    CalendarService,
+    ServiceFactory,
+)
 
 _READ_ONLY: dict[str, Any] = {"readOnlyHint": True, "openWorldHint": True}
 _WRITES: dict[str, Any] = {"readOnlyHint": False, "openWorldHint": True}

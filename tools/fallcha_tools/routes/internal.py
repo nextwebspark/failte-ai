@@ -11,7 +11,7 @@ from pydantic import JsonValue, ValidationError
 
 from fallcha_tools.core.auth import InternalCallerDep, require_internal_caller
 from fallcha_tools.core.container import ConnectionRepoDep, KeyRepoDep, ServicesDep
-from fallcha_tools.core.errors import InvalidRequestError
+from fallcha_tools.core.errors import InvalidRequestError, describe_validation_error
 from fallcha_tools.core.models import AuthMode, ConnectionStatus
 from fallcha_tools.core.provider import (
     ConnectionContext,
@@ -55,11 +55,9 @@ def _validated_config(
     try:
         parsed = model.model_validate(dict(raw))
     except ValidationError as exc:
-        problems = "; ".join(
-            f"{'.'.join(str(part) for part in err['loc']) or 'config'}: {err['msg']}"
-            for err in exc.errors(include_input=False, include_url=False)
-        )
-        raise InvalidRequestError(f"invalid config: {problems}") from None
+        raise InvalidRequestError(
+            f"invalid config: {describe_validation_error(exc)}"
+        ) from None
     dumped: dict[str, JsonValue] = parsed.model_dump(mode="json")
     return dumped
 
@@ -146,7 +144,8 @@ async def update_connection(
 ) -> ConnectionOut:
     current = await repo.get_connection(caller.org_id, connection_id)
     provider = services.registry.get(current.provider)
-    config = _validated_config(provider, body.config)
+    # Merge semantics: keys in the body replace stored keys, others are kept.
+    config = _validated_config(provider, {**current.config, **body.config})
     return _out(await repo.update_config(caller.org_id, connection_id, config))
 
 

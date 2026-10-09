@@ -13,9 +13,10 @@ Fallcha API holds only an opaque connection key.
 - `/v1/{provider}/...` are optional plain-REST routes for `http_api` tools
   during migration. They take the same connection key, as `Authorization:
   Bearer <key>` or `X-API-Key: <key>`.
-- Each connection has an encrypted `secret` and a non-secret `config`
-  (validated by the provider's config model; replace it with
-  `PATCH /internal/connections/{id}`).
+- Each connection has an encrypted `secret` and a non-secret `config`,
+  validated by the provider's config model. `PATCH /internal/connections/{id}`
+  with `{"config": {...}}` merges the given top-level keys into the stored
+  config (omitted keys are kept), then validates the result.
 - Secrets are Fernet-encrypted at rest. Everything lives in the Postgres
   schema `fallcha_tools`, with its own Alembic history; `public` is never
   touched.
@@ -98,6 +99,17 @@ REST bodies and responses match the shim's, so an existing `http_api` tool only
 needs a new URL and a connection key in place of the old `X-API-Key`. Errors
 are 400 (bad argument), 409 (not configured) or 502 (Google failure). Each
 Google request times out after 4 s, and each tool call after 5 s.
+
+Bookings use a deterministic event id (connection, slot, caller), so retrying
+a booking whose reply was lost never creates a duplicate. Only slots between
+the lead time and the horizon can be booked. Caller-facing errors never name
+the service account; the connection test does, so admins know whom to share
+the calendar with.
+
+**Cutover from the shim:** `cancel_appointment` only cancels events this
+connection booked (they carry a private marker). Events booked by the old
+shim have no marker and cannot be cancelled through the agent; cancel them in
+Google Calendar directly.
 
 ## Add a provider
 

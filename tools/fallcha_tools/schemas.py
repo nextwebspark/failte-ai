@@ -69,7 +69,12 @@ class CreateConnectionRequest(BaseModel):
 
 
 class UpdateConnectionRequest(BaseModel):
-    """Replace a connection's non-secret config (validated as on create)."""
+    """Update a connection's non-secret config.
+
+    ``config`` is merged into the stored config (top-level keys replace
+    stored ones; omitted keys are kept), then the result is validated as on
+    create.
+    """
 
     model_config = ConfigDict(extra="forbid")
 

@@ -188,10 +188,25 @@ async def test_patch_config(client: httpx.AsyncClient) -> None:
     assert updated.json()["config"]["timezone"] == "Europe/London"
     assert updated.json()["config"]["slot_minutes"] == 60
 
+    # Partial patches merge: untouched fields keep their stored values.
+    partial = await client.patch(
+        url, headers=internal_headers(), json={"config": {"buffer_minutes": 0}}
+    )
+    assert partial.status_code == 200, partial.text
+    merged = partial.json()["config"]
+    assert merged["buffer_minutes"] == 0
+    assert merged["timezone"] == "Europe/London"
+    assert merged["slot_minutes"] == 60
+    assert merged["calendar_id"] == CALENDAR_ID
+
     invalid = await client.patch(
-        url, headers=internal_headers(), json={"config": {"timezone": "UTC"}}
+        url, headers=internal_headers(), json={"config": {"timezone": "Nowhere/X"}}
     )
     assert invalid.status_code == 422
+    unknown = await client.patch(
+        url, headers=internal_headers(), json={"config": {"surprise": 1}}
+    )
+    assert unknown.status_code == 422
     other_org = await client.patch(
         url, headers=internal_headers(org_id=2), json={"config": calendar_config()}
     )
@@ -276,8 +291,9 @@ async def test_mcp_lists_and_calls_tools(
         google.free_busy.mock(
             return_value=google_error(403, "forbidden"), side_effect=None
         )
-        with pytest.raises(ToolError, match=f"shared with {SA_EMAIL}"):
+        with pytest.raises(ToolError, match="not accessible") as caught:
             await mcp.call_tool("check_appointment_availability", {})
+        assert SA_EMAIL not in str(caught.value)
 
 
 async def test_mcp_rejects_foreign_keys(
@@ -322,9 +338,10 @@ async def test_rest_compat_with_bearer_and_x_api_key(
         },
     )
     assert booked.status_code == 200
+    event_id = booked.json()["event_id"]
     assert booked.json() == {
         "booked": True,
-        "event_id": "evt1",
+        "event_id": event_id,
         "say": "That is booked in for Tuesday the thirteenth at nine in the morning.",
     }
 
@@ -341,7 +358,7 @@ async def test_rest_compat_with_bearer_and_x_api_key(
     assert set(lookup.json()) == {"verified", "say"}
 
     cancel = await client.post(
-        f"/v1/{PROVIDER}/cancel", headers=shim_style, json={"event_id": "evt1"}
+        f"/v1/{PROVIDER}/cancel", headers=shim_style, json={"event_id": event_id}
     )
     assert cancel.json()["cancelled"] is True
 

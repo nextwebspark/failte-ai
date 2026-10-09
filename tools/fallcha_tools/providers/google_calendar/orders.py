@@ -28,6 +28,7 @@ from fallcha_tools.providers.google_calendar.schemas import OrderLookupResult
 ADDRESS_MATCH_THRESHOLD = 0.62
 NAME_MATCH_THRESHOLD = 0.72
 CACHE_TTL = timedelta(seconds=60)
+MAX_CACHED_SHEETS = 256
 SHEET_COLUMNS = "A1:Z1000"
 NOT_VERIFIED = (
     "I could not match those details to an order. Could you give me "
@@ -154,9 +155,15 @@ OrdersKey = tuple[uuid.UUID, str, str]
 class OrdersCache:
     """Per-connection, per-sheet row cache, so a busy call does not re-fetch."""
 
-    def __init__(self, ttl: timedelta = CACHE_TTL) -> None:
+    def __init__(
+        self, ttl: timedelta = CACHE_TTL, max_entries: int = MAX_CACHED_SHEETS
+    ) -> None:
         self._ttl = ttl
+        self._max_entries = max_entries
         self._entries: dict[OrdersKey, _CachedRows] = {}
+
+    def __len__(self) -> int:
+        return len(self._entries)
 
     async def rows(
         self,
@@ -169,4 +176,17 @@ class OrdersCache:
             return cached.rows
         rows = await fetch()
         self._entries[key] = _CachedRows(rows=rows, fetched_at=now)
+        self._evict(now)
         return rows
+
+    def _evict(self, now: datetime) -> None:
+        """Drop stale sheets, then the oldest ones beyond ``max_entries``."""
+        for stale in [
+            k for k, v in self._entries.items() if now - v.fetched_at >= self._ttl
+        ]:
+            del self._entries[stale]
+        overflow = len(self._entries) - self._max_entries
+        if overflow > 0:
+            oldest = sorted(self._entries, key=lambda k: self._entries[k].fetched_at)
+            for stale in oldest[:overflow]:
+                del self._entries[stale]

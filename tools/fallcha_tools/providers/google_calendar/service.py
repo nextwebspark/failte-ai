@@ -3,14 +3,18 @@
 from __future__ import annotations
 
 import asyncio
+import base64
+import hashlib
 import uuid
-from collections.abc import AsyncIterator, Sequence
+from collections.abc import AsyncIterator, Callable, Mapping, Sequence
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
+import httpx
 from pydantic import JsonValue
 
+from fallcha_tools.core.provider import ConnectionContext
 from fallcha_tools.providers.google_calendar.client import GoogleClient
 from fallcha_tools.providers.google_calendar.credentials import Clock
 from fallcha_tools.providers.google_calendar.errors import (
@@ -48,9 +52,30 @@ BOOKING_MARKER = "fallcha_connection_id"
 MAX_FREEBUSY_SPAN = timedelta(days=60)
 DEFAULT_DEADLINE_SECONDS = 5.0
 CANCEL_NOT_FOUND = "I could not find that appointment to cancel."
+# A booking insert is only started with at least this much deadline left.
+DEFAULT_MIN_INSERT_SECONDS = 1.0
 BAD_SLOT_ID = (
     "slot_id must be an ISO timestamp copied from check_appointment_availability"
 )
+UNCONFIRMED_BOOKING = (
+    "Google did not confirm the booking in time; please try booking the same slot again"
+)
+
+
+def booking_event_id(
+    connection_id: uuid.UUID, slot: datetime, caller_name: str, caller_phone: str
+) -> str:
+    """Deterministic Google event id (base32hex) for one booking request.
+
+    Retrying the same booking re-sends the same id, so Google answers 409
+    instead of creating a duplicate.
+    """
+    phone = "".join(ch for ch in caller_phone if ch.isdigit()) or caller_phone
+    seed = "|".join(
+        [str(connection_id), slot.isoformat(), caller_name.strip().lower(), phone]
+    )
+    digest = hashlib.sha256(seed.encode()).digest()
+    return base64.b32hexencode(digest).decode().rstrip("=").lower()
 
 
 def _slots(found: Sequence[datetime]) -> list[Slot]:
@@ -72,6 +97,7 @@ class CalendarService:
     clock: Clock
     orders_cache: OrdersCache
     deadline_seconds: float = DEFAULT_DEADLINE_SECONDS
+    min_insert_seconds: float = DEFAULT_MIN_INSERT_SECONDS
 
     async def availability(
         self, relative_day: str | None, part_of_day: str | None
@@ -105,13 +131,22 @@ class CalendarService:
         cfg = self.config
         slot = self._parse_slot(slot_id)
         slot_end = slot + timedelta(minutes=cfg.slot_minutes)
+        event_id = booking_event_id(self.connection_id, slot, caller_name, caller_phone)
+        loop = asyncio.get_running_loop()
+        started = loop.time()
         async with self._deadline():
             now = self._now()
-            wide = bookable_window(now, cfg)
+            earliest, horizon = wide = bookable_window(now, cfg)
             check: Window = (slot, slot_end + timedelta(minutes=1))
             busy = await self._busy([check, wide])
-            still_free = slot > now and slot in free_slots(*check, None, 5, busy, cfg)
+            still_free = earliest <= slot < horizon and slot in free_slots(
+                *check, None, 5, busy, cfg
+            )
             if not still_free:
+                # A retry of a booking that did go through finds its own event.
+                existing = await self.client.get_event(cfg.calendar_id, event_id)
+                if existing is not None and self._is_ours(existing):
+                    return self._booked(event_id, slot)
                 alternatives = free_slots(
                     *wide, None, cfg.max_slots_returned, busy, cfg
                 )
@@ -120,10 +155,36 @@ class CalendarService:
                     slots=_slots(alternatives),
                     say=f"That one has just gone. {join_spoken(alternatives)}",
                 )
-            event_id = await self.client.insert_event(
-                cfg.calendar_id,
-                self._event(slot, slot_end, caller_name, caller_phone, reason),
+        # The insert runs outside the deadline so it is never cancelled half
+        # way; it is bounded by its own timeout, from the time that is left.
+        remaining = self.deadline_seconds - (loop.time() - started)
+        if remaining < self.min_insert_seconds:
+            raise GoogleApiError(UNCONFIRMED_BOOKING, retryable=True)
+        event = self._event(event_id, slot, slot_end, caller_name, caller_phone, reason)
+        timeout = httpx.Timeout(remaining, connect=min(2.0, remaining))
+        try:
+            created = await self.client.insert_event(
+                cfg.calendar_id, event, request_timeout=timeout
             )
+            if not created:
+                await self._confirm_existing(event)
+        except GoogleApiError as exc:
+            if exc.retryable:
+                raise GoogleApiError(UNCONFIRMED_BOOKING, retryable=True) from None
+            raise
+        return self._booked(event_id, slot)
+
+    async def _confirm_existing(self, event: dict[str, JsonValue]) -> None:
+        """Google already has this id: an earlier attempt, or a cancelled copy."""
+        existing = await self.client.get_event(
+            self.config.calendar_id, str(event["id"])
+        )
+        if existing is None:
+            raise GoogleApiError(UNCONFIRMED_BOOKING, retryable=True)
+        if existing.get("status") == "cancelled":
+            await self.client.restore_event(self.config.calendar_id, event)
+
+    def _booked(self, event_id: str, slot: datetime) -> BookingResult:
         return BookingResult(
             booked=True,
             event_id=event_id,
@@ -167,13 +228,26 @@ class CalendarService:
         return match_order(rows, caller_name, address_or_eircode, order_id)
 
     async def check_access(self) -> str:
-        """Prove the calendar (and orders sheet, if set) can be reached."""
-        async with self._deadline():
-            summary = await self.client.calendar_summary(self.config.calendar_id)
-            message = f"Calendar '{summary}' is reachable"
-            if self.config.orders_sheet_id:
-                title = await self.client.sheet_title(self.config.orders_sheet_id)
-                message += f"; orders sheet '{title}' is readable"
+        """Prove the calendar (and orders sheet, if set) can be reached.
+
+        For admins only (connection test): access errors name the Google
+        account that needs to be given access.
+        """
+        try:
+            async with self._deadline():
+                summary = await self.client.calendar_summary(self.config.calendar_id)
+                message = f"Calendar '{summary}' is reachable"
+                if self.config.orders_sheet_id:
+                    title = await self.client.sheet_title(self.config.orders_sheet_id)
+                    message += f"; orders sheet '{title}' is readable"
+        except GoogleApiError as exc:
+            hint = self.client.account_hint
+            if exc.access_problem and hint:
+                raise GoogleApiError(
+                    f"{exc.access_problem}; make sure it is shared with {hint}",
+                    access_problem=exc.access_problem,
+                ) from None
+            raise
         return message
 
     def _now(self) -> datetime:
@@ -190,6 +264,7 @@ class CalendarService:
 
     def _event(
         self,
+        event_id: str,
         start: datetime,
         end: datetime,
         caller_name: str,
@@ -206,6 +281,7 @@ class CalendarService:
             ]
         )
         return {
+            "id": event_id,
             "summary": f"{cfg.event_summary_prefix} — {caller_name}",
             "description": description,
             "start": {"dateTime": start.isoformat(), "timeZone": cfg.timezone},
@@ -215,7 +291,7 @@ class CalendarService:
             },
         }
 
-    def _is_ours(self, event: dict[str, object]) -> bool:
+    def _is_ours(self, event: Mapping[str, object]) -> bool:
         if event.get("status") == "cancelled":
             return False
         props = event.get("extendedProperties")
@@ -258,3 +334,6 @@ class CalendarService:
                 yield
         except TimeoutError:
             raise GoogleApiError("Google did not respond in time") from None
+
+
+ServiceFactory = Callable[[ConnectionContext], CalendarService]
