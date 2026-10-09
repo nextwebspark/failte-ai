@@ -49,6 +49,7 @@ class ConnectionInfo:
     auth_mode: AuthMode
     account_label: str | None
     scopes_granted: tuple[str, ...]
+    config: Mapping[str, JsonValue]
     status: ConnectionStatus
     last_error: str | None
     expires_at: datetime | None
@@ -90,6 +91,7 @@ def _info(row: Connection) -> ConnectionInfo:
         auth_mode=row.auth_mode,
         account_label=row.account_label,
         scopes_granted=tuple(row.scopes_granted or ()),
+        config=dict(row.config or {}),
         status=row.status,
         last_error=row.last_error,
         expires_at=row.expires_at,
@@ -112,6 +114,7 @@ class ConnectionRepository:
         secret: Mapping[str, JsonValue] | None,
         account_label: str | None = None,
         scopes_granted: tuple[str, ...] = (),
+        config: Mapping[str, JsonValue] | None = None,
         created_by: int | None = None,
         provider_app_id: uuid.UUID | None = None,
         access_token: str | None = None,
@@ -124,6 +127,7 @@ class ConnectionRepository:
             provider_app_id=provider_app_id,
             account_label=account_label,
             scopes_granted=list(scopes_granted),
+            config=dict(config or {}),
             secret_enc=self._box.encrypt_json(dict(secret)) if secret else None,
             access_token_enc=self._box.encrypt(access_token) if access_token else None,
             expires_at=expires_at,
@@ -183,6 +187,18 @@ class ConnectionRepository:
         row.last_error = last_error
         if account_label is not None:
             row.account_label = account_label
+        await self._session.commit()
+        await self._session.refresh(row)
+        return _info(row)
+
+    async def update_config(
+        self, org_id: int, connection_id: uuid.UUID, config: Mapping[str, JsonValue]
+    ) -> ConnectionInfo:
+        """Replace the connection's (already validated) non-secret config."""
+        row = await self._get_row(org_id, connection_id, for_update=True)
+        if row.status == ConnectionStatus.REVOKED:
+            raise ConnectionRevokedError("connection has been revoked")
+        row.config = dict(config)
         await self._session.commit()
         await self._session.refresh(row)
         return _info(row)

@@ -23,6 +23,9 @@ class CatalogProvider(BaseModel):
     auth_modes: list[AuthMode]
     scopes: list[str]
     tools: list[ToolSummary]
+    config_schema: dict[str, JsonValue] | None = Field(
+        default=None, description="JSON Schema of the per-connection config."
+    )
 
 
 class CatalogResponse(BaseModel):
@@ -37,6 +40,7 @@ class ConnectionOut(BaseModel):
     auth_mode: AuthMode
     account_label: str | None
     scopes_granted: list[str]
+    config: dict[str, JsonValue]
     status: ConnectionStatus
     last_error: str | None
     expires_at: datetime | None
@@ -58,6 +62,23 @@ class CreateConnectionRequest(BaseModel):
     secret: dict[str, JsonValue] = Field(min_length=1)
     account_label: str | None = Field(default=None, max_length=320)
     scopes_granted: list[str] = Field(default_factory=list)
+    config: dict[str, JsonValue] = Field(
+        default_factory=dict,
+        description="Non-secret settings, validated by the provider's config model.",
+    )
+
+
+class UpdateConnectionRequest(BaseModel):
+    """Update a connection's non-secret config.
+
+    ``config`` is merged into the stored config (top-level keys replace
+    stored ones; omitted keys are kept), then the result is validated as on
+    create.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    config: dict[str, JsonValue]
 
 
 class IssueKeyRequest(BaseModel):

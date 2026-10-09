@@ -18,6 +18,7 @@ from loguru import logger
 from fallcha_tools.config import Settings, get_settings
 from fallcha_tools.core.auth import KeyLookup
 from fallcha_tools.core.container import AppServices
+from fallcha_tools.core.context import ContextLoader
 from fallcha_tools.core.crypto import SecretBox
 from fallcha_tools.core.db import Database
 from fallcha_tools.core.errors import (
@@ -31,6 +32,7 @@ from fallcha_tools.core.provider import ProviderRegistry
 from fallcha_tools.core.repositories import KeyPrincipal, KeyRepository
 from fallcha_tools.providers import build_registry
 from fallcha_tools.routes import internal
+from fallcha_tools.routes.rest import connection_key_dependency
 
 _ERROR_STATUS: dict[type[ToolsError], int] = {
     NotFoundError: 404,
@@ -73,7 +75,7 @@ def create_app(
     settings: Settings | None = None, registry: ProviderRegistry | None = None
 ) -> FastAPI:
     settings = settings or get_settings()
-    registry = registry if registry is not None else build_registry()
+    registry = registry if registry is not None else build_registry(settings)
 
     logger.remove()
     # No variable values in tracebacks: they could include decrypted secrets.
@@ -87,11 +89,16 @@ def create_app(
     box = SecretBox(settings.encryption_keys)
     db = Database(settings.database_url)
     http = httpx.AsyncClient(timeout=httpx.Timeout(20.0, connect=5.0))
-    mounts = McpMounts(
-        registry, ConnectionResolver(db=db, box=box, http=http), _make_key_lookup(db)
-    )
+    contexts = ContextLoader(db=db, box=box, http=http)
+    mounts = McpMounts(registry, ConnectionResolver(contexts), _make_key_lookup(db))
     services = AppServices(
-        settings=settings, db=db, box=box, http=http, registry=registry, mcp=mounts
+        settings=settings,
+        db=db,
+        box=box,
+        http=http,
+        registry=registry,
+        mcp=mounts,
+        contexts=contexts,
     )
 
     @asynccontextmanager
@@ -114,5 +121,9 @@ def create_app(
         return {"status": "ok"}
 
     app.include_router(internal.router)
+    for provider in registry:
+        router = provider.rest_router(connection_key_dependency(provider.id))
+        if router is not None:
+            app.include_router(router, prefix=f"/v1/{provider.id}")
     app.mount("/mcp", McpGateway(mounts.apps))
     return app

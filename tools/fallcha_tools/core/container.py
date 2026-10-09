@@ -11,6 +11,7 @@ from fastapi import Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from fallcha_tools.config import Settings
+from fallcha_tools.core.context import ContextLoader
 from fallcha_tools.core.crypto import SecretBox
 from fallcha_tools.core.db import Database
 from fallcha_tools.core.provider import ProviderRegistry
@@ -28,6 +29,7 @@ class AppServices:
     http: httpx.AsyncClient
     registry: ProviderRegistry
     mcp: McpMounts
+    contexts: ContextLoader
 
 
 def get_services(request: Request) -> AppServices:

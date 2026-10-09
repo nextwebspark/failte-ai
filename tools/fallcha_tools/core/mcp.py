@@ -13,7 +13,6 @@ from contextlib import AsyncExitStack, asynccontextmanager
 from dataclasses import dataclass
 from typing import Any
 
-import httpx
 from fastmcp import FastMCP
 from fastmcp.exceptions import ToolError
 from fastmcp.server.dependencies import get_access_token
@@ -29,24 +28,20 @@ from fallcha_tools.core.auth import (
     ConnectionKeyVerifier,
     KeyLookup,
 )
-from fallcha_tools.core.crypto import SecretBox
-from fallcha_tools.core.db import Database
+from fallcha_tools.core.context import ContextLoader
 from fallcha_tools.core.errors import ToolsError
 from fallcha_tools.core.provider import (
     ConnectionContext,
     ConnectionContextFactory,
     ProviderRegistry,
 )
-from fallcha_tools.core.repositories import ConnectionRepository
 
 
 @dataclass(frozen=True, slots=True)
 class ConnectionResolver:
     """Builds a :class:`ConnectionContext` for the key on the current request."""
 
-    db: Database
-    box: SecretBox
-    http: httpx.AsyncClient
+    loader: ContextLoader
 
     def for_provider(self, provider_id: str) -> ConnectionContextFactory:
         async def resolve() -> ConnectionContext:
@@ -62,21 +57,9 @@ class ConnectionResolver:
         org_id = int(claims[CLAIM_ORG_ID])
         connection_id = uuid.UUID(str(claims[CLAIM_CONNECTION_ID]))
         try:
-            async with self.db.session() as session:
-                loaded = await ConnectionRepository(session, self.box).load_secrets(
-                    org_id, connection_id
-                )
+            return await self.loader.load(org_id, connection_id, provider_id)
         except ToolsError as exc:
             raise ToolError(str(exc)) from exc
-        return ConnectionContext(
-            org_id=org_id,
-            connection_id=connection_id,
-            provider=provider_id,
-            auth_mode=loaded.info.auth_mode,
-            secret=loaded.secret,
-            access_token=loaded.access_token,
-            http=self.http,
-        )
 
 
 class McpMounts:

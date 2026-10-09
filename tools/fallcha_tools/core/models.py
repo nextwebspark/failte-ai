@@ -9,6 +9,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 from enum import StrEnum
+from typing import Any
 
 from sqlalchemy import (
     BigInteger,
@@ -20,8 +21,9 @@ from sqlalchemy import (
     String,
     Text,
     func,
+    text,
 )
-from sqlalchemy.dialects.postgresql import ARRAY, UUID
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 SCHEMA = "fallcha_tools"
@@ -116,6 +118,10 @@ class Connection(_Timestamps, Base):
     account_label: Mapped[str | None] = mapped_column(Text, nullable=True)
     scopes_granted: Mapped[list[str]] = mapped_column(
         ARRAY(Text), nullable=False, server_default="{}"
+    )
+    # Non-secret, provider-validated settings (calendar id, time zone, ...).
+    config: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, nullable=False, server_default=text("'{}'::jsonb")
     )
     secret_enc: Mapped[str | None] = mapped_column(Text, nullable=True)
     access_token_enc: Mapped[str | None] = mapped_column(Text, nullable=True)

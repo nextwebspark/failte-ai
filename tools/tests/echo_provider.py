@@ -2,16 +2,20 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Any
 
+from fastapi import APIRouter
 from fastmcp import FastMCP
+from pydantic import BaseModel, JsonValue
 
 from fallcha_tools.core.models import AuthMode
 from fallcha_tools.core.provider import (
     ConnectionContext,
     ConnectionContextFactory,
     ConnectionTestResult,
+    RestContextDependency,
 )
 
 
@@ -25,6 +29,16 @@ class EchoProvider:
         default_factory=lambda: frozenset({AuthMode.API_KEY})
     )
     scopes: tuple[str, ...] = ()
+    config_model: type[BaseModel] | None = None
+
+    def validate_secret(
+        self, auth_mode: AuthMode, secret: Mapping[str, JsonValue]
+    ) -> None:
+        del auth_mode, secret
+
+    def rest_router(self, ctx_dependency: RestContextDependency) -> APIRouter | None:
+        del ctx_dependency
+        return None
 
     def register_tools(
         self, mcp: FastMCP[Any], ctx_factory: ConnectionContextFactory

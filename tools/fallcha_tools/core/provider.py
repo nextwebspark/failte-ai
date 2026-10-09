@@ -5,6 +5,10 @@ declares metadata for the catalog and registers its MCP tools on a FastMCP
 server that the app mounts at ``/mcp/{provider.id}``. Tool functions obtain
 the caller's credentials by awaiting the ``ctx_factory`` they were given,
 which resolves a :class:`ConnectionContext` from the request's connection key.
+
+Providers may also declare a Pydantic ``config_model`` for per-connection,
+non-secret settings, and an optional REST router (mounted at
+``/v1/{provider.id}``) for plain-HTTP callers.
 """
 
 from __future__ import annotations
@@ -12,12 +16,13 @@ from __future__ import annotations
 import re
 import uuid
 from collections.abc import Awaitable, Callable, Iterable, Iterator, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Protocol, runtime_checkable
 
 import httpx
+from fastapi import APIRouter
 from fastmcp import FastMCP
-from pydantic import JsonValue
+from pydantic import BaseModel, JsonValue
 
 from fallcha_tools.core.errors import NotFoundError
 from fallcha_tools.core.models import AuthMode
@@ -36,9 +41,13 @@ class ConnectionContext:
     secret: Mapping[str, JsonValue]
     access_token: str | None
     http: httpx.AsyncClient
+    config: Mapping[str, JsonValue] = field(default_factory=dict)
 
 
 ConnectionContextFactory = Callable[[], Awaitable[ConnectionContext]]
+# A FastAPI dependency that authenticates a connection key (``Authorization:
+# Bearer`` or ``X-API-Key``) for one provider and yields its context.
+RestContextDependency = Callable[..., Awaitable[ConnectionContext]]
 
 
 @dataclass(frozen=True, slots=True)
@@ -64,6 +73,19 @@ class Provider(Protocol):
     def auth_modes(self) -> frozenset[AuthMode]: ...
     @property
     def scopes(self) -> tuple[str, ...]: ...
+    @property
+    def config_model(self) -> type[BaseModel] | None:
+        """Model for per-connection config, or None if the provider takes none."""
+        ...
+
+    def validate_secret(
+        self, auth_mode: AuthMode, secret: Mapping[str, JsonValue]
+    ) -> None:
+        """Raise :class:`InvalidRequestError` if ``secret`` is unusable.
+
+        Messages must never quote the secret.
+        """
+        ...
 
     def register_tools(
         self, mcp: FastMCP[Any], ctx_factory: ConnectionContextFactory
@@ -73,6 +95,10 @@ class Provider(Protocol):
 
     async def test_connection(self, ctx: ConnectionContext) -> ConnectionTestResult:
         """Make a cheap authenticated call to prove the credentials work."""
+        ...
+
+    def rest_router(self, ctx_dependency: RestContextDependency) -> APIRouter | None:
+        """Optional plain-HTTP routes, mounted at ``/v1/{id}``."""
         ...
 
 
