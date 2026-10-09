@@ -9,6 +9,7 @@ It is a private fork of the open-source [Dograh](https://github.com/dograh-hq/do
 dograh/
 ├── api/              # Backend - FastAPI application
 ├── ui/               # Frontend - Next.js application
+├── tools/            # fallcha-tools service - hosted tool providers over MCP (own venv, see tools/README.md)
 ├── scripts/          # Helper scripts for local development
 ├── docs/             # Mintlify documentation
 ├── pipecat/          # Pipecat framework (git submodule)

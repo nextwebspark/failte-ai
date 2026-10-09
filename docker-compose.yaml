@@ -321,6 +321,44 @@ services:
     networks:
       - app-network
 
+  # Hosted third-party tool providers (Google Calendar, Sheets, ...) served
+  # over MCP at http://fallcha-tools:8000/mcp/<provider>. Internal only: no
+  # published port. Shares postgres but keeps its tables in the
+  # fallcha_tools schema with its own migrations (run on container start).
+  # Needs TOOLS_ENCRYPTION_KEYS (comma-separated Fernet keys) and
+  # TOOLS_INTERNAL_SECRET in .env; without them it exits at startup and the
+  # rest of the stack is unaffected.
+  fallcha-tools:
+    image: ${REGISTRY:-dograhai}/fallcha-tools:latest
+    build:
+      context: ./tools
+    environment:
+      DATABASE_URL: "postgresql+asyncpg://postgres:${POSTGRES_PASSWORD:-postgres}@postgres:5432/postgres"
+      TOOLS_ENCRYPTION_KEYS: "${TOOLS_ENCRYPTION_KEYS:-}"
+      TOOLS_INTERNAL_SECRET: "${TOOLS_INTERNAL_SECRET:-}"
+      TOOLS_PUBLIC_BASE_URL: "${TOOLS_PUBLIC_BASE_URL:-${PUBLIC_BASE_URL:-}}"
+      LOG_LEVEL: "${TOOLS_LOG_LEVEL:-INFO}"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          'python -c "import urllib.request; urllib.request.urlopen(''http://localhost:8000/health'').read()"',
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    networks:
+      - app-network
+
   ui:
     image: ${REGISTRY:-dograhai}/dograh-ui:latest
     environment:
