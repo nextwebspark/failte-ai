@@ -132,6 +132,12 @@ if PLATFORM_MODELS_ENABLED and not PLATFORM_VERTEX_PROJECT_ID:
     raise ValueError(
         "PLATFORM_VERTEX_PROJECT_ID is required when PLATFORM_MODELS_ENABLED is true"
     )
+# Dograh-managed Cloudonix SIP is provisioned through MPS. A platform-models
+# deployment brings its own telephony, so it is off there unless set explicitly.
+MANAGED_SIP_PROVISIONING_ENABLED = (
+    os.getenv("MANAGED_SIP_PROVISIONING_ENABLED")
+    or ("false" if PLATFORM_MODELS_ENABLED else "true")
+).strip().lower() == "true"
 if PLATFORM_MODELS_ENABLED and BILLING_PROVIDER == "mps":
     # MPS bills through per-org MPS accounts, which platform orgs never get.
     raise ValueError(

@@ -1,7 +1,9 @@
-"""Once-per-organization provisioning of Dograh-managed services.
+"""Once-per-organization provisioning of model services and managed SIP.
 
-Bootstrapping independently mints an MPS service key, writes the organization's
-v2 model configuration, and provisions owner-scoped managed SIP connectivity.
+Bootstrapping writes the organization's v2 model configuration and provisions
+owner-scoped managed SIP connectivity. With platform models enabled the
+configuration is the platform default and nothing is minted; otherwise it holds
+a freshly minted MPS service key.
 Service-key minting is not idempotent upstream — ``create_service_key`` is a
 plain POST — so concurrent callers must not both run it.
 
@@ -16,7 +18,12 @@ from datetime import timedelta
 
 from loguru import logger
 
-from api.constants import AUTH_PROVIDER, DEPLOYMENT_MODE
+from api.constants import (
+    AUTH_PROVIDER,
+    DEPLOYMENT_MODE,
+    MANAGED_SIP_PROVISIONING_ENABLED,
+    PLATFORM_MODELS_ENABLED,
+)
 from api.db import db_client
 from api.db.organization_configuration_client import LEASE_COMPLETED
 from api.enums import OrganizationConfigurationKey
@@ -25,8 +32,9 @@ from api.schemas.ai_model_configuration import (
     DograhManagedAIModelConfiguration,
     OrganizationAIModelConfigurationV2,
 )
+from api.schemas.platform_models import default_platform_configuration
 from api.services.configuration.ai_model_configuration import (
-    get_organization_ai_model_configuration_v2,
+    has_organization_ai_model_configuration_v2,
     upsert_organization_ai_model_configuration_v2,
 )
 from api.services.mps_billing import ensure_hosted_mps_billing_account_v2
@@ -46,7 +54,7 @@ async def ensure_organization_bootstrapped(
     *,
     created_by: str,
 ) -> bool:
-    """Ensure an organization has its Dograh-managed model services and SIP.
+    """Ensure an organization has its model configuration and managed SIP.
 
     Cheap enough to call on every authenticated request: an organization that
     has completed bootstrap costs a single indexed read. Returns True when the
@@ -64,8 +72,18 @@ async def ensure_organization_bootstrapped(
     if await _is_bootstrap_complete(organization_id):
         return True
 
-    configuration = await get_organization_ai_model_configuration_v2(organization_id)
-    sip_provisioned = await _has_managed_sip_connectivity(organization_id)
+    # Presence, not validity: a stored configuration that fails to parse (for
+    # example one written by a newer release during a rolling deploy) must not
+    # be overwritten with a freshly provisioned one.
+    has_configuration = await has_organization_ai_model_configuration_v2(
+        organization_id
+    )
+    # With managed SIP off the sentinel completes without it, so turning the
+    # flag on later does not backfill existing organizations.
+    sip_provisioned = (
+        not MANAGED_SIP_PROVISIONING_ENABLED
+        or await _has_managed_sip_connectivity(organization_id)
+    )
 
     owner_token = await db_client.claim_configuration_lease(
         organization_id,
@@ -76,7 +94,7 @@ async def ensure_organization_bootstrapped(
         # Another request holds the lease and is provisioning right now.
         return False
 
-    if configuration is not None and sip_provisioned:
+    if has_configuration and sip_provisioned:
         # Provisioned before the sentinel existed. Record it so subsequent
         # requests take the single-read fast path above.
         await db_client.complete_configuration_lease(
@@ -88,7 +106,7 @@ async def ensure_organization_bootstrapped(
         complete = await _bootstrap_organization(
             organization_id,
             created_by=created_by,
-            configuration=configuration,
+            has_configuration=has_configuration,
             sip_provisioned=sip_provisioned,
         )
     except Exception:
@@ -132,7 +150,7 @@ async def _bootstrap_organization(
     organization_id: int,
     *,
     created_by: str,
-    configuration: OrganizationAIModelConfigurationV2 | None,
+    has_configuration: bool,
     sip_provisioned: bool,
 ) -> bool:
     """Provision whatever the organization is missing.
@@ -140,7 +158,16 @@ async def _bootstrap_organization(
     Returns True when the organization ends up fully provisioned, i.e. when the
     lease may be marked terminal.
     """
-    if configuration is None:
+    if not has_configuration and PLATFORM_MODELS_ENABLED:
+        # Platform models run on the operator's Vertex project: no key to mint
+        # and no MPS billing account to open.
+        await upsert_organization_ai_model_configuration_v2(
+            organization_id,
+            OrganizationAIModelConfigurationV2(
+                mode="platform", platform=default_platform_configuration()
+            ),
+        )
+    elif not has_configuration:
         # Billing is best effort: it is recoverable out of band, and failing the
         # whole bootstrap over it would also cost the org its model config.
         try:

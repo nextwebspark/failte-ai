@@ -541,6 +541,13 @@ async def migrate_model_configuration_v2(
     user: UserModel = Depends(get_user_with_selected_organization),
 ):
     organization_id = user.selected_organization_id
+    if PLATFORM_MODELS_ENABLED:
+        # The legacy conversion only produces dograh/byok and opens an MPS
+        # billing account; neither belongs on a platform-models server.
+        raise HTTPException(
+            status_code=409,
+            detail="Model configurations are managed by the platform",
+        )
     existing = await get_organization_ai_model_configuration_v2(organization_id)
     if existing is not None and not force:
         raise HTTPException(

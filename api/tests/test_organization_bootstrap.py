@@ -4,29 +4,12 @@ from unittest.mock import AsyncMock
 import pytest
 
 from api.db.organization_configuration_client import LEASE_COMPLETED, LEASE_PENDING
-from api.schemas.ai_model_configuration import (
-    DograhManagedAIModelConfiguration,
-    OrganizationAIModelConfigurationV2,
-)
 from api.services import organization_bootstrap as bootstrap
 
 ORG_ID = 42
 CREATED_BY = "provider-user"
-EXISTING_KEY = "existing-svc-key"
 MINTED_KEY = "minted-svc-key"
 LEASE_OWNER_TOKEN = "lease-owner-token"
-
-
-def _dograh_config(api_key: str) -> OrganizationAIModelConfigurationV2:
-    return OrganizationAIModelConfigurationV2(
-        mode="dograh",
-        dograh=DograhManagedAIModelConfiguration(api_key=api_key),
-    )
-
-
-def _byok_config() -> OrganizationAIModelConfigurationV2:
-    """A BYOK org: real ones carry provider blocks, but only `dograh` matters here."""
-    return OrganizationAIModelConfigurationV2.model_construct(mode="byok", dograh=None)
 
 
 @pytest.fixture(autouse=True)
@@ -57,11 +40,18 @@ def sip(monkeypatch):
     return mock
 
 
+@pytest.fixture(autouse=True)
+def flags(monkeypatch):
+    """Deployment flags at their MPS defaults, independent of the environment."""
+    monkeypatch.setattr(bootstrap, "PLATFORM_MODELS_ENABLED", False)
+    monkeypatch.setattr(bootstrap, "MANAGED_SIP_PROVISIONING_ENABLED", True)
+
+
 @pytest.fixture
 def config(monkeypatch):
-    """The org's existing v2 model configuration; absent by default."""
-    mock = AsyncMock(return_value=None)
-    monkeypatch.setattr(bootstrap, "get_organization_ai_model_configuration_v2", mock)
+    """Whether the org has a stored v2 model configuration; absent by default."""
+    mock = AsyncMock(return_value=False)
+    monkeypatch.setattr(bootstrap, "has_organization_ai_model_configuration_v2", mock)
     return mock
 
 
@@ -124,7 +114,7 @@ async def test_pending_sentinel_does_not_short_circuit(
 ):
     """Only a terminal sentinel means done; a pending one is work in progress."""
     sentinel.row = SimpleNamespace(value={"status": LEASE_PENDING})
-    config.return_value = _dograh_config(EXISTING_KEY)
+    config.return_value = True
 
     await bootstrap.ensure_organization_bootstrapped(ORG_ID, created_by=CREATED_BY)
 
@@ -136,7 +126,7 @@ async def test_fully_provisioned_org_backfills_the_sentinel(
     config, lease, mps, upsert, sip, sip_present
 ):
     """Orgs provisioned before the sentinel existed must reach the fast path."""
-    config.return_value = _dograh_config(EXISTING_KEY)
+    config.return_value = True
     sip_present.return_value = True
 
     assert await bootstrap.ensure_organization_bootstrapped(
@@ -160,7 +150,7 @@ async def test_existing_org_gets_owner_scoped_sip_without_minting_a_second_key(
     Re-minting would strand the org's current key and issue a second billable
     one. SIP is independent and uses the bootstrap owner's identity.
     """
-    config.return_value = _dograh_config(EXISTING_KEY)
+    config.return_value = True
 
     assert await bootstrap.ensure_organization_bootstrapped(
         ORG_ID, created_by=CREATED_BY
@@ -246,7 +236,7 @@ async def test_sip_failure_leaves_the_lease_pending_for_a_throttled_retry(
 ):
     """The config is persisted, so releasing would retry a failing provider on
     every request; the staleness window should pace it instead."""
-    config.return_value = _dograh_config(EXISTING_KEY)
+    config.return_value = True
     sip.return_value = False
 
     assert not await bootstrap.ensure_organization_bootstrapped(
@@ -274,7 +264,7 @@ async def test_new_org_keeps_its_configuration_when_sip_fails(
 @pytest.mark.asyncio
 async def test_byok_org_still_gets_owner_scoped_sip(config, lease, mps, upsert, sip):
     """SIP ownership is independent of the organization's model configuration."""
-    config.return_value = _byok_config()
+    config.return_value = True
 
     assert await bootstrap.ensure_organization_bootstrapped(
         ORG_ID, created_by=CREATED_BY
@@ -305,3 +295,62 @@ async def test_billing_failure_does_not_discard_the_model_configuration(
     lease.complete.assert_awaited_once_with(
         ORG_ID, bootstrap._BOOTSTRAP_KEY, LEASE_OWNER_TOKEN
     )
+
+
+@pytest.mark.asyncio
+async def test_platform_org_starts_on_the_platform_default_without_mps(
+    monkeypatch, config, lease, mps, upsert, sip
+):
+    monkeypatch.setattr(bootstrap, "PLATFORM_MODELS_ENABLED", True)
+    billing = AsyncMock()
+    monkeypatch.setattr(bootstrap, "ensure_hosted_mps_billing_account_v2", billing)
+
+    assert await bootstrap.ensure_organization_bootstrapped(
+        ORG_ID, created_by=CREATED_BY
+    )
+
+    mps.assert_not_awaited()
+    billing.assert_not_awaited()
+    configuration = upsert.await_args.args[1]
+    assert configuration.mode == "platform"
+    assert configuration.platform.pipeline_mode == "realtime"
+    assert configuration.platform.realtime.voice == "Charon"
+    assert configuration.platform.realtime.language == "en"
+    lease.complete.assert_awaited_once_with(
+        ORG_ID, bootstrap._BOOTSTRAP_KEY, LEASE_OWNER_TOKEN
+    )
+
+
+@pytest.mark.asyncio
+async def test_disabled_managed_sip_is_never_provisioned(
+    monkeypatch, config, lease, mps, upsert, sip, sip_present
+):
+    monkeypatch.setattr(bootstrap, "PLATFORM_MODELS_ENABLED", True)
+    monkeypatch.setattr(bootstrap, "MANAGED_SIP_PROVISIONING_ENABLED", False)
+
+    assert await bootstrap.ensure_organization_bootstrapped(
+        ORG_ID, created_by=CREATED_BY
+    )
+
+    sip_present.assert_not_awaited()
+    sip.assert_not_awaited()
+    lease.complete.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("platform", [False, True])
+async def test_stored_configuration_is_never_reprovisioned(
+    monkeypatch, platform, config, lease, mps, upsert, sip
+):
+    """A stored row that this release cannot parse (a rolling deploy) still
+    counts as configured: replacing it would discard the org's choices and,
+    on MPS, mint a second key."""
+    monkeypatch.setattr(bootstrap, "PLATFORM_MODELS_ENABLED", platform)
+    config.return_value = True
+
+    assert await bootstrap.ensure_organization_bootstrapped(
+        ORG_ID, created_by=CREATED_BY
+    )
+
+    mps.assert_not_awaited()
+    upsert.assert_not_awaited()

@@ -166,6 +166,14 @@ async def get_organization_ai_model_configuration_v2(
     return _parse_organization_ai_model_configuration_v2(row, organization_id)
 
 
+async def has_organization_ai_model_configuration_v2(
+    organization_id: int | None,
+) -> bool:
+    """Whether a v2 configuration is stored, even one that no longer parses."""
+    row = await _get_organization_ai_model_configuration_v2_row(organization_id)
+    return row is not None and bool(row.value)
+
+
 async def update_organization_ai_model_configuration_last_validated_at(
     organization_id: int,
 ) -> None:
