@@ -12,7 +12,11 @@ import type {
     OrganizationAiModelConfigurationResponse,
     OrganizationAiModelConfigurationV2,
 } from "@/client/types.gen";
-import { AIModelConfigurationV2Editor, type ModelConfigurationDefaultsV2 } from "@/components/AIModelConfigurationV2Editor";
+import {
+    AIModelConfigurationV2Editor,
+    legacyModelConfigurationDefaults,
+    type ModelConfigurationDefaultsV2,
+} from "@/components/AIModelConfigurationV2Editor";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useUserConfig } from "@/context/UserConfigContext";
 import { detailFromError } from "@/lib/apiError";
@@ -55,7 +59,7 @@ export default function ModelConfigurationV2() {
                 return;
             }
 
-            const nextDefaults = defaultsResult.data as ModelConfigurationDefaultsV2;
+            const nextDefaults = legacyModelConfigurationDefaults(defaultsResult.data);
             if (!nextDefaults || !configResult.data) {
                 setError("Failed to load model configuration");
                 setLoading(false);

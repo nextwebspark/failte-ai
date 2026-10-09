@@ -16,8 +16,7 @@ import type {
 } from "@/client/types.gen";
 import {
     AIModelConfigurationV2Editor,
-    type ModelConfigurationDefaultsV2,
-} from "@/components/AIModelConfigurationV2Editor";
+legacyModelConfigurationDefaults,    type ModelConfigurationDefaultsV2 } from "@/components/AIModelConfigurationV2Editor";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
@@ -66,7 +65,7 @@ function useOrganizationModelConfiguration() {
                 return;
             }
 
-            setModelConfigurationDefaults(defaultsResult.data as ModelConfigurationDefaultsV2);
+            setModelConfigurationDefaults(legacyModelConfigurationDefaults(defaultsResult.data));
             setOrganizationModelConfiguration(configurationResult.data || null);
             setModelConfigurationPricing(pricingResult);
             setModelConfigurationLoading(false);
