@@ -78,8 +78,13 @@ def settings() -> Settings:
 
 
 @pytest.fixture
-async def app(settings: Settings) -> AsyncIterator[FastAPI]:
-    registry = ProviderRegistry([EchoProvider(), EchoProvider(id="echo-b")])
+def registry() -> ProviderRegistry:
+    """Providers served by ``app``; test modules may override this fixture."""
+    return ProviderRegistry([EchoProvider(), EchoProvider(id="echo-b")])
+
+
+@pytest.fixture
+async def app(settings: Settings, registry: ProviderRegistry) -> AsyncIterator[FastAPI]:
     application = create_app(settings, registry)
     # The MCP session managers hold anyio cancel scopes that must be exited by
     # the task that entered them; pytest-asyncio may tear fixtures down from a

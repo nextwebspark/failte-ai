@@ -3,15 +3,21 @@
 from __future__ import annotations
 
 import uuid
+from collections.abc import Mapping
 
 from fastapi import APIRouter, Depends, Response, status
 from loguru import logger
+from pydantic import JsonValue, ValidationError
 
 from fallcha_tools.core.auth import InternalCallerDep, require_internal_caller
 from fallcha_tools.core.container import ConnectionRepoDep, KeyRepoDep, ServicesDep
 from fallcha_tools.core.errors import InvalidRequestError
 from fallcha_tools.core.models import AuthMode, ConnectionStatus
-from fallcha_tools.core.provider import ConnectionContext, ConnectionTestResult
+from fallcha_tools.core.provider import (
+    ConnectionContext,
+    ConnectionTestResult,
+    Provider,
+)
 from fallcha_tools.core.repositories import ConnectionInfo
 from fallcha_tools.schemas import (
     CatalogProvider,
@@ -23,6 +29,7 @@ from fallcha_tools.schemas import (
     IssuedKeyOut,
     IssueKeyRequest,
     ToolSummary,
+    UpdateConnectionRequest,
 )
 
 router = APIRouter(prefix="/internal", dependencies=[Depends(require_internal_caller)])
@@ -34,6 +41,27 @@ _TEST_FAILED = "connection test failed unexpectedly"
 
 def _out(info: ConnectionInfo) -> ConnectionOut:
     return ConnectionOut.model_validate(info)
+
+
+def _validated_config(
+    provider: Provider, raw: Mapping[str, JsonValue]
+) -> dict[str, JsonValue]:
+    """Validate ``raw`` with the provider's model; return its JSON form."""
+    model = provider.config_model
+    if model is None:
+        if raw:
+            raise InvalidRequestError(f"provider {provider.id!r} takes no config")
+        return {}
+    try:
+        parsed = model.model_validate(dict(raw))
+    except ValidationError as exc:
+        problems = "; ".join(
+            f"{'.'.join(str(part) for part in err['loc']) or 'config'}: {err['msg']}"
+            for err in exc.errors(include_input=False, include_url=False)
+        )
+        raise InvalidRequestError(f"invalid config: {problems}") from None
+    dumped: dict[str, JsonValue] = parsed.model_dump(mode="json")
+    return dumped
 
 
 @router.get("/catalog")
@@ -50,6 +78,11 @@ async def get_catalog(services: ServicesDep) -> CatalogResponse:
                 auth_modes=sorted(provider.auth_modes),
                 scopes=list(provider.scopes),
                 tools=[ToolSummary(name=n, description=d) for n, d in tools],
+                config_schema=(
+                    provider.config_model.model_json_schema()
+                    if provider.config_model is not None
+                    else None
+                ),
             )
         )
     return CatalogResponse(providers=providers)
@@ -81,6 +114,8 @@ async def create_connection(
         raise InvalidRequestError(
             f"provider {provider.id!r} does not support {body.auth_mode}"
         )
+    provider.validate_secret(body.auth_mode, body.secret)
+    config = _validated_config(provider, body.config)
     info = await repo.create_connection(
         org_id=caller.org_id,
         provider=provider.id,
@@ -88,6 +123,7 @@ async def create_connection(
         secret=body.secret,
         account_label=body.account_label,
         scopes_granted=tuple(body.scopes_granted),
+        config=config,
         created_by=caller.user_id,
     )
     return _out(info)
@@ -98,6 +134,20 @@ async def get_connection(
     connection_id: uuid.UUID, caller: InternalCallerDep, repo: ConnectionRepoDep
 ) -> ConnectionOut:
     return _out(await repo.get_connection(caller.org_id, connection_id))
+
+
+@router.patch("/connections/{connection_id}")
+async def update_connection(
+    connection_id: uuid.UUID,
+    body: UpdateConnectionRequest,
+    caller: InternalCallerDep,
+    services: ServicesDep,
+    repo: ConnectionRepoDep,
+) -> ConnectionOut:
+    current = await repo.get_connection(caller.org_id, connection_id)
+    provider = services.registry.get(current.provider)
+    config = _validated_config(provider, body.config)
+    return _out(await repo.update_config(caller.org_id, connection_id, config))
 
 
 @router.post("/connections/{connection_id}/test")
@@ -117,6 +167,7 @@ async def test_connection(
         secret=loaded.secret,
         access_token=loaded.access_token,
         http=services.http,
+        config=loaded.info.config,
     )
     try:
         result = await provider.test_connection(ctx)
