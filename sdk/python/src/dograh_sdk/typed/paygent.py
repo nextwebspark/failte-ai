@@ -45,7 +45,7 @@ class Paygent(TypedNode):
 
     paygent_enabled: bool = True
     """
-    When false, Dograh skips all Paygent tracking for this call.
+    When false, Fallcha.ai skips all Paygent tracking for this call.
     """
 
     paygent_indicator: str = 'per-minute-call'

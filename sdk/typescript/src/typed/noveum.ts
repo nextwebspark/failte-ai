@@ -17,7 +17,7 @@ export interface Noveum {
      */
     name?: string;
     /**
-     * When false, Dograh skips exporting this call to Noveum.
+     * When false, Fallcha.ai skips exporting this call to Noveum.
      */
     noveum_enabled?: boolean;
     /**

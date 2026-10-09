@@ -41,7 +41,7 @@ class Noveum(TypedNode):
 
     noveum_enabled: bool = True
     """
-    When false, Dograh skips exporting this call to Noveum.
+    When false, Fallcha.ai skips exporting this call to Noveum.
     """
 
     noveum_environment: str = 'production'

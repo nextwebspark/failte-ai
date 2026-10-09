@@ -13,7 +13,7 @@ description: "Create and inspect agent runs via the API"
 
 ## Choose the right public run route
 
-Dograh exposes two public outbound agent run route families. They are **not**
+Fallcha.ai exposes two public outbound agent run route families. They are **not**
  interchangeable, even though both path parameters look like UUIDs.
 
 | Use this when | Production route | Test route | Identifier you pass |
@@ -23,11 +23,11 @@ Dograh exposes two public outbound agent run route families. They are **not**
 
 <Note>
 Do not pass a workflow UUID to `/public/agent/{uuid}` and do not pass a trigger UUID
-to `/public/agent/workflow/{workflow_uuid}`. Dograh treats these as different
+to `/public/agent/workflow/{workflow_uuid}`. Fallcha.ai treats these as different
 identifier types and the request will fail if you mix them up.
 </Note>
 
-Once Dograh resolves the target agent, both route families behave the same:
+Once Fallcha.ai resolves the target agent, both route families behave the same:
 
 - They accept the same request body
 - They return the same response shape
