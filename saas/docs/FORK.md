@@ -95,6 +95,10 @@ These upstream files we expect to modify. Keep this list short and current — a
 | `api/db/models.py` (`ExternalCredentialModel.credential_data`) | Column type `JSON` → fork-owned `EncryptedJSON` (`api/db/encrypted_json.py`, still a JSON column) so credentials are encrypted at rest; keep the type on conflict |
 | `api/app.py`, `api/tasks/arq.py` | One `verify_credential_encryption()` call at API lifespan / worker `on_startup` (fork-owned `api/services/credential_encryption.py`) |
 | `api/routes/credentials.py`, `api/db/webhook_credential_client.py` | Reserved `credential_data` keys rejected (400), generic 500 detail, and metadata-only (`include_data=False`, deferred column) reads for list/get |
+| `api/db/models.py` (last lines) | One import of fork-owned `api/db/skill_models.py` so the agent skill tables join `Base.metadata` (Alembic autogenerate, tests). Keep it at the bottom on conflict; without it autogenerate would propose dropping the skill tables |
+| `api/db/db_client.py` | `SkillClient` (fork-owned `api/db/skill_client.py`) added to the `DBClient` mixins |
+| `api/routes/main.py` (skills) | `include_router` for `skills_router` and `skill_library_router` (fork-owned `api/routes/skills.py`) |
+| `api/app.py` (skills) | One `sync_seed_library_on_startup()` call in the lifespan (non-fatal) syncing `api/skills_library/` seeds into the platform skill library |
 
 #### Google voice picker
 
