@@ -1224,10 +1224,11 @@ function VoicemailSection({
             const voicemailConfig: VoicemailDetectionConfiguration = {
                 ...answerSettings,
                 enabled,
-                use_workflow_llm: useWorkflowLlm,
-                provider: useWorkflowLlm ? undefined : provider,
-                model: useWorkflowLlm ? undefined : model,
-                api_key: useWorkflowLlm ? undefined : apiKey,
+                // Platform models classify with the agent's model; never send a key.
+                use_workflow_llm: platformModels || useWorkflowLlm,
+                provider: platformModels || useWorkflowLlm ? undefined : provider,
+                model: platformModels || useWorkflowLlm ? undefined : model,
+                api_key: platformModels || useWorkflowLlm ? undefined : apiKey,
                 // Persist only instructions that differ from the built-in text, so a
                 // workflow that never customized them keeps following platform updates
                 // instead of freezing today's copy. Clearing the box reverts to them.

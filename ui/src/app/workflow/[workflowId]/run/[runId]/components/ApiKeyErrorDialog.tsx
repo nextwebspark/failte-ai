@@ -29,7 +29,8 @@ export const ApiKeyErrorDialog = ({
     // On platform models customers hold no keys, so there is nothing for them
     // to fix in settings: a model-service failure is ours.
     const platformModels = Boolean(useAppConfig().config?.platformModelsEnabled);
-    const isPlatformServiceError = platformModels && !isQuotaError && !isServiceKeyOrgMismatch;
+    // Service-key mismatches concern upstream keys platform customers never hold.
+    const isPlatformServiceError = platformModels && !isQuotaError;
 
     const title = isQuotaError
         ? "Insufficient Credits"

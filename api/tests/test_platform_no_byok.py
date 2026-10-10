@@ -314,12 +314,16 @@ async def test_qa_node_spec_hides_its_own_llm_for_customers(make_client):
     assert "qa_system_prompt" in names
 
 
-@pytest.mark.asyncio
-async def test_qa_node_spec_keeps_its_own_llm_for_superusers(make_client):
-    async with make_client(PLATFORM, superuser=True) as (client, _workflow):
-        body = (await client.get("/api/v1/node-types/qa")).json()
+def test_qa_node_spec_hides_its_own_llm_from_mcp_clients(monkeypatch):
+    from api import constants
+    from api.services.workflow.node_specs import authoring_spec, get_spec
 
-    assert "qa_api_key" in {prop["name"] for prop in body["properties"]}
+    monkeypatch.setattr(constants, "PLATFORM_MODELS_ENABLED", True)
+    hidden = {p.name for p in authoring_spec(get_spec("qa")).properties}
+    assert "qa_api_key" not in hidden
+
+    monkeypatch.setattr(constants, "PLATFORM_MODELS_ENABLED", False)
+    assert "qa_api_key" in {p.name for p in authoring_spec(get_spec("qa")).properties}
 
 
 def test_voicemail_classifier_uses_the_agent_model_on_platform_servers(monkeypatch):

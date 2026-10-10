@@ -11,10 +11,10 @@ const HIGHLIGHTS = [
 /** Product highlights beside the auth form; the model claim follows the deployment. */
 export function AuthHighlights() {
     const { config } = useAppConfig();
-    const points = [
-        ...HIGHLIGHTS,
-        config?.platformModelsEnabled ? "Managed EU models, no API keys" : "BYOK - any model",
-    ];
+    // No model claim until the deployment is known, so neither one flashes.
+    const points = config
+        ? [...HIGHLIGHTS, config.platformModelsEnabled ? "Managed EU models, no API keys" : "BYOK - any model"]
+        : HIGHLIGHTS;
     return (
         <>
             {points.map((point) => (
