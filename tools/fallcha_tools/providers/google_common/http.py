@@ -26,6 +26,9 @@ DEFAULT_TIMEOUT = httpx.Timeout(4.0, connect=2.0)
 # Nothing was sent to Google yet, so retrying is always safe.
 SIGN_IN_TOO_SLOW = "signing in to Google took too long; please try again"
 
+# Repeated keys (e.g. ``ranges`` of values:batchGet) are given as a sequence.
+QueryParams = Mapping[str, str | Sequence[str]]
+
 _RATE_LIMIT_REASONS = frozenset(
     {"rateLimitExceeded", "userRateLimitExceeded", "quotaExceeded"}
 )
@@ -94,7 +97,7 @@ class GoogleHttp:
         scopes: Sequence[str],
         *,
         json: Mapping[str, Any] | None = None,
-        params: Mapping[str, str] | None = None,
+        params: QueryParams | None = None,
         budget: Budget | None = None,
     ) -> httpx.Response:
         response = await self._attempt(method, url, scopes, json, params, budget)
@@ -114,7 +117,7 @@ class GoogleHttp:
         url: str,
         scopes: Sequence[str],
         json: Mapping[str, Any] | None,
-        params: Mapping[str, str] | None,
+        params: QueryParams | None,
         budget: Budget | None,
     ) -> httpx.Response:
         token = await self._token(scopes, budget)
@@ -157,7 +160,7 @@ class GoogleHttp:
         resource: str,
         *,
         json: Mapping[str, Any] | None = None,
-        params: Mapping[str, str] | None = None,
+        params: QueryParams | None = None,
         missing_ok: bool = False,
         budget: Budget | None = None,
     ) -> dict[str, Any]:

@@ -40,6 +40,17 @@ def _out(info: ConnectionInfo) -> ConnectionOut:
     return ConnectionOut.model_validate(info)
 
 
+def _default_account_label(
+    auth_mode: AuthMode, secret: Mapping[str, JsonValue]
+) -> str | None:
+    """A service-account key names its account: label the connection with
+    it, so the workspace sees which account to share resources with."""
+    if auth_mode != AuthMode.SERVICE_ACCOUNT:
+        return None
+    email = secret.get("client_email")
+    return email.strip()[:320] or None if isinstance(email, str) else None
+
+
 def _validated_config(
     provider: Provider, raw: Mapping[str, JsonValue]
 ) -> dict[str, JsonValue]:
@@ -129,7 +140,8 @@ async def create_connection(
         provider=provider.id,
         auth_mode=body.auth_mode,
         secret=body.secret,
-        account_label=body.account_label,
+        account_label=body.account_label
+        or _default_account_label(body.auth_mode, body.secret),
         scopes_granted=tuple(body.scopes_granted),
         config=config,
         created_by=caller.user_id,

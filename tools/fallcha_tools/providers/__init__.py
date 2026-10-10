@@ -8,11 +8,15 @@ from fallcha_tools.providers.google_calendar import (
     GoogleCalendarProvider,
     booking_id_key_from,
 )
+from fallcha_tools.providers.google_sheets import GoogleSheetsProvider
 
 
 def build_registry(settings: Settings) -> ProviderRegistry:
     """The providers this deployment serves."""
     secret = settings.internal_secret.get_secret_value()
     return ProviderRegistry(
-        [GoogleCalendarProvider(booking_id_key=booking_id_key_from(secret))]
+        [
+            GoogleCalendarProvider(booking_id_key=booking_id_key_from(secret)),
+            GoogleSheetsProvider(),
+        ]
     )

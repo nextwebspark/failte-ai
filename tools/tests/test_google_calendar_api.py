@@ -100,7 +100,7 @@ async def connected_key(
 
 def test_build_registry_serves_google_calendar(settings: Settings) -> None:
     registry = build_registry(settings)
-    assert [p.id for p in registry] == [PROVIDER]
+    assert PROVIDER in [p.id for p in registry]
     provider = registry.get(PROVIDER)
     assert isinstance(provider, GoogleCalendarProvider)
     secret = settings.internal_secret.get_secret_value()
