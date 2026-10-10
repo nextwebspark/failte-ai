@@ -267,6 +267,9 @@ function GeneralSection({
     const [ttsCacheEnabled, setTtsCacheEnabled] = useState(
         workflowConfigurations.tts_cache_enabled,
     );
+    const [skillsEnabled, setSkillsEnabled] = useState(
+        workflowConfigurations.skills_enabled,
+    );
     const [callDispositionRows, setCallDispositionRows] = useState<CallDispositionRow[]>(
         () => createCallDispositionRows(workflowConfigurations.call_dispositions),
     );
@@ -319,6 +322,7 @@ function GeneralSection({
             turnStopStrategy !== workflowConfigurations.turn_stop_strategy ||
             contextCompactionEnabled !== workflowConfigurations.context_compaction_enabled ||
             ttsCacheEnabled !== workflowConfigurations.tts_cache_enabled ||
+            skillsEnabled !== workflowConfigurations.skills_enabled ||
             JSON.stringify(normalizedCallDispositions) !==
                 JSON.stringify(workflowConfigurations.call_dispositions) ||
             includeTranscriptEndTimestamps !==
@@ -328,7 +332,7 @@ function GeneralSection({
             JSON.stringify(externalPbxLeadHeaders) !==
             JSON.stringify(workflowConfigurations.external_pbx_lead_headers)
         );
-    }, [name, workflowName, ambientNoiseConfig, maxCallDuration, maxUserIdleTimeout, smartTurnStopSecs, turnStartStrategy, turnStartMinWords, turnStopStrategy, contextCompactionEnabled, ttsCacheEnabled, normalizedCallDispositions, includeTranscriptEndTimestamps, externalPbxFieldMappings, externalPbxLeadHeaders, workflowConfigurations]);
+    }, [name, workflowName, ambientNoiseConfig, maxCallDuration, maxUserIdleTimeout, smartTurnStopSecs, turnStartStrategy, turnStartMinWords, turnStopStrategy, contextCompactionEnabled, ttsCacheEnabled, skillsEnabled, normalizedCallDispositions, includeTranscriptEndTimestamps, externalPbxFieldMappings, externalPbxLeadHeaders, workflowConfigurations]);
 
     useUnsavedChanges("general", isDirty);
 
@@ -406,6 +410,7 @@ function GeneralSection({
                     turn_stop_strategy: turnStopStrategy,
                     context_compaction_enabled: contextCompactionEnabled,
                     tts_cache_enabled: ttsCacheEnabled,
+                    skills_enabled: skillsEnabled,
                     call_dispositions: normalizedCallDispositions,
                     transcript_configuration: {
                         ...(workflowConfigurations.transcript_configuration ?? {}),
@@ -736,6 +741,27 @@ function GeneralSection({
                             id="context-compaction-enabled"
                             checked={contextCompactionEnabled}
                             onCheckedChange={setContextCompactionEnabled}
+                        />
+                    </div>
+                </div>
+
+                <Separator />
+
+                <div className="space-y-4">
+                    <div>
+                        <h3 className="text-sm font-medium">Skills</h3>
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                            Skills add a short list to each step&apos;s prompt and two tools; turn off for latency-critical agents.
+                        </p>
+                    </div>
+                    <div className="flex items-center justify-between">
+                        <Label htmlFor="skills-enabled" className="text-sm">
+                            Enable Skills
+                        </Label>
+                        <Switch
+                            id="skills-enabled"
+                            checked={skillsEnabled}
+                            onCheckedChange={setSkillsEnabled}
                         />
                     </div>
                 </div>

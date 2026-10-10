@@ -59,9 +59,10 @@ export type FlowNodeData = {
     mcp_tool_filters?: Record<string, string[]>;
     // Documents - array of knowledge base document UUIDs that can be referenced by this node
     document_uuids?: string[];
-    // Agent skills: narrow the listed skills (empty = all) / inline skill bodies
-    skill_uuids?: string[];
-    preload_skill_uuids?: string[];
+    // Agent skills: which skills the step lists (unset = all, [] = none) and
+    // which it inlines into the prompt from the start.
+    skill_uuids?: string[] | null;
+    preload_skill_uuids?: string[] | null;
     [key: string]: unknown;
 }
 

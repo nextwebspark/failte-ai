@@ -49,6 +49,10 @@ MAX_ALLOWED_TOOLS = 50
 MAX_ACTIVE_SKILLS = 50
 SKILL_FILE_NAME = "SKILL.md"
 
+# Every line terminator a client might send (CRLF, a lone CR, Unicode line
+# and paragraph separators) is stored as "\n", so all readers of a body or
+# file agree on where its lines end.
+_LINE_BREAK = re.compile("\r\n?|[\u2028\u2029]")
 _XML_TAG = re.compile(r"</?[A-Za-z][\w:.-]*(\s[^<>]*)?/?>")
 _CONTROL = re.compile(r"[\x00-\x1f\x7f]")
 _TEXT_CONTROL = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f]")
@@ -67,6 +71,11 @@ class SkillLimits:
 
 
 DEFAULT_LIMITS = SkillLimits()
+
+
+def normalize_newlines(text: str) -> str:
+    """Multi-line text with every line terminator replaced by ``\\n``."""
+    return _LINE_BREAK.sub("\n", text)
 
 
 def validate_name(name: str) -> str:
@@ -98,7 +107,7 @@ def validate_description(description: str) -> str:
 
 
 def validate_body(body_md: str) -> str:
-    body = body_md.replace("\r\n", "\n").strip("\n")
+    body = normalize_newlines(body_md).strip("\n")
     if not body.strip():
         raise SkillValidationError("Skill body (SKILL.md instructions) is required")
     if len(body.encode("utf-8")) > BODY_MAX_BYTES:
@@ -163,7 +172,7 @@ def validate_files(files: Iterable[SkillFile]) -> tuple[SkillFile, ...]:
         if key in seen:
             raise SkillValidationError(f"Duplicate file path '{_preview(path)}'")
         seen.add(key)
-        content = item.content.replace("\r\n", "\n")
+        content = normalize_newlines(item.content)
         size = len(content.encode("utf-8"))
         if size > FILE_MAX_BYTES:
             raise SkillValidationError(

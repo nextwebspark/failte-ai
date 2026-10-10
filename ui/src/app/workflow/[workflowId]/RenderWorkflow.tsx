@@ -11,8 +11,8 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 
-import { createWorkflowDraftApiV1WorkflowWorkflowIdCreateDraftPost, getWorkflowVersionsApiV1WorkflowWorkflowIdVersionsGet, listDocumentsApiV1KnowledgeBaseDocumentsGet, listRecordingsApiV1WorkflowRecordingsGet, listToolsApiV1ToolsGet } from '@/client';
-import type { DocumentResponseSchema, RecordingResponseSchema, ToolResponse, WorkflowVersionResponse } from '@/client/types.gen';
+import { createWorkflowDraftApiV1WorkflowWorkflowIdCreateDraftPost, getWorkflowVersionsApiV1WorkflowWorkflowIdVersionsGet, listDocumentsApiV1KnowledgeBaseDocumentsGet, listRecordingsApiV1WorkflowRecordingsGet, listSkillsApiV1SkillsGet, listToolsApiV1ToolsGet } from '@/client';
+import type { DocumentResponseSchema, RecordingResponseSchema, SkillSummaryResponse, ToolResponse, WorkflowVersionResponse } from '@/client/types.gen';
 import { useNodeSpecs } from "@/components/flow/renderer";
 import { FlowEdge, FlowNode, NodeType } from "@/components/flow/types";
 import { Button } from '@/components/ui/button';
@@ -105,6 +105,26 @@ function RenderWorkflow({
     const versionsFetched = useRef(false);
     const [documents, setDocuments] = useState<DocumentResponseSchema[] | undefined>(undefined);
     const [tools, setTools] = useState<ToolResponse[] | undefined>(undefined);
+    const [skills, setSkills] = useState<SkillSummaryResponse[] | undefined>(undefined);
+    const [skillsError, setSkillsError] = useState(false);
+
+    // Workspace skills for the node pickers; refreshed when a node editor
+    // opens, since skills are edited on another page.
+    const refreshSkills = useCallback(async () => {
+        try {
+            const skillsResponse = await listSkillsApiV1SkillsGet();
+            if (skillsResponse.error || !skillsResponse.data) {
+                setSkills((current) => current ?? []);
+                setSkillsError(true);
+                return;
+            }
+            setSkills(skillsResponse.data.skills);
+            setSkillsError(false);
+        } catch {
+            setSkills((current) => current ?? []);
+            setSkillsError(true);
+        }
+    }, []);
     const [recordings, setRecordings] = useState<RecordingResponseSchema[]>([]);
     const [activeRuntimeNodeId, setActiveRuntimeNodeId] = useState<string | null>(null);
 
@@ -465,6 +485,11 @@ function RenderWorkflow({
         fetchData();
     }, [workflowId]);
 
+    // Separate from the fetch above so a failure there can't leave skills unloaded.
+    useEffect(() => {
+        void refreshSkills();
+    }, [workflowId, refreshSkills]);
+
     // Memoize defaultEdgeOptions to prevent unnecessary re-renders
     const defaultEdgeOptions = useMemo(() => ({
         animated: true,
@@ -565,6 +590,9 @@ function RenderWorkflow({
         tools,
         updateTool,
         recordings,
+        skills,
+        skillsError,
+        refreshSkills,
         readOnly: isViewingHistoricalVersion,
     }), [
         guardedSaveWorkflow,
@@ -572,6 +600,9 @@ function RenderWorkflow({
         tools,
         updateTool,
         recordings,
+        skills,
+        skillsError,
+        refreshSkills,
         isViewingHistoricalVersion,
     ]);
 

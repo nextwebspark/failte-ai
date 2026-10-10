@@ -30,6 +30,7 @@ vi.mock('@/client', () => ({
     listDocumentsApiV1KnowledgeBaseDocumentsGet: async () => ({ data: { documents: [] } }),
     listToolsApiV1ToolsGet: async () => ({ data: [] }),
     listRecordingsApiV1WorkflowRecordingsGet: async () => ({ data: { recordings: [] } }),
+    listSkillsApiV1SkillsGet: async () => ({ data: { skills: [] } }),
 }));
 vi.mock('./hooks/useWorkflowState', () => ({ useWorkflowState: () => ({ ...mocks.state, saveWorkflow: mocks.save }) }));
 vi.mock('@/components/flow/renderer', () => ({ useNodeSpecs: () => ({ specs: [] }) }));

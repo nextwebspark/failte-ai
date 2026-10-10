@@ -4,10 +4,12 @@ import type {
     DocumentResponseSchema,
     PropertySpec,
     RecordingResponseSchema,
+    SkillSummaryResponse,
     ToolResponse,
 } from "@/client/types.gen";
 import { DocumentSelector } from "@/components/flow/DocumentSelector";
 import { MentionTextarea } from "@/components/flow/MentionTextarea";
+import { PreloadSkillSelector, SkillScopeSelector } from "@/components/flow/SkillSelector";
 import { RecordingSelect } from "@/components/flow/TextOrAudioInput";
 import { ToolSelector } from "@/components/flow/ToolSelector";
 import { CredentialSelector, UrlInput } from "@/components/http";
@@ -27,6 +29,10 @@ export interface RendererContext {
     tools: ToolResponse[];
     documents: DocumentResponseSchema[];
     recordings: RecordingResponseSchema[];
+    /** Active workspace skills, for `skill_refs` pickers. */
+    skills?: SkillSummaryResponse[];
+    /** The skills list failed to load. */
+    skillsError?: boolean;
     /** Per-node MCP function allowlist (sibling of tool_uuids on node data). */
     mcpToolFilters?: Record<string, string[]>;
     /** Persist a new mcp_tool_filters object onto the node form values. */
@@ -118,9 +124,15 @@ export function PropertyInput({ spec, value, onChange, context }: PropertyInputP
         case "credential_ref":
             return <CredentialRefWidget spec={spec} value={value} onChange={onChange} />;
         case "skill_refs":
-            // Agent skills: the node picker ships with the skills UI. Until then
-            // the values persist untouched (saved through `...data`).
-            return null;
+            return (
+                <SkillRefsWidget
+                    spec={spec}
+                    value={value}
+                    onChange={onChange}
+                    skills={context.skills ?? []}
+                    loadError={context.skillsError ?? false}
+                />
+            );
         default: {
             const exhaustiveCheck: never = spec.type;
             return (
@@ -456,6 +468,42 @@ function DocumentRefsWidget({
             value={(value as string[] | undefined) ?? []}
             onChange={onChange}
             documents={documents}
+            label={spec.display_name}
+            description={spec.description}
+        />
+    );
+}
+
+function SkillRefsWidget({
+    spec,
+    value,
+    onChange,
+    skills,
+    loadError,
+}: WidgetProps & { skills: SkillSummaryResponse[]; loadError: boolean }) {
+    const current = Array.isArray(value)
+        ? value.filter((v): v is string => typeof v === "string")
+        : null;
+    // `skill_uuids` is tri-state (all / none / selected); preloads are a plain list.
+    if (spec.name === "skill_uuids") {
+        return (
+            <SkillScopeSelector
+                value={current}
+                onChange={onChange}
+                skills={skills}
+                loadError={loadError}
+                label={spec.display_name}
+                // The spec text explains null vs []; the radio options say it plainly.
+                description="Skills the agent can load in this step when a caller needs them."
+            />
+        );
+    }
+    return (
+        <PreloadSkillSelector
+            value={current}
+            onChange={onChange}
+            skills={skills}
+            loadError={loadError}
             label={spec.display_name}
             description={spec.description}
         />
