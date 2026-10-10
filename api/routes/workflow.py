@@ -30,9 +30,15 @@ from api.services.auth.depends import get_user, requires
 from api.services.auth.permissions import Permission
 from api.services.configuration.ai_model_configuration import (
     WORKFLOW_MODEL_CONFIGURATION_V2_OVERRIDE_KEY,
+    CustomerKeysNotAllowedError,
+    PlatformModelsDisabledError,
     check_for_masked_keys_in_ai_model_configuration_v2,
     compile_ai_model_configuration_v2,
+    compile_for_organization,
     convert_legacy_ai_model_configuration_to_v2,
+    ensure_configuration_allowed,
+    ensure_customer_keys_allowed,
+    ensure_platform_choices_allowed,
     get_resolved_ai_model_configuration,
     merge_ai_model_configuration_v2_secrets,
 )
@@ -41,8 +47,12 @@ from api.services.configuration.masking import (
     mask_workflow_configurations,
     mask_workflow_definition,
     merge_workflow_api_keys,
+    secrets_hidden_for,
 )
 from api.services.configuration.merge import merge_workflow_configuration_secrets
+from api.services.configuration.platform.policy import (
+    PlatformConfigurationLockedError,
+)
 from api.services.configuration.resolve import (
     enrich_overrides_with_api_keys,
     resolve_effective_config,
@@ -528,12 +538,14 @@ async def create_workflow(
         "name": workflow.name,
         "status": workflow.status,
         "created_at": workflow.created_at,
-        "workflow_definition": mask_workflow_definition(workflow_definition),
+        "workflow_definition": mask_workflow_definition(
+            workflow_definition, drop_secrets=secrets_hidden_for(user)
+        ),
         "current_definition_id": workflow.current_definition_id,
         "template_context_variables": workflow.template_context_variables,
         "call_disposition_codes": workflow.call_disposition_codes,
         "workflow_configurations": mask_workflow_configurations(
-            workflow.workflow_configurations
+            workflow.workflow_configurations, drop_secrets=secrets_hidden_for(user)
         ),
     }
 
@@ -631,12 +643,14 @@ async def create_workflow_from_template(
             "name": workflow.name,
             "status": workflow.status,
             "created_at": workflow.created_at,
-            "workflow_definition": mask_workflow_definition(workflow_def),
+            "workflow_definition": mask_workflow_definition(
+                workflow_def, drop_secrets=secrets_hidden_for(user)
+            ),
             "current_definition_id": workflow.current_definition_id,
             "template_context_variables": workflow.template_context_variables,
             "call_disposition_codes": workflow.call_disposition_codes,
             "workflow_configurations": mask_workflow_configurations(
-                workflow.workflow_configurations
+                workflow.workflow_configurations, drop_secrets=secrets_hidden_for(user)
             ),
         }
 
@@ -817,11 +831,15 @@ async def get_workflow(
         "name": workflow.name,
         "status": workflow.status,
         "created_at": workflow.created_at,
-        "workflow_definition": mask_workflow_definition(workflow_def),
+        "workflow_definition": mask_workflow_definition(
+            workflow_def, drop_secrets=secrets_hidden_for(user)
+        ),
         "current_definition_id": workflow.current_definition_id,
         "template_context_variables": template_vars,
         "call_disposition_codes": workflow.call_disposition_codes,
-        "workflow_configurations": mask_workflow_configurations(workflow_configs),
+        "workflow_configurations": mask_workflow_configurations(
+            workflow_configs, drop_secrets=secrets_hidden_for(user)
+        ),
         "version_number": active_def.version_number if active_def else None,
         "version_status": active_def.status if active_def else None,
         "workflow_uuid": workflow.workflow_uuid,
@@ -892,9 +910,11 @@ async def get_workflow_versions(
             status=v.status,
             created_at=v.created_at,
             published_at=v.published_at,
-            workflow_json=mask_workflow_definition(v.workflow_json),
+            workflow_json=mask_workflow_definition(
+                v.workflow_json, drop_secrets=secrets_hidden_for(user)
+            ),
             workflow_configurations=mask_workflow_configurations(
-                v.workflow_configurations
+                v.workflow_configurations, drop_secrets=secrets_hidden_for(user)
             ),
             template_context_variables=v.template_context_variables,
         )
@@ -987,9 +1007,11 @@ async def create_workflow_draft(
         status=draft.status,
         created_at=draft.created_at,
         published_at=draft.published_at,
-        workflow_json=mask_workflow_definition(draft.workflow_json),
+        workflow_json=mask_workflow_definition(
+            draft.workflow_json, drop_secrets=secrets_hidden_for(user)
+        ),
         workflow_configurations=mask_workflow_configurations(
-            draft.workflow_configurations
+            draft.workflow_configurations, drop_secrets=secrets_hidden_for(user)
         ),
         template_context_variables=draft.template_context_variables,
     )
@@ -1056,13 +1078,14 @@ async def update_workflow_status(
             "status": workflow.status,
             "created_at": workflow.created_at,
             "workflow_definition": mask_workflow_definition(
-                workflow.released_definition.workflow_json
+                workflow.released_definition.workflow_json,
+                drop_secrets=secrets_hidden_for(user),
             ),
             "current_definition_id": workflow.current_definition_id,
             "template_context_variables": workflow.template_context_variables,
             "call_disposition_codes": workflow.call_disposition_codes,
             "workflow_configurations": mask_workflow_configurations(
-                workflow.workflow_configurations
+                workflow.workflow_configurations, drop_secrets=secrets_hidden_for(user)
             ),
             "total_runs": run_count,
         }
@@ -1233,12 +1256,19 @@ async def update_workflow(
                         ]
                     )
                 )
+                ensure_configuration_allowed(incoming_v2_override, user=user)
                 existing_v2_override_config = (
                     OrganizationAIModelConfigurationV2.model_validate(
                         existing_v2_override
                     )
                     if existing_v2_override
                     else None
+                )
+                await ensure_platform_choices_allowed(
+                    incoming_v2_override,
+                    previous=existing_v2_override_config,
+                    organization_id=user.selected_organization_id,
+                    user=user,
                 )
                 v2_override = merge_ai_model_configuration_v2_secrets(
                     incoming_v2_override,
@@ -1253,12 +1283,20 @@ async def update_workflow(
                         resolved_config.organization_configuration,
                     )
                 check_for_masked_keys_in_ai_model_configuration_v2(v2_override)
-                effective = compile_ai_model_configuration_v2(v2_override)
+                effective = await compile_for_organization(
+                    v2_override, user.selected_organization_id
+                )
                 await UserConfigurationValidator().validate(
                     effective,
                     organization_id=user.selected_organization_id,
                     created_by=user.provider_id,
                 )
+            except (
+                CustomerKeysNotAllowedError,
+                PlatformModelsDisabledError,
+                PlatformConfigurationLockedError,
+            ) as e:
+                raise HTTPException(status_code=403, detail=str(e)) from e
             except (ValidationError, ValueError) as e:
                 raise HTTPException(status_code=422, detail=str(e))
             workflow_configurations = {
@@ -1270,6 +1308,10 @@ async def update_workflow(
             }
             workflow_configurations.pop("model_overrides", None)
         elif workflow_configurations and workflow_configurations.get("model_overrides"):
+            try:
+                ensure_customer_keys_allowed(user)
+            except CustomerKeysNotAllowedError as e:
+                raise HTTPException(status_code=403, detail=str(e)) from e
             existing_workflow = await db_client.get_workflow(
                 workflow_id, organization_id=user.selected_organization_id
             )
@@ -1290,6 +1332,16 @@ async def update_workflow(
             resolved_config = await get_resolved_ai_model_configuration(
                 organization_id=user.selected_organization_id,
             )
+            if resolved_config.effective.platform_managed:
+                # Converting a provider overlay would store a BYOK copy of the
+                # operator's platform services on the workflow.
+                raise HTTPException(
+                    status_code=422,
+                    detail=(
+                        "This organization uses platform models. Override the "
+                        "agent's models with model_configuration_v2_override."
+                    ),
+                )
             effective_config = resolved_config.effective
             try:
                 enriched_overrides = enrich_overrides_with_api_keys(
@@ -1382,11 +1434,15 @@ async def update_workflow(
             "name": workflow.name,
             "status": workflow.status,
             "created_at": workflow.created_at,
-            "workflow_definition": mask_workflow_definition(workflow_def),
+            "workflow_definition": mask_workflow_definition(
+                workflow_def, drop_secrets=secrets_hidden_for(user)
+            ),
             "current_definition_id": workflow.current_definition_id,
             "template_context_variables": template_vars,
             "call_disposition_codes": workflow.call_disposition_codes,
-            "workflow_configurations": mask_workflow_configurations(workflow_configs),
+            "workflow_configurations": mask_workflow_configurations(
+                workflow_configs, drop_secrets=secrets_hidden_for(user)
+            ),
             "version_number": active_def.version_number if active_def else None,
             "version_status": active_def.status if active_def else None,
         }
@@ -1431,13 +1487,14 @@ async def duplicate_workflow_endpoint(
             "status": workflow.status,
             "created_at": workflow.created_at,
             "workflow_definition": mask_workflow_definition(
-                workflow.released_definition.workflow_json
+                workflow.released_definition.workflow_json,
+                drop_secrets=secrets_hidden_for(user),
             ),
             "current_definition_id": workflow.current_definition_id,
             "template_context_variables": workflow.template_context_variables,
             "call_disposition_codes": workflow.call_disposition_codes,
             "workflow_configurations": mask_workflow_configurations(
-                workflow.workflow_configurations
+                workflow.workflow_configurations, drop_secrets=secrets_hidden_for(user)
             ),
         }
     except ValueError as e:
@@ -1773,12 +1830,14 @@ async def duplicate_workflow_template(
         "name": workflow.name,
         "status": workflow.status,
         "created_at": workflow.created_at,
-        "workflow_definition": mask_workflow_definition(workflow_def),
+        "workflow_definition": mask_workflow_definition(
+            workflow_def, drop_secrets=secrets_hidden_for(user)
+        ),
         "current_definition_id": workflow.current_definition_id,
         "template_context_variables": workflow.template_context_variables,
         "call_disposition_codes": workflow.call_disposition_codes,
         "workflow_configurations": mask_workflow_configurations(
-            workflow.workflow_configurations
+            workflow.workflow_configurations, drop_secrets=secrets_hidden_for(user)
         ),
     }
 

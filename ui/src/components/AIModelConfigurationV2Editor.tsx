@@ -6,6 +6,7 @@ import { useEffect, useMemo, useState } from "react";
 import type {
     ModelConfigurationMetricPrice,
     ModelConfigurationPricingResponse,
+    ModelConfigurationV2Defaults,
     OrganizationAiModelConfigurationV2,
 } from "@/client/types.gen";
 import {
@@ -59,6 +60,22 @@ export interface ModelConfigurationDefaultsV2 {
             embeddings: Record<string, ProviderSchema>;
             default_providers: ServiceConfigurationDefaults["default_providers"];
         };
+    };
+}
+
+/**
+ * The provider schemas this editor needs, or null when the server omits them
+ * (platform-models servers do for customers).
+ */
+export function legacyModelConfigurationDefaults(
+    defaults: ModelConfigurationV2Defaults | undefined,
+): ModelConfigurationDefaultsV2 | null {
+    if (!defaults?.dograh || !defaults.byok) return null;
+    // The API types these sections as open dicts (they are generated JSON
+    // schemas); this editor has always read them through its own types.
+    return {
+        dograh: defaults.dograh as unknown as DograhDefaults,
+        byok: defaults.byok as unknown as ModelConfigurationDefaultsV2["byok"],
     };
 }
 

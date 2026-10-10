@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { toast } from "sonner";
 
 import {
     getModelConfigurationV2ApiV1OrganizationsModelConfigurationsV2Get,
@@ -9,11 +10,18 @@ import {
 } from "@/client/sdk.gen";
 import type {
     ModelConfigurationPricingResponse,
+    ModelConfigurationV2Defaults,
     OrganizationAiModelConfigurationResponse,
     OrganizationAiModelConfigurationV2,
 } from "@/client/types.gen";
-import { AIModelConfigurationV2Editor, type ModelConfigurationDefaultsV2 } from "@/components/AIModelConfigurationV2Editor";
+import {
+    AIModelConfigurationV2Editor,
+    legacyModelConfigurationDefaults,
+} from "@/components/AIModelConfigurationV2Editor";
+import { PlatformModelEditor } from "@/components/platform/PlatformModelEditor";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useAppConfig } from "@/context/AppConfigContext";
+import { useOrgConfig } from "@/context/OrgConfigContext";
 import { useUserConfig } from "@/context/UserConfigContext";
 import { detailFromError } from "@/lib/apiError";
 import { useAuth } from "@/lib/auth";
@@ -22,9 +30,11 @@ import { fetchModelConfigurationPricing } from "@/lib/modelConfigurationPricing"
 export default function ModelConfigurationV2() {
     const auth = useAuth();
     const { refreshConfig } = useUserConfig();
+    const { config: appConfig } = useAppConfig();
+    const { can } = useOrgConfig();
     const hasFetched = useRef(false);
 
-    const [defaults, setDefaults] = useState<ModelConfigurationDefaultsV2 | null>(null);
+    const [defaults, setDefaults] = useState<ModelConfigurationV2Defaults | null>(null);
     const [response, setResponse] = useState<OrganizationAiModelConfigurationResponse | null>(null);
     const [pricing, setPricing] = useState<ModelConfigurationPricingResponse | null>(null);
     const [loading, setLoading] = useState(true);
@@ -55,7 +65,7 @@ export default function ModelConfigurationV2() {
                 return;
             }
 
-            const nextDefaults = defaultsResult.data as ModelConfigurationDefaultsV2;
+            const nextDefaults = defaultsResult.data;
             if (!nextDefaults || !configResult.data) {
                 setError("Failed to load model configuration");
                 setLoading(false);
@@ -70,6 +80,12 @@ export default function ModelConfigurationV2() {
         load();
 
     }, [auth.loading, auth.user]);
+
+    // The catalog reports whether this server runs platform models; the app
+    // flag covers the moment before it loads.
+    const platformModels = defaults?.platform.enabled ?? Boolean(appConfig?.platformModelsEnabled);
+    const legacyDefaults = legacyModelConfigurationDefaults(defaults ?? undefined);
+    const missingLegacyDefaults = Boolean(defaults) && !platformModels && !legacyDefaults;
 
     const saveConfiguration = async (configuration: OrganizationAiModelConfigurationV2) => {
         if (!defaults) return;
@@ -90,7 +106,11 @@ export default function ModelConfigurationV2() {
         setResponse(result.data);
         void fetchModelConfigurationPricing().then(setPricing);
         await refreshConfig();
-        setNotice("Model configuration saved");
+        if (platformModels) {
+            toast.success("Model settings saved");
+        } else {
+            setNotice("Model configuration saved");
+        }
     };
 
     if (loading) {
@@ -107,13 +127,22 @@ export default function ModelConfigurationV2() {
         <div className="w-full max-w-4xl mx-auto space-y-6">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                 <div>
-                    <h1 className="text-3xl font-bold">AI Models Configuration</h1>
+                    <h1 className="text-3xl font-bold">
+                        {platformModels ? "Models & voice" : "AI Models Configuration"}
+                    </h1>
                     <p className="mt-2 text-sm text-muted-foreground">
-                        Organization-scoped model settings.
+                        {platformModels
+                            ? "Choose how your agents listen, think and speak. Everything runs on Fallcha's managed models in the EU, no API keys needed."
+                            : "Organization-scoped model settings."}
                     </p>
                 </div>
             </div>
 
+            {missingLegacyDefaults && !error && (
+                <div className="rounded-md border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+                    Failed to load model configuration
+                </div>
+            )}
             {error && (
                 <div className="rounded-md border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive">
                     {error}
@@ -125,9 +154,17 @@ export default function ModelConfigurationV2() {
                 </div>
             )}
 
-            {defaults && response && (
+            {defaults && response && platformModels && (
+                <PlatformModelEditor
+                    catalog={defaults.platform}
+                    configuration={response.configuration}
+                    onSave={saveConfiguration}
+                    readOnly={!can("credentials:write")}
+                />
+            )}
+            {legacyDefaults && response && !platformModels && (
                 <AIModelConfigurationV2Editor
-                    defaults={defaults}
+                    defaults={legacyDefaults}
                     configuration={response.configuration}
                     effectiveConfiguration={response.effective_configuration}
                     pricing={pricing}

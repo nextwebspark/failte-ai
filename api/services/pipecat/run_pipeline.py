@@ -4,6 +4,7 @@ from typing import Optional
 from fastapi import HTTPException
 from loguru import logger
 
+from api import constants
 from api.db import db_client
 from api.enums import WorkflowRunMode
 from api.errors.failure import mark_failure_reported
@@ -152,7 +153,12 @@ def _create_answer_supervisor(
     if config is None:
         return None
     # Private inference uses its own service and fixed subtype instructions.
-    if voicemail_config.get("use_workflow_llm", True):
+    # Platform-models servers hold no customer keys, so the agent's model
+    # classifies there whatever the stored configuration says.
+    if (
+        voicemail_config.get("use_workflow_llm", True)
+        or constants.PLATFORM_MODELS_ENABLED
+    ):
         classifier_llm = create_llm_service(
             user_config,
             correlation_id=correlation_id,

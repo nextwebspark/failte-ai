@@ -179,6 +179,9 @@ class OrganizationConfigurationKey(Enum):
     ORGANIZATION_BOOTSTRAP = (
         "ORGANIZATION_BOOTSTRAP"  # Single-winner lease for post-signup provisioning
     )
+    PLATFORM_MODEL_POLICY = (
+        "PLATFORM_MODEL_POLICY"  # Superuser-set platform model access and region
+    )
 
 
 class UserConfigurationKey(Enum):

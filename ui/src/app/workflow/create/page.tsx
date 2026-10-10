@@ -18,11 +18,13 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
+import { useAppConfig } from "@/context/AppConfigContext";
 import { useAuth } from '@/lib/auth';
 import logger from '@/lib/logger';
 
 export default function CreateWorkflowPage() {
     const router = useRouter();
+    const platformModels = Boolean(useAppConfig().config?.platformModelsEnabled);
     const { user, getAccessToken } = useAuth();
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -200,6 +202,7 @@ export default function CreateWorkflowPage() {
                                 </p>
                                 <p>
                                     The voice bot is pre-set to communicate in English with an American accent.
+                                    {platformModels && " You can change its voice and language under Models & voice."}
                                 </p>
                                 <p>
                                     Next steps would be to test the voice bot in the editor, and then modify it to suit your use case.

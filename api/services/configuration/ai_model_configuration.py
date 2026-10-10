@@ -9,9 +9,10 @@ from fastapi import HTTPException
 from loguru import logger
 from pydantic import ValidationError
 
+from api import constants
 from api.constants import MPS_API_URL
 from api.db import db_client
-from api.db.models import OrganizationConfigurationModel
+from api.db.models import OrganizationConfigurationModel, UserModel
 from api.enums import OrganizationConfigurationKey
 from api.schemas.ai_model_configuration import (
     DOGRAH_DEFAULT_LANGUAGE,
@@ -29,14 +30,124 @@ from api.schemas.ai_model_configuration import (
 from api.services.configuration.masking import (
     SERVICE_SECRET_FIELDS,
     contains_masked_key,
-    mask_key,
+    hide_secret,
     resolve_masked_api_keys,
+)
+from api.services.configuration.platform.policy import (
+    InvalidPlatformPolicyError,
+    PlatformConfigurationLockedError,
+    ensure_choices_offered,
+    get_platform_model_policy,
+    platform_settings_for_organization,
+)
+from api.services.configuration.platform.settings import (
+    PlatformModelsNotConfiguredError,
 )
 from api.services.configuration.registry import ServiceProviders
 from api.services.configuration.resolve import resolve_effective_config
 
 AIModelConfigurationSource = Literal["organization_v2", "legacy_user_v1", "empty"]
 WORKFLOW_MODEL_CONFIGURATION_V2_OVERRIDE_KEY = "model_configuration_v2_override"
+
+
+class PlatformModelsDisabledError(ValueError):
+    """A platform configuration was submitted while platform models are off."""
+
+
+def ensure_platform_mode_allowed(
+    configuration: OrganizationAIModelConfigurationV2,
+) -> None:
+    """Reject platform configurations unless this server offers them.
+
+    Platform services run on the operator's Vertex project, so a server that
+    has not opted in must not let anyone select them.
+    """
+    if configuration.mode == "platform" and not constants.PLATFORM_MODELS_ENABLED:
+        raise PlatformModelsDisabledError(
+            "Platform models are not enabled on this server"
+        )
+
+
+async def compile_for_organization(
+    configuration: OrganizationAIModelConfigurationV2,
+    organization_id: int | None,
+) -> EffectiveAIModelConfiguration:
+    """Compile *configuration*, placing platform services per the org's policy."""
+    if configuration.mode != "platform":
+        return compile_ai_model_configuration_v2(configuration)
+    return compile_ai_model_configuration_v2(
+        configuration,
+        platform_settings=await platform_settings_for_organization(organization_id),
+    )
+
+
+async def ensure_platform_choices_allowed(
+    configuration: OrganizationAIModelConfigurationV2,
+    *,
+    previous: OrganizationAIModelConfigurationV2 | None,
+    organization_id: int | None,
+    user: UserModel,
+) -> None:
+    """Raise unless the organization's policy lets *user* save these choices.
+
+    Only changes are checked: re-saving *previous* unchanged (the UI sends the
+    whole workflow configuration on every save) is always allowed. Superusers
+    may save anything in the catalog, including choices the policy doesn't
+    offer and changes to a locked organization.
+    """
+    if configuration.platform is None or user.is_superuser:
+        return
+    previous_platform = previous.platform if previous is not None else None
+    if configuration.platform == previous_platform:
+        return
+    try:
+        policy = await get_platform_model_policy(organization_id)
+    except InvalidPlatformPolicyError as exc:
+        raise PlatformConfigurationLockedError(
+            "Model settings for this workspace are managed by Fallcha.ai support"
+        ) from exc
+    if policy.locked:
+        raise PlatformConfigurationLockedError(
+            "Model settings for this workspace are managed by Fallcha.ai support"
+        )
+    ensure_choices_offered(configuration.platform, policy, previous=previous_platform)
+
+
+class CustomerKeysNotAllowedError(ValueError):
+    """A customer tried to use their own keys or providers on platform models."""
+
+
+def customer_keys_allowed(user: UserModel) -> bool:
+    """Whether *user* may configure providers and keys (BYOK, Dograh-managed).
+
+    Platform-models servers run every customer on the operator's account, so
+    only superusers may store other configurations there.
+    """
+    return not constants.PLATFORM_MODELS_ENABLED or bool(user.is_superuser)
+
+
+def ensure_customer_keys_allowed(user: UserModel) -> None:
+    """Raise unless *user* may configure providers and keys."""
+    if not customer_keys_allowed(user):
+        raise CustomerKeysNotAllowedError(
+            "This workspace runs on platform models; choose models, voices and "
+            "languages from the catalog instead of providers and keys"
+        )
+
+
+def ensure_configuration_allowed(
+    configuration: OrganizationAIModelConfigurationV2, *, user: UserModel
+) -> None:
+    """Raise unless *user* may store *configuration* on this server."""
+    ensure_platform_mode_allowed(configuration)
+    if (
+        configuration.mode != "platform"
+        # Sections beside a platform choice would store keys that go live if
+        # the mode is ever switched.
+        or configuration.dograh is not None
+        or configuration.byok is not None
+    ):
+        ensure_customer_keys_allowed(user)
 
 
 @dataclass
@@ -66,7 +177,18 @@ async def get_resolved_ai_model_configuration(
         organization_id,
     )
     if organization_configuration is not None:
-        effective = compile_ai_model_configuration_v2(organization_configuration)
+        try:
+            effective = await compile_for_organization(
+                organization_configuration, organization_id
+            )
+        except PlatformModelsNotConfiguredError:
+            # Keep the app usable (settings, agents, history) when the server
+            # lost its platform settings; calls fail at start instead.
+            logger.error(
+                f"Organization {organization_id} uses platform models, but this "
+                "server has no PLATFORM_VERTEX_PROJECT_ID"
+            )
+            effective = EffectiveAIModelConfiguration(platform_managed=True)
         if organization_configuration_row is not None:
             effective.last_validated_at = (
                 organization_configuration_row.last_validated_at
@@ -94,17 +216,29 @@ async def get_effective_ai_model_configuration_for_workflow(
     )
     try:
         if v2_override:
-            return compile_ai_model_configuration_v2(
-                OrganizationAIModelConfigurationV2.model_validate(v2_override)
+            return await compile_for_organization(
+                OrganizationAIModelConfigurationV2.model_validate(v2_override),
+                organization_id,
             )
 
         resolved_config = await get_resolved_ai_model_configuration(
             organization_id=organization_id,
         )
-        return resolve_effective_config(
-            resolved_config.effective,
-            workflow_configurations.get("model_overrides"),
-        )
+        model_overrides = workflow_configurations.get("model_overrides")
+        if model_overrides and resolved_config.effective.platform_managed:
+            # A provider overlay would run arbitrary models or locations on the
+            # operator's project; platform agents override via v2 only.
+            logger.warning(
+                f"Ignoring legacy model_overrides on platform organization "
+                f"{organization_id}"
+            )
+            model_overrides = None
+        return resolve_effective_config(resolved_config.effective, model_overrides)
+    except PlatformModelsNotConfiguredError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="Platform models are not configured on this server.",
+        ) from exc
     except ValidationError as exc:
         # Stored overrides may become incompatible with updated global settings
         # or schemas. Do not include Pydantic's input data, which contains secrets.
@@ -122,6 +256,14 @@ async def get_organization_ai_model_configuration_v2(
 ) -> OrganizationAIModelConfigurationV2 | None:
     row = await _get_organization_ai_model_configuration_v2_row(organization_id)
     return _parse_organization_ai_model_configuration_v2(row, organization_id)
+
+
+async def has_organization_ai_model_configuration_v2(
+    organization_id: int | None,
+) -> bool:
+    """Whether a v2 configuration is stored, even one that no longer parses."""
+    row = await _get_organization_ai_model_configuration_v2_row(organization_id)
+    return row is not None and bool(row.value)
 
 
 async def update_organization_ai_model_configuration_last_validated_at(
@@ -285,11 +427,13 @@ def check_for_masked_keys_in_ai_model_configuration_v2(
 
 def mask_ai_model_configuration_v2(
     configuration: OrganizationAIModelConfigurationV2 | None,
+    *,
+    drop_secrets: bool = False,
 ) -> dict | None:
     if configuration is None:
         return None
     data = configuration.model_dump(mode="json", exclude_none=True)
-    _mask_secret_fields(data)
+    _mask_secret_fields(data, drop_secrets)
     return data
 
 
@@ -410,22 +554,16 @@ def _raise_if_masked_secret(value):
             _raise_if_masked_secret(item)
 
 
-def _mask_secret_fields(value):
+def _mask_secret_fields(value, drop_secrets: bool):
     if isinstance(value, dict):
         for key, nested in list(value.items()):
             if key in SERVICE_SECRET_FIELDS and nested:
-                value[key] = _mask_secret_value(nested)
+                hide_secret(value, key, drop=drop_secrets)
             else:
-                _mask_secret_fields(nested)
+                _mask_secret_fields(nested, drop_secrets)
     elif isinstance(value, list):
         for item in value:
-            _mask_secret_fields(item)
-
-
-def _mask_secret_value(value):
-    if isinstance(value, list):
-        return [mask_key(item) for item in value]
-    return mask_key(value)
+            _mask_secret_fields(item, drop_secrets)
 
 
 def _convert_any_dograh_legacy_configuration(

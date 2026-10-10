@@ -1,19 +1,73 @@
 ---
-title: "Model Configurations"
-description: "Configure the speech-to-speech, Fallcha.ai-managed, or bring-your-own-key models your Fallcha.ai agents use."
+title: "Models & voice"
+description: "Choose how your Fallcha.ai agents listen, think and speak: speech-to-speech or a transcriber, language model and voice, all managed in the EU with no API keys."
 ---
 
-## How model configurations work
+## How it works
 
-Model Configurations define the default AI model setup for your organization. Agents use this configuration unless you set agent-level model overrides in the agent settings.
+**Models & voice** sets how every agent in your workspace talks. Fallcha.ai runs the models for you on Google Cloud in the EU, so there are no provider accounts or API keys to manage.
 
-To configure models, open **Models** in your Fallcha.ai dashboard:
+Open **Models & voice** in your Fallcha.ai dashboard (`/model-configurations`). You make two choices:
 
-- **Hosted:** `https://app.fallcha.ai/model-configurations`
-- **Self-hosted:** `http://localhost:3010/model-configurations`
-- **Local development:** `http://localhost:3000/model-configurations`
+1. **How should your agent talk?** Speech-to-Speech, or Speech-to-Text → LLM → Text-to-Speech.
+2. **The models, voice and language** for that choice.
 
-The Models page has three top-level sections:
+Click **Save**. New calls use the new settings straight away; you don't need to republish your agents.
+
+<Note>
+Settings apply to the whole workspace. A single agent can use different ones, see [Per-agent voice and model](#per-agent-voice-and-model).
+</Note>
+
+## Speech-to-Speech (recommended)
+
+One model listens and speaks directly, with Gemini Live. Conversations feel the most natural and have the lowest latency.
+
+| Setting | What it controls |
+|---------|------------------|
+| **Model** | The speech-to-speech model. Gemini Live 3.8 (recommended) follows the agent's instructions and tools most reliably. Gemini Live 2.5 Flash can act on a half-heard request, so test booking and confirmation steps before using it. |
+| **Language** | The language the agent speaks and listens in. |
+| **Voice** | One of the 30 Gemini Live voices. Narrow them by tone (calm and professional, warm and friendly, energetic and upbeat, distinctive), by female or male, to the starred voices recommended for calls, or by name. Press play on any voice to hear a sample before choosing. |
+
+Choose this for most agents.
+
+A speech-to-speech model speaks the agent's greeting itself, so it may phrase it slightly differently from the text. It also ignores the spoken line set on a tool and the instant acknowledgement from a fast router: if your prompt relies on either (for example "an acknowledgement has already been spoken"), test the agent in this mode before switching.
+
+## Speech-to-Text → LLM → Text-to-Speech
+
+Three separate steps: a transcriber turns the caller's speech into text, a language model writes the reply, and a voice speaks it. Choose this when you need a specific voice or language that speech-to-speech doesn't offer, or finer control over each step.
+
+| Step | Settings |
+|------|----------|
+| **Speech-to-text** | Model (Chirp 3, Latest long or Latest short) and the caller's language. Each model lists the languages it supports. |
+| **Language model** | Gemini model and temperature. Lower temperatures give more predictable replies; leave it blank for the model default. |
+| **Text-to-speech** | Model (Chirp 3 HD), voice language and accent, speaking speed and voice. English comes in American, Australian, British and Indian accents; Spanish, French and Dutch have two each. The voices are shown and filtered the same way as for Speech-to-Speech, with a sample on each in the chosen accent. |
+
+When you change the voice language or accent, Fallcha.ai keeps the same voice where it exists. Otherwise pick a voice for that language. Choosing an accent also sets the speech-to-text language to it when that language matches, so callers with that accent are understood better.
+
+## Per-agent voice and model
+
+An agent can use a different mode, voice or model than the workspace:
+
+1. Open the agent and go to **Model and voice**.
+2. Turn on **Use a different voice or model for this agent**.
+3. Choose the settings and click **Save agent voice & model**. Test calls from the agent screen use the saved settings straight away; until you save, they use the previous ones.
+4. Publish the agent so phone calls use them too.
+
+When you switch an agent between the two modes, the language and voice carry over where the other mode offers them.
+
+An agent set up before managed models shows **This agent still runs** and its older setup. It keeps running that setup until you save a managed voice and model for it or switch it to the workspace default.
+
+To go back to the workspace settings, turn the switch off and click **Use workspace default**, then publish.
+
+<Note>
+If Fallcha.ai support manages your workspace's model settings (for example on an Enterprise plan), the page is read-only. Contact support to change them.
+</Note>
+
+## Self-hosted deployments with your own providers
+
+Self-hosted deployments that don't run platform-managed models configure providers and keys instead.
+
+On those deployments the Models page has three top-level sections:
 
 | Section | When to use it |
 |---------|----------------|
@@ -83,7 +137,7 @@ The BYOK section has nested tabs:
 
 Provider-specific fields appear only when they apply. For example, OpenAI-compatible LLM providers can expose a **Base URL** field, ElevenLabs voices can expose a voice ID, and transcribers can expose language options.
 
-## Agent-level model overrides
+### Agent-level model overrides (own providers)
 
 You can override the organization model configuration for an individual agent. This is useful when different agents need different models, voices, transcribers, or providers.
 

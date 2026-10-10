@@ -8,7 +8,12 @@ from fastapi import HTTPException
 
 from api.mcp_server.auth import authenticate_mcp_request
 from api.mcp_server.tracing import traced_tool
-from api.services.workflow.node_specs import SPEC_VERSION, all_specs, get_spec
+from api.services.workflow.node_specs import (
+    SPEC_VERSION,
+    all_specs,
+    authoring_spec,
+    get_spec,
+)
 
 
 @traced_tool
@@ -53,4 +58,4 @@ async def get_node_type(name: str) -> dict:
     spec = get_spec(name)
     if spec is None:
         raise HTTPException(status_code=404, detail=f"Unknown node type: {name!r}")
-    return spec.to_mcp_dict()
+    return authoring_spec(spec).to_mcp_dict()

@@ -60,7 +60,30 @@ def all_specs() -> list[NodeSpec]:
     return [specs[name] for name in sorted(specs)]
 
 
+# The QA node's own-LLM fields hold a provider and key. Platform-models
+# servers run every model on the operator's account and ignore them, so they
+# are not offered there.
+_MODEL_PROVIDER_FIELDS = {
+    "qa": frozenset(
+        {"qa_use_workflow_llm", "qa_provider", "qa_model", "qa_api_key", "qa_endpoint"}
+    ),
+}
+
+
+def authoring_spec(spec: NodeSpec) -> NodeSpec:
+    """*spec* as offered to workflow authors (UI, SDK, MCP) on this server."""
+    from api import constants
+
+    hidden = _MODEL_PROVIDER_FIELDS.get(spec.name)
+    if not hidden or not constants.PLATFORM_MODELS_ENABLED:
+        return spec
+    return spec.model_copy(
+        update={"properties": [p for p in spec.properties if p.name not in hidden]}
+    )
+
+
 __all__ = [
+    "authoring_spec",
     "SPEC_VERSION",
     "REGISTRY",
     "DisplayOptions",
