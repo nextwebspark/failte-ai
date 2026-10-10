@@ -138,16 +138,16 @@ The flow, driven by the Fallcha API (`/api/v1/integrations/...`):
 | Step | Tools service |
 |---|---|
 | Save the client | `POST /internal/provider-apps {provider, client_id, client_secret}` (secret encrypted, never returned; `GET` lists, `DELETE` removes one unless a live connection uses it) |
-| Start | `POST /internal/oauth/start {provider, provider_app_id, optional_scopes?}` returns `authorization_url`, `redirect_uri` and a `browser_nonce`, which the Fallcha API keeps out of its response body and sets as an HttpOnly cookie |
+| Start | `POST /internal/oauth/start {provider, provider_app_id, optional_scopes?}` returns `authorization_url`, `redirect_uri` and a `browser_nonce`, which the Fallcha API returns to the starting user only; the UI keeps it in that tab's `sessionStorage` |
 | Consent | The browser goes to Google, then to `/oauth/{provider}/callback` |
 | Callback | Creates a **pending** `oauth2` connection, then redirects to `TOOLS_UI_RETURN_URL?integration_result=success&connection_id=...&provider=...`, or `...=error&reason=<code>` |
-| Confirm + activate | `POST /api/v1/integrations/connections/{id}/activate` forwards the cookie's nonce to `POST /internal/connections/{id}/confirm`, which makes it active only for the same org, the user who started the flow, and a matching nonce; the API then issues a key and installs the MCP tool |
+| Confirm + activate | `POST /api/v1/integrations/connections/{id}/activate` forwards the `browser_nonce` from its body to `POST /internal/connections/{id}/confirm`, which makes it active only for the same org, the user who started the flow, and a matching nonce; the API then issues a key and installs the MCP tool |
 
 A pending connection is not listed, cannot get a key and cannot be used.
 If nobody confirms it within 10 minutes it is revoked and its tokens are
 wiped. This stops consent phishing (a start link sent to someone
 else): the callback, and so the new connection's id, lands in the victim's
-browser, which has neither the sender's session nor the nonce cookie, so
+browser, which has neither the sender's session nor the sender's nonce, so
 it cannot confirm the connection; and the sender, who has both, never
 learns the id, since pending connections are not listed.
 

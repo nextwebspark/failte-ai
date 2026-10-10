@@ -882,7 +882,7 @@ CLIENT_SECRET = "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k"
 APP_ID = uuid.uuid4()
 AUTHORIZE_URL = "https://accounts.google.com/o/oauth2/v2/auth?state=s&client_id=c"
 REDIRECT_URI = "https://tools.example.com/oauth/google-calendar/callback"
-BROWSER_NONCE = "browser-nonce-must-only-be-in-a-cookie"
+BROWSER_NONCE = "browser-nonce-must-never-be-logged"
 
 
 def _provider_app(**overrides: Any) -> dict[str, Any]:
@@ -1031,32 +1031,29 @@ async def test_provider_app_delete_conflict_is_mapped(client_as, oauth_api):
 
 
 async def test_oauth_start_is_proxied(client_as, org, oauth_api):
-    response = await client_as(OrgRole.DEVELOPER).post(
-        "/api/v1/integrations/oauth/start",
-        json={
-            "provider": PROVIDER,
-            "provider_app_id": str(APP_ID),
-            "optional_scopes": [
-                "https://www.googleapis.com/auth/spreadsheets.readonly"
-            ],
-        },
-    )
+    log_lines: list[str] = []
+    sink = logger.add(log_lines.append, level="DEBUG")
+    try:
+        response = await client_as(OrgRole.DEVELOPER).post(
+            "/api/v1/integrations/oauth/start",
+            json={
+                "provider": PROVIDER,
+                "provider_app_id": str(APP_ID),
+                "optional_scopes": [
+                    "https://www.googleapis.com/auth/spreadsheets.readonly"
+                ],
+            },
+        )
+    finally:
+        logger.remove(sink)
     assert response.status_code == 200, response.text
     body = response.json()
     assert body["authorization_url"] == AUTHORIZE_URL
     assert body["redirect_uri"] == REDIRECT_URI
-    # The nonce goes to the browser as an HttpOnly cookie only.
-    assert "browser_nonce" not in body and BROWSER_NONCE not in response.text
-    cookie = response.headers["set-cookie"]
-    assert cookie.startswith(f"fallcha_oauth_nonce={BROWSER_NONCE};")
-    for attribute in (
-        "HttpOnly",
-        "Secure",
-        "SameSite=lax",
-        "Path=/api/v1/integrations",
-        "Max-Age=600",
-    ):
-        assert attribute in cookie, cookie
+    # The nonce goes back to the starting user in the body, never a cookie or log.
+    assert body["browser_nonce"] == BROWSER_NONCE
+    assert "set-cookie" not in response.headers
+    assert BROWSER_NONCE not in "\n".join(log_lines)
     request = oauth_api["start"].calls.last.request
     assert request.headers["X-Org-Id"] == str(org.id)
     assert request.headers["X-User-Id"] == str(org.members[OrgRole.DEVELOPER].id)
@@ -1229,19 +1226,20 @@ async def test_activate_losing_a_race_returns_the_winner(client_as, org, oauth_a
 # -- review follow-ups: browser-bound confirmation and orphaned keys ----------------
 
 
-async def test_activate_confirms_a_pending_connection_with_the_cookie(
+async def test_activate_confirms_a_pending_connection_with_the_nonce(
     client_as, org, oauth_api
 ):
     connection_id = uuid.uuid4()
     _serve_connection(oauth_api, connection_id, status="pending")
-    client = client_as(OrgRole.DEVELOPER)
-    client.cookies.set("fallcha_oauth_nonce", BROWSER_NONCE)
+    log_lines: list[str] = []
+    sink = logger.add(log_lines.append, level="DEBUG")
     try:
-        response = await client.post(
-            f"/api/v1/integrations/connections/{connection_id}/activate"
+        response = await client_as(OrgRole.DEVELOPER).post(
+            f"/api/v1/integrations/connections/{connection_id}/activate",
+            json={"browser_nonce": BROWSER_NONCE},
         )
     finally:
-        client.cookies.clear()
+        logger.remove(sink)
     assert response.status_code == 200, response.text
     assert response.json()["status"] == "active"
     confirm = oauth_api["confirm"].calls.last.request
@@ -1249,18 +1247,18 @@ async def test_activate_confirms_a_pending_connection_with_the_cookie(
     assert confirm.headers["X-User-Id"] == str(org.members[OrgRole.DEVELOPER].id)
     assert confirm.headers["X-Org-Id"] == str(org.id)
     assert oauth_api["issue"].called
-    # The one-time cookie is cleared.
-    assert 'fallcha_oauth_nonce=""' in response.headers["set-cookie"]
     assert BROWSER_NONCE not in response.text
+    assert BROWSER_NONCE not in "\n".join(log_lines)
 
 
-async def test_activate_pending_without_the_cookie_is_refused(
-    client_as, org, oauth_api
+@pytest.mark.parametrize("body", [None, {}, {"browser_nonce": None}])
+async def test_activate_pending_without_the_nonce_is_refused(
+    client_as, org, oauth_api, body
 ):
     connection_id = uuid.uuid4()
     _serve_connection(oauth_api, connection_id, status="pending")
     response = await client_as(OrgRole.ADMIN).post(
-        f"/api/v1/integrations/connections/{connection_id}/activate"
+        f"/api/v1/integrations/connections/{connection_id}/activate", json=body
     )
     assert response.status_code == 409
     assert "browser where you started" in response.json()["detail"]
@@ -1277,17 +1275,38 @@ async def test_activate_pending_with_a_refused_nonce(client_as, org, oauth_api):
             409, json={"detail": "only the user who connected it can confirm it"}
         )
     )
-    client = client_as(OrgRole.ADMIN)
-    client.cookies.set("fallcha_oauth_nonce", "someone-elses-nonce")
-    try:
-        response = await client.post(
-            f"/api/v1/integrations/connections/{connection_id}/activate"
-        )
-    finally:
-        client.cookies.clear()
+    response = await client_as(OrgRole.ADMIN).post(
+        f"/api/v1/integrations/connections/{connection_id}/activate",
+        json={"browser_nonce": "someone-elses-nonce"},
+    )
     assert response.status_code == 409
     assert not oauth_api["issue"].called
     assert await _integration_credentials(org.id, active_only=False) == []
+
+
+async def test_activate_rejects_an_oversized_nonce_without_echoing_it(
+    client_as, org, oauth_api
+):
+    connection_id = uuid.uuid4()
+    _serve_connection(oauth_api, connection_id, status="pending")
+    response = await client_as(OrgRole.ADMIN).post(
+        f"/api/v1/integrations/connections/{connection_id}/activate",
+        json={"browser_nonce": "x" * 129},
+    )
+    assert response.status_code == 422
+    assert "x" * 129 not in response.text
+    assert not oauth_api["confirm"].called
+
+
+async def test_activate_active_connection_ignores_the_nonce(client_as, org, oauth_api):
+    connection_id = uuid.uuid4()
+    _serve_connection(oauth_api, connection_id)
+    response = await client_as(OrgRole.ADMIN).post(
+        f"/api/v1/integrations/connections/{connection_id}/activate",
+        json={"browser_nonce": BROWSER_NONCE},
+    )
+    assert response.status_code == 200, response.text
+    assert not oauth_api["confirm"].called
 
 
 async def test_activate_recovers_from_orphaned_keys(client_as, org, oauth_api):

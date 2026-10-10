@@ -155,6 +155,13 @@ class ActivateIntegrationRequest(BaseModel):
         max_length=255,
         description="Name of the created tool. Defaults to the provider title.",
     )
+    browser_nonce: SecretStr | None = Field(
+        default=None,
+        min_length=1,
+        max_length=128,
+        description="The ``browser_nonce`` from ``oauth/start``. Required to "
+        "confirm a just-authorized (pending) OAuth connection; ignored otherwise.",
+    )
 
 
 # -- OAuth2 (bring-your-own client) -------------------------------------------
@@ -208,3 +215,8 @@ class StartOAuthResponse(BaseModel):
         "OAuth client."
     )
     expires_at: datetime = Field(description="The flow must finish before this.")
+    browser_nonce: str = Field(
+        description="Keep in this browser only (e.g. sessionStorage) and send it "
+        "to ``activate`` when the provider redirects back. It binds the new "
+        "connection to the user and browser that started the flow."
+    )

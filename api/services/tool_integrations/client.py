@@ -10,6 +10,7 @@ from __future__ import annotations
 import uuid
 from collections.abc import Mapping
 from dataclasses import dataclass
+from datetime import datetime
 from typing import TypeVar
 
 import httpx
@@ -30,7 +31,6 @@ from api.schemas.integrations import (
     ProviderAppListResponse,
     ProviderAppResponse,
     StartOAuthRequest,
-    StartOAuthResponse,
 )
 
 DEFAULT_TIMEOUT = httpx.Timeout(10.0, connect=3.0)
@@ -84,10 +84,13 @@ class ConnectionTestResult(BaseModel):
     connection: IntegrationConnection
 
 
-class StartedOAuth(StartOAuthResponse):
-    """``oauth/start`` as the tools service answers it: the browser nonce is
-    for the user's cookie only, never for a response body or a log."""
+class StartedOAuth(BaseModel):
+    """``oauth/start`` as the tools service answers it. The browser nonce goes
+    to the starting user's browser only, never into a log."""
 
+    authorization_url: str
+    redirect_uri: str
+    expires_at: datetime
     browser_nonce: SecretStr
 
 

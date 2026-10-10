@@ -247,7 +247,7 @@ class IntegrationService:
         already-activated connection is returned as it is.
 
         A PENDING (just-authorized OAuth) connection is first confirmed with
-        ``browser_nonce``, the cookie set by :meth:`start_oauth` in the
+        ``browser_nonce``, returned by :meth:`start_oauth` to the
         starting user's browser; the tools service also checks the user.
         """
         # Org-scoped by the tools service: another org's connection is a 404.
@@ -384,8 +384,8 @@ class IntegrationService:
     async def start_oauth(
         self, actor: Actor, request: StartOAuthRequest
     ) -> StartedOAuth:
-        """The caller must hand ``browser_nonce`` to the user's browser only
-        (as an HttpOnly cookie) and return the rest."""
+        """``browser_nonce`` is for the starting user's browser only: return
+        it to that user and never log it."""
         return await self._tools.start_oauth(actor.caller, request)
 
     async def update_config(
