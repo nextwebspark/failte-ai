@@ -363,6 +363,22 @@ export type AppendTextChatMessageRequest = {
 };
 
 /**
+ * ApplyLibraryUpdateRequest
+ */
+export type ApplyLibraryUpdateRequest = {
+    /**
+     * Strategy
+     */
+    strategy?: 'replace';
+    /**
+     * Force
+     *
+     * Replace the content even though the copy was edited.
+     */
+    force?: boolean;
+};
+
+/**
  * AssemblyAI
  */
 export type AssemblyAisttConfiguration = {
@@ -1014,6 +1030,18 @@ export type BillingLedgerResponse = {
  * Commercial plan an organization is billed under.
  */
 export type BillingPlan = 'payg' | 'done_for_you' | 'enterprise';
+
+/**
+ * Body_import_skill_api_v1_skills_import_post
+ */
+export type BodyImportSkillApiV1SkillsImportPost = {
+    /**
+     * File
+     *
+     * A skill .zip or a SKILL.md
+     */
+    file: Blob | File;
+};
 
 /**
  * Body_transcribe_audio_api_v1_workflow_recordings_transcribe_post
@@ -1740,6 +1768,18 @@ export type ContextDestinationRule = {
 };
 
 /**
+ * CopyLibrarySkillRequest
+ */
+export type CopyLibrarySkillRequest = {
+    /**
+     * Name
+     *
+     * Name for the workspace copy; defaults to the library name.
+     */
+    name?: string | null;
+};
+
+/**
  * CreateAPIKeyRequest
  */
 export type CreateApiKeyRequest = {
@@ -1858,6 +1898,39 @@ export type CreateInvitationRequest = {
 };
 
 /**
+ * CreateLibrarySkillRequest
+ */
+export type CreateLibrarySkillRequest = {
+    /**
+     * Name
+     *
+     * Kebab-case, 1-64 characters, e.g. 'returns-policy'.
+     */
+    name: string;
+    /**
+     * Description
+     *
+     * 1-1024 characters; tells the agent when to load the skill.
+     */
+    description: string;
+    /**
+     * Body Md
+     *
+     * SKILL.md instructions (markdown, no frontmatter).
+     */
+    body_md: string;
+    /**
+     * Files
+     */
+    files?: Array<SkillFileBody>;
+    frontmatter_extra?: SkillFrontmatterExtra | null;
+    /**
+     * Category
+     */
+    category?: string | null;
+};
+
+/**
  * CreateOrganizationRequest
  */
 export type CreateOrganizationRequest = {
@@ -1923,6 +1996,41 @@ export type CreateServiceKeyResponse = {
      * Expires At
      */
     expires_at?: string | null;
+};
+
+/**
+ * CreateSkillRequest
+ */
+export type CreateSkillRequest = {
+    /**
+     * Name
+     *
+     * Kebab-case, 1-64 characters, e.g. 'returns-policy'.
+     */
+    name: string;
+    /**
+     * Description
+     *
+     * 1-1024 characters; tells the agent when to load the skill.
+     */
+    description: string;
+    /**
+     * Body Md
+     *
+     * SKILL.md instructions (markdown, no frontmatter).
+     */
+    body_md: string;
+    /**
+     * Files
+     */
+    files?: Array<SkillFileBody>;
+    frontmatter_extra?: SkillFrontmatterExtra | null;
+    /**
+     * Allowed Tool Uuids
+     *
+     * Tools this skill may use once loaded; null for no restriction.
+     */
+    allowed_tool_uuids?: Array<string> | null;
 };
 
 /**
@@ -4587,6 +4695,145 @@ export type LastCampaignSettingsResponse = {
 };
 
 /**
+ * LibraryDiffResponse
+ */
+export type LibraryDiffResponse = {
+    /**
+     * Skill Uuid
+     */
+    skill_uuid: string;
+    /**
+     * Library Skill Uuid
+     */
+    library_skill_uuid: string;
+    /**
+     * Source Version
+     */
+    source_version: number | null;
+    /**
+     * Latest Version
+     */
+    latest_version: number;
+    library_status: LibrarySkillStatus;
+    /**
+     * Is Modified
+     */
+    is_modified: boolean;
+    /**
+     * Update Available
+     */
+    update_available: boolean;
+    /**
+     * Diff
+     *
+     * Unified diff from the workspace copy (a/) to the latest library version (b/); empty when they match.
+     */
+    diff: string;
+};
+
+/**
+ * LibrarySkillListResponse
+ */
+export type LibrarySkillListResponse = {
+    /**
+     * Skills
+     */
+    skills: Array<LibrarySkillSummaryResponse>;
+};
+
+/**
+ * LibrarySkillResponse
+ */
+export type LibrarySkillResponse = {
+    /**
+     * Library Skill Uuid
+     */
+    library_skill_uuid: string;
+    /**
+     * Name
+     */
+    name: string;
+    /**
+     * Description
+     */
+    description: string;
+    /**
+     * Version
+     */
+    version: number;
+    status: LibrarySkillStatus;
+    /**
+     * Category
+     */
+    category: string | null;
+    /**
+     * Is Seeded
+     */
+    is_seeded: boolean;
+    /**
+     * Created At
+     */
+    created_at: string;
+    /**
+     * Updated At
+     */
+    updated_at: string;
+    /**
+     * Body Md
+     */
+    body_md: string;
+    /**
+     * Files
+     */
+    files: Array<SkillFileBody>;
+    frontmatter_extra: SkillFrontmatterExtra;
+};
+
+/**
+ * LibrarySkillStatus
+ */
+export type LibrarySkillStatus = 'draft' | 'published' | 'deprecated';
+
+/**
+ * LibrarySkillSummaryResponse
+ */
+export type LibrarySkillSummaryResponse = {
+    /**
+     * Library Skill Uuid
+     */
+    library_skill_uuid: string;
+    /**
+     * Name
+     */
+    name: string;
+    /**
+     * Description
+     */
+    description: string;
+    /**
+     * Version
+     */
+    version: number;
+    status: LibrarySkillStatus;
+    /**
+     * Category
+     */
+    category: string | null;
+    /**
+     * Is Seeded
+     */
+    is_seeded: boolean;
+    /**
+     * Created At
+     */
+    created_at: string;
+    /**
+     * Updated At
+     */
+    updated_at: string;
+};
+
+/**
  * LMNT
  *
  * Stored LMNT configurations remain readable after the provider's retirement.
@@ -6740,6 +6987,28 @@ export type ScheduleConfigResponse = {
 };
 
 /**
+ * SeedSyncResponse
+ */
+export type SeedSyncResponse = {
+    /**
+     * Created
+     */
+    created: Array<string>;
+    /**
+     * Updated
+     */
+    updated: Array<string>;
+    /**
+     * Unchanged
+     */
+    unchanged: Array<string>;
+    /**
+     * Skipped
+     */
+    skipped: Array<string>;
+};
+
+/**
  * ServiceKeyResponse
  */
 export type ServiceKeyResponse = {
@@ -6848,6 +7117,234 @@ export type SignupResponse = {
      * Verification Required
      */
     verification_required: boolean;
+};
+
+/**
+ * SkillFileBody
+ */
+export type SkillFileBody = {
+    /**
+     * Path
+     */
+    path: string;
+    /**
+     * Content
+     */
+    content: string;
+};
+
+/**
+ * SkillFrontmatterExtra
+ *
+ * Optional Agent Skills frontmatter fields, kept for export.
+ */
+export type SkillFrontmatterExtra = {
+    /**
+     * License
+     */
+    license?: string | null;
+    /**
+     * Compatibility
+     */
+    compatibility?: string | null;
+    /**
+     * Metadata
+     */
+    metadata?: {
+        [key: string]: string;
+    };
+};
+
+/**
+ * SkillImportResponse
+ */
+export type SkillImportResponse = {
+    /**
+     * Skill Uuid
+     */
+    skill_uuid: string;
+    /**
+     * Name
+     */
+    name: string;
+    /**
+     * Description
+     */
+    description: string;
+    status: SkillStatus;
+    /**
+     * Allowed Tool Uuids
+     */
+    allowed_tool_uuids: Array<string> | null;
+    /**
+     * Source Library Uuid
+     */
+    source_library_uuid: string | null;
+    /**
+     * Source Version
+     */
+    source_version: number | null;
+    /**
+     * Is Modified
+     */
+    is_modified: boolean;
+    /**
+     * Update Available
+     */
+    update_available: boolean;
+    /**
+     * Created By
+     */
+    created_by: number | null;
+    /**
+     * Created At
+     */
+    created_at: string;
+    /**
+     * Updated At
+     */
+    updated_at: string;
+    /**
+     * Body Md
+     */
+    body_md: string;
+    /**
+     * Files
+     */
+    files: Array<SkillFileBody>;
+    frontmatter_extra: SkillFrontmatterExtra;
+    /**
+     * Warnings
+     *
+     * Non-fatal notes, e.g. allowed-tools entries that were dropped because they are not tools of this workspace.
+     */
+    warnings?: Array<string>;
+};
+
+/**
+ * SkillListResponse
+ */
+export type SkillListResponse = {
+    /**
+     * Skills
+     */
+    skills: Array<SkillSummaryResponse>;
+};
+
+/**
+ * SkillResponse
+ */
+export type SkillResponse = {
+    /**
+     * Skill Uuid
+     */
+    skill_uuid: string;
+    /**
+     * Name
+     */
+    name: string;
+    /**
+     * Description
+     */
+    description: string;
+    status: SkillStatus;
+    /**
+     * Allowed Tool Uuids
+     */
+    allowed_tool_uuids: Array<string> | null;
+    /**
+     * Source Library Uuid
+     */
+    source_library_uuid: string | null;
+    /**
+     * Source Version
+     */
+    source_version: number | null;
+    /**
+     * Is Modified
+     */
+    is_modified: boolean;
+    /**
+     * Update Available
+     */
+    update_available: boolean;
+    /**
+     * Created By
+     */
+    created_by: number | null;
+    /**
+     * Created At
+     */
+    created_at: string;
+    /**
+     * Updated At
+     */
+    updated_at: string;
+    /**
+     * Body Md
+     */
+    body_md: string;
+    /**
+     * Files
+     */
+    files: Array<SkillFileBody>;
+    frontmatter_extra: SkillFrontmatterExtra;
+};
+
+/**
+ * SkillStatus
+ */
+export type SkillStatus = 'active' | 'archived';
+
+/**
+ * SkillSummaryResponse
+ */
+export type SkillSummaryResponse = {
+    /**
+     * Skill Uuid
+     */
+    skill_uuid: string;
+    /**
+     * Name
+     */
+    name: string;
+    /**
+     * Description
+     */
+    description: string;
+    status: SkillStatus;
+    /**
+     * Allowed Tool Uuids
+     */
+    allowed_tool_uuids: Array<string> | null;
+    /**
+     * Source Library Uuid
+     */
+    source_library_uuid: string | null;
+    /**
+     * Source Version
+     */
+    source_version: number | null;
+    /**
+     * Is Modified
+     */
+    is_modified: boolean;
+    /**
+     * Update Available
+     */
+    update_available: boolean;
+    /**
+     * Created By
+     */
+    created_by: number | null;
+    /**
+     * Created At
+     */
+    created_at: string;
+    /**
+     * Updated At
+     */
+    updated_at: string;
 };
 
 /**
@@ -8564,10 +9061,70 @@ export type UpdateIntegrationConfigRequest = {
 };
 
 /**
+ * UpdateLibrarySkillRequest
+ *
+ * Partial update; ``files`` replaces the whole file set. Editing the
+ * content of a published skill publishes a new version.
+ */
+export type UpdateLibrarySkillRequest = {
+    /**
+     * Name
+     */
+    name?: string | null;
+    /**
+     * Description
+     */
+    description?: string | null;
+    /**
+     * Body Md
+     */
+    body_md?: string | null;
+    /**
+     * Files
+     */
+    files?: Array<SkillFileBody> | null;
+    frontmatter_extra?: SkillFrontmatterExtra | null;
+    /**
+     * Category
+     */
+    category?: string | null;
+};
+
+/**
  * UpdateMemberRoleRequest
  */
 export type UpdateMemberRoleRequest = {
     role: OrgRole;
+};
+
+/**
+ * UpdateSkillRequest
+ *
+ * Partial update. ``files`` replaces the whole file set;
+ * ``allowed_tool_uuids: null`` clears the restriction.
+ */
+export type UpdateSkillRequest = {
+    /**
+     * Name
+     */
+    name?: string | null;
+    /**
+     * Description
+     */
+    description?: string | null;
+    /**
+     * Body Md
+     */
+    body_md?: string | null;
+    /**
+     * Files
+     */
+    files?: Array<SkillFileBody> | null;
+    frontmatter_extra?: SkillFrontmatterExtra | null;
+    /**
+     * Allowed Tool Uuids
+     */
+    allowed_tool_uuids?: Array<string> | null;
 };
 
 /**
@@ -19269,6 +19826,776 @@ export type CreateBillingPortalApiV1BillingPortalPostResponses = {
 };
 
 export type CreateBillingPortalApiV1BillingPortalPostResponse = CreateBillingPortalApiV1BillingPortalPostResponses[keyof CreateBillingPortalApiV1BillingPortalPostResponses];
+
+export type ListSkillsApiV1SkillsGetData = {
+    body?: never;
+    headers?: {
+        /**
+         * Authorization
+         */
+        authorization?: string | null;
+        /**
+         * X-Api-Key
+         */
+        'X-API-Key'?: string | null;
+    };
+    path?: never;
+    query?: {
+        /**
+         * Include Archived
+         */
+        include_archived?: boolean;
+    };
+    url: '/api/v1/skills';
+};
+
+export type ListSkillsApiV1SkillsGetErrors = {
+    /**
+     * Not found
+     */
+    404: unknown;
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ListSkillsApiV1SkillsGetError = ListSkillsApiV1SkillsGetErrors[keyof ListSkillsApiV1SkillsGetErrors];
+
+export type ListSkillsApiV1SkillsGetResponses = {
+    /**
+     * Successful Response
+     */
+    200: SkillListResponse;
+};
+
+export type ListSkillsApiV1SkillsGetResponse = ListSkillsApiV1SkillsGetResponses[keyof ListSkillsApiV1SkillsGetResponses];
+
+export type CreateSkillApiV1SkillsPostData = {
+    body: CreateSkillRequest;
+    headers?: {
+        /**
+         * Authorization
+         */
+        authorization?: string | null;
+        /**
+         * X-Api-Key
+         */
+        'X-API-Key'?: string | null;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/v1/skills';
+};
+
+export type CreateSkillApiV1SkillsPostErrors = {
+    /**
+     * Not found
+     */
+    404: unknown;
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type CreateSkillApiV1SkillsPostError = CreateSkillApiV1SkillsPostErrors[keyof CreateSkillApiV1SkillsPostErrors];
+
+export type CreateSkillApiV1SkillsPostResponses = {
+    /**
+     * Successful Response
+     */
+    201: SkillResponse;
+};
+
+export type CreateSkillApiV1SkillsPostResponse = CreateSkillApiV1SkillsPostResponses[keyof CreateSkillApiV1SkillsPostResponses];
+
+export type ImportSkillApiV1SkillsImportPostData = {
+    body: BodyImportSkillApiV1SkillsImportPost;
+    headers?: {
+        /**
+         * Authorization
+         */
+        authorization?: string | null;
+        /**
+         * X-Api-Key
+         */
+        'X-API-Key'?: string | null;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/v1/skills/import';
+};
+
+export type ImportSkillApiV1SkillsImportPostErrors = {
+    /**
+     * Not found
+     */
+    404: unknown;
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ImportSkillApiV1SkillsImportPostError = ImportSkillApiV1SkillsImportPostErrors[keyof ImportSkillApiV1SkillsImportPostErrors];
+
+export type ImportSkillApiV1SkillsImportPostResponses = {
+    /**
+     * Successful Response
+     */
+    201: SkillImportResponse;
+};
+
+export type ImportSkillApiV1SkillsImportPostResponse = ImportSkillApiV1SkillsImportPostResponses[keyof ImportSkillApiV1SkillsImportPostResponses];
+
+export type CopyLibrarySkillApiV1SkillsFromLibraryLibrarySkillUuidPostData = {
+    /**
+     * Request
+     */
+    body?: CopyLibrarySkillRequest | null;
+    headers?: {
+        /**
+         * Authorization
+         */
+        authorization?: string | null;
+        /**
+         * X-Api-Key
+         */
+        'X-API-Key'?: string | null;
+    };
+    path: {
+        /**
+         * Library Skill Uuid
+         */
+        library_skill_uuid: string;
+    };
+    query?: never;
+    url: '/api/v1/skills/from-library/{library_skill_uuid}';
+};
+
+export type CopyLibrarySkillApiV1SkillsFromLibraryLibrarySkillUuidPostErrors = {
+    /**
+     * Not found
+     */
+    404: unknown;
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type CopyLibrarySkillApiV1SkillsFromLibraryLibrarySkillUuidPostError = CopyLibrarySkillApiV1SkillsFromLibraryLibrarySkillUuidPostErrors[keyof CopyLibrarySkillApiV1SkillsFromLibraryLibrarySkillUuidPostErrors];
+
+export type CopyLibrarySkillApiV1SkillsFromLibraryLibrarySkillUuidPostResponses = {
+    /**
+     * Successful Response
+     */
+    201: SkillResponse;
+};
+
+export type CopyLibrarySkillApiV1SkillsFromLibraryLibrarySkillUuidPostResponse = CopyLibrarySkillApiV1SkillsFromLibraryLibrarySkillUuidPostResponses[keyof CopyLibrarySkillApiV1SkillsFromLibraryLibrarySkillUuidPostResponses];
+
+export type ArchiveSkillApiV1SkillsSkillUuidDeleteData = {
+    body?: never;
+    headers?: {
+        /**
+         * Authorization
+         */
+        authorization?: string | null;
+        /**
+         * X-Api-Key
+         */
+        'X-API-Key'?: string | null;
+    };
+    path: {
+        /**
+         * Skill Uuid
+         */
+        skill_uuid: string;
+    };
+    query?: never;
+    url: '/api/v1/skills/{skill_uuid}';
+};
+
+export type ArchiveSkillApiV1SkillsSkillUuidDeleteErrors = {
+    /**
+     * Not found
+     */
+    404: unknown;
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ArchiveSkillApiV1SkillsSkillUuidDeleteError = ArchiveSkillApiV1SkillsSkillUuidDeleteErrors[keyof ArchiveSkillApiV1SkillsSkillUuidDeleteErrors];
+
+export type ArchiveSkillApiV1SkillsSkillUuidDeleteResponses = {
+    /**
+     * Successful Response
+     */
+    204: void;
+};
+
+export type ArchiveSkillApiV1SkillsSkillUuidDeleteResponse = ArchiveSkillApiV1SkillsSkillUuidDeleteResponses[keyof ArchiveSkillApiV1SkillsSkillUuidDeleteResponses];
+
+export type GetSkillApiV1SkillsSkillUuidGetData = {
+    body?: never;
+    headers?: {
+        /**
+         * Authorization
+         */
+        authorization?: string | null;
+        /**
+         * X-Api-Key
+         */
+        'X-API-Key'?: string | null;
+    };
+    path: {
+        /**
+         * Skill Uuid
+         */
+        skill_uuid: string;
+    };
+    query?: never;
+    url: '/api/v1/skills/{skill_uuid}';
+};
+
+export type GetSkillApiV1SkillsSkillUuidGetErrors = {
+    /**
+     * Not found
+     */
+    404: unknown;
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type GetSkillApiV1SkillsSkillUuidGetError = GetSkillApiV1SkillsSkillUuidGetErrors[keyof GetSkillApiV1SkillsSkillUuidGetErrors];
+
+export type GetSkillApiV1SkillsSkillUuidGetResponses = {
+    /**
+     * Successful Response
+     */
+    200: SkillResponse;
+};
+
+export type GetSkillApiV1SkillsSkillUuidGetResponse = GetSkillApiV1SkillsSkillUuidGetResponses[keyof GetSkillApiV1SkillsSkillUuidGetResponses];
+
+export type UpdateSkillApiV1SkillsSkillUuidPatchData = {
+    body: UpdateSkillRequest;
+    headers?: {
+        /**
+         * Authorization
+         */
+        authorization?: string | null;
+        /**
+         * X-Api-Key
+         */
+        'X-API-Key'?: string | null;
+    };
+    path: {
+        /**
+         * Skill Uuid
+         */
+        skill_uuid: string;
+    };
+    query?: never;
+    url: '/api/v1/skills/{skill_uuid}';
+};
+
+export type UpdateSkillApiV1SkillsSkillUuidPatchErrors = {
+    /**
+     * Not found
+     */
+    404: unknown;
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type UpdateSkillApiV1SkillsSkillUuidPatchError = UpdateSkillApiV1SkillsSkillUuidPatchErrors[keyof UpdateSkillApiV1SkillsSkillUuidPatchErrors];
+
+export type UpdateSkillApiV1SkillsSkillUuidPatchResponses = {
+    /**
+     * Successful Response
+     */
+    200: SkillResponse;
+};
+
+export type UpdateSkillApiV1SkillsSkillUuidPatchResponse = UpdateSkillApiV1SkillsSkillUuidPatchResponses[keyof UpdateSkillApiV1SkillsSkillUuidPatchResponses];
+
+export type GetLibraryDiffApiV1SkillsSkillUuidLibraryDiffGetData = {
+    body?: never;
+    headers?: {
+        /**
+         * Authorization
+         */
+        authorization?: string | null;
+        /**
+         * X-Api-Key
+         */
+        'X-API-Key'?: string | null;
+    };
+    path: {
+        /**
+         * Skill Uuid
+         */
+        skill_uuid: string;
+    };
+    query?: never;
+    url: '/api/v1/skills/{skill_uuid}/library-diff';
+};
+
+export type GetLibraryDiffApiV1SkillsSkillUuidLibraryDiffGetErrors = {
+    /**
+     * Not found
+     */
+    404: unknown;
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type GetLibraryDiffApiV1SkillsSkillUuidLibraryDiffGetError = GetLibraryDiffApiV1SkillsSkillUuidLibraryDiffGetErrors[keyof GetLibraryDiffApiV1SkillsSkillUuidLibraryDiffGetErrors];
+
+export type GetLibraryDiffApiV1SkillsSkillUuidLibraryDiffGetResponses = {
+    /**
+     * Successful Response
+     */
+    200: LibraryDiffResponse;
+};
+
+export type GetLibraryDiffApiV1SkillsSkillUuidLibraryDiffGetResponse = GetLibraryDiffApiV1SkillsSkillUuidLibraryDiffGetResponses[keyof GetLibraryDiffApiV1SkillsSkillUuidLibraryDiffGetResponses];
+
+export type ApplyLibraryUpdateApiV1SkillsSkillUuidApplyLibraryUpdatePostData = {
+    body: ApplyLibraryUpdateRequest;
+    headers?: {
+        /**
+         * Authorization
+         */
+        authorization?: string | null;
+        /**
+         * X-Api-Key
+         */
+        'X-API-Key'?: string | null;
+    };
+    path: {
+        /**
+         * Skill Uuid
+         */
+        skill_uuid: string;
+    };
+    query?: never;
+    url: '/api/v1/skills/{skill_uuid}/apply-library-update';
+};
+
+export type ApplyLibraryUpdateApiV1SkillsSkillUuidApplyLibraryUpdatePostErrors = {
+    /**
+     * Not found
+     */
+    404: unknown;
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ApplyLibraryUpdateApiV1SkillsSkillUuidApplyLibraryUpdatePostError = ApplyLibraryUpdateApiV1SkillsSkillUuidApplyLibraryUpdatePostErrors[keyof ApplyLibraryUpdateApiV1SkillsSkillUuidApplyLibraryUpdatePostErrors];
+
+export type ApplyLibraryUpdateApiV1SkillsSkillUuidApplyLibraryUpdatePostResponses = {
+    /**
+     * Successful Response
+     */
+    200: SkillResponse;
+};
+
+export type ApplyLibraryUpdateApiV1SkillsSkillUuidApplyLibraryUpdatePostResponse = ApplyLibraryUpdateApiV1SkillsSkillUuidApplyLibraryUpdatePostResponses[keyof ApplyLibraryUpdateApiV1SkillsSkillUuidApplyLibraryUpdatePostResponses];
+
+export type ExportSkillApiV1SkillsSkillUuidExportGetData = {
+    body?: never;
+    headers?: {
+        /**
+         * Authorization
+         */
+        authorization?: string | null;
+        /**
+         * X-Api-Key
+         */
+        'X-API-Key'?: string | null;
+    };
+    path: {
+        /**
+         * Skill Uuid
+         */
+        skill_uuid: string;
+    };
+    query?: never;
+    url: '/api/v1/skills/{skill_uuid}/export';
+};
+
+export type ExportSkillApiV1SkillsSkillUuidExportGetErrors = {
+    /**
+     * Not found
+     */
+    404: unknown;
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ExportSkillApiV1SkillsSkillUuidExportGetError = ExportSkillApiV1SkillsSkillUuidExportGetErrors[keyof ExportSkillApiV1SkillsSkillUuidExportGetErrors];
+
+export type ExportSkillApiV1SkillsSkillUuidExportGetResponses = {
+    /**
+     * Successful Response
+     */
+    200: Blob | File;
+};
+
+export type ExportSkillApiV1SkillsSkillUuidExportGetResponse = ExportSkillApiV1SkillsSkillUuidExportGetResponses[keyof ExportSkillApiV1SkillsSkillUuidExportGetResponses];
+
+export type ListLibrarySkillsApiV1SkillLibraryGetData = {
+    body?: never;
+    headers?: {
+        /**
+         * Authorization
+         */
+        authorization?: string | null;
+        /**
+         * X-Api-Key
+         */
+        'X-API-Key'?: string | null;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/v1/skill-library';
+};
+
+export type ListLibrarySkillsApiV1SkillLibraryGetErrors = {
+    /**
+     * Not found
+     */
+    404: unknown;
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ListLibrarySkillsApiV1SkillLibraryGetError = ListLibrarySkillsApiV1SkillLibraryGetErrors[keyof ListLibrarySkillsApiV1SkillLibraryGetErrors];
+
+export type ListLibrarySkillsApiV1SkillLibraryGetResponses = {
+    /**
+     * Successful Response
+     */
+    200: LibrarySkillListResponse;
+};
+
+export type ListLibrarySkillsApiV1SkillLibraryGetResponse = ListLibrarySkillsApiV1SkillLibraryGetResponses[keyof ListLibrarySkillsApiV1SkillLibraryGetResponses];
+
+export type CreateLibrarySkillApiV1SkillLibraryPostData = {
+    body: CreateLibrarySkillRequest;
+    headers?: {
+        /**
+         * Authorization
+         */
+        authorization?: string | null;
+        /**
+         * X-Api-Key
+         */
+        'X-API-Key'?: string | null;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/v1/skill-library';
+};
+
+export type CreateLibrarySkillApiV1SkillLibraryPostErrors = {
+    /**
+     * Not found
+     */
+    404: unknown;
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type CreateLibrarySkillApiV1SkillLibraryPostError = CreateLibrarySkillApiV1SkillLibraryPostErrors[keyof CreateLibrarySkillApiV1SkillLibraryPostErrors];
+
+export type CreateLibrarySkillApiV1SkillLibraryPostResponses = {
+    /**
+     * Successful Response
+     */
+    201: LibrarySkillResponse;
+};
+
+export type CreateLibrarySkillApiV1SkillLibraryPostResponse = CreateLibrarySkillApiV1SkillLibraryPostResponses[keyof CreateLibrarySkillApiV1SkillLibraryPostResponses];
+
+export type DeleteLibrarySkillApiV1SkillLibraryLibrarySkillUuidDeleteData = {
+    body?: never;
+    headers?: {
+        /**
+         * Authorization
+         */
+        authorization?: string | null;
+        /**
+         * X-Api-Key
+         */
+        'X-API-Key'?: string | null;
+    };
+    path: {
+        /**
+         * Library Skill Uuid
+         */
+        library_skill_uuid: string;
+    };
+    query?: never;
+    url: '/api/v1/skill-library/{library_skill_uuid}';
+};
+
+export type DeleteLibrarySkillApiV1SkillLibraryLibrarySkillUuidDeleteErrors = {
+    /**
+     * Not found
+     */
+    404: unknown;
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type DeleteLibrarySkillApiV1SkillLibraryLibrarySkillUuidDeleteError = DeleteLibrarySkillApiV1SkillLibraryLibrarySkillUuidDeleteErrors[keyof DeleteLibrarySkillApiV1SkillLibraryLibrarySkillUuidDeleteErrors];
+
+export type DeleteLibrarySkillApiV1SkillLibraryLibrarySkillUuidDeleteResponses = {
+    /**
+     * Successful Response
+     */
+    204: void;
+};
+
+export type DeleteLibrarySkillApiV1SkillLibraryLibrarySkillUuidDeleteResponse = DeleteLibrarySkillApiV1SkillLibraryLibrarySkillUuidDeleteResponses[keyof DeleteLibrarySkillApiV1SkillLibraryLibrarySkillUuidDeleteResponses];
+
+export type GetLibrarySkillApiV1SkillLibraryLibrarySkillUuidGetData = {
+    body?: never;
+    headers?: {
+        /**
+         * Authorization
+         */
+        authorization?: string | null;
+        /**
+         * X-Api-Key
+         */
+        'X-API-Key'?: string | null;
+    };
+    path: {
+        /**
+         * Library Skill Uuid
+         */
+        library_skill_uuid: string;
+    };
+    query?: never;
+    url: '/api/v1/skill-library/{library_skill_uuid}';
+};
+
+export type GetLibrarySkillApiV1SkillLibraryLibrarySkillUuidGetErrors = {
+    /**
+     * Not found
+     */
+    404: unknown;
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type GetLibrarySkillApiV1SkillLibraryLibrarySkillUuidGetError = GetLibrarySkillApiV1SkillLibraryLibrarySkillUuidGetErrors[keyof GetLibrarySkillApiV1SkillLibraryLibrarySkillUuidGetErrors];
+
+export type GetLibrarySkillApiV1SkillLibraryLibrarySkillUuidGetResponses = {
+    /**
+     * Successful Response
+     */
+    200: LibrarySkillResponse;
+};
+
+export type GetLibrarySkillApiV1SkillLibraryLibrarySkillUuidGetResponse = GetLibrarySkillApiV1SkillLibraryLibrarySkillUuidGetResponses[keyof GetLibrarySkillApiV1SkillLibraryLibrarySkillUuidGetResponses];
+
+export type UpdateLibrarySkillApiV1SkillLibraryLibrarySkillUuidPatchData = {
+    body: UpdateLibrarySkillRequest;
+    headers?: {
+        /**
+         * Authorization
+         */
+        authorization?: string | null;
+        /**
+         * X-Api-Key
+         */
+        'X-API-Key'?: string | null;
+    };
+    path: {
+        /**
+         * Library Skill Uuid
+         */
+        library_skill_uuid: string;
+    };
+    query?: never;
+    url: '/api/v1/skill-library/{library_skill_uuid}';
+};
+
+export type UpdateLibrarySkillApiV1SkillLibraryLibrarySkillUuidPatchErrors = {
+    /**
+     * Not found
+     */
+    404: unknown;
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type UpdateLibrarySkillApiV1SkillLibraryLibrarySkillUuidPatchError = UpdateLibrarySkillApiV1SkillLibraryLibrarySkillUuidPatchErrors[keyof UpdateLibrarySkillApiV1SkillLibraryLibrarySkillUuidPatchErrors];
+
+export type UpdateLibrarySkillApiV1SkillLibraryLibrarySkillUuidPatchResponses = {
+    /**
+     * Successful Response
+     */
+    200: LibrarySkillResponse;
+};
+
+export type UpdateLibrarySkillApiV1SkillLibraryLibrarySkillUuidPatchResponse = UpdateLibrarySkillApiV1SkillLibraryLibrarySkillUuidPatchResponses[keyof UpdateLibrarySkillApiV1SkillLibraryLibrarySkillUuidPatchResponses];
+
+export type SyncLibrarySeedsApiV1SkillLibrarySyncSeedsPostData = {
+    body?: never;
+    headers?: {
+        /**
+         * Authorization
+         */
+        authorization?: string | null;
+        /**
+         * X-Api-Key
+         */
+        'X-API-Key'?: string | null;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/v1/skill-library/sync-seeds';
+};
+
+export type SyncLibrarySeedsApiV1SkillLibrarySyncSeedsPostErrors = {
+    /**
+     * Not found
+     */
+    404: unknown;
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type SyncLibrarySeedsApiV1SkillLibrarySyncSeedsPostError = SyncLibrarySeedsApiV1SkillLibrarySyncSeedsPostErrors[keyof SyncLibrarySeedsApiV1SkillLibrarySyncSeedsPostErrors];
+
+export type SyncLibrarySeedsApiV1SkillLibrarySyncSeedsPostResponses = {
+    /**
+     * Successful Response
+     */
+    200: SeedSyncResponse;
+};
+
+export type SyncLibrarySeedsApiV1SkillLibrarySyncSeedsPostResponse = SyncLibrarySeedsApiV1SkillLibrarySyncSeedsPostResponses[keyof SyncLibrarySeedsApiV1SkillLibrarySyncSeedsPostResponses];
+
+export type PublishLibrarySkillApiV1SkillLibraryLibrarySkillUuidPublishPostData = {
+    body?: never;
+    headers?: {
+        /**
+         * Authorization
+         */
+        authorization?: string | null;
+        /**
+         * X-Api-Key
+         */
+        'X-API-Key'?: string | null;
+    };
+    path: {
+        /**
+         * Library Skill Uuid
+         */
+        library_skill_uuid: string;
+    };
+    query?: never;
+    url: '/api/v1/skill-library/{library_skill_uuid}/publish';
+};
+
+export type PublishLibrarySkillApiV1SkillLibraryLibrarySkillUuidPublishPostErrors = {
+    /**
+     * Not found
+     */
+    404: unknown;
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type PublishLibrarySkillApiV1SkillLibraryLibrarySkillUuidPublishPostError = PublishLibrarySkillApiV1SkillLibraryLibrarySkillUuidPublishPostErrors[keyof PublishLibrarySkillApiV1SkillLibraryLibrarySkillUuidPublishPostErrors];
+
+export type PublishLibrarySkillApiV1SkillLibraryLibrarySkillUuidPublishPostResponses = {
+    /**
+     * Successful Response
+     */
+    200: LibrarySkillResponse;
+};
+
+export type PublishLibrarySkillApiV1SkillLibraryLibrarySkillUuidPublishPostResponse = PublishLibrarySkillApiV1SkillLibraryLibrarySkillUuidPublishPostResponses[keyof PublishLibrarySkillApiV1SkillLibraryLibrarySkillUuidPublishPostResponses];
+
+export type DeprecateLibrarySkillApiV1SkillLibraryLibrarySkillUuidDeprecatePostData = {
+    body?: never;
+    headers?: {
+        /**
+         * Authorization
+         */
+        authorization?: string | null;
+        /**
+         * X-Api-Key
+         */
+        'X-API-Key'?: string | null;
+    };
+    path: {
+        /**
+         * Library Skill Uuid
+         */
+        library_skill_uuid: string;
+    };
+    query?: never;
+    url: '/api/v1/skill-library/{library_skill_uuid}/deprecate';
+};
+
+export type DeprecateLibrarySkillApiV1SkillLibraryLibrarySkillUuidDeprecatePostErrors = {
+    /**
+     * Not found
+     */
+    404: unknown;
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type DeprecateLibrarySkillApiV1SkillLibraryLibrarySkillUuidDeprecatePostError = DeprecateLibrarySkillApiV1SkillLibraryLibrarySkillUuidDeprecatePostErrors[keyof DeprecateLibrarySkillApiV1SkillLibraryLibrarySkillUuidDeprecatePostErrors];
+
+export type DeprecateLibrarySkillApiV1SkillLibraryLibrarySkillUuidDeprecatePostResponses = {
+    /**
+     * Successful Response
+     */
+    200: LibrarySkillResponse;
+};
+
+export type DeprecateLibrarySkillApiV1SkillLibraryLibrarySkillUuidDeprecatePostResponse = DeprecateLibrarySkillApiV1SkillLibraryLibrarySkillUuidDeprecatePostResponses[keyof DeprecateLibrarySkillApiV1SkillLibraryLibrarySkillUuidDeprecatePostResponses];
 
 export type HealthApiV1HealthGetData = {
     body?: never;
