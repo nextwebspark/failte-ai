@@ -3,18 +3,25 @@ single-flight token refresh.
 
 * :class:`OAuthFlow` starts an authorization (a random, single-use, 10-minute
   state bound to org, user, provider and client, with an encrypted PKCE
-  verifier) and completes it from the provider's callback, creating an
-  ``oauth2`` connection.
+  verifier and the hash of a browser nonce) and completes it from the
+  provider's callback, creating a PENDING ``oauth2`` connection. Only the
+  user who started the flow, presenting the nonce from the same browser (a
+  cookie set by the Fallcha API), can confirm it; so a start link sent to
+  someone else can never connect their account to the sender's workspace.
 * :class:`OAuthTokenManager` hands out access tokens, refreshing one when it
   expires within :data:`REFRESH_MARGIN`. A refresh runs under a Postgres
   advisory lock on the connection plus a row lock, and re-reads the row once
-  it holds them, so concurrent callers on any replica cause one refresh.
+  it holds them, so concurrent callers on any replica cause one refresh. The
+  refresh runs in its own task, shielded from the caller's cancellation, so
+  a caller's deadline never interrupts it halfway (a rotated refresh token
+  is always stored).
 
 Nothing here logs a token, code, verifier, state or client secret.
 """
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import contextlib
 import hashlib
@@ -29,6 +36,7 @@ from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 import httpx
 from loguru import logger
 from pydantic import JsonValue, ValidationError
+from sqlalchemy.exc import DBAPIError
 
 from fallcha_tools.core.crypto import SecretBox
 from fallcha_tools.core.db import Database
@@ -37,7 +45,7 @@ from fallcha_tools.core.errors import (
     ServiceUnavailableError,
     ToolsError,
 )
-from fallcha_tools.core.models import AuthMode
+from fallcha_tools.core.models import AuthMode, ConnectionErrorCode
 from fallcha_tools.core.provider import (
     AccessToken,
     OAuthSpec,
@@ -72,6 +80,10 @@ def utc_now() -> datetime:
 
 
 def new_state() -> str:
+    return secrets.token_urlsafe(32)
+
+
+def new_browser_nonce() -> str:
     return secrets.token_urlsafe(32)
 
 
@@ -291,6 +303,8 @@ class StartedAuthorization:
     authorization_url: str
     redirect_uri: str
     expires_at: datetime
+    # Handed to the user's browser only (an HttpOnly cookie, set by the API).
+    browser_nonce: str = field(repr=False)
 
 
 @dataclass(frozen=True, slots=True)
@@ -355,7 +369,9 @@ class OAuthFlow:
             )
             if app.provider != provider.id:
                 raise ProviderAppNotFoundError("OAuth client not found")
+            await ConnectionRepository(session, self.box).sweep_pending()
             state, verifier = new_state(), new_code_verifier()
+            nonce = new_browser_nonce()
             now = self.clock()
             expires_at = now + STATE_TTL
             redirect_uri = self.redirect_uri(provider.id)
@@ -366,6 +382,7 @@ class OAuthFlow:
                 provider=provider.id,
                 provider_app_id=app.id,
                 code_verifier=verifier,
+                browser_nonce=nonce,
                 redirect_uri=redirect_uri,
                 expires_at=expires_at,
                 now=now,
@@ -387,6 +404,7 @@ class OAuthFlow:
             authorization_url=_with_query(spec.authorize_url, params),
             redirect_uri=redirect_uri,
             expires_at=expires_at,
+            browser_nonce=nonce,
         )
 
     async def complete(
@@ -461,9 +479,11 @@ class OAuthFlow:
                 provider_app_id=pending.provider_app_id,
                 access_token=grant.access_token,
                 expires_at=grant.expires_at,
+                pending_user_id=pending.user_id,
+                pending_nonce_hash=pending.browser_nonce_hash,
             )
         logger.info(
-            "oauth connection {} created for org {} ({})",
+            "pending oauth connection {} created for org {} ({})",
             info.id,
             pending.org_id,
             provider.id,
@@ -516,6 +536,10 @@ class OAuthTokenManager:
     http: httpx.AsyncClient
     clock: Clock = utc_now
     timeout: httpx.Timeout = field(default_factory=lambda: REFRESH_TIMEOUT)
+    # Strong references to running refreshes (the loop only keeps weak ones).
+    _running: set[asyncio.Task[AccessToken]] = field(
+        default_factory=set, init=False, repr=False, compare=False
+    )
 
     def is_fresh(self, expires_at: datetime | None) -> bool:
         return expires_at is not None and expires_at - REFRESH_MARGIN > self.clock()
@@ -528,11 +552,45 @@ class OAuthTokenManager:
         *,
         rejected: str | None = None,
     ) -> AccessToken:
+        """Raises :class:`OAuthReconnectRequired` or :class:`OAuthRefreshFailed`
+        (or a repository error if the connection is gone or pending)."""
+        task = asyncio.create_task(
+            self._locked(org_id, connection_id, spec, rejected=rejected)
+        )
+        self._running.add(task)
+        task.add_done_callback(self._finished)
+        # Shielded: a cancelled caller (deadline) leaves the refresh running
+        # to completion, so a new or rotated token is never lost halfway.
+        return await asyncio.shield(task)
+
+    def _finished(self, task: asyncio.Task[AccessToken]) -> None:
+        self._running.discard(task)
+        if not task.cancelled():
+            task.exception()  # retrieved: no "never retrieved" warning
+
+    async def _locked(
+        self,
+        org_id: int,
+        connection_id: uuid.UUID,
+        spec: OAuthSpec,
+        *,
+        rejected: str | None,
+    ) -> AccessToken:
         reconnect = f"{spec.display_name} access was revoked or expired; reconnect"
         async with self.db.session() as session:
             repo = OAuthTokenRepository(session, self.box)
-            await repo.lock(connection_id)
-            current = await repo.load(org_id, connection_id)
+            try:
+                await repo.lock(connection_id)
+                current = await repo.load(org_id, connection_id)
+            except DBAPIError:  # lock_timeout: another refresh is stuck
+                await session.rollback()
+                raise OAuthRefreshFailed(
+                    f"{spec.display_name} access is being refreshed; please try again"
+                ) from None
+            if current.error_code is not None:
+                # A terminal failure was recorded: do not ask the provider.
+                await session.rollback()
+                raise OAuthReconnectRequired(current.last_error or reconnect)
             if (
                 current.access_token
                 and current.access_token != rejected
@@ -550,7 +608,9 @@ class OAuthTokenManager:
                     f"the {spec.display_name} OAuth client of this connection was "
                     "removed; reconnect"
                 )
-                await repo.mark_error(message, drop_tokens=False)
+                await repo.mark_error(
+                    message, ConnectionErrorCode.CLIENT_MISSING, drop_tokens=False
+                )
                 raise OAuthReconnectRequired(message)
             try:
                 grant = await refresh_grant(
@@ -567,10 +627,16 @@ class OAuthTokenManager:
                         f"{spec.display_name} rejected the OAuth client (check its "
                         "client ID and secret); reconnect"
                     )
-                    await repo.mark_error(message, drop_tokens=False)
+                    await repo.mark_error(
+                        message, ConnectionErrorCode.CLIENT_REJECTED, drop_tokens=False
+                    )
                     raise OAuthReconnectRequired(message) from None
                 # invalid_grant, and any other refusal of the refresh token.
-                await repo.mark_error(reconnect, drop_tokens=exc.grant_revoked)
+                await repo.mark_error(
+                    reconnect,
+                    ConnectionErrorCode.GRANT_REVOKED,
+                    drop_tokens=exc.grant_revoked,
+                )
                 logger.warning(
                     "oauth connection {} needs reconnecting ({})",
                     connection_id,

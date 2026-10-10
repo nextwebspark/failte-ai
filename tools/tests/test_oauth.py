@@ -4,8 +4,10 @@ callback, and lazy single-flight token refresh. Google is mocked with respx."""
 from __future__ import annotations
 
 import asyncio
+import logging
 import uuid
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any
 from urllib.parse import parse_qs, urlsplit
@@ -15,10 +17,12 @@ import pytest
 import respx
 from fastapi import FastAPI
 from fastmcp.exceptions import ToolError
+from loguru import logger as loguru_logger
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from fallcha_tools.config import Settings
+from fallcha_tools.core.access_log import RedactOAuthQuery
 from fallcha_tools.core.container import AppServices
 from fallcha_tools.core.crypto import SecretBox
 from fallcha_tools.core.db import Database
@@ -27,11 +31,19 @@ from fallcha_tools.core.oauth import (
     OAuthTokenManager,
     code_challenge,
 )
-from fallcha_tools.core.provider import ProviderRegistry
-from fallcha_tools.core.repositories import hash_oauth_state
+from fallcha_tools.core.provider import AccessToken, ProviderRegistry
+from fallcha_tools.core.repositories import hash_browser_nonce, hash_oauth_state
 from fallcha_tools.providers.google_calendar import GoogleCalendarProvider
-from fallcha_tools.providers.google_calendar.client import SHEETS_READONLY_SCOPE
-from fallcha_tools.providers.google_calendar.credentials import TokenCache
+from fallcha_tools.providers.google_calendar.client import (
+    SHEETS_READONLY_SCOPE,
+    Budget,
+    GoogleClient,
+)
+from fallcha_tools.providers.google_calendar.credentials import (
+    OAuthCredentials,
+    TokenCache,
+)
+from fallcha_tools.providers.google_calendar.errors import GoogleApiError
 from fallcha_tools.providers.google_calendar.provider import (
     GOOGLE_AUTHORIZE_URL,
     GOOGLE_OAUTH,
@@ -147,7 +159,10 @@ async def started_params(
     response = await start(client, app_id, org_id=org_id, **extra)
     assert response.status_code == 200, response.text
     url = urlsplit(response.json()["authorization_url"])
-    return {k: v[0] for k, v in parse_qs(url.query).items()}
+    params = {k: v[0] for k, v in parse_qs(url.query).items()}
+    # Test-only extra: the nonce the API would put in the user's cookie.
+    params["browser_nonce"] = response.json()["browser_nonce"]
+    return params
 
 
 async def callback(client: httpx.AsyncClient, **params: str) -> dict[str, str]:
@@ -166,11 +181,38 @@ async def callback(client: httpx.AsyncClient, **params: str) -> dict[str, str]:
     return query
 
 
-async def connect(client: httpx.AsyncClient, *, org_id: int = 1) -> str:
+async def confirm(
+    client: httpx.AsyncClient,
+    connection_id: str,
+    nonce: str,
+    *,
+    org_id: int = 1,
+    user_id: int = 42,
+) -> httpx.Response:
+    return await client.post(
+        f"/internal/connections/{connection_id}/confirm",
+        headers=internal_headers(org_id, user_id=user_id),
+        json={"browser_nonce": nonce},
+    )
+
+
+async def connect_pending(
+    client: httpx.AsyncClient, *, org_id: int = 1
+) -> tuple[str, str]:
+    """A PENDING connection id and the nonce that confirms it."""
     params = await started_params(client, org_id=org_id)
     result = await callback(client, state=params["state"], code="auth-code-1")
     assert result["integration_result"] == "success", result
-    return result["connection_id"]
+    return result["connection_id"], params["browser_nonce"]
+
+
+async def connect(client: httpx.AsyncClient, *, org_id: int = 1) -> str:
+    """A confirmed (ACTIVE) OAuth connection."""
+    connection_id, nonce = await connect_pending(client, org_id=org_id)
+    confirmed = await confirm(client, connection_id, nonce, org_id=org_id)
+    assert confirmed.status_code == 200, confirmed.text
+    assert confirmed.json()["status"] == "active"
+    return connection_id
 
 
 async def row(engine: AsyncEngine, connection_id: str) -> dict[str, Any]:
@@ -417,11 +459,23 @@ async def test_callback_creates_encrypted_oauth_connection(
     assert box(app).decrypt(stored["access_token_enc"]) == ACCESS_TOKEN
     assert stored["expires_at"] > datetime.now(UTC) + timedelta(minutes=50)
 
+    # PENDING until the starting user confirms it from their browser.
+    assert stored["status"] == "pending"
+    assert stored["pending_user_id"] == 42
+    assert stored["pending_nonce_hash"] == hash_browser_nonce(params["browser_nonce"])
+    listed = await client.get("/internal/connections", headers=internal_headers())
+    assert listed.json()["connections"] == []
+
+    confirmed = await confirm(client, connection_id, params["browser_nonce"])
+    assert confirmed.status_code == 200, confirmed.text
     listed = await client.get("/internal/connections", headers=internal_headers())
     assert REFRESH_TOKEN not in listed.text and ACCESS_TOKEN not in listed.text
     [connection] = listed.json()["connections"]
     assert connection["auth_mode"] == "oauth2"
+    assert connection["status"] == "active"
     assert connection["account_label"] == EMAIL
+    stored = await row(engine, connection_id)
+    assert stored["pending_nonce_hash"] is None
 
 
 async def test_callback_rejects_unknown_tampered_and_replayed_state(
@@ -868,3 +922,272 @@ async def test_rejected_client_marks_error_but_keeps_tokens(
     assert CLIENT_SECRET not in (stored["last_error"] or "")
     # The refresh token may still be good once the client is fixed.
     assert stored["secret_enc"] is not None
+
+
+# --- review follow-ups: browser-bound confirmation -----------------------------
+
+
+async def test_pending_connection_is_unusable_until_confirmed(
+    client: httpx.AsyncClient, google: FakeGoogle
+) -> None:
+    connection_id, nonce = await connect_pending(client)
+    headers = internal_headers(1, user_id=42)
+    issued = await client.post(
+        f"/internal/connections/{connection_id}/keys", headers=headers, json={}
+    )
+    assert issued.status_code == 409
+    tested = await client.post(
+        f"/internal/connections/{connection_id}/test", headers=headers
+    )
+    assert tested.status_code == 409
+
+    # Another org, another user, or another browser cannot confirm it.
+    assert (await confirm(client, connection_id, nonce, org_id=2)).status_code == 404
+    assert (await confirm(client, connection_id, nonce, user_id=43)).status_code == 409
+    wrong = await confirm(client, connection_id, nonce[:-2] + "xx")
+    assert wrong.status_code == 409
+    assert "same browser" in wrong.json()["detail"]
+
+    assert (await confirm(client, connection_id, nonce)).status_code == 200
+    # Confirming again is a no-op; the key can now be issued.
+    assert (await confirm(client, connection_id, "anything")).status_code == 200
+    issued = await client.post(
+        f"/internal/connections/{connection_id}/keys", headers=headers, json={}
+    )
+    assert issued.status_code == 201
+
+
+async def test_unconfirmed_connections_are_swept(
+    client: httpx.AsyncClient,
+    engine: AsyncEngine,
+    google: FakeGoogle,
+) -> None:
+    connection_id, nonce = await connect_pending(client)
+    async with engine.begin() as conn:
+        await conn.execute(
+            text(
+                "UPDATE fallcha_tools.connections"
+                " SET created_at = now() - interval '11 minutes' WHERE id = :id"
+            ),
+            {"id": connection_id},
+        )
+    # Starting another flow sweeps it.
+    await started_params(client)
+    stored = await row(engine, connection_id)
+    assert stored["status"] == "revoked"
+    assert stored["secret_enc"] is None and stored["access_token_enc"] is None
+    assert (await confirm(client, connection_id, nonce)).status_code == 409
+
+
+async def test_revoke_all_keys(client: httpx.AsyncClient, google: FakeGoogle) -> None:
+    connection_id = await connect(client)
+    path = f"/internal/connections/{connection_id}/keys"
+    for _ in range(2):
+        assert (await client.post(path, headers=internal_headers())).status_code == 201
+    other = await client.delete(path, headers=internal_headers(2))
+    assert other.status_code == 404
+    assert (await client.delete(path, headers=internal_headers())).status_code == 204
+    exclusive = await client.post(
+        path, headers=internal_headers(), json={"exclusive": True}
+    )
+    assert exclusive.status_code == 201
+
+
+# --- review follow-ups: error codes and recovery -------------------------------
+
+
+async def test_successful_refresh_clears_a_previous_error(
+    client: httpx.AsyncClient,
+    engine: AsyncEngine,
+    app: FastAPI,
+    google: FakeGoogle,
+) -> None:
+    connection_id = await connect(client)
+    async with engine.begin() as conn:
+        await conn.execute(
+            text(
+                "UPDATE fallcha_tools.connections SET status = 'error',"
+                " last_error = 'calendar not shared',"
+                " expires_at = now() + interval '1 minute' WHERE id = :id"
+            ),
+            {"id": connection_id},
+        )
+    google.token.mock(return_value=refreshed())
+    svc = services(app)
+    manager = OAuthTokenManager(db=svc.db, box=svc.box, http=svc.http)
+    await manager.access_token(1, uuid.UUID(connection_id), GOOGLE_OAUTH)
+    stored = await row(engine, connection_id)
+    assert (stored["status"], stored["last_error"], stored["error_code"]) == (
+        "active",
+        None,
+        None,
+    )
+
+
+async def test_rejected_client_fails_fast_afterwards(
+    client: httpx.AsyncClient,
+    engine: AsyncEngine,
+    app: FastAPI,
+    google: FakeGoogle,
+) -> None:
+    connection_id = await connect(client)
+    await expire_access_token(engine, connection_id)
+    google.token.mock(
+        return_value=httpx.Response(401, json={"error": "invalid_client"})
+    )
+    exchanges = google.token.call_count
+    svc = services(app)
+    manager = OAuthTokenManager(db=svc.db, box=svc.box, http=svc.http)
+    for _ in range(3):
+        with pytest.raises(OAuthReconnectRequired, match="rejected the OAuth client"):
+            await manager.access_token(1, uuid.UUID(connection_id), GOOGLE_OAUTH)
+    assert google.token.call_count == exchanges + 1
+    assert (await row(engine, connection_id))["error_code"] == "client_rejected"
+    listed = await client.get("/internal/connections", headers=internal_headers())
+    assert listed.json()["connections"][0]["error_code"] == "client_rejected"
+
+
+# --- review follow-ups: cancellation, budget, shared rejection -----------------
+
+
+async def test_cancelled_caller_does_not_abort_the_refresh(
+    client: httpx.AsyncClient,
+    engine: AsyncEngine,
+    app: FastAPI,
+    google: FakeGoogle,
+) -> None:
+    connection_id = await connect(client)
+    await expire_access_token(engine, connection_id)
+
+    async def slow_refresh(_: httpx.Request) -> httpx.Response:
+        await asyncio.sleep(0.2)
+        return refreshed(refresh_token="1//rotated-late")
+
+    google.token.mock(side_effect=slow_refresh)
+    svc = services(app)
+    manager = OAuthTokenManager(db=svc.db, box=svc.box, http=svc.http)
+    with pytest.raises(TimeoutError):
+        async with asyncio.timeout(0.05):
+            await manager.access_token(1, uuid.UUID(connection_id), GOOGLE_OAUTH)
+    await asyncio.sleep(0.4)
+    stored = await row(engine, connection_id)
+    assert box(app).decrypt(stored["access_token_enc"]) == "ya29.refreshed"
+    assert box(app).decrypt_json(stored["secret_enc"]) == {
+        "refresh_token": "1//rotated-late"
+    }
+
+
+@dataclass
+class FakeTokens:
+    """OAuthAccess double: hands out "old" until it is rejected."""
+
+    calls: list[str | None]
+
+    async def access_token(self, *, rejected: str | None = None) -> AccessToken:
+        self.calls.append(rejected)
+        token = "new" if rejected == "old" else "old"
+        return AccessToken(token, datetime.now(UTC) + timedelta(hours=1))
+
+
+async def test_token_rejection_is_shared_across_calls() -> None:
+    """Two tool calls hold the same token; Google refuses it for the first.
+    The second call (its own credentials object) must not get it back."""
+    cache = TokenCache()
+    connection_id = uuid.uuid4()
+    tokens = FakeTokens(calls=[])
+    scopes = ["https://www.googleapis.com/auth/calendar"]
+    granted = [
+        "https://www.googleapis.com/auth/calendar.events",
+        "https://www.googleapis.com/auth/calendar.readonly",
+    ]
+
+    def credentials() -> OAuthCredentials:
+        return OAuthCredentials(
+            connection_id=connection_id,
+            tokens=tokens,
+            cache=cache,
+            scopes_granted=granted,
+        )
+
+    first, second = credentials(), credentials()
+    assert await first.access_token(scopes) == "old"
+    assert await second.access_token(scopes) == "old"
+    first.invalidate(scopes)
+    assert await credentials().access_token(scopes) == "new"
+    assert tokens.calls == [None, "old"]
+    # A late invalidation of the old token keeps the new one cached.
+    second.invalidate(scopes)
+    assert await credentials().access_token(scopes) == "new"
+    assert len(tokens.calls) == 2
+
+
+async def test_token_fetch_respects_the_budget() -> None:
+    class SlowCredentials:
+        async def access_token(self, scopes: Sequence[str]) -> str:
+            await asyncio.sleep(1)
+            return "late"
+
+        def invalidate(self, scopes: Sequence[str]) -> None:
+            del scopes
+
+    async with httpx.AsyncClient() as http:
+        google = GoogleClient(http=http, credentials=SlowCredentials())
+        budget = Budget(
+            deadline_at=asyncio.get_running_loop().time() + 0.05, min_seconds=0.01
+        )
+        started = asyncio.get_running_loop().time()
+        with pytest.raises(GoogleApiError, match="took too long"):
+            await google.insert_event("cal", {"id": "e"}, budget=budget)
+        assert asyncio.get_running_loop().time() - started < 0.5
+
+
+# --- review follow-ups: logs ---------------------------------------------------
+
+
+def test_access_log_redacts_callback_query() -> None:
+    record = logging.LogRecord(
+        "uvicorn.access",
+        logging.INFO,
+        __file__,
+        1,
+        '%s - "%s %s HTTP/%s" %d',
+        (
+            "1.2.3.4:5",
+            "GET",
+            "/oauth/google-calendar/callback?code=c0de&state=s",
+            "1.1",
+            302,
+        ),
+        None,
+    )
+    assert RedactOAuthQuery().filter(record)
+    message = record.getMessage()
+    assert "c0de" not in message and "state=s" not in message
+    assert "/oauth/google-calendar/callback?<redacted>" in message
+    other = logging.LogRecord(
+        "uvicorn.access",
+        logging.INFO,
+        __file__,
+        1,
+        "%s %s %s",
+        ("1.2.3.4:5", "GET", "/health?x=1"),
+        None,
+    )
+    RedactOAuthQuery().filter(other)
+    assert "/health?x=1" in other.getMessage()
+
+
+async def test_callback_never_logs_a_malformed_provider_id(
+    client: httpx.AsyncClient,
+) -> None:
+    lines: list[str] = []
+    sink = loguru_logger.add(lines.append, level="DEBUG")
+    try:
+        response = await client.get(
+            "/oauth/EVIL-injected%20line/callback", params={"state": "x" * 50}
+        )
+    finally:
+        loguru_logger.remove(sink)
+    assert response.status_code == 302
+    logged = "".join(lines)
+    assert "EVIL" not in logged and "x" * 50 not in logged

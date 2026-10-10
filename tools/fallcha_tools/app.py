@@ -16,6 +16,7 @@ from fastapi.responses import JSONResponse
 from loguru import logger
 
 from fallcha_tools.config import Settings, get_settings
+from fallcha_tools.core.access_log import install_access_log_filter
 from fallcha_tools.core.auth import KeyLookup
 from fallcha_tools.core.container import AppServices
 from fallcha_tools.core.context import ContextLoader
@@ -91,6 +92,8 @@ def create_app(
         backtrace=False,
         diagnose=False,
     )
+
+    install_access_log_filter()
 
     box = SecretBox(settings.encryption_keys)
     db = Database(settings.database_url)

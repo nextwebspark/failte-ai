@@ -7,7 +7,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, SecretStr
 
-from fallcha_tools.core.models import AuthMode, ConnectionStatus
+from fallcha_tools.core.models import AuthMode, ConnectionErrorCode, ConnectionStatus
 
 
 class ToolSummary(BaseModel):
@@ -53,6 +53,11 @@ class ConnectionOut(BaseModel):
     config: dict[str, JsonValue]
     status: ConnectionStatus
     last_error: str | None
+    error_code: ConnectionErrorCode | None = Field(
+        default=None,
+        description="Set when the connection must be reconnected; calls fail "
+        "fast until then.",
+    )
     expires_at: datetime | None
     created_at: datetime
     updated_at: datetime
@@ -158,3 +163,13 @@ class OAuthStartOut(BaseModel):
         "OAuth client."
     )
     expires_at: datetime = Field(description="The flow must finish before this.")
+    browser_nonce: str = Field(
+        description="For the starting user's browser only (the Fallcha API sets "
+        "it as an HttpOnly cookie); required to confirm the connection."
+    )
+
+
+class ConfirmConnectionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    browser_nonce: SecretStr = Field(min_length=1, max_length=128)

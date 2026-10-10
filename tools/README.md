@@ -138,10 +138,18 @@ The flow, driven by the Fallcha API (`/api/v1/integrations/...`):
 | Step | Tools service |
 |---|---|
 | Save the client | `POST /internal/provider-apps {provider, client_id, client_secret}` (secret encrypted, never returned; `GET` lists, `DELETE` removes one unless a live connection uses it) |
-| Start | `POST /internal/oauth/start {provider, provider_app_id, optional_scopes?}` returns `authorization_url` and `redirect_uri` |
+| Start | `POST /internal/oauth/start {provider, provider_app_id, optional_scopes?}` returns `authorization_url`, `redirect_uri` and a `browser_nonce`, which the Fallcha API keeps out of its response body and sets as an HttpOnly cookie |
 | Consent | The browser goes to Google, then to `/oauth/{provider}/callback` |
-| Callback | Creates an `oauth2` connection, then redirects to `TOOLS_UI_RETURN_URL?integration_result=success&connection_id=...&provider=...`, or `...=error&reason=<code>` |
-| Activate | The Fallcha API issues a key and installs the MCP tool (`POST /api/v1/integrations/connections/{id}/activate`) |
+| Callback | Creates a **pending** `oauth2` connection, then redirects to `TOOLS_UI_RETURN_URL?integration_result=success&connection_id=...&provider=...`, or `...=error&reason=<code>` |
+| Confirm + activate | `POST /api/v1/integrations/connections/{id}/activate` forwards the cookie's nonce to `POST /internal/connections/{id}/confirm`, which makes it active only for the same org, the user who started the flow, and a matching nonce; the API then issues a key and installs the MCP tool |
+
+A pending connection is not listed, cannot get a key and cannot be used.
+If nobody confirms it within 10 minutes it is revoked and its tokens are
+wiped. This stops consent phishing (a start link sent to someone
+else): the callback, and so the new connection's id, lands in the victim's
+browser, which has neither the sender's session nor the nonce cookie, so
+it cannot confirm the connection; and the sender, who has both, never
+learns the id, since pending connections are not listed.
 
 Error `reason` codes: `invalid_state`, `expired_state`, `access_denied`,
 `authorization_failed`, `client_missing`, `token_exchange_failed`,
@@ -164,17 +172,24 @@ fails). PKCE (S256) protects the code; the verifier is stored encrypted.
 The client secret, refresh token and access token are encrypted at rest and
 never logged or returned. The callback only ever redirects to the
 configured `TOOLS_UI_RETURN_URL`, with fixed reason codes, `Cache-Control:
-no-store` and `Referrer-Policy: no-referrer`.
+no-store` and `Referrer-Policy: no-referrer`. The uvicorn access log shows
+`/oauth/...?<redacted>` instead of the code and state (a reverse proxy in
+front must not log the query of that path either).
 
 **Refresh.** Tokens are refreshed lazily when they expire within 5 minutes.
 In one process, concurrent calls share one refresh; across replicas, the
-refresh runs under `pg_advisory_xact_lock` plus a row lock and re-reads the
-row once it holds them, so exactly one request goes to Google. A rotated
-refresh token is stored. If Google answers `invalid_grant` (access revoked,
-password changed, testing-mode token expired), the connection becomes
-`status=error`, `last_error="Google access was revoked or expired;
-reconnect"`, its tokens are dropped, and tools return that message without
-calling Google again. Reconnecting creates a new connection.
+refresh runs under `pg_advisory_xact_lock` plus a row lock (lock waits are
+capped by `lock_timeout`) and re-reads the row once it holds them, so
+exactly one request goes to Google. The refresh runs in a shielded task: a
+tool call that hits its deadline gives up waiting, but the refresh still
+finishes and is stored (with any rotated refresh token). A successful
+refresh clears an earlier `error` status. If Google answers `invalid_grant`
+(access revoked, password changed, testing-mode token expired), the
+connection becomes `status=error`, `error_code=grant_revoked`,
+`last_error="Google access was revoked or expired; reconnect"`, and its
+tokens are dropped; `invalid_client` sets `error_code=client_rejected`.
+With an `error_code` set, tools return the message without calling Google
+again. Reconnecting creates a new connection.
 
 ## Add a provider
 

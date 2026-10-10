@@ -207,6 +207,18 @@ async def issue_key(
 
 
 @router.delete(
+    "/connections/{connection_id}/keys", status_code=status.HTTP_204_NO_CONTENT
+)
+async def revoke_all_keys(
+    connection_id: uuid.UUID, caller: InternalCallerDep, keys: KeyRepoDep
+) -> Response:
+    """Revoke every live key of the connection (e.g. keys orphaned by an
+    activation whose rollback failed)."""
+    await keys.revoke_all_keys(caller.org_id, connection_id)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.delete(
     "/connections/{connection_id}/keys/{key_id}",
     status_code=status.HTTP_204_NO_CONTENT,
 )

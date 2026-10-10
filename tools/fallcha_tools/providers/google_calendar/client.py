@@ -35,6 +35,8 @@ CALENDAR_READONLY_SCOPE = "https://www.googleapis.com/auth/calendar.readonly"
 SHEETS_SCOPE = "https://www.googleapis.com/auth/spreadsheets"
 
 DEFAULT_TIMEOUT = httpx.Timeout(4.0, connect=2.0)
+# Nothing was sent to the calendar yet, so retrying is always safe.
+SIGN_IN_TOO_SLOW = "signing in to Google took too long; please try again"
 
 _RATE_LIMIT_REASONS = frozenset(
     {"rateLimitExceeded", "userRateLimitExceeded", "quotaExceeded"}
@@ -266,7 +268,7 @@ class GoogleClient:
         params: Mapping[str, str] | None,
         budget: Budget | None,
     ) -> httpx.Response:
-        token = await self.credentials.access_token(scopes)
+        token = await self._token(scopes, budget)
         try:
             return await self.http.request(
                 method,
@@ -282,6 +284,21 @@ class GoogleClient:
             ) from None
         except httpx.HTTPError:
             raise GoogleApiError("could not reach Google", retryable=True) from None
+
+    async def _token(self, scopes: Sequence[str], budget: Budget | None) -> str:
+        """An access token; within ``budget`` when one is given. A token
+        refresh that outlives the budget keeps running (it is shielded) and
+        serves the next call."""
+        if budget is None:
+            return await self.credentials.access_token(scopes)
+        try:
+            async with asyncio.timeout(max(budget.remaining(), 0.0)):
+                token = await self.credentials.access_token(scopes)
+        except TimeoutError:
+            raise GoogleApiError(SIGN_IN_TOO_SLOW) from None
+        if not budget.allows_request():
+            raise GoogleApiError(SIGN_IN_TOO_SLOW)
+        return token
 
     async def _json(
         self,

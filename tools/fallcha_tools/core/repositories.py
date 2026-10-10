@@ -8,13 +8,14 @@ Write methods commit their own unit of work.
 from __future__ import annotations
 
 import hashlib
+import hmac
 import uuid
 from collections.abc import Mapping
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from pydantic import JsonValue
-from sqlalchemy import delete, func, select, update
+from sqlalchemy import delete, func, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from fallcha_tools.core.crypto import SecretBox
@@ -27,6 +28,7 @@ from fallcha_tools.core.keys import (
 from fallcha_tools.core.models import (
     AuthMode,
     Connection,
+    ConnectionErrorCode,
     ConnectionKey,
     ConnectionStatus,
     OAuthState,
@@ -35,6 +37,10 @@ from fallcha_tools.core.models import (
 
 # Key in an OAuth2 connection's encrypted secret.
 REFRESH_TOKEN_KEY = "refresh_token"
+# A PENDING connection must be confirmed within this time, else it is wiped.
+PENDING_TTL = timedelta(minutes=10)
+# Max wait for the refresh locks (a refresh itself times out after 4 s).
+LOCK_TIMEOUT_MS = 6000
 
 
 class ConnectionNotFoundError(NotFoundError):
@@ -43,6 +49,19 @@ class ConnectionNotFoundError(NotFoundError):
 
 class ConnectionRevokedError(ConflictError):
     pass
+
+
+class ConnectionPendingError(ConflictError):
+    pass
+
+
+PENDING_MESSAGE = (
+    "this connection is waiting to be confirmed by the user who connected it"
+)
+CONFIRM_REFUSED = (
+    "this connection can only be confirmed by the user who connected it, "
+    "in the same browser, within 10 minutes"
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -58,6 +77,7 @@ class ConnectionInfo:
     config: Mapping[str, JsonValue]
     status: ConnectionStatus
     last_error: str | None
+    error_code: ConnectionErrorCode | None
     expires_at: datetime | None
     created_at: datetime
     updated_at: datetime
@@ -119,6 +139,7 @@ class PendingAuthorization:
     code_verifier: str = field(repr=False)
     redirect_uri: str | None
     expires_at: datetime
+    browser_nonce_hash: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -126,6 +147,8 @@ class RefreshState:
     """An OAuth2 connection's tokens, read under the refresh locks."""
 
     status: ConnectionStatus
+    error_code: ConnectionErrorCode | None
+    last_error: str | None
     access_token: str | None = field(repr=False)
     expires_at: datetime | None
     refresh_token: str | None = field(repr=False)
@@ -160,6 +183,10 @@ def hash_oauth_state(state: str) -> str:
     return hashlib.sha256(state.encode()).hexdigest()
 
 
+def hash_browser_nonce(nonce: str) -> str:
+    return hashlib.sha256(nonce.encode()).hexdigest()
+
+
 def refresh_lock_id(connection_id: uuid.UUID) -> int:
     """The signed 64-bit advisory-lock id for refreshing one connection."""
     digest = hashlib.sha256(
@@ -179,6 +206,7 @@ def _info(row: Connection) -> ConnectionInfo:
         config=dict(row.config or {}),
         status=row.status,
         last_error=row.last_error,
+        error_code=row.error_code,
         expires_at=row.expires_at,
         created_at=row.created_at,
         updated_at=row.updated_at,
@@ -204,7 +232,12 @@ class ConnectionRepository:
         provider_app_id: uuid.UUID | None = None,
         access_token: str | None = None,
         expires_at: datetime | None = None,
+        pending_user_id: int | None = None,
+        pending_nonce_hash: str | None = None,
     ) -> ConnectionInfo:
+        """With ``pending_nonce_hash`` the connection starts PENDING (see
+        :meth:`confirm_pending`)."""
+        pending = pending_nonce_hash is not None
         row = Connection(
             org_id=org_id,
             provider=provider,
@@ -216,7 +249,9 @@ class ConnectionRepository:
             secret_enc=self._box.encrypt_json(dict(secret)) if secret else None,
             access_token_enc=self._box.encrypt(access_token) if access_token else None,
             expires_at=expires_at,
-            status=ConnectionStatus.ACTIVE,
+            status=ConnectionStatus.PENDING if pending else ConnectionStatus.ACTIVE,
+            pending_user_id=pending_user_id if pending else None,
+            pending_nonce_hash=pending_nonce_hash,
             created_by=created_by,
         )
         self._session.add(row)
@@ -227,7 +262,12 @@ class ConnectionRepository:
     async def list_connections(
         self, org_id: int, *, include_revoked: bool = False
     ) -> list[ConnectionInfo]:
-        query = select(Connection).where(Connection.org_id == org_id)
+        # PENDING connections are not listed: until confirmed they belong to
+        # the browser that started the flow, not to the whole workspace.
+        query = select(Connection).where(
+            Connection.org_id == org_id,
+            Connection.status != ConnectionStatus.PENDING,
+        )
         if not include_revoked:
             query = query.where(Connection.status != ConnectionStatus.REVOKED)
         rows = await self._session.scalars(query.order_by(Connection.created_at))
@@ -244,6 +284,8 @@ class ConnectionRepository:
         row = await self._get_row(org_id, connection_id)
         if row.status == ConnectionStatus.REVOKED:
             raise ConnectionRevokedError("connection has been revoked")
+        if row.status == ConnectionStatus.PENDING:
+            raise ConnectionPendingError(PENDING_MESSAGE)
         secret: Mapping[str, JsonValue] = {}
         if row.secret_enc:
             decoded = self._box.decrypt_json(row.secret_enc)
@@ -268,13 +310,63 @@ class ConnectionRepository:
         row = await self._get_row(org_id, connection_id, for_update=True)
         if row.status == ConnectionStatus.REVOKED:
             raise ConnectionRevokedError("connection has been revoked")
+        if row.status == ConnectionStatus.PENDING:
+            raise ConnectionPendingError(PENDING_MESSAGE)
         row.status = status
         row.last_error = last_error
+        if status == ConnectionStatus.ACTIVE:
+            row.error_code = None
         if account_label is not None:
             row.account_label = account_label
         await self._session.commit()
         await self._session.refresh(row)
         return _info(row)
+
+    async def confirm_pending(
+        self, org_id: int, connection_id: uuid.UUID, *, user_id: int, nonce: str
+    ) -> ConnectionInfo:
+        """PENDING -> ACTIVE, only for the user who started the flow and only
+        with the nonce their browser holds. Other states are returned as is."""
+        await self.sweep_pending()
+        row = await self._get_row(org_id, connection_id, for_update=True)
+        if row.status == ConnectionStatus.REVOKED:
+            raise ConnectionRevokedError("connection has been revoked")
+        if row.status != ConnectionStatus.PENDING:
+            return _info(row)
+        expected = row.pending_nonce_hash or ""
+        presented = hash_browser_nonce(nonce) if nonce else ""
+        nonce_ok = hmac.compare_digest(presented.encode(), expected.encode())
+        if not (expected and nonce_ok and row.pending_user_id == user_id):
+            raise ConnectionPendingError(CONFIRM_REFUSED)
+        row.status = ConnectionStatus.ACTIVE
+        row.pending_user_id = None
+        row.pending_nonce_hash = None
+        await self._session.commit()
+        await self._session.refresh(row)
+        return _info(row)
+
+    async def sweep_pending(self) -> int:
+        """Revoke (and wipe the tokens of) PENDING connections nobody
+        confirmed in time. Returns how many were swept."""
+        result = await self._session.execute(
+            update(Connection)
+            .where(
+                Connection.status == ConnectionStatus.PENDING,
+                Connection.created_at < func.now() - PENDING_TTL,
+            )
+            .values(
+                status=ConnectionStatus.REVOKED,
+                secret_enc=None,
+                access_token_enc=None,
+                expires_at=None,
+                pending_nonce_hash=None,
+                last_error="not confirmed in time",
+            )
+            .returning(Connection.id)
+        )
+        swept = len(result.all())
+        await self._session.commit()
+        return swept
 
     async def update_config(
         self, org_id: int, connection_id: uuid.UUID, config: Mapping[str, JsonValue]
@@ -304,6 +396,7 @@ class ConnectionRepository:
         row.secret_enc = None
         row.access_token_enc = None
         row.expires_at = None
+        row.pending_nonce_hash = None
         await self._session.commit()
 
     async def _get_row(
@@ -348,6 +441,8 @@ class KeyRepository:
             raise ConnectionNotFoundError("connection not found")
         if connection.status == ConnectionStatus.REVOKED:
             raise ConnectionRevokedError("connection has been revoked")
+        if connection.status == ConnectionStatus.PENDING:
+            raise ConnectionPendingError(PENDING_MESSAGE)
         if exclusive:
             active = await self._session.scalar(
                 select(func.count())
@@ -389,6 +484,29 @@ class KeyRepository:
             row.revoked_at = datetime.now(UTC)
             await self._session.commit()
 
+    async def revoke_all_keys(self, org_id: int, connection_id: uuid.UUID) -> int:
+        """Revoke every live key of the connection; returns how many."""
+        connection = await self._session.scalar(
+            select(Connection.id).where(
+                Connection.id == connection_id, Connection.org_id == org_id
+            )
+        )
+        if connection is None:
+            raise ConnectionNotFoundError("connection not found")
+        result = await self._session.execute(
+            update(ConnectionKey)
+            .where(
+                ConnectionKey.connection_id == connection_id,
+                ConnectionKey.org_id == org_id,
+                ConnectionKey.revoked_at.is_(None),
+            )
+            .values(revoked_at=datetime.now(UTC))
+            .returning(ConnectionKey.id)
+        )
+        revoked = len(result.all())
+        await self._session.commit()
+        return revoked
+
     async def lookup_key(self, key: str) -> KeyPrincipal | None:
         """Resolve a plaintext key; None if unknown, revoked, or its
         connection is revoked."""
@@ -403,7 +521,9 @@ class KeyRepository:
                 ConnectionKey.key_hash == hash_connection_key(key),
                 ConnectionKey.revoked_at.is_(None),
                 ConnectionKey.org_id == Connection.org_id,
-                Connection.status != ConnectionStatus.REVOKED,
+                Connection.status.not_in(
+                    [ConnectionStatus.REVOKED, ConnectionStatus.PENDING]
+                ),
             )
         )
         found = result.one_or_none()
@@ -511,6 +631,7 @@ class OAuthStateRepository:
         provider: str,
         provider_app_id: uuid.UUID,
         code_verifier: str,
+        browser_nonce: str,
         redirect_uri: str,
         expires_at: datetime,
         now: datetime,
@@ -527,6 +648,7 @@ class OAuthStateRepository:
                 provider=provider,
                 provider_app_id=provider_app_id,
                 code_verifier_enc=self._box.encrypt(code_verifier),
+                browser_nonce_hash=hash_browser_nonce(browser_nonce),
                 redirect_uri=redirect_uri,
                 expires_at=expires_at,
             )
@@ -549,6 +671,7 @@ class OAuthStateRepository:
                     OAuthState.code_verifier_enc,
                     OAuthState.redirect_uri,
                     OAuthState.expires_at,
+                    OAuthState.browser_nonce_hash,
                 )
             )
         ).one_or_none()
@@ -563,6 +686,7 @@ class OAuthStateRepository:
             code_verifier=self._box.decrypt(row.code_verifier_enc),
             redirect_uri=row.redirect_uri,
             expires_at=row.expires_at,
+            browser_nonce_hash=row.browser_nonce_hash,
         )
 
 
@@ -578,7 +702,13 @@ class OAuthTokenRepository:
         self._row: Connection | None = None
 
     async def lock(self, connection_id: uuid.UUID) -> None:
-        """Serialize refreshes of one connection across processes."""
+        """Serialize refreshes of one connection across processes.
+
+        Lock waits are capped (``lock_timeout``), so a stuck refresh elsewhere
+        makes this one fail instead of hanging a live call."""
+        await self._session.execute(
+            text(f"SET LOCAL lock_timeout = '{LOCK_TIMEOUT_MS}ms'")
+        )
         await self._session.execute(
             select(func.pg_advisory_xact_lock(refresh_lock_id(connection_id)))
         )
@@ -598,6 +728,8 @@ class OAuthTokenRepository:
             raise ConnectionNotFoundError("connection not found")
         if row.status == ConnectionStatus.REVOKED:
             raise ConnectionRevokedError("connection has been revoked")
+        if row.status == ConnectionStatus.PENDING:
+            raise ConnectionPendingError(PENDING_MESSAGE)
         self._row = row
         refresh_token: str | None = None
         if row.secret_enc:
@@ -620,6 +752,8 @@ class OAuthTokenRepository:
                 )
         return RefreshState(
             status=row.status,
+            error_code=row.error_code,
+            last_error=row.last_error,
             access_token=(
                 self._box.decrypt(row.access_token_enc)
                 if row.access_token_enc
@@ -645,14 +779,21 @@ class OAuthTokenRepository:
             row.secret_enc = self._box.encrypt_json({REFRESH_TOKEN_KEY: refresh_token})
         if scopes_granted:
             row.scopes_granted = list(scopes_granted)
+        # The provider just accepted the grant: any earlier error is over.
+        row.status = ConnectionStatus.ACTIVE
+        row.last_error = None
+        row.error_code = None
         await self._session.commit()
 
-    async def mark_error(self, message: str, *, drop_tokens: bool) -> None:
-        """Flag the connection; with ``drop_tokens`` also wipe its (dead)
-        tokens, so later calls fail fast without asking the provider."""
+    async def mark_error(
+        self, message: str, code: ConnectionErrorCode, *, drop_tokens: bool
+    ) -> None:
+        """Flag the connection with a terminal ``code`` (later calls fail fast
+        without asking the provider); ``drop_tokens`` also wipes dead tokens."""
         row = self._loaded()
         row.status = ConnectionStatus.ERROR
         row.last_error = message
+        row.error_code = code
         if drop_tokens:
             row.secret_enc = None
             row.access_token_enc = None

@@ -16,14 +16,21 @@ from fastapi.responses import JSONResponse, RedirectResponse
 from loguru import logger
 
 from fallcha_tools.core.auth import InternalCallerDep, require_internal_caller
-from fallcha_tools.core.container import ProviderAppRepoDep, ServicesDep
+from fallcha_tools.core.container import (
+    ConnectionRepoDep,
+    ProviderAppRepoDep,
+    ServicesDep,
+)
 from fallcha_tools.core.oauth import (
     CallbackFailure,
     OAuthCallbackError,
     oauth_spec,
 )
+from fallcha_tools.core.provider import PROVIDER_ID_PATTERN
 from fallcha_tools.core.repositories import ProviderAppInfo
 from fallcha_tools.schemas import (
+    ConfirmConnectionRequest,
+    ConnectionOut,
     CreateProviderAppRequest,
     OAuthStartOut,
     OAuthStartRequest,
@@ -97,7 +104,26 @@ async def start_oauth(
         authorization_url=started.authorization_url,
         redirect_uri=started.redirect_uri,
         expires_at=started.expires_at,
+        browser_nonce=started.browser_nonce,
     )
+
+
+@internal_router.post("/connections/{connection_id}/confirm")
+async def confirm_connection(
+    connection_id: uuid.UUID,
+    body: ConfirmConnectionRequest,
+    caller: InternalCallerDep,
+    repo: ConnectionRepoDep,
+) -> ConnectionOut:
+    """Make a PENDING OAuth connection usable: only for the user who started
+    the flow (``X-User-Id``), with the nonce from their browser."""
+    info = await repo.confirm_pending(
+        caller.org_id,
+        connection_id,
+        user_id=caller.user_id,
+        nonce=body.browser_nonce.get_secret_value(),
+    )
+    return ConnectionOut.model_validate(info)
 
 
 @public_router.get("/{provider_id}/callback", include_in_schema=False)
@@ -109,15 +135,17 @@ async def oauth_callback(
     error: str | None = None,
 ) -> Response:
     flow = services.oauth
+    # Only a well-formed id is ever logged (the path is attacker-controlled).
+    logged_id = provider_id if PROVIDER_ID_PATTERN.fullmatch(provider_id) else "?"
     target: str | None
     try:
         done = await flow.complete(provider_id, state=state, code=code, error=error)
         target = flow.success_url(done)
     except OAuthCallbackError as exc:
-        logger.info("oauth callback for {} failed: {}", provider_id, exc.reason)
+        logger.info("oauth callback for {} failed: {}", logged_id, exc.reason)
         target = flow.failure_url(exc.reason)
     except Exception as exc:  # never a 500 page with details
-        logger.error("oauth callback for {} raised {}", provider_id, type(exc).__name__)
+        logger.error("oauth callback for {} raised {}", logged_id, type(exc).__name__)
         target = flow.failure_url(CallbackFailure.INTERNAL_ERROR)
     if target is None:
         return JSONResponse(
