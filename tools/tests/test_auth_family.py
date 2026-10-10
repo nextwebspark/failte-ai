@@ -96,6 +96,7 @@ async def test_catalog_shows_family_and_tool_summaries(
     assert providers["google-calendar"]["auth_family"] == "google"
     assert providers["google-sheets"]["auth_family"] == "google"
     assert providers["echo"]["auth_family"] is None
+    assert providers["google-sheets"]["share_hint"] == "the spreadsheet"
     summaries = {t["name"]: t["summary"] for t in providers["google-calendar"]["tools"]}
     assert summaries["check_appointment_availability"] == "Check free appointment slots"
     # The agent still gets the full instructions.

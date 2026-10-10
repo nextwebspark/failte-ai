@@ -88,6 +88,10 @@ class GoogleSheetsProvider:
         return "sheet"
 
     @property
+    def share_hint(self) -> str:
+        return "the spreadsheet"
+
+    @property
     def auth_family(self) -> str:
         return GOOGLE_FAMILY
 

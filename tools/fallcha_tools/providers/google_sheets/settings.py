@@ -75,6 +75,12 @@ class SheetsConfig(BaseModel):
         description="Tab holding orders, for the verified look_up_order tool "
         "(caller name + address/Eircode). Unset: order lookup is off.",
     )
+    generic_tools_read_orders: bool = Field(
+        default=False,
+        description="Let find_rows, get_row and append_row use the orders tab "
+        "too. Off: the orders tab is reachable only through the verified "
+        "look_up_order.",
+    )
     order_columns: OrderColumns = Field(
         default_factory=OrderColumns,
         description="Header names of the orders tab's columns.",
@@ -117,10 +123,7 @@ class SheetsConfig(BaseModel):
             and not any(same_tab(self.default_tab, t) for t in self.allowed_tabs)
         ):
             raise ValueError("default_tab must be one of allowed_tabs")
-        if (
-            self.orders_tab is not None
-            and self.allowed_tabs is not None
-            and not any(same_tab(self.orders_tab, t) for t in self.allowed_tabs)
-        ):
-            raise ValueError("orders_tab must be one of allowed_tabs")
         return self
+
+    def is_orders_tab(self, tab: str) -> bool:
+        return self.orders_tab is not None and same_tab(tab, self.orders_tab)

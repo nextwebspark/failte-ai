@@ -44,7 +44,10 @@ from fallcha_tools.providers.website_catalogue.parse import (
     ParsedProduct,
     parse_product,
 )
-from fallcha_tools.providers.website_catalogue.settings import CatalogueConfig
+from fallcha_tools.providers.website_catalogue.settings import (
+    CatalogueConfig,
+    host_key,
+)
 
 USER_AGENT_TOKEN = "FallchaCatalogueBot"
 USER_AGENT = (
@@ -52,13 +55,23 @@ USER_AGENT = (
 )
 MAX_ROBOTS_BYTES = 512 * 1024
 MAX_SITEMAP_BYTES = 20 * 1024 * 1024
-MAX_PAGE_BYTES = 5 * 1024 * 1024
+MAX_PAGE_BYTES = 2 * 1024 * 1024
+# Whole-request limits (connect + headers + body), so a server dripping
+# bytes slowly cannot hold a sync open.
+PAGE_TIMEOUT = 30.0
+SITEMAP_TIMEOUT = 60.0
 MAX_SITEMAPS = 50
 MAX_CRAWL_DELAY = 60.0
 _LOC = re.compile(r"<loc>\s*([^<\s]+)\s*</loc>", re.IGNORECASE)
 _PRODUCT_HINT = re.compile(r"product", re.IGNORECASE)
 
 OnProduct = Callable[[ParsedProduct], Awaitable[None]]
+# Called after every page (and sitemap) handled, with the pages done so far.
+OnProgress = Callable[[int], Awaitable[None]]
+
+
+async def _no_progress(done: int) -> None:
+    del done
 
 
 @dataclass(frozen=True, slots=True)
@@ -87,11 +100,6 @@ class _Pacer:
             self._next = loop.time() + self.interval
 
 
-def _host_key(host: str) -> str:
-    host = host.lower().rstrip(".")
-    return host[4:] if host.startswith("www.") else host
-
-
 def _inflate(content: bytes) -> bytes:
     if content[:2] != b"\x1f\x8b":
         return content
@@ -114,9 +122,21 @@ def sitemap_locs(content: bytes) -> tuple[bool, list[str]]:
 
 
 class CatalogueCrawler:
-    def __init__(self, fetcher: GuardedFetcher, config: CatalogueConfig) -> None:
+    def __init__(
+        self,
+        fetcher: GuardedFetcher,
+        config: CatalogueConfig,
+        *,
+        on_progress: OnProgress = _no_progress,
+        page_timeout: float = PAGE_TIMEOUT,
+        sitemap_timeout: float = SITEMAP_TIMEOUT,
+    ) -> None:
         self._fetcher = fetcher
         self._config = config
+        self._on_progress = on_progress
+        self._page_timeout = page_timeout
+        self._sitemap_timeout = sitemap_timeout
+        self._done = 0
         self._site = urlsplit(config.site_url)
         self._origin = f"{self._site.scheme}://{self._site.netloc}"
         self._robots = RobotFileParser()
@@ -147,32 +167,24 @@ class CatalogueCrawler:
         counts = {"indexed": 0, "skipped": 0, "failed": 0}
 
         async def one(url: str) -> None:
-            if not self._robots.can_fetch(USER_AGENT_TOKEN, url):
-                counts["skipped"] += 1
-                return
-            async with gate:
-                await pacer.wait()
-                try:
-                    page = await self._fetcher.get(url, max_bytes=MAX_PAGE_BYTES)
-                except (httpx.HTTPError, BlockedUrlError, ResponseTooLargeError):
-                    # One flaky page must not stop the run.
-                    counts["failed"] += 1
-                    return
-            if page.status_code != 200:
-                counts["failed"] += 1
-                return
-            product = parse_product(
-                page.content.decode("utf-8", errors="replace"),
-                url,
-                self._config.currency,
-            )
-            if product is None:
-                counts["skipped"] += 1
-                return
-            await on_product(product)
-            counts["indexed"] += 1
+            outcome = await self._page(url, pacer, gate)
+            if isinstance(outcome, ParsedProduct):
+                # Not caught: a storage failure is fatal and stops the sync.
+                await on_product(outcome)
+                counts["indexed"] += 1
+            else:
+                counts[outcome] += 1
+            self._done += 1
+            await self._on_progress(self._done)
 
-        await asyncio.gather(*(one(url) for url in urls))
+        # A fatal error in one page cancels the others (no work after the
+        # sync has failed).
+        try:
+            async with asyncio.TaskGroup() as group:
+                for url in urls:
+                    group.create_task(one(url))
+        except BaseExceptionGroup as grouped:
+            raise grouped.exceptions[0] from None
         return CrawlOutcome(
             page_urls=tuple(urls),
             complete=complete,
@@ -181,16 +193,43 @@ class CatalogueCrawler:
             failed=counts["failed"],
         )
 
+    async def _page(
+        self, url: str, pacer: _Pacer, gate: asyncio.Semaphore
+    ) -> ParsedProduct | str:
+        """The page's product, or why there is none ("skipped"/"failed").
+        Any error about this one page is counted, never raised."""
+        if not self._robots.can_fetch(USER_AGENT_TOKEN, url):
+            return "skipped"
+        try:
+            async with gate:
+                await pacer.wait()
+                async with asyncio.timeout(self._page_timeout):
+                    page = await self._fetcher.get(url, max_bytes=MAX_PAGE_BYTES)
+            if page.status_code != 200:
+                return "failed"
+            # Parsing is CPU work: keep it off the event loop.
+            product = await asyncio.to_thread(
+                parse_product,
+                page.content.decode("utf-8", errors="replace"),
+                url,
+                self._config.currency,
+            )
+        except Exception as exc:  # incl. timeouts, RecursionError, bad markup
+            logger.debug("page skipped: {}", type(exc).__name__)
+            return "failed"
+        return product if product is not None else "skipped"
+
     # -- robots.txt -------------------------------------------------------------
 
     async def _load_robots(self) -> float:
         """Reads robots.txt; returns the delay between requests to use."""
         url = f"{self._origin}/robots.txt"
         try:
-            fetched = await self._fetcher.get(url, max_bytes=MAX_ROBOTS_BYTES)
+            async with asyncio.timeout(self._page_timeout):
+                fetched = await self._fetcher.get(url, max_bytes=MAX_ROBOTS_BYTES)
         except BlockedUrlError as exc:
             raise SyncFailed(f"the site cannot be fetched: {exc}") from None
-        except (httpx.HTTPError, ResponseTooLargeError):
+        except (httpx.HTTPError, ResponseTooLargeError, TimeoutError):
             raise SyncFailed("robots.txt could not be read; try again later") from None
         status = fetched.status_code
         if status in (401, 403):
@@ -211,17 +250,22 @@ class CatalogueCrawler:
     def _sitemap_sources(self) -> list[str]:
         if self._config.sitemap_url:
             return [self._config.sitemap_url]
-        listed = self._robots.site_maps() or []
+        listed = [u for u in self._robots.site_maps() or [] if self._on_site(u)]
         return list(dict.fromkeys(listed)) or [f"{self._origin}/sitemap.xml"]
 
     # -- sitemaps ---------------------------------------------------------------
 
-    def _wanted(self, url: str) -> bool:
+    def _on_site(self, url: str) -> bool:
+        """On the site's own host (``www.`` or not), over http(s)."""
         parts = urlsplit(url)
         if parts.scheme not in ("http", "https") or not parts.hostname:
             return False
-        if _host_key(parts.hostname) != _host_key(self._site.hostname or ""):
+        return host_key(parts.hostname) == host_key(self._site.hostname or "")
+
+    def _wanted(self, url: str) -> bool:
+        if not self._on_site(url):
             return False
+        parts = urlsplit(url)
         patterns = self._config.include_paths
         if not patterns:
             return True
@@ -241,9 +285,10 @@ class CatalogueCrawler:
                 complete = False
                 break
             sitemap = queue.pop(0)
-            if sitemap in seen_sitemaps:
+            if sitemap in seen_sitemaps or not self._on_site(sitemap):
                 continue
             seen_sitemaps.add(sitemap)
+            await self._on_progress(self._done)
             try:
                 fetched = await self._get(sitemap, MAX_SITEMAP_BYTES)
                 is_index, locs = sitemap_locs(fetched.content)
@@ -276,9 +321,12 @@ class CatalogueCrawler:
 
     async def _get(self, url: str, max_bytes: int) -> Fetched:
         try:
-            return await self._fetcher.get(url, max_bytes=max_bytes)
+            async with asyncio.timeout(self._sitemap_timeout):
+                return await self._fetcher.get(url, max_bytes=max_bytes)
         except BlockedUrlError as exc:
             raise SyncFailed(f"{url} cannot be fetched: {exc}") from None
+        except TimeoutError:
+            raise SyncFailed(f"{url} took too long to load") from None
         except httpx.HTTPError as exc:
             logger.info("sitemap fetch failed: {}", type(exc).__name__)
             raise SyncFailed(f"{url} could not be loaded") from None

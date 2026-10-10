@@ -140,13 +140,14 @@ function can never write.
 | `allowed_tabs` | all | If set, tools may only read and write these tabs (checked before any Google call) |
 | `max_rows_returned` | 20 | Most rows `find_rows` returns (1-100) |
 | `header_row` | 1 | Row holding the column names; data starts below |
-| `orders_tab` | unset (lookup off) | Tab read by `look_up_order`; must be allowed |
+| `orders_tab` | unset (lookup off) | Tab read by `look_up_order` (whether or not it is in `allowed_tabs`) |
+| `generic_tools_read_orders` | false | Let `find_rows`/`get_row`/`append_row` use the orders tab too; off, it is reachable only through the verified lookup |
 | `order_columns` | the shim's headers | Header names for `order_id`, `customer_name`, `address`, `eircode`, `package`, `status`, `eta`, `hardware`, `order_date`, `monthly_price` |
 
 | MCP tool | |
 |---|---|
 | `find_rows(column, value, tab?, match)` | Rows whose column matches (`exact` or `contains`; case and spacing ignored), as header -> value, up to `max_rows_returned`; `more` says if others matched. Scans 10,000 rows below the header |
-| `get_row(row_number, tab?)` | One row by sheet row number |
+| `get_row(row_number, tab?)` | One row by sheet row number (a row past the end of the sheet is "not found") |
 | `append_row(values, tab?)` | Adds a row, `{column: value}` mapped by header name; unknown columns are rejected |
 | `look_up_order(caller_name, address_or_eircode, order_id?)` | The shim's verified order lookup (REST: `POST /v1/google-sheets/order_lookup`, same body and response) |
 
@@ -160,7 +161,8 @@ so the caller's words cannot become a formula in the sheet and dates are
 not reinterpreted by locale. Because the sheet may later be exported to CSV
 or Excel, where a leading `=`, `+`, `-`, `@`, tab or carriage return starts a
 formula (CSV injection), such values are stored with a leading apostrophe
-(visible in the cell, since RAW keeps it literally). The one exception is a
+(visible in the cell, since RAW keeps it literally: the trade-off for
+never parsing input). The one exception is a
 plain international phone number (`+353 87 123 4567`), which cannot call a
 function and is the most common value a voice agent writes. With
 `USER_ENTERED` the apostrophe would be hidden, but the agent's text would be
@@ -175,6 +177,11 @@ Eircode (0.62; an Eircode match wins); a miss gives the same answer whatever
 did not match; rows are cached for 60 s per connection and tab; only order
 fields (never phone, full address or notes) are returned.
 
+Calendar connections saved before order lookup moved here may still carry
+`orders_sheet_id` / `orders_tab`: migration 0006 strips them, and the
+calendar config model ignores them, so such connections keep working (set
+the orders up again on a Sheets connection).
+
 ## Website catalogue (`website-catalogue`)
 
 A generic port of the CH Marine `product_service`: any shop whose product
@@ -185,12 +192,13 @@ data, no secret); tool calls still need the connection key.
 | Config | Default | |
 |---|---|---|
 | `site_url` | required | The shop's home page (public domain name, http/https) |
-| `sitemap_url` | robots.txt `Sitemap:` lines, else `/sitemap.xml` | Sitemap or sitemap index |
+| `sitemap_url` | robots.txt `Sitemap:` lines, else `/sitemap.xml` | Sitemap or sitemap index, on the site's own host |
 | `currency` | `EUR` | Used when a page states none |
 | `include_paths` | all pages | Path prefixes, or `*` globs, e.g. `/products/` |
 | `max_products` | 2000 | Most product pages fetched per sync |
 | `request_delay_seconds` | 1.0 | Pause between request starts (a longer robots.txt `Crawl-delay` wins, capped at 60 s) |
 | `max_concurrency` | 2 | Parallel requests (1-4) |
+| `max_sync_minutes` | 30 | A sync still running after this long is stopped (failed) |
 | `max_results` | 3 | Products named per answer (never more than 5) |
 | `no_match_transfer_offer` | "I can also put you through to one of the team." | Appended to the no-match answer; empty for none |
 
@@ -201,26 +209,34 @@ session-level advisory lock: a second request while one runs (in any
 replica) gets 409, and a process allows at most 4 concurrent syncs. The
 connection's `sync` field reports `status` (`running`, `succeeded`,
 `failed`), `item_count`, `last_synced_at` and `last_error`; a running sync
-whose heartbeat is over 5 minutes old (the process died) reads as failed. A
-sync that read every sitemap removes products whose page left the sitemap;
-one stopped by `max_products` keeps them. The Fallcha UI starts the first
+whose heartbeat is over 5 minutes old (the process died) reads as failed;
+the heartbeat is refreshed while sitemaps and every page are processed,
+whether or not they hold products. After a sync, the catalogue is what its
+sitemaps listed (capped at `max_products`): other products are removed,
+while pages that failed to load keep their previous data. A successful sync
+reports caveats in `note` ("stopped at 2000 pages", "3 page(s) could not be
+loaded"). One page that cannot be fetched or parsed (timeout, bad markup,
+over-deep JSON) is counted and skipped; a storage error stops the whole
+sync, cancelling the pages in flight. The Fallcha UI starts the first
 sync when the connection is made.
 
 **Polite crawling.** An honest `FallchaCatalogueBot/1.0` User-Agent; robots.txt
 is honoured (401/403: nothing may be crawled; other 4xx: no rules; 5xx:
-stop); pages (5 MB), sitemaps (20 MB, gzip inflated with a cap) and
-robots.txt have size caps; sitemap indexes are followed (product sitemaps
-first, at most 50); only pages on the site's host (with or without `www.`)
-are kept.
+stop); pages (2 MB, 30 s each including the body), sitemaps (20 MB, 60 s,
+gzip inflated with a cap) and robots.txt have size and time caps; only
+`Accept-Encoding: gzip` is offered; pages are parsed in a worker thread;
+sitemap indexes are followed (product sitemaps first, at most 50); only
+sitemaps and pages on the site's host (with or without `www.`) are used.
 
 **SSRF protection** (`fallcha_tools/core/netguard.py`). Every fetch accepts
 only http/https URLs on ports 80/443/8080/8443 without credentials, resolves
 the host and refuses it unless every address is public (no private,
 loopback, link-local, CGNAT, multicast, reserved or unspecified addresses,
-including IPv4-mapped and 6to4 forms), follows at most 5 redirects itself
+including IPv4 addresses embedded in IPv6: mapped, 6to4, NAT64
+`64:ff9b::/96` and IPv4-compatible `::/96`), follows at most 5 redirects itself
 and checks each hop, ignores proxy environment variables, and connects
 through a network backend that re-resolves the host and connects to the
-vetted IP (TLS still verifies the host name), so DNS rebinding cannot reach
+vetted IPs (each in turn) (TLS still verifies the host name), so DNS rebinding cannot reach
 an internal address.
 
 **Storage.** `fallcha_tools.catalogue_products` (one row per connection and

@@ -30,7 +30,7 @@ from fallcha_tools.core.netguard import (
     ip_is_public,
     system_resolver,
 )
-from fallcha_tools.core.provider import ProviderRegistry
+from fallcha_tools.core.provider import ProviderRegistry, SyncFailed
 from fallcha_tools.core.sync import sync_lock_id
 from fallcha_tools.providers.website_catalogue import WebsiteCatalogueProvider
 from fallcha_tools.providers.website_catalogue.crawler import (
@@ -154,6 +154,10 @@ def test_config_validation() -> None:
         ("fc00::1", False),
         ("::ffff:127.0.0.1", False),
         ("2002:c0a8:0101::", False),  # 6to4 of 192.168.1.1
+        ("64:ff9b::a00:1", False),  # NAT64 of 10.0.0.1
+        ("64:ff9b::5db8:d822", True),  # NAT64 of a public address
+        ("::10.0.0.1", False),  # IPv4-compatible
+        ("::", False),
         ("not-an-ip", False),
     ],
 )
@@ -353,6 +357,7 @@ async def test_sync_imports_products_politely(
     assert all(call.request.url.host == "shop.example.com" for call in shop.page.calls)
     assert shop.robots.call_count == 1
     assert all(ua.startswith(USER_AGENT_TOKEN) for ua in shop.user_agents)
+    assert set(shop.encodings) == {"gzip"}
 
     listed = await client.get("/internal/connections", headers=internal_headers())
     assert listed.json()["connections"][0]["sync"]["item_count"] == 3
@@ -366,7 +371,7 @@ async def test_include_paths_and_max_products(
     assert status["item_count"] == 1
     assert {c.request.url.path for c in shop.page.calls} == {"/products/kobra-anchor"}
 
-    # A cut-off sync keeps products it did not reach (no pruning).
+    # A capped sync keeps only what it reached, and says it was capped.
     await client.patch(
         f"/internal/connections/{connection_id}",
         headers=internal_headers(),
@@ -374,7 +379,8 @@ async def test_include_paths_and_max_products(
     )
     status = await sync(app, client, connection_id)
     assert status["status"] == "succeeded"
-    assert status["item_count"] == 2  # the anchor stays, one more was added
+    assert status["item_count"] == 1
+    assert status["note"].startswith("stopped at 1 pages")
 
 
 async def test_full_sync_prunes_products_gone_from_the_sitemap(
@@ -434,8 +440,8 @@ async def test_sync_refuses_private_sites(
     status = await sync(app, client, connection_id)
     assert status["status"] == "failed"
     assert "not a public internet address" in status["last_error"]
-    # A sitemap on another (public) host is fine, a private one is not.
-    await client.patch(
+    # The sitemap must be on the site itself.
+    refused = await client.patch(
         f"/internal/connections/{connection_id}",
         headers=internal_headers(),
         json={
@@ -445,8 +451,42 @@ async def test_sync_refuses_private_sites(
             }
         },
     )
+    assert refused.status_code == 422
+    assert "same site" in refused.json()["detail"]
+    nat64 = await client.patch(
+        f"/internal/connections/{connection_id}",
+        headers=internal_headers(),
+        json={"config": {"site_url": "https://nat64.example.com"}},
+    )
+    assert nat64.status_code == 200
     status = await sync(app, client, connection_id)
-    assert "cannot be fetched" in status["last_error"]
+    assert "not a public internet address" in status["last_error"]
+
+
+async def test_off_site_sitemaps_are_ignored(
+    app: FastAPI, client: httpx.AsyncClient, shop: FakeShop
+) -> None:
+    shop.robots.mock(
+        return_value=httpx.Response(
+            200, text="Sitemap: https://cdn.example.net/sitemap.xml\n"
+        )
+    )
+    shop.index.mock(
+        return_value=httpx.Response(
+            200,
+            text="<sitemapindex><sitemap><loc>https://cdn.example.net/x.xml"
+            "</loc></sitemap></sitemapindex>",
+        )
+    )
+    offsite = shop.router.get(url__startswith="https://cdn.example.net").mock(
+        return_value=httpx.Response(200, text="<urlset></urlset>")
+    )
+    connection_id = await connect(client)
+    status = await sync(app, client, connection_id)
+    assert status["status"] == "failed"
+    assert not offsite.called
+    # robots.txt pointed off-site, so the default /sitemap.xml was used.
+    assert shop.default_sitemap.called
 
 
 async def test_one_sync_per_connection(
@@ -762,3 +802,172 @@ async def test_mcp_and_rest_compat(app: FastAPI, client: httpx.AsyncClient) -> N
         f"/v1/{PROVIDER}/product_search", json={"query": "x"}
     )
     assert unauthorized.status_code == 401
+
+
+# --- review follow-ups: robustness -----------------------------------------------
+
+
+class RecordingProgress:
+    def __init__(self) -> None:
+        self.calls = 0
+
+    async def heartbeat(self, items: int) -> None:
+        self.calls += 1
+
+
+def sync_context(app: FastAPI, connection_id: str, **config: Any) -> Any:
+    from fallcha_tools.core.models import AuthMode
+    from fallcha_tools.core.provider import ConnectionContext
+
+    return ConnectionContext(
+        org_id=1,
+        connection_id=uuid.UUID(connection_id),
+        provider=PROVIDER,
+        auth_mode=AuthMode.NONE,
+        secret={},
+        access_token=None,
+        http=services(app).http,
+        config=catalogue_config(**config),
+        db=services(app).db,
+    )
+
+
+async def test_a_bad_page_is_counted_not_fatal(
+    app: FastAPI,
+    client: httpx.AsyncClient,
+    shop: FakeShop,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from fallcha_tools.providers.website_catalogue import crawler
+
+    real = parse_product
+
+    def parse(html: str, url: str, currency: str) -> Any:
+        if url.endswith("kobra-anchor"):
+            raise RecursionError("deeply nested JSON-LD")
+        return real(html, url, currency)
+
+    monkeypatch.setattr(crawler, "parse_product", parse)
+    connection_id = await connect(client)
+    status = await sync(app, client, connection_id)
+    assert status["status"] == "succeeded", status
+    assert status["item_count"] == 2
+    assert "2 page(s) could not be loaded" in status["note"]  # + the 500 page
+
+
+async def test_a_storage_error_stops_the_sync(
+    app: FastAPI,
+    client: httpx.AsyncClient,
+    shop: FakeShop,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from fallcha_tools.providers.website_catalogue import provider as module
+
+    async def broken(*args: Any, **kwargs: Any) -> None:
+        raise ConnectionError("database went away")
+
+    monkeypatch.setattr(CatalogueStore, "upsert", broken)
+    monkeypatch.setattr(module, "UPSERT_BATCH", 1)
+    connection_id = await connect(client)
+    status = await sync(app, client, connection_id)
+    assert status["status"] == "failed"
+    assert status["last_error"] == "the sync failed unexpectedly"
+    assert services(app).sync.running == 0
+
+
+async def test_slow_pages_time_out_and_the_run_has_a_deadline(
+    app: FastAPI,
+    client: httpx.AsyncClient,
+    shop: FakeShop,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def drip(request: httpx.Request) -> httpx.Response:
+        await asyncio.sleep(5)  # a server that never finishes the body
+        return httpx.Response(200)
+
+    shop.page.mock(side_effect=drip)
+    connection_id = await connect(client)
+    fast = WebsiteCatalogueProvider(
+        resolver=fake_resolver, page_timeout=0.1, sitemap_timeout=0.5
+    )
+    started = asyncio.get_running_loop().time()
+    with pytest.raises(SyncFailed, match="no product data"):
+        await fast.run_sync(sync_context(app, connection_id), RecordingProgress())
+    assert asyncio.get_running_loop().time() - started < 3
+
+    from fallcha_tools.providers.website_catalogue import provider as module
+
+    monkeypatch.setattr(module, "SECONDS_PER_MINUTE", 0.3)
+    slow = WebsiteCatalogueProvider(resolver=fake_resolver, page_timeout=10)
+    with pytest.raises(SyncFailed, match="took longer than 1 minutes"):
+        await slow.run_sync(
+            sync_context(app, connection_id, max_sync_minutes=1), RecordingProgress()
+        )
+
+
+async def test_heartbeat_on_every_page_even_without_products(
+    app: FastAPI, client: httpx.AsyncClient, shop: FakeShop
+) -> None:
+    shop.pages = {path: "<html>no product here</html>" for path in shop.pages}
+    connection_id = await connect(client)
+    progress = RecordingProgress()
+    with pytest.raises(SyncFailed):
+        await WebsiteCatalogueProvider(resolver=fake_resolver).run_sync(
+            sync_context(app, connection_id), progress
+        )
+    # 3 sitemaps + 6 product-sitemap pages (the 500 one included).
+    assert progress.calls >= 9
+
+
+async def test_progress_writes_are_throttled_and_stop_when_closed(
+    app: FastAPI, client: httpx.AsyncClient, engine: AsyncEngine
+) -> None:
+    from fallcha_tools.core.sync import SyncRepository, _Progress
+
+    connection_id = uuid.UUID(await connect(client))
+    runner = services(app).sync
+    now = datetime.now(UTC)
+    ticks = iter([now + timedelta(seconds=s) for s in (1, 30, 31, 90)])
+    runner.clock = lambda: next(ticks)
+    async with services(app).db.session() as session:
+        await SyncRepository(session, lambda: now).mark_running(1, connection_id, 1)
+    progress = _Progress(runner, 1, connection_id, now)
+
+    async def beat() -> datetime:
+        async with engine.connect() as conn:
+            row = await conn.execute(
+                text("SELECT heartbeat_at FROM fallcha_tools.connection_syncs")
+            )
+            value: datetime = row.scalar_one()
+            return value
+
+    await progress.heartbeat(1)  # +1 s: throttled
+    assert await beat() == now
+    await progress.heartbeat(2)  # +30 s: written
+    assert await beat() == now + timedelta(seconds=30)
+    await progress.heartbeat(3)  # +31 s: throttled
+    progress.closed = True
+    await progress.heartbeat(4)  # closed: never written
+    assert await beat() == now + timedelta(seconds=30)
+
+
+async def test_guarded_backend_tries_every_vetted_address() -> None:
+    attempts: list[str] = []
+
+    stream = cast(httpcore.AsyncNetworkStream, object())
+
+    class Inner(httpcore.AsyncNetworkBackend):
+        async def connect_tcp(  # type: ignore[override]
+            self, host: str, port: int, **kwargs: Any
+        ) -> httpcore.AsyncNetworkStream:
+            attempts.append(host)
+            if host == "93.184.216.34":
+                raise httpcore.ConnectError("refused")
+            return stream
+
+    async def two(host: str, port: int) -> list[str]:
+        return ["93.184.216.34", "151.101.1.1"]
+
+    backend = GuardedNetworkBackend(two, inner=Inner())
+    assert await backend.connect_tcp("shop.example.com", 443) is stream
+    assert attempts == ["93.184.216.34", "151.101.1.1"]

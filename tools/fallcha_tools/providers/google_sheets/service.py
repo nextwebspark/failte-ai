@@ -33,6 +33,7 @@ from fallcha_tools.providers.google_sheets.cells import (
     updated_row_number,
 )
 from fallcha_tools.providers.google_sheets.client import (
+    RangeOutsideGridError,
     SheetsClient,
     SpreadsheetInfo,
 )
@@ -59,6 +60,10 @@ MIN_REQUEST_SECONDS = 0.5
 # find_rows scans at most this many rows below the header.
 MAX_SCAN_ROWS = 10_000
 _MAX_LISTED_COLUMNS = 20
+ORDERS_TAB_PROTECTED = (
+    "the orders tab can only be read with look_up_order, after the caller's "
+    "details are checked"
+)
 APPEND_UNCONFIRMED = (
     "Google did not confirm the row was added; check the sheet before adding it again"
 )
@@ -192,14 +197,17 @@ class SheetsService:
             )
         budget = self._budget()
         name = await self._tab(tab, budget)
-        header, row = await self.client.read_ranges(
-            self.config.spreadsheet_id,
-            [
-                rows_range(name, header_row, header_row),
-                rows_range(name, row_number, row_number),
-            ],
-            budget=budget,
-        )
+        try:
+            header, row = await self.client.read_ranges(
+                self.config.spreadsheet_id,
+                [
+                    rows_range(name, header_row, header_row),
+                    rows_range(name, row_number, row_number),
+                ],
+                budget=budget,
+            )
+        except RangeOutsideGridError:
+            return GetRowResult(found=False, tab=name)
         headers = header_names(header[0]) if header else []
         cells = row[0] if row else []
         if not headers or not any(c.strip() for c in cells):
@@ -262,8 +270,8 @@ class SheetsService:
         )
         configured = [
             *([self.config.default_tab] if self.config.default_tab else []),
-            *([self.config.orders_tab] if self.config.orders_tab else []),
             *(self.config.allowed_tabs or []),
+            *([self.config.orders_tab] if self.config.orders_tab else []),
         ]
         missing = [
             tab
@@ -275,7 +283,14 @@ class SheetsService:
     # -- helpers -------------------------------------------------------------
 
     async def _tab(self, requested: str | None, budget: Budget) -> str:
-        """The tab a call works on, enforcing ``allowed_tabs``."""
+        """The tab a generic tool works on, enforcing ``allowed_tabs`` and
+        keeping the orders tab behind look_up_order's checks."""
+        tab = await self._resolve_tab(requested, budget)
+        if self.config.is_orders_tab(tab) and not self.config.generic_tools_read_orders:
+            raise BadArgumentError(ORDERS_TAB_PROTECTED)
+        return tab
+
+    async def _resolve_tab(self, requested: str | None, budget: Budget) -> str:
         allowed = self.config.allowed_tabs
         wanted = (requested or "").strip()
         if wanted:

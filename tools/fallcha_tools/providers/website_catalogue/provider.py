@@ -3,6 +3,7 @@ schema.org Product JSON-LD and are listed in a sitemap."""
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -31,6 +32,8 @@ from fallcha_tools.core.provider import (
     SyncResult,
 )
 from fallcha_tools.providers.website_catalogue.crawler import (
+    PAGE_TIMEOUT,
+    SITEMAP_TIMEOUT,
     USER_AGENT,
     CatalogueCrawler,
 )
@@ -46,6 +49,8 @@ from fallcha_tools.providers.website_catalogue.tools import (
     CatalogueToolError,
     register_catalogue_tools,
 )
+
+SECONDS_PER_MINUTE = 60.0  # tests shrink it
 
 
 def _now() -> datetime:
@@ -76,6 +81,8 @@ class WebsiteCatalogueProvider:
 
     resolver: Resolver = system_resolver
     clock: Any = field(default=_now)
+    page_timeout: float = PAGE_TIMEOUT
+    sitemap_timeout: float = SITEMAP_TIMEOUT
 
     @property
     def id(self) -> str:
@@ -96,6 +103,10 @@ class WebsiteCatalogueProvider:
     @property
     def icon(self) -> str:
         return "products"
+
+    @property
+    def share_hint(self) -> str | None:
+        return None
 
     @property
     def auth_family(self) -> str | None:
@@ -148,7 +159,12 @@ class WebsiteCatalogueProvider:
         except CatalogueToolError as exc:
             return ConnectionTestResult(ok=False, message=str(exc))
         async with guarded_client(self.resolver) as http:
-            crawler = CatalogueCrawler(self._fetcher(http), config)
+            crawler = CatalogueCrawler(
+                self._fetcher(http),
+                config,
+                page_timeout=self.page_timeout,
+                sitemap_timeout=self.sitemap_timeout,
+            )
             try:
                 message = await crawler.check()
             except SyncFailed as exc:
@@ -167,6 +183,22 @@ class WebsiteCatalogueProvider:
             store = CatalogueStore(_db(ctx))
         except CatalogueToolError as exc:
             raise SyncFailed(str(exc)) from None
+        limit = config.max_sync_minutes
+        try:
+            async with asyncio.timeout(limit * SECONDS_PER_MINUTE):
+                return await self._sync(ctx, config, store, progress)
+        except TimeoutError:
+            raise SyncFailed(
+                f"the sync took longer than {limit} minutes and was stopped"
+            ) from None
+
+    async def _sync(
+        self,
+        ctx: ConnectionContext,
+        config: CatalogueConfig,
+        store: CatalogueStore,
+        progress: SyncProgress,
+    ) -> SyncResult:
         started = self.clock()
         batch: list[ParsedProduct] = []
         indexed = 0
@@ -174,8 +206,8 @@ class WebsiteCatalogueProvider:
         async def flush() -> None:
             nonlocal batch
             if batch:
-                await store.upsert(ctx.org_id, ctx.connection_id, batch, self.clock())
-                batch = []
+                pending, batch = batch, []
+                await store.upsert(ctx.org_id, ctx.connection_id, pending, self.clock())
 
         async def on_product(product: ParsedProduct) -> None:
             nonlocal indexed
@@ -183,14 +215,24 @@ class WebsiteCatalogueProvider:
             indexed += 1
             if len(batch) >= UPSERT_BATCH:
                 await flush()
+
+        async def on_progress(done: int) -> None:
+            # Every page and sitemap counts, so a long run that finds few
+            # products is never mistaken for a dead one.
             await progress.heartbeat(indexed)
+            del done
 
         async with guarded_client(
             self.resolver, max_connections=config.max_concurrency
         ) as http:
-            outcome = await CatalogueCrawler(self._fetcher(http), config).crawl(
-                on_product
+            crawler = CatalogueCrawler(
+                self._fetcher(http),
+                config,
+                on_progress=on_progress,
+                page_timeout=self.page_timeout,
+                sitemap_timeout=self.sitemap_timeout,
             )
+            outcome = await crawler.crawl(on_product)
         await flush()
         if outcome.indexed == 0:
             raise SyncFailed(
@@ -198,18 +240,21 @@ class WebsiteCatalogueProvider:
                 f"{len(outcome.page_urls)} page(s) "
                 f"({outcome.failed} could not be loaded)"
             )
-        if outcome.complete:
-            await store.prune(
-                ctx.org_id,
-                ctx.connection_id,
-                older_than=started,
-                keep_urls=outcome.page_urls,
-            )
+        # The catalogue is what this sync's sitemaps listed (capped at
+        # max_products); pages that failed to load keep their old row.
+        await store.prune(
+            ctx.org_id,
+            ctx.connection_id,
+            older_than=started,
+            keep_urls=outcome.page_urls,
+        )
         total = await store.count(ctx.org_id, ctx.connection_id)
-        note = None
+        notes = []
         if not outcome.complete:
-            note = f"stopped at {config.max_products} pages"
-        return SyncResult(item_count=total, note=note)
+            notes.append(f"stopped at {config.max_products} pages")
+        if outcome.failed:
+            notes.append(f"{outcome.failed} page(s) could not be loaded")
+        return SyncResult(item_count=total, note="; ".join(notes) or None)
 
     def _fetcher(self, http: Any) -> GuardedFetcher:
         return GuardedFetcher(http=http, user_agent=USER_AGENT, resolver=self.resolver)

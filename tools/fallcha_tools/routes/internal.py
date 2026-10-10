@@ -101,11 +101,11 @@ async def _reused_secret(
     provider: Provider,
     body: CreateConnectionRequest,
 ) -> tuple[Mapping[str, JsonValue], str | None]:
-    """The secret of ``body.reuse_secret_from``, if it may be shared with a
-    new ``provider`` connection: same org (else 404), active, same auth
-    mode and same provider family. OAuth refresh tokens are never shared:
-    each OAuth connection has its own grant, so revoking one cannot break
-    another."""
+    """The secret of connection ``body.reuse_secret_from``, to store again
+    (encrypted) for a new ``provider`` connection. The source must belong to
+    the same org (else 404) and be active (else 409), and use the same auth
+    mode and auth family (else 422). Only service-account and API-key
+    secrets can be reused; OAuth connections each keep their own grant."""
     assert body.reuse_secret_from is not None
     if body.auth_mode not in _REUSABLE_AUTH_MODES:
         raise InvalidRequestError(f"{body.auth_mode} secrets cannot be reused")
@@ -161,6 +161,7 @@ async def get_catalog(services: ServicesDep) -> CatalogResponse:
                     ToolSummary(name=n, description=d, summary=t) for n, d, t in tools
                 ],
                 auth_family=provider.auth_family,
+                share_hint=provider.share_hint,
                 config_schema=(
                     provider.config_model.model_json_schema()
                     if provider.config_model is not None

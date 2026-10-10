@@ -110,3 +110,13 @@ def test_service_account_key_rejects(changes: dict[str, Any]) -> None:
 def test_service_account_key_repr_hides_private_key() -> None:
     key = ServiceAccountKey.model_validate(service_account_key())
     assert "PRIVATE KEY" not in repr(key)
+
+
+def test_retired_order_keys_are_dropped() -> None:
+    """Configs saved before order lookup moved to Sheets still validate."""
+    config = CalendarConfig.model_validate(
+        {"calendar_id": "c", "orders_sheet_id": "s", "orders_tab": "Orders"}
+    )
+    assert "orders_sheet_id" not in config.model_dump()
+    with pytest.raises(ValidationError):
+        CalendarConfig.model_validate({"calendar_id": "c", "surprise": 1})

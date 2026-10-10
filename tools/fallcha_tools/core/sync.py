@@ -65,6 +65,7 @@ class SyncInfo:
     last_synced_at: datetime | None
     item_count: int
     last_error: str | None
+    note: str | None
 
 
 def _info(row: ConnectionSync, now: datetime) -> SyncInfo:
@@ -78,6 +79,7 @@ def _info(row: ConnectionSync, now: datetime) -> SyncInfo:
         last_synced_at=row.last_synced_at,
         item_count=row.item_count,
         last_error=error,
+        note=row.note if status == SyncStatus.SUCCEEDED else None,
     )
 
 
@@ -113,6 +115,7 @@ class SyncRepository:
             "heartbeat_at": now,
             "finished_at": None,
             "last_error": None,
+            "note": None,
             "requested_by": requested_by,
         }
         statement = (
@@ -130,11 +133,16 @@ class SyncRepository:
         return _info(row, now)
 
     async def heartbeat(
-        self, org_id: int, connection_id: uuid.UUID, item_count: int
+        self,
+        org_id: int,
+        connection_id: uuid.UUID,
+        item_count: int,
+        *,
+        at: datetime | None = None,
     ) -> None:
         row = await self._row(org_id, connection_id)
         if row is not None:
-            row.heartbeat_at = self._clock()
+            row.heartbeat_at = at or self._clock()
             row.item_count = item_count
             await self._session.commit()
 
@@ -145,6 +153,7 @@ class SyncRepository:
         *,
         item_count: int | None,
         error: str | None,
+        note: str | None = None,
     ) -> None:
         row = await self._row(org_id, connection_id)
         if row is None:
@@ -154,6 +163,7 @@ class SyncRepository:
         row.finished_at = now
         row.heartbeat_at = now
         row.last_error = error
+        row.note = None if error else note
         if error is None:
             row.last_synced_at = now
         if item_count is not None:
@@ -183,15 +193,19 @@ class _Progress:
     org_id: int
     connection_id: uuid.UUID
     last: datetime
+    # Set when the sync ends: nothing is written after the final status.
+    closed: bool = False
 
     async def heartbeat(self, items: int) -> None:
+        if self.closed:
+            return
         now = self.runner.clock()
         if now - self.last < HEARTBEAT_EVERY:
             return
         self.last = now
         async with self.runner.db.session() as session:
             await SyncRepository(session, self.runner.clock).heartbeat(
-                self.org_id, self.connection_id, items
+                self.org_id, self.connection_id, items, at=now
             )
 
 
@@ -272,9 +286,10 @@ class SyncRunner:
         progress = _Progress(self, org_id, connection_id, self.clock())
         count: int | None = None
         error: str | None = None
+        note: str | None = None
         try:
             result = await provider.run_sync(ctx, progress)
-            count, error = result.item_count, None
+            count, error, note = result.item_count, None, result.note
             logger.info(
                 "sync of connection {} finished with {} items",
                 connection_id,
@@ -293,10 +308,11 @@ class SyncRunner:
                 "sync of connection {} raised {}", connection_id, type(exc).__name__
             )
         finally:
+            progress.closed = True
             try:
                 async with self.db.session() as session:
                     await SyncRepository(session, self.clock).finish(
-                        org_id, connection_id, item_count=count, error=error
+                        org_id, connection_id, item_count=count, error=error, note=note
                     )
             except Exception as exc:
                 logger.error(

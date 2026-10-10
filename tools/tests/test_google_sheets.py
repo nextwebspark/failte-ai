@@ -520,11 +520,55 @@ async def test_empty_or_header_only_orders_tab(sheets: FakeSheets) -> None:
     assert result.verified is False
 
 
-def test_orders_tab_must_be_allowed() -> None:
-    with pytest.raises(ValidationError, match="orders_tab must be one of"):
-        SheetsConfig.model_validate(
-            sheets_config(orders_tab="Orders", allowed_tabs=["Leads"])
+async def test_generic_tools_cannot_read_the_orders_tab(sheets: FakeSheets) -> None:
+    async with httpx.AsyncClient() as http:
+        svc = provider().service_for(context(http, orders_tab="Orders"))
+        for call in (
+            svc.find_rows("customer_name", "Jane Murphy", "orders", "exact"),
+            svc.get_row(2, "Orders"),
+            svc.append_row({"status": "x"}, "Orders"),
+        ):
+            with pytest.raises(
+                BadArgumentError, match="only be read with look_up_order"
+            ):
+                await call
+        assert sheets.batch.call_count == 0 and sheets.append.call_count == 0
+        # Also when it is the default tab, or allowed: the flag is the only way.
+        svc = provider().service_for(
+            context(
+                http, orders_tab="Orders", default_tab="Orders", allowed_tabs=["Orders"]
+            )
         )
+        with pytest.raises(BadArgumentError, match="look_up_order"):
+            await svc.get_row(2, None)
+        # The verified lookup still works without the tab being allowed.
+        svc = provider().service_for(
+            context(http, orders_tab="Orders", allowed_tabs=["Leads"])
+        )
+        assert (await svc.look_up_order("Murphy", "H91X2Y3")).verified
+        opted_in = provider().service_for(
+            context(http, orders_tab="Orders", generic_tools_read_orders=True)
+        )
+        assert (await opted_in.get_row(2, "Orders")).found
+
+
+async def test_row_past_the_end_of_the_sheet(sheets: FakeSheets) -> None:
+    sheets.batch.mock(
+        return_value=httpx.Response(
+            400,
+            json={
+                "error": {
+                    "code": 400,
+                    "message": "Range ('Leads'!99999:99999) exceeds grid limits. "
+                    "Max rows: 1000, max columns: 26",
+                }
+            },
+        )
+    )
+    async with httpx.AsyncClient() as http:
+        svc = provider().service_for(context(http, default_tab="Leads"))
+        result = await svc.get_row(99999, None)
+    assert result.found is False and result.row is None
 
 
 async def test_orders_cache_bounded_and_drops_stale() -> None:

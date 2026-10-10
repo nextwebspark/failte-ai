@@ -27,6 +27,7 @@ class EchoProvider:
     description: str = "Echoes text back."
     icon: str = "echo"
     auth_family: str | None = None
+    share_hint: str | None = None
     auth_modes: frozenset[AuthMode] = field(
         default_factory=lambda: frozenset({AuthMode.API_KEY})
     )

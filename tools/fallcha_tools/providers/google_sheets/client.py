@@ -28,6 +28,20 @@ _SCOPES = (SHEETS_SCOPE,)
 # token minted for it cannot change an order, whatever the sheet's sharing.
 _READ_ONLY_SCOPES = (SHEETS_READONLY_SCOPE,)
 TAB_NOT_FOUND = "that tab was not found in the spreadsheet"
+ROW_NOT_FOUND = "that row is past the end of the sheet"
+
+
+def _message(response: httpx.Response) -> str:
+    """Google's error message, only to classify the error (never shown)."""
+    try:
+        error = response.json().get("error") or {}
+        return str(error.get("message") or "") if isinstance(error, dict) else ""
+    except (ValueError, AttributeError):
+        return ""
+
+
+class RangeOutsideGridError(BadArgumentError):
+    """The range lies beyond the sheet's last row or column."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -123,6 +137,9 @@ class SheetsClient(GoogleHttp):
         if status < 400:
             return
         if status == 400:
-            # Our ranges are well-formed, so a 400 means an unknown tab.
+            # Our ranges are well-formed, so a 400 means an unknown tab or a
+            # row past the end of the sheet.
+            if "exceeds grid limits" in _message(response):
+                raise RangeOutsideGridError(ROW_NOT_FOUND)
             raise BadArgumentError(TAB_NOT_FOUND)
         raise self._error(response, SPREADSHEET)

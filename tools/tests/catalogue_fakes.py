@@ -20,6 +20,7 @@ ADDRESSES = {
     "evil.example.com": [PRIVATE_IP],
     "mixed.example.com": [SHOP_IP, "127.0.0.1"],
     "mapped.example.com": ["::ffff:192.168.1.10"],
+    "nat64.example.com": ["64:ff9b::a9fe:a9fe"],  # 169.254.169.254
 }
 
 
@@ -163,6 +164,7 @@ class FakeShop:
             side_effect=self._page
         )
         self.user_agents: list[str] = []
+        self.encodings: list[str] = []
         self.default_sitemap = router.get(f"{SITE}/sitemap.xml").mock(
             return_value=httpx.Response(404)
         )
@@ -171,6 +173,7 @@ class FakeShop:
 
     def _page(self, request: httpx.Request) -> httpx.Response:
         self.user_agents.append(request.headers.get("user-agent", ""))
+        self.encodings.append(request.headers.get("accept-encoding", ""))
         html = self.pages.get(request.url.path)
         if html is None:
             return httpx.Response(404)

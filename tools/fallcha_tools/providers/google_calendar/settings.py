@@ -12,6 +12,9 @@ from fallcha_tools.providers.google_common.service_account import ServiceAccount
 
 __all__ = ["CalendarConfig", "ServiceAccountKey", "Weekday"]
 
+# Order-lookup settings that lived here before it moved to Google Sheets.
+RETIRED_KEYS = frozenset({"orders_sheet_id", "orders_tab"})
+
 Weekday = Annotated[int, Field(ge=0, le=6)]
 
 
@@ -53,6 +56,15 @@ class CalendarConfig(BaseModel):
     horizon_days: int = Field(default=14, ge=1, le=60)
     max_slots_returned: int = Field(default=3, ge=1, le=10)
     morning_end_hour: int = Field(default=12, ge=0, le=24)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _drop_retired_keys(cls, data: object) -> object:
+        # Order lookup moved to Google Sheets; configs saved before that
+        # still carry its keys and must keep validating.
+        if isinstance(data, dict):
+            return {k: v for k, v in data.items() if k not in RETIRED_KEYS}
+        return data
 
     @field_validator("timezone")
     @classmethod

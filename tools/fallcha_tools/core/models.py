@@ -254,4 +254,6 @@ class ConnectionSync(Base):
     )
     item_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
     last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # A successful sync's caveat for the admin, e.g. "stopped at 2000 pages".
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
     requested_by: Mapped[int | None] = mapped_column(BigInteger, nullable=True)

@@ -116,6 +116,10 @@ class GoogleCalendarProvider:
         return "calendar"
 
     @property
+    def share_hint(self) -> str:
+        return "the calendar"
+
+    @property
     def auth_family(self) -> str:
         return GOOGLE_FAMILY
 

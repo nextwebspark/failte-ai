@@ -50,15 +50,31 @@ async def system_resolver(host: str, port: int) -> list[str]:
     return list(dict.fromkeys(str(info[4][0]) for info in infos))
 
 
+_NAT64 = ipaddress.ip_network("64:ff9b::/96")
+_IPV4_COMPATIBLE = ipaddress.ip_network("::/96")
+
+
+def _embedded_ipv4(address: ipaddress.IPv6Address) -> ipaddress.IPv4Address | None:
+    """The IPv4 address an IPv6 address carries (mapped, 6to4, NAT64 or the
+    deprecated IPv4-compatible form), so it is judged as that address."""
+    if address.ipv4_mapped is not None:
+        return address.ipv4_mapped
+    if address.sixtofour is not None:
+        return address.sixtofour
+    if address in _NAT64 or (address in _IPV4_COMPATIBLE and int(address) > 1):
+        return ipaddress.IPv4Address(int(address) & 0xFFFFFFFF)
+    return None
+
+
 def ip_is_public(ip: str) -> bool:
     try:
         address = ipaddress.ip_address(ip.split("%", 1)[0])
     except ValueError:
         return False
     if isinstance(address, ipaddress.IPv6Address):
-        mapped = address.ipv4_mapped or address.sixtofour
-        if mapped is not None:
-            address = mapped
+        embedded = _embedded_ipv4(address)
+        if embedded is not None:
+            return embedded.is_global and not embedded.is_multicast
     return address.is_global and not address.is_multicast
 
 
@@ -116,13 +132,21 @@ class GuardedNetworkBackend(httpcore.AsyncNetworkBackend):
             addresses = await vetted_addresses(host, port, self._resolver)
         except BlockedUrlError as exc:
             raise httpcore.ConnectError(str(exc)) from None
-        return await self._inner.connect_tcp(
-            addresses[0],
-            port,
-            timeout=timeout,
-            local_address=local_address,
-            socket_options=socket_options,
-        )
+        # Every address is vetted; try each in turn, like a normal resolver.
+        error: Exception | None = None
+        for address in addresses:
+            try:
+                return await self._inner.connect_tcp(
+                    address,
+                    port,
+                    timeout=timeout,
+                    local_address=local_address,
+                    socket_options=socket_options,
+                )
+            except (httpcore.ConnectError, httpcore.ConnectTimeout) as exc:
+                error = exc
+        assert error is not None
+        raise error
 
     async def connect_unix_socket(
         self,
@@ -186,7 +210,12 @@ class GuardedFetcher:
             request = self.http.build_request(
                 "GET",
                 current,
-                headers={"User-Agent": self.user_agent, **self.headers},
+                # gzip only: no brotli/zstd decoders to feed untrusted input.
+                headers={
+                    "User-Agent": self.user_agent,
+                    "Accept-Encoding": "gzip",
+                    **self.headers,
+                },
             )
             response = await self.http.send(request, stream=True)
             try:

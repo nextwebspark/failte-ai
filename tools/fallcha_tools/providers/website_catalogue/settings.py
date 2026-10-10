@@ -3,14 +3,20 @@
 from __future__ import annotations
 
 import ipaddress
-from typing import Annotated
+from typing import Annotated, Self
 from urllib.parse import urlsplit
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 DEFAULT_TRANSFER_OFFER = "I can also put you through to one of the team."
 
 PathPattern = Annotated[str, Field(min_length=1, max_length=200)]
+
+
+def host_key(host: str) -> str:
+    """A host compared with and without ``www.``."""
+    host = host.lower().rstrip(".")
+    return host[4:] if host.startswith("www.") else host
 
 
 def _public_http_url(value: str) -> str:
@@ -74,6 +80,12 @@ class CatalogueConfig(BaseModel):
     max_concurrency: int = Field(
         default=2, ge=1, le=4, description="Parallel page requests."
     )
+    max_sync_minutes: int = Field(
+        default=30,
+        ge=1,
+        le=360,
+        description="A sync still running after this long is stopped.",
+    )
     max_results: int = Field(
         default=3, ge=1, le=5, description="Products named per search answer."
     )
@@ -104,3 +116,13 @@ class CatalogueConfig(BaseModel):
             if not path.startswith("/"):
                 raise ValueError("paths must start with /")
         return cleaned or None
+
+    @model_validator(mode="after")
+    def _sitemap_on_site(self) -> Self:
+        if self.sitemap_url is None:
+            return self
+        site = urlsplit(self.site_url).hostname or ""
+        sitemap = urlsplit(self.sitemap_url).hostname or ""
+        if host_key(site) != host_key(sitemap):
+            raise ValueError("sitemap_url must be on the same site as site_url")
+        return self
