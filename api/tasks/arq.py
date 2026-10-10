@@ -72,7 +72,15 @@ from api.tasks.webhook_delivery import deliver_webhook, sweep_webhook_deliveries
 from api.tasks.workflow_completion import process_workflow_completion
 
 
+async def _on_startup(ctx: dict) -> None:
+    # Fallcha: same credential-encryption gate as the API lifespan.
+    from api.services.credential_encryption import verify_credential_encryption
+
+    await verify_credential_encryption()
+
+
 class WorkerSettings:
+    on_startup = _on_startup
     functions = [
         run_integrations_post_workflow_run,
         process_workflow_completion,

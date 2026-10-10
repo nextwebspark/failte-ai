@@ -1306,6 +1306,7 @@ class ExternalCredentialModel(Base):
     # Credential data. Encrypted at rest when CREDENTIALS_ENCRYPTION_KEYS is
     # set (a {"_enc": "v1", "ct": ...} envelope in this JSON column, see
     # api/db/encrypted_json.py); plaintext otherwise. Never filter on it in SQL.
+    # In-place mutation is not tracked (no MutableDict): assign a new dict.
     # Decrypted structure depends on credential_type:
     # - api_key: {"header_name": "X-API-Key", "api_key": "value"}
     # - bearer_token: {"token": "value"}

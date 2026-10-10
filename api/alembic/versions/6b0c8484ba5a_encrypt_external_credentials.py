@@ -13,17 +13,24 @@ upgrade:   with CREDENTIALS_ENCRYPTION_KEYS set, seal every plaintext row with
            the first key; envelopes are left as they are (idempotent). Without
            keys it is a no-op: the app keeps storing plaintext and the rows can
            be encrypted later with `python -m scripts.reencrypt_credentials`.
+           Rows that are neither objects nor null are left untouched and
+           their ids logged; null becomes an encrypted {}.
 downgrade: decrypt every envelope back to plaintext (any configured key may
            open it). Refuses, changing nothing, if envelopes exist and cannot
            be decrypted, since the previous code cannot read them.
+offline:   (`alembic upgrade --sql`) cannot encrypt: with keys set it refuses
+           and points at `python -m scripts.reencrypt_credentials`; without
+           keys it emits nothing.
+Rows are read in id-ordered batches locked FOR UPDATE.
 """
 
 import json
+import logging
 import os
 from collections.abc import Sequence
 
 import sqlalchemy as sa
-from alembic import op
+from alembic import context, op
 from cryptography.fernet import Fernet, InvalidToken, MultiFernet
 
 revision: str = "6b0c8484ba5a"
@@ -41,6 +48,13 @@ _raw = sa.table(
     sa.column("id", sa.Integer),
     sa.column("credential_data", sa.JSON),
 )
+
+
+log = logging.getLogger("alembic.runtime.migration")
+
+
+def _offline() -> bool:
+    return context.is_offline_mode()
 
 
 def _fernet() -> MultiFernet | None:
@@ -86,6 +100,7 @@ def _batches(connection: sa.engine.Connection):
             .where(_raw.c.id > last_id)
             .order_by(_raw.c.id)
             .limit(BATCH_SIZE)
+            .with_for_update()
         ).all()
         if not rows:
             return
@@ -99,29 +114,57 @@ def _write(connection: sa.engine.Connection, row_id: int, value: dict) -> None:
     )
 
 
+def _refuse_offline(fernet: MultiFernet | None, step: str) -> bool:
+    """True when running offline (the caller must then do nothing)."""
+    if not _offline():
+        return False
+    if fernet is not None:
+        raise RuntimeError(
+            f"6b0c8484ba5a cannot {step} credentials in offline (--sql) mode. "
+            "Run it online, or apply the SQL without CREDENTIALS_ENCRYPTION_KEYS "
+            "and then run `python -m scripts.reencrypt_credentials`."
+        )
+    log.info("6b0c8484ba5a: offline mode without keys; credential rows unchanged")
+    return True
+
+
 def upgrade() -> None:
     fernet = _fernet()
-    if fernet is None:
+    if _refuse_offline(fernet, "encrypt") or fernet is None:
         return
     connection = op.get_bind()
+    skipped: list[int] = []
     for batch in _batches(connection):
         for row_id, data in batch:
             if _is_envelope(data):
                 continue
-            plaintext = data if isinstance(data, dict) else {}
+            if data is None:
+                data = {}
+            if not isinstance(data, dict):
+                skipped.append(row_id)
+                continue
             token = fernet.encrypt(
-                json.dumps(plaintext, separators=(",", ":"), sort_keys=True).encode()
+                json.dumps(data, separators=(",", ":"), sort_keys=True).encode()
             ).decode()
             _write(
                 connection,
                 row_id,
                 {ENVELOPE_MARKER: ENVELOPE_VERSION, CIPHERTEXT: token},
             )
+    if skipped:
+        log.warning(
+            "6b0c8484ba5a: left %d non-object external_credentials rows "
+            "unencrypted (ids: %s)",
+            len(skipped),
+            ", ".join(map(str, skipped)),
+        )
 
 
 def downgrade() -> None:
-    connection = op.get_bind()
     fernet = _fernet()
+    if _refuse_offline(fernet, "decrypt"):
+        return
+    connection = op.get_bind()
     undecryptable: list[int] = []
     for batch in _batches(connection):
         for row_id, data in batch:

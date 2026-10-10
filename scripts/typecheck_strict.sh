@@ -25,6 +25,7 @@ mypy --strict --follow-imports=silent \
   api/schemas/integrations.py \
   api/schemas/team.py \
   api/services/auth/permissions.py \
+  api/services/credential_encryption.py \
   api/services/email \
   api/services/invitations \
   api/services/membership \

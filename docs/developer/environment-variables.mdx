@@ -41,11 +41,18 @@ Workspace credentials (API keys, bearer tokens, passwords and integration connec
 
 | Variable | Default | Description |
 |---|---|---|
-| `CREDENTIALS_ENCRYPTION_KEYS` | unset | Comma-separated Fernet keys. The first key encrypts; every key decrypts. Unset stores credentials in plaintext and logs a warning at startup. An invalid key stops the API at startup |
+| `CREDENTIALS_ENCRYPTION_KEYS` | unset | Comma-separated Fernet keys. The first key encrypts; every key decrypts. **Required when `DEPLOYMENT_MODE` is not `oss`.** In OSS mode, unset stores credentials in plaintext and logs a warning at startup |
+
+The API and the background worker check this at startup and refuse to start when:
+
+- a key is not a valid Fernet key;
+- the keys are unset but encrypted credentials already exist (any mode);
+- the keys are unset and `DEPLOYMENT_MODE` is not `oss`;
+- the keys are set but cannot decrypt an existing encrypted credential (a key that wrote stored rows was removed).
 
 Generate a key with `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"` and set the same value on every API and worker process.
 
-- **Enabling:** set the key and run migrations — existing plaintext credentials are encrypted by the migration. If the key is added after migrating, run `python -m scripts.reencrypt_credentials` once (reads accept plaintext rows meanwhile).
+- **Enabling:** set the key and run migrations — existing plaintext credentials are encrypted by the migration. If the key is added after migrating, or migrations are applied offline (`alembic upgrade --sql`, which refuses to run with keys set), run `python -m scripts.reencrypt_credentials` once (reads accept plaintext rows meanwhile).
 - **Rotating:** set `CREDENTIALS_ENCRYPTION_KEYS=<new>,<old>` and restart, run `python -m scripts.reencrypt_credentials`, then set `CREDENTIALS_ENCRYPTION_KEYS=<new>` and restart again.
 
 <Warning>

@@ -1,4 +1,5 @@
-"""Bulk (re-)encryption of ``external_credentials.credential_data``.
+"""Bulk (re-)encryption of ``external_credentials.credential_data``, and the
+startup canary lookup.
 
 Used by ``scripts/reencrypt_credentials.py`` after a key is added or to encrypt
 rows written before encryption was enabled. Works on the raw stored JSON (not
@@ -12,7 +13,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from pydantic import JsonValue
-from sqlalchemy import JSON, Integer, column, select, table, update
+from sqlalchemy import JSON, Integer, cast, column, select, table, update
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, async_sessionmaker
 
 from api.utils.credential_crypto import (
@@ -38,8 +40,12 @@ class ReencryptionReport:
     failed_ids: tuple[int, ...] = ()  # envelopes no configured key opens
 
 
+# Rows carrying the envelope marker; ``is_envelope`` then checks the exact shape.
+_SAMPLE_CANDIDATES = 20
+
+
 class CredentialEncryptionClient:
-    """Maintenance-only access; not part of the runtime ``DBClient``."""
+    """Maintenance and startup access; not part of the runtime ``DBClient``."""
 
     def __init__(self, bind: AsyncEngine | AsyncConnection) -> None:
         # Bound to a connection (tests), each batch commit is a savepoint of
@@ -47,6 +53,24 @@ class CredentialEncryptionClient:
         self._sessions = async_sessionmaker(
             bind=bind, expire_on_commit=False, join_transaction_mode="create_savepoint"
         )
+
+    async def sample_envelope(self) -> dict[str, str] | None:
+        """Any one stored encrypted envelope, or ``None`` if there is none."""
+        async with self._sessions() as session:
+            values = (
+                await session.scalars(
+                    select(_raw_credentials.c.credential_data)
+                    .where(
+                        cast(_raw_credentials.c.credential_data, JSONB).has_key("_enc")
+                    )
+                    .limit(_SAMPLE_CANDIDATES)
+                )
+            ).all()
+        for value in values:
+            if is_envelope(value):
+                assert isinstance(value, dict)
+                return value
+        return None
 
     async def reencrypt_all(
         self,
