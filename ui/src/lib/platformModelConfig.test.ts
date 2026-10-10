@@ -4,9 +4,11 @@ import { platformCatalogFixture as catalog } from "@/lib/__fixtures__/platformCa
 import {
     buildPlatformConfiguration,
     defaultPlatformFormState,
+    describePlatformConfiguration,
     isVoiceFor,
     languageLabel,
     platformFormStateFromConfiguration,
+    platformOverrideSeed,
     sttLanguageForModel,
     sttLanguagesFor,
     validatePlatformFormState,
@@ -202,5 +204,22 @@ describe("platform model configuration", () => {
         expect(languageLabel("de")).toBe("German");
         expect(languageLabel("en-GB")).toBe("British English");
         expect(languageLabel("zz")).toBe("zz");
+    });
+
+    it.each([
+        ["a platform override", REALTIME, REALTIME],
+        ["a legacy provider override", { mode: "byok", byok: {} }, PIPELINE],
+        ["no override", undefined, PIPELINE],
+    ])("seeds an agent override from %s", (_case, saved, expected) => {
+        expect(platformOverrideSeed(saved, PIPELINE)).toBe(expected);
+    });
+
+    it("describes a configuration in one line", () => {
+        expect(describePlatformConfiguration(REALTIME, catalog)).toBe(
+            "Speech-to-Speech · Gemini Live 2.5 Flash · Kore · German",
+        );
+        expect(describePlatformConfiguration(PIPELINE, catalog)).toBe(
+            "Speech-to-Text → LLM → Text-to-Speech · Gemini 3.1 Flash Lite · Kore · British English",
+        );
     });
 });

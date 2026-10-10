@@ -267,6 +267,37 @@ export function validatePlatformFormState(
     return errors;
 }
 
+/**
+ * Where an agent's override editor starts: its own platform override when it
+ * has one, otherwise the workspace configuration. A legacy provider override
+ * counts as none; saving replaces it.
+ */
+export function platformOverrideSeed(savedOverride: unknown, workspaceConfiguration: unknown): unknown {
+    return record(savedOverride).mode === "platform" ? savedOverride : workspaceConfiguration;
+}
+
+/** One line describing a configuration, e.g. "Speech-to-Speech · Gemini Live 2.5 Flash · Charon · English". */
+export function describePlatformConfiguration(configuration: unknown, catalog: PlatformModelCatalog): string {
+    const { state } = platformFormStateFromConfiguration(configuration, catalog);
+    const label = (options: PlatformCatalogOption[], id: string) =>
+        options.find((option) => option.id === id)?.label ?? id;
+    const mode = label(catalog.modes, state.pipelineMode);
+    if (state.pipelineMode === "realtime") {
+        return [
+            mode,
+            label(catalog.realtime.models, state.realtime.model),
+            label(catalog.realtime.voices, state.realtime.voice),
+            languageLabel(state.realtime.language),
+        ].join(" · ");
+    }
+    return [
+        mode,
+        label(catalog.pipeline.llm.models, state.llm.model),
+        state.tts.voice.split("-").pop() ?? state.tts.voice,
+        languageLabel(state.tts.language),
+    ].join(" · ");
+}
+
 let displayNames: Intl.DisplayNames | null | undefined;
 
 /** Display name for a BCP-47 code, e.g. "en-GB" → "British English". */
