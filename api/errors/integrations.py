@@ -32,6 +32,14 @@ class ToolsServiceUnavailableError(IntegrationError):
         super().__init__(message)
 
 
+class IntegrationUnavailableError(IntegrationError):
+    """A tools-service feature is not configured (e.g. OAuth needs
+    TOOLS_PUBLIC_BASE_URL and TOOLS_UI_RETURN_URL there)."""
+
+    status_code = 503
+    code = "integration_unavailable"
+
+
 class IntegrationNotFoundError(IntegrationError):
     status_code = 404
     code = "integration_not_found"

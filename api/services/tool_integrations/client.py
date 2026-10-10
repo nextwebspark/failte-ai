@@ -20,11 +20,17 @@ from api.errors.integrations import (
     IntegrationConflictError,
     IntegrationInvalidRequestError,
     IntegrationNotFoundError,
+    IntegrationUnavailableError,
     ToolsServiceUnavailableError,
 )
 from api.schemas.integrations import (
+    CreateProviderAppRequest,
     IntegrationCatalogResponse,
     IntegrationConnection,
+    ProviderAppListResponse,
+    ProviderAppResponse,
+    StartOAuthRequest,
+    StartOAuthResponse,
 )
 
 DEFAULT_TIMEOUT = httpx.Timeout(10.0, connect=3.0)
@@ -76,6 +82,13 @@ class ConnectionTestResult(BaseModel):
     ok: bool
     message: str
     connection: IntegrationConnection
+
+
+class StartedOAuth(StartOAuthResponse):
+    """``oauth/start`` as the tools service answers it: the browser nonce is
+    for the user's cookie only, never for a response body or a log."""
+
+    browser_nonce: SecretStr
 
 
 class NewConnection(BaseModel):
@@ -188,14 +201,76 @@ class ToolsServiceClient:
         connection_id: uuid.UUID,
         *,
         fallcha_credential_uuid: str | None,
+        exclusive: bool = False,
     ) -> IssuedConnectionKey:
+        """With ``exclusive``, 409 if the connection already has a live key."""
         response = await self._request(
             "POST",
             f"/internal/connections/{connection_id}/keys",
             caller,
-            json={"fallcha_credential_uuid": fallcha_credential_uuid},
+            json={
+                "fallcha_credential_uuid": fallcha_credential_uuid,
+                "exclusive": exclusive,
+            },
         )
         return self._parse(response, IssuedConnectionKey)
+
+    async def revoke_all_keys(self, caller: Caller, connection_id: uuid.UUID) -> None:
+        await self._request(
+            "DELETE", f"/internal/connections/{connection_id}/keys", caller
+        )
+
+    async def confirm_connection(
+        self, caller: Caller, connection_id: uuid.UUID, *, browser_nonce: str
+    ) -> IntegrationConnection:
+        """PENDING -> ACTIVE for the user who started the OAuth flow (409
+        otherwise); other connections are returned unchanged."""
+        response = await self._request(
+            "POST",
+            f"/internal/connections/{connection_id}/confirm",
+            caller,
+            json={"browser_nonce": browser_nonce},
+        )
+        return self._parse(response, IntegrationConnection)
+
+    async def revoke_key(
+        self, caller: Caller, connection_id: uuid.UUID, key_id: uuid.UUID
+    ) -> None:
+        await self._request(
+            "DELETE", f"/internal/connections/{connection_id}/keys/{key_id}", caller
+        )
+
+    # -- OAuth2 ----------------------------------------------------------
+
+    async def list_provider_apps(self, caller: Caller) -> ProviderAppListResponse:
+        response = await self._request("GET", "/internal/provider-apps", caller)
+        return self._parse(response, ProviderAppListResponse)
+
+    async def create_provider_app(
+        self, caller: Caller, body: CreateProviderAppRequest
+    ) -> ProviderAppResponse:
+        response = await self._request(
+            "POST",
+            "/internal/provider-apps",
+            caller,
+            json={
+                "provider": body.provider,
+                "client_id": body.client_id,
+                "client_secret": body.client_secret.get_secret_value(),
+            },
+        )
+        return self._parse(response, ProviderAppResponse)
+
+    async def delete_provider_app(self, caller: Caller, app_id: uuid.UUID) -> None:
+        await self._request("DELETE", f"/internal/provider-apps/{app_id}", caller)
+
+    async def start_oauth(
+        self, caller: Caller, body: StartOAuthRequest
+    ) -> StartedOAuth:
+        response = await self._request(
+            "POST", "/internal/oauth/start", caller, json=body.model_dump(mode="json")
+        )
+        return self._parse(response, StartedOAuth)
 
     async def revoke_connection(self, caller: Caller, connection_id: uuid.UUID) -> None:
         """Revoke the connection and every key issued for it (idempotent)."""
@@ -253,6 +328,12 @@ class ToolsServiceClient:
             raise IntegrationConflictError(_detail(response, "Conflict"))
         if status in (400, 422):
             raise IntegrationInvalidRequestError(_detail(response, "Invalid request"))
+        if status == 503:
+            # The tools service's detail names its env vars: keep it internal.
+            logger.warning(f"Tools service {method} {path} -> 503 (not configured)")
+            raise IntegrationUnavailableError(
+                "This integration feature is not available on this deployment"
+            )
         raise ToolsServiceUnavailableError()
 
     @staticmethod

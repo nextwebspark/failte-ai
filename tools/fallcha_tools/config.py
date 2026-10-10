@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from functools import lru_cache
+from urllib.parse import urlsplit
 
 from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -34,8 +35,26 @@ class Settings(DatabaseSettings):
 
     encryption_keys_raw: SecretStr = Field(alias="TOOLS_ENCRYPTION_KEYS")
     internal_secret: SecretStr = Field(alias="TOOLS_INTERNAL_SECRET")
+    # Public origin (plus optional path prefix) that serves /oauth/*; OAuth
+    # redirect URIs are built from it. Unset disables OAuth.
     public_base_url: str = Field(default="", alias="TOOLS_PUBLIC_BASE_URL")
+    # Fixed UI page the OAuth callback redirects the browser back to. Never
+    # taken from a request, so the callback cannot be an open redirect.
+    ui_return_url: str = Field(default="", alias="TOOLS_UI_RETURN_URL")
     log_level: str = Field(default="INFO", alias="LOG_LEVEL")
+
+    @field_validator("public_base_url", "ui_return_url")
+    @classmethod
+    def _absolute_http_url(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            return ""
+        parts = urlsplit(value)
+        if parts.scheme not in ("http", "https") or not parts.hostname:
+            raise ValueError("must be an absolute http(s) URL")
+        if parts.fragment or parts.username or parts.password:
+            raise ValueError("must not contain a fragment or credentials")
+        return value.rstrip("/") if not parts.query else value
 
     @field_validator("internal_secret")
     @classmethod

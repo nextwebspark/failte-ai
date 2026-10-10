@@ -1,21 +1,26 @@
 """Catalog integrations: connect a tools-service provider to a workspace.
 
-Install is a saga across two stores, compensated on failure:
+A connection is created in the tools service either from directly supplied
+secrets (``install``) or by the OAuth2 callback (``start_oauth`` sends the
+user to the provider first). Activating it is a saga across two stores,
+compensated on failure:
 
-1. create the connection in the tools service (it validates the secret and
-   config, and stores the secret encrypted);
-2. create a bearer credential in the workspace;
-3. issue a connection key bound to that credential, and store it as the
-   credential's token;
-4. create an MCP tool at ``{tools_base_url}/mcp/{provider}`` using the
+1. create a bearer credential in the workspace;
+2. issue the connection's key (exclusively: a connection is activated at
+   most once), bound to that credential, and store it as the token;
+3. create an MCP tool at ``{tools_base_url}/mcp/{provider}`` using the
    credential (``create_tool_for_user`` also discovers its functions).
 
-If any step after (1) fails, the connection is revoked (which revokes its
-keys) and the credential is deleted, then the original error is re-raised.
+``install`` = create the connection + activate; if activation fails the
+connection is revoked (which revokes its keys). ``activate`` on an existing
+(OAuth) connection keeps the connection on failure, so it can be retried,
+and revokes only the key it issued. Either way the credential is deleted and
+the original error re-raised.
 """
 
 from __future__ import annotations
 
+import secrets
 import uuid
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
@@ -25,20 +30,28 @@ from loguru import logger
 from pydantic import JsonValue
 
 from api.db.models import UserModel
-from api.errors.integrations import IntegrationNotFoundError
+from api.errors.integrations import (
+    IntegrationConflictError,
+    IntegrationNotFoundError,
+)
 from api.schemas.integrations import (
+    CreateProviderAppRequest,
     InstallIntegrationRequest,
     IntegrationCatalogResponse,
     IntegrationConnection,
     IntegrationConnectionResponse,
     IntegrationProvider,
     IntegrationTestResponse,
+    ProviderAppListResponse,
+    ProviderAppResponse,
+    StartOAuthRequest,
 )
 from api.services.tool_integrations.client import (
     Caller,
     ConnectionTestResult,
     IssuedConnectionKey,
     NewConnection,
+    StartedOAuth,
 )
 from api.services.tool_integrations.resources import (
     IntegrationResources,
@@ -47,6 +60,10 @@ from api.services.tool_integrations.resources import (
 )
 
 _DEFAULT_ICON = "plug"
+CONFIRM_IN_SAME_BROWSER = (
+    "Finish connecting in the browser where you started, as the same user, "
+    "within 10 minutes"
+)
 _MAX_ICON_CHARS = 50
 
 
@@ -82,11 +99,36 @@ class ToolsServiceApi(Protocol):
         connection_id: uuid.UUID,
         *,
         fallcha_credential_uuid: str | None,
+        exclusive: bool = False,
     ) -> IssuedConnectionKey: ...
+
+    async def revoke_key(
+        self, caller: Caller, connection_id: uuid.UUID, key_id: uuid.UUID
+    ) -> None: ...
+
+    async def revoke_all_keys(
+        self, caller: Caller, connection_id: uuid.UUID
+    ) -> None: ...
+
+    async def confirm_connection(
+        self, caller: Caller, connection_id: uuid.UUID, *, browser_nonce: str
+    ) -> IntegrationConnection: ...
 
     async def revoke_connection(
         self, caller: Caller, connection_id: uuid.UUID
     ) -> None: ...
+
+    async def list_provider_apps(self, caller: Caller) -> ProviderAppListResponse: ...
+
+    async def create_provider_app(
+        self, caller: Caller, body: CreateProviderAppRequest
+    ) -> ProviderAppResponse: ...
+
+    async def delete_provider_app(self, caller: Caller, app_id: uuid.UUID) -> None: ...
+
+    async def start_oauth(
+        self, caller: Caller, body: StartOAuthRequest
+    ) -> StartedOAuth: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -123,9 +165,14 @@ class _Links:
 
 
 def _credential_name(provider: IntegrationProvider, connection_id: uuid.UUID) -> str:
-    # Credential names are unique per org (including deleted ones); the
-    # connection id keeps every install distinct.
-    return f"{provider.title} integration ({connection_id.hex[:12]})"
+    # Credential names are unique per org (including deleted ones). The
+    # connection id keeps installs apart; the random part keeps attempts
+    # apart, so a failed (rolled back) or concurrent activation of the same
+    # connection never collides with an earlier credential's name.
+    return (
+        f"{provider.title} integration "
+        f"({connection_id.hex[:12]}-{secrets.token_hex(3)})"
+    )
 
 
 def _icon(provider: IntegrationProvider) -> str:
@@ -167,6 +214,7 @@ class IntegrationService:
     async def install(
         self, actor: Actor, request: InstallIntegrationRequest
     ) -> IntegrationConnectionResponse:
+        """Create a connection from direct secrets, then activate it."""
         provider = await self._provider(actor, request.provider)
         connection = await self._tools.create_connection(
             actor.caller,
@@ -179,7 +227,80 @@ class IntegrationService:
                 config=request.config,
             ),
         )
+        return await self._activate(
+            actor,
+            provider,
+            connection,
+            tool_name=request.tool_name,
+            keep_connection_on_failure=False,
+        )
+
+    async def activate(
+        self,
+        actor: Actor,
+        connection_id: uuid.UUID,
+        *,
+        tool_name: str | None,
+        browser_nonce: str | None,
+    ) -> IntegrationConnectionResponse:
+        """Install an existing connection as an MCP tool. Idempotent: an
+        already-activated connection is returned as it is.
+
+        A PENDING (just-authorized OAuth) connection is first confirmed with
+        ``browser_nonce``, the cookie set by :meth:`start_oauth` in the
+        starting user's browser; the tools service also checks the user.
+        """
+        # Org-scoped by the tools service: another org's connection is a 404.
+        connection = await self._tools.get_connection(actor.caller, connection_id)
+        links = await self._links(actor.organization_id)
+        if connection.id in links.credential_by_connection:
+            return links.response(connection)
+        if connection.status == "revoked":
+            raise IntegrationConflictError("This connection has been removed")
+        if connection.status == "pending":
+            if not browser_nonce:
+                raise IntegrationConflictError(CONFIRM_IN_SAME_BROWSER)
+            connection = await self._tools.confirm_connection(
+                actor.caller, connection.id, browser_nonce=browser_nonce
+            )
+        provider = await self._provider(actor, connection.provider)
+        for attempt in range(2):
+            try:
+                return await self._activate(
+                    actor,
+                    provider,
+                    connection,
+                    tool_name=tool_name,
+                    keep_connection_on_failure=True,
+                )
+            except IntegrationConflictError:
+                # A concurrent activation won the exclusive key: return its
+                # result.
+                links = await self._links(actor.organization_id)
+                if connection.id in links.credential_by_connection:
+                    return links.response(connection)
+                if attempt:
+                    raise
+                # No credential holds the live key: it was orphaned by an
+                # activation whose rollback failed. Revoke it and retry once.
+                logger.warning(
+                    f"Revoking orphaned keys of connection {connection.id} for "
+                    f"org {actor.organization_id}"
+                )
+                await self._tools.revoke_all_keys(actor.caller, connection.id)
+        raise AssertionError("unreachable")
+
+    async def _activate(
+        self,
+        actor: Actor,
+        provider: IntegrationProvider,
+        connection: IntegrationConnection,
+        *,
+        tool_name: str | None,
+        keep_connection_on_failure: bool,
+    ) -> IntegrationConnectionResponse:
         credential_uuid: str | None = None
+        issued: IssuedConnectionKey | None = None
         tool_uuid: str | None = None
         succeeded = False
         try:
@@ -193,7 +314,10 @@ class IntegrationService:
                 connection_id=connection.id,
             )
             issued = await self._tools.issue_key(
-                actor.caller, connection.id, fallcha_credential_uuid=credential_uuid
+                actor.caller,
+                connection.id,
+                fallcha_credential_uuid=credential_uuid,
+                exclusive=True,
             )
             await self._resources.store_connection_key(
                 organization_id=actor.organization_id,
@@ -205,7 +329,7 @@ class IntegrationService:
             tool_uuid = await self._resources.create_mcp_tool(
                 user=actor.user,
                 tool=NewMcpTool(
-                    name=request.tool_name or provider.title,
+                    name=tool_name or provider.title,
                     description=provider.description or None,
                     icon=_icon(provider),
                     url=self.mcp_url(provider.id),
@@ -218,13 +342,24 @@ class IntegrationService:
             # rolled back too.
             if not succeeded:
                 logger.warning(
-                    f"Installing {provider.id} for org {actor.organization_id} "
+                    f"Activating {provider.id} for org {actor.organization_id} "
                     f"failed; rolling back connection {connection.id}"
                 )
-                await self._compensate(actor, connection.id, credential_uuid, tool_uuid)
+                await self._compensate(
+                    actor,
+                    connection.id,
+                    credential_uuid,
+                    tool_uuid,
+                    revoke_key_id=(
+                        issued.id
+                        if keep_connection_on_failure and issued is not None
+                        else None
+                    ),
+                    revoke_connection=not keep_connection_on_failure,
+                )
 
         logger.info(
-            f"Installed {provider.id} for org {actor.organization_id}: "
+            f"Activated {provider.id} for org {actor.organization_id}: "
             f"connection {connection.id}, tool {tool_uuid}"
         )
         return IntegrationConnectionResponse(
@@ -232,6 +367,26 @@ class IntegrationService:
             credential_uuid=credential_uuid,
             tool_uuids=[tool_uuid] if tool_uuid else [],
         )
+
+    # -- OAuth2 ----------------------------------------------------------
+
+    async def list_provider_apps(self, actor: Actor) -> ProviderAppListResponse:
+        return await self._tools.list_provider_apps(actor.caller)
+
+    async def create_provider_app(
+        self, actor: Actor, request: CreateProviderAppRequest
+    ) -> ProviderAppResponse:
+        return await self._tools.create_provider_app(actor.caller, request)
+
+    async def delete_provider_app(self, actor: Actor, app_id: uuid.UUID) -> None:
+        await self._tools.delete_provider_app(actor.caller, app_id)
+
+    async def start_oauth(
+        self, actor: Actor, request: StartOAuthRequest
+    ) -> StartedOAuth:
+        """The caller must hand ``browser_nonce`` to the user's browser only
+        (as an HttpOnly cookie) and return the rest."""
+        return await self._tools.start_oauth(actor.caller, request)
 
     async def update_config(
         self,
@@ -322,6 +477,9 @@ class IntegrationService:
         connection_id: uuid.UUID,
         credential_uuid: str | None,
         tool_uuid: str | None,
+        *,
+        revoke_key_id: uuid.UUID | None,
+        revoke_connection: bool,
     ) -> None:
         """Best-effort rollback; failures are logged, never raised, so the
         caller sees the original error."""
@@ -335,13 +493,23 @@ class IntegrationService:
                     f"Rollback could not archive tool {tool_uuid} for org "
                     f"{actor.organization_id}: {type(exc).__name__}"
                 )
-        try:
-            await self._tools.revoke_connection(actor.caller, connection_id)
-        except Exception as exc:  # noqa: BLE001 - rollback is best-effort
-            logger.error(
-                f"Rollback could not revoke connection {connection_id} for org "
-                f"{actor.organization_id}: {type(exc).__name__}"
-            )
+        if revoke_connection:
+            try:
+                await self._tools.revoke_connection(actor.caller, connection_id)
+            except Exception as exc:  # noqa: BLE001 - rollback is best-effort
+                logger.error(
+                    f"Rollback could not revoke connection {connection_id} for "
+                    f"org {actor.organization_id}: {type(exc).__name__}"
+                )
+        elif revoke_key_id is not None:
+            try:
+                await self._tools.revoke_key(actor.caller, connection_id, revoke_key_id)
+            except Exception as exc:  # noqa: BLE001 - rollback is best-effort
+                logger.error(
+                    f"Rollback could not revoke key {revoke_key_id} of connection "
+                    f"{connection_id} for org {actor.organization_id}: "
+                    f"{type(exc).__name__}"
+                )
         if credential_uuid is None:
             return
         try:

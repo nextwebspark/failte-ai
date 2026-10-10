@@ -337,6 +337,8 @@ services:
       TOOLS_ENCRYPTION_KEYS: "${TOOLS_ENCRYPTION_KEYS:-}"
       TOOLS_INTERNAL_SECRET: "${TOOLS_INTERNAL_SECRET:-}"
       TOOLS_PUBLIC_BASE_URL: "${TOOLS_PUBLIC_BASE_URL:-${PUBLIC_BASE_URL:-}}"
+      # OAuth (bring-your-own client) stays off (503) until this is set too.
+      TOOLS_UI_RETURN_URL: "${TOOLS_UI_RETURN_URL:-}"
       LOG_LEVEL: "${TOOLS_LOG_LEVEL:-INFO}"
     logging:
       driver: "json-file"

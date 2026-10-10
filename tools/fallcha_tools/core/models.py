@@ -36,9 +36,21 @@ class AuthMode(StrEnum):
 
 
 class ConnectionStatus(StrEnum):
+    # OAuth2 connections start PENDING: created by the callback, but unusable
+    # until the user who started the flow confirms it from the same browser.
+    PENDING = "pending"
     ACTIVE = "active"
     ERROR = "error"
     REVOKED = "revoked"
+
+
+class ConnectionErrorCode(StrEnum):
+    """Why a connection is in ERROR when retrying cannot help: calls fail
+    fast, without asking the provider, until the workspace reconnects."""
+
+    GRANT_REVOKED = "grant_revoked"
+    CLIENT_REJECTED = "client_rejected"
+    CLIENT_MISSING = "client_missing"
 
 
 def _str_enum(enum_cls: type[StrEnum], name: str) -> Enum:
@@ -135,6 +147,12 @@ class Connection(_Timestamps, Base):
         server_default=ConnectionStatus.ACTIVE.value,
     )
     last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    error_code: Mapped[ConnectionErrorCode | None] = mapped_column(
+        _str_enum(ConnectionErrorCode, "connection_error_code"), nullable=True
+    )
+    # PENDING only: who may confirm it, and the SHA-256 of their browser nonce.
+    pending_user_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    pending_nonce_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
     created_by: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
 
     __table_args__ = (Index(None, "org_id", "provider"),)
@@ -183,6 +201,8 @@ class OAuthState(Base):
         nullable=True,
     )
     code_verifier_enc: Mapped[str] = mapped_column(Text, nullable=False)
+    # SHA-256 of the nonce the starting user's browser holds as a cookie.
+    browser_nonce_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     redirect_uri: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False

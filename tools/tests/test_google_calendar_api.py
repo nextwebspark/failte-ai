@@ -117,7 +117,15 @@ async def test_catalog_lists_tools_and_config_schema(client: httpx.AsyncClient) 
     response = await client.get("/internal/catalog", headers=internal_headers())
     providers = {p["id"]: p for p in response.json()["providers"]}
     calendar = providers[PROVIDER]
-    assert calendar["auth_modes"] == ["service_account"]
+    assert calendar["auth_modes"] == ["oauth2", "service_account"]
+    assert calendar["oauth"] == {
+        "scopes": [
+            "https://www.googleapis.com/auth/calendar.events",
+            "https://www.googleapis.com/auth/calendar.readonly",
+        ],
+        "optional_scopes": ["https://www.googleapis.com/auth/spreadsheets.readonly"],
+    }
+    assert providers["echo"]["oauth"] is None
     assert {t["name"] for t in calendar["tools"]} == TOOLS
     schema = calendar["config_schema"]
     assert schema["required"] == ["calendar_id"]

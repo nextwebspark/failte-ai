@@ -13,13 +13,10 @@ from fallcha_tools.core.auth import InternalCallerDep, require_internal_caller
 from fallcha_tools.core.container import ConnectionRepoDep, KeyRepoDep, ServicesDep
 from fallcha_tools.core.errors import InvalidRequestError, describe_validation_error
 from fallcha_tools.core.models import AuthMode, ConnectionStatus
-from fallcha_tools.core.provider import (
-    ConnectionContext,
-    ConnectionTestResult,
-    Provider,
-)
+from fallcha_tools.core.provider import ConnectionTestResult, Provider
 from fallcha_tools.core.repositories import ConnectionInfo
 from fallcha_tools.schemas import (
+    CatalogOAuth,
     CatalogProvider,
     CatalogResponse,
     ConnectionList,
@@ -79,6 +76,14 @@ async def get_catalog(services: ServicesDep) -> CatalogResponse:
                 config_schema=(
                     provider.config_model.model_json_schema()
                     if provider.config_model is not None
+                    else None
+                ),
+                oauth=(
+                    CatalogOAuth(
+                        scopes=list(provider.oauth.scopes),
+                        optional_scopes=list(provider.oauth.optional_scopes),
+                    )
+                    if provider.oauth is not None
                     else None
                 ),
             )
@@ -156,18 +161,9 @@ async def test_connection(
     services: ServicesDep,
     repo: ConnectionRepoDep,
 ) -> ConnectionTestOut:
-    loaded = await repo.load_secrets(caller.org_id, connection_id)
-    provider = services.registry.get(loaded.info.provider)
-    ctx = ConnectionContext(
-        org_id=caller.org_id,
-        connection_id=connection_id,
-        provider=provider.id,
-        auth_mode=loaded.info.auth_mode,
-        secret=loaded.secret,
-        access_token=loaded.access_token,
-        http=services.http,
-        config=loaded.info.config,
-    )
+    current = await repo.get_connection(caller.org_id, connection_id)
+    provider = services.registry.get(current.provider)
+    ctx = await services.contexts.load(caller.org_id, connection_id, provider.id)
     try:
         result = await provider.test_connection(ctx)
     except Exception as exc:  # a provider bug must not become a 500
@@ -203,10 +199,37 @@ async def issue_key(
         connection_id=connection_id,
         fallcha_credential_uuid=body.fallcha_credential_uuid if body else None,
         created_by=caller.user_id,
+        exclusive=body.exclusive if body else False,
     )
     return IssuedKeyOut(
         id=issued.id, connection_id=issued.connection_id, key=issued.key
     )
+
+
+@router.delete(
+    "/connections/{connection_id}/keys", status_code=status.HTTP_204_NO_CONTENT
+)
+async def revoke_all_keys(
+    connection_id: uuid.UUID, caller: InternalCallerDep, keys: KeyRepoDep
+) -> Response:
+    """Revoke every live key of the connection (e.g. keys orphaned by an
+    activation whose rollback failed)."""
+    await keys.revoke_all_keys(caller.org_id, connection_id)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.delete(
+    "/connections/{connection_id}/keys/{key_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def revoke_key(
+    connection_id: uuid.UUID,
+    key_id: uuid.UUID,
+    caller: InternalCallerDep,
+    keys: KeyRepoDep,
+) -> Response:
+    await keys.revoke_key(caller.org_id, connection_id, key_id)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.delete("/connections/{connection_id}", status_code=status.HTTP_204_NO_CONTENT)

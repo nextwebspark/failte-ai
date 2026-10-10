@@ -18,16 +18,22 @@ from fallcha_tools.core.provider import (
     ConnectionContext,
     ConnectionContextFactory,
     ConnectionTestResult,
+    OAuthSpec,
     RestContextDependency,
 )
 from fallcha_tools.providers.google_calendar.client import (
+    CALENDAR_EVENTS_SCOPE,
+    CALENDAR_READONLY_SCOPE,
     CALENDAR_SCOPE,
     DEFAULT_TIMEOUT,
     SHEETS_READONLY_SCOPE,
     GoogleClient,
 )
 from fallcha_tools.providers.google_calendar.credentials import (
+    GOOGLE_TOKEN_URL,
     Clock,
+    GoogleCredentialsSource,
+    OAuthCredentials,
     ServiceAccountCredentials,
     SignerCache,
     TokenCache,
@@ -50,6 +56,29 @@ from fallcha_tools.providers.google_calendar.settings import (
 from fallcha_tools.providers.google_calendar.tools import register_calendar_tools
 
 BOOKING_ID_LABEL = "fallcha-tools/google-calendar/booking-event-id/v1"
+
+GOOGLE_AUTHORIZE_URL = "https://accounts.google.com/o/oauth2/v2/auth"
+GOOGLE_USERINFO_URL = "https://openidconnect.googleapis.com/v1/userinfo"
+
+# Least privilege: event read/write plus read-only calendar access (free/busy
+# and the calendar's name); never full ``calendar``. Sheets is opt-in at
+# connect time, read-only, and only needed for order lookup. ``openid email``
+# only labels the connection with the account's address.
+GOOGLE_OAUTH = OAuthSpec(
+    display_name="Google",
+    authorize_url=GOOGLE_AUTHORIZE_URL,
+    token_url=GOOGLE_TOKEN_URL,
+    userinfo_url=GOOGLE_USERINFO_URL,
+    scopes=(CALENDAR_EVENTS_SCOPE, CALENDAR_READONLY_SCOPE),
+    optional_scopes=(SHEETS_READONLY_SCOPE,),
+    identity_scopes=("openid", "email"),
+    authorize_params={
+        "access_type": "offline",  # we need a refresh token
+        "prompt": "consent",  # ... every time, even on a reconnect
+        "include_granted_scopes": "true",
+    },
+    default_config={"calendar_id": "primary"},
+)
 
 
 def booking_id_key_from(internal_secret: str) -> bytes:
@@ -94,7 +123,7 @@ class GoogleCalendarProvider:
 
     @property
     def auth_modes(self) -> frozenset[AuthMode]:
-        return frozenset({AuthMode.SERVICE_ACCOUNT})
+        return frozenset({AuthMode.SERVICE_ACCOUNT, AuthMode.OAUTH2})
 
     @property
     def scopes(self) -> tuple[str, ...]:
@@ -103,6 +132,10 @@ class GoogleCalendarProvider:
     @property
     def config_model(self) -> type[BaseModel]:
         return CalendarConfig
+
+    @property
+    def oauth(self) -> OAuthSpec:
+        return GOOGLE_OAUTH
 
     def validate_secret(
         self, auth_mode: AuthMode, secret: Mapping[str, JsonValue]
@@ -152,9 +185,25 @@ class GoogleCalendarProvider:
         )
 
     def _client(self, ctx: ConnectionContext) -> GoogleClient:
+        credentials: GoogleCredentialsSource
+        if ctx.auth_mode == AuthMode.OAUTH2:
+            if ctx.oauth is None:
+                raise NotConfiguredError("this Google connection is not usable")
+            credentials = OAuthCredentials(
+                connection_id=ctx.connection_id,
+                tokens=ctx.oauth,
+                cache=self.token_cache,
+                scopes_granted=ctx.scopes_granted,
+            )
+            return GoogleClient(
+                http=ctx.http,
+                credentials=credentials,
+                account_hint=ctx.account_label,
+                timeout=self.request_timeout,
+            )
         if ctx.auth_mode != AuthMode.SERVICE_ACCOUNT:
             raise NotConfiguredError(
-                f"{ctx.auth_mode} connections are not supported by Google Calendar yet"
+                f"{ctx.auth_mode} connections are not supported by Google Calendar"
             )
         try:
             signer = self.signer_cache.get(ctx.connection_id, ctx.secret)

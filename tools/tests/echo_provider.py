@@ -15,6 +15,7 @@ from fallcha_tools.core.provider import (
     ConnectionContext,
     ConnectionContextFactory,
     ConnectionTestResult,
+    OAuthSpec,
     RestContextDependency,
 )
 
@@ -30,6 +31,7 @@ class EchoProvider:
     )
     scopes: tuple[str, ...] = ()
     config_model: type[BaseModel] | None = None
+    oauth: OAuthSpec | None = None
 
     def validate_secret(
         self, auth_mode: AuthMode, secret: Mapping[str, JsonValue]

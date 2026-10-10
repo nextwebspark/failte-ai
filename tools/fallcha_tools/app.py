@@ -16,6 +16,7 @@ from fastapi.responses import JSONResponse
 from loguru import logger
 
 from fallcha_tools.config import Settings, get_settings
+from fallcha_tools.core.access_log import install_access_log_filter
 from fallcha_tools.core.auth import KeyLookup
 from fallcha_tools.core.container import AppServices
 from fallcha_tools.core.context import ContextLoader
@@ -25,19 +26,22 @@ from fallcha_tools.core.errors import (
     ConflictError,
     InvalidRequestError,
     NotFoundError,
+    ServiceUnavailableError,
     ToolsError,
 )
 from fallcha_tools.core.mcp import ConnectionResolver, McpGateway, McpMounts
+from fallcha_tools.core.oauth import Clock, OAuthFlow, OAuthTokenManager, utc_now
 from fallcha_tools.core.provider import ProviderRegistry
 from fallcha_tools.core.repositories import KeyPrincipal, KeyRepository
 from fallcha_tools.providers import build_registry
-from fallcha_tools.routes import internal
+from fallcha_tools.routes import internal, oauth
 from fallcha_tools.routes.rest import connection_key_dependency
 
 _ERROR_STATUS: dict[type[ToolsError], int] = {
     NotFoundError: 404,
     ConflictError: 409,
     InvalidRequestError: 422,
+    ServiceUnavailableError: 503,
 }
 
 
@@ -72,7 +76,10 @@ async def _validation_error_handler(_: Request, exc: Exception) -> JSONResponse:
 
 
 def create_app(
-    settings: Settings | None = None, registry: ProviderRegistry | None = None
+    settings: Settings | None = None,
+    registry: ProviderRegistry | None = None,
+    *,
+    clock: Clock = utc_now,
 ) -> FastAPI:
     settings = settings or get_settings()
     registry = registry if registry is not None else build_registry(settings)
@@ -86,10 +93,24 @@ def create_app(
         diagnose=False,
     )
 
+    install_access_log_filter()
+
     box = SecretBox(settings.encryption_keys)
     db = Database(settings.database_url)
     http = httpx.AsyncClient(timeout=httpx.Timeout(20.0, connect=5.0))
-    contexts = ContextLoader(db=db, box=box, http=http)
+    tokens = OAuthTokenManager(db=db, box=box, http=http, clock=clock)
+    contexts = ContextLoader(
+        db=db, box=box, http=http, registry=registry, tokens=tokens
+    )
+    oauth_flow = OAuthFlow(
+        db=db,
+        box=box,
+        http=http,
+        registry=registry,
+        public_base_url=settings.public_base_url,
+        ui_return_url=settings.ui_return_url,
+        clock=clock,
+    )
     mounts = McpMounts(registry, ConnectionResolver(contexts), _make_key_lookup(db))
     services = AppServices(
         settings=settings,
@@ -99,6 +120,7 @@ def create_app(
         registry=registry,
         mcp=mounts,
         contexts=contexts,
+        oauth=oauth_flow,
     )
 
     @asynccontextmanager
@@ -121,6 +143,8 @@ def create_app(
         return {"status": "ok"}
 
     app.include_router(internal.router)
+    app.include_router(oauth.internal_router)
+    app.include_router(oauth.public_router)
     for provider in registry:
         router = provider.rest_router(connection_key_dependency(provider.id))
         if router is not None:

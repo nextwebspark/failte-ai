@@ -12,7 +12,7 @@ import uuid
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, JsonValue
+from pydantic import BaseModel, ConfigDict, Field, JsonValue, SecretStr
 
 PROVIDER_ID_PATTERN = r"^[a-z0-9][a-z0-9-]{0,63}$"
 
@@ -24,6 +24,15 @@ class IntegrationToolSummary(BaseModel):
 
     name: str
     description: str
+
+
+class IntegrationOAuthInfo(BaseModel):
+    """OAuth2 scopes of a provider that supports the ``oauth2`` auth mode."""
+
+    scopes: list[str] = Field(description="Always requested; all must be granted.")
+    optional_scopes: list[str] = Field(
+        description="May be requested with ``optional_scopes`` on oauth/start."
+    )
 
 
 class IntegrationProvider(BaseModel):
@@ -39,6 +48,7 @@ class IntegrationProvider(BaseModel):
     config_schema: dict[str, JsonValue] | None = Field(
         default=None, description="JSON Schema of the per-connection config."
     )
+    oauth: IntegrationOAuthInfo | None = None
 
 
 class IntegrationCatalogResponse(BaseModel):
@@ -55,8 +65,12 @@ class IntegrationConnection(BaseModel):
     account_label: str | None = None
     scopes_granted: list[str] = Field(default_factory=list)
     config: dict[str, JsonValue] = Field(default_factory=dict)
-    status: str
+    status: str = Field(description="pending, active, error or revoked.")
     last_error: str | None = None
+    error_code: str | None = Field(
+        default=None,
+        description="Set (e.g. grant_revoked) when only reconnecting can help.",
+    )
     expires_at: datetime | None = None
     created_at: datetime
     updated_at: datetime
@@ -122,3 +136,70 @@ class IntegrationTestResponse(BaseModel):
     ok: bool
     message: str
     connection: IntegrationConnectionResponse
+
+
+class ActivateIntegrationRequest(BaseModel):
+    """Install an existing connection (e.g. one just created by the OAuth
+    callback) as an MCP tool."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    tool_name: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=255,
+        description="Name of the created tool. Defaults to the provider title.",
+    )
+
+
+# -- OAuth2 (bring-your-own client) -------------------------------------------
+
+
+class CreateProviderAppRequest(BaseModel):
+    """Save the workspace's own OAuth client for a provider."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    provider: str = Field(pattern=PROVIDER_ID_PATTERN, description="Catalog id.")
+    client_id: str = Field(min_length=1, max_length=256)
+    client_secret: SecretStr = Field(
+        min_length=1,
+        max_length=512,
+        description="Stored encrypted by the tools service; never returned.",
+    )
+
+
+class ProviderAppResponse(BaseModel):
+    """A workspace OAuth client. The secret is write-only."""
+
+    id: uuid.UUID
+    provider: str
+    client_id: str
+    created_by: int | None = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class ProviderAppListResponse(BaseModel):
+    provider_apps: list[ProviderAppResponse]
+
+
+class StartOAuthRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    provider: str = Field(pattern=PROVIDER_ID_PATTERN, description="Catalog id.")
+    provider_app_id: uuid.UUID = Field(description="The OAuth client to use.")
+    optional_scopes: list[str] = Field(
+        default_factory=list,
+        max_length=16,
+        description="Any of the provider's ``oauth.optional_scopes``.",
+    )
+
+
+class StartOAuthResponse(BaseModel):
+    authorization_url: str = Field(description="Send the user's browser here.")
+    redirect_uri: str = Field(
+        description="Must be registered as an authorized redirect URI of the "
+        "OAuth client."
+    )
+    expires_at: datetime = Field(description="The flow must finish before this.")

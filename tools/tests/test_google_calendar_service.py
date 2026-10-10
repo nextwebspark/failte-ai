@@ -624,7 +624,9 @@ async def test_invalid_stored_config_or_secret_is_reported(
         )
     assert PRIVATE_KEY_PEM not in str(caught.value)
     with pytest.raises(NotConfiguredError, match="not supported"):
-        provider.service_for(ctx(auth_mode=AuthMode.OAUTH2))
+        provider.service_for(ctx(auth_mode=AuthMode.API_KEY))
+    with pytest.raises(NotConfiguredError, match="not usable"):
+        provider.service_for(ctx(auth_mode=AuthMode.OAUTH2))  # no ctx.oauth
 
 
 # --- review follow-ups: idempotent booking ---------------------------------

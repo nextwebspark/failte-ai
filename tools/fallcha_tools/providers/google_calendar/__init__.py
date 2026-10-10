@@ -1,4 +1,4 @@
-"""Google Calendar provider (service-account auth; OAuth2 to follow)."""
+"""Google Calendar provider (service-account or OAuth2 auth)."""
 
 from fallcha_tools.providers.google_calendar.provider import (
     GoogleCalendarProvider,

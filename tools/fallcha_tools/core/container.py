@@ -14,8 +14,13 @@ from fallcha_tools.config import Settings
 from fallcha_tools.core.context import ContextLoader
 from fallcha_tools.core.crypto import SecretBox
 from fallcha_tools.core.db import Database
+from fallcha_tools.core.oauth import OAuthFlow
 from fallcha_tools.core.provider import ProviderRegistry
-from fallcha_tools.core.repositories import ConnectionRepository, KeyRepository
+from fallcha_tools.core.repositories import (
+    ConnectionRepository,
+    KeyRepository,
+    ProviderAppRepository,
+)
 
 if TYPE_CHECKING:  # mcp -> auth -> container would otherwise be circular
     from fallcha_tools.core.mcp import McpMounts
@@ -30,6 +35,7 @@ class AppServices:
     registry: ProviderRegistry
     mcp: McpMounts
     contexts: ContextLoader
+    oauth: OAuthFlow
 
 
 def get_services(request: Request) -> AppServices:
@@ -57,5 +63,14 @@ def get_key_repository(session: SessionDep) -> KeyRepository:
     return KeyRepository(session)
 
 
+def get_provider_app_repository(
+    session: SessionDep, services: ServicesDep
+) -> ProviderAppRepository:
+    return ProviderAppRepository(session, services.box)
+
+
 ConnectionRepoDep = Annotated[ConnectionRepository, Depends(get_connection_repository)]
 KeyRepoDep = Annotated[KeyRepository, Depends(get_key_repository)]
+ProviderAppRepoDep = Annotated[
+    ProviderAppRepository, Depends(get_provider_app_repository)
+]
