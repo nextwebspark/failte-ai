@@ -306,7 +306,7 @@ export function PlatformModelEditor({
                                     selected ? "border-primary ring-1 ring-primary" : "border-border hover:bg-accent",
                                 )}
                             >
-                                <span className="flex items-center gap-2 font-medium">
+                                <span className="flex flex-wrap items-center gap-2 font-medium">
                                     <Icon className="h-4 w-4" />
                                     {mode.label}
                                     {mode.recommended && <Badge variant="secondary">Recommended</Badge>}
