@@ -97,6 +97,26 @@ def test_body_limits():
         validation.validate_body("bin\x00ary")
 
 
+@pytest.mark.parametrize("separator", ["\r", "\r\n", "\u2028", "\u2029"])
+def test_body_and_files_store_every_line_break_as_newline(separator):
+    # Clients and renderers disagree on lone CR and Unicode separators; stored
+    # text uses "\n" only, so every reader splits lines the same way.
+    text = f"# a{separator}b{separator}{separator}c"
+    assert validation.validate_body(text) == "# a\nb\n\nc"
+    (file,) = validation.validate_files([SkillFile(path="refs/a.md", content=text)])
+    assert file.content == "# a\nb\n\nc"
+    content = validation.validate_content(_content(body_md=text))
+    assert "\r" not in content.body_md and "\u2028" not in content.body_md
+
+
+def test_skill_md_with_lone_cr_line_endings():
+    doc = parse_skill_md(
+        "---\rname: returns\rdescription: Use for returns.\r---\r# Steps\r1. Ask"
+    )
+    assert doc.content.name == "returns"
+    assert validation.validate_body(doc.content.body_md) == "# Steps\n1. Ask"
+
+
 # -- paths and files ----------------------------------------------------------------
 
 

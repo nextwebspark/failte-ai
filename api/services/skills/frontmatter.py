@@ -56,7 +56,11 @@ class SkillDocument:
 def parse_skill_md(text: str) -> SkillDocument:
     """Split and validate the frontmatter's shape; field values are checked
     by ``api.services.skills.validation``."""
-    text = text.removeprefix("﻿").replace("\r\n", "\n")
+    text = text.removeprefix("﻿")
+    # A lone CR is a line break too (classic Mac files); without this the
+    # frontmatter delimiters would not be found. Body newlines are fully
+    # normalized later by ``validation.validate_body``.
+    text = text.replace("\r\n", "\n").replace("\r", "\n")
     lines = text.split("\n")
     if not lines or lines[0].rstrip() != _DELIMITER:
         raise SkillValidationError(
