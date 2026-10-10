@@ -337,11 +337,15 @@ class OAuthFlow:
     clock: Clock = utc_now
 
     def _require_configured(self) -> None:
-        if not self.public_base_url or not self.ui_return_url:
+        if not self.configured:
             raise ServiceUnavailableError(
                 "OAuth is not configured on this deployment: set "
                 "TOOLS_PUBLIC_BASE_URL and TOOLS_UI_RETURN_URL on the tools service"
             )
+
+    @property
+    def configured(self) -> bool:
+        return bool(self.public_base_url and self.ui_return_url)
 
     def redirect_uri(self, provider_id: str) -> str:
         return f"{self.public_base_url}/oauth/{provider_id}/callback"

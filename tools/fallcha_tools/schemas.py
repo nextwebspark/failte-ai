@@ -22,6 +22,11 @@ class CatalogOAuth(BaseModel):
     optional_scopes: list[str] = Field(
         description="May be requested with ``optional_scopes`` on oauth/start."
     )
+    redirect_uri: str | None = Field(
+        default=None,
+        description="Register this as an authorized redirect URI of the OAuth "
+        "client. None when OAuth is not configured on this deployment.",
+    )
 
 
 class CatalogProvider(BaseModel):

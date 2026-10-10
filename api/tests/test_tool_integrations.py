@@ -56,10 +56,15 @@ CATALOG = {
             "title": "Google Calendar",
             "description": "Check availability and book appointments.",
             "icon": "calendar",
-            "auth_modes": ["service_account"],
+            "auth_modes": ["oauth2", "service_account"],
             "scopes": ["https://www.googleapis.com/auth/calendar"],
             "tools": [{"name": "book_appointment", "description": "Book a slot"}],
             "config_schema": {"type": "object"},
+            "oauth": {
+                "scopes": ["https://www.googleapis.com/auth/calendar"],
+                "optional_scopes": [],
+                "redirect_uri": "https://tools.fallcha.test/oauth/google-calendar/callback",
+            },
         }
     ]
 }
@@ -247,7 +252,11 @@ async def test_catalog_is_503_until_configured(client_as, monkeypatch):
 async def test_catalog_forwards_internal_identity(client_as, org, tools_api):
     response = await client_as(OrgRole.DEVELOPER).get("/api/v1/integrations/catalog")
     assert response.status_code == 200, response.text
-    assert response.json()["providers"][0]["id"] == PROVIDER
+    provider = response.json()["providers"][0]
+    assert provider["id"] == PROVIDER
+    assert provider["oauth"]["redirect_uri"] == (
+        "https://tools.fallcha.test/oauth/google-calendar/callback"
+    )
 
     request = tools_api["catalog"].calls.last.request
     assert request.headers["X-Internal-Secret"] == SECRET

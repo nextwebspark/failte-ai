@@ -124,6 +124,7 @@ async def test_catalog_lists_tools_and_config_schema(client: httpx.AsyncClient) 
             "https://www.googleapis.com/auth/calendar.readonly",
         ],
         "optional_scopes": ["https://www.googleapis.com/auth/spreadsheets.readonly"],
+        "redirect_uri": None,
     }
     assert providers["echo"]["oauth"] is None
     assert {t["name"] for t in calendar["tools"]} == TOOLS
