@@ -1074,8 +1074,8 @@ export const installIntegrationApiV1IntegrationsConnectionsPost = <ThrowOnError 
  * as an MCP tool. Returns the existing install if it is already active.
  *
  * A just-authorized OAuth connection is pending: it is confirmed only for
- * the user who started the flow, from the same browser (the cookie set by
- * ``POST /oauth/start``).
+ * the user who started the flow, with the ``browser_nonce`` that
+ * ``POST /oauth/start`` returned to them.
  */
 export const activateConnectionApiV1IntegrationsConnectionsConnectionIdActivatePost = <ThrowOnError extends boolean = false>(options: Options<ActivateConnectionApiV1IntegrationsConnectionsConnectionIdActivatePostData, ThrowOnError>): RequestResult<ActivateConnectionApiV1IntegrationsConnectionsConnectionIdActivatePostResponses, ActivateConnectionApiV1IntegrationsConnectionsConnectionIdActivatePostErrors, ThrowOnError> => (options.client ?? client).post<ActivateConnectionApiV1IntegrationsConnectionsConnectionIdActivatePostResponses, ActivateConnectionApiV1IntegrationsConnectionsConnectionIdActivatePostErrors, ThrowOnError>({
     url: '/api/v1/integrations/connections/{connection_id}/activate',
@@ -1147,8 +1147,8 @@ export const deleteProviderAppApiV1IntegrationsProviderAppsAppIdDelete = <ThrowO
  *
  * Start an OAuth2 authorization: send the browser to
  * ``authorization_url``. ``redirect_uri`` must be registered on the OAuth
- * client. Sets an HttpOnly cookie that ``activate`` needs, so finish the
- * flow in this browser.
+ * client. Keep ``browser_nonce`` in this browser and send it to
+ * ``activate`` when the provider redirects back.
  */
 export const startOauthApiV1IntegrationsOauthStartPost = <ThrowOnError extends boolean = false>(options: Options<StartOauthApiV1IntegrationsOauthStartPostData, ThrowOnError>): RequestResult<StartOauthApiV1IntegrationsOauthStartPostResponses, StartOauthApiV1IntegrationsOauthStartPostErrors, ThrowOnError> => (options.client ?? client).post<StartOauthApiV1IntegrationsOauthStartPostResponses, StartOauthApiV1IntegrationsOauthStartPostErrors, ThrowOnError>({
     url: '/api/v1/integrations/oauth/start',

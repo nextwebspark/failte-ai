@@ -265,6 +265,12 @@ export type ActivateIntegrationRequest = {
      * Name of the created tool. Defaults to the provider title.
      */
     tool_name?: string | null;
+    /**
+     * Browser Nonce
+     *
+     * The ``browser_nonce`` from ``oauth/start``. Required to confirm a just-authorized (pending) OAuth connection; ignored otherwise.
+     */
+    browser_nonce?: null;
 };
 
 /**
@@ -7068,6 +7074,12 @@ export type StartOAuthResponse = {
      * The flow must finish before this.
      */
     expires_at: string;
+    /**
+     * Browser Nonce
+     *
+     * Keep in this browser only (e.g. sessionStorage) and send it to ``activate`` when the provider redirects back. It binds the new connection to the user and browser that started the flow.
+     */
+    browser_nonce: string;
 };
 
 /**
@@ -9763,6 +9775,27 @@ export type XaittsConfiguration = {
      * BCP-47 language code for synthesis (e.g. 'en', 'fr', 'de'), or 'auto' for automatic language detection.
      */
     language?: string;
+};
+
+/**
+ * ActivateIntegrationRequest
+ *
+ * Install an existing connection (e.g. one just created by the OAuth
+ * callback) as an MCP tool.
+ */
+export type ActivateIntegrationRequestWritable = {
+    /**
+     * Tool Name
+     *
+     * Name of the created tool. Defaults to the provider title.
+     */
+    tool_name?: string | null;
+    /**
+     * Browser Nonce
+     *
+     * The ``browser_nonce`` from ``oauth/start``. Required to confirm a just-authorized (pending) OAuth connection; ignored otherwise.
+     */
+    browser_nonce?: string | null;
 };
 
 /**
@@ -13569,7 +13602,7 @@ export type ActivateConnectionApiV1IntegrationsConnectionsConnectionIdActivatePo
     /**
      * Request
      */
-    body?: ActivateIntegrationRequest | null;
+    body?: ActivateIntegrationRequestWritable | null;
     headers?: {
         /**
          * Authorization
