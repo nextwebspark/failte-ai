@@ -122,6 +122,37 @@ describe("PlatformModelEditor", () => {
         });
     });
 
+    it("offers the accents of the voice language and moves transcription with them", async () => {
+        const onSave = renderEditor(PIPELINE);
+
+        const accents = screen.getByRole("group", { name: "Accent" });
+        expect(accents.textContent).toBe("AmericanBritish");
+        expect(screen.getByRole("button", { name: "American" }).getAttribute("aria-pressed")).toBe("true");
+        fireEvent.click(screen.getByRole("button", { name: "British" }));
+        expect(screen.getByRole("button", { name: "British" }).getAttribute("aria-pressed")).toBe("true");
+        save();
+
+        await waitFor(() => expect(onSave).toHaveBeenCalledOnce());
+        const pipeline = onSave.mock.calls[0][0].platform.pipeline;
+        expect(pipeline.tts).toMatchObject({ language: "en-GB", voice: "en-GB-Chirp3-HD-Kore" });
+        expect(pipeline.stt.language).toBe("en-GB");
+    });
+
+    it("hides the accent choice for a language with one accent", () => {
+        renderEditor({
+            ...PIPELINE,
+            platform: {
+                ...PIPELINE.platform,
+                pipeline: {
+                    ...PIPELINE.platform.pipeline,
+                    tts: { model: "chirp_3_hd", voice: "de-DE-Chirp3-HD-Kore", language: "de-DE", speed: 1 },
+                },
+            },
+        });
+
+        expect(screen.queryByRole("group", { name: "Accent" })).toBeNull();
+    });
+
     it("blocks saving choices the catalog rejects", async () => {
         const invalid = structuredClone(PIPELINE);
         invalid.platform.pipeline.stt = { model: "latest_long", language: "cy-GB" };

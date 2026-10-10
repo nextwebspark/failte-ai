@@ -12,6 +12,7 @@ import type {
 } from "@/client/types.gen";
 import { GeminiLiveVoicePicker } from "@/components/platform/GeminiLiveVoicePicker";
 import { PlatformTtsVoicePicker } from "@/components/platform/PlatformTtsVoicePicker";
+import { FilterChip } from "@/components/platform/VoiceCardPicker";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -30,6 +31,7 @@ import {
     voiceLocale,
 } from "@/lib/platformModelConfig";
 import { cn } from "@/lib/utils";
+import { accentLabel, localesByLanguage } from "@/lib/voiceFilters";
 
 interface PlatformModelEditorProps {
     catalog: PlatformModelCatalog;
@@ -255,6 +257,27 @@ export function PlatformModelEditor({
         });
     };
 
+    const ttsLocales = useMemo(() => localesByLanguage(pipeline.tts.languages), [pipeline.tts.languages]);
+    const ttsBase = state.tts.language.split("-")[0];
+    const ttsAccents = ttsLocales.get(ttsBase) ?? [];
+
+    // Picking a voice language starts on the accent the caller is
+    // transcribed in when there is one, else the first accent.
+    const changeTtsBaseLanguage = (base: string) => {
+        const locales = ttsLocales.get(base) ?? [];
+        changeTtsLanguage(locales.includes(state.stt.language) ? state.stt.language : (locales[0] ?? base));
+    };
+
+    // Callers with that accent are understood a little better when the
+    // transcription language matches it.
+    const changeTtsAccent = (locale: string) => {
+        changeTtsLanguage(locale);
+        const sameLanguage = state.stt.language.split("-")[0] === locale.split("-")[0];
+        if (sameLanguage && sttLanguagesFor(catalog, state.stt.model).includes(locale)) {
+            update("stt", { language: locale });
+        }
+    };
+
     const changeSttModel = (model: string) =>
         update("stt", { model, language: sttLanguageForModel(catalog, model, state.stt.language) });
 
@@ -451,12 +474,32 @@ export function PlatformModelEditor({
                                 <Label htmlFor="platform-tts-language">Voice language</Label>
                                 <LanguageSelect
                                     id="platform-tts-language"
-                                    languages={pipeline.tts.languages}
-                                    value={state.tts.language}
-                                    onChange={changeTtsLanguage}
+                                    languages={[...ttsLocales.keys()]}
+                                    value={ttsBase}
+                                    onChange={changeTtsBaseLanguage}
                                     disabled={disabled}
                                 />
                             </div>
+                            {ttsAccents.length > 1 && (
+                                <div className="space-y-2 sm:col-span-2">
+                                    <Label id="platform-tts-accent-label">Accent</Label>
+                                    <div role="group" aria-labelledby="platform-tts-accent-label" className="flex flex-wrap gap-1.5">
+                                        {ttsAccents.map((locale) => (
+                                            <FilterChip
+                                                key={locale}
+                                                pressed={state.tts.language === locale}
+                                                onClick={() => changeTtsAccent(locale)}
+                                                disabled={disabled}
+                                            >
+                                                {accentLabel(locale)}
+                                            </FilterChip>
+                                        ))}
+                                    </div>
+                                    <p className="text-xs text-muted-foreground">
+                                        The voices and samples below speak with this accent.
+                                    </p>
+                                </div>
+                            )}
                             <div className="space-y-2">
                                 <Label htmlFor="platform-tts-speed">Speed</Label>
                                 <NumberField

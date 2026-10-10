@@ -87,4 +87,33 @@ describe("GeminiLiveVoicePicker", () => {
         fireEvent.click(screen.getByRole("button", { name: "Stop Charon sample" }));
         expect(screen.getByRole("button", { name: "Play Charon sample" })).toBeTruthy();
     });
+
+    it("narrows the voices by tone, the recommended shortlist and name", () => {
+        const voices = [
+            { id: "Charon", label: "Charon", gender: "male", description: "Informative", recommended: true },
+            { id: "Sulafat", label: "Sulafat", gender: "female", description: "Warm" },
+            { id: "Puck", label: "Puck", gender: "male", description: "Upbeat", recommended: true },
+            { id: "Algenib", label: "Algenib", gender: "male", description: "Gravelly" },
+        ];
+        render(<GeminiLiveVoicePicker voices={voices} value="Charon" onChange={vi.fn()} />);
+        const names = () => screen.queryAllByRole("radio").map((radio) => radio.querySelector(".font-medium")?.textContent);
+
+        fireEvent.click(screen.getByRole("button", { name: /^Warm & friendly \(1\)/ }));
+        expect(names()).toEqual(["Sulafat"]);
+        // Gender counts follow the chosen tone.
+        expect((screen.getByRole("button", { name: "Male (0)" }) as HTMLButtonElement).disabled).toBe(true);
+
+        fireEvent.click(screen.getByRole("button", { name: /^All \(4\)/ }));
+        fireEvent.click(screen.getByRole("button", { name: /Recommended for calls/ }));
+        expect(names()).toEqual(["Charon", "Puck"]);
+
+        fireEvent.change(screen.getByRole("searchbox", { name: "Search voices" }), { target: { value: "upbeat" } });
+        expect(names()).toEqual(["Puck"]);
+        expect(screen.getByText(/Charon is selected but hidden by the filters/)).toBeTruthy();
+
+        fireEvent.change(screen.getByRole("searchbox", { name: "Search voices" }), { target: { value: "nobody" } });
+        expect(screen.getByText(/No voices match these filters/)).toBeTruthy();
+        fireEvent.click(screen.getAllByRole("button", { name: "Clear filters" })[0]);
+        expect(names()).toHaveLength(4);
+    });
 });

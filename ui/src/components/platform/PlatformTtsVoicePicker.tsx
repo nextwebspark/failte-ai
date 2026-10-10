@@ -19,8 +19,8 @@ interface PlatformTtsVoicePickerProps {
     onChange: (voice: string) => void;
     disabled?: boolean;
     labelledBy?: string;
-    // Speaking styles by voice name ("Kore" → "Firm"); Chirp 3 HD and Gemini
-    // Live share their voices.
+    // Speaking styles and the recommended shortlist by voice name ("Kore" →
+    // "Firm"); Chirp 3 HD and Gemini Live share their voices.
     styles?: PlatformCatalogOption[];
 }
 
@@ -54,7 +54,7 @@ export function PlatformTtsVoicePicker({
                 });
                 if (!active) return;
                 if (response.error) throw new Error("voices request failed");
-                const style = new Map(styles.map((option) => [option.id, option.description]));
+                const persona = new Map(styles.map((option) => [option.id, option]));
                 // The speech-to-speech order, so both modes list voices alike.
                 const rank = (name: string) => {
                     const index = styles.findIndex((option) => option.id === name);
@@ -68,7 +68,8 @@ export function PlatformTtsVoicePicker({
                             id: voice.voice_id,
                             label: voice.name,
                             gender: voice.gender,
-                            description: style.get(voice.name) ?? null,
+                            description: persona.get(voice.name)?.description ?? null,
+                            recommended: persona.get(voice.name)?.recommended ?? false,
                             preview_url: voice.preview_url,
                         })),
                 );

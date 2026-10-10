@@ -375,6 +375,13 @@ async def test_defaults_include_the_platform_catalog(org_client):
     assert {"Charon", "Kore", "Zephyr", "Sulafat"} <= set(voices)
     assert all(voice["preview_url"] and voice["gender"] for voice in voices.values())
     assert voices["Kore"]["preview_url"].endswith("voice_id=en-US-Chirp3-HD-Kore")
+    # A short list of voices proven on calls, to start the search from.
+    assert {name for name, voice in voices.items() if voice["recommended"]} == {
+        "Charon",
+        "Kore",
+        "Puck",
+        "Aoede",
+    }
     llm_models = [model["id"] for model in platform["pipeline"]["llm"]["models"]]
     assert llm_models == ["gemini-3.5-flash", "gemini-3.1-flash-lite"]
     assert not any(model.endswith("-maas") for model in llm_models)

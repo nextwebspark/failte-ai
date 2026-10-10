@@ -90,7 +90,9 @@ MULTI_REGION_REALTIME_MODELS: Final[frozenset[str]] = frozenset(
 )
 
 
-def _live_voice(name: str, gender: str, description: str) -> PlatformOption:
+def _live_voice(
+    name: str, gender: str, description: str, *, recommended: bool = False
+) -> PlatformOption:
     # Gemini Live voices share their names and timbre with the Chirp 3 HD
     # voices, so the Chirp 3 HD sample is a faithful preview.
     return PlatformOption(
@@ -98,17 +100,19 @@ def _live_voice(name: str, gender: str, description: str) -> PlatformOption:
         label=name,
         description=description,
         gender=gender,
+        recommended=recommended,
         preview_url=google_voice_preview_url(f"en-US-Chirp3-HD-{name}"),
     )
 
 
 # All 30 Gemini Live voices, each checked against both Live models on Vertex
-# (2026-10-10). Styles are Google's own one-word descriptions.
+# (2026-10-10). Styles are Google's own one-word descriptions. The recommended
+# ones held up on real test calls.
 REALTIME_VOICES: Final[tuple[PlatformOption, ...]] = (
-    _live_voice("Charon", "male", "Informative"),
-    _live_voice("Kore", "female", "Firm"),
-    _live_voice("Puck", "male", "Upbeat"),
-    _live_voice("Aoede", "female", "Breezy"),
+    _live_voice("Charon", "male", "Informative", recommended=True),
+    _live_voice("Kore", "female", "Firm", recommended=True),
+    _live_voice("Puck", "male", "Upbeat", recommended=True),
+    _live_voice("Aoede", "female", "Breezy", recommended=True),
     _live_voice("Fenrir", "male", "Excitable"),
     _live_voice("Zephyr", "female", "Bright"),
     _live_voice("Orus", "male", "Firm"),
