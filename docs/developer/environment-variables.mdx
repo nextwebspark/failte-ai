@@ -35,6 +35,25 @@ The relevant required variables for each mode are noted in the descriptions belo
 
 ---
 
+## Credential encryption
+
+Workspace credentials (API keys, bearer tokens, passwords and integration connection keys used by tools and webhooks) are encrypted at rest with [Fernet](https://cryptography.io/en/latest/fernet/) when keys are configured.
+
+| Variable | Default | Description |
+|---|---|---|
+| `CREDENTIALS_ENCRYPTION_KEYS` | unset | Comma-separated Fernet keys. The first key encrypts; every key decrypts. Unset stores credentials in plaintext and logs a warning at startup. An invalid key stops the API at startup |
+
+Generate a key with `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"` and set the same value on every API and worker process.
+
+- **Enabling:** set the key and run migrations — existing plaintext credentials are encrypted by the migration. If the key is added after migrating, run `python -m scripts.reencrypt_credentials` once (reads accept plaintext rows meanwhile).
+- **Rotating:** set `CREDENTIALS_ENCRYPTION_KEYS=<new>,<old>` and restart, run `python -m scripts.reencrypt_credentials`, then set `CREDENTIALS_ENCRYPTION_KEYS=<new>` and restart again.
+
+<Warning>
+Back the keys up with your database backups. Losing every key that encrypted a credential makes it unreadable, and removing the key while encrypted credentials exist breaks the tools and webhooks that use them.
+</Warning>
+
+---
+
 ## Authentication (OSS)
 
 | Variable | Default | Description |

@@ -255,6 +255,11 @@ services:
 
       OSS_JWT_SECRET: "${OSS_JWT_SECRET:?OSS_JWT_SECRET must be set to a strong secret}"
 
+      # Comma-separated Fernet keys (first one encrypts) for workspace
+      # credentials at rest. Unset stores them in plaintext (with a warning).
+      # Generate: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+      CREDENTIALS_ENCRYPTION_KEYS: "${CREDENTIALS_ENCRYPTION_KEYS:-}"
+
       # Auth. UI_APP_URL is where emailed links (verify, reset, invite) and
       # Stripe's return URLs point; nginx serves the UI on PUBLIC_BASE_URL, so
       # that is the default for remote installs.

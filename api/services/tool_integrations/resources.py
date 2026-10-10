@@ -4,8 +4,10 @@ credential holding the connection key, and the MCP tool(s) using it.
 The link back to the tools-service connection is recorded inside the
 credential's ``credential_data`` under ``fallcha_integration`` (beside the
 bearer ``token``). That needs no migration, survives edits to the tool (which
-re-validate and would drop unknown definition fields), and is never returned
-by the credentials API.
+re-validate and would drop unknown definition fields), is encrypted at rest
+with the rest of ``credential_data``, and is never returned by the credentials
+API. Lookups therefore load the organization's credentials and inspect the
+decrypted dicts in Python; never filter on ``credential_data`` in SQL.
 """
 
 from __future__ import annotations
