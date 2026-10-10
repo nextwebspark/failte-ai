@@ -69,4 +69,5 @@ class ContextLoader:
             account_label=info.account_label,
             scopes_granted=info.scopes_granted,
             oauth=oauth,
+            db=self.db,
         )

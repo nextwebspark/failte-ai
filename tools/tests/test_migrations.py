@@ -8,7 +8,14 @@ from sqlalchemy.ext.asyncio import create_async_engine
 from alembic import command
 from tests.conftest import TEST_DATABASE_URL, alembic_config
 
-TABLES = {"provider_apps", "connections", "connection_keys", "oauth_states"}
+TABLES = {
+    "provider_apps",
+    "connections",
+    "connection_keys",
+    "oauth_states",
+    "connection_syncs",
+    "catalogue_products",
+}
 
 
 async def _tables(schema: str) -> set[str]:

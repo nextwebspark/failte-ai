@@ -7,7 +7,12 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, SecretStr
 
-from fallcha_tools.core.models import AuthMode, ConnectionErrorCode, ConnectionStatus
+from fallcha_tools.core.models import (
+    AuthMode,
+    ConnectionErrorCode,
+    ConnectionStatus,
+    SyncStatus,
+)
 
 
 class ToolSummary(BaseModel):
@@ -41,10 +46,31 @@ class CatalogProvider(BaseModel):
         default=None, description="JSON Schema of the per-connection config."
     )
     oauth: CatalogOAuth | None = None
+    capabilities: list[str] = Field(
+        default_factory=list,
+        description="Optional features, e.g. ``sync`` (POST "
+        "/internal/connections/{id}/sync imports the connection's data).",
+    )
+    sync_item_label: str | None = Field(
+        default=None, description="What a sync imports, e.g. ``products``."
+    )
 
 
 class CatalogResponse(BaseModel):
     providers: list[CatalogProvider]
+
+
+class SyncStatusOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    status: SyncStatus
+    started_at: datetime
+    finished_at: datetime | None
+    last_synced_at: datetime | None = Field(
+        description="End of the last successful sync."
+    )
+    item_count: int = Field(description="Items imported (e.g. products).")
+    last_error: str | None
 
 
 class ConnectionOut(BaseModel):
@@ -66,6 +92,11 @@ class ConnectionOut(BaseModel):
     expires_at: datetime | None
     created_at: datetime
     updated_at: datetime
+    sync: SyncStatusOut | None = Field(
+        default=None,
+        description="Latest background sync, for providers with the ``sync`` "
+        "capability that have been synced at least once.",
+    )
 
 
 class ConnectionList(BaseModel):
@@ -79,7 +110,10 @@ class CreateConnectionRequest(BaseModel):
 
     provider: str = Field(min_length=1, max_length=64)
     auth_mode: AuthMode
-    secret: dict[str, JsonValue] = Field(min_length=1)
+    secret: dict[str, JsonValue] = Field(
+        default_factory=dict,
+        description="Required, except for the ``none`` auth mode (must be empty).",
+    )
     account_label: str | None = Field(default=None, max_length=320)
     scopes_granted: list[str] = Field(default_factory=list)
     config: dict[str, JsonValue] = Field(

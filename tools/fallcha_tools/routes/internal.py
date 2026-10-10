@@ -3,18 +3,29 @@
 from __future__ import annotations
 
 import uuid
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 
 from fastapi import APIRouter, Depends, Response, status
 from loguru import logger
 from pydantic import JsonValue, ValidationError
 
 from fallcha_tools.core.auth import InternalCallerDep, require_internal_caller
-from fallcha_tools.core.container import ConnectionRepoDep, KeyRepoDep, ServicesDep
+from fallcha_tools.core.container import (
+    AppServices,
+    ConnectionRepoDep,
+    KeyRepoDep,
+    ServicesDep,
+)
 from fallcha_tools.core.errors import InvalidRequestError, describe_validation_error
 from fallcha_tools.core.models import AuthMode, ConnectionStatus
-from fallcha_tools.core.provider import ConnectionTestResult, Provider
+from fallcha_tools.core.provider import (
+    ConnectionTestResult,
+    Provider,
+    SyncableProvider,
+    provider_capabilities,
+)
 from fallcha_tools.core.repositories import ConnectionInfo
+from fallcha_tools.core.sync import SyncInfo, SyncRepository
 from fallcha_tools.schemas import (
     CatalogOAuth,
     CatalogProvider,
@@ -25,6 +36,7 @@ from fallcha_tools.schemas import (
     CreateConnectionRequest,
     IssuedKeyOut,
     IssueKeyRequest,
+    SyncStatusOut,
     ToolSummary,
     UpdateConnectionRequest,
 )
@@ -32,12 +44,35 @@ from fallcha_tools.schemas import (
 router = APIRouter(prefix="/internal", dependencies=[Depends(require_internal_caller)])
 
 # OAuth2 connections are created by the OAuth callback, never from raw input.
-_DIRECT_AUTH_MODES = frozenset({AuthMode.SERVICE_ACCOUNT, AuthMode.API_KEY})
+_DIRECT_AUTH_MODES = frozenset(
+    {AuthMode.SERVICE_ACCOUNT, AuthMode.API_KEY, AuthMode.NONE}
+)
 _TEST_FAILED = "connection test failed unexpectedly"
 
 
-def _out(info: ConnectionInfo) -> ConnectionOut:
-    return ConnectionOut.model_validate(info)
+def _out(info: ConnectionInfo, sync: SyncInfo | None = None) -> ConnectionOut:
+    out = ConnectionOut.model_validate(info)
+    if sync is not None:
+        out.sync = SyncStatusOut.model_validate(sync)
+    return out
+
+
+async def _outs(
+    services: AppServices, org_id: int, infos: Sequence[ConnectionInfo]
+) -> list[ConnectionOut]:
+    """Connections with their latest sync status attached."""
+    async with services.db.session() as session:
+        syncs = await SyncRepository(session, services.sync.clock).get_many(
+            org_id, (info.id for info in infos)
+        )
+    return [_out(info, syncs.get(info.id)) for info in infos]
+
+
+async def _one(
+    services: AppServices, org_id: int, info: ConnectionInfo
+) -> ConnectionOut:
+    [out] = await _outs(services, org_id, [info])
+    return out
 
 
 def _default_account_label(
@@ -102,6 +137,12 @@ async def get_catalog(services: ServicesDep) -> CatalogResponse:
                     if provider.oauth is not None
                     else None
                 ),
+                capabilities=provider_capabilities(provider),
+                sync_item_label=(
+                    provider.sync_item_label
+                    if isinstance(provider, SyncableProvider)
+                    else None
+                ),
             )
         )
     return CatalogResponse(providers=providers)
@@ -110,11 +151,12 @@ async def get_catalog(services: ServicesDep) -> CatalogResponse:
 @router.get("/connections")
 async def list_connections(
     caller: InternalCallerDep,
+    services: ServicesDep,
     repo: ConnectionRepoDep,
     include_revoked: bool = False,
 ) -> ConnectionList:
     rows = await repo.list_connections(caller.org_id, include_revoked=include_revoked)
-    return ConnectionList(connections=[_out(row) for row in rows])
+    return ConnectionList(connections=await _outs(services, caller.org_id, rows))
 
 
 @router.post("/connections", status_code=status.HTTP_201_CREATED)
@@ -133,6 +175,11 @@ async def create_connection(
         raise InvalidRequestError(
             f"provider {provider.id!r} does not support {body.auth_mode}"
         )
+    if body.auth_mode == AuthMode.NONE:
+        if body.secret:
+            raise InvalidRequestError("a none-auth connection takes no secret")
+    elif not body.secret:
+        raise InvalidRequestError("secret: Field required")
     provider.validate_secret(body.auth_mode, body.secret)
     config = _validated_config(provider, body.config)
     info = await repo.create_connection(
@@ -151,9 +198,13 @@ async def create_connection(
 
 @router.get("/connections/{connection_id}")
 async def get_connection(
-    connection_id: uuid.UUID, caller: InternalCallerDep, repo: ConnectionRepoDep
+    connection_id: uuid.UUID,
+    caller: InternalCallerDep,
+    services: ServicesDep,
+    repo: ConnectionRepoDep,
 ) -> ConnectionOut:
-    return _out(await repo.get_connection(caller.org_id, connection_id))
+    info = await repo.get_connection(caller.org_id, connection_id)
+    return await _one(services, caller.org_id, info)
 
 
 @router.patch("/connections/{connection_id}")
@@ -168,7 +219,8 @@ async def update_connection(
     provider = services.registry.get(current.provider)
     # Merge semantics: keys in the body replace stored keys, others are kept.
     config = _validated_config(provider, {**current.config, **body.config})
-    return _out(await repo.update_config(caller.org_id, connection_id, config))
+    info = await repo.update_config(caller.org_id, connection_id, config)
+    return await _one(services, caller.org_id, info)
 
 
 @router.post("/connections/{connection_id}/test")
@@ -200,8 +252,20 @@ async def test_connection(
         account_label=result.account_label,
     )
     return ConnectionTestOut(
-        ok=result.ok, message=result.message, connection=_out(info)
+        ok=result.ok,
+        message=result.message,
+        connection=await _one(services, caller.org_id, info),
     )
+
+
+@router.post("/connections/{connection_id}/sync", status_code=status.HTTP_202_ACCEPTED)
+async def start_sync(
+    connection_id: uuid.UUID, caller: InternalCallerDep, services: ServicesDep
+) -> SyncStatusOut:
+    """Start importing the connection's data in the background (providers
+    with the ``sync`` capability). 409 while a sync of it is running."""
+    started = await services.sync.start(caller.org_id, caller.user_id, connection_id)
+    return SyncStatusOut.model_validate(started)
 
 
 @router.post("/connections/{connection_id}/keys", status_code=status.HTTP_201_CREATED)

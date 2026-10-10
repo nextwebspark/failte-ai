@@ -26,6 +26,7 @@ from fastapi import APIRouter
 from fastmcp import FastMCP
 from pydantic import BaseModel, JsonValue
 
+from fallcha_tools.core.db import Database
 from fallcha_tools.core.errors import NotFoundError
 from fallcha_tools.core.models import AuthMode
 
@@ -93,6 +94,9 @@ class ConnectionContext:
     scopes_granted: tuple[str, ...] = ()
     # Set for OAuth2 connections only.
     oauth: OAuthAccess | None = None
+    # The service's database, for providers that keep per-connection data
+    # (every query must filter on ``org_id`` and ``connection_id``).
+    db: Database | None = None
 
 
 ConnectionContextFactory = Callable[[], Awaitable[ConnectionContext]]
@@ -156,6 +160,49 @@ class Provider(Protocol):
     def rest_router(self, ctx_dependency: RestContextDependency) -> APIRouter | None:
         """Optional plain-HTTP routes, mounted at ``/v1/{id}``."""
         ...
+
+
+class SyncProgress(Protocol):
+    """Lets a running sync report that it is alive."""
+
+    async def heartbeat(self, items: int) -> None: ...
+
+
+@dataclass(frozen=True, slots=True)
+class SyncResult:
+    """A finished sync: how many items the connection now holds, plus an
+    optional note for the admin (e.g. "stopped at max_products")."""
+
+    item_count: int
+    note: str | None = None
+
+
+class SyncFailed(Exception):
+    """The sync could not finish. The message is shown to the admin, so it
+    must be safe (no secrets, no raw upstream bodies)."""
+
+
+@runtime_checkable
+class SyncableProvider(Protocol):
+    """Optional capability: the provider imports data in the background
+    (``POST /internal/connections/{id}/sync``). Listed in the catalog as the
+    ``sync`` capability."""
+
+    @property
+    def sync_item_label(self) -> str:
+        """Plural noun for what a sync imports, e.g. "products"."""
+        ...
+
+    async def run_sync(
+        self, ctx: ConnectionContext, progress: SyncProgress
+    ) -> SyncResult:
+        """Import the connection's data. Raise :class:`SyncFailed` with an
+        admin-safe message on failure."""
+        ...
+
+
+def provider_capabilities(provider: Provider) -> list[str]:
+    return ["sync"] if isinstance(provider, SyncableProvider) else []
 
 
 class ProviderNotFoundError(NotFoundError):

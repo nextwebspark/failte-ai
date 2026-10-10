@@ -18,6 +18,7 @@ from sqlalchemy.ext.asyncio import async_engine_from_config
 from alembic import context
 from fallcha_tools.config import DatabaseSettings, normalize_database_url
 from fallcha_tools.core.models import SCHEMA, Base
+from fallcha_tools.providers.website_catalogue import models as _catalogue  # noqa: F401
 
 config = context.config
 if config.config_file_name is not None and config.attributes.get(
