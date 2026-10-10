@@ -40,6 +40,7 @@ from fallcha_tools.providers.google_calendar.settings import CalendarConfig
 from fallcha_tools.providers.google_calendar.tools import register_calendar_tools
 from fallcha_tools.providers.google_common.connection import (
     GOOGLE_AUTH_MODES,
+    GOOGLE_FAMILY,
     GoogleAuthFactory,
     google_oauth_spec,
     validate_google_secret,
@@ -113,6 +114,10 @@ class GoogleCalendarProvider:
     @property
     def icon(self) -> str:
         return "calendar"
+
+    @property
+    def auth_family(self) -> str:
+        return GOOGLE_FAMILY
 
     @property
     def auth_modes(self) -> frozenset[AuthMode]:

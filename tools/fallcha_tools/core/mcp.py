@@ -98,12 +98,15 @@ class McpMounts:
                 await stack.enter_async_context(app.router.lifespan_context(app))
             yield
 
-    async def tool_summaries(self, provider_id: str) -> list[tuple[str, str]]:
+    async def tool_summaries(
+        self, provider_id: str
+    ) -> list[tuple[str, str, str | None]]:
+        """(name, description for the agent, short human title) per tool."""
         server = self.servers.get(provider_id)
         if server is None:
             return []
         tools = await server.list_tools(run_middleware=False)
-        return [(tool.name, tool.description or "") for tool in tools]
+        return [(tool.name, tool.description or "", tool.title) for tool in tools]
 
 
 class McpGateway:

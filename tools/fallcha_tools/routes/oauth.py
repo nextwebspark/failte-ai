@@ -26,7 +26,7 @@ from fallcha_tools.core.oauth import (
     OAuthCallbackError,
     oauth_spec,
 )
-from fallcha_tools.core.provider import PROVIDER_ID_PATTERN
+from fallcha_tools.core.provider import PROVIDER_ID_PATTERN, credential_family
 from fallcha_tools.core.repositories import ProviderAppInfo
 from fallcha_tools.schemas import (
     ConfirmConnectionRequest,
@@ -71,7 +71,8 @@ async def create_provider_app(
     oauth_spec(provider)  # 422 unless the provider supports OAuth2
     info = await apps.create(
         org_id=caller.org_id,
-        provider=provider.id,
+        # Stored under the family: one client serves all its providers.
+        provider=credential_family(provider),
         client_id=body.client_id,
         client_secret=body.client_secret.get_secret_value(),
         created_by=caller.user_id,
@@ -99,6 +100,7 @@ async def start_oauth(
         provider_id=body.provider,
         provider_app_id=body.provider_app_id,
         optional_scopes=body.optional_scopes,
+        login_hint=body.login_hint,
     )
     return OAuthStartOut(
         authorization_url=started.authorization_url,

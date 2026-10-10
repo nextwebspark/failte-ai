@@ -36,6 +36,8 @@ from fallcha_tools.providers.google_common.scopes import (
 )
 from fallcha_tools.providers.google_common.service_account import ServiceAccountKey
 
+# Google providers share OAuth clients and service-account keys.
+GOOGLE_FAMILY = "google"
 GOOGLE_AUTH_MODES = frozenset({AuthMode.SERVICE_ACCOUNT, AuthMode.OAUTH2})
 
 

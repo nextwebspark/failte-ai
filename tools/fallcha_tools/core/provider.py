@@ -125,6 +125,12 @@ class Provider(Protocol):
     @property
     def icon(self) -> str: ...
     @property
+    def auth_family(self) -> str | None:
+        """Providers of one family (e.g. "google") share OAuth clients and
+        can reuse each other's service-account keys. None: its own family."""
+        ...
+
+    @property
     def auth_modes(self) -> frozenset[AuthMode]: ...
     @property
     def scopes(self) -> tuple[str, ...]: ...
@@ -203,6 +209,11 @@ class SyncableProvider(Protocol):
 
 def provider_capabilities(provider: Provider) -> list[str]:
     return ["sync"] if isinstance(provider, SyncableProvider) else []
+
+
+def credential_family(provider: Provider) -> str:
+    """The key OAuth clients are stored under: the family, else the id."""
+    return provider.auth_family or provider.id
 
 
 class ProviderNotFoundError(NotFoundError):

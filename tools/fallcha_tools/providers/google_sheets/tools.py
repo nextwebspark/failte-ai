@@ -59,7 +59,7 @@ def register_sheets_tools(
         except GoogleToolError as exc:
             raise ToolError(str(exc)) from None
 
-    @mcp.tool(annotations=_READ_ONLY)
+    @mcp.tool(annotations=_READ_ONLY, title="Find rows by a column value")
     async def find_rows(
         column: Column,
         value: MatchValue,
@@ -73,14 +73,14 @@ def register_sheets_tools(
         svc = await service()
         return await _guard(svc.find_rows(column, value, tab, match))
 
-    @mcp.tool(annotations=_READ_ONLY)
+    @mcp.tool(annotations=_READ_ONLY, title="Read a row by number")
     async def get_row(row_number: RowNumber, tab: Tab = None) -> GetRowResult:
         """Read one row of the connected Google Sheet by its row number (as
         returned by find_rows)."""
         svc = await service()
         return await _guard(svc.get_row(row_number, tab))
 
-    @mcp.tool(annotations=_WRITES)
+    @mcp.tool(annotations=_WRITES, title="Add a row")
     async def append_row(values: RowValues, tab: Tab = None) -> AppendRowResult:
         """Add a new row to the connected Google Sheet, e.g. to record a lead or
         a message. Give values by column name; only columns in the sheet's
@@ -89,7 +89,9 @@ def register_sheets_tools(
         svc = await service()
         return await _guard(svc.append_row(values, tab))
 
-    @mcp.tool(annotations=_READ_ONLY)
+    @mcp.tool(
+        annotations=_READ_ONLY, title="Look up a verified caller's order (read-only)"
+    )
     async def look_up_order(
         caller_name: AccountName,
         address_or_eircode: AddressOrEircode,

@@ -17,7 +17,10 @@ from fallcha_tools.core.models import (
 
 class ToolSummary(BaseModel):
     name: str
-    description: str
+    description: str = Field(description="What the agent is told (may be long).")
+    summary: str | None = Field(
+        default=None, description="A short human label, e.g. for the catalog UI."
+    )
 
 
 class CatalogOAuth(BaseModel):
@@ -39,6 +42,11 @@ class CatalogProvider(BaseModel):
     title: str
     description: str
     icon: str
+    auth_family: str | None = Field(
+        default=None,
+        description="Providers of one family share OAuth clients (provider "
+        "apps are stored under the family) and service-account keys.",
+    )
     auth_modes: list[AuthMode]
     scopes: list[str]
     tools: list[ToolSummary]
@@ -112,7 +120,14 @@ class CreateConnectionRequest(BaseModel):
     auth_mode: AuthMode
     secret: dict[str, JsonValue] = Field(
         default_factory=dict,
-        description="Required, except for the ``none`` auth mode (must be empty).",
+        description="Required, except for the ``none`` auth mode (must be "
+        "empty) or with ``reuse_secret_from``.",
+    )
+    reuse_secret_from: uuid.UUID | None = Field(
+        default=None,
+        description="Copy the secret (server-side, never returned) of this "
+        "active connection of the same org, auth mode and provider family, "
+        "instead of sending ``secret``.",
     )
     account_label: str | None = Field(default=None, max_length=320)
     scopes_granted: list[str] = Field(default_factory=list)
@@ -176,7 +191,10 @@ class ProviderAppOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: uuid.UUID
-    provider: str
+    provider: str = Field(
+        description="The provider's auth family (e.g. ``google``), else its id: "
+        "a client can start the flow for every provider of that family."
+    )
     client_id: str
     created_by: int | None
     created_at: datetime
@@ -193,6 +211,14 @@ class OAuthStartRequest(BaseModel):
     provider: str = Field(min_length=1, max_length=64)
     provider_app_id: uuid.UUID
     optional_scopes: list[str] = Field(default_factory=list, max_length=16)
+    login_hint: str | None = Field(
+        default=None,
+        max_length=320,
+        pattern=r"^[^\s@]+@[^\s@]+$",
+        description="Email of the account to suggest (e.g. the one an existing "
+        "connection of the same family uses), so the provider can skip the "
+        "account chooser and ask only for the new scopes.",
+    )
 
 
 class OAuthStartOut(BaseModel):

@@ -98,6 +98,10 @@ class WebsiteCatalogueProvider:
         return "products"
 
     @property
+    def auth_family(self) -> str | None:
+        return None
+
+    @property
     def auth_modes(self) -> frozenset[AuthMode]:
         return frozenset({AuthMode.NONE})
 

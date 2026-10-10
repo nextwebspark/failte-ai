@@ -21,6 +21,7 @@ from fallcha_tools.core.provider import (
 )
 from fallcha_tools.providers.google_common.connection import (
     GOOGLE_AUTH_MODES,
+    GOOGLE_FAMILY,
     GoogleAuthFactory,
     google_oauth_spec,
     validate_google_secret,
@@ -85,6 +86,10 @@ class GoogleSheetsProvider:
     @property
     def icon(self) -> str:
         return "sheet"
+
+    @property
+    def auth_family(self) -> str:
+        return GOOGLE_FAMILY
 
     @property
     def auth_modes(self) -> frozenset[AuthMode]:

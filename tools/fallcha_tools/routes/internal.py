@@ -16,15 +16,20 @@ from fallcha_tools.core.container import (
     KeyRepoDep,
     ServicesDep,
 )
-from fallcha_tools.core.errors import InvalidRequestError, describe_validation_error
+from fallcha_tools.core.errors import (
+    ConflictError,
+    InvalidRequestError,
+    describe_validation_error,
+)
 from fallcha_tools.core.models import AuthMode, ConnectionStatus
 from fallcha_tools.core.provider import (
     ConnectionTestResult,
     Provider,
     SyncableProvider,
+    credential_family,
     provider_capabilities,
 )
-from fallcha_tools.core.repositories import ConnectionInfo
+from fallcha_tools.core.repositories import ConnectionInfo, ConnectionRepository
 from fallcha_tools.core.sync import SyncInfo, SyncRepository
 from fallcha_tools.schemas import (
     CatalogOAuth,
@@ -86,6 +91,40 @@ def _default_account_label(
     return email.strip()[:320] or None if isinstance(email, str) else None
 
 
+_REUSABLE_AUTH_MODES = frozenset({AuthMode.SERVICE_ACCOUNT, AuthMode.API_KEY})
+
+
+async def _reused_secret(
+    services: AppServices,
+    repo: ConnectionRepository,
+    org_id: int,
+    provider: Provider,
+    body: CreateConnectionRequest,
+) -> tuple[Mapping[str, JsonValue], str | None]:
+    """The secret of ``body.reuse_secret_from``, if it may be shared with a
+    new ``provider`` connection: same org (else 404), active, same auth
+    mode and same provider family. OAuth refresh tokens are never shared:
+    each OAuth connection has its own grant, so revoking one cannot break
+    another."""
+    assert body.reuse_secret_from is not None
+    if body.auth_mode not in _REUSABLE_AUTH_MODES:
+        raise InvalidRequestError(f"{body.auth_mode} secrets cannot be reused")
+    source = await repo.load_secrets(org_id, body.reuse_secret_from)
+    info = source.info
+    if info.status != ConnectionStatus.ACTIVE:
+        raise ConflictError("the connection to reuse is not active")
+    if info.auth_mode != body.auth_mode:
+        raise InvalidRequestError("the connection to reuse uses another auth mode")
+    source_provider = services.registry.get(info.provider)
+    if credential_family(source_provider) != credential_family(provider):
+        raise InvalidRequestError(
+            "only connections of the same provider family can share a secret"
+        )
+    if not source.secret:
+        raise ConflictError("the connection to reuse has no secret")
+    return source.secret, info.account_label
+
+
 def _validated_config(
     provider: Provider, raw: Mapping[str, JsonValue]
 ) -> dict[str, JsonValue]:
@@ -118,7 +157,10 @@ async def get_catalog(services: ServicesDep) -> CatalogResponse:
                 icon=provider.icon,
                 auth_modes=sorted(provider.auth_modes),
                 scopes=list(provider.scopes),
-                tools=[ToolSummary(name=n, description=d) for n, d in tools],
+                tools=[
+                    ToolSummary(name=n, description=d, summary=t) for n, d, t in tools
+                ],
+                auth_family=provider.auth_family,
                 config_schema=(
                     provider.config_model.model_json_schema()
                     if provider.config_model is not None
@@ -175,20 +217,28 @@ async def create_connection(
         raise InvalidRequestError(
             f"provider {provider.id!r} does not support {body.auth_mode}"
         )
-    if body.auth_mode == AuthMode.NONE:
+    secret: Mapping[str, JsonValue] = body.secret
+    account_label = body.account_label
+    if body.reuse_secret_from is not None:
+        if body.secret:
+            raise InvalidRequestError("give either secret or reuse_secret_from")
+        secret, source_label = await _reused_secret(
+            services, repo, caller.org_id, provider, body
+        )
+        account_label = account_label or source_label
+    elif body.auth_mode == AuthMode.NONE:
         if body.secret:
             raise InvalidRequestError("a none-auth connection takes no secret")
     elif not body.secret:
         raise InvalidRequestError("secret: Field required")
-    provider.validate_secret(body.auth_mode, body.secret)
+    provider.validate_secret(body.auth_mode, secret)
     config = _validated_config(provider, body.config)
     info = await repo.create_connection(
         org_id=caller.org_id,
         provider=provider.id,
         auth_mode=body.auth_mode,
-        secret=body.secret,
-        account_label=body.account_label
-        or _default_account_label(body.auth_mode, body.secret),
+        secret=secret,
+        account_label=account_label or _default_account_label(body.auth_mode, secret),
         scopes_granted=tuple(body.scopes_granted),
         config=config,
         created_by=caller.user_id,

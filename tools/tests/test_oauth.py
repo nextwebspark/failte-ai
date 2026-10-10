@@ -244,7 +244,8 @@ async def test_provider_app_secret_is_encrypted_and_never_returned(
     created = await create_app_row(client)
     assert created.status_code == 201, created.text
     body = created.json()
-    assert body["client_id"] == CLIENT_ID and body["provider"] == PROVIDER
+    # Stored under the auth family: the client serves every Google provider.
+    assert body["client_id"] == CLIENT_ID and body["provider"] == "google"
     assert CLIENT_SECRET not in created.text
 
     listed = await client.get("/internal/provider-apps", headers=internal_headers())

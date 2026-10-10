@@ -51,7 +51,7 @@ def register_calendar_tools(
         except CalendarToolError as exc:
             raise ToolError(str(exc)) from None
 
-    @mcp.tool(annotations=_READ_ONLY)
+    @mcp.tool(annotations=_READ_ONLY, title="Check free appointment slots")
     async def check_appointment_availability(
         relative_day: RelativeDay = None, part_of_day: PartOfDay = None
     ) -> AvailabilityResult:
@@ -62,7 +62,7 @@ def register_calendar_tools(
         svc = await service()
         return await _guard(svc.availability(relative_day, part_of_day))
 
-    @mcp.tool(annotations=_WRITES)
+    @mcp.tool(annotations=_WRITES, title="Book an appointment")
     async def book_appointment(
         slot_id: SlotId,
         caller_name: CallerName,
@@ -76,7 +76,10 @@ def register_calendar_tools(
         svc = await service()
         return await _guard(svc.book(slot_id, caller_name, caller_phone, reason))
 
-    @mcp.tool(annotations={**_WRITES, "destructiveHint": True})
+    @mcp.tool(
+        annotations={**_WRITES, "destructiveHint": True},
+        title="Cancel an appointment it booked",
+    )
     async def cancel_appointment(event_id: EventId) -> CancelResult:
         """Cancel an appointment that book_appointment made earlier, using the
         event_id it returned. Only appointments booked through this agent can be
