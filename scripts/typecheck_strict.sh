@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Strict type check for modules held to full typing (team, roles, invitations,
-# email, local auth). The rest of api/ is checked non-strictly by scripts/lint.sh.
+# email, local auth, skills). The rest of api/ is checked non-strictly by scripts/lint.sh.
 set -euo pipefail
 
 mypy --strict --follow-imports=silent \
@@ -15,21 +15,28 @@ mypy --strict --follow-imports=silent \
   api/services/auth/oauth \
   api/db/invitation_client.py \
   api/db/membership_client.py \
+  api/db/skill_client.py \
+  api/db/skill_models.py \
   api/errors/domain.py \
   api/errors/integrations.py \
   api/errors/invitations.py \
   api/errors/membership.py \
+  api/errors/skills.py \
   api/routes/integrations.py \
   api/routes/invitations.py \
+  api/routes/skills.py \
   api/routes/team.py \
   api/schemas/integrations.py \
+  api/schemas/skills.py \
   api/schemas/team.py \
   api/services/auth/permissions.py \
+  api/services/auth/platform_admin.py \
   api/services/credential_encryption.py \
   api/services/email \
   api/services/invitations \
   api/services/membership \
   api/services/rate_limit \
+  api/services/skills \
   api/services/tool_integrations \
   api/utils/text.py \
   api/utils/trusted_origins.py \

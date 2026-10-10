@@ -1767,3 +1767,8 @@ class KnowledgeBaseChunkModel(Base):
             postgresql_ops={"embedding": "vector_cosine_ops"},
         ),
     )
+
+
+# Fallcha: agent skill tables live in a fork-owned module; importing it here
+# registers them on Base.metadata wherever the models are loaded.
+from api.db import skill_models as _skill_models  # noqa: E402, F401

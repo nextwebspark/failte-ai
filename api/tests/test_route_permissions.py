@@ -17,6 +17,7 @@ from api.db.models import OrganizationModel, UserModel
 from api.enums import OrgRole
 from api.services.auth import depends as auth_depends
 from api.services.auth.depends import get_org_membership, get_user
+from api.services.auth.platform_admin import require_platform_admin
 
 pytestmark = pytest.mark.real_org_roles
 
@@ -56,6 +57,10 @@ def test_every_authenticated_route_checks_an_org_role():
             continue
         calls = _dependency_calls(route.dependant)
         if get_user not in calls or get_org_membership in calls:
+            continue
+        # Platform-wide resources (e.g. the skill library) belong to no
+        # organization; their writes are guarded by the platform-admin check.
+        if require_platform_admin in calls:
             continue
         for method in route.methods - {"HEAD", "OPTIONS"}:
             if (method, route.path) not in UNSCOPED_ROUTES:
@@ -150,6 +155,16 @@ async def client_as(org):
         ),
         # Team management: admins only.
         ("GET", "/api/v1/organizations/invitations", {OrgRole.ADMIN}),
+        # Skills: everyone reads (incl. the library), developers+ write.
+        ("GET", "/api/v1/skills", {OrgRole.VIEWER, OrgRole.DEVELOPER, OrgRole.ADMIN}),
+        ("POST", "/api/v1/skills", {OrgRole.DEVELOPER, OrgRole.ADMIN}),
+        (
+            "GET",
+            "/api/v1/skill-library",
+            {OrgRole.VIEWER, OrgRole.DEVELOPER, OrgRole.ADMIN},
+        ),
+        # Library writes: platform admins only, whatever the org role.
+        ("POST", "/api/v1/skill-library", set()),
     ],
 )
 async def test_role_matrix(client_as, method, path, allowed):

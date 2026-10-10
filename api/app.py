@@ -48,6 +48,7 @@ from api.services.pipecat.tracing_config import (
     load_all_org_langfuse_credentials,
 )
 from api.services.pipecat.tts_cache.runtime import close_speech_cache
+from api.services.skills import sync_seed_library_on_startup
 from api.services.tool_integrations.client import close_shared_http_client
 from api.services.worker_sync.manager import (
     WorkerSyncManager,
@@ -66,6 +67,8 @@ async def lifespan(app: FastAPI):
     # Fallcha: refuse to start with unreadable or (outside OSS) plaintext
     # credential storage. See api/services/credential_encryption.py.
     await verify_credential_encryption()
+    # Fallcha: sync seed skills (api/skills_library) into the library.
+    await sync_seed_library_on_startup()
 
     async with mcp_app.lifespan(app):
         # warmup arq pool
@@ -144,7 +147,7 @@ async def handle_mps_unavailable_error(
 async def handle_domain_error(_request: Request, exc: DomainError) -> JSONResponse:
     """Map business-rule violations raised below the HTTP layer."""
 
-    content: dict[str, str] = {"detail": exc.message}
+    content: dict[str, str] = {**exc.extra, "detail": exc.message}
     if exc.code:
         content["code"] = exc.code
     return JSONResponse(status_code=exc.status_code, content=content)
