@@ -302,3 +302,72 @@ async def test_qa_node_own_llm_is_ignored_on_platform_servers(monkeypatch):
 
     assert own_llm == []
     assert result is None  # no run to resolve the platform LLM from
+
+
+@pytest.mark.asyncio
+async def test_qa_node_spec_hides_its_own_llm_for_customers(make_client):
+    async with make_client(PLATFORM) as (client, _workflow):
+        body = (await client.get("/api/v1/node-types/qa")).json()
+
+    names = {prop["name"] for prop in body["properties"]}
+    assert "qa_api_key" not in names and "qa_provider" not in names
+    assert "qa_system_prompt" in names
+
+
+@pytest.mark.asyncio
+async def test_qa_node_spec_keeps_its_own_llm_for_superusers(make_client):
+    async with make_client(PLATFORM, superuser=True) as (client, _workflow):
+        body = (await client.get("/api/v1/node-types/qa")).json()
+
+    assert "qa_api_key" in {prop["name"] for prop in body["properties"]}
+
+
+def test_voicemail_classifier_uses_the_agent_model_on_platform_servers(monkeypatch):
+    from api import constants
+    from api.services.pipecat import run_pipeline
+
+    monkeypatch.setattr(constants, "PLATFORM_MODELS_ENABLED", True)
+    monkeypatch.setattr(
+        run_pipeline, "resolve_answer_supervisor_config", lambda *a, **k: object()
+    )
+    used = []
+    monkeypatch.setattr(
+        run_pipeline,
+        "create_llm_service",
+        lambda *a, **k: used.append("agent") or object(),
+    )
+    monkeypatch.setattr(
+        run_pipeline,
+        "create_llm_service_from_provider",
+        lambda *a, **k: used.append("own") or object(),
+    )
+    from types import SimpleNamespace
+
+    monkeypatch.setattr(
+        run_pipeline,
+        "AnswerClassificationService",
+        lambda *a, **k: SimpleNamespace(classify=None),
+    )
+    monkeypatch.setattr(run_pipeline, "AnswerSupervisor", lambda *a, **k: object())
+
+    run_pipeline._create_answer_supervisor(
+        {"use_workflow_llm": False, "provider": "openai", "api_key": "sk-own"},
+        is_realtime=False,
+        start_node=None,
+        context=None,
+        user_config=None,
+        correlation_id=None,
+    )
+
+    assert used == ["agent"]
+
+
+def test_voicemail_classifier_key_is_dropped_from_customer_responses():
+    from api.services.configuration.masking import mask_workflow_configurations
+
+    masked = mask_workflow_configurations(
+        {"voicemail_detection": {"use_workflow_llm": False, "api_key": "sk-own"}},
+        drop_secrets=True,
+    )
+
+    assert "api_key" not in masked["voicemail_detection"]

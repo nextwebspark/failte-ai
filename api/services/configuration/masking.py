@@ -205,6 +205,11 @@ def mask_workflow_configurations(
                 if override.get(secret_field):
                     hide_secret(override, secret_field, drop=drop_secrets)
 
+    voicemail = masked.get("voicemail_detection")
+    if drop_secrets and isinstance(voicemail, dict):
+        # The classifier's own-LLM key; ignored on platform-models servers.
+        voicemail.pop("api_key", None)
+
     v2_override = masked.get("model_configuration_v2_override")
     if isinstance(v2_override, dict):
         _mask_nested_service_secrets(v2_override, drop_secrets)
