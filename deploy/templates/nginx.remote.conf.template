@@ -1,5 +1,10 @@
 __DOGRAH_UPSTREAM_BLOCK__
 
+# Access-log format for the OAuth callback: $uri carries the path only, never
+# the query string (which holds the one-time authorization code and state).
+log_format fallcha_oauth '$remote_addr - [$time_local] "$request_method $uri $server_protocol" '
+                         '$status $body_bytes_sent "$http_user_agent"';
+
 server {
     listen 80;
     server_name __DOGRAH_PUBLIC_HOST__;
@@ -56,6 +61,36 @@ server {
         # Don't buffer streamed responses
         proxy_buffering off;
         client_max_body_size 100M;
+    }
+
+    # OAuth2 callback of the fallcha-tools service: Google sends the user's
+    # browser to {TOOLS_PUBLIC_BASE_URL}/oauth/<provider>/callback. This one
+    # path is the service's only public route; everything else under /oauth/
+    # still goes to the UI (and 404s there).
+    location ~ ^/oauth/[a-z0-9-]+/callback$ {
+        limit_except GET { deny all; }
+
+        # Never log the query string (code + state). The code is single-use
+        # and PKCE-bound, but it still does not belong in logs. (nginx's
+        # error log still prints the full request line when the upstream is
+        # unreachable; such a code never reached the service and is useless
+        # without the PKCE verifier it holds.)
+        access_log /var/log/nginx/access.log fallcha_oauth;
+
+        # Resolve at request time through Docker's DNS so nginx still starts
+        # (and serves everything else) when fallcha-tools is not running;
+        # the callback then answers 502 instead.
+        resolver 127.0.0.11 valid=30s ipv6=off;
+        set $fallcha_tools_upstream fallcha-tools:8000;
+        proxy_pass http://$fallcha_tools_upstream;
+        proxy_http_version 1.1;
+
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto https;
+
+        proxy_read_timeout 30s;
     }
 
     location / {

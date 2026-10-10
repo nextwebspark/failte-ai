@@ -57,3 +57,29 @@ docker compose --env-file .env up -d                                  # app stac
 A no-cost trick for a real cert without owning a domain: set
 `PUBLIC_HOST=<public-ip>.sslip.io` (sslip.io resolves any embedded IP), which
 Let's Encrypt will happily issue for.
+
+## Integrations (fallcha-tools) are not part of this stack
+
+This self-contained stack is the upstream Hostinger variant. It does not
+run the `fallcha-tools` service, so the Integrations page reports
+"Integrations aren't configured on this server". To add it:
+
+- Copy the `fallcha-tools` service from the root `docker-compose.yaml`.
+- Set `TOOLS_INTERNAL_SECRET` and `CREDENTIALS_ENCRYPTION_KEYS` on `api`.
+- Route only the OAuth callback to the tools service, on both the
+  `app-network` and `traefik` networks:
+
+```yaml
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=${TRAEFIK_NETWORK:-traefik-proxy}"
+      - "traefik.http.routers.fallcha-oauth.rule=Host(`${PUBLIC_HOST}`) && Method(`GET`) && PathRegexp(`^/oauth/[a-z0-9-]+/callback$`)"
+      - "traefik.http.routers.fallcha-oauth.entrypoints=${TRAEFIK_ENTRYPOINT:-websecure}"
+      - "traefik.http.routers.fallcha-oauth.tls=true"
+      - "traefik.http.routers.fallcha-oauth.tls.certresolver=${TRAEFIK_CERTRESOLVER:-letsencrypt}"
+      - "traefik.http.routers.fallcha-oauth.priority=30"
+      - "traefik.http.services.fallcha-oauth.loadbalancer.server.port=8000"
+```
+
+Traefik's access log is off by default. If you turn it on, drop the query
+string for this router: it carries the OAuth authorization code.

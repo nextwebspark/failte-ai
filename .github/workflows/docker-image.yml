@@ -68,6 +68,9 @@ jobs:
           - name: dograh-ui
             dockerfile: ui/Dockerfile
             context: .
+          - name: fallcha-tools
+            dockerfile: tools/Dockerfile
+            context: tools
         platform:
           - name: linux/amd64
             runner: ubuntu-24.04
@@ -152,6 +155,13 @@ jobs:
           merge-multiple: true
           path: /tmp/digests/dograh-ui
 
+      - name: Download tools digests
+        uses: actions/download-artifact@v4
+        with:
+          pattern: digest-fallcha-tools-*
+          merge-multiple: true
+          path: /tmp/digests/fallcha-tools
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
 
@@ -212,8 +222,10 @@ jobs:
 
           inspect_digests dograh-api
           inspect_digests dograh-ui
+          inspect_digests fallcha-tools
           create_manifests dograh-api
           create_manifests dograh-ui
+          create_manifests fallcha-tools
 
   notify:
     needs:
