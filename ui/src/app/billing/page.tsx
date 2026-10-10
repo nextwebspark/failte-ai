@@ -273,15 +273,21 @@ function MpsBillingPage() {
                     <div className="text-sm text-amber-900 dark:text-amber-200">
                         <p className="font-medium">Credit purchases are unavailable in OSS mode</p>
                         <p className="mt-1">
-                            You can&apos;t purchase credits from this self-hosted app. Add your own
-                            provider keys under BYOK in{" "}
-                            <Link
-                                href="/model-configurations"
-                                className="font-medium underline underline-offset-2"
-                            >
-                                Model Configurations
-                            </Link>
-                            , or{" "}
+                            You can&apos;t purchase credits from this self-hosted app.{" "}
+                            {config?.platformModelsEnabled ? (
+                                "Please "
+                            ) : (
+                                <>
+                                    Add your own provider keys under BYOK in{" "}
+                                    <Link
+                                        href="/model-configurations"
+                                        className="font-medium underline underline-offset-2"
+                                    >
+                                        Model Configurations
+                                    </Link>
+                                    , or{" "}
+                                </>
+                            )}
                             <a
                                 href={SUPPORT_MAILTO}
                                 className="font-medium underline underline-offset-2"

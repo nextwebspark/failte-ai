@@ -21,6 +21,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
+import { useAppConfig } from "@/context/AppConfigContext";
 import { useOrgConfig } from "@/context/OrgConfigContext";
 import { useUnsavedChanges, useUnsavedChangesContext } from "@/context/UnsavedChangesContext";
 import { useAudioPlayback } from "@/hooks/useAudioPlayback";
@@ -1179,6 +1180,7 @@ function VoicemailSection({
 
     const [enabled, setEnabled] = useState(getConfig().enabled);
     const [useWorkflowLlm, setUseWorkflowLlm] = useState(getConfig().use_workflow_llm);
+    const platformModels = Boolean(useAppConfig().config?.platformModelsEnabled);
     const [provider, setProvider] = useState(getConfig().provider || "openai");
     const [model, setModel] = useState(getConfig().model || "gpt-4.1");
     const [apiKey, setApiKey] = useState(getConfig().api_key || "");
@@ -1275,19 +1277,25 @@ function VoicemailSection({
                         <details className="rounded-md border p-3">
                             <summary className="cursor-pointer text-sm font-medium">Classification model</summary>
                             <div className="mt-3 space-y-3">
-                                <div className="flex items-center space-x-2 rounded-md border bg-muted/20 p-2">
-                                    <Switch
-                                        id="voicemail-use-workflow-llm"
-                                        checked={useWorkflowLlm}
-                                        onCheckedChange={setUseWorkflowLlm}
-                                    />
-                                    <Label htmlFor="voicemail-use-workflow-llm">Use Workflow LLM</Label>
-                                    <Label className="ml-2 text-xs text-muted-foreground">
-                                        Use the LLM configured in your account settings.
-                                    </Label>
-                                </div>
+                                {platformModels ? (
+                                    <p className="text-xs text-muted-foreground">
+                                        Classification uses this agent&apos;s language model.
+                                    </p>
+                                ) : (
+                                    <div className="flex items-center space-x-2 rounded-md border bg-muted/20 p-2">
+                                        <Switch
+                                            id="voicemail-use-workflow-llm"
+                                            checked={useWorkflowLlm}
+                                            onCheckedChange={setUseWorkflowLlm}
+                                        />
+                                        <Label htmlFor="voicemail-use-workflow-llm">Use Workflow LLM</Label>
+                                        <Label className="ml-2 text-xs text-muted-foreground">
+                                            Use the LLM configured in your account settings.
+                                        </Label>
+                                    </div>
+                                )}
 
-                                {!useWorkflowLlm && (
+                                {!platformModels && !useWorkflowLlm && (
                                     <LLMConfigSelector
                                         provider={provider}
                                         onProviderChange={setProvider}
