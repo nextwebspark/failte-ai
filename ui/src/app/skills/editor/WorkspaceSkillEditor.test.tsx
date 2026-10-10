@@ -188,6 +188,35 @@ describe("WorkspaceSkillEditor", () => {
         await waitFor(() => expect(screen.queryByText("Unsaved changes")).toBeNull());
     });
 
+    it("explains when the tool list can't be loaded", async () => {
+        mocks.listTools.mockResolvedValue({ error: { detail: "Tools are down" } });
+        mocks.getSkill.mockResolvedValue({ data: skill({ allowed_tool_uuids: ["tool-1"] }) });
+        renderEditor("skill-1");
+        expect(await screen.findByText(/Tools are down\. Selected tools show by ID/)).toBeTruthy();
+        expect(screen.getByText("tool-1")).toBeTruthy();
+    });
+
+    it("keeps the open file selected after saving", async () => {
+        const twoFiles = skill({
+            files: [
+                { path: "references/a.md", content: "A" },
+                { path: "references/b.md", content: "B" },
+            ],
+        });
+        mocks.getSkill.mockResolvedValue({ data: twoFiles });
+        renderEditor("skill-1");
+        fireEvent.click(await screen.findByRole("button", { name: "references/b.md" }));
+        fireEvent.change(screen.getByLabelText("Content of references/b.md"), { target: { value: "B2" } });
+        mocks.updateSkill.mockResolvedValue({
+            data: { ...twoFiles, files: [twoFiles.files[0], { path: "references/b.md", content: "B2" }] },
+        });
+
+        fireEvent.click(screen.getByRole("button", { name: /^Save$/ }));
+        await waitFor(() => expect(screen.queryByText("Unsaved changes")).toBeNull());
+        expect((screen.getByLabelText("Path") as HTMLInputElement).value).toBe("references/b.md");
+        expect(screen.getByRole("button", { name: "references/b.md" }).getAttribute("aria-current")).toBe("true");
+    });
+
     it("is read-only without agents:write", async () => {
         mocks.can.mockImplementation((...p: string[]) => p.every((x) => x === "agents:read"));
         mocks.getSkill.mockResolvedValue({ data: skill() });

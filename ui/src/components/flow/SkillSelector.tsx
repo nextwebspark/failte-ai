@@ -2,7 +2,7 @@
 
 import { ExternalLink } from "lucide-react";
 import Link from "next/link";
-import { useState } from "react";
+import { useId, useState } from "react";
 
 import type { SkillSummaryResponse } from "@/client/types.gen";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -35,12 +35,21 @@ interface SkillChecklistProps {
     selected: readonly string[];
     onToggle: (uuid: string, checked: boolean) => void;
     disabled?: boolean;
+    /** The skills list failed to load. */
+    loadError?: boolean;
+    labelledBy: string;
 }
 
-function SkillChecklist({ idPrefix, skills, selected, onToggle, disabled }: SkillChecklistProps) {
+function SkillChecklist({ idPrefix, skills, selected, onToggle, disabled, loadError, labelledBy }: SkillChecklistProps) {
     const known = new Set(skills.map((s) => s.skill_uuid));
     const missing = selected.filter((uuid) => !known.has(uuid));
+    const errorNotice = loadError ? (
+        <p className="text-xs text-destructive" role="alert">
+            Couldn&apos;t load your skills. Selected skills show by ID; close and reopen this editor to retry.
+        </p>
+    ) : null;
     if (skills.length === 0 && missing.length === 0) {
+        if (errorNotice) return errorNotice;
         return (
             <div className="space-y-2 rounded-md border p-3 text-sm text-muted-foreground">
                 <p>This workspace has no skills yet.</p>
@@ -52,37 +61,47 @@ function SkillChecklist({ idPrefix, skills, selected, onToggle, disabled }: Skil
         );
     }
     return (
-        <div className="max-h-[260px] overflow-y-auto rounded-md border">
-            <ul className="divide-y">
-                {skills.map((skill) => {
-                    const id = `${idPrefix}-${skill.skill_uuid}`;
-                    return (
-                        <li key={skill.skill_uuid} className="flex items-start gap-3 p-2.5">
-                            <Checkbox
-                                id={id}
-                                checked={selected.includes(skill.skill_uuid)}
-                                onCheckedChange={(checked) => onToggle(skill.skill_uuid, checked === true)}
-                                disabled={disabled}
-                            />
-                            <label htmlFor={id} className="grid min-w-0 cursor-pointer gap-0.5">
-                                <span className="font-mono text-sm font-medium">{skill.name}</span>
-                                <span className="line-clamp-2 text-xs text-muted-foreground">{skill.description}</span>
-                            </label>
-                        </li>
-                    );
-                })}
-                {missing.map((uuid) => {
-                    const id = `${idPrefix}-${uuid}`;
-                    return (
-                        <li key={uuid} className="flex items-center gap-3 p-2.5">
-                            <Checkbox id={id} checked onCheckedChange={() => onToggle(uuid, false)} disabled={disabled} />
-                            <label htmlFor={id} className="cursor-pointer text-xs text-muted-foreground">
-                                Archived or unknown skill <span className="font-mono">{uuid}</span> (ignored on calls)
-                            </label>
-                        </li>
-                    );
-                })}
-            </ul>
+        <div className="space-y-1.5">
+            {errorNotice}
+            <div className="max-h-[260px] overflow-y-auto rounded-md border" role="group" aria-labelledby={labelledBy}>
+                <ul className="divide-y">
+                    {skills.map((skill) => {
+                        const id = `${idPrefix}-${skill.skill_uuid}`;
+                        return (
+                            <li key={skill.skill_uuid} className="flex items-start gap-3 p-2.5">
+                                <Checkbox
+                                    id={id}
+                                    checked={selected.includes(skill.skill_uuid)}
+                                    onCheckedChange={(checked) => onToggle(skill.skill_uuid, checked === true)}
+                                    disabled={disabled}
+                                />
+                                <label htmlFor={id} className="grid min-w-0 cursor-pointer gap-0.5">
+                                    <span className="font-mono text-sm font-medium">{skill.name}</span>
+                                    <span className="line-clamp-2 text-xs text-muted-foreground">{skill.description}</span>
+                                </label>
+                            </li>
+                        );
+                    })}
+                    {missing.map((uuid) => {
+                        const id = `${idPrefix}-${uuid}`;
+                        return (
+                            <li key={uuid} className="flex items-center gap-3 p-2.5">
+                                <Checkbox id={id} checked onCheckedChange={() => onToggle(uuid, false)} disabled={disabled} />
+                                <label htmlFor={id} className="cursor-pointer text-xs text-muted-foreground">
+                                    {loadError ? (
+                                        <>Skill <span className="font-mono">{uuid}</span></>
+                                    ) : (
+                                        <>
+                                            Archived or unknown skill <span className="font-mono">{uuid}</span> (ignored on
+                                            calls)
+                                        </>
+                                    )}
+                                </label>
+                            </li>
+                        );
+                    })}
+                </ul>
+            </div>
         </div>
     );
 }
@@ -98,17 +117,28 @@ interface SkillScopeSelectorProps {
     label: string;
     description?: string | null;
     disabled?: boolean;
+    loadError?: boolean;
 }
 
 /** Which skills a step lists for on-demand loading (`skill_uuids`). */
-export function SkillScopeSelector({ value, onChange, skills, label, description, disabled }: SkillScopeSelectorProps) {
+export function SkillScopeSelector({
+    value,
+    onChange,
+    skills,
+    label,
+    description,
+    disabled,
+    loadError,
+}: SkillScopeSelectorProps) {
+    const baseId = useId();
+    const labelId = `${baseId}-label`;
     // Local, so "Selected" with nothing ticked yet doesn't snap to "None".
     const [scope, setScope] = useState<SkillScope>(() => scopeOf(value));
     const selected = value ?? [];
 
     return (
         <div className="space-y-2">
-            <Label id="skill-scope-label">{label}</Label>
+            <Label id={labelId}>{label}</Label>
             {description && <p className="text-xs text-muted-foreground">{description}</p>}
             <RadioGroup
                 value={scope}
@@ -117,7 +147,7 @@ export function SkillScopeSelector({ value, onChange, skills, label, description
                     setScope(nextScope);
                     onChange(valueForScope(nextScope, value));
                 }}
-                aria-labelledby="skill-scope-label"
+                aria-labelledby={labelId}
                 className="gap-2"
                 disabled={disabled}
             >
@@ -129,8 +159,8 @@ export function SkillScopeSelector({ value, onChange, skills, label, description
                     ] as const
                 ).map(([option, title, hint]) => (
                     <div key={option} className="flex items-start gap-2">
-                        <RadioGroupItem value={option} id={`skill-scope-${option}`} className="mt-0.5" />
-                        <Label htmlFor={`skill-scope-${option}`} className="grid gap-0.5 font-normal">
+                        <RadioGroupItem value={option} id={`${baseId}-${option}`} className="mt-0.5" />
+                        <Label htmlFor={`${baseId}-${option}`} className="grid gap-0.5 font-normal">
                             <span className="text-sm">{title}</span>
                             <span className="text-xs text-muted-foreground">{hint}</span>
                         </Label>
@@ -140,11 +170,13 @@ export function SkillScopeSelector({ value, onChange, skills, label, description
             {scope === "selected" && (
                 <>
                     <SkillChecklist
-                        idPrefix="skill-scope"
+                        idPrefix={`${baseId}-skill`}
+                        labelledBy={labelId}
                         skills={skills}
                         selected={selected}
                         onToggle={(uuid, checked) => onChange(toggled(selected, uuid, checked))}
                         disabled={disabled}
+                        loadError={loadError}
                     />
                     {selected.length === 0 && (
                         <p className="text-xs text-muted-foreground" role="status">
@@ -164,17 +196,30 @@ interface PreloadSkillSelectorProps {
     label: string;
     description?: string | null;
     disabled?: boolean;
+    loadError?: boolean;
 }
 
 /** Skills inlined into a step's prompt from the start (`preload_skill_uuids`). */
-export function PreloadSkillSelector({ value, onChange, skills, label, description, disabled }: PreloadSkillSelectorProps) {
+export function PreloadSkillSelector({
+    value,
+    onChange,
+    skills,
+    label,
+    description,
+    disabled,
+    loadError,
+}: PreloadSkillSelectorProps) {
+    const baseId = useId();
+    const labelId = `${baseId}-label`;
     const selected = value ?? [];
     return (
         <div className="space-y-2">
-            <Label>{label}</Label>
+            <Label id={labelId}>{label}</Label>
             {description && <p className="text-xs text-muted-foreground">{description}</p>}
             <SkillChecklist
-                idPrefix="skill-preload"
+                idPrefix={`${baseId}-skill`}
+                labelledBy={labelId}
+                loadError={loadError}
                 skills={skills}
                 selected={selected}
                 onToggle={(uuid, checked) => {

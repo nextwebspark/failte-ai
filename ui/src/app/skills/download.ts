@@ -19,7 +19,8 @@ export async function downloadSkillZip(skillUuid: string, name: string): Promise
         document.body.appendChild(link);
         link.click();
         link.remove();
-        URL.revokeObjectURL(url);
+        // Revoking right away can cancel the download in some browsers.
+        setTimeout(() => URL.revokeObjectURL(url), 0);
         return null;
     } catch {
         return NETWORK_ERROR;

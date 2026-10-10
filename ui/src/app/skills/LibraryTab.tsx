@@ -25,6 +25,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Panel } from "@/components/ui/panel";
 import { SectionHeading, SectionHint } from "@/components/ui/section-heading";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StatusPill, statusTone } from "@/components/ui/status-pill";
 
@@ -51,7 +52,8 @@ interface ConflictState {
     message: string;
 }
 
-const ALL_CATEGORIES = "";
+/** Radix Select items can't use "" as a value. */
+export const ALL_CATEGORIES = "__all__";
 
 export function filterLibrary(
     skills: readonly LibrarySkillSummaryResponse[],
@@ -212,19 +214,19 @@ export function LibraryTab({
                     />
                 </div>
                 {categories.length > 0 && (
-                    <select
-                        aria-label="Filter by category"
-                        className="h-9 rounded-md border border-input bg-background px-3 text-sm"
-                        value={category}
-                        onChange={(event) => setCategory(event.target.value)}
-                    >
-                        <option value={ALL_CATEGORIES}>All categories</option>
-                        {categories.map((c) => (
-                            <option key={c} value={c}>
-                                {c}
-                            </option>
-                        ))}
-                    </select>
+                    <Select value={category} onValueChange={setCategory}>
+                        <SelectTrigger aria-label="Filter by category" className="w-full sm:w-52">
+                            <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value={ALL_CATEGORIES}>All categories</SelectItem>
+                            {categories.map((c) => (
+                                <SelectItem key={c} value={c}>
+                                    {c}
+                                </SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
                 )}
             </div>
 

@@ -241,11 +241,13 @@ describe("Library", () => {
         chooseTab(/Library/);
 
         expect(await screen.findByText("booking")).toBeTruthy();
-        fireEvent.change(screen.getByRole("combobox", { name: "Filter by category" }), {
-            target: { value: "scheduling" },
-        });
-        expect(screen.queryByText("returns-policy")).toBeNull();
-        fireEvent.change(screen.getByRole("combobox", { name: "Filter by category" }), { target: { value: "" } });
+        Element.prototype.scrollIntoView = vi.fn();
+        const filter = screen.getByRole("combobox", { name: "Filter by category" });
+        fireEvent.keyDown(filter, { key: "Enter" });
+        fireEvent.click(await screen.findByRole("option", { name: "scheduling" }));
+        await waitFor(() => expect(screen.queryByText("returns-policy")).toBeNull());
+        fireEvent.keyDown(filter, { key: "Enter" });
+        fireEvent.click(await screen.findByRole("option", { name: "All categories" }));
         fireEvent.change(screen.getByRole("textbox", { name: "Search library skills" }), {
             target: { value: "returns" },
         });
@@ -328,6 +330,9 @@ describe("Library", () => {
         fireEvent.click(screen.getByRole("button", { name: "Publish" }));
         await waitFor(() => expect(mocks.publish).toHaveBeenCalledWith({ path: { library_skill_uuid: "lib-2" } }));
         await waitFor(() => expect(toast.success).toHaveBeenCalledWith("Published draft-skill v1"));
+        // Publishing may flag updates on workspace copies, so both lists reload.
+        await waitFor(() => expect(mocks.listSkills).toHaveBeenCalledTimes(2));
+        expect(mocks.listLibrary).toHaveBeenCalledTimes(2);
 
         fireEvent.click(screen.getByRole("button", { name: /Sync seeds/ }));
         await waitFor(() =>

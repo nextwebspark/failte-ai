@@ -50,10 +50,11 @@ export function DiffView({ diff, className }: { diff: string; className?: string
             aria-label="Changes from your copy to the library version"
         >
             {lines.map((line, index) => (
-                <div key={index} className={cn("whitespace-pre-wrap break-all px-3", LINE_CLASS[line.kind])}>
+                // Inline spans styled as blocks: <pre> only allows phrasing content.
+                <span key={index} className={cn("block whitespace-pre-wrap break-all px-3", LINE_CLASS[line.kind])}>
                     {LINE_LABEL[line.kind] && <span className="sr-only">{LINE_LABEL[line.kind]}</span>}
                     {line.text || " "}
-                </div>
+                </span>
             ))}
         </pre>
     );

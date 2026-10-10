@@ -24,7 +24,13 @@ const TEXT_CONTROL = /[\x00-\x08\x0b\x0c\x0e-\x1f]/;
 const LINE_CONTROL = /[\x00-\x1f\x7f-\x9f\u2028\u2029]/;
 const XML_TAG = /<\/?[A-Za-z][\w:.-]*(\s[^<>]*)?\/?>/;
 
+const LINE_BREAK = /\r\n?|\u2028|\u2029/g;
 const encoder = new TextEncoder();
+
+/** Every line terminator as "\n", as the server stores bodies and files. */
+export function normalizeNewlines(text: string): string {
+    return text.replace(LINE_BREAK, "\n");
+}
 
 export function byteLength(text: string): number {
     return encoder.encode(text).length;
@@ -66,7 +72,7 @@ export function descriptionError(description: string): string | null {
 }
 
 export function bodyError(body: string): string | null {
-    const value = body.replace(/\r\n/g, "\n");
+    const value = normalizeNewlines(body);
     if (!value.trim()) return "Instructions are required";
     if (byteLength(value) > BODY_MAX_BYTES) return `Instructions must be at most ${BODY_MAX_BYTES / 1024} KB`;
     if (TEXT_CONTROL.test(value)) return "Instructions contain unsupported control characters";
@@ -123,7 +129,7 @@ export function fileIssues(files: readonly SkillFileDraft[]): FileIssue[] {
             if (seen.has(key)) issues.push({ index, message: "Another file already uses this path" });
             seen.add(key);
         }
-        const content = file.content.replace(/\r\n/g, "\n");
+        const content = normalizeNewlines(file.content);
         const size = byteLength(content);
         total += size;
         if (size > FILE_MAX_BYTES) issues.push({ index, message: `File is larger than ${FILE_MAX_BYTES / 1024} KB` });

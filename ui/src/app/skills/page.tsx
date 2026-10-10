@@ -33,6 +33,13 @@ function SkillsScreen() {
 
     useEffect(() => setTab(tabFromUrl()), []);
 
+    // Publishing or syncing seeds can flag "Update available" on workspace copies.
+    const { refresh: refreshLibrary } = library;
+    const { refresh: refreshWorkspace } = workspace;
+    const refreshBoth = useCallback(async () => {
+        await Promise.all([refreshLibrary(), refreshWorkspace()]);
+    }, [refreshLibrary, refreshWorkspace]);
+
     const changeTab = useCallback((next: string) => {
         const value: SkillsTab = next === "library" ? "library" : "mine";
         setTab(value);
@@ -70,7 +77,7 @@ function SkillsScreen() {
                             canWrite={canWrite}
                             isPlatformAdmin={isPlatformAdmin === true}
                             onRetry={() => void library.refresh()}
-                            onLibraryChanged={library.refresh}
+                            onLibraryChanged={refreshBoth}
                             onSkillAdded={workspace.refresh}
                         />
                     </TabsContent>

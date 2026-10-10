@@ -12,6 +12,8 @@ interface AllowedToolsPickerProps {
     value: string[] | null;
     onChange: (value: string[] | null) => void;
     tools: ToolResponse[];
+    /** Set when the workspace tools couldn't be loaded. */
+    toolsError?: string | null;
     disabled?: boolean;
 }
 
@@ -25,7 +27,13 @@ export function allowedToolsSummary(value: readonly string[] | null): string {
     } (plus moving to another step and loading skills).`;
 }
 
-export function AllowedToolsPicker({ value, onChange, tools, disabled = false }: AllowedToolsPickerProps) {
+export function AllowedToolsPicker({
+    value,
+    onChange,
+    tools,
+    toolsError = null,
+    disabled = false,
+}: AllowedToolsPickerProps) {
     const restricted = value !== null;
     const selected = new Set(value ?? []);
     const known = new Set(tools.map((t) => t.tool_uuid));
@@ -65,10 +73,17 @@ export function AllowedToolsPicker({ value, onChange, tools, disabled = false }:
                 </div>
             </RadioGroup>
 
+            {toolsError && (
+                <p className="text-xs text-destructive" role="alert">
+                    {toolsError.replace(/\.$/, "")}. Selected tools show by ID until the list loads; reload the page to try again.
+                </p>
+            )}
             {restricted && (
                 <div className="max-h-64 overflow-y-auto rounded-md border border-line">
                     {activeTools.length === 0 && unknown.length === 0 ? (
-                        <p className="p-3 text-sm text-muted-foreground">This workspace has no tools yet.</p>
+                        <p className="p-3 text-sm text-muted-foreground">
+                            {toolsError ? "Tools are unavailable right now." : "This workspace has no tools yet."}
+                        </p>
                     ) : (
                         <ul className="divide-y divide-line-soft">
                             {activeTools.map((tool) => {
@@ -102,7 +117,7 @@ export function AllowedToolsPicker({ value, onChange, tools, disabled = false }:
                                         onCheckedChange={() => toggle(uuid, false)}
                                     />
                                     <Label htmlFor={`allowed-tool-${uuid}`} className="text-sm font-normal">
-                                        Unknown or deleted tool <span className="font-mono text-xs">{uuid}</span>
+                                        {toolsError ? "Tool" : "Unknown or deleted tool"} <span className="font-mono text-xs">{uuid}</span>
                                     </Label>
                                 </li>
                             ))}

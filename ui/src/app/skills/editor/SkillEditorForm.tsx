@@ -39,6 +39,8 @@ interface SkillEditorFormProps {
     showErrors: boolean;
     readOnly: boolean;
     tools: ToolResponse[];
+    /** Why the tool list couldn't be loaded, if it couldn't. */
+    toolsError?: string | null;
     nameConflict: NameConflict | null;
 }
 
@@ -67,6 +69,7 @@ export function SkillEditorForm({
     showErrors,
     readOnly,
     tools,
+    toolsError = null,
     nameConflict,
 }: SkillEditorFormProps) {
     const [preview, setPreview] = useState(readOnly);
@@ -260,6 +263,7 @@ export function SkillEditorForm({
                         value={draft.allowed_tool_uuids}
                         onChange={(value) => set("allowed_tool_uuids", value)}
                         tools={tools}
+                        toolsError={toolsError}
                         disabled={readOnly}
                     />
                 </Panel>

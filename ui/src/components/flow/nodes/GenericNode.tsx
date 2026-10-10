@@ -515,7 +515,7 @@ export const GenericNode = memo(({ data, selected, id, type }: GenericNodeProps)
         id,
         additionalData,
     });
-    const { saveWorkflow, tools, documents, recordings, skills } = useWorkflow();
+    const { saveWorkflow, tools, documents, recordings, skills, skillsError, refreshSkills } = useWorkflow();
     const { bySpecName } = useNodeSpecs();
     const { config: appConfig } = useAppConfig();
     const spec = bySpecName.get(type);
@@ -624,6 +624,12 @@ export const GenericNode = memo(({ data, selected, id, type }: GenericNodeProps)
         setOpen(newOpen);
     };
 
+    // Skills are edited on another page: refresh the list for the pickers.
+    const hasSkillRefs = spec?.properties.some((p) => p.type === "skill_refs") ?? false;
+    useEffect(() => {
+        if (open && hasSkillRefs) void refreshSkills?.();
+    }, [open, hasSkillRefs, refreshSkills]);
+
     useEffect(() => {
         if (open && spec) setValues(seed());
         // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -718,6 +724,7 @@ export const GenericNode = memo(({ data, selected, id, type }: GenericNodeProps)
                                 documents: documents ?? [],
                                 recordings: recordings ?? [],
                                 skills: skills ?? [],
+                                skillsError: skillsError ?? false,
                                 mcpToolFilters:
                                     (values.mcp_tool_filters as
                                         | Record<string, string[]>

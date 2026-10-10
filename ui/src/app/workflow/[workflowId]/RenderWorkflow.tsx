@@ -106,6 +106,25 @@ function RenderWorkflow({
     const [documents, setDocuments] = useState<DocumentResponseSchema[] | undefined>(undefined);
     const [tools, setTools] = useState<ToolResponse[] | undefined>(undefined);
     const [skills, setSkills] = useState<SkillSummaryResponse[] | undefined>(undefined);
+    const [skillsError, setSkillsError] = useState(false);
+
+    // Workspace skills for the node pickers; refreshed when a node editor
+    // opens, since skills are edited on another page.
+    const refreshSkills = useCallback(async () => {
+        try {
+            const skillsResponse = await listSkillsApiV1SkillsGet();
+            if (skillsResponse.error || !skillsResponse.data) {
+                setSkills((current) => current ?? []);
+                setSkillsError(true);
+                return;
+            }
+            setSkills(skillsResponse.data.skills);
+            setSkillsError(false);
+        } catch {
+            setSkills((current) => current ?? []);
+            setSkillsError(true);
+        }
+    }, []);
     const [recordings, setRecordings] = useState<RecordingResponseSchema[]>([]);
     const [activeRuntimeNodeId, setActiveRuntimeNodeId] = useState<string | null>(null);
 
@@ -458,16 +477,6 @@ function RenderWorkflow({
                 } catch {
                     // Recordings API may not be available yet; silently ignore
                 }
-
-                // Fetch workspace skills for the node skill pickers
-                try {
-                    const skillsResponse = await listSkillsApiV1SkillsGet();
-                    if (skillsResponse.data) {
-                        setSkills(skillsResponse.data.skills);
-                    }
-                } catch {
-                    // Pickers then show only the stored UUIDs
-                }
             } catch (error) {
                 console.error('Failed to fetch documents and tools:', error);
             }
@@ -475,6 +484,11 @@ function RenderWorkflow({
 
         fetchData();
     }, [workflowId]);
+
+    // Separate from the fetch above so a failure there can't leave skills unloaded.
+    useEffect(() => {
+        void refreshSkills();
+    }, [workflowId, refreshSkills]);
 
     // Memoize defaultEdgeOptions to prevent unnecessary re-renders
     const defaultEdgeOptions = useMemo(() => ({
@@ -577,6 +591,8 @@ function RenderWorkflow({
         updateTool,
         recordings,
         skills,
+        skillsError,
+        refreshSkills,
         readOnly: isViewingHistoricalVersion,
     }), [
         guardedSaveWorkflow,
@@ -585,6 +601,8 @@ function RenderWorkflow({
         updateTool,
         recordings,
         skills,
+        skillsError,
+        refreshSkills,
         isViewingHistoricalVersion,
     ]);
 

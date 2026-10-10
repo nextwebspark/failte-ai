@@ -63,8 +63,12 @@ function LibraryEditorScreen({ libraryUuid }: { libraryUuid: string | null }) {
     const dirty = isDirty(draft, baseline);
     useLeaveGuard("library-skill-editor", dirty);
 
+    // The latest files, so re-baselining after a save keeps their ids.
+    const filesRef = useRef(draft.files);
+    filesRef.current = draft.files;
+
     const applySkill = useCallback((next: LibrarySkillResponse) => {
-        const nextDraft = draftFromSkill(next);
+        const nextDraft = draftFromSkill(next, filesRef.current);
         setSkill(next);
         setBaseline(nextDraft);
         setDraft(nextDraft);

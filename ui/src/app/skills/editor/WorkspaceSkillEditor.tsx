@@ -17,6 +17,7 @@ import { Button } from "@/components/ui/button";
 import { Panel } from "@/components/ui/panel";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StatusPill } from "@/components/ui/status-pill";
+import { detailFromError } from "@/lib/apiError";
 import { useAuth } from "@/lib/auth";
 
 import { useCanEditSkills } from "../access";
@@ -49,6 +50,7 @@ export function WorkspaceSkillEditor({ skillUuid }: { skillUuid: string | null }
     const [baseline, setBaseline] = useState<EditorDraft>(emptyDraft);
     const [draft, setDraft] = useState<EditorDraft>(emptyDraft);
     const [tools, setTools] = useState<ToolResponse[]>([]);
+    const [toolsError, setToolsError] = useState<string | null>(null);
     const [loading, setLoading] = useState(skillUuid !== null);
     const [loadError, setLoadError] = useState<string | null>(null);
     const [saving, setSaving] = useState(false);
@@ -63,8 +65,12 @@ export function WorkspaceSkillEditor({ skillUuid }: { skillUuid: string | null }
     const dirty = isDirty(draft, baseline);
     useLeaveGuard("skill-editor", dirty && !readOnly);
 
+    // The latest files, so re-baselining after a save keeps their ids.
+    const filesRef = useRef(draft.files);
+    filesRef.current = draft.files;
+
     const applySkill = useCallback((next: SkillResponse) => {
-        const nextDraft = draftFromSkill(next);
+        const nextDraft = draftFromSkill(next, filesRef.current);
         setSkill(next);
         setBaseline(nextDraft);
         setDraft(nextDraft);
@@ -76,9 +82,13 @@ export function WorkspaceSkillEditor({ skillUuid }: { skillUuid: string | null }
         void (async () => {
             try {
                 const toolsResponse = await listToolsApiV1ToolsGet({});
-                if (toolsResponse.data) setTools(toolsResponse.data);
+                if (toolsResponse.error || !toolsResponse.data) {
+                    setToolsError(detailFromError(toolsResponse.error, "Couldn't load your tools"));
+                    return;
+                }
+                setTools(toolsResponse.data);
             } catch {
-                // The picker then lists only what is already selected.
+                setToolsError(NETWORK_ERROR);
             }
         })();
         if (!skillUuid) return;
@@ -232,6 +242,7 @@ export function WorkspaceSkillEditor({ skillUuid }: { skillUuid: string | null }
                         showErrors={showErrors}
                         readOnly={readOnly}
                         tools={tools}
+                        toolsError={toolsError}
                         nameConflict={nameConflict}
                     />
                 )}

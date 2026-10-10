@@ -15,6 +15,8 @@ export function useLeaveGuard(sectionId: string, dirty: boolean) {
         if (!dirty) return;
         const onBeforeUnload = (event: BeforeUnloadEvent) => {
             event.preventDefault();
+            // Older browsers only prompt when returnValue is set.
+            event.returnValue = "";
         };
         window.addEventListener("beforeunload", onBeforeUnload);
         return () => window.removeEventListener("beforeunload", onBeforeUnload);

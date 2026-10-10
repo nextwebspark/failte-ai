@@ -31,6 +31,8 @@ export interface RendererContext {
     recordings: RecordingResponseSchema[];
     /** Active workspace skills, for `skill_refs` pickers. */
     skills?: SkillSummaryResponse[];
+    /** The skills list failed to load. */
+    skillsError?: boolean;
     /** Per-node MCP function allowlist (sibling of tool_uuids on node data). */
     mcpToolFilters?: Record<string, string[]>;
     /** Persist a new mcp_tool_filters object onto the node form values. */
@@ -128,6 +130,7 @@ export function PropertyInput({ spec, value, onChange, context }: PropertyInputP
                     value={value}
                     onChange={onChange}
                     skills={context.skills ?? []}
+                    loadError={context.skillsError ?? false}
                 />
             );
         default: {
@@ -476,7 +479,8 @@ function SkillRefsWidget({
     value,
     onChange,
     skills,
-}: WidgetProps & { skills: SkillSummaryResponse[] }) {
+    loadError,
+}: WidgetProps & { skills: SkillSummaryResponse[]; loadError: boolean }) {
     const current = Array.isArray(value)
         ? value.filter((v): v is string => typeof v === "string")
         : null;
@@ -487,6 +491,7 @@ function SkillRefsWidget({
                 value={current}
                 onChange={onChange}
                 skills={skills}
+                loadError={loadError}
                 label={spec.display_name}
                 // The spec text explains null vs []; the radio options say it plainly.
                 description="Skills the agent can load in this step when a caller needs them."
@@ -498,6 +503,7 @@ function SkillRefsWidget({
             value={current}
             onChange={onChange}
             skills={skills}
+            loadError={loadError}
             label={spec.display_name}
             description={spec.description}
         />

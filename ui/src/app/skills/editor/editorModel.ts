@@ -43,12 +43,21 @@ export function emptyDraft(): EditorDraft {
     return { name: "", description: "", body_md: EMPTY_BODY, files: [], allowed_tool_uuids: null, category: "" };
 }
 
-export function draftFromSkill(skill: SkillResponse | LibrarySkillResponse): EditorDraft {
+/**
+ * The editable draft for a saved skill. `previousFiles` (the draft being
+ * replaced, e.g. after a save) lends its ids to files with the same path, so
+ * the file that was open stays selected.
+ */
+export function draftFromSkill(
+    skill: SkillResponse | LibrarySkillResponse,
+    previousFiles: readonly EditorFile[] = [],
+): EditorDraft {
+    const idByPath = new Map(previousFiles.map((f) => [f.path.trim(), f.id]));
     return {
         name: skill.name,
         description: skill.description,
         body_md: skill.body_md,
-        files: skill.files.map((f) => ({ id: newFileId(), path: f.path, content: f.content })),
+        files: skill.files.map((f) => ({ id: idByPath.get(f.path) ?? newFileId(), path: f.path, content: f.content })),
         allowed_tool_uuids: "allowed_tool_uuids" in skill ? (skill.allowed_tool_uuids ?? null) : null,
         category: "category" in skill ? (skill.category ?? "") : "",
     };

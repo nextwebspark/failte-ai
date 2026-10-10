@@ -173,6 +173,35 @@ describe("display helpers", () => {
         expect(parseUnifiedDiff("")).toEqual([]);
     });
 
+    it.each([
+        ["a heading with a lone CR", "# a\rb"],
+        ["a heading with U+2028", "# a\u2028b"],
+        ["a heading with U+2029", "# a\u2029b"],
+        ["CRLF line endings", "# a\r\nb"],
+        ["a bare hash", "#"],
+        ["a hash and tab", "#\tx"],
+        ["seven hashes", "####### x"],
+        ["a quote marker inside a paragraph", "text\n> quote"],
+    ])("terminates on %s", (_label, source) => {
+        const blocks = parseMarkdown(source);
+        expect(blocks.length).toBeGreaterThan(0);
+    });
+
+    it("treats a lone CR or U+2028 as a line break", () => {
+        expect(parseMarkdown("# a\rb")).toEqual([
+            { kind: "heading", level: 1, text: "a" },
+            { kind: "paragraph", text: "b" },
+        ]);
+        expect(parseMarkdown("# a\u2028b")).toEqual(parseMarkdown("# a\nb"));
+    });
+
+    it("parses a body at the 64 KB limit quickly", () => {
+        const source = "# h\r".repeat(8000) + "para *x* `y` **z**\n".repeat(2000);
+        const started = performance.now();
+        parseMarkdown(source);
+        expect(performance.now() - started).toBeLessThan(1000);
+    });
+
     it("parses markdown blocks", () => {
         const blocks = parseMarkdown("# Title\n\nSome *text*\nmore\n\n- one\n- two\n\n```\ncode\n```\n> quote");
         expect(blocks.map((b) => b.kind)).toEqual(["heading", "paragraph", "list", "code", "quote"]);

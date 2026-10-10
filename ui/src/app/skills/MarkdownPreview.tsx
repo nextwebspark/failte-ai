@@ -17,11 +17,14 @@ type Block =
     | { kind: "quote"; text: string }
     | { kind: "rule" };
 
+const HEADING = /^(#{1,6})[ \t]+(.*)$/;
 const BULLET = /^\s*[-*+]\s+(.*)$/;
 const NUMBERED = /^\s*\d+[.)]\s+(.*)$/;
 
 export function parseMarkdown(source: string): Block[] {
-    const lines = source.replace(/\r\n/g, "\n").split("\n");
+    // Every line terminator becomes \n first: `.` and `$` in the patterns
+    // below must agree on where a line ends, or a line could match no branch.
+    const lines = source.replace(/\r\n?|\u2028|\u2029/g, "\n").split("\n");
     const blocks: Block[] = [];
     let i = 0;
     while (i < lines.length) {
@@ -41,7 +44,7 @@ export function parseMarkdown(source: string): Block[] {
             blocks.push({ kind: "code", text: code.join("\n") });
             continue;
         }
-        const heading = /^(#{1,6})\s+(.*)$/.exec(line);
+        const heading = HEADING.exec(line);
         if (heading) {
             blocks.push({ kind: "heading", level: heading[1].length, text: heading[2].trim() });
             i += 1;
@@ -73,12 +76,15 @@ export function parseMarkdown(source: string): Block[] {
             blocks.push({ kind: "list", ordered: listPattern === NUMBERED, items });
             continue;
         }
-        const paragraph: string[] = [];
+        // The first line is always consumed, so the loop always makes progress.
+        const paragraph: string[] = [line.trim()];
+        i += 1;
         while (
             i < lines.length &&
             lines[i].trim() &&
-            !/^(#{1,6})\s/.test(lines[i]) &&
+            !HEADING.test(lines[i]) &&
             !lines[i].trimStart().startsWith("```") &&
+            !lines[i].trimStart().startsWith(">") &&
             !BULLET.test(lines[i]) &&
             !NUMBERED.test(lines[i])
         ) {
