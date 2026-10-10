@@ -21,6 +21,10 @@ class InvalidRequestError(ToolsError):
     """The request is well-formed but semantically invalid."""
 
 
+class ServiceUnavailableError(ToolsError):
+    """A feature is not configured on this deployment (HTTP 503)."""
+
+
 def describe_validation_error(exc: ValidationError) -> str:
     """``loc: reason; ...`` without input values (they may be secret)."""
     return "; ".join(

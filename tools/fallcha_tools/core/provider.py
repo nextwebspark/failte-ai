@@ -7,8 +7,9 @@ the caller's credentials by awaiting the ``ctx_factory`` they were given,
 which resolves a :class:`ConnectionContext` from the request's connection key.
 
 Providers may also declare a Pydantic ``config_model`` for per-connection,
-non-secret settings, and an optional REST router (mounted at
-``/v1/{provider.id}``) for plain-HTTP callers.
+non-secret settings, an optional REST router (mounted at
+``/v1/{provider.id}``) for plain-HTTP callers, and an :class:`OAuthSpec` if
+workspaces can connect them with OAuth2 (bring-your-own client).
 """
 
 from __future__ import annotations
@@ -17,6 +18,7 @@ import re
 import uuid
 from collections.abc import Awaitable, Callable, Iterable, Iterator, Mapping
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import Any, Protocol, runtime_checkable
 
 import httpx
@@ -31,6 +33,51 @@ PROVIDER_ID_PATTERN = re.compile(r"^[a-z0-9][a-z0-9-]{0,63}$")
 
 
 @dataclass(frozen=True, slots=True)
+class OAuthSpec:
+    """How a provider is connected with OAuth2 (authorization code + PKCE).
+
+    ``scopes`` are always requested and must all be granted; workspaces may
+    opt into ``optional_scopes`` when they start the flow. ``identity_scopes``
+    are requested too, only to read the account's email for the label.
+    ``default_config`` seeds a new OAuth connection's config (it is validated
+    by the provider's config model like any other config).
+    """
+
+    display_name: str
+    authorize_url: str
+    token_url: str
+    scopes: tuple[str, ...]
+    optional_scopes: tuple[str, ...] = ()
+    identity_scopes: tuple[str, ...] = ()
+    userinfo_url: str | None = None
+    authorize_params: Mapping[str, str] = field(default_factory=dict)
+    default_config: Mapping[str, JsonValue] = field(default_factory=dict)
+
+
+@dataclass(frozen=True, slots=True)
+class AccessToken:
+    """A provider access token. ``token`` is secret; it is never logged."""
+
+    token: str = field(repr=False)
+    expires_at: datetime
+
+
+class OAuthAccess(Protocol):
+    """Fresh access tokens for one OAuth2 connection.
+
+    Implementations refresh lazily (shortly before expiry) and single-flight
+    across processes. Raise ``OAuthReconnectRequired`` when the grant is
+    revoked, and ``OAuthRefreshFailed`` for transient failures.
+    """
+
+    async def access_token(self, *, rejected: str | None = None) -> AccessToken:
+        """A token valid for a few more minutes. ``rejected`` is a token the
+        provider just refused: it is never returned again (a refresh is
+        forced unless another caller has already replaced it)."""
+        ...
+
+
+@dataclass(frozen=True, slots=True)
 class ConnectionContext:
     """Everything a tool call needs to act for one workspace connection."""
 
@@ -42,6 +89,10 @@ class ConnectionContext:
     access_token: str | None
     http: httpx.AsyncClient
     config: Mapping[str, JsonValue] = field(default_factory=dict)
+    account_label: str | None = None
+    scopes_granted: tuple[str, ...] = ()
+    # Set for OAuth2 connections only.
+    oauth: OAuthAccess | None = None
 
 
 ConnectionContextFactory = Callable[[], Awaitable[ConnectionContext]]
@@ -76,6 +127,11 @@ class Provider(Protocol):
     @property
     def config_model(self) -> type[BaseModel] | None:
         """Model for per-connection config, or None if the provider takes none."""
+        ...
+
+    @property
+    def oauth(self) -> OAuthSpec | None:
+        """OAuth2 details; required iff ``auth_modes`` includes ``oauth2``."""
         ...
 
     def validate_secret(
@@ -121,6 +177,11 @@ class ProviderRegistry:
             raise ValueError(f"provider {provider.id!r} is already registered")
         if not provider.auth_modes:
             raise ValueError(f"provider {provider.id!r} declares no auth modes")
+        if (AuthMode.OAUTH2 in provider.auth_modes) != (provider.oauth is not None):
+            raise ValueError(
+                f"provider {provider.id!r} must declare an OAuth spec iff it "
+                "supports oauth2"
+            )
         self._providers[provider.id] = provider
 
     def get(self, provider_id: str) -> Provider:

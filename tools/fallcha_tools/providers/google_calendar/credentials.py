@@ -1,9 +1,12 @@
 """Where Google access tokens come from.
 
 Calendar and Sheets calls only need ``await source.access_token(scopes)``;
-which grant produced the token is the source's business. Service accounts
-are implemented here (JWT-bearer grant, RFC 7523); OAuth2 connections will
-add a second implementation of :class:`GoogleCredentialsSource`.
+which grant produced the token is the source's business:
+
+* :class:`ServiceAccountCredentials` mints tokens with the JWT-bearer grant
+  (RFC 7523).
+* :class:`OAuthCredentials` serves an OAuth2 connection's token, refreshed by
+  the core's :class:`~fallcha_tools.core.oauth.OAuthTokenManager`.
 """
 
 from __future__ import annotations
@@ -26,7 +29,13 @@ from cryptography.hazmat.primitives.asymmetric.rsa import RSAPrivateKey
 from loguru import logger
 from pydantic import JsonValue
 
-from fallcha_tools.providers.google_calendar.errors import GoogleApiError
+from fallcha_tools.core.errors import ToolsError
+from fallcha_tools.core.oauth import OAuthReconnectRequired, OAuthRefreshFailed
+from fallcha_tools.core.provider import OAuthAccess
+from fallcha_tools.providers.google_calendar.errors import (
+    GoogleApiError,
+    NotConfiguredError,
+)
 from fallcha_tools.providers.google_calendar.settings import ServiceAccountKey
 
 GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
@@ -256,6 +265,94 @@ class ServiceAccountCredentials:
                 "Google returned an unreadable sign-in response"
             ) from None
         return CachedToken(token=token, expires_at=now + timedelta(seconds=expires_in))
+
+
+class OAuthCredentials:
+    """Tokens of one OAuth2 connection.
+
+    One token covers every granted scope, so the cache key ignores scopes;
+    instead each request's scopes are checked against what the user granted.
+    The process cache adds in-process single-flight (and shields a refresh
+    from a cancelled caller, so a rotated refresh token is always stored);
+    the token manager adds cross-process single-flight.
+    """
+
+    def __init__(
+        self,
+        *,
+        connection_id: uuid.UUID,
+        tokens: OAuthAccess,
+        cache: TokenCache,
+        scopes_granted: Sequence[str],
+    ) -> None:
+        self._connection_id = connection_id
+        self._tokens = tokens
+        self._cache = cache
+        self._granted = frozenset(scopes_granted)
+        self._last: str | None = None
+        self._rejected: str | None = None
+
+    @property
+    def _key(self) -> CacheKey:
+        return (self._connection_id, "oauth2", ())
+
+    async def access_token(self, scopes: Sequence[str]) -> str:
+        for scope in scopes:
+            self._require(scope)
+        token = await self._cache.get_or_mint(self._key, self._mint)
+        self._last = token
+        return token
+
+    def invalidate(self, scopes: Sequence[str]) -> None:
+        del scopes  # one token for all scopes
+        # Google refused the token: the next mint must not hand it out again.
+        self._rejected = self._last
+        self._cache.invalidate(self._key)
+
+    def _require(self, scope: str) -> None:
+        options = _SATISFIED_BY.get(scope, (frozenset({scope}),))
+        if not any(option <= self._granted for option in options):
+            raise NotConfiguredError(
+                f"the connected Google account did not allow access to "
+                f"{_SCOPE_NAMES.get(scope, 'this Google service')}; reconnect "
+                "and allow it"
+            )
+
+    async def _mint(self) -> CachedToken:
+        try:
+            issued = await self._tokens.access_token(rejected=self._rejected)
+        except OAuthReconnectRequired as exc:
+            raise NotConfiguredError(str(exc)) from None
+        except OAuthRefreshFailed as exc:
+            raise GoogleApiError(str(exc)) from None
+        except ToolsError:  # e.g. revoked or deleted meanwhile
+            raise NotConfiguredError(
+                "this Google connection is no longer usable; reconnect"
+            ) from None
+        return CachedToken(token=issued.token, expires_at=issued.expires_at)
+
+
+_SATISFIED_BY: dict[str, tuple[frozenset[str], ...]] = {
+    "https://www.googleapis.com/auth/calendar": (
+        frozenset({"https://www.googleapis.com/auth/calendar"}),
+        frozenset(
+            {
+                "https://www.googleapis.com/auth/calendar.events",
+                "https://www.googleapis.com/auth/calendar.readonly",
+            }
+        ),
+    ),
+    "https://www.googleapis.com/auth/spreadsheets.readonly": (
+        frozenset({"https://www.googleapis.com/auth/spreadsheets.readonly"}),
+        frozenset({"https://www.googleapis.com/auth/spreadsheets"}),
+    ),
+}
+_SCOPE_NAMES = {
+    "https://www.googleapis.com/auth/calendar": "Google Calendar",
+    "https://www.googleapis.com/auth/spreadsheets.readonly": (
+        "Google Sheets (order lookup)"
+    ),
+}
 
 
 def _token_error(response: httpx.Response) -> GoogleApiError:

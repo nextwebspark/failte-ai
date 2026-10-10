@@ -10,6 +10,8 @@ Fallcha API holds only an opaque connection key.
 - `/mcp/{provider}` is a streamable-HTTP MCP server per provider. The voice
   engine calls it with `Authorization: Bearer <connection key>`. A key works
   only at its own provider's endpoint and only for its own connection.
+- `/oauth/{provider}/callback` is the only public route: the OAuth2
+  provider redirects the user's browser here (see [OAuth2](#oauth2-bring-your-own-client)).
 - `/v1/{provider}/...` are optional plain-REST routes for `http_api` tools
   during migration. They take the same connection key, as `Authorization:
   Bearer <key>` or `X-API-Key: <key>`.
@@ -28,7 +30,8 @@ Fallcha API holds only an opaque connection key.
 | `DATABASE_URL` | Postgres URL (`postgresql+asyncpg://...`; `postgresql://` is accepted) |
 | `TOOLS_ENCRYPTION_KEYS` | Comma-separated Fernet keys. The first encrypts; all decrypt |
 | `TOOLS_INTERNAL_SECRET` | Shared secret with the Fallcha API (16+ characters) |
-| `TOOLS_PUBLIC_BASE_URL` | Public base URL, for OAuth callbacks |
+| `TOOLS_PUBLIC_BASE_URL` | Public URL that reaches this service's `/oauth/*` (may include a path prefix, e.g. `https://app.example.com/tools`). OAuth is off (503) until set |
+| `TOOLS_UI_RETURN_URL` | Fixed UI page the OAuth callback redirects back to (e.g. `https://app.example.com/integrations`). OAuth is off (503) until set |
 | `LOG_LEVEL` | Default `INFO` |
 
 Generate a key with
@@ -67,10 +70,10 @@ with `docker exec <postgres container> createdb -U postgres fallcha_tools_test`.
 
 ## Google Calendar (`google-calendar`)
 
-Ported from the single-tenant calendar shim; now per connection. Auth mode
-`service_account` (OAuth2 comes later). Share the calendar with the service
-account's email (*Make changes to events*), and the orders sheet, if used,
-as Viewer.
+Ported from the single-tenant calendar shim; now per connection. Auth modes
+`service_account` and `oauth2` (see below). With a service account, share
+the calendar with the service account's email (*Make changes to events*),
+and the orders sheet, if used, as Viewer.
 
 ```json
 POST /internal/connections
@@ -112,13 +115,76 @@ connection booked (they carry a private marker). Events booked by the old
 shim have no marker and cannot be cancelled through the agent; cancel them in
 Google Calendar directly.
 
+## OAuth2 (bring-your-own client)
+
+A workspace connects its own Google account with its own OAuth client; the
+platform-wide Fallcha client comes later. One-time setup in the workspace's
+Google Cloud project:
+
+1. Enable the **Google Calendar API** (and the **Google Sheets API** for order
+   lookup).
+2. Configure the OAuth consent screen (an *Internal* app needs no Google
+   review; an *External* app in testing works for its listed test users,
+   whose refresh tokens expire after 7 days).
+3. Create an OAuth client of type **Web application** and add this
+   **authorized redirect URI** (exactly; `oauth/start` also returns it):
+
+   ```
+   {TOOLS_PUBLIC_BASE_URL}/oauth/google-calendar/callback
+   ```
+
+The flow, driven by the Fallcha API (`/api/v1/integrations/...`):
+
+| Step | Tools service |
+|---|---|
+| Save the client | `POST /internal/provider-apps {provider, client_id, client_secret}` (secret encrypted, never returned; `GET` lists, `DELETE` removes one unless a live connection uses it) |
+| Start | `POST /internal/oauth/start {provider, provider_app_id, optional_scopes?}` returns `authorization_url` and `redirect_uri` |
+| Consent | The browser goes to Google, then to `/oauth/{provider}/callback` |
+| Callback | Creates an `oauth2` connection, then redirects to `TOOLS_UI_RETURN_URL?integration_result=success&connection_id=...&provider=...`, or `...=error&reason=<code>` |
+| Activate | The Fallcha API issues a key and installs the MCP tool (`POST /api/v1/integrations/connections/{id}/activate`) |
+
+Error `reason` codes: `invalid_state`, `expired_state`, `access_denied`,
+`authorization_failed`, `client_missing`, `token_exchange_failed`,
+`no_refresh_token`, `scopes_missing`, `internal_error`.
+
+**Scopes.** Google Calendar always requests `calendar.events` (book, read,
+cancel events) and `calendar.readonly` (free/busy, calendar name), plus
+`openid email` to label the connection with the account's address. It
+never asks for full `calendar` access. `spreadsheets.readonly` is optional
+(`optional_scopes`), needed only for `look_up_order`; without it, order
+lookup says the account did not allow Sheets access. If the user unticks a
+required scope on the consent screen, the callback fails with
+`scopes_missing`. A new OAuth connection's `calendar_id` defaults to
+`primary`; change it with `PATCH /internal/connections/{id}`.
+
+**Security.** The state is 256 random bits, stored only as a SHA-256 hash,
+bound to org, user, provider and client, valid for 10 minutes and consumed
+by a single `DELETE ... RETURNING` (a replayed or concurrent second use
+fails). PKCE (S256) protects the code; the verifier is stored encrypted.
+The client secret, refresh token and access token are encrypted at rest and
+never logged or returned. The callback only ever redirects to the
+configured `TOOLS_UI_RETURN_URL`, with fixed reason codes, `Cache-Control:
+no-store` and `Referrer-Policy: no-referrer`.
+
+**Refresh.** Tokens are refreshed lazily when they expire within 5 minutes.
+In one process, concurrent calls share one refresh; across replicas, the
+refresh runs under `pg_advisory_xact_lock` plus a row lock and re-reads the
+row once it holds them, so exactly one request goes to Google. A rotated
+refresh token is stored. If Google answers `invalid_grant` (access revoked,
+password changed, testing-mode token expired), the connection becomes
+`status=error`, `last_error="Google access was revoked or expired;
+reconnect"`, its tokens are dropped, and tools return that message without
+calling Google again. Reconnecting creates a new connection.
+
 ## Add a provider
 
 1. Create `fallcha_tools/providers/<name>/` with a class that satisfies the
    `Provider` protocol in `fallcha_tools/core/provider.py`: `id`, `title`,
-   `description`, `icon`, `auth_modes`, `scopes`, `config_model`,
+   `description`, `icon`, `auth_modes`, `scopes`, `config_model`, `oauth`
+   (an `OAuthSpec` if `auth_modes` includes `oauth2`, else `None`),
    `validate_secret()`, `register_tools()`, `test_connection()` and
-   `rest_router()` (return `None` for no REST routes).
+   `rest_router()` (return `None` for no REST routes). OAuth2 tools get
+   tokens from `await ctx.oauth.access_token()`.
 2. In `register_tools(mcp, ctx_factory)`, declare tools with `@mcp.tool`.
    Inside each tool, `ctx = await ctx_factory()` gives the caller's
    `ConnectionContext`: org, connection, decrypted secret, access token and

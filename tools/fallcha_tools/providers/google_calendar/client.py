@@ -27,6 +27,12 @@ SHEETS_API = "https://sheets.googleapis.com/v4/spreadsheets"
 # Read-only on purpose: the agent must never be able to change an order.
 SHEETS_READONLY_SCOPE = "https://www.googleapis.com/auth/spreadsheets.readonly"
 CALENDAR_SCOPE = "https://www.googleapis.com/auth/calendar"
+# OAuth2 connections ask for these narrower scopes instead of CALENDAR_SCOPE:
+# events covers insert/get/patch/delete; readonly covers freeBusy and the
+# calendar's metadata (connection test).
+CALENDAR_EVENTS_SCOPE = "https://www.googleapis.com/auth/calendar.events"
+CALENDAR_READONLY_SCOPE = "https://www.googleapis.com/auth/calendar.readonly"
+SHEETS_SCOPE = "https://www.googleapis.com/auth/spreadsheets"
 
 DEFAULT_TIMEOUT = httpx.Timeout(4.0, connect=2.0)
 
