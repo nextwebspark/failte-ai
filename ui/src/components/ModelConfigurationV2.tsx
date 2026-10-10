@@ -85,6 +85,7 @@ export default function ModelConfigurationV2() {
     // flag covers the moment before it loads.
     const platformModels = defaults?.platform.enabled ?? Boolean(appConfig?.platformModelsEnabled);
     const legacyDefaults = legacyModelConfigurationDefaults(defaults ?? undefined);
+    const missingLegacyDefaults = Boolean(defaults) && !platformModels && !legacyDefaults;
 
     const saveConfiguration = async (configuration: OrganizationAiModelConfigurationV2) => {
         if (!defaults) return;
@@ -137,6 +138,11 @@ export default function ModelConfigurationV2() {
                 </div>
             </div>
 
+            {missingLegacyDefaults && !error && (
+                <div className="rounded-md border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+                    Failed to load model configuration
+                </div>
+            )}
             {error && (
                 <div className="rounded-md border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive">
                     {error}

@@ -39,6 +39,8 @@ interface PlatformModelEditorProps {
     submitLabel?: string;
     // Viewers without permission to change model settings.
     readOnly?: boolean;
+    // The "default managed setup" notice is about the workspace configuration.
+    showMigrationNotice?: boolean;
 }
 
 const MODE_ICONS: Record<PlatformPipelineMode, typeof AudioLines> = {
@@ -188,6 +190,7 @@ export function PlatformModelEditor({
     onSave,
     submitLabel = "Save Configuration",
     readOnly = false,
+    showMigrationNotice = true,
 }: PlatformModelEditorProps) {
     const initial = useMemo(
         () => platformFormStateFromConfiguration(configuration, catalog),
@@ -267,7 +270,7 @@ export function PlatformModelEditor({
                     <span>Model settings for this workspace are managed by Fallcha.ai support. Contact us to change them.</span>
                 </div>
             )}
-            {initial.migratedFrom && !disabled && (
+            {showMigrationNotice && initial.migratedFrom && !disabled && (
                 <div className="flex items-start gap-2 rounded-md border border-sky/40 bg-sky/10 px-4 py-3 text-sm">
                     <Info className="mt-0.5 h-4 w-4 shrink-0" />
                     <span>Your agents use the default managed setup. Review and save to confirm your choice.</span>

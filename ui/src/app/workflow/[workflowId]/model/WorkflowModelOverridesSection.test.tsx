@@ -18,6 +18,12 @@ vi.mock("@/client/sdk.gen", () => ({
 vi.mock("@/lib/modelConfigurationPricing", () => ({ fetchModelConfigurationPricing: async () => null }));
 vi.mock("@/lib/auth", () => ({ useAuth: () => ({ getAccessToken: async () => "token" }) }));
 vi.mock("sonner", () => ({ toast: { success: vi.fn() } }));
+vi.mock("@/context/OrgConfigContext", () => ({ useOrgConfig: () => ({ can: () => true }) }));
+vi.mock("@/components/AIModelConfigurationV2Editor", () => ({
+    AIModelConfigurationV2Editor: () => <div>Legacy editor</div>,
+    legacyModelConfigurationDefaults: (defaults: { dograh?: unknown; byok?: unknown }) =>
+        defaults?.dograh && defaults?.byok ? defaults : null,
+}));
 
 const WORKSPACE = {
     version: 2,
@@ -85,5 +91,41 @@ describe("Agent model and voice", () => {
 
         await waitFor(() => expect(onSave).toHaveBeenCalledOnce());
         expect(onSave.mock.calls[0][0].model_configuration_v2_override).toBeUndefined();
+    });
+
+    it("lets a pinned workspace drop an agent override but not add one", async () => {
+        mocks.getDefaults.mockResolvedValue({ data: { platform: { ...catalog, locked: true }, dograh: null, byok: null } });
+        const onSave = renderSection({ model_configuration_v2_override: WORKSPACE });
+
+        fireEvent.click(await screen.findByRole("button", { name: "Use workspace default" }));
+
+        await waitFor(() => expect(onSave).toHaveBeenCalledOnce());
+        expect(onSave.mock.calls[0][0].model_configuration_v2_override).toBeUndefined();
+    });
+
+    it("treats an old provider override as none", async () => {
+        renderSection({ model_configuration_v2_override: { version: 2, mode: "byok", byok: {} } });
+
+        const toggle = await screen.findByLabelText("Use a different voice or model for this agent");
+        expect(toggle.getAttribute("aria-checked")).toBe("false");
+        expect(screen.getByRole("button", { name: "Use workspace default" })).toBeTruthy();
+    });
+
+    it("shows a failed save", async () => {
+        renderSection({}, vi.fn().mockRejectedValue(new Error("Model settings are pinned")));
+
+        fireEvent.click(await screen.findByLabelText("Use a different voice or model for this agent"));
+        fireEvent.click(screen.getByRole("button", { name: "Save agent voice & model" }));
+
+        expect(await screen.findByText("Model settings are pinned")).toBeTruthy();
+    });
+
+    it("keeps the provider editor when platform models are off", async () => {
+        mocks.getDefaults.mockResolvedValue({
+            data: { platform: { ...catalog, enabled: false }, dograh: {}, byok: {} },
+        });
+        renderSection({ model_configuration_v2_override: WORKSPACE });
+
+        expect(await screen.findByText("Legacy editor")).toBeTruthy();
     });
 });

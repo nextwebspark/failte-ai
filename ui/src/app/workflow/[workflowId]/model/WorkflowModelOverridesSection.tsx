@@ -24,6 +24,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { useOrgConfig } from "@/context/OrgConfigContext";
 import { detailFromError } from "@/lib/apiError";
 import { fetchModelConfigurationPricing } from "@/lib/modelConfigurationPricing";
 import { describePlatformConfiguration, platformOverrideSeed } from "@/lib/platformModelConfig";
@@ -67,7 +68,12 @@ function useOrganizationModelConfiguration() {
                 return;
             }
 
-            setModelConfigurationDefaults(defaultsResult.data ?? null);
+            if (!defaultsResult.data) {
+                setModelConfigurationError("Failed to load model configuration defaults");
+                setModelConfigurationLoading(false);
+                return;
+            }
+            setModelConfigurationDefaults(defaultsResult.data);
             setOrganizationModelConfiguration(configurationResult.data || null);
             setModelConfigurationPricing(pricingResult);
             setModelConfigurationLoading(false);
@@ -108,18 +114,24 @@ export function WorkflowModelOverridesSection({
         modelConfigurationLoading,
         modelConfigurationError,
     } = useOrganizationModelConfiguration();
+    const { can } = useOrgConfig();
     const savedV2Override = workflowConfigurations.model_configuration_v2_override;
     const hasSavedModelOverride = Boolean(savedV2Override || workflowConfigurations.model_overrides);
-    const [overrideEnabled, setOverrideEnabled] = useState(Boolean(savedV2Override));
+    const catalog = modelConfigurationDefaults?.platform;
+    const platformModels = Boolean(catalog?.enabled);
+    // On platform models only a platform override is one; an old provider
+    // override is replaced by the workspace default on the next save.
+    const hasActiveOverride = platformModels
+        ? savedV2Override?.mode === "platform"
+        : Boolean(savedV2Override);
+    const [overrideEnabled, setOverrideEnabled] = useState(hasActiveOverride);
     const [isRemovingOverride, setIsRemovingOverride] = useState(false);
 
     useEffect(() => {
-        setOverrideEnabled(Boolean(workflowConfigurations.model_configuration_v2_override));
-    }, [workflowConfigurations.model_configuration_v2_override]);
+        setOverrideEnabled(hasActiveOverride);
+    }, [hasActiveOverride, savedV2Override]);
 
     const hasOrgConfiguration = organizationModelConfiguration?.source === "organization_v2";
-    const catalog = modelConfigurationDefaults?.platform;
-    const platformModels = Boolean(catalog?.enabled);
     const legacyDefaults = legacyModelConfigurationDefaults(modelConfigurationDefaults ?? undefined);
     const workspaceConfiguration = organizationModelConfiguration?.configuration ?? null;
     // Memoized: the editor resets whenever its configuration changes identity.
@@ -184,7 +196,7 @@ export function WorkflowModelOverridesSection({
                                 <Label htmlFor="workflow-model-v2-override" className="text-sm font-medium">
                                     Use a different voice or model for this agent
                                 </Label>
-                                <p className="text-xs text-muted-foreground">
+                                <p id="workflow-model-v2-override-state" className="text-xs text-muted-foreground">
                                     {overrideEnabled
                                         ? "This agent uses its own voice and model."
                                         : "This agent uses the workspace voice and model."}
@@ -192,19 +204,29 @@ export function WorkflowModelOverridesSection({
                             </div>
                             <Switch
                                 id="workflow-model-v2-override"
+                                aria-describedby="workflow-model-v2-override-state"
                                 checked={overrideEnabled}
                                 onCheckedChange={setOverrideEnabled}
-                                disabled={Boolean(catalog.locked)}
+                                // Pinned workspaces can still drop an override, never add one.
+                                disabled={Boolean(catalog.locked) && !overrideEnabled}
                             />
                         </div>
 
                         {overrideEnabled ? (
-                            <PlatformModelEditor
-                                catalog={catalog}
-                                configuration={platformSeed}
-                                submitLabel="Save agent voice & model"
-                                onSave={saveV2Override}
-                            />
+                            <div className="space-y-3">
+                                <PlatformModelEditor
+                                    catalog={catalog}
+                                    configuration={platformSeed}
+                                    submitLabel="Save agent voice & model"
+                                    onSave={saveV2Override}
+                                    showMigrationNotice={false}
+                                />
+                                {catalog.locked && hasSavedModelOverride && (
+                                    <Button type="button" variant="outline" onClick={removeV2Override} disabled={isRemovingOverride}>
+                                        {isRemovingOverride ? "Saving..." : "Use workspace default"}
+                                    </Button>
+                                )}
+                            </div>
                         ) : (
                             <div className="rounded-md border bg-muted/20 p-4">
                                 <p className="text-sm">
@@ -219,9 +241,11 @@ export function WorkflowModelOverridesSection({
                                             {isRemovingOverride ? "Saving..." : "Use workspace default"}
                                         </Button>
                                     )}
-                                    <Button type="button" variant="outline" asChild>
-                                        <Link href="/model-configurations">Change workspace default</Link>
-                                    </Button>
+                                    {can("credentials:write") && (
+                                        <Button type="button" variant="outline" asChild>
+                                            <Link href="/model-configurations">Change workspace default</Link>
+                                        </Button>
+                                    )}
                                 </div>
                             </div>
                         )}
