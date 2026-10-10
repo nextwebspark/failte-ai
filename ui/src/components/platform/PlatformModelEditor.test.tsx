@@ -104,7 +104,15 @@ describe("PlatformModelEditor", () => {
 
     it("explains starting from defaults for a workspace on its own keys", () => {
         renderEditor({ version: 2, mode: "byok", byok: {} });
-        expect(screen.getByText(/used its own provider keys/)).toBeTruthy();
+        expect(screen.getByText(/default managed setup/)).toBeTruthy();
+    });
+
+    it("is read-only for viewers without permission", () => {
+        render(<PlatformModelEditor catalog={catalog} configuration={PIPELINE} onSave={vi.fn()} readOnly />);
+
+        expect(screen.queryByRole("button", { name: "Save Configuration" })).toBeNull();
+        expect(screen.queryByText(/managed by Fallcha.ai support/)).toBeNull();
+        expect((screen.getByLabelText("Speed") as HTMLInputElement).disabled).toBe(true);
     });
 
     it("is read-only when support pinned the settings", () => {

@@ -35,18 +35,14 @@ interface PlatformModelEditorProps {
     configuration: unknown;
     onSave: (configuration: OrganizationAiModelConfigurationV2) => Promise<void>;
     submitLabel?: string;
+    // Viewers without permission to change model settings.
+    readOnly?: boolean;
 }
 
 const MODE_ICONS: Record<PlatformPipelineMode, typeof AudioLines> = {
     realtime: AudioLines,
     pipeline: MessagesSquare,
 };
-
-const MIGRATION_NOTICE = {
-    dograh: "This workspace used the previous managed models.",
-    byok: "This workspace used its own provider keys.",
-    empty: "This workspace has no model settings yet.",
-} as const;
 
 function sortedLanguages(codes: string[]): string[] {
     return [...codes].sort((a, b) => languageLabel(a).localeCompare(languageLabel(b)));
@@ -126,6 +122,7 @@ export function PlatformModelEditor({
     configuration,
     onSave,
     submitLabel = "Save Configuration",
+    readOnly = false,
 }: PlatformModelEditorProps) {
     const initial = useMemo(
         () => platformFormStateFromConfiguration(configuration, catalog),
@@ -143,6 +140,7 @@ export function PlatformModelEditor({
     }, [initial]);
 
     const locked = Boolean(catalog.locked);
+    const disabled = locked || readOnly;
     const errors = validatePlatformFormState(state, catalog);
     const { realtime, pipeline } = catalog;
 
@@ -185,13 +183,10 @@ export function PlatformModelEditor({
                     <span>Model settings for this workspace are managed by Fallcha.ai support. Contact us to change them.</span>
                 </div>
             )}
-            {initial.migratedFrom && !locked && (
+            {initial.migratedFrom && !disabled && (
                 <div className="flex items-start gap-2 rounded-md border border-sky/40 bg-sky/10 px-4 py-3 text-sm">
                     <Info className="mt-0.5 h-4 w-4 shrink-0" />
-                    <span>
-                        {MIGRATION_NOTICE[initial.migratedFrom]} We&apos;ve preselected the recommended
-                        settings. Review them and save to switch.
-                    </span>
+                    <span>Your agents use the default managed setup. Review and save to confirm your choice.</span>
                 </div>
             )}
             {error && (
@@ -212,7 +207,7 @@ export function PlatformModelEditor({
                                 type="button"
                                 role="radio"
                                 aria-checked={selected}
-                                disabled={locked}
+                                disabled={disabled}
                                 onClick={() => setState((current) => ({ ...current, pipelineMode: mode.id }))}
                                 className={cn(
                                     "flex flex-col gap-2 rounded-lg border p-4 text-left transition-colors disabled:cursor-not-allowed",
@@ -241,7 +236,7 @@ export function PlatformModelEditor({
                                 options={realtime.models}
                                 value={state.realtime.model}
                                 onChange={(model) => update("realtime", { model })}
-                                disabled={locked}
+                                disabled={disabled}
                             />
                         </div>
                         <div className="space-y-2">
@@ -251,7 +246,7 @@ export function PlatformModelEditor({
                                 languages={realtime.languages}
                                 value={state.realtime.language}
                                 onChange={(language) => update("realtime", { language })}
-                                disabled={locked}
+                                disabled={disabled}
                             />
                         </div>
                         <div className="space-y-2 sm:col-span-2">
@@ -260,7 +255,7 @@ export function PlatformModelEditor({
                                 voices={realtime.voices}
                                 value={state.realtime.voice}
                                 onChange={(voice) => update("realtime", { voice })}
-                                disabled={locked}
+                                disabled={disabled}
                             />
                         </div>
                     </CardContent>
@@ -277,7 +272,7 @@ export function PlatformModelEditor({
                                     options={pipeline.stt.models}
                                     value={state.stt.model}
                                     onChange={(model) => update("stt", { model })}
-                                    disabled={locked}
+                                    disabled={disabled}
                                 />
                             </div>
                             <div className="space-y-2">
@@ -287,7 +282,7 @@ export function PlatformModelEditor({
                                     languages={sttLanguagesFor(catalog, state.stt.model)}
                                     value={state.stt.language}
                                     onChange={(language) => update("stt", { language })}
-                                    disabled={locked}
+                                    disabled={disabled}
                                 />
                             </div>
                         </CardContent>
@@ -303,7 +298,7 @@ export function PlatformModelEditor({
                                     options={pipeline.llm.models}
                                     value={state.llm.model}
                                     onChange={(model) => update("llm", { model })}
-                                    disabled={locked}
+                                    disabled={disabled}
                                 />
                             </div>
                             <div className="space-y-2">
@@ -316,7 +311,7 @@ export function PlatformModelEditor({
                                     step={pipeline.llm.temperature_range.step}
                                     value={state.llm.temperature ?? ""}
                                     placeholder="Model default"
-                                    disabled={locked}
+                                    disabled={disabled}
                                     onChange={(event) => {
                                         const value = event.currentTarget.valueAsNumber;
                                         update("llm", { temperature: Number.isFinite(value) ? value : null });
@@ -340,7 +335,7 @@ export function PlatformModelEditor({
                                         options={pipeline.tts.models}
                                         value={state.tts.model}
                                         onChange={(model) => update("tts", { model })}
-                                        disabled={locked}
+                                        disabled={disabled}
                                     />
                                 </div>
                             )}
@@ -351,7 +346,7 @@ export function PlatformModelEditor({
                                     languages={pipeline.tts.languages}
                                     value={state.tts.language}
                                     onChange={changeTtsLanguage}
-                                    disabled={locked}
+                                    disabled={disabled}
                                 />
                             </div>
                             <div className="space-y-2">
@@ -363,7 +358,7 @@ export function PlatformModelEditor({
                                     max={pipeline.tts.speed_range.max}
                                     step={pipeline.tts.speed_range.step}
                                     value={state.tts.speed}
-                                    disabled={locked}
+                                    disabled={disabled}
                                     onChange={(event) => {
                                         const value = event.currentTarget.valueAsNumber;
                                         update("tts", { speed: Number.isFinite(value) ? value : pipeline.tts.defaults.speed });
@@ -372,7 +367,7 @@ export function PlatformModelEditor({
                             </div>
                             <div className="space-y-2 sm:col-span-2">
                                 <Label>Voice</Label>
-                                {locked ? (
+                                {disabled ? (
                                     <p className="text-sm">{state.tts.voice}</p>
                                 ) : (
                                     <PlatformTtsVoicePicker
@@ -397,7 +392,7 @@ export function PlatformModelEditor({
                 </ul>
             )}
 
-            {!locked && (
+            {!disabled && (
                 <Button type="button" className="w-full" onClick={save} disabled={saving}>
                     <Save className="mr-2 h-4 w-4" />
                     {saving ? "Saving..." : submitLabel}
