@@ -39,6 +39,7 @@ export function useVoicePreview() {
         }
         releaseBlob();
         setPlayingId(null);
+        setPreviewError(null);
     }, [releaseBlob]);
 
     useEffect(() => stop, [stop]);
@@ -46,7 +47,6 @@ export function useVoicePreview() {
     /** Play *url* as voice *id*, or stop it if it is already playing. */
     const toggle = useCallback(
         async (id: string, url: string | null | undefined) => {
-            setPreviewError(null);
             if (playingId === id) {
                 stop();
                 return;

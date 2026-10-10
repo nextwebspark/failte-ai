@@ -192,7 +192,8 @@ export function isVoiceFor(
 
 /**
  * The same voice persona in another language, where the model has it
- * ("en-US-Chirp3-HD-Kore" → "en-GB-Chirp3-HD-Kore"); otherwise *voice*.
+ * ("en-US-Chirp3-HD-Kore" → "en-GB-Chirp3-HD-Kore"); otherwise "" so the
+ * customer picks a voice for that language.
  */
 export function voiceInLanguage(
     catalog: PlatformModelCatalog,
@@ -203,7 +204,25 @@ export function voiceInLanguage(
     const family = catalog.pipeline.tts.models.find((item) => item.id === model)?.voice_family;
     const name = voice.split("-").pop() ?? "";
     const translated = family ? `${language}-${family}-${name}` : voice;
-    return isVoiceFor(catalog, model, language, translated) ? translated : voice;
+    return isVoiceFor(catalog, model, language, translated) ? translated : "";
+}
+
+/**
+ * The language to keep when the speech-to-text model changes: the same one if
+ * the model serves it, else the same base language, else the model's default.
+ */
+export function sttLanguageForModel(
+    catalog: PlatformModelCatalog,
+    model: string,
+    language: string,
+): string {
+    const served = sttLanguagesFor(catalog, model);
+    if (served.includes(language)) return language;
+    const base = language.split("-")[0];
+    const sibling = served.find((code) => code.split("-")[0] === base);
+    if (sibling) return sibling;
+    const fallback = catalog.pipeline.stt.defaults.language;
+    return served.includes(fallback) ? fallback : (served[0] ?? fallback);
 }
 
 /** Human-readable problems with *state*; empty when it can be saved. */

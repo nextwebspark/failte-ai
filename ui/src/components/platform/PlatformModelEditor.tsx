@@ -1,5 +1,6 @@
 "use client";
 
+import * as RadioGroupPrimitive from "@radix-ui/react-radio-group";
 import { AudioLines, Info, Lock, MessagesSquare, Save } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
@@ -22,6 +23,7 @@ import {
     languageLabel,
     type PlatformFormState,
     platformFormStateFromConfiguration,
+    sttLanguageForModel,
     sttLanguagesFor,
     validatePlatformFormState,
     voiceInLanguage,
@@ -62,6 +64,15 @@ function OptionSelect({
     disabled: boolean;
 }) {
     const selected = options.find((option) => option.id === value);
+    if (options.length === 1 && selected) {
+        // Nothing to choose: show the model, not a one-item dropdown.
+        return (
+            <div className="space-y-1">
+                <p id={id} className="text-sm font-medium">{selected.label}</p>
+                {selected.description && <p className="text-xs text-muted-foreground">{selected.description}</p>}
+            </div>
+        );
+    }
     return (
         <div className="space-y-1">
             <Select value={value} onValueChange={onChange} disabled={disabled}>
@@ -113,9 +124,63 @@ function LanguageSelect({
 }
 
 /**
+ * A number input that lets the field be emptied while typing; the value is
+ * committed on blur (blank means *emptyValue*).
+ */
+function NumberField({
+    id,
+    value,
+    emptyValue,
+    range,
+    placeholder,
+    disabled,
+    onChange,
+}: {
+    id: string;
+    value: number | null;
+    emptyValue: number | null;
+    range: { min: number; max: number; step: number };
+    placeholder?: string;
+    disabled: boolean;
+    onChange: (value: number | null) => void;
+}) {
+    const [text, setText] = useState(value === null ? "" : String(value));
+    useEffect(() => setText(value === null ? "" : String(value)), [value]);
+    const commit = (raw: string) => {
+        const parsed = raw.trim() === "" ? emptyValue : Number(raw);
+        onChange(parsed === null || Number.isFinite(parsed) ? parsed : emptyValue);
+    };
+    return (
+        <Input
+            id={id}
+            type="number"
+            min={range.min}
+            max={range.max}
+            step={range.step}
+            value={text}
+            placeholder={placeholder}
+            disabled={disabled}
+            onChange={(event) => {
+                setText(event.currentTarget.value);
+                // Keep the form value current for typed numbers; blanks wait for blur.
+                if (event.currentTarget.value.trim() !== "") commit(event.currentTarget.value);
+            }}
+            onBlur={(event) => commit(event.currentTarget.value)}
+        />
+    );
+}
+
+function voiceName(voice: string): string {
+    return voice.split("-").pop() || voice;
+}
+
+/**
  * The managed Models editor: how the agent talks, then the models, voice and
  * language for that path, all from the server's platform catalog. No keys,
  * providers or regions.
+ *
+ * The form resets when `configuration` or `catalog` change identity, so
+ * callers pass values held in state, not literals rebuilt on each render.
  */
 export function PlatformModelEditor({
     catalog,
@@ -132,11 +197,15 @@ export function PlatformModelEditor({
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [attempted, setAttempted] = useState(false);
+    // The voice language follows the transcription language until the
+    // customer picks a voice language or voice themselves.
+    const [ttsTouched, setTtsTouched] = useState(false);
 
     useEffect(() => {
         setState(initial.state);
         setAttempted(false);
         setError(null);
+        setTtsTouched(false);
     }, [initial]);
 
     const locked = Boolean(catalog.locked);
@@ -147,18 +216,33 @@ export function PlatformModelEditor({
     const update = <K extends keyof PlatformFormState>(key: K, value: Partial<PlatformFormState[K]>) =>
         setState((current) => ({ ...current, [key]: { ...(current[key] as object), ...value } }));
 
-    const changeTtsLanguage = (language: string) =>
-        update("tts", {
-            language,
-            voice: voiceInLanguage(catalog, state.tts.model, state.tts.voice, language),
-        });
+    const ttsLanguageUpdate = (language: string) => ({
+        language,
+        voice: voiceInLanguage(catalog, state.tts.model, state.tts.voice, language),
+    });
+
+    const changeTtsLanguage = (language: string) => {
+        setTtsTouched(true);
+        update("tts", ttsLanguageUpdate(language));
+    };
 
     const changeTtsVoice = (voice: string) => {
+        setTtsTouched(true);
         const locale = voiceLocale(voice);
         update("tts", {
             voice,
             ...(locale && pipeline.tts.languages.includes(locale) ? { language: locale } : {}),
         });
+    };
+
+    const changeSttModel = (model: string) =>
+        update("stt", { model, language: sttLanguageForModel(catalog, model, state.stt.language) });
+
+    const changeSttLanguage = (language: string) => {
+        update("stt", { language });
+        if (!ttsTouched && pipeline.tts.languages.includes(language) && language !== state.tts.language) {
+            update("tts", ttsLanguageUpdate(language));
+        }
     };
 
     const save = async () => {
@@ -197,20 +281,25 @@ export function PlatformModelEditor({
 
             <section className="space-y-3">
                 <h2 className="text-lg font-semibold">How should your agent talk?</h2>
-                <div role="radiogroup" aria-label="How should your agent talk?" className="grid gap-3 sm:grid-cols-2">
+                <RadioGroupPrimitive.Root
+                    value={state.pipelineMode}
+                    onValueChange={(mode) =>
+                        setState((current) => ({ ...current, pipelineMode: mode as PlatformPipelineMode }))
+                    }
+                    disabled={disabled}
+                    aria-label="How should your agent talk?"
+                    className="grid gap-3 sm:grid-cols-2"
+                >
                     {catalog.modes.map((mode) => {
                         const Icon = MODE_ICONS[mode.id];
                         const selected = state.pipelineMode === mode.id;
                         return (
-                            <button
+                            <RadioGroupPrimitive.Item
                                 key={mode.id}
-                                type="button"
-                                role="radio"
-                                aria-checked={selected}
-                                disabled={disabled}
-                                onClick={() => setState((current) => ({ ...current, pipelineMode: mode.id }))}
+                                value={mode.id}
                                 className={cn(
-                                    "flex flex-col gap-2 rounded-lg border p-4 text-left transition-colors disabled:cursor-not-allowed",
+                                    "flex flex-col gap-2 rounded-lg border p-4 text-left transition-colors",
+                                    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed",
                                     selected ? "border-primary ring-1 ring-primary" : "border-border hover:bg-accent",
                                 )}
                             >
@@ -220,10 +309,10 @@ export function PlatformModelEditor({
                                     {mode.recommended && <Badge variant="secondary">Recommended</Badge>}
                                 </span>
                                 <span className="text-sm text-muted-foreground">{mode.description}</span>
-                            </button>
+                            </RadioGroupPrimitive.Item>
                         );
                     })}
-                </div>
+                </RadioGroupPrimitive.Root>
             </section>
 
             {state.pipelineMode === "realtime" ? (
@@ -250,8 +339,9 @@ export function PlatformModelEditor({
                             />
                         </div>
                         <div className="space-y-2 sm:col-span-2">
-                            <Label>Voice</Label>
+                            <Label id="platform-realtime-voice-label">Voice</Label>
                             <GeminiLiveVoicePicker
+                                labelledBy="platform-realtime-voice-label"
                                 voices={realtime.voices}
                                 value={state.realtime.voice}
                                 onChange={(voice) => update("realtime", { voice })}
@@ -271,7 +361,7 @@ export function PlatformModelEditor({
                                     id="platform-stt-model"
                                     options={pipeline.stt.models}
                                     value={state.stt.model}
-                                    onChange={(model) => update("stt", { model })}
+                                    onChange={changeSttModel}
                                     disabled={disabled}
                                 />
                             </div>
@@ -281,7 +371,7 @@ export function PlatformModelEditor({
                                     id="platform-stt-language"
                                     languages={sttLanguagesFor(catalog, state.stt.model)}
                                     value={state.stt.language}
-                                    onChange={(language) => update("stt", { language })}
+                                    onChange={changeSttLanguage}
                                     disabled={disabled}
                                 />
                             </div>
@@ -303,19 +393,14 @@ export function PlatformModelEditor({
                             </div>
                             <div className="space-y-2">
                                 <Label htmlFor="platform-llm-temperature">Temperature</Label>
-                                <Input
+                                <NumberField
                                     id="platform-llm-temperature"
-                                    type="number"
-                                    min={pipeline.llm.temperature_range.min}
-                                    max={pipeline.llm.temperature_range.max}
-                                    step={pipeline.llm.temperature_range.step}
-                                    value={state.llm.temperature ?? ""}
+                                    value={state.llm.temperature}
+                                    emptyValue={null}
+                                    range={pipeline.llm.temperature_range}
                                     placeholder="Model default"
                                     disabled={disabled}
-                                    onChange={(event) => {
-                                        const value = event.currentTarget.valueAsNumber;
-                                        update("llm", { temperature: Number.isFinite(value) ? value : null });
-                                    }}
+                                    onChange={(temperature) => update("llm", { temperature })}
                                 />
                                 <p className="text-xs text-muted-foreground">
                                     Lower values give more predictable replies. Leave blank for the model default.
@@ -327,18 +412,16 @@ export function PlatformModelEditor({
                     <Card>
                         <CardContent className="grid gap-4 pt-6 sm:grid-cols-2">
                             <h3 className="font-medium sm:col-span-2">Text-to-speech</h3>
-                            {pipeline.tts.models.length > 1 && (
-                                <div className="space-y-2 sm:col-span-2">
-                                    <Label htmlFor="platform-tts-model">Model</Label>
-                                    <OptionSelect
-                                        id="platform-tts-model"
-                                        options={pipeline.tts.models}
-                                        value={state.tts.model}
-                                        onChange={(model) => update("tts", { model })}
-                                        disabled={disabled}
-                                    />
-                                </div>
-                            )}
+                            <div className="space-y-2 sm:col-span-2">
+                                <Label htmlFor="platform-tts-model">Model</Label>
+                                <OptionSelect
+                                    id="platform-tts-model"
+                                    options={pipeline.tts.models}
+                                    value={state.tts.model}
+                                    onChange={(model) => update("tts", { model })}
+                                    disabled={disabled}
+                                />
+                            </div>
                             <div className="space-y-2">
                                 <Label htmlFor="platform-tts-language">Voice language</Label>
                                 <LanguageSelect
@@ -351,24 +434,23 @@ export function PlatformModelEditor({
                             </div>
                             <div className="space-y-2">
                                 <Label htmlFor="platform-tts-speed">Speed</Label>
-                                <Input
+                                <NumberField
                                     id="platform-tts-speed"
-                                    type="number"
-                                    min={pipeline.tts.speed_range.min}
-                                    max={pipeline.tts.speed_range.max}
-                                    step={pipeline.tts.speed_range.step}
                                     value={state.tts.speed}
+                                    emptyValue={pipeline.tts.defaults.speed}
+                                    range={pipeline.tts.speed_range}
                                     disabled={disabled}
-                                    onChange={(event) => {
-                                        const value = event.currentTarget.valueAsNumber;
-                                        update("tts", { speed: Number.isFinite(value) ? value : pipeline.tts.defaults.speed });
-                                    }}
+                                    onChange={(speed) => update("tts", { speed: speed ?? pipeline.tts.defaults.speed })}
                                 />
                             </div>
                             <div className="space-y-2 sm:col-span-2">
-                                <Label>Voice</Label>
+                                <Label id="platform-tts-voice-label">Voice</Label>
                                 {disabled ? (
-                                    <p className="text-sm">{state.tts.voice}</p>
+                                    <p className="text-sm" aria-labelledby="platform-tts-voice-label">
+                                        {state.tts.voice
+                                            ? `${voiceName(state.tts.voice)} · ${languageLabel(state.tts.language)}`
+                                            : "No voice selected"}
+                                    </p>
                                 ) : (
                                     <PlatformTtsVoicePicker
                                         catalog={pipeline.tts.voice_catalog}
@@ -377,6 +459,11 @@ export function PlatformModelEditor({
                                         value={state.tts.voice}
                                         onChange={changeTtsVoice}
                                     />
+                                )}
+                                {!state.tts.voice && !disabled && (
+                                    <p className="text-xs text-muted-foreground">
+                                        Pick a voice for {languageLabel(state.tts.language)}.
+                                    </p>
                                 )}
                             </div>
                         </CardContent>

@@ -7,6 +7,7 @@ import {
     isVoiceFor,
     languageLabel,
     platformFormStateFromConfiguration,
+    sttLanguageForModel,
     sttLanguagesFor,
     validatePlatformFormState,
     voiceInLanguage,
@@ -185,9 +186,12 @@ describe("platform model configuration", () => {
         expect(voiceInLanguage(catalog, "chirp_3_hd", "en-US-Chirp3-HD-Kore", "en-GB")).toBe(
             "en-GB-Chirp3-HD-Kore",
         );
-        expect(voiceInLanguage(catalog, "other", "en-US-Chirp3-HD-Kore", "en-GB")).toBe(
-            "en-US-Chirp3-HD-Kore",
-        );
+        expect(voiceInLanguage(catalog, "other", "en-US-Chirp3-HD-Kore", "en-GB")).toBe("");
+    });
+
+    it("keeps a speech-to-text language the new model serves", () => {
+        expect(sttLanguageForModel(catalog, "latest_long", "en-GB")).toBe("en-GB");
+        expect(sttLanguageForModel(catalog, "latest_long", "cy-GB")).toBe("en-US");
     });
 
     it("reads voice locales and language names", () => {

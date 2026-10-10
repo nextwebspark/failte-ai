@@ -70,6 +70,45 @@ describe("PlatformModelEditor", () => {
         expect(platform.pipeline.tts.speed).toBe(1.2);
     });
 
+    it("keeps each mode's choices when switching back and forth", async () => {
+        const onSave = renderEditor(null);
+
+        fireEvent.click(screen.getByRole("radio", { name: /Kore/ }));
+        fireEvent.click(screen.getByRole("radio", { name: /Speech-to-Text/ }));
+        expect(screen.getByText("Speech-to-text")).toBeTruthy();
+        expect(screen.getByText("Language model")).toBeTruthy();
+        expect(screen.getByText("Text-to-speech")).toBeTruthy();
+        fireEvent.change(screen.getByLabelText("Temperature"), { target: { value: "0.7" } });
+        fireEvent.click(screen.getByRole("radio", { name: /Speech-to-Speech/ }));
+        expect(screen.getByRole("radio", { name: /Kore/ }).getAttribute("aria-checked")).toBe("true");
+        fireEvent.click(screen.getByRole("radio", { name: /Speech-to-Text/ }));
+        expect((screen.getByLabelText("Temperature") as HTMLInputElement).value).toBe("0.7");
+        save();
+
+        await waitFor(() => expect(onSave).toHaveBeenCalledOnce());
+        expect(onSave.mock.calls[0][0].platform.pipeline.llm.temperature).toBe(0.7);
+    });
+
+    it("lets a number field be cleared while typing", () => {
+        renderEditor(PIPELINE);
+        const speed = screen.getByLabelText("Speed") as HTMLInputElement;
+
+        fireEvent.change(speed, { target: { value: "" } });
+        expect(speed.value).toBe("");
+        fireEvent.change(speed, { target: { value: "1.5" } });
+        expect(speed.value).toBe("1.5");
+        fireEvent.change(speed, { target: { value: "" } });
+        fireEvent.blur(speed);
+        expect(speed.value).toBe("1");
+    });
+
+    it("has no key, credential or provider fields", () => {
+        renderEditor(PIPELINE);
+        for (const label of document.querySelectorAll("label")) {
+            expect(label.textContent).not.toMatch(/api.?key|credential|provider|region|project/i);
+        }
+    });
+
     it("moves the voice language with a voice picked in another language", async () => {
         const onSave = renderEditor(PIPELINE);
 
