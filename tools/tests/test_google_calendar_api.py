@@ -44,7 +44,6 @@ TOOLS = {
     "check_appointment_availability",
     "book_appointment",
     "cancel_appointment",
-    "look_up_order",
 }
 
 
@@ -123,7 +122,7 @@ async def test_catalog_lists_tools_and_config_schema(client: httpx.AsyncClient) 
             "https://www.googleapis.com/auth/calendar.events",
             "https://www.googleapis.com/auth/calendar.readonly",
         ],
-        "optional_scopes": ["https://www.googleapis.com/auth/spreadsheets.readonly"],
+        "optional_scopes": [],
         "redirect_uri": None,
     }
     assert providers["echo"]["oauth"] is None
@@ -245,21 +244,17 @@ async def test_patch_config(client: httpx.AsyncClient) -> None:
     assert revoked.status_code == 409
 
 
-async def test_connection_test_checks_calendar_and_sheet(
+async def test_connection_test_checks_calendar(
     client: httpx.AsyncClient, google: FakeGoogle
 ) -> None:
-    connection_id = (
-        await create_connection(
-            client, config=calendar_config(orders_sheet_id="sheet-123")
-        )
-    ).json()["id"]
+    connection_id = (await create_connection(client, config=calendar_config())).json()[
+        "id"
+    ]
     url = f"/internal/connections/{connection_id}/test"
 
     ok = (await client.post(url, headers=internal_headers())).json()
     assert ok["ok"] is True
-    assert ok["message"] == (
-        "Calendar 'Bookings' is reachable; orders sheet 'Orders' is readable"
-    )
+    assert ok["message"] == "Calendar 'Bookings' is reachable"
     assert ok["connection"]["account_label"] == SA_EMAIL
 
     google.calendar.mock(return_value=google_error(404, "notFound"))
@@ -310,10 +305,6 @@ async def test_mcp_lists_and_calls_tools(
                 "book_appointment",
                 {"slot_id": "soon", "caller_name": "Ann", "caller_phone": "087"},
             )
-        with pytest.raises(ToolError, match="order lookup is not set up"):
-            await mcp.call_tool(
-                "look_up_order", {"caller_name": "Ann", "address_or_eircode": "X"}
-            )
         google.free_busy.mock(
             return_value=google_error(403, "forbidden"), side_effect=None
         )
@@ -342,7 +333,7 @@ async def test_mcp_rejects_foreign_keys(
 async def test_rest_compat_with_bearer_and_x_api_key(
     client: httpx.AsyncClient, google: FakeGoogle
 ) -> None:
-    key = await connected_key(client, orders_sheet_id="sheet-123")
+    key = await connected_key(client)
 
     bearer = await client.post(
         f"/v1/{PROVIDER}/availability",
@@ -371,18 +362,6 @@ async def test_rest_compat_with_bearer_and_x_api_key(
         "say": "That is booked in for Tuesday the thirteenth at nine in the morning.",
     }
 
-    google.sheet_values = [
-        ["customer_name", "eircode", "status"],
-        ["Ann Lee", "A1", "OK"],
-    ]
-    lookup = await client.post(
-        f"/v1/{PROVIDER}/order_lookup",
-        headers=shim_style,
-        json={"caller_name": "Bob", "address_or_eircode": "Z9"},
-    )
-    assert lookup.status_code == 200
-    assert set(lookup.json()) == {"verified", "say"}
-
     cancel = await client.post(
         f"/v1/{PROVIDER}/cancel", headers=shim_style, json={"event_id": event_id}
     )
@@ -400,12 +379,12 @@ async def test_rest_error_statuses(
         json={"slot_id": "later", "caller_name": "A", "caller_phone": "1"},
     )
     assert bad_slot.status_code == 400
-    unconfigured = await client.post(
+    removed = await client.post(
         f"/v1/{PROVIDER}/order_lookup",
         headers=headers,
         json={"caller_name": "A", "address_or_eircode": "B"},
     )
-    assert unconfigured.status_code == 409
+    assert removed.status_code == 404  # moved to Google Sheets
     google.free_busy.mock(
         return_value=google_error(500, "backendError"), side_effect=None
     )

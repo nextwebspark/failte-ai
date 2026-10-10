@@ -25,14 +25,12 @@ from fallcha_tools.providers.google_calendar.client import (
     CALENDAR_READONLY_SCOPE,
     CALENDAR_SCOPE,
     DEFAULT_TIMEOUT,
-    SHEETS_READONLY_SCOPE,
     GoogleClient,
 )
 from fallcha_tools.providers.google_calendar.errors import (
     CalendarToolError,
     NotConfiguredError,
 )
-from fallcha_tools.providers.google_calendar.orders import OrdersCache
 from fallcha_tools.providers.google_calendar.rest import build_rest_router
 from fallcha_tools.providers.google_calendar.service import (
     DEFAULT_DEADLINE_SECONDS,
@@ -68,12 +66,11 @@ __all__ = [
 BOOKING_ID_LABEL = "fallcha-tools/google-calendar/booking-event-id/v1"
 
 # Least privilege: event read/write plus read-only calendar access (free/busy
-# and the calendar's name); never full ``calendar``. Sheets is opt-in at
-# connect time, read-only, and only needed for order lookup. ``openid email``
-# only labels the connection with the account's address.
+# and the calendar's name); never full ``calendar``, and no optional scopes
+# (order lookup is a Google Sheets tool). ``openid email`` only labels the
+# connection with the account's address.
 GOOGLE_OAUTH = google_oauth_spec(
     scopes=(CALENDAR_EVENTS_SCOPE, CALENDAR_READONLY_SCOPE),
-    optional_scopes=(SHEETS_READONLY_SCOPE,),
     default_config={"calendar_id": "primary"},
 )
 
@@ -85,7 +82,7 @@ def booking_id_key_from(internal_secret: str) -> bytes:
 
 @dataclass(frozen=True)
 class GoogleCalendarProvider:
-    """Check availability, book, cancel, and look up orders in a Google Sheet.
+    """Check availability, book and cancel appointments.
 
     ``booking_id_key`` keys the HMAC behind booking event ids; it must be the
     same on every replica (see :func:`booking_id_key_from`).
@@ -94,7 +91,6 @@ class GoogleCalendarProvider:
     booking_id_key: bytes = field(repr=False)
     token_cache: TokenCache = field(default_factory=TokenCache)
     signer_cache: SignerCache = field(default_factory=SignerCache)
-    orders_cache: OrdersCache = field(default_factory=OrdersCache)
     clock: Clock = utc_now
     request_timeout: httpx.Timeout = field(default_factory=lambda: DEFAULT_TIMEOUT)
     deadline_seconds: float = DEFAULT_DEADLINE_SECONDS
@@ -110,8 +106,8 @@ class GoogleCalendarProvider:
     @property
     def description(self) -> str:
         return (
-            "Offer free appointment slots, book and cancel appointments on a "
-            "Google Calendar, and look up orders in a Google Sheet (read-only)."
+            "Offer free appointment slots, and book and cancel appointments, "
+            "on a Google Calendar."
         )
 
     @property
@@ -124,7 +120,7 @@ class GoogleCalendarProvider:
 
     @property
     def scopes(self) -> tuple[str, ...]:
-        return (CALENDAR_SCOPE, SHEETS_READONLY_SCOPE)
+        return (CALENDAR_SCOPE,)
 
     @property
     def config_model(self) -> type[BaseModel]:
@@ -169,7 +165,6 @@ class GoogleCalendarProvider:
             config=config,
             connection_id=ctx.connection_id,
             clock=self.clock,
-            orders_cache=self.orders_cache,
             booking_id_key=self.booking_id_key,
             deadline_seconds=self.deadline_seconds,
         )

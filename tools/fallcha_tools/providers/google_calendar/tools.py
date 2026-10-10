@@ -11,16 +11,12 @@ from fastmcp.exceptions import ToolError
 from fallcha_tools.core.provider import ConnectionContextFactory
 from fallcha_tools.providers.google_calendar.errors import CalendarToolError
 from fallcha_tools.providers.google_calendar.schemas import (
-    AccountName,
-    AddressOrEircode,
     AvailabilityResult,
     BookingResult,
     CallerName,
     CallerPhone,
     CancelResult,
     EventId,
-    OrderId,
-    OrderLookupResult,
     PartOfDay,
     Reason,
     RelativeDay,
@@ -87,20 +83,3 @@ def register_calendar_tools(
         cancelled. Read the "say" field to the caller."""
         svc = await service()
         return await _guard(svc.cancel(event_id))
-
-    @mcp.tool(annotations=_READ_ONLY)
-    async def look_up_order(
-        caller_name: AccountName,
-        address_or_eircode: AddressOrEircode,
-        order_id: OrderId = None,
-    ) -> OrderLookupResult:
-        """Use when a caller asks about an existing order or account: where their
-        adapter is, when their number ports, order status, what package they are
-        on. Requires BOTH the name on the account and their Eircode or address;
-        ask for both before calling. Read-only: it can never change an order.
-        If "verified" is false, read the "say" field and never reveal which
-        detail did not match."""
-        svc = await service()
-        return await _guard(
-            svc.look_up_order(caller_name, address_or_eircode, order_id)
-        )

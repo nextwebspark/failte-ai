@@ -14,12 +14,19 @@ from fallcha_tools.providers.google_common.http import (
     GoogleHttp,
     path_segment,
 )
-from fallcha_tools.providers.google_common.scopes import SHEETS_API, SHEETS_SCOPE
+from fallcha_tools.providers.google_common.scopes import (
+    SHEETS_API,
+    SHEETS_READONLY_SCOPE,
+    SHEETS_SCOPE,
+)
 
 SPREADSHEET = "spreadsheet"
 # One scope for every call: a service-account token minted for it is cached
 # and reused across reads and appends.
 _SCOPES = (SHEETS_SCOPE,)
+# Order lookup reads with the read-only scope on purpose: a service-account
+# token minted for it cannot change an order, whatever the sheet's sharing.
+_READ_ONLY_SCOPES = (SHEETS_READONLY_SCOPE,)
 TAB_NOT_FOUND = "that tab was not found in the spreadsheet"
 
 
@@ -60,13 +67,18 @@ class SheetsClient(GoogleHttp):
         return SpreadsheetInfo(title=title, tabs=tabs)
 
     async def read_ranges(
-        self, spreadsheet_id: str, ranges: Sequence[str], *, budget: Budget
+        self,
+        spreadsheet_id: str,
+        ranges: Sequence[str],
+        *,
+        budget: Budget,
+        read_only: bool = False,
     ) -> list[list[list[str]]]:
         """Cell text (as formatted in the sheet) of each A1 range, in order."""
         response = await self._send(
             "GET",
             f"{SHEETS_API}/{path_segment(spreadsheet_id)}/values:batchGet",
-            _SCOPES,
+            _READ_ONLY_SCOPES if read_only else _SCOPES,
             params={"ranges": list(ranges), "majorDimension": "ROWS"},
             budget=budget,
         )

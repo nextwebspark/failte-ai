@@ -24,7 +24,6 @@ from fallcha_tools.core.provider import ConnectionContext
 from fallcha_tools.providers.google_calendar import GoogleCalendarProvider
 from fallcha_tools.providers.google_calendar.client import (
     CALENDAR_SCOPE,
-    SHEETS_READONLY_SCOPE,
 )
 from fallcha_tools.providers.google_calendar.credentials import (
     GOOGLE_TOKEN_URL,
@@ -36,7 +35,6 @@ from fallcha_tools.providers.google_calendar.errors import (
     GoogleApiError,
     NotConfiguredError,
 )
-from fallcha_tools.providers.google_calendar.orders import OrdersCache
 from fallcha_tools.providers.google_calendar.service import (
     BOOKING_MARKER,
     CalendarService,
@@ -49,7 +47,6 @@ from tests.google_fakes import (
     PRIVATE_KEY_PEM,
     PUBLIC_KEY,
     SA_EMAIL,
-    SHEET_ID,
     FakeClock,
     FakeGoogle,
     calendar_config,
@@ -58,28 +55,6 @@ from tests.google_fakes import (
     json_body,
     service_account_key,
 )
-
-ORDERS: list[list[str]] = [
-    ["order_id", "customer_name", "address", "eircode", "package", "status", "eta"],
-    [
-        "VT-1",
-        "Jane Murphy",
-        "12 Main Street, Galway",
-        "H91 X2Y3",
-        "Home Fibre",
-        "Shipped",
-        "Arrives Thursday",
-    ],
-    [
-        "VT-2",
-        "John Byrne",
-        "Rose Cottage, Kinsale",
-        "P17 AB12",
-        "Mobile",
-        "Pending",
-        "",
-    ],
-]
 
 
 @pytest.fixture
@@ -134,7 +109,7 @@ def make_service(
 def service(
     provider: GoogleCalendarProvider, http: httpx.AsyncClient, connection_id: uuid.UUID
 ) -> CalendarService:
-    return make_service(provider, http, connection_id, orders_sheet_id=SHEET_ID)
+    return make_service(provider, http, connection_id)
 
 
 def _jwt_part(segment: str) -> Any:
@@ -361,76 +336,6 @@ async def test_cancel_refuses_events_not_booked_by_this_connection(
     assert (await other.cancel(booked.event_id)).cancelled is False
     assert (await service.cancel("manual")).cancelled is False
     assert not google.delete_event.called
-
-
-# --- order lookup ---------------------------------------------------------
-
-
-async def test_order_lookup_verifies_name_and_eircode(
-    service: CalendarService, google: FakeGoogle
-) -> None:
-    google.sheet_values = ORDERS
-
-    found = await service.look_up_order("Murphy", "h91x2y3")
-    assert found.verified is True
-    assert found.order_id == "VT-1"
-    assert found.say == (
-        "I have your order for the Home Fibre. "
-        "The status is: Shipped. Arrives Thursday."
-    )
-
-    by_address = await service.look_up_order("John Byrne", "rose cottage kinsale")
-    assert by_address.verified is True and by_address.order_id == "VT-2"
-    assert by_address.say.endswith("The status is: Pending.")
-
-    wrong_address = await service.look_up_order("Jane Murphy", "Dublin 4")
-    unknown_name = await service.look_up_order("Zed Nobody", "H91 X2Y3")
-    assert wrong_address.verified is unknown_name.verified is False
-    assert wrong_address.say == unknown_name.say
-    assert wrong_address.model_dump(exclude_none=True).keys() == {"verified", "say"}
-
-    # Cached for a minute: one sheet read; sheets token is read-only.
-    assert google.sheet.call_count == 1
-    scopes = {
-        _jwt_part(form_body(call.request)["assertion"].split(".")[1])["scope"]
-        for call in google.token.calls
-    }
-    assert scopes == {SHEETS_READONLY_SCOPE}
-
-
-async def test_order_lookup_tab_is_quoted_and_cache_expires(
-    service: CalendarService, google: FakeGoogle, clock: FakeClock
-) -> None:
-    google.sheet_values = ORDERS
-    await service.look_up_order("Murphy", "H91X2Y3")
-    assert google.sheet.calls.last.request.url.path.endswith(
-        "/values/'Orders'!A1:Z1000"
-    )
-    clock.advance(timedelta(seconds=61))
-    await service.look_up_order("Murphy", "H91X2Y3")
-    assert google.sheet.call_count == 2
-
-
-async def test_order_lookup_needs_a_configured_sheet(
-    provider: GoogleCalendarProvider,
-    http: httpx.AsyncClient,
-    connection_id: uuid.UUID,
-    google: FakeGoogle,
-) -> None:
-    service = make_service(provider, http, connection_id)
-    with pytest.raises(NotConfiguredError, match="not set up"):
-        await service.look_up_order("Murphy", "H91X2Y3")
-
-
-async def test_empty_or_header_only_sheet(
-    service: CalendarService, google: FakeGoogle, clock: FakeClock
-) -> None:
-    google.sheet_values = []
-    with pytest.raises(GoogleApiError, match="empty"):
-        await service.look_up_order("Murphy", "H91X2Y3")
-    google.sheet_values = ORDERS[:1]
-    result = await service.look_up_order("Murphy", "H91X2Y3")
-    assert result.verified is False
 
 
 # --- Google error mapping -------------------------------------------------
@@ -849,20 +754,6 @@ async def test_token_cache_is_bounded(clock: FakeClock) -> None:
 
         await cache.get_or_mint((uuid.uuid4(), SA_EMAIL, (CALENDAR_SCOPE,)), mint)
     assert len(cache) == 2
-
-
-async def test_orders_cache_bounded_and_drops_stale(clock: FakeClock) -> None:
-    cache = OrdersCache(max_entries=2)
-
-    async def fetch() -> list[dict[str, str]]:
-        return []
-
-    for n in range(3):
-        await cache.rows((uuid.uuid4(), f"s{n}", "Orders"), clock(), fetch)
-    assert len(cache) == 2
-    clock.advance(timedelta(minutes=5))
-    await cache.rows((uuid.uuid4(), "fresh", "Orders"), clock(), fetch)
-    assert len(cache) == 1
 
 
 # --- review follow-ups: DST ------------------------------------------------

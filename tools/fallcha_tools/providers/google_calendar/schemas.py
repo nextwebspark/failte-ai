@@ -71,38 +71,6 @@ EventId = Annotated[
         description="The event_id returned by book_appointment for this booking.",
     ),
 ]
-AccountName = Annotated[
-    str,
-    Field(
-        min_length=1,
-        max_length=200,
-        description=(
-            "The name on the account, as the caller said it. A surname on its "
-            "own is fine."
-        ),
-    ),
-]
-AddressOrEircode = Annotated[
-    str,
-    Field(
-        min_length=1,
-        max_length=300,
-        description=(
-            "Their Eircode if they gave one, otherwise their address, as spoken. "
-            "Pass it through verbatim; do not tidy it up or invent missing parts."
-        ),
-    ),
-]
-OrderId = Annotated[
-    str | None,
-    Field(
-        max_length=64,
-        description=(
-            "Order reference like VT-10412, only if the caller read one out. "
-            "Leave empty otherwise."
-        ),
-    ),
-]
 
 
 class Slot(BaseModel):
@@ -131,19 +99,6 @@ class CancelResult(BaseModel):
     say: str = Field(description="Read this to the caller word for word.")
 
 
-class OrderLookupResult(BaseModel):
-    verified: bool
-    order_id: str | None = None
-    customer_name: str | None = None
-    package: str | None = None
-    hardware: str | None = None
-    status: str | None = None
-    eta: str | None = None
-    order_date: str | None = None
-    monthly_price: str | None = None
-    say: str = Field(description="Read this to the caller word for word.")
-
-
 class AvailabilityRequest(BaseModel):
     relative_day: RelativeDay = None
     part_of_day: PartOfDay = None
@@ -158,9 +113,3 @@ class BookRequest(BaseModel):
 
 class CancelRequest(BaseModel):
     event_id: EventId
-
-
-class OrderLookupRequest(BaseModel):
-    caller_name: AccountName
-    address_or_eircode: AddressOrEircode
-    order_id: OrderId = None

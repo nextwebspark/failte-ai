@@ -39,6 +39,8 @@ from fallcha_tools.providers.google_common.errors import (
 from fallcha_tools.providers.google_common.http import DEFAULT_TIMEOUT
 from fallcha_tools.providers.google_common.scopes import SHEETS_SCOPE
 from fallcha_tools.providers.google_sheets.client import SheetsClient
+from fallcha_tools.providers.google_sheets.orders import OrdersCache
+from fallcha_tools.providers.google_sheets.rest import build_rest_router
 from fallcha_tools.providers.google_sheets.service import (
     DEFAULT_DEADLINE_SECONDS,
     SheetsService,
@@ -54,10 +56,12 @@ SHEETS_OAUTH = google_oauth_spec(scopes=(SHEETS_SCOPE,))
 
 @dataclass(frozen=True)
 class GoogleSheetsProvider:
-    """Find, read and append rows in one Google Sheet per connection."""
+    """Find, read and append rows in one Google Sheet per connection, plus a
+    verified, read-only order lookup on an orders tab."""
 
     token_cache: TokenCache = field(default_factory=TokenCache)
     signer_cache: SignerCache = field(default_factory=SignerCache)
+    orders_cache: OrdersCache = field(default_factory=OrdersCache)
     clock: Clock = utc_now
     request_timeout: httpx.Timeout = field(default_factory=lambda: DEFAULT_TIMEOUT)
     deadline_seconds: float = DEFAULT_DEADLINE_SECONDS
@@ -73,8 +77,9 @@ class GoogleSheetsProvider:
     @property
     def description(self) -> str:
         return (
-            "Look up rows in a Google Sheet by any column, read a row, and add "
-            "new rows (for example leads or messages) by column name."
+            "Look up rows in a Google Sheet by any column, read a row, add new "
+            "rows (for example leads or messages), and look up a caller's order "
+            "after checking their name and address."
         )
 
     @property
@@ -107,9 +112,8 @@ class GoogleSheetsProvider:
     ) -> None:
         register_sheets_tools(mcp, ctx_factory, self.service_for)
 
-    def rest_router(self, ctx_dependency: RestContextDependency) -> APIRouter | None:
-        del ctx_dependency
-        return None
+    def rest_router(self, ctx_dependency: RestContextDependency) -> APIRouter:
+        return build_rest_router(ctx_dependency, self.service_for)
 
     async def test_connection(self, ctx: ConnectionContext) -> ConnectionTestResult:
         try:
@@ -168,5 +172,10 @@ class GoogleSheetsProvider:
             timeout=self.request_timeout,
         )
         return SheetsService(
-            client=client, config=config, deadline_seconds=self.deadline_seconds
+            client=client,
+            config=config,
+            connection_id=ctx.connection_id,
+            orders_cache=self.orders_cache,
+            clock=self.clock,
+            deadline_seconds=self.deadline_seconds,
         )

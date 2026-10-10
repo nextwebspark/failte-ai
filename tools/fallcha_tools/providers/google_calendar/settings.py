@@ -1,5 +1,5 @@
-"""Per-connection settings (stored in ``connections.config``) and the
-service-account key format (stored encrypted in ``connections.secret_enc``)."""
+"""Per-connection settings (stored in ``connections.config``). The
+service-account key format lives in ``google_common``."""
 
 from __future__ import annotations
 
@@ -53,12 +53,6 @@ class CalendarConfig(BaseModel):
     horizon_days: int = Field(default=14, ge=1, le=60)
     max_slots_returned: int = Field(default=3, ge=1, le=10)
     morning_end_hour: int = Field(default=12, ge=0, le=24)
-    orders_sheet_id: str | None = Field(
-        default=None,
-        max_length=256,
-        description="Google Sheet id for read-only order lookup; unset disables it.",
-    )
-    orders_tab: str = Field(default="Orders", min_length=1, max_length=100)
 
     @field_validator("timezone")
     @classmethod

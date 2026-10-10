@@ -14,7 +14,28 @@ from fallcha_tools.providers.google_common.credentials import GOOGLE_TOKEN_URL
 from fallcha_tools.providers.google_common.scopes import SHEETS_API
 
 SPREADSHEET_ID = "1AbCdEfGhIjKlMnOpQrStUvWxYz0123456789"
-_ROWS = re.compile(r"^'((?:[^']|'')*)'!(\d+):(\d+)$")
+ORDERS: list[list[str]] = [
+    ["order_id", "customer_name", "address", "eircode", "package", "status", "eta"],
+    [
+        "VT-1",
+        "Jane Murphy",
+        "12 Main Street, Galway",
+        "H91 X2Y3",
+        "Home Fibre",
+        "Shipped",
+        "Arrives Thursday",
+    ],
+    [
+        "VT-2",
+        "John Byrne",
+        "Rose Cottage, Kinsale",
+        "P17 AB12",
+        "Mobile",
+        "Pending",
+        "",
+    ],
+]
+_ROWS = re.compile(r"^'((?:[^']|'')*)'!(?:A)?(\d+):(?:[A-Z]+)?(\d+)$")
 _TABLE = re.compile(r"^'((?:[^']|'')*)'!A(\d+):([A-Z]+)$")
 
 
@@ -33,6 +54,7 @@ class FakeSheets:
             ],
             "Private": [["Secret"], ["do not read"]],
             "My 'Quoted' Tab": [["Key"], ["v"]],
+            "Orders": [list(row) for row in ORDERS],
         }
         self.title = "CRM"
         self.appended: list[dict[str, Any]] = []

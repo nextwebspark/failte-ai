@@ -18,6 +18,25 @@ def same_tab(a: str, b: str) -> bool:
     return a.strip().casefold() == b.strip().casefold()
 
 
+class OrderColumns(BaseModel):
+    """Header names of the orders tab's columns used by look_up_order.
+
+    Defaults are the original calendar shim's sheet headers."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    order_id: str = Field(default="order_id", min_length=1, max_length=100)
+    customer_name: str = Field(default="customer_name", min_length=1, max_length=100)
+    address: str = Field(default="address", min_length=1, max_length=100)
+    eircode: str = Field(default="eircode", min_length=1, max_length=100)
+    package: str = Field(default="package", min_length=1, max_length=100)
+    status: str = Field(default="status", min_length=1, max_length=100)
+    eta: str = Field(default="eta", min_length=1, max_length=100)
+    hardware: str = Field(default="hardware", min_length=1, max_length=100)
+    order_date: str = Field(default="order_date", min_length=1, max_length=100)
+    monthly_price: str = Field(default="monthly_price", min_length=1, max_length=100)
+
+
 class SheetsConfig(BaseModel):
     """Which spreadsheet a connection works on, and what tools may touch."""
 
@@ -51,6 +70,16 @@ class SheetsConfig(BaseModel):
         description="Row holding the column names; data starts below it.",
     )
 
+    orders_tab: TabName | None = Field(
+        default=None,
+        description="Tab holding orders, for the verified look_up_order tool "
+        "(caller name + address/Eircode). Unset: order lookup is off.",
+    )
+    order_columns: OrderColumns = Field(
+        default_factory=OrderColumns,
+        description="Header names of the orders tab's columns.",
+    )
+
     @field_validator("spreadsheet_id")
     @classmethod
     def _sheet_id(cls, value: str) -> str:
@@ -62,7 +91,7 @@ class SheetsConfig(BaseModel):
             raise ValueError("is not a Google Sheets spreadsheet id or URL")
         return value
 
-    @field_validator("default_tab")
+    @field_validator("default_tab", "orders_tab")
     @classmethod
     def _strip_tab(cls, value: str | None) -> str | None:
         if value is None:
@@ -88,4 +117,10 @@ class SheetsConfig(BaseModel):
             and not any(same_tab(self.default_tab, t) for t in self.allowed_tabs)
         ):
             raise ValueError("default_tab must be one of allowed_tabs")
+        if (
+            self.orders_tab is not None
+            and self.allowed_tabs is not None
+            and not any(same_tab(self.orders_tab, t) for t in self.allowed_tabs)
+        ):
+            raise ValueError("orders_tab must be one of allowed_tabs")
         return self

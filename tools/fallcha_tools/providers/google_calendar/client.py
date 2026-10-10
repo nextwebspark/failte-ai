@@ -1,4 +1,4 @@
-"""Thin, typed wrappers over the Google Calendar and Sheets REST APIs.
+"""Thin, typed wrappers over the Google Calendar REST API.
 
 The transport (tokens, timeouts, error mapping) is the shared
 :class:`~fallcha_tools.providers.google_common.http.GoogleHttp`.
@@ -28,9 +28,6 @@ from fallcha_tools.providers.google_common.scopes import (
     CALENDAR_EVENTS_SCOPE,
     CALENDAR_READONLY_SCOPE,
     CALENDAR_SCOPE,
-    SHEETS_API,
-    SHEETS_READONLY_SCOPE,
-    SHEETS_SCOPE,
 )
 
 __all__ = [
@@ -39,9 +36,6 @@ __all__ = [
     "CALENDAR_READONLY_SCOPE",
     "CALENDAR_SCOPE",
     "DEFAULT_TIMEOUT",
-    "SHEETS_API",
-    "SHEETS_READONLY_SCOPE",
-    "SHEETS_SCOPE",
     "SIGN_IN_TOO_SLOW",
     "Budget",
     "Busy",
@@ -49,14 +43,10 @@ __all__ = [
     "Resource",
 ]
 
-# The orders sheet is read with the read-only scope on purpose: the agent
-# must never be able to change an order.
-
 
 class Resource(StrEnum):
     CALENDAR = "calendar"
     EVENT = "appointment"
-    SHEET = "orders sheet"
 
 
 Busy = tuple[datetime, datetime]
@@ -64,7 +54,7 @@ Busy = tuple[datetime, datetime]
 
 @dataclass(frozen=True, slots=True)
 class GoogleClient(GoogleHttp):
-    """Calendar and Sheets calls as one connection. ``account_hint`` is only
+    """Calendar calls as one connection. ``account_hint`` is only
     logged; see ``CalendarService.check_access``."""
 
     async def free_busy(
@@ -182,26 +172,6 @@ class GoogleClient(GoogleHttp):
             Resource.CALENDAR,
         )
         return str(body.get("summary") or calendar_id)
-
-    async def sheet_values(self, sheet_id: str, a1_range: str) -> list[list[str]]:
-        body = await self._json(
-            "GET",
-            f"{SHEETS_API}/{path_segment(sheet_id)}/values/{path_segment(a1_range)}",
-            (SHEETS_READONLY_SCOPE,),
-            Resource.SHEET,
-        )
-        values = body.get("values") or []
-        return [[str(cell) for cell in row] for row in values if isinstance(row, list)]
-
-    async def sheet_title(self, sheet_id: str) -> str:
-        body = await self._json(
-            "GET",
-            f"{SHEETS_API}/{path_segment(sheet_id)}",
-            (SHEETS_READONLY_SCOPE,),
-            Resource.SHEET,
-            params={"fields": "properties.title"},
-        )
-        return str((body.get("properties") or {}).get("title") or sheet_id)
 
     def _event_url(self, calendar_id: str, event_id: str) -> str:
         calendar = path_segment(calendar_id)

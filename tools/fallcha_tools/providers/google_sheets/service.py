@@ -8,14 +8,17 @@ request it cannot finish.
 from __future__ import annotations
 
 import asyncio
+import uuid
 from collections.abc import AsyncIterator, Callable, Mapping
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 
 from fallcha_tools.core.provider import ConnectionContext
+from fallcha_tools.providers.google_common.credentials import Clock, utc_now
 from fallcha_tools.providers.google_common.errors import (
     BadArgumentError,
     GoogleApiError,
+    NotConfiguredError,
 )
 from fallcha_tools.providers.google_common.http import Budget
 from fallcha_tools.providers.google_sheets.cells import (
@@ -33,10 +36,18 @@ from fallcha_tools.providers.google_sheets.client import (
     SheetsClient,
     SpreadsheetInfo,
 )
+from fallcha_tools.providers.google_sheets.orders import (
+    SHEET_COLUMNS,
+    SHEET_ROWS,
+    OrdersCache,
+    match_order,
+    order_rows,
+)
 from fallcha_tools.providers.google_sheets.schemas import (
     AppendRowResult,
     FindRowsResult,
     GetRowResult,
+    OrderLookupResult,
     SheetRow,
 )
 from fallcha_tools.providers.google_sheets.settings import SheetsConfig, same_tab
@@ -65,6 +76,9 @@ ServiceFactory = Callable[[ConnectionContext], "SheetsService"]
 class SheetsService:
     client: SheetsClient
     config: SheetsConfig
+    connection_id: uuid.UUID
+    orders_cache: OrdersCache
+    clock: Clock = utc_now
     deadline_seconds: float = DEFAULT_DEADLINE_SECONDS
 
     @asynccontextmanager
@@ -106,6 +120,29 @@ class SheetsService:
             if exc.retryable:  # Google may have written the row
                 raise GoogleApiError(APPEND_UNCONFIRMED, retryable=True) from None
             raise
+
+    async def look_up_order(
+        self, caller_name: str, address_or_eircode: str, order_id: str | None = None
+    ) -> OrderLookupResult:
+        """Verified, read-only order lookup (see ``orders``)."""
+        tab = self.config.orders_tab
+        if not tab:
+            raise NotConfiguredError("order lookup is not set up for this connection")
+        sheet_id = self.config.spreadsheet_id
+        first = self.config.header_row
+        a1 = f"{quote_tab(tab)}!A{first}:{SHEET_COLUMNS}{first + SHEET_ROWS - 1}"
+
+        async def fetch() -> list[dict[str, str]]:
+            [values] = await self.client.read_ranges(
+                sheet_id, [a1], budget=self._budget(), read_only=True
+            )
+            return order_rows(values, self.config.order_columns)
+
+        async with self._deadline():
+            rows = await self.orders_cache.rows(
+                (self.connection_id, sheet_id, tab), self.clock(), fetch
+            )
+        return match_order(rows, caller_name, address_or_eircode, order_id)
 
     async def _find_rows(
         self, column: str, value: str, tab: str | None, match: str
@@ -225,6 +262,7 @@ class SheetsService:
         )
         configured = [
             *([self.config.default_tab] if self.config.default_tab else []),
+            *([self.config.orders_tab] if self.config.orders_tab else []),
             *(self.config.allowed_tabs or []),
         ]
         missing = [

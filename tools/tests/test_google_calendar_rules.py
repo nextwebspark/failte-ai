@@ -91,7 +91,6 @@ def test_calendar_config_defaults_match_the_shim() -> None:
     assert (config.slot_minutes, config.buffer_minutes) == (30, 15)
     assert (config.min_lead_hours, config.horizon_days) == (2, 14)
     assert config.max_slots_returned == 3
-    assert config.orders_tab == "Orders" and config.orders_sheet_id is None
 
 
 @pytest.mark.parametrize(

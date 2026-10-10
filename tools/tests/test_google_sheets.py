@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import base64
 import dataclasses
+import json
 import uuid
 from collections.abc import Iterator
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any
+from urllib.parse import parse_qs
 
 import httpx
 import pytest
@@ -35,12 +38,13 @@ from fallcha_tools.providers.google_sheets.cells import (
     neutralize_formula,
     updated_row_number,
 )
+from fallcha_tools.providers.google_sheets.orders import OrdersCache
 from fallcha_tools.providers.google_sheets.provider import SHEETS_OAUTH
 from fallcha_tools.providers.google_sheets.settings import SheetsConfig
 from tests.conftest import internal_headers, issue_key
 from tests.echo_provider import EchoProvider
 from tests.google_fakes import SA_EMAIL, FakeClock, service_account_key
-from tests.sheets_fakes import SPREADSHEET_ID, FakeSheets, sheets_config
+from tests.sheets_fakes import ORDERS, SPREADSHEET_ID, FakeSheets, sheets_config
 from tests.test_mcp import mcp_client
 
 PROVIDER = "google-sheets"
@@ -346,6 +350,7 @@ async def test_catalog_entry(client: httpx.AsyncClient) -> None:
         "find_rows",
         "get_row",
         "append_row",
+        "look_up_order",
     }
     assert entry["config_schema"]["required"] == ["spreadsheet_id"]
 
@@ -423,3 +428,152 @@ async def test_keys_are_scoped_to_their_org_and_provider(
     with pytest.raises(Exception):  # noqa: B017 - 401 surfaces as a client error
         async with mcp_client(app, "http://tools/mcp/echo", key_b) as mcp:
             await mcp.list_tools()
+
+
+# --- order lookup (moved here from Google Calendar) ----------------------------
+
+
+def _token_scopes(sheets: FakeSheets) -> set[str]:
+    scopes = set()
+    for call in sheets.token.calls:
+        assertion = parse_qs(call.request.content.decode())["assertion"][0]
+        payload = assertion.split(".")[1]
+        claims = json.loads(
+            base64.urlsafe_b64decode(payload + "=" * (-len(payload) % 4))
+        )
+        scopes.add(claims["scope"])
+    return scopes
+
+
+async def test_order_lookup_verifies_name_and_eircode(sheets: FakeSheets) -> None:
+    async with httpx.AsyncClient() as http:
+        svc = provider().service_for(context(http, orders_tab="Orders"))
+        found = await svc.look_up_order("Murphy", "h91x2y3")
+        assert found.verified is True and found.order_id == "VT-1"
+        assert found.say == (
+            "I have your order for the Home Fibre. "
+            "The status is: Shipped. Arrives Thursday."
+        )
+        by_address = await svc.look_up_order("John Byrne", "rose cottage kinsale")
+        assert by_address.verified is True and by_address.order_id == "VT-2"
+        assert by_address.say.endswith("The status is: Pending.")
+        wrong_address = await svc.look_up_order("Jane Murphy", "Dublin 4")
+        unknown_name = await svc.look_up_order("Zed Nobody", "H91 X2Y3")
+    assert wrong_address.verified is unknown_name.verified is False
+    assert wrong_address.say == unknown_name.say
+    assert wrong_address.model_dump(exclude_none=True).keys() == {"verified", "say"}
+    # Cached for a minute (one read), with a read-only token.
+    assert sheets.batch.call_count == 1
+    assert sheets.batch_ranges == [["'Orders'!A1:Z1000"]]
+    assert _token_scopes(sheets) == {SHEETS_READONLY_SCOPE}
+
+
+async def test_order_lookup_cache_expires(sheets: FakeSheets) -> None:
+    clock = FakeClock()
+    p = GoogleSheetsProvider(token_cache=TokenCache(clock=clock), clock=clock)
+    async with httpx.AsyncClient() as http:
+        svc = p.service_for(context(http, orders_tab="Orders"))
+        await svc.look_up_order("Murphy", "H91X2Y3")
+        clock.advance(timedelta(seconds=61))
+        await svc.look_up_order("Murphy", "H91X2Y3")
+    assert sheets.batch.call_count == 2
+
+
+async def test_order_lookup_uses_configured_columns(sheets: FakeSheets) -> None:
+    sheets.tabs["Orders"][0] = [
+        "Ref",
+        "Customer",
+        "Address",
+        "Eircode",
+        "Plan",
+        "Status",
+        "ETA",
+    ]
+    columns = {"order_id": "ref", "customer_name": "Customer", "package": "Plan"}
+    async with httpx.AsyncClient() as http:
+        svc = provider().service_for(
+            context(http, orders_tab="Orders", order_columns=columns)
+        )
+        found = await svc.look_up_order("Murphy", "H91 X2Y3")
+    assert found.verified and found.order_id == "VT-1"
+    assert found.package == "Home Fibre"
+
+
+async def test_order_lookup_needs_an_orders_tab(sheets: FakeSheets) -> None:
+    async with httpx.AsyncClient() as http:
+        svc = provider().service_for(context(http))
+        with pytest.raises(NotConfiguredError, match="not set up"):
+            await svc.look_up_order("Murphy", "H91X2Y3")
+    assert sheets.batch.call_count == 0
+
+
+async def test_empty_or_header_only_orders_tab(sheets: FakeSheets) -> None:
+    sheets.tabs["Orders"] = []
+    async with httpx.AsyncClient() as http:
+        svc = provider().service_for(context(http, orders_tab="Orders"))
+        with pytest.raises(GoogleApiError, match="empty"):
+            await svc.look_up_order("Murphy", "H91X2Y3")
+    sheets.tabs["Orders"] = [list(ORDERS[0])]
+    async with httpx.AsyncClient() as http:
+        svc = provider().service_for(context(http, orders_tab="Orders"))
+        result = await svc.look_up_order("Murphy", "H91X2Y3")
+    assert result.verified is False
+
+
+def test_orders_tab_must_be_allowed() -> None:
+    with pytest.raises(ValidationError, match="orders_tab must be one of"):
+        SheetsConfig.model_validate(
+            sheets_config(orders_tab="Orders", allowed_tabs=["Leads"])
+        )
+
+
+async def test_orders_cache_bounded_and_drops_stale() -> None:
+    clock = FakeClock()
+    cache = OrdersCache(max_entries=2)
+
+    async def fetch() -> list[dict[str, str]]:
+        return []
+
+    for n in range(3):
+        await cache.rows((uuid.uuid4(), f"s{n}", "Orders"), clock(), fetch)
+    assert len(cache) == 2
+    clock.advance(timedelta(minutes=5))
+    await cache.rows((uuid.uuid4(), "fresh", "Orders"), clock(), fetch)
+    assert len(cache) == 1
+
+
+async def test_order_lookup_rest_compat_and_mcp(
+    app: FastAPI, client: httpx.AsyncClient, sheets: FakeSheets
+) -> None:
+    created = await create(client, orders_tab="Orders")
+    key = await issue_key(client, created.json()["id"])
+    shim_style = {"X-API-Key": key}
+    miss = await client.post(
+        f"/v1/{PROVIDER}/order_lookup",
+        headers=shim_style,
+        json={"caller_name": "Bob", "address_or_eircode": "Z9"},
+    )
+    assert miss.status_code == 200
+    assert set(miss.json()) == {"verified", "say"}
+    hit = await client.post(
+        f"/v1/{PROVIDER}/order_lookup",
+        headers={"Authorization": f"Bearer {key}"},
+        json={"caller_name": "Jane Murphy", "address_or_eircode": "H91 X2Y3"},
+    )
+    assert hit.json()["verified"] is True and hit.json()["order_id"] == "VT-1"
+    async with mcp_client(app, "http://tools/mcp/google-sheets", key) as mcp:
+        result = await mcp.call_tool(
+            "look_up_order",
+            {"caller_name": "Murphy", "address_or_eircode": "H91X2Y3"},
+        )
+        assert result.structured_content is not None
+        assert result.structured_content["verified"] is True
+
+    unconfigured = await create(client)
+    other_key = await issue_key(client, unconfigured.json()["id"])
+    conflict = await client.post(
+        f"/v1/{PROVIDER}/order_lookup",
+        headers={"Authorization": f"Bearer {other_key}"},
+        json={"caller_name": "A", "address_or_eircode": "B"},
+    )
+    assert conflict.status_code == 409
