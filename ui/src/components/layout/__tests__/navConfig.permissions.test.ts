@@ -13,6 +13,10 @@ describe("getRequiredPermission", () => {
     ["/api-keys", "api_keys:manage"],
     ["/team", "members:read"],
     ["/integrations", "integrations:read"],
+    ["/skills", "agents:read"],
+    ["/skills/abc-123", "agents:read"],
+    ["/skills/library/abc-123", "agents:read"],
+    ["/skills/new", "agents:write"],
   ])("%s requires %s", (path, permission) => {
     expect(getRequiredPermission(path)).toBe(permission);
   });

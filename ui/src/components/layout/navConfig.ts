@@ -1,5 +1,6 @@
 import {
   AudioLines,
+  BookOpen,
   CircleDollarSign,
   Cpu,
   Database,
@@ -63,6 +64,7 @@ export const NAV_SECTIONS: NavSection[] = [
       },
       { title: "Tools", url: "/tools", icon: Wrench, requires: "agents:write" },
       { title: "Integrations", url: "/integrations", icon: Plug, requires: "integrations:read" },
+      { title: "Skills", url: "/skills", icon: BookOpen, requires: "agents:read" },
       { title: "Files", url: "/files", icon: Database, requires: "agents:write" },
       { title: "Recordings", url: "/recordings", icon: AudioLines, requires: "agents:write" },
       { title: "Developers", url: "/api-keys", icon: Key, requires: "api_keys:manage" },
@@ -99,6 +101,9 @@ const PAGE_META: Record<string, PageMeta> = {
   "/telephony-configurations": { title: "Telephony", subtitle: "Providers, trunks and numbers" },
   "/tools": { title: "Tools", subtitle: "HTTP and MCP tools agents can call" },
   "/integrations": { title: "Integrations", subtitle: "Connect apps like Google Calendar to your agents" },
+  "/skills": { title: "Skills", subtitle: "Playbooks your agents load when a caller needs them" },
+  "/skills/new": { title: "New skill", subtitle: "Write a playbook your agents can load on demand" },
+  "/skills/library": { title: "Skill library", subtitle: "Platform skills shared with every workspace" },
   "/files": { title: "Files", subtitle: "Documents agents can reference" },
   "/recordings": { title: "Recordings", subtitle: "Shared audio for prompts and transitions" },
   "/api-keys": { title: "Developers", subtitle: "API keys and integration details" },
@@ -141,6 +146,7 @@ const ROUTE_PERMISSIONS: Record<string, Permission> = {
   ),
   "/workflow/create": "agents:write",
   "/campaigns/new": "campaigns:write",
+  "/skills/new": "agents:write",
   "/automation": "agents:write",
 };
 

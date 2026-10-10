@@ -9,6 +9,7 @@ import { useWorkflow } from "@/app/workflow/[workflowId]/contexts/WorkflowContex
 import type { NodeSpec } from "@/client/types.gen";
 import { DocumentBadges } from "@/components/flow/DocumentBadges";
 import { NodeEditForm, useNodeSpecs } from "@/components/flow/renderer";
+import { SkillBadges } from "@/components/flow/SkillBadges";
 import { ToolBadges } from "@/components/flow/ToolBadges";
 import { FlowNodeData } from "@/components/flow/types";
 import { Button } from "@/components/ui/button";
@@ -293,6 +294,10 @@ function CanvasPreview({
     // Default: prompt preview + tool/document badges (when spec declares them).
     const hasToolRefs = spec.properties.some((p) => p.type === "tool_refs");
     const hasDocRefs = spec.properties.some((p) => p.type === "document_refs");
+    const hasSkillRefs = spec.properties.some((p) => p.type === "skill_refs");
+    const showSkills =
+        hasSkillRefs &&
+        (Array.isArray(data.skill_uuids) || (data.preload_skill_uuids?.length ?? 0) > 0);
     return (
         <>
             <p className="text-sm text-muted-foreground line-clamp-5 leading-relaxed">
@@ -320,6 +325,18 @@ function CanvasPreview({
                     <DocumentBadges
                         documentUuids={data.document_uuids}
                         onStaleUuidsDetected={onStaleDocuments}
+                    />
+                </div>
+            )}
+            {showSkills && (
+                <div className="mt-3 pt-3 border-t border-border/50">
+                    <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-2">
+                        <LucideIcons.BookOpen className="h-3 w-3" />
+                        <span>Skills:</span>
+                    </div>
+                    <SkillBadges
+                        skillUuids={data.skill_uuids}
+                        preloadSkillUuids={data.preload_skill_uuids}
                     />
                 </div>
             )}
@@ -498,7 +515,7 @@ export const GenericNode = memo(({ data, selected, id, type }: GenericNodeProps)
         id,
         additionalData,
     });
-    const { saveWorkflow, tools, documents, recordings } = useWorkflow();
+    const { saveWorkflow, tools, documents, recordings, skills } = useWorkflow();
     const { bySpecName } = useNodeSpecs();
     const { config: appConfig } = useAppConfig();
     const spec = bySpecName.get(type);
@@ -700,6 +717,7 @@ export const GenericNode = memo(({ data, selected, id, type }: GenericNodeProps)
                                 tools: tools ?? [],
                                 documents: documents ?? [],
                                 recordings: recordings ?? [],
+                                skills: skills ?? [],
                                 mcpToolFilters:
                                     (values.mcp_tool_filters as
                                         | Record<string, string[]>

@@ -1,6 +1,6 @@
 import { createContext, useContext } from 'react';
 
-import type { DocumentResponseSchema, ToolResponse } from '@/client/types.gen';
+import type { DocumentResponseSchema, SkillSummaryResponse, ToolResponse } from '@/client/types.gen';
 import type { RecordingResponseSchema } from '@/client/types.gen';
 
 interface WorkflowContextType {
@@ -12,6 +12,8 @@ interface WorkflowContextType {
         updater: (tool: ToolResponse) => ToolResponse,
     ) => void;
     recordings?: RecordingResponseSchema[];
+    /** Active workspace skills (undefined until loaded). */
+    skills?: SkillSummaryResponse[];
     readOnly?: boolean;
 }
 

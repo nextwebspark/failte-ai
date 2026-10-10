@@ -11,8 +11,8 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 
-import { createWorkflowDraftApiV1WorkflowWorkflowIdCreateDraftPost, getWorkflowVersionsApiV1WorkflowWorkflowIdVersionsGet, listDocumentsApiV1KnowledgeBaseDocumentsGet, listRecordingsApiV1WorkflowRecordingsGet, listToolsApiV1ToolsGet } from '@/client';
-import type { DocumentResponseSchema, RecordingResponseSchema, ToolResponse, WorkflowVersionResponse } from '@/client/types.gen';
+import { createWorkflowDraftApiV1WorkflowWorkflowIdCreateDraftPost, getWorkflowVersionsApiV1WorkflowWorkflowIdVersionsGet, listDocumentsApiV1KnowledgeBaseDocumentsGet, listRecordingsApiV1WorkflowRecordingsGet, listSkillsApiV1SkillsGet, listToolsApiV1ToolsGet } from '@/client';
+import type { DocumentResponseSchema, RecordingResponseSchema, SkillSummaryResponse, ToolResponse, WorkflowVersionResponse } from '@/client/types.gen';
 import { useNodeSpecs } from "@/components/flow/renderer";
 import { FlowEdge, FlowNode, NodeType } from "@/components/flow/types";
 import { Button } from '@/components/ui/button';
@@ -105,6 +105,7 @@ function RenderWorkflow({
     const versionsFetched = useRef(false);
     const [documents, setDocuments] = useState<DocumentResponseSchema[] | undefined>(undefined);
     const [tools, setTools] = useState<ToolResponse[] | undefined>(undefined);
+    const [skills, setSkills] = useState<SkillSummaryResponse[] | undefined>(undefined);
     const [recordings, setRecordings] = useState<RecordingResponseSchema[]>([]);
     const [activeRuntimeNodeId, setActiveRuntimeNodeId] = useState<string | null>(null);
 
@@ -457,6 +458,16 @@ function RenderWorkflow({
                 } catch {
                     // Recordings API may not be available yet; silently ignore
                 }
+
+                // Fetch workspace skills for the node skill pickers
+                try {
+                    const skillsResponse = await listSkillsApiV1SkillsGet();
+                    if (skillsResponse.data) {
+                        setSkills(skillsResponse.data.skills);
+                    }
+                } catch {
+                    // Pickers then show only the stored UUIDs
+                }
             } catch (error) {
                 console.error('Failed to fetch documents and tools:', error);
             }
@@ -565,6 +576,7 @@ function RenderWorkflow({
         tools,
         updateTool,
         recordings,
+        skills,
         readOnly: isViewingHistoricalVersion,
     }), [
         guardedSaveWorkflow,
@@ -572,6 +584,7 @@ function RenderWorkflow({
         tools,
         updateTool,
         recordings,
+        skills,
         isViewingHistoricalVersion,
     ]);
 
