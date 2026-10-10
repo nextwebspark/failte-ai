@@ -26,6 +26,7 @@ import {
     connectionState,
     isSyncing,
     needsReconnect,
+    syncButtonLabel,
     syncSummary,
 } from "./messages";
 import { ProviderIcon } from "./ProviderIcon";
@@ -161,7 +162,7 @@ export function ConnectionCard({ connection, provider, hasSettings, permissions,
                             ) : (
                                 <CloudDownload aria-hidden />
                             )}
-                            {syncing ? "Syncing…" : "Sync catalogue"}
+                            {syncing ? "Syncing…" : syncButtonLabel(provider?.sync_item_label)}
                         </Button>
                     )}
                     {permissions.canWrite && state !== "pending" && (

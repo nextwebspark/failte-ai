@@ -147,7 +147,7 @@ const AUTH_MODE_LABELS: Record<string, string> = {
     oauth2: "Sign in with your account",
     service_account: "Service account key",
     api_key: "API key",
-    none: "Website address",
+    none: "No sign-in",
 };
 
 export function authModeLabel(mode: string): string {
@@ -166,6 +166,7 @@ export interface SyncInfo {
     last_synced_at?: string | null;
     item_count: number;
     last_error?: string | null;
+    note?: string | null;
 }
 
 export function isSyncing(sync: SyncInfo | null | undefined): boolean {
@@ -178,14 +179,34 @@ function shortDate(value: string): string {
     return date.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
 }
 
-/** One line describing a connection's sync, e.g. "42 products · synced 10 Oct 2026, 11:00". */
+/**
+ * One line describing a connection's sync, e.g.
+ * "42 products · last synced 10 Oct 2026, 11:00 · stopped at 2000 pages".
+ */
 export function syncSummary(sync: SyncInfo | null | undefined, itemLabel = "items"): string {
     if (!sync) return `Not synced yet. Sync to import ${itemLabel}.`;
     if (sync.status === "running") return `Syncing ${itemLabel}…`;
-    const count = `${sync.item_count} ${itemLabel}`;
-    const when = sync.last_synced_at ? ` · last synced ${shortDate(sync.last_synced_at)}` : "";
-    if (sync.status === "failed") return `Last sync failed: ${sync.last_error || "unknown error"}`;
-    return `${count}${when}`;
+    const synced = sync.last_synced_at ? shortDate(sync.last_synced_at) : null;
+    if (sync.status === "failed") {
+        const kept = synced ? ` · ${sync.item_count} ${itemLabel} from ${synced}` : "";
+        return `Last sync failed: ${sync.last_error || "unknown error"}${kept}`;
+    }
+    const parts = [`${sync.item_count} ${itemLabel}`];
+    if (synced) parts.push(`last synced ${synced}`);
+    if (sync.note) parts.push(sync.note);
+    return parts.join(" · ");
+}
+
+/** The sync button's label: "Sync products". */
+export function syncButtonLabel(itemLabel: string | null | undefined): string {
+    return itemLabel ? `Sync ${itemLabel}` : "Sync now";
+}
+
+const EMAIL = /^[^\s@]+@[^\s@]+$/;
+
+/** True for an email address (only those can be a sign-in hint). */
+export function isEmail(value: string | null | undefined): value is string {
+    return Boolean(value && EMAIL.test(value));
 }
 
 /** A function's short human label: its summary, else its name in words. */

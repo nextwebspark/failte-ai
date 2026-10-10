@@ -16,7 +16,7 @@ import {
 } from "@/components/ui/dialog";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
-import { authModeLabel, credentialFamily } from "./messages";
+import { authModeLabel, credentialFamily, isEmail } from "./messages";
 import { NoAuthConnect } from "./NoAuthConnect";
 import { OAuthConnect } from "./OAuthConnect";
 import { type ReusableKey, ServiceAccountConnect } from "./ServiceAccountConnect";
@@ -126,10 +126,19 @@ function ConnectBody({
         () => familyConnections(provider, providers, connections, "service_account"),
         [provider, providers, connections],
     );
-    const oauthAccounts = useMemo(
-        () => familyConnections(provider, providers, connections, "oauth2"),
-        [provider, providers, connections],
-    );
+    const oauthAccounts = useMemo(() => {
+        // Only email addresses can be a sign-in hint. When reconnecting, the
+        // replaced connection's account comes first (it may be in error).
+        const accounts = familyConnections(provider, providers, connections, "oauth2").filter((a) =>
+            isEmail(a.label),
+        );
+        const previous = replaces?.auth_mode === "oauth2" ? replaces.account_label : null;
+        if (!isEmail(previous)) return accounts;
+        return [
+            { connectionId: replaces?.id ?? previous, label: previous },
+            ...accounts.filter((a) => a.label !== previous),
+        ];
+    }, [provider, providers, connections, replaces]);
 
     return (
         <>
@@ -173,6 +182,7 @@ function ConnectBody({
                 <ServiceAccountConnect
                     provider={provider}
                     reusable={reusableKeys}
+                    preferNewKey={Boolean(replaces)}
                     onCancel={onClose}
                     onInstalled={(connection) => {
                         onInstalled(connection, replaces);

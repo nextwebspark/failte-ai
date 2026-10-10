@@ -51,12 +51,17 @@ export function useIntegrations(enabled: boolean): IntegrationsState {
     const [unavailable, setUnavailable] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const hasFetched = useRef(false);
+    // Bumped by every load and every local update: a response is applied only
+    // if nothing newer happened meanwhile, so a slow (e.g. polling) request
+    // can never revert fresher state.
+    const connectionsVersion = useRef(0);
 
     const loadConnections = useCallback(async (): Promise<string | null> => {
+        const version = ++connectionsVersion.current;
         try {
             const response = await listConnectionsApiV1IntegrationsConnectionsGet();
             if (response.error) return integrationErrorMessage(response.error, "Couldn't load your connections");
-            setConnections(response.data?.connections ?? []);
+            if (version === connectionsVersion.current) setConnections(response.data?.connections ?? []);
             return null;
         } catch {
             return NETWORK_ERROR;
@@ -112,6 +117,7 @@ export function useIntegrations(enabled: boolean): IntegrationsState {
     }, [enabled, authLoading, user, refresh]);
 
     const upsertConnection = useCallback((connection: IntegrationConnectionResponse) => {
+        connectionsVersion.current += 1;
         setConnections((current) => {
             const index = current.findIndex((c) => c.id === connection.id);
             if (index === -1) return [connection, ...current];

@@ -26,16 +26,12 @@ export interface ReusableKey {
 
 const NEW_KEY = "__new__";
 
-/** What to share with the service account, per provider. */
-const SHARE_HINTS: Record<string, string> = {
-    "google-sheets": "the spreadsheet",
-    "google-calendar": "the calendar",
-};
-
 interface ServiceAccountConnectProps {
     provider: IntegrationProvider;
     /** Service accounts already connected for this provider's family. */
     reusable?: ReusableKey[];
+    /** Start on "Use a different key" (e.g. when reconnecting). */
+    preferNewKey?: boolean;
     onCancel: () => void;
     onInstalled: (connection: IntegrationConnectionResponse) => void;
 }
@@ -46,9 +42,20 @@ interface ServiceAccountConnectProps {
  * the same family, reusing it is the default: the key is copied server-side
  * and never reaches the browser.
  */
-export function ServiceAccountConnect({ provider, reusable = [], onCancel, onInstalled }: ServiceAccountConnectProps) {
-    const [keySource, setKeySource] = useState<string>(() => reusable[0]?.connectionId ?? NEW_KEY);
-    const reusing = reusable.find((r) => r.connectionId === keySource) ?? null;
+export function ServiceAccountConnect({
+    provider,
+    reusable = [],
+    preferNewKey = false,
+    onCancel,
+    onInstalled,
+}: ServiceAccountConnectProps) {
+    const [chosenSource, setKeySource] = useState<string>(() =>
+        preferNewKey ? NEW_KEY : (reusable[0]?.connectionId ?? NEW_KEY),
+    );
+    // A connection that went away (removed, failed) since the choice was made
+    // falls back to a new key.
+    const reusing = reusable.find((r) => r.connectionId === chosenSource) ?? null;
+    const keySource = reusing ? chosenSource : NEW_KEY;
     const fields = useMemo(() => fieldsFromSchema(provider.config_schema), [provider]);
     // The key text lives only in this component's state; it is never logged.
     const [keyText, setKeyText] = useState("");
@@ -163,7 +170,7 @@ export function ServiceAccountConnect({ provider, reusable = [], onCancel, onIns
                     {reusing && (
                         <Panel accent="sky" padding="sm">
                             <p className="text-sm">
-                                Share {SHARE_HINTS[provider.id] ?? "what this integration needs"} with{" "}
+                                Share {provider.share_hint ?? "what this integration needs"} with{" "}
                                 <span className="font-mono text-xs">{reusing.label}</span>, the same as before.
                             </p>
                         </Panel>

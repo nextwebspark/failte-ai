@@ -462,6 +462,7 @@ describe("IntegrationsPage", () => {
             description: "Rows.",
             icon: "sheet",
             auth_family: "google",
+            share_hint: "the spreadsheet",
             auth_modes: ["oauth2", "service_account"],
             scopes: [],
             tools: [{ name: "find_rows", description: "Long agent instructions", summary: "Find rows" }],
@@ -558,6 +559,47 @@ describe("IntegrationsPage", () => {
             });
         });
 
+        it("reconnecting preselects the replaced account and a new key", async () => {
+            const broken = connection({
+                id: OLD_ID,
+                provider: SHEETS.id,
+                status: "error",
+                error_code: "grant_revoked",
+                account_label: "bob@acme.test",
+            });
+            mocks.listConnections.mockResolvedValue({
+                data: {
+                    connections: [
+                        connection({}),
+                        broken,
+                        connection({
+                            id: "5e4f3a2b-1c0d-4e9f-8a7b-6c5d4e3f2a1b",
+                            auth_mode: "service_account",
+                            account_label: "booking@acme.iam.gserviceaccount.com",
+                        }),
+                        // Not an email: never offered as a sign-in hint.
+                        connection({ id: "6e4f3a2b-1c0d-4e9f-8a7b-6c5d4e3f2a1b", account_label: "Shared inbox" }),
+                    ],
+                },
+            });
+            mocks.listProviderApps.mockResolvedValue({ data: { provider_apps: [{ ...APP, provider: "google" }] } });
+            render(<IntegrationsPage />);
+            const reconnect = await screen.findAllByRole("button", { name: /Reconnect/ });
+            fireEvent.click(reconnect[0]);
+
+            expect(
+                (await screen.findByRole("radio", { name: "Continue as bob@acme.test" })).getAttribute("aria-checked"),
+            ).toBe("true");
+            expect(screen.getByRole("radio", { name: "Continue as alice@acme.test" })).toBeTruthy();
+            expect(screen.queryByRole("radio", { name: /Shared inbox/ })).toBeNull();
+
+            chooseTab(/Service account key/);
+            expect(
+                (await screen.findByRole("radio", { name: "Use a different key" })).getAttribute("aria-checked"),
+            ).toBe("true");
+            expect(screen.getByLabelText("Service account key (JSON)")).toBeTruthy();
+        });
+
         it("signs in with another account without a login hint", async () => {
             mocks.listConnections.mockResolvedValue({ data: { connections: [connection({})] } });
             mocks.listProviderApps.mockResolvedValue({ data: { provider_apps: [{ ...APP, provider: "google" }] } });
@@ -635,7 +677,7 @@ describe("IntegrationsPage", () => {
             render(<IntegrationsPage />);
 
             expect(await screen.findByText("Not synced yet. Sync to import products.")).toBeTruthy();
-            fireEvent.click(screen.getByRole("button", { name: "Sync catalogue" }));
+            fireEvent.click(screen.getByRole("button", { name: "Sync products" }));
             await waitFor(() =>
                 expect(mocks.sync).toHaveBeenCalledWith({ path: { connection_id: NEW_ID } }),
             );
@@ -645,16 +687,19 @@ describe("IntegrationsPage", () => {
             expect(await screen.findByText(/^42 products · last synced/, {}, { timeout: 6000 })).toBeTruthy();
         }, 10000);
 
-        it("reports a sync that is already running", async () => {
-            mocks.listConnections.mockResolvedValue({ data: { connections: [shopConnection(DONE)] } });
+        it("shows a sync that is already running (409) instead of the old status", async () => {
+            mocks.listConnections
+                .mockResolvedValueOnce({ data: { connections: [shopConnection(DONE)] } })
+                .mockResolvedValue({ data: { connections: [shopConnection(RUNNING)] } });
             mocks.sync.mockResolvedValue({
                 error: { detail: "a sync is already running for this connection", code: "integration_conflict" },
             });
             render(<IntegrationsPage />);
-            fireEvent.click(await screen.findByRole("button", { name: "Sync catalogue" }));
+            fireEvent.click(await screen.findByRole("button", { name: "Sync products" }));
             await waitFor(() =>
                 expect(toast.error).toHaveBeenCalledWith("a sync is already running for this connection"),
             );
+            expect(await screen.findByText("Syncing products…")).toBeTruthy();
         });
 
         it("hides the sync button from read-only roles but shows the status", async () => {
@@ -663,8 +708,10 @@ describe("IntegrationsPage", () => {
                 data: { connections: [shopConnection({ ...DONE, status: "failed", last_error: "robots.txt answered HTTP 503" })] },
             });
             render(<IntegrationsPage />);
-            expect(await screen.findByText("Last sync failed: robots.txt answered HTTP 503")).toBeTruthy();
-            expect(screen.queryByRole("button", { name: "Sync catalogue" })).toBeNull();
+            expect(
+                await screen.findByText(/^Last sync failed: robots.txt answered HTTP 503 · 42 products from /),
+            ).toBeTruthy();
+            expect(screen.queryByRole("button", { name: "Sync products" })).toBeNull();
         });
 
         it("connects a public website without a secret and starts the first sync", async () => {

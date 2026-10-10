@@ -28,10 +28,10 @@ interface ProviderCardProps {
 export function ProviderCard({ provider, connectedCount, canConnect, onConnect }: ProviderCardProps) {
     const modes = connectableModes(provider);
     const functionsId = `provider-${provider.id}-functions`;
+    const listId = `${functionsId}-list`;
     const [expanded, setExpanded] = useState(false);
     const tools = provider.tools;
     const shown = expanded ? tools : tools.slice(0, COLLAPSED_TOOLS);
-    const hidden = tools.length - shown.length;
 
     return (
         <Card className="flex flex-col">
@@ -48,21 +48,21 @@ export function ProviderCard({ provider, connectedCount, canConnect, onConnect }
                         <h3 id={functionsId} className="mb-1.5 font-mono text-[11px] uppercase tracking-wide text-ink-3">
                             What your agents can do
                         </h3>
-                        <ul aria-labelledby={functionsId} className="space-y-0.5 text-sm text-ink-2">
+                        <ul id={listId} aria-labelledby={functionsId} className="space-y-0.5 text-sm text-ink-2">
                             {shown.map((tool: IntegrationToolSummary) => (
                                 <li key={tool.name} title={tool.name}>
                                     {humanToolName(tool)}
                                 </li>
                             ))}
                         </ul>
-                        {(hidden > 0 || expanded) && tools.length > COLLAPSED_TOOLS && (
+                        {tools.length > COLLAPSED_TOOLS && (
                             <Button
                                 type="button"
                                 variant="link"
                                 size="sm"
                                 className="mt-1 h-auto px-0 text-xs"
                                 aria-expanded={expanded}
-                                aria-controls={functionsId}
+                                aria-controls={listId}
                                 onClick={() => setExpanded((v) => !v)}
                             >
                                 {expanded ? "Show fewer" : `Show all ${tools.length}`}

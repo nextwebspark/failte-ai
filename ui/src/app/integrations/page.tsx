@@ -27,6 +27,7 @@ import { SectionHeading, SectionHint } from "@/components/ui/section-heading";
 import { Skeleton } from "@/components/ui/skeleton";
 import { BRAND } from "@/config/brand";
 import { useOrgConfig } from "@/context/OrgConfigContext";
+import { errorCodeFromError } from "@/lib/apiError";
 
 import { ConfigDialog } from "./ConfigDialog";
 import { ConnectDialog, type ConnectTarget } from "./ConnectDialog";
@@ -43,6 +44,7 @@ import { clearPendingOAuth, takePendingOAuth } from "./pendingOAuth";
 import { ProviderCard } from "./ProviderCard";
 import { fieldsFromSchema, hasRequiredConfig } from "./schemaForm";
 import { useIntegrations } from "./useIntegrations";
+import { useSyncPolling } from "./useSyncPolling";
 
 interface ConfigTarget {
     connection: IntegrationConnectionResponse;
@@ -50,8 +52,6 @@ interface ConfigTarget {
 }
 
 const NETWORK_ERROR = "Couldn't reach the server. Please try again.";
-/** How often connections are reloaded while a sync runs. */
-const SYNC_POLL_MS = 4000;
 const NOT_CONFIRMED =
     "This sign-in can't be confirmed here. Finish connecting in the same browser tab you started from, within 10 minutes.";
 
@@ -162,11 +162,7 @@ function IntegrationsScreen() {
 
     // While any sync runs, reload the connections so its status updates.
     const anySyncing = connections.some((c) => isSyncing(c.sync));
-    useEffect(() => {
-        if (!anySyncing) return;
-        const timer = window.setInterval(() => void reloadConnectionsQuietly(), SYNC_POLL_MS);
-        return () => window.clearInterval(timer);
-    }, [anySyncing, reloadConnectionsQuietly]);
+    const pollingGaveUp = useSyncPolling(anySyncing, reloadConnectionsQuietly);
 
     const startSync = useCallback(
         async (connection: IntegrationConnectionResponse) => {
@@ -175,13 +171,17 @@ function IntegrationsScreen() {
             });
             if (response.error || !response.data) {
                 toast.error(integrationErrorMessage(response.error, "Couldn't start the sync"));
+                // Already running (maybe started elsewhere): show it, and poll.
+                if (errorCodeFromError(response.error) === "integration_conflict") {
+                    await reloadConnectionsQuietly();
+                }
                 return;
             }
             upsertConnection({ ...connection, sync: response.data });
             const label = providerById.get(connection.provider)?.sync_item_label ?? "data";
             toast.success(`Importing ${label} in the background`);
         },
-        [providerById, upsertConnection],
+        [providerById, reloadConnectionsQuietly, upsertConnection],
     );
 
     // -- connection actions ------------------------------------------------------
@@ -318,6 +318,11 @@ function IntegrationsScreen() {
                             <SectionHeading action={<SectionHint>{connections.length} total</SectionHint>}>
                                 Your connections
                             </SectionHeading>
+                            {pollingGaveUp && (
+                                <p className="mb-2 text-sm text-ink-2" role="status">
+                                    Still syncing. Refresh the page to check on it.
+                                </p>
+                            )}
                             {connections.length === 0 ? (
                                 <Panel padding="sm">
                                     <p className="text-sm text-ink-2">

@@ -8,12 +8,14 @@ import {
     credentialFamily,
     humanToolName,
     integrationErrorMessage,
+    isEmail,
     isSyncing,
     isUnavailableError,
     needsReconnect,
     oauthFailureMessage,
     parseIntegrationReturn,
     scopeLabel,
+    syncButtonLabel,
     syncSummary,
     urlWithoutReturnParams,
 } from "./messages";
@@ -176,11 +178,32 @@ describe("sync helpers", () => {
         expect(syncSummary({ ...base, status: "failed", last_error: "robots.txt answered HTTP 503" })).toBe(
             "Last sync failed: robots.txt answered HTTP 503",
         );
-        const done = syncSummary(
-            { ...base, status: "succeeded", item_count: 42, last_synced_at: "2026-10-10T11:00:00Z" },
+        const failedAfterSuccess = syncSummary(
+            {
+                ...base,
+                status: "failed",
+                item_count: 42,
+                last_error: "boom",
+                last_synced_at: "2026-10-10T11:00:00Z",
+            },
             "products",
         );
-        expect(done.startsWith("42 products · last synced ")).toBe(true);
+        expect(failedAfterSuccess).toMatch(/^Last sync failed: boom · 42 products from /);
+        const done = syncSummary(
+            {
+                ...base,
+                status: "succeeded",
+                item_count: 42,
+                last_synced_at: "2026-10-10T11:00:00Z",
+                note: "stopped at 2000 pages",
+            },
+            "products",
+        );
+        expect(done).toMatch(/^42 products · last synced .* · stopped at 2000 pages$/);
+        expect(syncButtonLabel("products")).toBe("Sync products");
+        expect(syncButtonLabel(null)).toBe("Sync now");
+        expect(isEmail("alice@acme.test")).toBe(true);
+        expect(isEmail("Alice's account")).toBe(false);
     });
 
     it("keys credentials by family", () => {

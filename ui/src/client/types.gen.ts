@@ -4265,6 +4265,12 @@ export type IntegrationProvider = {
      */
     auth_family?: string | null;
     /**
+     * Share Hint
+     *
+     * What a service account must be given access to, e.g. 'the spreadsheet'.
+     */
+    share_hint?: string | null;
+    /**
      * Auth Modes
      */
     auth_modes: Array<string>;
@@ -4335,6 +4341,12 @@ export type IntegrationSyncStatus = {
      * Last Error
      */
     last_error?: string | null;
+    /**
+     * Note
+     *
+     * Caveat of a successful sync, e.g. 'stopped at 2000 pages'.
+     */
+    note?: string | null;
 };
 
 /**

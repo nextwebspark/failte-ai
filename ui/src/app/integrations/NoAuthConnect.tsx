@@ -59,7 +59,7 @@ export function NoAuthConnect({ provider, onCancel, onInstalled }: NoAuthConnect
             noValidate
         >
             <p className="text-sm text-ink-2">
-                No sign-in is needed: this integration only reads public pages.
+                No sign-in or key is needed for this integration.
                 {syncs && ` Once connected, its ${provider.sync_item_label ?? "data"} are imported in the background.`}
             </p>
             {fields.length > 0 && (

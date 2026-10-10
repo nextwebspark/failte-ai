@@ -61,7 +61,9 @@ export function OAuthConnect({
     const [selected, setSelected] = useState<string>(() => apps[0]?.id ?? NEW_CLIENT);
     // "Continue as alice@…": Google skips the account chooser and asks only for
     // this integration's new permissions. Each integration keeps its own grant.
-    const [account, setAccount] = useState<string>(() => knownAccounts[0]?.label ?? OTHER_ACCOUNT);
+    const [chosenAccount, setAccount] = useState<string>(() => knownAccounts[0]?.label ?? OTHER_ACCOUNT);
+    // An account that is no longer offered falls back to "a different account".
+    const account = knownAccounts.some((k) => k.label === chosenAccount) ? chosenAccount : OTHER_ACCOUNT;
     const loginHint = account === OTHER_ACCOUNT ? undefined : account;
     const sharedClient = !addingClientFor(selected) && apps.length > 0 && family !== provider.id;
     const [clientId, setClientId] = useState("");
