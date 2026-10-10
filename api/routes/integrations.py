@@ -28,6 +28,7 @@ from api.schemas.integrations import (
     IntegrationCatalogResponse,
     IntegrationConnectionListResponse,
     IntegrationConnectionResponse,
+    IntegrationSyncStatus,
     IntegrationTestResponse,
     ProviderAppListResponse,
     ProviderAppResponse,
@@ -160,6 +161,18 @@ async def test_connection(
 ) -> IntegrationTestResponse:
     """Check the connection against the provider and record its status."""
     return await integrations.test(_actor(membership), connection_id)
+
+
+@router.post("/connections/{connection_id}/sync", status_code=status.HTTP_202_ACCEPTED)
+async def sync_connection(
+    connection_id: uuid.UUID,
+    membership: Writer,
+    integrations: Integrations,
+) -> IntegrationSyncStatus:
+    """Start importing the connection's data in the background (providers
+    with the ``sync`` capability, e.g. a website catalogue). 409 while a sync
+    of it is running; poll the connection list for its status."""
+    return await integrations.start_sync(_actor(membership), connection_id)
 
 
 @router.delete("/connections/{connection_id}", status_code=status.HTTP_204_NO_CONTENT)

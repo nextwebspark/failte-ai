@@ -8,6 +8,8 @@ import type { IntegrationConnectionResponse, IntegrationProvider } from "@/clien
 import { Button } from "@/components/ui/button";
 import { DialogFooter } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
+import { Panel } from "@/components/ui/panel";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Textarea } from "@/components/ui/textarea";
 
 import { ConfigSchemaForm } from "./ConfigSchemaForm";
@@ -15,14 +17,45 @@ import { integrationErrorMessage } from "./messages";
 import { fieldsFromSchema, type FormErrors, type FormValues, initialValues, valuesToConfig } from "./schemaForm";
 import { MAX_KEY_BYTES, parseServiceAccountKey } from "./serviceAccount";
 
+/** A same-family service-account connection whose key can be reused. */
+export interface ReusableKey {
+    connectionId: string;
+    /** The service account's email. */
+    label: string;
+}
+
+const NEW_KEY = "__new__";
+
 interface ServiceAccountConnectProps {
     provider: IntegrationProvider;
+    /** Service accounts already connected for this provider's family. */
+    reusable?: ReusableKey[];
+    /** Start on "Use a different key" (e.g. when reconnecting). */
+    preferNewKey?: boolean;
     onCancel: () => void;
     onInstalled: (connection: IntegrationConnectionResponse) => void;
 }
 
-/** Connect with a service-account JSON key plus the provider's settings. */
-export function ServiceAccountConnect({ provider, onCancel, onInstalled }: ServiceAccountConnectProps) {
+/**
+ * Connect with a service-account JSON key plus the provider's settings. When
+ * the workspace already connected a service account for another provider of
+ * the same family, reusing it is the default: the key is copied server-side
+ * and never reaches the browser.
+ */
+export function ServiceAccountConnect({
+    provider,
+    reusable = [],
+    preferNewKey = false,
+    onCancel,
+    onInstalled,
+}: ServiceAccountConnectProps) {
+    const [chosenSource, setKeySource] = useState<string>(() =>
+        preferNewKey ? NEW_KEY : (reusable[0]?.connectionId ?? NEW_KEY),
+    );
+    // A connection that went away (removed, failed) since the choice was made
+    // falls back to a new key.
+    const reusing = reusable.find((r) => r.connectionId === chosenSource) ?? null;
+    const keySource = reusing ? chosenSource : NEW_KEY;
     const fields = useMemo(() => fieldsFromSchema(provider.config_schema), [provider]);
     // The key text lives only in this component's state; it is never logged.
     const [keyText, setKeyText] = useState("");
@@ -58,21 +91,32 @@ export function ServiceAccountConnect({ provider, onCancel, onInstalled }: Servi
     };
 
     const install = async () => {
-        setKeyTouched(true);
         const { config, errors: nextErrors } = valuesToConfig(fields, values);
         setErrors(nextErrors);
-        if (fileError || !parsed.ok || Object.keys(nextErrors).length > 0) return;
+        if (!reusing) {
+            setKeyTouched(true);
+            if (fileError || !parsed.ok) return;
+        }
+        if (Object.keys(nextErrors).length > 0) return;
         setInstalling(true);
         setFormError(null);
         try {
             const response = await installIntegrationApiV1IntegrationsConnectionsPost({
-                body: {
-                    provider: provider.id,
-                    auth_mode: "service_account",
-                    secret: parsed.key,
-                    account_label: parsed.clientEmail,
-                    config,
-                },
+                body: reusing
+                    ? {
+                          provider: provider.id,
+                          auth_mode: "service_account",
+                          reuse_secret_from: reusing.connectionId,
+                          account_label: reusing.label,
+                          config,
+                      }
+                    : {
+                          provider: provider.id,
+                          auth_mode: "service_account",
+                          secret: parsed.ok ? parsed.key : {},
+                          account_label: parsed.ok ? parsed.clientEmail : undefined,
+                          config,
+                      },
             });
             if (response.error || !response.data) {
                 setFormError(integrationErrorMessage(response.error, "Couldn't connect with this key"));
@@ -96,6 +140,45 @@ export function ServiceAccountConnect({ provider, onCancel, onInstalled }: Servi
             }}
             noValidate
         >
+            {reusable.length > 0 && (
+                <div className="grid gap-2">
+                    <span id="sa-source-label" className="text-sm font-medium">
+                        Service account
+                    </span>
+                    <RadioGroup
+                        value={keySource}
+                        onValueChange={(v) => setKeySource(v)}
+                        aria-labelledby="sa-source-label"
+                        className="gap-2"
+                        disabled={installing}
+                    >
+                        {reusable.map((r) => (
+                            <div key={r.connectionId} className="flex items-center gap-2">
+                                <RadioGroupItem value={r.connectionId} id={`sa-reuse-${r.connectionId}`} />
+                                <Label htmlFor={`sa-reuse-${r.connectionId}`} className="font-normal">
+                                    Use the same service account (<span className="font-mono text-xs">{r.label}</span>)
+                                </Label>
+                            </div>
+                        ))}
+                        <div className="flex items-center gap-2">
+                            <RadioGroupItem value={NEW_KEY} id="sa-reuse-new" />
+                            <Label htmlFor="sa-reuse-new" className="font-normal">
+                                Use a different key
+                            </Label>
+                        </div>
+                    </RadioGroup>
+                    {reusing && (
+                        <Panel accent="sky" padding="sm">
+                            <p className="text-sm">
+                                Share {provider.share_hint ?? "what this integration needs"} with{" "}
+                                <span className="font-mono text-xs">{reusing.label}</span>, the same as before.
+                            </p>
+                        </Panel>
+                    )}
+                </div>
+            )}
+
+            {!reusing && (
             <div className="grid gap-2">
                 <Label htmlFor="sa-key">Service account key (JSON)</Label>
                 <p className="text-xs text-muted-foreground">
@@ -152,6 +235,7 @@ export function ServiceAccountConnect({ provider, onCancel, onInstalled }: Servi
                     )
                 )}
             </div>
+            )}
 
             {fields.length > 0 && (
                 <div className="grid gap-3">

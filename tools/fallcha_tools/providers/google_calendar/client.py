@@ -1,103 +1,61 @@
-"""Thin, typed wrappers over the Google Calendar and Sheets REST APIs.
+"""Thin, typed wrappers over the Google Calendar REST API.
 
-Each request uses a short timeout (voice calls cannot wait), and every
-failure becomes a :class:`GoogleApiError` with a speakable, secret-free
-message. Raw Google bodies are never returned or logged.
+The transport (tokens, timeouts, error mapping) is the shared
+:class:`~fallcha_tools.providers.google_common.http.GoogleHttp`.
 """
 
 from __future__ import annotations
 
-import asyncio
-from collections.abc import Mapping, Sequence
-from dataclasses import dataclass, field
+from collections.abc import Mapping
+from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
 from typing import Any
-from urllib.parse import quote
 
-import httpx
 from loguru import logger
 from pydantic import JsonValue
 
-from fallcha_tools.providers.google_calendar.credentials import GoogleCredentialsSource
-from fallcha_tools.providers.google_calendar.errors import GoogleApiError
-
-CALENDAR_API = "https://www.googleapis.com/calendar/v3"
-SHEETS_API = "https://sheets.googleapis.com/v4/spreadsheets"
-# Read-only on purpose: the agent must never be able to change an order.
-SHEETS_READONLY_SCOPE = "https://www.googleapis.com/auth/spreadsheets.readonly"
-CALENDAR_SCOPE = "https://www.googleapis.com/auth/calendar"
-# OAuth2 connections ask for these narrower scopes instead of CALENDAR_SCOPE:
-# events covers insert/get/patch/delete; readonly covers freeBusy and the
-# calendar's metadata (connection test).
-CALENDAR_EVENTS_SCOPE = "https://www.googleapis.com/auth/calendar.events"
-CALENDAR_READONLY_SCOPE = "https://www.googleapis.com/auth/calendar.readonly"
-SHEETS_SCOPE = "https://www.googleapis.com/auth/spreadsheets"
-
-DEFAULT_TIMEOUT = httpx.Timeout(4.0, connect=2.0)
-# Nothing was sent to the calendar yet, so retrying is always safe.
-SIGN_IN_TOO_SLOW = "signing in to Google took too long; please try again"
-
-_RATE_LIMIT_REASONS = frozenset(
-    {"rateLimitExceeded", "userRateLimitExceeded", "quotaExceeded"}
+from fallcha_tools.providers.google_common.errors import GoogleApiError
+from fallcha_tools.providers.google_common.http import (
+    DEFAULT_TIMEOUT,
+    SIGN_IN_TOO_SLOW,
+    Budget,
+    GoogleHttp,
+    path_segment,
 )
+from fallcha_tools.providers.google_common.scopes import (
+    CALENDAR_API,
+    CALENDAR_EVENTS_SCOPE,
+    CALENDAR_READONLY_SCOPE,
+    CALENDAR_SCOPE,
+)
+
+__all__ = [
+    "CALENDAR_API",
+    "CALENDAR_EVENTS_SCOPE",
+    "CALENDAR_READONLY_SCOPE",
+    "CALENDAR_SCOPE",
+    "DEFAULT_TIMEOUT",
+    "SIGN_IN_TOO_SLOW",
+    "Budget",
+    "Busy",
+    "GoogleClient",
+    "Resource",
+]
 
 
 class Resource(StrEnum):
     CALENDAR = "calendar"
     EVENT = "appointment"
-    SHEET = "orders sheet"
 
 
 Busy = tuple[datetime, datetime]
 
 
 @dataclass(frozen=True, slots=True)
-class Budget:
-    """Time left for a sequence of requests that must not be cut off midway.
-
-    Each request gets the remaining time as its timeout; callers check
-    :meth:`allows_request` before starting another one.
-    """
-
-    deadline_at: float  # event-loop time
-    min_seconds: float
-
-    def remaining(self) -> float:
-        return self.deadline_at - asyncio.get_running_loop().time()
-
-    def allows_request(self) -> bool:
-        return self.remaining() >= self.min_seconds
-
-    def timeout(self) -> httpx.Timeout:
-        left = max(self.remaining(), 0.001)
-        return httpx.Timeout(left, connect=min(2.0, left))
-
-
-def _path(segment: str) -> str:
-    return quote(segment, safe="")
-
-
-def _reason(response: httpx.Response) -> str:
-    try:
-        error = response.json().get("error", {})
-        if isinstance(error, dict):
-            errors = error.get("errors") or [{}]
-            return str(errors[0].get("reason") or error.get("status") or "")
-    except (ValueError, AttributeError, IndexError):
-        pass
-    return ""
-
-
-@dataclass(frozen=True, slots=True)
-class GoogleClient:
-    """Calls Google as one connection. ``account_hint`` (e.g. the service
-    account's email) is only logged; see ``CalendarService.check_access``."""
-
-    http: httpx.AsyncClient
-    credentials: GoogleCredentialsSource
-    account_hint: str | None = None
-    timeout: httpx.Timeout = field(default_factory=lambda: DEFAULT_TIMEOUT)
+class GoogleClient(GoogleHttp):
+    """Calendar calls as one connection. ``account_hint`` is only
+    logged; see ``CalendarService.check_access``."""
 
     async def free_busy(
         self, calendar_id: str, start: datetime, end: datetime, timezone: str
@@ -148,7 +106,7 @@ class GoogleClient:
         """
         response = await self._send(
             "POST",
-            f"{CALENDAR_API}/calendars/{_path(calendar_id)}/events",
+            f"{CALENDAR_API}/calendars/{path_segment(calendar_id)}/events",
             (CALENDAR_SCOPE,),
             json=dict(event),
             budget=budget,
@@ -209,151 +167,16 @@ class GoogleClient:
     async def calendar_summary(self, calendar_id: str) -> str:
         body = await self._json(
             "GET",
-            f"{CALENDAR_API}/calendars/{_path(calendar_id)}",
+            f"{CALENDAR_API}/calendars/{path_segment(calendar_id)}",
             (CALENDAR_SCOPE,),
             Resource.CALENDAR,
         )
         return str(body.get("summary") or calendar_id)
 
-    async def sheet_values(self, sheet_id: str, a1_range: str) -> list[list[str]]:
-        body = await self._json(
-            "GET",
-            f"{SHEETS_API}/{_path(sheet_id)}/values/{_path(a1_range)}",
-            (SHEETS_READONLY_SCOPE,),
-            Resource.SHEET,
-        )
-        values = body.get("values") or []
-        return [[str(cell) for cell in row] for row in values if isinstance(row, list)]
-
-    async def sheet_title(self, sheet_id: str) -> str:
-        body = await self._json(
-            "GET",
-            f"{SHEETS_API}/{_path(sheet_id)}",
-            (SHEETS_READONLY_SCOPE,),
-            Resource.SHEET,
-            params={"fields": "properties.title"},
-        )
-        return str((body.get("properties") or {}).get("title") or sheet_id)
-
     def _event_url(self, calendar_id: str, event_id: str) -> str:
-        return f"{CALENDAR_API}/calendars/{_path(calendar_id)}/events/{_path(event_id)}"
+        calendar = path_segment(calendar_id)
+        return f"{CALENDAR_API}/calendars/{calendar}/events/{path_segment(event_id)}"
 
-    async def _send(
-        self,
-        method: str,
-        url: str,
-        scopes: Sequence[str],
-        *,
-        json: Mapping[str, Any] | None = None,
-        params: Mapping[str, str] | None = None,
-        budget: Budget | None = None,
-    ) -> httpx.Response:
-        response = await self._attempt(method, url, scopes, json, params, budget)
-        if response.status_code == 401:
-            # The cached token may have been revoked early: mint once more,
-            # unless a budgeted call has no time left for a mint and a retry.
-            self.credentials.invalidate(scopes)
-            if budget is None or budget.allows_request():
-                response = await self._attempt(
-                    method, url, scopes, json, params, budget
-                )
-        return response
-
-    async def _attempt(
-        self,
-        method: str,
-        url: str,
-        scopes: Sequence[str],
-        json: Mapping[str, Any] | None,
-        params: Mapping[str, str] | None,
-        budget: Budget | None,
-    ) -> httpx.Response:
-        token = await self._token(scopes, budget)
-        try:
-            return await self.http.request(
-                method,
-                url,
-                headers={"Authorization": f"Bearer {token}"},
-                json=json,
-                params=params,
-                timeout=budget.timeout() if budget is not None else self.timeout,
-            )
-        except httpx.TimeoutException:
-            raise GoogleApiError(
-                "Google did not respond in time", retryable=True
-            ) from None
-        except httpx.HTTPError:
-            raise GoogleApiError("could not reach Google", retryable=True) from None
-
-    async def _token(self, scopes: Sequence[str], budget: Budget | None) -> str:
-        """An access token; within ``budget`` when one is given. A token
-        refresh that outlives the budget keeps running (it is shielded) and
-        serves the next call."""
-        if budget is None:
-            return await self.credentials.access_token(scopes)
-        try:
-            async with asyncio.timeout(max(budget.remaining(), 0.0)):
-                token = await self.credentials.access_token(scopes)
-        except TimeoutError:
-            raise GoogleApiError(SIGN_IN_TOO_SLOW) from None
-        if not budget.allows_request():
-            raise GoogleApiError(SIGN_IN_TOO_SLOW)
-        return token
-
-    async def _json(
-        self,
-        method: str,
-        url: str,
-        scopes: Sequence[str],
-        resource: Resource,
-        *,
-        json: Mapping[str, Any] | None = None,
-        params: Mapping[str, str] | None = None,
-        missing_ok: bool = False,
-        budget: Budget | None = None,
-    ) -> dict[str, Any]:
-        response = await self._send(
-            method, url, scopes, json=json, params=params, budget=budget
-        )
-        if missing_ok and response.status_code in (404, 410):
-            return {}
-        if response.status_code >= 400:
-            raise self._error(response, resource)
-        try:
-            body = response.json()
-        except ValueError:
-            raise GoogleApiError("Google returned an unreadable response") from None
-        if not isinstance(body, dict):
-            raise GoogleApiError("Google returned an unreadable response")
-        return body
-
-    def _error(self, response: httpx.Response, resource: Resource) -> GoogleApiError:
-        status, reason = response.status_code, _reason(response)
-        logger.warning(
-            "google api {} failed: {} {} (as {})",
-            resource,
-            status,
-            reason,
-            self.account_hint,
-        )
-        if status == 429 or reason in _RATE_LIMIT_REASONS:
-            return GoogleApiError("Google is rate limiting requests; please try again")
-        if status == 401:
-            return GoogleApiError("Google rejected the connection's credentials")
-        if status in (403, 404):
-            return self._access_error(resource, not_found=status == 404)
-        if status >= 500:
-            return GoogleApiError("Google is temporarily unavailable; please try again")
-        return GoogleApiError(f"Google rejected the {resource} request (HTTP {status})")
-
-    def _access_error(self, resource: Resource, *, not_found: bool) -> GoogleApiError:
-        problem = "was not found" if not_found else "is not accessible"
-        if resource == Resource.EVENT:
-            return GoogleApiError(f"the {resource} {problem}")
-        # Callers never see which Google account is used; admins get it from
-        # the connection test (see CalendarService.check_access).
-        bare = f"the {resource} {problem}"
-        return GoogleApiError(
-            f"{bare}; it may not be shared with this connection",
-            access_problem=bare,
-        )
+    def _shared_resource(self, resource: str) -> bool:
+        # An event is not shared on its own: "not found" just means gone.
+        return resource != Resource.EVENT

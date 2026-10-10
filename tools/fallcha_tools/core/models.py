@@ -17,6 +17,7 @@ from sqlalchemy import (
     Enum,
     ForeignKey,
     Index,
+    Integer,
     MetaData,
     String,
     Text,
@@ -33,6 +34,9 @@ class AuthMode(StrEnum):
     OAUTH2 = "oauth2"
     SERVICE_ACCOUNT = "service_account"
     API_KEY = "api_key"
+    # Public data only (e.g. a website's catalogue): the connection holds no
+    # secret, but tool calls still need the connection key.
+    NONE = "none"
 
 
 class ConnectionStatus(StrEnum):
@@ -51,6 +55,12 @@ class ConnectionErrorCode(StrEnum):
     GRANT_REVOKED = "grant_revoked"
     CLIENT_REJECTED = "client_rejected"
     CLIENT_MISSING = "client_missing"
+
+
+class SyncStatus(StrEnum):
+    RUNNING = "running"
+    SUCCEEDED = "succeeded"
+    FAILED = "failed"
 
 
 def _str_enum(enum_cls: type[StrEnum], name: str) -> Enum:
@@ -210,3 +220,40 @@ class OAuthState(Base):
     expires_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, index=True
     )
+
+
+class ConnectionSync(Base):
+    """The latest background sync of a connection whose provider imports
+    data (e.g. a website catalogue). One row per connection."""
+
+    __tablename__ = "connection_syncs"
+
+    connection_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("connections.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    org_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    status: Mapped[SyncStatus] = mapped_column(
+        _str_enum(SyncStatus, "sync_status"), nullable=False
+    )
+    started_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    # Bumped while a sync runs; a RUNNING row with a stale heartbeat was
+    # interrupted (e.g. the process restarted).
+    heartbeat_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    finished_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    # The end of the last successful sync, and how many items it holds.
+    last_synced_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    item_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # A successful sync's caveat for the admin, e.g. "stopped at 2000 pages".
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    requested_by: Mapped[int | None] = mapped_column(BigInteger, nullable=True)

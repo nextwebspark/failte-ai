@@ -14,8 +14,8 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 from pydantic import JsonValue
 
-from fallcha_tools.providers.google_calendar.client import CALENDAR_API, SHEETS_API
 from fallcha_tools.providers.google_calendar.credentials import GOOGLE_TOKEN_URL
+from fallcha_tools.providers.google_common.scopes import CALENDAR_API, SHEETS_API
 
 CALENDAR_ID = "bookings@group.calendar.google.com"
 SA_EMAIL = "agent@acme-project.iam.gserviceaccount.com"

@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowUpRight, Loader2, PlugZap, RefreshCw, Settings2, Trash2, Wrench } from "lucide-react";
+import { ArrowUpRight, CloudDownload, Loader2, PlugZap, RefreshCw, Settings2, Trash2, Wrench } from "lucide-react";
 import Link from "next/link";
 
 import type { IntegrationConnectionResponse, IntegrationProvider } from "@/client/types.gen";
@@ -19,7 +19,16 @@ import { Button } from "@/components/ui/button";
 import { Panel } from "@/components/ui/panel";
 import { StatusPill, type StatusTone } from "@/components/ui/status-pill";
 
-import { authModeLabel, connectionErrorMessage, type ConnectionState, connectionState, needsReconnect } from "./messages";
+import {
+    authModeLabel,
+    connectionErrorMessage,
+    type ConnectionState,
+    connectionState,
+    isSyncing,
+    needsReconnect,
+    syncButtonLabel,
+    syncSummary,
+} from "./messages";
 import { ProviderIcon } from "./ProviderIcon";
 
 const STATE_PILL: Record<ConnectionState, { tone: StatusTone; label: string }> = {
@@ -30,7 +39,7 @@ const STATE_PILL: Record<ConnectionState, { tone: StatusTone; label: string }> =
     revoked: { tone: "mute", label: "Removed" },
 };
 
-export type ConnectionAction = "test" | "configure" | "reconnect" | "finish" | "remove";
+export type ConnectionAction = "test" | "configure" | "reconnect" | "finish" | "remove" | "sync";
 
 export interface ConnectionPermissions {
     /** Test and change settings. */
@@ -57,6 +66,9 @@ export function ConnectionCard({ connection, provider, hasSettings, permissions,
     const title = provider?.title ?? connection.provider;
     const toolUuid = permissions.canOpenTool ? connection.tool_uuids?.[0] : undefined;
     const disabled = busy !== null;
+    const canSync = provider?.capabilities?.includes("sync") ?? false;
+    const syncing = isSyncing(connection.sync);
+    const itemLabel = provider?.sync_item_label ?? "items";
     const spinner = (action: ConnectionAction) =>
         busy === action ? <Loader2 className="animate-spin" aria-hidden /> : null;
 
@@ -104,6 +116,16 @@ export function ConnectionCard({ connection, provider, hasSettings, permissions,
                     it and connect again.
                 </p>
             )}
+            {canSync && state !== "revoked" && state !== "pending" && (
+                <p
+                    className={`flex items-center gap-1.5 text-sm ${connection.sync?.status === "failed" ? "text-danger" : "text-ink-2"}`}
+                    role="status"
+                    aria-live="polite"
+                >
+                    {syncing && <Loader2 className="size-3.5 animate-spin" aria-hidden />}
+                    {syncSummary(connection.sync, itemLabel)}
+                </p>
+            )}
             {state === "not_installed" && (
                 <p className="text-sm text-ink-2">The agent tool for this connection wasn&apos;t created yet.</p>
             )}
@@ -126,6 +148,21 @@ export function ConnectionCard({ connection, provider, hasSettings, permissions,
                         <Button size="sm" onClick={() => onAction("finish")} disabled={disabled}>
                             {spinner("finish") ?? <PlugZap aria-hidden />}
                             Finish setup
+                        </Button>
+                    )}
+                    {permissions.canWrite && canSync && state !== "pending" && (
+                        <Button
+                            size="sm"
+                            variant={connection.sync ? "soft" : "default"}
+                            onClick={() => onAction("sync")}
+                            disabled={disabled || syncing}
+                        >
+                            {busy === "sync" || syncing ? (
+                                <Loader2 className="animate-spin" aria-hidden />
+                            ) : (
+                                <CloudDownload aria-hidden />
+                            )}
+                            {syncing ? "Syncing…" : syncButtonLabel(provider?.sync_item_label)}
                         </Button>
                     )}
                     {permissions.canWrite && state !== "pending" && (

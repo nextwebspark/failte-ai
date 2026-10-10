@@ -131,7 +131,7 @@ const SCOPE_LABELS: Record<string, string> = {
     "https://www.googleapis.com/auth/calendar.events": "Create and change calendar events",
     "https://www.googleapis.com/auth/calendar.readonly": "See calendars and free/busy times",
     "https://www.googleapis.com/auth/calendar": "Full access to Google Calendar",
-    "https://www.googleapis.com/auth/spreadsheets.readonly": "Read Google Sheets (for order lookup)",
+    "https://www.googleapis.com/auth/spreadsheets.readonly": "Read Google Sheets",
     "https://www.googleapis.com/auth/spreadsheets": "Read and edit Google Sheets",
     "https://www.googleapis.com/auth/gmail.send": "Send email as you",
 };
@@ -147,8 +147,72 @@ const AUTH_MODE_LABELS: Record<string, string> = {
     oauth2: "Sign in with your account",
     service_account: "Service account key",
     api_key: "API key",
+    none: "No sign-in",
 };
 
 export function authModeLabel(mode: string): string {
     return AUTH_MODE_LABELS[mode] ?? mode;
+}
+
+/** The key OAuth clients and reusable keys are shared under: the family, else the id. */
+export function credentialFamily(provider: { id: string; auth_family?: string | null }): string {
+    return provider.auth_family || provider.id;
+}
+
+export interface SyncInfo {
+    status: string;
+    started_at: string;
+    finished_at?: string | null;
+    last_synced_at?: string | null;
+    item_count: number;
+    last_error?: string | null;
+    note?: string | null;
+}
+
+export function isSyncing(sync: SyncInfo | null | undefined): boolean {
+    return sync?.status === "running";
+}
+
+function shortDate(value: string): string {
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return value;
+    return date.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+}
+
+/**
+ * One line describing a connection's sync, e.g.
+ * "42 products · last synced 10 Oct 2026, 11:00 · stopped at 2000 pages".
+ */
+export function syncSummary(sync: SyncInfo | null | undefined, itemLabel = "items"): string {
+    if (!sync) return `Not synced yet. Sync to import ${itemLabel}.`;
+    if (sync.status === "running") return `Syncing ${itemLabel}…`;
+    const synced = sync.last_synced_at ? shortDate(sync.last_synced_at) : null;
+    if (sync.status === "failed") {
+        const kept = synced ? ` · ${sync.item_count} ${itemLabel} from ${synced}` : "";
+        return `Last sync failed: ${sync.last_error || "unknown error"}${kept}`;
+    }
+    const parts = [`${sync.item_count} ${itemLabel}`];
+    if (synced) parts.push(`last synced ${synced}`);
+    if (sync.note) parts.push(sync.note);
+    return parts.join(" · ");
+}
+
+/** The sync button's label: "Sync products". */
+export function syncButtonLabel(itemLabel: string | null | undefined): string {
+    return itemLabel ? `Sync ${itemLabel}` : "Sync now";
+}
+
+const EMAIL = /^[^\s@]+@[^\s@]+$/;
+
+/** True for an email address (only those can be a sign-in hint). */
+export function isEmail(value: string | null | undefined): value is string {
+    return Boolean(value && EMAIL.test(value));
+}
+
+/** A function's short human label: its summary, else its name in words. */
+export function humanToolName(tool: { name: string; summary?: string | null }): string {
+    const summary = tool.summary?.trim();
+    if (summary) return summary;
+    const words = tool.name.replace(/[_-]+/g, " ").trim();
+    return words.charAt(0).toUpperCase() + words.slice(1);
 }

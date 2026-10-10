@@ -1,14 +1,19 @@
-"""Per-connection settings (stored in ``connections.config``) and the
-service-account key format (stored encrypted in ``connections.secret_enc``)."""
+"""Per-connection settings (stored in ``connections.config``). The
+service-account key format lives in ``google_common``."""
 
 from __future__ import annotations
 
-from typing import Annotated, Literal, Self
+from typing import Annotated, Self
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from cryptography.hazmat.primitives.asymmetric.rsa import RSAPrivateKey
-from cryptography.hazmat.primitives.serialization import load_pem_private_key
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+from fallcha_tools.providers.google_common.service_account import ServiceAccountKey
+
+__all__ = ["CalendarConfig", "ServiceAccountKey", "Weekday"]
+
+# Order-lookup settings that lived here before it moved to Google Sheets.
+RETIRED_KEYS = frozenset({"orders_sheet_id", "orders_tab"})
 
 Weekday = Annotated[int, Field(ge=0, le=6)]
 
@@ -51,12 +56,15 @@ class CalendarConfig(BaseModel):
     horizon_days: int = Field(default=14, ge=1, le=60)
     max_slots_returned: int = Field(default=3, ge=1, le=10)
     morning_end_hour: int = Field(default=12, ge=0, le=24)
-    orders_sheet_id: str | None = Field(
-        default=None,
-        max_length=256,
-        description="Google Sheet id for read-only order lookup; unset disables it.",
-    )
-    orders_tab: str = Field(default="Orders", min_length=1, max_length=100)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _drop_retired_keys(cls, data: object) -> object:
+        # Order lookup moved to Google Sheets; configs saved before that
+        # still carry its keys and must keep validating.
+        if isinstance(data, dict):
+            return {k: v for k, v in data.items() if k not in RETIRED_KEYS}
+        return data
 
     @field_validator("timezone")
     @classmethod
@@ -83,36 +91,3 @@ class CalendarConfig(BaseModel):
     @property
     def zone(self) -> ZoneInfo:
         return ZoneInfo(self.timezone)
-
-
-class ServiceAccountKey(BaseModel):
-    """The fields used from a Google service-account JSON key.
-
-    ``token_uri`` is deliberately ignored: tokens are always minted at Google's
-    fixed endpoint, so a crafted key cannot redirect the signed assertion.
-    """
-
-    model_config = ConfigDict(extra="ignore", frozen=True)
-
-    type: Literal["service_account"]
-    client_email: str = Field(
-        min_length=3, max_length=320, pattern=r"^[^@\s]+@[^@\s]+$"
-    )
-    private_key: str = Field(min_length=1, repr=False)
-    private_key_id: str | None = Field(default=None, max_length=128)
-
-    @field_validator("private_key")
-    @classmethod
-    def _rsa_pem(cls, value: str) -> str:
-        try:
-            key = load_pem_private_key(value.encode(), password=None)
-        except (ValueError, TypeError):
-            raise ValueError("private_key is not a PEM private key") from None
-        if not isinstance(key, RSAPrivateKey):
-            raise ValueError("private_key must be an RSA key")
-        return value
-
-    def signer(self) -> RSAPrivateKey:
-        key = load_pem_private_key(self.private_key.encode(), password=None)
-        assert isinstance(key, RSAPrivateKey)  # checked by the validator
-        return key

@@ -34,11 +34,7 @@ from fallcha_tools.core.oauth import (
 from fallcha_tools.core.provider import AccessToken, ProviderRegistry
 from fallcha_tools.core.repositories import hash_browser_nonce, hash_oauth_state
 from fallcha_tools.providers.google_calendar import GoogleCalendarProvider
-from fallcha_tools.providers.google_calendar.client import (
-    SHEETS_READONLY_SCOPE,
-    Budget,
-    GoogleClient,
-)
+from fallcha_tools.providers.google_calendar.client import Budget, GoogleClient
 from fallcha_tools.providers.google_calendar.credentials import (
     OAuthCredentials,
     TokenCache,
@@ -248,7 +244,8 @@ async def test_provider_app_secret_is_encrypted_and_never_returned(
     created = await create_app_row(client)
     assert created.status_code == 201, created.text
     body = created.json()
-    assert body["client_id"] == CLIENT_ID and body["provider"] == PROVIDER
+    # Stored under the auth family: the client serves every Google provider.
+    assert body["client_id"] == CLIENT_ID and body["provider"] == "google"
     assert CLIENT_SECRET not in created.text
 
     listed = await client.get("/internal/provider-apps", headers=internal_headers())
@@ -365,17 +362,18 @@ async def test_start_builds_pkce_authorization_url(
     assert timedelta(minutes=9) < lifetime <= timedelta(minutes=10, seconds=5)
 
 
-async def test_start_optional_scopes(client: httpx.AsyncClient) -> None:
-    params = await started_params(client, optional_scopes=[SHEETS_READONLY_SCOPE])
-    assert SHEETS_READONLY_SCOPE in params["scope"].split()
-
+async def test_start_rejects_undeclared_optional_scopes(
+    client: httpx.AsyncClient,
+) -> None:
+    # Calendar declares no optional scopes (order lookup moved to Sheets).
+    assert GOOGLE_OAUTH.optional_scopes == ()
     app_id = await provider_app(client)
-    response = await start(
-        client,
-        app_id,
-        optional_scopes=["https://www.googleapis.com/auth/gmail.send"],
-    )
-    assert response.status_code == 422
+    for scope in (
+        "https://www.googleapis.com/auth/spreadsheets.readonly",
+        "https://www.googleapis.com/auth/gmail.send",
+    ):
+        response = await start(client, app_id, optional_scopes=[scope])
+        assert response.status_code == 422
 
 
 async def test_start_rejects_bad_provider_or_app(client: httpx.AsyncClient) -> None:
@@ -851,25 +849,6 @@ async def test_invalid_grant_marks_connection_and_fails_fast(
     manager = OAuthTokenManager(db=svc.db, box=svc.box, http=svc.http)
     with pytest.raises(OAuthReconnectRequired):
         await manager.access_token(1, uuid.UUID(connection_id), GOOGLE_OAUTH)
-
-
-async def test_missing_sheets_scope_is_reported(
-    app: FastAPI, client: httpx.AsyncClient, google: FakeGoogle
-) -> None:
-    connection_id = await connect(client)
-    await client.patch(
-        f"/internal/connections/{connection_id}",
-        headers=internal_headers(),
-        json={"config": calendar_config(orders_sheet_id="sheet-123")},
-    )
-    key = await issue_key(client, connection_id)
-    async with mcp_client(app, f"http://tools/mcp/{PROVIDER}", key) as mcp:
-        with pytest.raises(ToolError, match="Google Sheets"):
-            await mcp.call_tool(
-                "look_up_order",
-                {"caller_name": "Ann", "address_or_eircode": "D02 X285"},
-            )
-    assert not google.sheet.called
 
 
 async def test_refresh_failure_is_transient(

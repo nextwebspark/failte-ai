@@ -51,6 +51,7 @@ from fallcha_tools.core.provider import (
     OAuthSpec,
     Provider,
     ProviderRegistry,
+    credential_family,
 )
 from fallcha_tools.core.repositories import (
     REFRESH_TOKEN_KEY,
@@ -358,6 +359,7 @@ class OAuthFlow:
         provider_id: str,
         provider_app_id: uuid.UUID,
         optional_scopes: Sequence[str] = (),
+        login_hint: str | None = None,
     ) -> StartedAuthorization:
         self._require_configured()
         provider = self.registry.get(provider_id)
@@ -371,7 +373,7 @@ class OAuthFlow:
             app = await ProviderAppRepository(session, self.box).get(
                 org_id, provider_app_id
             )
-            if app.provider != provider.id:
+            if app.provider != credential_family(provider):
                 raise ProviderAppNotFoundError("OAuth client not found")
             await ConnectionRepository(session, self.box).sweep_pending()
             state, verifier = new_state(), new_code_verifier()
@@ -404,6 +406,10 @@ class OAuthFlow:
             "code_challenge": code_challenge(verifier),
             "code_challenge_method": "S256",
         }
+        if login_hint:
+            # With include_granted_scopes (Google), a known account sees one
+            # incremental consent for the new provider's scopes only.
+            params["login_hint"] = login_hint
         return StartedAuthorization(
             authorization_url=_with_query(spec.authorize_url, params),
             redirect_uri=redirect_uri,

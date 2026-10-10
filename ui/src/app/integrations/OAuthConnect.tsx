@@ -11,18 +11,27 @@ import { DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Panel } from "@/components/ui/panel";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { copyTextToClipboard } from "@/lib/clipboard";
 
-import { integrationErrorMessage, isUnavailableError, scopeLabel } from "./messages";
+import { credentialFamily, integrationErrorMessage, isUnavailableError, scopeLabel } from "./messages";
 import { isTrustedAuthorizationUrl, startOAuth } from "./oauthCalls";
 import { rememberPendingOAuth } from "./pendingOAuth";
+import type { ReusableKey } from "./ServiceAccountConnect";
 
 const NEW_CLIENT = "__new__";
+const OTHER_ACCOUNT = "__other__";
+
+function addingClientFor(selected: string): boolean {
+    return selected === NEW_CLIENT;
+}
 
 interface OAuthConnectProps {
     provider: IntegrationProvider;
     providerApps: ProviderAppResponse[];
+    /** Accounts already signed in for this provider's family (e.g. for Google Calendar). */
+    knownAccounts?: ReusableKey[];
     /** The errored connection this sign-in replaces, if any. */
     replacesConnectionId?: string;
     onCancel: () => void;
@@ -37,12 +46,26 @@ interface OAuthConnectProps {
 export function OAuthConnect({
     provider,
     providerApps,
+    knownAccounts = [],
     replacesConnectionId,
     onCancel,
     onProviderAppCreated,
 }: OAuthConnectProps) {
-    const apps = useMemo(() => providerApps.filter((a) => a.provider === provider.id), [providerApps, provider.id]);
+    // OAuth clients belong to the auth family: one saved for Google Calendar
+    // serves Google Sheets too.
+    const family = credentialFamily(provider);
+    const apps = useMemo(
+        () => providerApps.filter((a) => a.provider === family || a.provider === provider.id),
+        [providerApps, family, provider.id],
+    );
     const [selected, setSelected] = useState<string>(() => apps[0]?.id ?? NEW_CLIENT);
+    // "Continue as alice@…": Google skips the account chooser and asks only for
+    // this integration's new permissions. Each integration keeps its own grant.
+    const [chosenAccount, setAccount] = useState<string>(() => knownAccounts[0]?.label ?? OTHER_ACCOUNT);
+    // An account that is no longer offered falls back to "a different account".
+    const account = knownAccounts.some((k) => k.label === chosenAccount) ? chosenAccount : OTHER_ACCOUNT;
+    const loginHint = account === OTHER_ACCOUNT ? undefined : account;
+    const sharedClient = !addingClientFor(selected) && apps.length > 0 && family !== provider.id;
     const [clientId, setClientId] = useState("");
     const [clientSecret, setClientSecret] = useState("");
     const [optionalScopes, setOptionalScopes] = useState<string[]>([]);
@@ -121,6 +144,7 @@ export function OAuthConnect({
                 provider: provider.id,
                 provider_app_id: appId,
                 optional_scopes: optionalScopes,
+                ...(loginHint ? { login_hint: loginHint } : {}),
             });
             if (response.error || !response.data) {
                 setError(
@@ -182,6 +206,51 @@ export function OAuthConnect({
                     </SelectContent>
                 </Select>
             </div>
+
+            {sharedClient && (
+                <p className="text-xs text-muted-foreground">
+                    This client is shared by your {family.charAt(0).toUpperCase() + family.slice(1)} integrations. Make sure this
+                    address is also listed under its <strong>Authorized redirect URIs</strong>:{" "}
+                    <code className="break-all font-mono" aria-label="Redirect URI">
+                        {redirectUri}
+                    </code>
+                </p>
+            )}
+
+            {knownAccounts.length > 0 && (
+                <div className="grid gap-2">
+                    <span id="oauth-account-label" className="text-sm font-medium">
+                        Account
+                    </span>
+                    <RadioGroup
+                        value={account}
+                        onValueChange={(v) => setAccount(v)}
+                        aria-labelledby="oauth-account-label"
+                        className="gap-2"
+                        disabled={busy !== null}
+                    >
+                        {knownAccounts.map((known) => (
+                            <div key={known.label} className="flex items-center gap-2">
+                                <RadioGroupItem value={known.label} id={`oauth-as-${known.connectionId}`} />
+                                <Label htmlFor={`oauth-as-${known.connectionId}`} className="font-normal">
+                                    Continue as {known.label}
+                                </Label>
+                            </div>
+                        ))}
+                        <div className="flex items-center gap-2">
+                            <RadioGroupItem value={OTHER_ACCOUNT} id="oauth-as-other" />
+                            <Label htmlFor="oauth-as-other" className="font-normal">
+                                Use a different account
+                            </Label>
+                        </div>
+                    </RadioGroup>
+                    {loginHint && (
+                        <p className="text-xs text-muted-foreground">
+                            Google will only ask to allow this integration&apos;s permissions.
+                        </p>
+                    )}
+                </div>
+            )}
 
             {addingClient && (
                 <Panel padding="sm" className="grid gap-4">

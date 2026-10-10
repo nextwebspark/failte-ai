@@ -28,6 +28,7 @@ from api.schemas.integrations import (
     CreateProviderAppRequest,
     IntegrationCatalogResponse,
     IntegrationConnection,
+    IntegrationSyncStatus,
     ProviderAppListResponse,
     ProviderAppResponse,
     StartOAuthRequest,
@@ -103,6 +104,7 @@ class NewConnection(BaseModel):
     account_label: str | None = None
     scopes_granted: list[str]
     config: dict[str, JsonValue]
+    reuse_secret_from: uuid.UUID | None = None
 
 
 def _detail(response: httpx.Response, fallback: str) -> str:
@@ -169,9 +171,18 @@ class ToolsServiceClient:
             "POST",
             "/internal/connections",
             caller,
-            json=body.model_dump(mode="json"),
+            json=body.model_dump(mode="json", exclude_none=True),
         )
         return self._parse(response, IntegrationConnection)
+
+    async def start_sync(
+        self, caller: Caller, connection_id: uuid.UUID
+    ) -> IntegrationSyncStatus:
+        """Start a background sync (409 while one runs)."""
+        response = await self._request(
+            "POST", f"/internal/connections/{connection_id}/sync", caller
+        )
+        return self._parse(response, IntegrationSyncStatus)
 
     async def update_config(
         self,
@@ -271,7 +282,10 @@ class ToolsServiceClient:
         self, caller: Caller, body: StartOAuthRequest
     ) -> StartedOAuth:
         response = await self._request(
-            "POST", "/internal/oauth/start", caller, json=body.model_dump(mode="json")
+            "POST",
+            "/internal/oauth/start",
+            caller,
+            json=body.model_dump(mode="json", exclude_none=True),
         )
         return self._parse(response, StartedOAuth)
 

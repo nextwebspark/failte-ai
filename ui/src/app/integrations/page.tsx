@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import {
+    syncConnectionApiV1IntegrationsConnectionsConnectionIdSyncPost,
     testConnectionApiV1IntegrationsConnectionsConnectionIdTestPost,
     uninstallIntegrationApiV1IntegrationsConnectionsConnectionIdDelete,
 } from "@/client/sdk.gen";
@@ -26,16 +27,24 @@ import { SectionHeading, SectionHint } from "@/components/ui/section-heading";
 import { Skeleton } from "@/components/ui/skeleton";
 import { BRAND } from "@/config/brand";
 import { useOrgConfig } from "@/context/OrgConfigContext";
+import { errorCodeFromError } from "@/lib/apiError";
 
 import { ConfigDialog } from "./ConfigDialog";
 import { ConnectDialog, type ConnectTarget } from "./ConnectDialog";
 import { type ConnectionAction, ConnectionCard } from "./ConnectionCard";
-import { integrationErrorMessage, oauthFailureMessage, parseIntegrationReturn, urlWithoutReturnParams } from "./messages";
+import {
+    integrationErrorMessage,
+    isSyncing,
+    oauthFailureMessage,
+    parseIntegrationReturn,
+    urlWithoutReturnParams,
+} from "./messages";
 import { activateConnection } from "./oauthCalls";
 import { clearPendingOAuth, takePendingOAuth } from "./pendingOAuth";
 import { ProviderCard } from "./ProviderCard";
 import { fieldsFromSchema, hasRequiredConfig } from "./schemaForm";
 import { useIntegrations } from "./useIntegrations";
+import { useSyncPolling } from "./useSyncPolling";
 
 interface ConfigTarget {
     connection: IntegrationConnectionResponse;
@@ -71,6 +80,7 @@ function IntegrationsScreen() {
         error,
         refresh,
         refreshConnections,
+        reloadConnectionsQuietly,
         upsertConnection,
         addProviderApp,
     } = useIntegrations(true);
@@ -150,6 +160,30 @@ function IntegrationsScreen() {
         setPendingReview(null);
     }, [pendingReview, providerById, canWrite]);
 
+    // While any sync runs, reload the connections so its status updates.
+    const anySyncing = connections.some((c) => isSyncing(c.sync));
+    const pollingGaveUp = useSyncPolling(anySyncing, reloadConnectionsQuietly);
+
+    const startSync = useCallback(
+        async (connection: IntegrationConnectionResponse) => {
+            const response = await syncConnectionApiV1IntegrationsConnectionsConnectionIdSyncPost({
+                path: { connection_id: connection.id },
+            });
+            if (response.error || !response.data) {
+                toast.error(integrationErrorMessage(response.error, "Couldn't start the sync"));
+                // Already running (maybe started elsewhere): show it, and poll.
+                if (errorCodeFromError(response.error) === "integration_conflict") {
+                    await reloadConnectionsQuietly();
+                }
+                return;
+            }
+            upsertConnection({ ...connection, sync: response.data });
+            const label = providerById.get(connection.provider)?.sync_item_label ?? "data";
+            toast.success(`Importing ${label} in the background`);
+        },
+        [providerById, reloadConnectionsQuietly, upsertConnection],
+    );
+
     // -- connection actions ------------------------------------------------------
     const removeConnection = useCallback(
         async (connection: IntegrationConnectionResponse) => {
@@ -208,6 +242,8 @@ function IntegrationsScreen() {
                 toast.success(`${titleOf(connection.provider)} is ready for your agents`);
             } else if (action === "remove") {
                 await removeConnection(connection);
+            } else if (action === "sync") {
+                await startSync(connection);
             }
         } catch {
             toast.error(NETWORK_ERROR);
@@ -220,6 +256,10 @@ function IntegrationsScreen() {
         upsertConnection(connection);
         toast.success(`${titleOf(connection.provider)} connected`);
         if (replaces) setReplaceCandidate(replaces.id);
+        // A catalogue is empty until synced: start the first import right away.
+        if (providerById.get(connection.provider)?.capabilities?.includes("sync") && !connection.sync) {
+            void startSync(connection).catch(() => toast.error(NETWORK_ERROR));
+        }
     };
 
     const oldConnection = connections.find((c) => c.id === replaceCandidate) ?? null;
@@ -278,6 +318,11 @@ function IntegrationsScreen() {
                             <SectionHeading action={<SectionHint>{connections.length} total</SectionHint>}>
                                 Your connections
                             </SectionHeading>
+                            {pollingGaveUp && (
+                                <p className="mb-2 text-sm text-ink-2" role="status">
+                                    Still syncing. Refresh the page to check on it.
+                                </p>
+                            )}
                             {connections.length === 0 ? (
                                 <Panel padding="sm">
                                     <p className="text-sm text-ink-2">
@@ -307,7 +352,7 @@ function IntegrationsScreen() {
                             {providers.length === 0 ? (
                                 <p className="text-sm text-muted-foreground">No integrations are available yet.</p>
                             ) : (
-                                <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                                <div className="grid items-start gap-4 sm:grid-cols-2 xl:grid-cols-3">
                                     {providers.map((provider: IntegrationProvider) => (
                                         <ProviderCard
                                             key={provider.id}
@@ -327,6 +372,8 @@ function IntegrationsScreen() {
             <ConnectDialog
                 target={connectTarget}
                 providerApps={providerApps}
+                providers={providers}
+                connections={connections}
                 onOpenChange={(open) => !open && setConnectTarget(null)}
                 onInstalled={onInstalled}
                 onProviderAppCreated={addProviderApp}

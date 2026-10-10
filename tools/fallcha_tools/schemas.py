@@ -7,12 +7,20 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, SecretStr
 
-from fallcha_tools.core.models import AuthMode, ConnectionErrorCode, ConnectionStatus
+from fallcha_tools.core.models import (
+    AuthMode,
+    ConnectionErrorCode,
+    ConnectionStatus,
+    SyncStatus,
+)
 
 
 class ToolSummary(BaseModel):
     name: str
-    description: str
+    description: str = Field(description="What the agent is told (may be long).")
+    summary: str | None = Field(
+        default=None, description="A short human label, e.g. for the catalog UI."
+    )
 
 
 class CatalogOAuth(BaseModel):
@@ -34,6 +42,16 @@ class CatalogProvider(BaseModel):
     title: str
     description: str
     icon: str
+    auth_family: str | None = Field(
+        default=None,
+        description="Providers of one family share OAuth clients (provider "
+        "apps are stored under the family) and service-account keys.",
+    )
+    share_hint: str | None = Field(
+        default=None,
+        description="What a service account must be given access to, e.g. "
+        "'the spreadsheet'.",
+    )
     auth_modes: list[AuthMode]
     scopes: list[str]
     tools: list[ToolSummary]
@@ -41,10 +59,35 @@ class CatalogProvider(BaseModel):
         default=None, description="JSON Schema of the per-connection config."
     )
     oauth: CatalogOAuth | None = None
+    capabilities: list[str] = Field(
+        default_factory=list,
+        description="Optional features, e.g. ``sync`` (POST "
+        "/internal/connections/{id}/sync imports the connection's data).",
+    )
+    sync_item_label: str | None = Field(
+        default=None, description="What a sync imports, e.g. ``products``."
+    )
 
 
 class CatalogResponse(BaseModel):
     providers: list[CatalogProvider]
+
+
+class SyncStatusOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    status: SyncStatus
+    started_at: datetime
+    finished_at: datetime | None
+    last_synced_at: datetime | None = Field(
+        description="End of the last successful sync."
+    )
+    item_count: int = Field(description="Items imported (e.g. products).")
+    last_error: str | None
+    note: str | None = Field(
+        default=None,
+        description="Caveat of a successful sync, e.g. 'stopped at 2000 pages'.",
+    )
 
 
 class ConnectionOut(BaseModel):
@@ -66,6 +109,11 @@ class ConnectionOut(BaseModel):
     expires_at: datetime | None
     created_at: datetime
     updated_at: datetime
+    sync: SyncStatusOut | None = Field(
+        default=None,
+        description="Latest background sync, for providers with the ``sync`` "
+        "capability that have been synced at least once.",
+    )
 
 
 class ConnectionList(BaseModel):
@@ -79,7 +127,17 @@ class CreateConnectionRequest(BaseModel):
 
     provider: str = Field(min_length=1, max_length=64)
     auth_mode: AuthMode
-    secret: dict[str, JsonValue] = Field(min_length=1)
+    secret: dict[str, JsonValue] = Field(
+        default_factory=dict,
+        description="Required, except for the ``none`` auth mode (must be "
+        "empty) or with ``reuse_secret_from``.",
+    )
+    reuse_secret_from: uuid.UUID | None = Field(
+        default=None,
+        description="Copy the secret (server-side, never returned) of this "
+        "active connection of the same org, auth mode and provider family, "
+        "instead of sending ``secret``.",
+    )
     account_label: str | None = Field(default=None, max_length=320)
     scopes_granted: list[str] = Field(default_factory=list)
     config: dict[str, JsonValue] = Field(
@@ -142,7 +200,10 @@ class ProviderAppOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: uuid.UUID
-    provider: str
+    provider: str = Field(
+        description="The provider's auth family (e.g. ``google``), else its id: "
+        "a client can start the flow for every provider of that family."
+    )
     client_id: str
     created_by: int | None
     created_at: datetime
@@ -159,6 +220,14 @@ class OAuthStartRequest(BaseModel):
     provider: str = Field(min_length=1, max_length=64)
     provider_app_id: uuid.UUID
     optional_scopes: list[str] = Field(default_factory=list, max_length=16)
+    login_hint: str | None = Field(
+        default=None,
+        max_length=320,
+        pattern=r"^[^\s@]+@[^\s@]+$",
+        description="Email of the account to suggest (e.g. the one an existing "
+        "connection of the same family uses), so the provider can skip the "
+        "account chooser and ask only for the new scopes.",
+    )
 
 
 class OAuthStartOut(BaseModel):

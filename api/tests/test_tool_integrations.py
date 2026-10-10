@@ -1039,9 +1039,8 @@ async def test_oauth_start_is_proxied(client_as, org, oauth_api):
             json={
                 "provider": PROVIDER,
                 "provider_app_id": str(APP_ID),
-                "optional_scopes": [
-                    "https://www.googleapis.com/auth/spreadsheets.readonly"
-                ],
+                "optional_scopes": ["https://www.googleapis.com/auth/gmail.send"],
+                "login_hint": "alice@acme.test",
             },
         )
     finally:
@@ -1060,7 +1059,8 @@ async def test_oauth_start_is_proxied(client_as, org, oauth_api):
     assert json.loads(request.content) == {
         "provider": PROVIDER,
         "provider_app_id": str(APP_ID),
-        "optional_scopes": ["https://www.googleapis.com/auth/spreadsheets.readonly"],
+        "optional_scopes": ["https://www.googleapis.com/auth/gmail.send"],
+        "login_hint": "alice@acme.test",
     }
 
 
@@ -1351,3 +1351,166 @@ async def test_activate_gives_up_after_one_orphan_retry(client_as, org, oauth_ap
     assert oauth_api["revoke_all"].call_count == 1
     assert oauth_api["issue"].call_count == 2
     assert await _integration_credentials(org.id, active_only=True) == []
+
+
+# -- website catalogue sync, none auth, secret reuse -------------------------------
+
+CATALOGUE = {
+    "id": "website-catalogue",
+    "title": "Website product catalogue",
+    "description": "Import a shop's products.",
+    "icon": "products",
+    "auth_family": None,
+    "share_hint": None,
+    "auth_modes": ["none"],
+    "scopes": [],
+    "tools": [
+        {
+            "name": "search_products",
+            "description": "Long agent instructions...",
+            "summary": "Find products",
+        }
+    ],
+    "config_schema": {"type": "object"},
+    "oauth": None,
+    "capabilities": ["sync"],
+    "sync_item_label": "products",
+}
+SYNC_STATUS = {
+    "status": "running",
+    "started_at": "2026-10-10T10:00:00+00:00",
+    "finished_at": None,
+    "last_synced_at": None,
+    "item_count": 0,
+    "last_error": None,
+}
+
+
+@pytest.fixture
+def catalogue_api(tools_api: respx.MockRouter) -> respx.MockRouter:
+    tools_api["catalog"].respond(json={"providers": [*CATALOG["providers"], CATALOGUE]})
+    tools_api.post(
+        path__regex=r"^/internal/connections/[0-9a-f-]+/sync$", name="sync"
+    ).respond(202, json=SYNC_STATUS)
+    return tools_api
+
+
+@pytest.mark.parametrize("role", list(OrgRole))
+async def test_sync_is_proxied_for_writers(client_as, org, catalogue_api, role):
+    response = await client_as(role).post(
+        f"/api/v1/integrations/connections/{FIXED_ID}/sync"
+    )
+    if role not in WRITERS:
+        assert response.status_code == 403
+        assert not catalogue_api["sync"].called
+        return
+    assert response.status_code == 202, response.text
+    assert response.json()["status"] == "running"
+    request = catalogue_api["sync"].calls.last.request
+    assert request.url.path == f"/internal/connections/{FIXED_ID}/sync"
+    assert request.headers["X-Org-Id"] == str(org.id)
+
+
+@pytest.mark.parametrize(("status", "expected"), [(409, 409), (404, 404), (422, 422)])
+async def test_sync_errors_are_mapped(client_as, catalogue_api, status, expected):
+    catalogue_api["sync"].mock(
+        return_value=httpx.Response(
+            status, json={"detail": "a sync is already running for this connection"}
+        )
+    )
+    response = await client_as(OrgRole.ADMIN).post(
+        f"/api/v1/integrations/connections/{FIXED_ID}/sync"
+    )
+    assert response.status_code == expected
+    if status == 409:
+        assert "already running" in response.json()["detail"]
+
+
+async def test_catalog_and_connections_carry_sync_metadata(client_as, catalogue_api):
+    client = client_as(OrgRole.DEVELOPER)
+    catalog = await client.get("/api/v1/integrations/catalog")
+    entry = {p["id"]: p for p in catalog.json()["providers"]}["website-catalogue"]
+    assert entry["capabilities"] == ["sync"]
+    assert entry["sync_item_label"] == "products"
+    assert entry["tools"][0]["summary"] == "Find products"
+    catalogue_api.get("/internal/connections").respond(
+        json={
+            "connections": [
+                _connection(
+                    FIXED_ID,
+                    provider="website-catalogue",
+                    auth_mode="none",
+                    sync={
+                        **SYNC_STATUS,
+                        "status": "succeeded",
+                        "item_count": 42,
+                        "note": "stopped at 42 pages",
+                    },
+                )
+            ]
+        }
+    )
+    listed = await client.get("/api/v1/integrations/connections")
+    sync = listed.json()["connections"][0]["sync"]
+    assert sync["item_count"] == 42 and sync["note"] == "stopped at 42 pages"
+
+
+async def test_install_without_a_secret_for_none_auth(client_as, catalogue_api):
+    response = await client_as(OrgRole.ADMIN).post(
+        "/api/v1/integrations/connections",
+        json={
+            "provider": "website-catalogue",
+            "auth_mode": "none",
+            "config": {"site_url": "https://shop.example.com"},
+        },
+    )
+    assert response.status_code == 201, response.text
+    sent = json.loads(catalogue_api["create"].calls.last.request.content)
+    assert sent["auth_mode"] == "none" and sent["secret"] == {}
+    assert "reuse_secret_from" not in sent
+
+
+async def test_install_reusing_a_secret(client_as, tools_api):
+    source = uuid.uuid4()
+    response = await client_as(OrgRole.ADMIN).post(
+        "/api/v1/integrations/connections",
+        json=_install_body(secret={}, reuse_secret_from=str(source)),
+    )
+    assert response.status_code == 201, response.text
+    sent = json.loads(tools_api["create"].calls.last.request.content)
+    assert sent["reuse_secret_from"] == str(source) and sent["secret"] == {}
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        _install_body(secret={}),  # neither
+        _install_body(reuse_secret_from=str(uuid.uuid4())),  # both
+        _install_body(auth_mode="none"),  # none with a secret
+        _install_body(auth_mode="none", secret={}, reuse_secret_from=str(FIXED_ID)),
+    ],
+)
+async def test_install_secret_source_is_validated(client_as, tools_api, body):
+    response = await client_as(OrgRole.ADMIN).post(
+        "/api/v1/integrations/connections", json=body
+    )
+    assert response.status_code == 422
+    assert not tools_api["create"].called
+    assert "private_key" not in response.text
+
+
+async def test_reuse_refusals_are_mapped(client_as, tools_api):
+    tools_api["create"].mock(
+        return_value=httpx.Response(
+            422,
+            json={
+                "detail": "only connections of the same provider family can share a secret"
+            },
+        )
+    )
+    response = await client_as(OrgRole.ADMIN).post(
+        "/api/v1/integrations/connections",
+        json=_install_body(secret={}, reuse_secret_from=str(uuid.uuid4())),
+    )
+    assert response.status_code == 422
+    assert "same provider family" in response.json()["detail"]

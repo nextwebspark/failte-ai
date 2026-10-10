@@ -19,6 +19,7 @@ const mocks = vi.hoisted(() => ({
     update: vi.fn(),
     test: vi.fn(),
     uninstall: vi.fn(),
+    sync: vi.fn(),
     can: vi.fn<(...permissions: string[]) => boolean>(() => true),
     role: "developer" as string | null,
 }));
@@ -43,6 +44,7 @@ vi.mock("@/client/sdk.gen", () => ({
     updateConnectionConfigApiV1IntegrationsConnectionsConnectionIdPatch: mocks.update,
     testConnectionApiV1IntegrationsConnectionsConnectionIdTestPost: mocks.test,
     uninstallIntegrationApiV1IntegrationsConnectionsConnectionIdDelete: mocks.uninstall,
+    syncConnectionApiV1IntegrationsConnectionsConnectionIdSyncPost: mocks.sync,
 }));
 
 vi.mock("@/lib/auth", () => ({
@@ -79,7 +81,7 @@ const PROVIDER: IntegrationProvider = {
     },
     oauth: {
         scopes: ["https://www.googleapis.com/auth/calendar.events"],
-        optional_scopes: ["https://www.googleapis.com/auth/spreadsheets.readonly"],
+        optional_scopes: [],
         redirect_uri: REDIRECT_URI,
     },
 };
@@ -155,7 +157,7 @@ describe("IntegrationsPage", () => {
         });
         render(<IntegrationsPage />);
 
-        expect(await screen.findByText("book_appointment")).toBeTruthy();
+        expect(await screen.findByText("Book appointment")).toBeTruthy();
         expect(screen.getByText("Needs attention")).toBeTruthy();
         expect(screen.getByText(/Access was revoked or expired/)).toBeTruthy();
         expect(screen.getByRole("button", { name: /Reconnect/ })).toBeTruthy();
@@ -322,16 +324,11 @@ describe("IntegrationsPage", () => {
             render(<IntegrationsPage />);
 
             fireEvent.click(await screen.findByRole("button", { name: /^Connect$/ }));
-            fireEvent.click(await screen.findByLabelText("Read Google Sheets (for order lookup)"));
-            fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
+            fireEvent.click(await screen.findByRole("button", { name: "Sign in" }));
 
             await waitFor(() => expect(assign).toHaveBeenCalledWith(AUTHORIZE_URL));
             expect(mocks.startOauth).toHaveBeenCalledWith({
-                body: {
-                    provider: PROVIDER.id,
-                    provider_app_id: "app-1",
-                    optional_scopes: ["https://www.googleapis.com/auth/spreadsheets.readonly"],
-                },
+                body: { provider: PROVIDER.id, provider_app_id: "app-1", optional_scopes: [] },
             });
             const stored = JSON.parse(window.sessionStorage.getItem("fallcha.integrations.oauth.google-calendar") ?? "{}");
             expect(stored.nonce).toBe(NONCE);
@@ -396,8 +393,13 @@ describe("IntegrationsPage", () => {
             });
             await waitFor(() => expect(screen.queryByLabelText("Service account key (JSON)")).toBeNull());
 
+            // Connecting again offers the same service account first; a new key starts empty.
             fireEvent.click(screen.getByRole("button", { name: /Add another/ }));
             chooseTab(/Service account key/);
+            expect(
+                (await screen.findByRole("radio", { name: /Use the same service account/ })).getAttribute("aria-checked"),
+            ).toBe("true");
+            fireEvent.click(screen.getByRole("radio", { name: "Use a different key" }));
             expect(((await screen.findByLabelText("Service account key (JSON)")) as HTMLTextAreaElement).value).toBe("");
         });
 
@@ -450,6 +452,286 @@ describe("IntegrationsPage", () => {
 
             expect(await screen.findByText("Required")).toBeTruthy();
             expect(mocks.update).not.toHaveBeenCalled();
+        });
+    });
+
+    describe("Google family reuse", () => {
+        const SHEETS: IntegrationProvider = {
+            id: "google-sheets",
+            title: "Google Sheets",
+            description: "Rows.",
+            icon: "sheet",
+            auth_family: "google",
+            share_hint: "the spreadsheet",
+            auth_modes: ["oauth2", "service_account"],
+            scopes: [],
+            tools: [{ name: "find_rows", description: "Long agent instructions", summary: "Find rows" }],
+            config_schema: {
+                type: "object",
+                required: ["spreadsheet_id"],
+                properties: { spreadsheet_id: { type: "string" } },
+            },
+            oauth: {
+                scopes: ["https://www.googleapis.com/auth/spreadsheets"],
+                optional_scopes: [],
+                redirect_uri: "https://tools.fallcha.test/oauth/google-sheets/callback",
+            },
+        };
+        const CALENDAR = { ...PROVIDER, auth_family: "google" };
+        const original = window.location;
+        let assign: ReturnType<typeof vi.fn>;
+
+        beforeEach(() => {
+            assign = vi.fn();
+            Object.defineProperty(window, "location", {
+                configurable: true,
+                value: { ...original, assign, search: "", href: original.href },
+            });
+            mocks.getCatalog.mockResolvedValue({ data: { providers: [CALENDAR, SHEETS] } });
+        });
+
+        afterEach(() => {
+            Object.defineProperty(window, "location", { configurable: true, value: original });
+        });
+
+        async function openSheets() {
+            render(<IntegrationsPage />);
+            await screen.findByText("Find rows");
+            const connectButtons = await screen.findAllByRole("button", { name: /^(Connect|Add another)$/ });
+            fireEvent.click(connectButtons[connectButtons.length - 1]);
+        }
+
+        it("reuses the Calendar service account for Sheets by default", async () => {
+            mocks.listConnections.mockResolvedValue({
+                data: {
+                    connections: [
+                        connection({
+                            auth_mode: "service_account",
+                            account_label: "booking@acme.iam.gserviceaccount.com",
+                        }),
+                    ],
+                },
+            });
+            mocks.install.mockResolvedValue({
+                data: connection({ id: OLD_ID, provider: SHEETS.id, auth_mode: "service_account" }),
+            });
+            await openSheets();
+            chooseTab(/Service account key/);
+
+            expect(await screen.findByText(/Share the spreadsheet with/)).toBeTruthy();
+            expect(screen.queryByLabelText("Service account key (JSON)")).toBeNull();
+            fireEvent.change(screen.getByLabelText(/Spreadsheet ID/), { target: { value: "1AbCdEfGhIjKlMn" } });
+            fireEvent.click(screen.getByRole("button", { name: "Connect" }));
+
+            await waitFor(() => expect(mocks.install).toHaveBeenCalledTimes(1));
+            const body = mocks.install.mock.calls[0][0].body;
+            expect(body).toMatchObject({
+                provider: SHEETS.id,
+                auth_mode: "service_account",
+                reuse_secret_from: NEW_ID,
+                config: { spreadsheet_id: "1AbCdEfGhIjKlMn" },
+            });
+            expect(body.secret).toBeUndefined();
+        });
+
+        it("offers to continue as the account already signed in, with the shared client", async () => {
+            mocks.listConnections.mockResolvedValue({ data: { connections: [connection({})] } });
+            mocks.listProviderApps.mockResolvedValue({ data: { provider_apps: [{ ...APP, provider: "google" }] } });
+            mocks.startOauth.mockResolvedValue({
+                data: { authorization_url: AUTHORIZE_URL, redirect_uri: REDIRECT_URI, expires_at: "", browser_nonce: NONCE },
+            });
+            await openSheets();
+
+            expect(
+                (await screen.findByRole("radio", { name: "Continue as alice@acme.test" })).getAttribute("aria-checked"),
+            ).toBe("true");
+            // The shared client must also list this integration's redirect URI.
+            expect(screen.getByLabelText("Redirect URI").textContent).toBe(SHEETS.oauth?.redirect_uri);
+            fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
+            await waitFor(() => expect(assign).toHaveBeenCalledWith(AUTHORIZE_URL));
+            expect(mocks.startOauth).toHaveBeenCalledWith({
+                body: {
+                    provider: SHEETS.id,
+                    provider_app_id: "app-1",
+                    optional_scopes: [],
+                    login_hint: "alice@acme.test",
+                },
+            });
+        });
+
+        it("reconnecting preselects the replaced account and a new key", async () => {
+            const broken = connection({
+                id: OLD_ID,
+                provider: SHEETS.id,
+                status: "error",
+                error_code: "grant_revoked",
+                account_label: "bob@acme.test",
+            });
+            mocks.listConnections.mockResolvedValue({
+                data: {
+                    connections: [
+                        connection({}),
+                        broken,
+                        connection({
+                            id: "5e4f3a2b-1c0d-4e9f-8a7b-6c5d4e3f2a1b",
+                            auth_mode: "service_account",
+                            account_label: "booking@acme.iam.gserviceaccount.com",
+                        }),
+                        // Not an email: never offered as a sign-in hint.
+                        connection({ id: "6e4f3a2b-1c0d-4e9f-8a7b-6c5d4e3f2a1b", account_label: "Shared inbox" }),
+                    ],
+                },
+            });
+            mocks.listProviderApps.mockResolvedValue({ data: { provider_apps: [{ ...APP, provider: "google" }] } });
+            render(<IntegrationsPage />);
+            const reconnect = await screen.findAllByRole("button", { name: /Reconnect/ });
+            fireEvent.click(reconnect[0]);
+
+            expect(
+                (await screen.findByRole("radio", { name: "Continue as bob@acme.test" })).getAttribute("aria-checked"),
+            ).toBe("true");
+            expect(screen.getByRole("radio", { name: "Continue as alice@acme.test" })).toBeTruthy();
+            expect(screen.queryByRole("radio", { name: /Shared inbox/ })).toBeNull();
+
+            chooseTab(/Service account key/);
+            expect(
+                (await screen.findByRole("radio", { name: "Use a different key" })).getAttribute("aria-checked"),
+            ).toBe("true");
+            expect(screen.getByLabelText("Service account key (JSON)")).toBeTruthy();
+        });
+
+        it("signs in with another account without a login hint", async () => {
+            mocks.listConnections.mockResolvedValue({ data: { connections: [connection({})] } });
+            mocks.listProviderApps.mockResolvedValue({ data: { provider_apps: [{ ...APP, provider: "google" }] } });
+            mocks.startOauth.mockResolvedValue({
+                data: { authorization_url: AUTHORIZE_URL, redirect_uri: REDIRECT_URI, expires_at: "", browser_nonce: NONCE },
+            });
+            await openSheets();
+            fireEvent.click(await screen.findByRole("radio", { name: "Use a different account" }));
+            fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
+            await waitFor(() => expect(mocks.startOauth).toHaveBeenCalledTimes(1));
+            expect(mocks.startOauth.mock.calls[0][0].body.login_hint).toBeUndefined();
+        });
+    });
+
+    describe("catalogue sync", () => {
+        const CATALOGUE: IntegrationProvider = {
+            id: "website-catalogue",
+            title: "Website product catalogue",
+            description: "Products from a shop's website.",
+            icon: "products",
+            auth_family: null,
+            auth_modes: ["none"],
+            scopes: [],
+            tools: [
+                { name: "search_products", description: "Always call this before naming any product.", summary: "Find products" },
+                { name: "product_detail", description: "x", summary: "Get product details" },
+                { name: "a_tool", description: "x", summary: "Third" },
+                { name: "b_tool", description: "x", summary: "Fourth" },
+            ],
+            config_schema: {
+                type: "object",
+                required: ["site_url"],
+                properties: { site_url: { type: "string" } },
+            },
+            oauth: null,
+            capabilities: ["sync"],
+            sync_item_label: "products",
+        };
+        const RUNNING = { status: "running", started_at: "2026-10-10T10:00:00Z", item_count: 0 };
+        const DONE = {
+            status: "succeeded",
+            started_at: "2026-10-10T10:00:00Z",
+            last_synced_at: "2026-10-10T10:05:00Z",
+            item_count: 42,
+        };
+
+        function shopConnection(sync: unknown) {
+            return connection({
+                provider: CATALOGUE.id,
+                auth_mode: "none",
+                account_label: null,
+                config: { site_url: "https://shop.example.com" },
+                sync: sync as IntegrationConnectionResponse["sync"],
+            });
+        }
+
+        beforeEach(() => {
+            mocks.getCatalog.mockResolvedValue({ data: { providers: [CATALOGUE] } });
+        });
+
+        it("shows short summaries only, collapsed to three", async () => {
+            render(<IntegrationsPage />);
+            expect(await screen.findByText("Find products")).toBeTruthy();
+            expect(screen.queryByText(/Always call this/)).toBeNull();
+            expect(screen.queryByText("Fourth")).toBeNull();
+            fireEvent.click(screen.getByRole("button", { name: /Show all 4/ }));
+            expect(screen.getByText("Fourth")).toBeTruthy();
+        });
+
+        it("starts a sync, shows progress and the result", async () => {
+            mocks.listConnections
+                .mockResolvedValueOnce({ data: { connections: [shopConnection(null)] } })
+                .mockResolvedValue({ data: { connections: [shopConnection(DONE)] } });
+            mocks.sync.mockResolvedValue({ data: RUNNING });
+            render(<IntegrationsPage />);
+
+            expect(await screen.findByText("Not synced yet. Sync to import products.")).toBeTruthy();
+            fireEvent.click(screen.getByRole("button", { name: "Sync products" }));
+            await waitFor(() =>
+                expect(mocks.sync).toHaveBeenCalledWith({ path: { connection_id: NEW_ID } }),
+            );
+            expect(await screen.findByText("Syncing products…")).toBeTruthy();
+            expect((screen.getByRole("button", { name: /Syncing/ }) as HTMLButtonElement).disabled).toBe(true);
+            // Polled until the sync finishes.
+            expect(await screen.findByText(/^42 products · last synced/, {}, { timeout: 6000 })).toBeTruthy();
+        }, 10000);
+
+        it("shows a sync that is already running (409) instead of the old status", async () => {
+            mocks.listConnections
+                .mockResolvedValueOnce({ data: { connections: [shopConnection(DONE)] } })
+                .mockResolvedValue({ data: { connections: [shopConnection(RUNNING)] } });
+            mocks.sync.mockResolvedValue({
+                error: { detail: "a sync is already running for this connection", code: "integration_conflict" },
+            });
+            render(<IntegrationsPage />);
+            fireEvent.click(await screen.findByRole("button", { name: "Sync products" }));
+            await waitFor(() =>
+                expect(toast.error).toHaveBeenCalledWith("a sync is already running for this connection"),
+            );
+            expect(await screen.findByText("Syncing products…")).toBeTruthy();
+        });
+
+        it("hides the sync button from read-only roles but shows the status", async () => {
+            mocks.can.mockImplementation((...permissions: string[]) => permissions.every((p) => p.endsWith(":read")));
+            mocks.listConnections.mockResolvedValue({
+                data: { connections: [shopConnection({ ...DONE, status: "failed", last_error: "robots.txt answered HTTP 503" })] },
+            });
+            render(<IntegrationsPage />);
+            expect(
+                await screen.findByText(/^Last sync failed: robots.txt answered HTTP 503 · 42 products from /),
+            ).toBeTruthy();
+            expect(screen.queryByRole("button", { name: "Sync products" })).toBeNull();
+        });
+
+        it("connects a public website without a secret and starts the first sync", async () => {
+            mocks.install.mockResolvedValue({ data: shopConnection(null) });
+            mocks.sync.mockResolvedValue({ data: RUNNING });
+            render(<IntegrationsPage />);
+            fireEvent.click(await screen.findByRole("button", { name: /^Connect$/ }));
+            fireEvent.change(await screen.findByLabelText(/Site URL/), {
+                target: { value: "https://shop.example.com" },
+            });
+            fireEvent.click(screen.getByRole("button", { name: "Connect" }));
+
+            await waitFor(() => expect(mocks.install).toHaveBeenCalledTimes(1));
+            expect(mocks.install.mock.calls[0][0].body).toEqual({
+                provider: CATALOGUE.id,
+                auth_mode: "none",
+                config: { site_url: "https://shop.example.com" },
+            });
+            await waitFor(() => expect(mocks.sync).toHaveBeenCalledTimes(1));
+            expect(await screen.findByText("Syncing products…")).toBeTruthy();
         });
     });
 });

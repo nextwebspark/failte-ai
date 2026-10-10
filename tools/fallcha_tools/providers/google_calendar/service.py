@@ -20,13 +20,6 @@ from fallcha_tools.providers.google_calendar.credentials import Clock
 from fallcha_tools.providers.google_calendar.errors import (
     BadArgumentError,
     GoogleApiError,
-    NotConfiguredError,
-)
-from fallcha_tools.providers.google_calendar.orders import (
-    SHEET_COLUMNS,
-    OrdersCache,
-    match_order,
-    rows_from_values,
 )
 from fallcha_tools.providers.google_calendar.scheduling import (
     Busy,
@@ -39,7 +32,6 @@ from fallcha_tools.providers.google_calendar.schemas import (
     AvailabilityResult,
     BookingResult,
     CancelResult,
-    OrderLookupResult,
     Slot,
 )
 from fallcha_tools.providers.google_calendar.settings import CalendarConfig
@@ -92,11 +84,6 @@ def _slots(found: Sequence[datetime]) -> list[Slot]:
     return [Slot(id=slot.isoformat(), say=say_time(slot)) for slot in found]
 
 
-def _a1_tab(tab: str) -> str:
-    """A sheet tab name quoted for A1 notation (handles spaces and quotes)."""
-    return "'" + tab.replace("'", "''") + "'"
-
-
 @dataclass(frozen=True, slots=True)
 class CalendarService:
     """One connection's calendar, with its booking rules."""
@@ -105,7 +92,6 @@ class CalendarService:
     config: CalendarConfig
     connection_id: uuid.UUID
     clock: Clock
-    orders_cache: OrdersCache
     booking_id_key: bytes
     deadline_seconds: float = DEFAULT_DEADLINE_SECONDS
     min_insert_seconds: float = DEFAULT_MIN_INSERT_SECONDS
@@ -243,27 +229,8 @@ class CalendarService:
         )
         return CancelResult(cancelled=True, say=say)
 
-    async def look_up_order(
-        self, caller_name: str, address_or_eircode: str, order_id: str | None = None
-    ) -> OrderLookupResult:
-        sheet_id = self.config.orders_sheet_id
-        if not sheet_id:
-            raise NotConfiguredError("order lookup is not set up for this connection")
-        a1_range = f"{_a1_tab(self.config.orders_tab)}!{SHEET_COLUMNS}"
-
-        async def fetch() -> list[dict[str, str]]:
-            return rows_from_values(await self.client.sheet_values(sheet_id, a1_range))
-
-        async with self._deadline():
-            rows = await self.orders_cache.rows(
-                (self.connection_id, sheet_id, self.config.orders_tab),
-                self.clock(),
-                fetch,
-            )
-        return match_order(rows, caller_name, address_or_eircode, order_id)
-
     async def check_access(self) -> str:
-        """Prove the calendar (and orders sheet, if set) can be reached.
+        """Prove the calendar can be reached.
 
         For admins only (connection test): access errors name the Google
         account that needs to be given access.
@@ -272,9 +239,6 @@ class CalendarService:
             async with self._deadline():
                 summary = await self.client.calendar_summary(self.config.calendar_id)
                 message = f"Calendar '{summary}' is reachable"
-                if self.config.orders_sheet_id:
-                    title = await self.client.sheet_title(self.config.orders_sheet_id)
-                    message += f"; orders sheet '{title}' is readable"
         except GoogleApiError as exc:
             hint = self.client.account_hint
             if exc.access_problem and hint:

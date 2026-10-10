@@ -33,6 +33,7 @@ from fallcha_tools.core.mcp import ConnectionResolver, McpGateway, McpMounts
 from fallcha_tools.core.oauth import Clock, OAuthFlow, OAuthTokenManager, utc_now
 from fallcha_tools.core.provider import ProviderRegistry
 from fallcha_tools.core.repositories import KeyPrincipal, KeyRepository
+from fallcha_tools.core.sync import SyncRunner
 from fallcha_tools.providers import build_registry
 from fallcha_tools.routes import internal, oauth
 from fallcha_tools.routes.rest import connection_key_dependency
@@ -121,6 +122,7 @@ def create_app(
         mcp=mounts,
         contexts=contexts,
         oauth=oauth_flow,
+        sync=SyncRunner(db=db, contexts=contexts, registry=registry, clock=clock),
     )
 
     @asynccontextmanager
@@ -130,6 +132,7 @@ def create_app(
             async with mounts.lifespan():
                 yield
         finally:
+            await services.sync.shutdown()
             await http.aclose()
             await db.dispose()
 

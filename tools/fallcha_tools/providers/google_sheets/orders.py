@@ -1,10 +1,11 @@
-"""Read-only order lookup against a Google Sheet (ported from the shim).
+"""Read-only order lookup against a Google Sheet (ported from the calendar
+shim; matching thresholds, cache and answers unchanged).
 
 Security posture, deliberate:
 
-- Tokens for the sheet are minted with ``spreadsheets.readonly`` only, and the
-  sheet should be shared with the service account as Viewer: two independent
-  reasons the agent cannot alter an order.
+- Tokens for this lookup are minted with ``spreadsheets.readonly`` only (a
+  service account's token cannot write, even though the connection's other
+  tools may append rows), and the function only ever reads the orders tab.
 - A caller must clear BOTH a name check and an address/eircode check before
   any order data is returned. A failed match returns the same answer whether
   the name, the address, or the customer is wrong, so the function cannot be
@@ -22,14 +23,17 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from difflib import SequenceMatcher
 
-from fallcha_tools.providers.google_calendar.errors import GoogleApiError
-from fallcha_tools.providers.google_calendar.schemas import OrderLookupResult
+from fallcha_tools.providers.google_common.errors import GoogleApiError
+from fallcha_tools.providers.google_sheets.schemas import OrderLookupResult
+from fallcha_tools.providers.google_sheets.settings import OrderColumns
 
 ADDRESS_MATCH_THRESHOLD = 0.62
 NAME_MATCH_THRESHOLD = 0.72
 CACHE_TTL = timedelta(seconds=60)
 MAX_CACHED_SHEETS = 256
-SHEET_COLUMNS = "A1:Z1000"
+# Columns A..Z of the header row and the 999 rows below it, as the shim read.
+SHEET_COLUMNS = "Z"
+SHEET_ROWS = 1000
 NOT_VERIFIED = (
     "I could not match those details to an order. Could you give me "
     "the name exactly as it is on the account, and the Eircode?"
@@ -87,6 +91,23 @@ def rows_from_values(values: Sequence[Sequence[str]]) -> list[dict[str, str]]:
         for row in values[1:]
         if any(cell.strip() for cell in row)
     ]
+
+
+def order_rows(
+    values: Sequence[Sequence[str]], columns: OrderColumns
+) -> list[dict[str, str]]:
+    """Rows keyed by the canonical field names (``customer_name``, ...),
+    whatever the sheet's own headers are called."""
+    rows = rows_from_values(values)
+    if not rows:
+        return []
+    headers = {header.strip().casefold(): header for header in rows[0]}
+    mapping = {
+        field: headers[name.strip().casefold()]
+        for field, name in columns.model_dump().items()
+        if name.strip().casefold() in headers
+    }
+    return [{field: row[header] for field, header in mapping.items()} for row in rows]
 
 
 def match_order(

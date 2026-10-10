@@ -21,6 +21,7 @@ from fallcha_tools.core.repositories import (
     KeyRepository,
     ProviderAppRepository,
 )
+from fallcha_tools.core.sync import SyncRunner
 
 if TYPE_CHECKING:  # mcp -> auth -> container would otherwise be circular
     from fallcha_tools.core.mcp import McpMounts
@@ -36,6 +37,7 @@ class AppServices:
     mcp: McpMounts
     contexts: ContextLoader
     oauth: OAuthFlow
+    sync: SyncRunner
 
 
 def get_services(request: Request) -> AppServices:

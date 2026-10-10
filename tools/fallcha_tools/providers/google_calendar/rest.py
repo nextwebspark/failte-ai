@@ -1,6 +1,6 @@
 """REST compatibility routes mirroring the old calendar shim's HTTP contract.
 
-``POST /v1/google-calendar/{availability,book,order_lookup,cancel}`` take the
+``POST /v1/google-calendar/{availability,book,cancel}`` take the
 shim's JSON bodies and return its response shapes, so existing ``http_api``
 tools only need a new URL and a connection key (as Bearer or ``X-API-Key``).
 """
@@ -26,8 +26,6 @@ from fallcha_tools.providers.google_calendar.schemas import (
     BookRequest,
     CancelRequest,
     CancelResult,
-    OrderLookupRequest,
-    OrderLookupResult,
 )
 from fallcha_tools.providers.google_calendar.service import (
     CalendarService,
@@ -81,15 +79,5 @@ def build_rest_router(
     @router.post("/cancel", response_model_exclude_none=True)
     async def cancel(body: CancelRequest, ctx: Ctx) -> CancelResult:
         return await _run(ctx, service_for, lambda svc: svc.cancel(body.event_id))
-
-    @router.post("/order_lookup", response_model_exclude_none=True)
-    async def order_lookup(body: OrderLookupRequest, ctx: Ctx) -> OrderLookupResult:
-        return await _run(
-            ctx,
-            service_for,
-            lambda svc: svc.look_up_order(
-                body.caller_name, body.address_or_eircode, body.order_id
-            ),
-        )
 
     return router
