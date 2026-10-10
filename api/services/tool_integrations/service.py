@@ -45,13 +45,13 @@ from api.schemas.integrations import (
     ProviderAppListResponse,
     ProviderAppResponse,
     StartOAuthRequest,
-    StartOAuthResponse,
 )
 from api.services.tool_integrations.client import (
     Caller,
     ConnectionTestResult,
     IssuedConnectionKey,
     NewConnection,
+    StartedOAuth,
 )
 from api.services.tool_integrations.resources import (
     IntegrationResources,
@@ -60,6 +60,10 @@ from api.services.tool_integrations.resources import (
 )
 
 _DEFAULT_ICON = "plug"
+CONFIRM_IN_SAME_BROWSER = (
+    "Finish connecting in the browser where you started, as the same user, "
+    "within 10 minutes"
+)
 _MAX_ICON_CHARS = 50
 
 
@@ -102,6 +106,14 @@ class ToolsServiceApi(Protocol):
         self, caller: Caller, connection_id: uuid.UUID, key_id: uuid.UUID
     ) -> None: ...
 
+    async def revoke_all_keys(
+        self, caller: Caller, connection_id: uuid.UUID
+    ) -> None: ...
+
+    async def confirm_connection(
+        self, caller: Caller, connection_id: uuid.UUID, *, browser_nonce: str
+    ) -> IntegrationConnection: ...
+
     async def revoke_connection(
         self, caller: Caller, connection_id: uuid.UUID
     ) -> None: ...
@@ -116,7 +128,7 @@ class ToolsServiceApi(Protocol):
 
     async def start_oauth(
         self, caller: Caller, body: StartOAuthRequest
-    ) -> StartOAuthResponse: ...
+    ) -> StartedOAuth: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -224,10 +236,20 @@ class IntegrationService:
         )
 
     async def activate(
-        self, actor: Actor, connection_id: uuid.UUID, *, tool_name: str | None
+        self,
+        actor: Actor,
+        connection_id: uuid.UUID,
+        *,
+        tool_name: str | None,
+        browser_nonce: str | None,
     ) -> IntegrationConnectionResponse:
         """Install an existing connection as an MCP tool. Idempotent: an
-        already-activated connection is returned as it is."""
+        already-activated connection is returned as it is.
+
+        A PENDING (just-authorized OAuth) connection is first confirmed with
+        ``browser_nonce``, the cookie set by :meth:`start_oauth` in the
+        starting user's browser; the tools service also checks the user.
+        """
         # Org-scoped by the tools service: another org's connection is a 404.
         connection = await self._tools.get_connection(actor.caller, connection_id)
         links = await self._links(actor.organization_id)
@@ -235,21 +257,38 @@ class IntegrationService:
             return links.response(connection)
         if connection.status == "revoked":
             raise IntegrationConflictError("This connection has been removed")
-        provider = await self._provider(actor, connection.provider)
-        try:
-            return await self._activate(
-                actor,
-                provider,
-                connection,
-                tool_name=tool_name,
-                keep_connection_on_failure=True,
+        if connection.status == "pending":
+            if not browser_nonce:
+                raise IntegrationConflictError(CONFIRM_IN_SAME_BROWSER)
+            connection = await self._tools.confirm_connection(
+                actor.caller, connection.id, browser_nonce=browser_nonce
             )
-        except IntegrationConflictError:
-            # A concurrent activation won the exclusive key: return its result.
-            links = await self._links(actor.organization_id)
-            if connection.id in links.credential_by_connection:
-                return links.response(connection)
-            raise
+        provider = await self._provider(actor, connection.provider)
+        for attempt in range(2):
+            try:
+                return await self._activate(
+                    actor,
+                    provider,
+                    connection,
+                    tool_name=tool_name,
+                    keep_connection_on_failure=True,
+                )
+            except IntegrationConflictError:
+                # A concurrent activation won the exclusive key: return its
+                # result.
+                links = await self._links(actor.organization_id)
+                if connection.id in links.credential_by_connection:
+                    return links.response(connection)
+                if attempt:
+                    raise
+                # No credential holds the live key: it was orphaned by an
+                # activation whose rollback failed. Revoke it and retry once.
+                logger.warning(
+                    f"Revoking orphaned keys of connection {connection.id} for "
+                    f"org {actor.organization_id}"
+                )
+                await self._tools.revoke_all_keys(actor.caller, connection.id)
+        raise AssertionError("unreachable")
 
     async def _activate(
         self,
@@ -344,7 +383,9 @@ class IntegrationService:
 
     async def start_oauth(
         self, actor: Actor, request: StartOAuthRequest
-    ) -> StartOAuthResponse:
+    ) -> StartedOAuth:
+        """The caller must hand ``browser_nonce`` to the user's browser only
+        (as an HttpOnly cookie) and return the rest."""
         return await self._tools.start_oauth(actor.caller, request)
 
     async def update_config(

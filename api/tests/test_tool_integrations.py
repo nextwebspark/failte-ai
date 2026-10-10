@@ -873,6 +873,7 @@ CLIENT_SECRET = "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k"
 APP_ID = uuid.uuid4()
 AUTHORIZE_URL = "https://accounts.google.com/o/oauth2/v2/auth?state=s&client_id=c"
 REDIRECT_URI = "https://tools.example.com/oauth/google-calendar/callback"
+BROWSER_NONCE = "browser-nonce-must-only-be-in-a-cookie"
 
 
 def _provider_app(**overrides: Any) -> dict[str, Any]:
@@ -913,8 +914,20 @@ def oauth_api(tools_api: respx.MockRouter) -> respx.MockRouter:
             "authorization_url": AUTHORIZE_URL,
             "redirect_uri": REDIRECT_URI,
             "expires_at": datetime.now(UTC).isoformat(),
+            "browser_nonce": BROWSER_NONCE,
         }
     )
+    tools_api.delete(
+        path__regex=r"^/internal/connections/[0-9a-f-]+/keys$", name="revoke_all"
+    ).respond(204)
+
+    def confirm(request: httpx.Request, connection_id: str) -> httpx.Response:
+        return httpx.Response(200, json=_oauth_connection(uuid.UUID(connection_id)))
+
+    tools_api.post(
+        path__regex=r"^/internal/connections/(?P<connection_id>[0-9a-f-]+)/confirm$",
+        name="confirm",
+    ).mock(side_effect=confirm)
     return tools_api
 
 
@@ -1023,6 +1036,18 @@ async def test_oauth_start_is_proxied(client_as, org, oauth_api):
     body = response.json()
     assert body["authorization_url"] == AUTHORIZE_URL
     assert body["redirect_uri"] == REDIRECT_URI
+    # The nonce goes to the browser as an HttpOnly cookie only.
+    assert "browser_nonce" not in body and BROWSER_NONCE not in response.text
+    cookie = response.headers["set-cookie"]
+    assert cookie.startswith(f"fallcha_oauth_nonce={BROWSER_NONCE};")
+    for attribute in (
+        "HttpOnly",
+        "Secure",
+        "SameSite=lax",
+        "Path=/api/v1/integrations",
+        "Max-Age=600",
+    ):
+        assert attribute in cookie, cookie
     request = oauth_api["start"].calls.last.request
     assert request.headers["X-Org-Id"] == str(org.id)
     assert request.headers["X-User-Id"] == str(org.members[OrgRole.DEVELOPER].id)
@@ -1046,7 +1071,8 @@ async def test_oauth_start_unconfigured_is_503_with_reason(client_as, oauth_api)
     )
     assert response.status_code == 503
     assert response.json()["code"] == "integration_unavailable"
-    assert "TOOLS_UI_RETURN_URL" in response.json()["detail"]
+    # Generic: the tools service's env var names are not leaked.
+    assert "TOOLS_UI_RETURN_URL" not in response.text
 
 
 async def test_activate_installs_an_oauth_connection(client_as, org, oauth_api):
@@ -1185,6 +1211,115 @@ async def test_activate_losing_a_race_returns_the_winner(client_as, org, oauth_a
         Actor(organization_id=org.id, user=org.members[OrgRole.ADMIN]),
         connection_id,
         tool_name=None,
+        browser_nonce=None,
     )
     assert result.credential_uuid == winner.json()["credential_uuid"]
     assert len(await _integration_credentials(org.id, active_only=True)) == 1
+
+
+# -- review follow-ups: browser-bound confirmation and orphaned keys ----------------
+
+
+async def test_activate_confirms_a_pending_connection_with_the_cookie(
+    client_as, org, oauth_api
+):
+    connection_id = uuid.uuid4()
+    _serve_connection(oauth_api, connection_id, status="pending")
+    client = client_as(OrgRole.DEVELOPER)
+    client.cookies.set("fallcha_oauth_nonce", BROWSER_NONCE)
+    try:
+        response = await client.post(
+            f"/api/v1/integrations/connections/{connection_id}/activate"
+        )
+    finally:
+        client.cookies.clear()
+    assert response.status_code == 200, response.text
+    assert response.json()["status"] == "active"
+    confirm = oauth_api["confirm"].calls.last.request
+    assert json.loads(confirm.content) == {"browser_nonce": BROWSER_NONCE}
+    assert confirm.headers["X-User-Id"] == str(org.members[OrgRole.DEVELOPER].id)
+    assert confirm.headers["X-Org-Id"] == str(org.id)
+    assert oauth_api["issue"].called
+    # The one-time cookie is cleared.
+    assert 'fallcha_oauth_nonce=""' in response.headers["set-cookie"]
+    assert BROWSER_NONCE not in response.text
+
+
+async def test_activate_pending_without_the_cookie_is_refused(
+    client_as, org, oauth_api
+):
+    connection_id = uuid.uuid4()
+    _serve_connection(oauth_api, connection_id, status="pending")
+    response = await client_as(OrgRole.ADMIN).post(
+        f"/api/v1/integrations/connections/{connection_id}/activate"
+    )
+    assert response.status_code == 409
+    assert "browser where you started" in response.json()["detail"]
+    assert not oauth_api["confirm"].called
+    assert not oauth_api["issue"].called
+    assert await _integration_credentials(org.id, active_only=False) == []
+
+
+async def test_activate_pending_with_a_refused_nonce(client_as, org, oauth_api):
+    connection_id = uuid.uuid4()
+    _serve_connection(oauth_api, connection_id, status="pending")
+    oauth_api["confirm"].mock(
+        return_value=httpx.Response(
+            409, json={"detail": "only the user who connected it can confirm it"}
+        )
+    )
+    client = client_as(OrgRole.ADMIN)
+    client.cookies.set("fallcha_oauth_nonce", "someone-elses-nonce")
+    try:
+        response = await client.post(
+            f"/api/v1/integrations/connections/{connection_id}/activate"
+        )
+    finally:
+        client.cookies.clear()
+    assert response.status_code == 409
+    assert not oauth_api["issue"].called
+    assert await _integration_credentials(org.id, active_only=False) == []
+
+
+async def test_activate_recovers_from_orphaned_keys(client_as, org, oauth_api):
+    """A live key exists but no credential holds it (an earlier rollback
+    could not revoke it): revoke all keys and retry once."""
+    connection_id = uuid.uuid4()
+    _serve_connection(oauth_api, connection_id)
+    issued = {
+        "id": str(uuid.uuid4()),
+        "connection_id": str(connection_id),
+        "key": ISSUED_KEY,
+    }
+    oauth_api["issue"].mock(
+        side_effect=[
+            httpx.Response(
+                409, json={"detail": "connection already has an active key"}
+            ),
+            httpx.Response(201, json=issued),
+        ]
+    )
+    response = await client_as(OrgRole.ADMIN).post(
+        f"/api/v1/integrations/connections/{connection_id}/activate"
+    )
+    assert response.status_code == 200, response.text
+    assert oauth_api["revoke_all"].calls.last.request.url.path == (
+        f"/internal/connections/{connection_id}/keys"
+    )
+    assert oauth_api["issue"].call_count == 2
+    assert len(await _integration_credentials(org.id, active_only=True)) == 1
+
+
+async def test_activate_gives_up_after_one_orphan_retry(client_as, org, oauth_api):
+    connection_id = uuid.uuid4()
+    _serve_connection(oauth_api, connection_id)
+    oauth_api["issue"].mock(
+        return_value=httpx.Response(409, json={"detail": "still conflicting"})
+    )
+    response = await client_as(OrgRole.ADMIN).post(
+        f"/api/v1/integrations/connections/{connection_id}/activate"
+    )
+    assert response.status_code == 409
+    assert oauth_api["revoke_all"].call_count == 1
+    assert oauth_api["issue"].call_count == 2
+    assert await _integration_credentials(org.id, active_only=True) == []

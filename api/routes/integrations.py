@@ -16,10 +16,11 @@ import uuid
 from collections.abc import Callable, Coroutine
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, Request, Response, status
+from fastapi import APIRouter, Cookie, Depends, Request, Response, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.routing import APIRoute
 
+from api import constants
 from api.schemas.integrations import (
     ActivateIntegrationRequest,
     CreateProviderAppRequest,
@@ -71,6 +72,12 @@ router = APIRouter(
 )
 
 Integrations = Annotated[IntegrationService, Depends(get_integration_service)]
+
+# Binds an OAuth flow to the browser that started it (see start_oauth).
+OAUTH_NONCE_COOKIE = "fallcha_oauth_nonce"
+OAUTH_NONCE_PATH = "/api/v1/integrations"
+OAUTH_NONCE_MAX_AGE = 600
+OAuthNonce = Annotated[str | None, Cookie(alias=OAUTH_NONCE_COOKIE)]
 Reader = Annotated[
     OrgMembership, Depends(require_permission(Permission.INTEGRATIONS_READ))
 ]
@@ -120,15 +127,31 @@ async def activate_connection(
     connection_id: uuid.UUID,
     membership: Installer,
     integrations: Integrations,
+    response: Response,
     request: ActivateIntegrationRequest | None = None,
+    oauth_nonce: OAuthNonce = None,
 ) -> IntegrationConnectionResponse:
     """Install an existing connection (e.g. one the OAuth flow just created)
-    as an MCP tool. Returns the existing install if it is already active."""
-    return await integrations.activate(
+    as an MCP tool. Returns the existing install if it is already active.
+
+    A just-authorized OAuth connection is pending: it is confirmed only for
+    the user who started the flow, from the same browser (the cookie set by
+    ``POST /oauth/start``)."""
+    activated = await integrations.activate(
         _actor(membership),
         connection_id,
         tool_name=request.tool_name if request else None,
+        browser_nonce=oauth_nonce,
     )
+    if oauth_nonce:
+        response.delete_cookie(
+            OAUTH_NONCE_COOKIE,
+            path=OAUTH_NONCE_PATH,
+            secure=constants.INTEGRATIONS_OAUTH_COOKIE_SECURE,
+            httponly=True,
+            samesite="lax",
+        )
+    return activated
 
 
 @router.patch("/connections/{connection_id}")
@@ -202,8 +225,24 @@ async def start_oauth(
     request: StartOAuthRequest,
     membership: Writer,
     integrations: Integrations,
+    response: Response,
 ) -> StartOAuthResponse:
     """Start an OAuth2 authorization: send the browser to
     ``authorization_url``. ``redirect_uri`` must be registered on the OAuth
-    client."""
-    return await integrations.start_oauth(_actor(membership), request)
+    client. Sets an HttpOnly cookie that ``activate`` needs, so finish the
+    flow in this browser."""
+    started = await integrations.start_oauth(_actor(membership), request)
+    response.set_cookie(
+        OAUTH_NONCE_COOKIE,
+        started.browser_nonce.get_secret_value(),
+        max_age=OAUTH_NONCE_MAX_AGE,
+        path=OAUTH_NONCE_PATH,
+        secure=constants.INTEGRATIONS_OAUTH_COOKIE_SECURE,
+        httponly=True,
+        samesite="lax",
+    )
+    return StartOAuthResponse(
+        authorization_url=started.authorization_url,
+        redirect_uri=started.redirect_uri,
+        expires_at=started.expires_at,
+    )

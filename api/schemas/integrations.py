@@ -65,8 +65,12 @@ class IntegrationConnection(BaseModel):
     account_label: str | None = None
     scopes_granted: list[str] = Field(default_factory=list)
     config: dict[str, JsonValue] = Field(default_factory=dict)
-    status: str
+    status: str = Field(description="pending, active, error or revoked.")
     last_error: str | None = None
+    error_code: str | None = Field(
+        default=None,
+        description="Set (e.g. grant_revoked) when only reconnecting can help.",
+    )
     expires_at: datetime | None = None
     created_at: datetime
     updated_at: datetime

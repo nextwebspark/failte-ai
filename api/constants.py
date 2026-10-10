@@ -101,6 +101,11 @@ TOOLS_SERVICE_URL = (
     os.getenv("TOOLS_SERVICE_URL") or "http://fallcha-tools:8000"
 ).rstrip("/")
 TOOLS_INTERNAL_SECRET = os.getenv("TOOLS_INTERNAL_SECRET") or None
+# The OAuth browser-binding cookie is Secure by default; set "false" only for
+# local development over plain http.
+INTEGRATIONS_OAUTH_COOKIE_SECURE = (
+    os.getenv("INTEGRATIONS_OAUTH_COOKIE_SECURE", "true").strip().lower() != "false"
+)
 # Comma-separated origins (scheme://host[:port]) that user-configured tool
 # URLs may target even in SaaS mode, where private addresses are otherwise
 # refused. The tools service origin is added when TOOLS_INTERNAL_SECRET is set.
