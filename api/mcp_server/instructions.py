@@ -110,6 +110,7 @@ A failed `save_workflow` / `create_workflow` returns a result with `saved`/`crea
   - `tool_refs`, `document_refs` → from `list_tools`, `list_documents`
   - `credential_ref` → from `list_credentials`
   - `recording_ref` → from `list_recordings`
+  - `skill_refs` → from `list_skills` (empty `skill_uuids` = every active skill)
 - `mention_textarea` fields (prompts, greetings, etc.) accept `{{template_variables}}` — values resolved at runtime from `pre_call_fetch`, caller context, or earlier extraction passes.
 
 ## Style

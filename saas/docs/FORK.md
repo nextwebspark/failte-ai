@@ -99,6 +99,14 @@ These upstream files we expect to modify. Keep this list short and current — a
 | `api/db/db_client.py` | `SkillClient` (fork-owned `api/db/skill_client.py`) added to the `DBClient` mixins |
 | `api/routes/main.py` (skills) | `include_router` for `skills_router` and `skill_library_router` (fork-owned `api/routes/skills.py`) |
 | `api/app.py` (skills) | One `sync_seed_library_on_startup()` call in the lifespan (non-fatal) syncing `api/skills_library/` seeds into the platform skill library |
+| `api/services/workflow/dto.py`, `node_specs/_base.py`, `workflow_graph.py` (skills runtime) | `skill_uuids` / `preload_skill_uuids` on `_ToolDocumentRefsMixin` (plus their `property_order` entries), a new `PropertyType.skill_refs`, and the two `Node` attributes. Logic lives in fork-owned `api/services/skills/runtime.py` |
+| `api/services/workflow/pipecat_engine.py` (skills runtime) | `skill_set` constructor kwarg → `self.skill_tools` (fork-owned `pipecat_engine_skills.SkillToolManager`); three calls in `_prepare_node` (`enter_node`, `attach`, `compose_prompt`); `record_skill_load`; `skills_loaded` in `ENGINE_OWNED_CONTEXT_KEYS` |
+| `api/services/workflow/pipecat_engine_custom_tools.py` (skills runtime) | `_skill_guard` wraps HTTP, MCP and calculator handlers so a loaded skill's `allowed_tool_uuids` applies; end-call/transfer tools are not wrapped |
+| `api/services/workflow/tool_name_validation.py` (skills runtime) | Public function now also runs fork-owned `skill_ref_validation` (org-owned skill refs, `load_skill`/`read_skill_file` reserved); the original body moved to `_custom_tool_name_collisions` |
+| `api/services/pipecat/run_pipeline.py` (skills runtime) | One `load_skill_set(...)` call next to `has_active_recordings`, passed to `PipecatEngine` |
+| `api/mcp_server/server.py`, `instructions.py`, `ts_validator/src/parse.ts` (skills runtime) | Register fork-owned `tools/skills_catalog.list_skills`; one guide line for `skill_refs`; `skill_refs` shape-checked like the other ref arrays |
+| `sdk/` (skills runtime) | `skill_refs` in both codegens and validators and in `_generated_models.*` (hand-added enum member, matching what the generator emits); typed node files regenerated |
+| `ui/src/components/flow/renderer/PropertyInput.tsx`, `ui/src/components/flow/types.ts`, `ui/src/client/types.gen.ts` (skills runtime) | `skill_refs` renders nothing until the skills node picker lands; node data typed; `PropertyType` gains `skill_refs` (the only OpenAPI change) |
 
 #### Google voice picker
 

@@ -144,6 +144,8 @@ def _sample_property_value(prop: PropertySpec, *, path: str) -> Any:
         return [f"tool_{slug}"]
     if prop.type == PropertyType.document_refs:
         return [f"document_{slug}"]
+    if prop.type == PropertyType.skill_refs:
+        return [f"skill_{slug}"]
     if prop.type == PropertyType.json:
         return {"kind": slug, "enabled": True}
     if prop.type == PropertyType.fixed_collection:

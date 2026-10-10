@@ -124,6 +124,18 @@ class StartCall(TypedNode):
     Documents the agent can reference.
     """
 
+    skill_uuids: list[str] = field(default_factory=list)
+    """
+    Workspace skills this node lists for on-demand loading. Leave empty to
+    list every active skill.
+    """
+
+    preload_skill_uuids: list[str] = field(default_factory=list)
+    """
+    Skills whose instructions are added to this node's prompt from the
+    start, with no load step.
+    """
+
     pre_call_fetch_mode: Literal['disabled', 'always', 'inbound', 'outbound'] = 'disabled'
     """
     Controls when a POST request is made to enrich the call context before

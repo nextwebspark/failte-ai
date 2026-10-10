@@ -180,6 +180,27 @@ class _ToolDocumentRefsMixin(BaseModel):
         default=None,
         spec_exclude=True,
     )
+    # Fork: agent skills (api/services/skills/runtime.py).
+    skill_uuids: Optional[List[str]] = spec_field(
+        default=None,
+        ui_type=PropertyType.skill_refs,
+        display_name="Skills",
+        description=(
+            "Workspace skills this node lists for on-demand loading. Leave "
+            "empty to list every active skill."
+        ),
+        llm_hint="List of skill UUIDs from `list_skills`; empty means all skills.",
+    )
+    preload_skill_uuids: Optional[List[str]] = spec_field(
+        default=None,
+        ui_type=PropertyType.skill_refs,
+        display_name="Preloaded Skills",
+        description=(
+            "Skills whose instructions are added to this node's prompt from "
+            "the start, with no load step."
+        ),
+        llm_hint="List of skill UUIDs from `list_skills` to inline in the prompt.",
+    )
 
 
 @node_spec(
@@ -226,6 +247,8 @@ class _ToolDocumentRefsMixin(BaseModel):
         "extraction_variables",
         "tool_uuids",
         "document_uuids",
+        "skill_uuids",
+        "preload_skill_uuids",
         "pre_call_fetch_mode",
         "pre_call_fetch_url",
         "pre_call_fetch_credential_uuid",
@@ -440,6 +463,8 @@ class StartCallNodeData(
         "extraction_variables",
         "tool_uuids",
         "document_uuids",
+        "skill_uuids",
+        "preload_skill_uuids",
     ),
     field_overrides={
         "name": {

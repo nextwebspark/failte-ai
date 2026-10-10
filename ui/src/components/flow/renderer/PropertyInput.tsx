@@ -117,6 +117,10 @@ export function PropertyInput({ spec, value, onChange, context }: PropertyInputP
             );
         case "credential_ref":
             return <CredentialRefWidget spec={spec} value={value} onChange={onChange} />;
+        case "skill_refs":
+            // Agent skills: the node picker ships with the skills UI. Until then
+            // the values persist untouched (saved through `...data`).
+            return null;
         default: {
             const exhaustiveCheck: never = spec.type;
             return (

@@ -6029,7 +6029,7 @@ export type PropertySpec = {
  * Adding a value here requires a matching arm in the frontend
  * `<PropertyInput>` switch and (where relevant) the SDK codegen template.
  */
-export type PropertyType = 'string' | 'number' | 'boolean' | 'options' | 'multi_options' | 'fixed_collection' | 'json' | 'tool_refs' | 'document_refs' | 'recording_ref' | 'credential_ref' | 'mention_textarea' | 'url';
+export type PropertyType = 'string' | 'number' | 'boolean' | 'options' | 'multi_options' | 'fixed_collection' | 'json' | 'tool_refs' | 'document_refs' | 'recording_ref' | 'credential_ref' | 'skill_refs' | 'mention_textarea' | 'url';
 
 /**
  * ProviderAppListResponse

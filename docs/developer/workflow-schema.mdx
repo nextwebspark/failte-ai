@@ -90,6 +90,8 @@ Each node represents a step in the conversation.
 |---|---|---|
 | `tool_uuids` | string[] | IDs of tools (HTTP API, call transfer, etc.) to attach to this node |
 | `document_uuids` | string[] | IDs of knowledge base documents available to this node |
+| `skill_uuids` | string[] | Workspace skills listed on this node for on-demand loading (`load_skill`); empty means every active skill |
+| `preload_skill_uuids` | string[] | Workspace skills whose instructions are inlined in this node's prompt from the start |
 
 ### trigger node
 

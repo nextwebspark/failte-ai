@@ -69,6 +69,18 @@ export interface AgentNode {
      * LLM hint: List of document UUIDs from `list_documents`.
      */
     document_uuids?: string[];
+    /**
+     * Workspace skills this node lists for on-demand loading. Leave empty to list every active skill.
+     *
+     * LLM hint: List of skill UUIDs from `list_skills`; empty means all skills.
+     */
+    skill_uuids?: string[];
+    /**
+     * Skills whose instructions are added to this node's prompt from the start, with no load step.
+     *
+     * LLM hint: List of skill UUIDs from `list_skills` to inline in the prompt.
+     */
+    preload_skill_uuids?: string[];
 }
 
 /** Factory — sets `type` for you so you don't repeat the discriminator. */

@@ -1078,7 +1078,7 @@ export interface components {
          *     `<PropertyInput>` switch and (where relevant) the SDK codegen template.
          * @enum {string}
          */
-        PropertyType: "string" | "number" | "boolean" | "options" | "multi_options" | "fixed_collection" | "json" | "tool_refs" | "document_refs" | "recording_ref" | "credential_ref" | "mention_textarea" | "url";
+        PropertyType: "string" | "number" | "boolean" | "options" | "multi_options" | "fixed_collection" | "json" | "tool_refs" | "document_refs" | "recording_ref" | "credential_ref" | "skill_refs" | "mention_textarea" | "url";
         /**
          * RecordingListResponseSchema
          * @description Response schema for list of recordings.

@@ -550,6 +550,7 @@ class PropertyType(Enum):
     document_refs = 'document_refs'
     recording_ref = 'recording_ref'
     credential_ref = 'credential_ref'
+    skill_refs = 'skill_refs'
     mention_textarea = 'mention_textarea'
     url = 'url'
 

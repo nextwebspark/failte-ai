@@ -92,6 +92,18 @@ export interface StartCall {
      */
     document_uuids?: string[];
     /**
+     * Workspace skills this node lists for on-demand loading. Leave empty to list every active skill.
+     *
+     * LLM hint: List of skill UUIDs from `list_skills`; empty means all skills.
+     */
+    skill_uuids?: string[];
+    /**
+     * Skills whose instructions are added to this node's prompt from the start, with no load step.
+     *
+     * LLM hint: List of skill UUIDs from `list_skills` to inline in the prompt.
+     */
+    preload_skill_uuids?: string[];
+    /**
      * Controls when a POST request is made to enrich the call context before the Start node opens.
      */
     pre_call_fetch_mode?: "disabled" | "always" | "inbound" | "outbound";

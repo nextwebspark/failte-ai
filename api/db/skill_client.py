@@ -499,6 +499,50 @@ class SkillClient(BaseDBClient):
             await session.commit()
             return archived
 
+    async def list_runtime_skills(self, organization_id: int) -> list[WorkspaceSkill]:
+        """Active skills of the organization with their files, for preloading
+        into a call. Two queries in one session; no library lookup."""
+        async with self.async_session() as session:
+            result = await session.execute(
+                select(SkillModel)
+                .where(
+                    SkillModel.organization_id == organization_id,
+                    SkillModel.status == SkillStatus.ACTIVE.value,
+                )
+                .order_by(SkillModel.name, SkillModel.id)
+            )
+            rows = list(result.scalars().all())
+            if not rows:
+                return []
+            files_result = await session.execute(
+                select(SkillFileModel).where(
+                    SkillFileModel.skill_uuid.in_([r.skill_uuid for r in rows])
+                )
+            )
+            by_skill: dict[str, list[SkillFileModel]] = {}
+            for file_row in files_result.scalars().all():
+                by_skill.setdefault(file_row.skill_uuid, []).append(file_row)
+            return [
+                _to_workspace(row, _files(by_skill.get(row.skill_uuid, [])), None)
+                for row in rows
+            ]
+
+    async def find_active_skill_uuids(
+        self, organization_id: int, skill_uuids: Collection[str]
+    ) -> set[str]:
+        """The subset of ``skill_uuids`` that are active skills of the org."""
+        if not skill_uuids:
+            return set()
+        async with self.async_session() as session:
+            result = await session.execute(
+                select(SkillModel.skill_uuid).where(
+                    SkillModel.organization_id == organization_id,
+                    SkillModel.skill_uuid.in_(list(skill_uuids)),
+                    SkillModel.status == SkillStatus.ACTIVE.value,
+                )
+            )
+            return {str(u) for u in result.scalars().all()}
+
     async def find_active_tool_uuids(
         self, organization_id: int, tool_uuids: Collection[str]
     ) -> set[str]:
