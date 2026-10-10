@@ -82,6 +82,11 @@ async def get_catalog(services: ServicesDep) -> CatalogResponse:
                     CatalogOAuth(
                         scopes=list(provider.oauth.scopes),
                         optional_scopes=list(provider.oauth.optional_scopes),
+                        redirect_uri=(
+                            services.oauth.redirect_uri(provider.id)
+                            if services.oauth.configured
+                            else None
+                        ),
                     )
                     if provider.oauth is not None
                     else None

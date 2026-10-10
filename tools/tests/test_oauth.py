@@ -412,6 +412,30 @@ async def test_start_is_503_until_configured(
     assert "TOOLS_UI_RETURN_URL" in response.json()["detail"]
 
 
+async def test_catalog_shows_redirect_uri_when_configured(
+    client: httpx.AsyncClient,
+) -> None:
+    response = await client.get("/internal/catalog", headers=internal_headers())
+    providers = {p["id"]: p for p in response.json()["providers"]}
+    assert providers[PROVIDER]["oauth"]["redirect_uri"] == REDIRECT_URI
+
+
+@pytest.mark.parametrize("missing", ["public_base_url", "ui_return_url"])
+async def test_catalog_hides_redirect_uri_until_configured(
+    settings: Settings,
+    registry: ProviderRegistry,
+    missing: str,
+) -> None:
+    from fallcha_tools.app import create_app
+
+    application = create_app(settings.model_copy(update={missing: ""}), registry)
+    transport = httpx.ASGITransport(app=application)
+    async with httpx.AsyncClient(transport=transport, base_url="http://tools") as c:
+        response = await c.get("/internal/catalog", headers=internal_headers())
+    providers = {p["id"]: p for p in response.json()["providers"]}
+    assert providers[PROVIDER]["oauth"]["redirect_uri"] is None
+
+
 # --- callback ----------------------------------------------------------------
 
 

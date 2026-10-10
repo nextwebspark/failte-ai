@@ -12,6 +12,7 @@ describe("getRequiredPermission", () => {
     ["/campaigns/new", "campaigns:write"],
     ["/api-keys", "api_keys:manage"],
     ["/team", "members:read"],
+    ["/integrations", "integrations:read"],
   ])("%s requires %s", (path, permission) => {
     expect(getRequiredPermission(path)).toBe(permission);
   });
