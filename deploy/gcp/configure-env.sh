@@ -112,18 +112,26 @@ if [[ -n "$CRED_KEYS" ]]; then
   set_key CREDENTIALS_ENCRYPTION_KEYS "$CRED_KEYS"
 fi
 
-# fallcha-tools (integrations). Configured only when both secrets exist:
+# fallcha-tools (integrations). REQUIRED: the overlay runs fallcha-tools and
+# fails without these, so a missing secret stops this script (sm, not
+# sm_optional). Create them once:
 #   openssl rand -hex 32 | gcloud secrets create dograh-tools-internal-secret --data-file=-
 #   python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())" \
 #     | gcloud secrets create dograh-tools-encryption-keys --data-file=-
 # TOOLS_INTERNAL_SECRET goes in .env (the api and the tools service share it);
 # the tools-only keys go in deploy/gcp/secrets/tools.env (the overlay's env_file).
-TOOLS_SECRET="$(sm_optional dograh-tools-internal-secret)"
-TOOLS_KEYS="$(sm_optional dograh-tools-encryption-keys)"
-if [[ -n "$TOOLS_SECRET" && -n "$TOOLS_KEYS" ]]; then
-  set_key TOOLS_INTERNAL_SECRET "$TOOLS_SECRET"
-  PUBLIC_URL="$(grep -E '^PUBLIC_BASE_URL=' "$ENV_FILE" | tail -1 | cut -d= -f2- | tr -d '"')"
-  TOOLS_ENV="$(dirname "$ENV_FILE")/deploy/gcp/secrets/tools.env"
+TOOLS_SECRET="$(sm dograh-tools-internal-secret)"
+TOOLS_KEYS="$(sm dograh-tools-encryption-keys)"
+[[ -n "$TOOLS_SECRET" && -n "$TOOLS_KEYS" ]] || {
+  echo "dograh-tools-internal-secret / dograh-tools-encryption-keys are empty" >&2
+  exit 1
+}
+set_key TOOLS_INTERNAL_SECRET "$TOOLS_SECRET"
+PUBLIC_URL="$(grep -E '^PUBLIC_BASE_URL=' "$ENV_FILE" | tail -1 | cut -d= -f2- | tr -d '"' || true)"
+TOOLS_DIR="$(dirname "$ENV_FILE")/deploy/gcp/secrets"
+TOOLS_ENV="$TOOLS_DIR/tools.env"
+mkdir -p "$TOOLS_DIR"
+(
   umask 077
   {
     printf 'TOOLS_ENCRYPTION_KEYS=%s\n' "$TOOLS_KEYS"
@@ -131,9 +139,9 @@ if [[ -n "$TOOLS_SECRET" && -n "$TOOLS_KEYS" ]]; then
     printf 'TOOLS_PUBLIC_BASE_URL=%s\n' "${DOGRAH_TOOLS_PUBLIC_BASE_URL:-$PUBLIC_URL}"
     printf 'TOOLS_UI_RETURN_URL=%s\n' "${DOGRAH_TOOLS_UI_RETURN_URL:-${PUBLIC_URL:+$PUBLIC_URL/integrations}}"
   } > "$TOOLS_ENV"
-  chmod 600 "$TOOLS_ENV"
-  echo "  wrote $TOOLS_ENV"
-fi
+)
+chmod 600 "$TOOLS_ENV"
+echo "  wrote $TOOLS_ENV"
 
 set_key ENABLE_SIGNUP true
 set_key FASTAPI_WORKERS 2

@@ -187,7 +187,10 @@ replaces the `calendar-shim` and `chmarine-product-service` sidecars. It sits on
 
 ### Secrets
 
-Create them once (values are never printed back):
+All three are **required**: the overlay runs `fallcha-tools`, and
+`configure-env.sh` stops with an error if `dograh-tools-internal-secret` or
+`dograh-tools-encryption-keys` is missing. Create them once (values are never
+printed back):
 
 ```bash
 P=dograh-eu
@@ -204,9 +207,18 @@ secret) and the tools-only keys into `deploy/gcp/secrets/tools.env` (see
 `PUBLIC_BASE_URL` and `TOOLS_UI_RETURN_URL` to `PUBLIC_BASE_URL/integrations`;
 override with `DOGRAH_TOOLS_PUBLIC_BASE_URL` / `DOGRAH_TOOLS_UI_RETURN_URL`.
 
-Setting `CREDENTIALS_ENCRYPTION_KEYS` on an install that already has
-credentials is safe: the api's migration encrypts the existing rows on the next
-start. Never drop a key while rows encrypted with it exist; rotation is in
+**Encrypting existing credentials.** The api's migration seals plaintext rows
+only when it first runs with the key set. Once the key is set on an install
+whose database already passed that migration, run the re-encryption once.
+GCP's Cloud SQL is such an install. The script is idempotent and safe to repeat:
+
+```bash
+docker compose up -d api        # restart with CREDENTIALS_ENCRYPTION_KEYS
+docker compose exec api python -m scripts.reencrypt_credentials --dry-run
+docker compose exec api python -m scripts.reencrypt_credentials
+```
+
+Never drop a key while rows encrypted with it exist. Rotation is in
 `docs/developer/environment-variables.mdx`.
 
 The nginx config is rendered by `dograh-init` from
@@ -307,6 +319,11 @@ sidecars keep running until step 7.
      with "Allocation failed".
 
    Changing the destination later is a tool edit, not an env change.
+
+   Then place a test call on a CH Marine workflow and ask for a person. It
+   must ring the destination while `chmarine-product-service` is still
+   running. Only then go on to step 7. A failed transfer here shows up as
+   "Allocation failed" in the api log.
 7. **Verify, then retire.** Place a test call per agent:
    - Voiptel: availability → book (the event appears with the "Voiptel call"
      prefix) → cancel. Also run an order lookup.
