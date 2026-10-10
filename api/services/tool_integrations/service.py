@@ -41,6 +41,7 @@ from api.schemas.integrations import (
     IntegrationConnection,
     IntegrationConnectionResponse,
     IntegrationProvider,
+    IntegrationSyncStatus,
     IntegrationTestResponse,
     ProviderAppListResponse,
     ProviderAppResponse,
@@ -92,6 +93,10 @@ class ToolsServiceApi(Protocol):
     async def test_connection(
         self, caller: Caller, connection_id: uuid.UUID
     ) -> ConnectionTestResult: ...
+
+    async def start_sync(
+        self, caller: Caller, connection_id: uuid.UUID
+    ) -> IntegrationSyncStatus: ...
 
     async def issue_key(
         self,
@@ -225,6 +230,7 @@ class IntegrationService:
                 account_label=request.account_label,
                 scopes_granted=request.scopes_granted,
                 config=request.config,
+                reuse_secret_from=request.reuse_secret_from,
             ),
         )
         return await self._activate(
@@ -409,6 +415,13 @@ class IntegrationService:
             message=result.message,
             connection=links.response(result.connection),
         )
+
+    async def start_sync(
+        self, actor: Actor, connection_id: uuid.UUID
+    ) -> IntegrationSyncStatus:
+        """Start importing the connection's data (org-scoped by the tools
+        service: another org's connection is a 404)."""
+        return await self._tools.start_sync(actor.caller, connection_id)
 
     async def uninstall(self, actor: Actor, connection_id: uuid.UUID) -> None:
         """Revoke the connection first, so its key stops working even if the
