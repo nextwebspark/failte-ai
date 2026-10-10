@@ -122,7 +122,7 @@ describe("PlatformModelEditor", () => {
         });
     });
 
-    it("offers the accents of the voice language and moves transcription with them", async () => {
+    it("offers the accents of the voice language without touching transcription", async () => {
         const onSave = renderEditor(PIPELINE);
 
         const accents = screen.getByRole("group", { name: "Accent" });
@@ -135,7 +135,8 @@ describe("PlatformModelEditor", () => {
         await waitFor(() => expect(onSave).toHaveBeenCalledOnce());
         const pipeline = onSave.mock.calls[0][0].platform.pipeline;
         expect(pipeline.tts).toMatchObject({ language: "en-GB", voice: "en-GB-Chirp3-HD-Kore" });
-        expect(pipeline.stt.language).toBe("en-GB");
+        // The accent is how the agent sounds; the caller's language stays as set.
+        expect(pipeline.stt.language).toBe("en-US");
     });
 
     it("hides the accent choice for a language with one accent", () => {

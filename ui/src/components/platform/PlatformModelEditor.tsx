@@ -268,16 +268,6 @@ export function PlatformModelEditor({
         changeTtsLanguage(locales.includes(state.stt.language) ? state.stt.language : (locales[0] ?? base));
     };
 
-    // Callers with that accent are understood a little better when the
-    // transcription language matches it.
-    const changeTtsAccent = (locale: string) => {
-        changeTtsLanguage(locale);
-        const sameLanguage = state.stt.language.split("-")[0] === locale.split("-")[0];
-        if (sameLanguage && sttLanguagesFor(catalog, state.stt.model).includes(locale)) {
-            update("stt", { language: locale });
-        }
-    };
-
     const changeSttModel = (model: string) =>
         update("stt", { model, language: sttLanguageForModel(catalog, model, state.stt.language) });
 
@@ -488,7 +478,7 @@ export function PlatformModelEditor({
                                             <FilterChip
                                                 key={locale}
                                                 pressed={state.tts.language === locale}
-                                                onClick={() => changeTtsAccent(locale)}
+                                                onClick={() => changeTtsLanguage(locale)}
                                                 disabled={disabled}
                                             >
                                                 {accentLabel(locale)}
