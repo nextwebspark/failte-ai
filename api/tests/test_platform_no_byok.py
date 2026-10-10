@@ -375,3 +375,19 @@ def test_voicemail_classifier_key_is_dropped_from_customer_responses():
     )
 
     assert "api_key" not in masked["voicemail_detection"]
+
+
+@pytest.mark.asyncio
+async def test_chunked_documents_are_refused_on_platform_models(make_client):
+    async with make_client(PLATFORM) as (client, _workflow):
+        response = await client.post(
+            "/api/v1/knowledge-base/process-document",
+            json={
+                "document_uuid": "00000000-0000-0000-0000-000000000001",
+                "s3_key": "knowledge_base/doc.pdf",
+                "retrieval_mode": "chunked",
+            },
+        )
+
+    assert response.status_code == 422
+    assert "full-document" in response.json()["detail"]

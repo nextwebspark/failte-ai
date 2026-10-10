@@ -43,8 +43,8 @@ def sip(monkeypatch):
 @pytest.fixture(autouse=True)
 def flags(monkeypatch):
     """Deployment flags at their MPS defaults, independent of the environment."""
-    monkeypatch.setattr(bootstrap, "PLATFORM_MODELS_ENABLED", False)
-    monkeypatch.setattr(bootstrap, "MANAGED_SIP_PROVISIONING_ENABLED", True)
+    monkeypatch.setattr(bootstrap.constants, "PLATFORM_MODELS_ENABLED", False)
+    monkeypatch.setattr(bootstrap.constants, "MANAGED_SIP_PROVISIONING_ENABLED", True)
 
 
 @pytest.fixture
@@ -301,7 +301,7 @@ async def test_billing_failure_does_not_discard_the_model_configuration(
 async def test_platform_org_starts_on_the_platform_default_without_mps(
     monkeypatch, config, lease, mps, upsert, sip
 ):
-    monkeypatch.setattr(bootstrap, "PLATFORM_MODELS_ENABLED", True)
+    monkeypatch.setattr(bootstrap.constants, "PLATFORM_MODELS_ENABLED", True)
     billing = AsyncMock()
     monkeypatch.setattr(bootstrap, "ensure_hosted_mps_billing_account_v2", billing)
 
@@ -325,8 +325,8 @@ async def test_platform_org_starts_on_the_platform_default_without_mps(
 async def test_disabled_managed_sip_is_never_provisioned(
     monkeypatch, config, lease, mps, upsert, sip, sip_present
 ):
-    monkeypatch.setattr(bootstrap, "PLATFORM_MODELS_ENABLED", True)
-    monkeypatch.setattr(bootstrap, "MANAGED_SIP_PROVISIONING_ENABLED", False)
+    monkeypatch.setattr(bootstrap.constants, "PLATFORM_MODELS_ENABLED", True)
+    monkeypatch.setattr(bootstrap.constants, "MANAGED_SIP_PROVISIONING_ENABLED", False)
 
     assert await bootstrap.ensure_organization_bootstrapped(
         ORG_ID, created_by=CREATED_BY
@@ -345,7 +345,7 @@ async def test_stored_configuration_is_never_reprovisioned(
     """A stored row that this release cannot parse (a rolling deploy) still
     counts as configured: replacing it would discard the org's choices and,
     on MPS, mint a second key."""
-    monkeypatch.setattr(bootstrap, "PLATFORM_MODELS_ENABLED", platform)
+    monkeypatch.setattr(bootstrap.constants, "PLATFORM_MODELS_ENABLED", platform)
     config.return_value = True
 
     assert await bootstrap.ensure_organization_bootstrapped(

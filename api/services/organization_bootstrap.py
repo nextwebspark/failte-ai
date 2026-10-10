@@ -18,12 +18,8 @@ from datetime import timedelta
 
 from loguru import logger
 
-from api.constants import (
-    AUTH_PROVIDER,
-    DEPLOYMENT_MODE,
-    MANAGED_SIP_PROVISIONING_ENABLED,
-    PLATFORM_MODELS_ENABLED,
-)
+from api import constants
+from api.constants import AUTH_PROVIDER, DEPLOYMENT_MODE
 from api.db import db_client
 from api.db.organization_configuration_client import LEASE_COMPLETED
 from api.enums import OrganizationConfigurationKey
@@ -81,7 +77,7 @@ async def ensure_organization_bootstrapped(
     # With managed SIP off the sentinel completes without it, so turning the
     # flag on later does not backfill existing organizations.
     sip_provisioned = (
-        not MANAGED_SIP_PROVISIONING_ENABLED
+        not constants.MANAGED_SIP_PROVISIONING_ENABLED
         or await _has_managed_sip_connectivity(organization_id)
     )
 
@@ -158,7 +154,7 @@ async def _bootstrap_organization(
     Returns True when the organization ends up fully provisioned, i.e. when the
     lease may be marked terminal.
     """
-    if not has_configuration and PLATFORM_MODELS_ENABLED:
+    if not has_configuration and constants.PLATFORM_MODELS_ENABLED:
         # Platform models run on the operator's Vertex project: no key to mint
         # and no MPS billing account to open.
         await upsert_organization_ai_model_configuration_v2(

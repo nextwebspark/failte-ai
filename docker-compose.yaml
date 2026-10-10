@@ -285,6 +285,18 @@ services:
       STRIPE_AUTOMATIC_TAX: "${STRIPE_AUTOMATIC_TAX:-true}"
       BILLING_SALES_CONTACT: "${BILLING_SALES_CONTACT:-}"
 
+      # Platform-managed models: every org runs on the operator's Vertex
+      # project (see api/.env.example). Credentials come from the host's
+      # Application Default Credentials (e.g. the VM service account) unless
+      # PLATFORM_GOOGLE_CREDENTIALS_JSON holds a service-account JSON.
+      PLATFORM_MODELS_ENABLED: "${PLATFORM_MODELS_ENABLED:-false}"
+      PLATFORM_VERTEX_PROJECT_ID: "${PLATFORM_VERTEX_PROJECT_ID:-}"
+      PLATFORM_VERTEX_LLM_LOCATION: "${PLATFORM_VERTEX_LLM_LOCATION:-}"
+      PLATFORM_VERTEX_REALTIME_LOCATION: "${PLATFORM_VERTEX_REALTIME_LOCATION:-}"
+      PLATFORM_GOOGLE_SPEECH_LOCATION: "${PLATFORM_GOOGLE_SPEECH_LOCATION:-}"
+      PLATFORM_GOOGLE_CREDENTIALS_JSON: "${PLATFORM_GOOGLE_CREDENTIALS_JSON:-}"
+      MANAGED_SIP_PROVISIONING_ENABLED: "${MANAGED_SIP_PROVISIONING_ENABLED:-}"
+
       # Telephony media WebSocket capability token. The carrier dials the media
       # socket back, so its URL is caller-visible and the ids in it are otherwise
       # guessable. Set a secret in .env to have providers sign that URL and the

@@ -11,6 +11,11 @@ JSON object per organization, so ``--revert`` can restore it exactly. The
 backup holds the organizations' old API keys: it is created owner-only and
 should be deleted once the migration is confirmed.
 
+Order matters. Deploy this release to every api pod first (older releases
+can't read "platform" configurations), then turn PLATFORM_MODELS_ENABLED on
+and run this script straight away: until an organization is migrated, its
+customers can't save agents that still carry a provider override.
+
 Run it in a maintenance window with PLATFORM_MODELS_ENABLED already on: plans
 are computed up front and applied as computed, so model settings edited while
 it runs are overwritten. Each organization's model configuration and its
