@@ -32,6 +32,8 @@ export interface IntegrationsState {
     refresh: () => Promise<void>;
     /** Reloads the connections; resolves false (after a toast) on failure. */
     refreshConnections: () => Promise<boolean>;
+    /** Reloads the connections without a toast (for polling). */
+    reloadConnectionsQuietly: () => Promise<boolean>;
     upsertConnection: (connection: IntegrationConnectionResponse) => void;
     addProviderApp: (app: ProviderAppResponse) => void;
 }
@@ -76,6 +78,11 @@ export function useIntegrations(enabled: boolean): IntegrationsState {
         if (failure) toast.error(failure);
         return failure === null;
     }, [loadConnections]);
+
+    const reloadConnectionsQuietly = useCallback(
+        async () => (await loadConnections()) === null,
+        [loadConnections],
+    );
 
     const refresh = useCallback(async () => {
         setLoading(true);
@@ -127,6 +134,7 @@ export function useIntegrations(enabled: boolean): IntegrationsState {
         error,
         refresh,
         refreshConnections,
+        reloadConnectionsQuietly,
         upsertConnection,
         addProviderApp,
     };

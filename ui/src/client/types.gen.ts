@@ -4073,15 +4073,21 @@ export type InstallIntegrationRequest = {
     /**
      * Auth Mode
      */
-    auth_mode: 'service_account' | 'api_key';
+    auth_mode: 'service_account' | 'api_key' | 'none';
     /**
      * Secret
      *
-     * Provider secret, e.g. a service-account JSON key. Stored encrypted by the tools service; never returned.
+     * Provider secret, e.g. a service-account JSON key. Stored encrypted by the tools service; never returned. Empty for the ``none`` auth mode, or with ``reuse_secret_from``.
      */
-    secret: {
+    secret?: {
         [key: string]: JsonValue;
     };
+    /**
+     * Reuse Secret From
+     *
+     * Reuse the secret of this workspace's active connection of the same provider family and auth mode (e.g. the service account already connected for Google Calendar). Copied by the tools service; never sent to the browser.
+     */
+    reuse_secret_from?: string | null;
     /**
      * Account Label
      */
@@ -4187,6 +4193,10 @@ export type IntegrationConnectionResponse = {
      */
     updated_at: string;
     /**
+     * Latest sync, for providers with the ``sync`` capability.
+     */
+    sync?: IntegrationSyncStatus | null;
+    /**
      * Credential Uuid
      *
      * Bearer credential holding this connection's key, if any.
@@ -4249,6 +4259,12 @@ export type IntegrationProvider = {
      */
     icon: string;
     /**
+     * Auth Family
+     *
+     * Providers of one family (e.g. ``google``) share OAuth clients and can reuse each other's service-account keys.
+     */
+    auth_family?: string | null;
+    /**
      * Auth Modes
      */
     auth_modes: Array<string>;
@@ -4269,6 +4285,56 @@ export type IntegrationProvider = {
         [key: string]: JsonValue;
     } | null;
     oauth?: IntegrationOAuthInfo | null;
+    /**
+     * Capabilities
+     *
+     * Optional features, e.g. ``sync`` (POST /connections/{id}/sync imports the connection's data).
+     */
+    capabilities?: Array<string>;
+    /**
+     * Sync Item Label
+     *
+     * What a sync imports, e.g. ``products``.
+     */
+    sync_item_label?: string | null;
+};
+
+/**
+ * IntegrationSyncStatus
+ *
+ * The latest background sync of a connection (``sync`` capability).
+ */
+export type IntegrationSyncStatus = {
+    /**
+     * Status
+     *
+     * running, succeeded or failed.
+     */
+    status: string;
+    /**
+     * Started At
+     */
+    started_at: string;
+    /**
+     * Finished At
+     */
+    finished_at?: string | null;
+    /**
+     * Last Synced At
+     *
+     * End of the last successful sync.
+     */
+    last_synced_at?: string | null;
+    /**
+     * Item Count
+     *
+     * Items imported, e.g. products.
+     */
+    item_count: number;
+    /**
+     * Last Error
+     */
+    last_error?: string | null;
 };
 
 /**
@@ -4298,8 +4364,16 @@ export type IntegrationToolSummary = {
     name: string;
     /**
      * Description
+     *
+     * What the agent is told (may be long).
      */
     description: string;
+    /**
+     * Summary
+     *
+     * A short human label for the function.
+     */
+    summary?: string | null;
 };
 
 /**
@@ -5967,6 +6041,8 @@ export type ProviderAppResponse = {
     id: string;
     /**
      * Provider
+     *
+     * The auth family (e.g. ``google``) or provider id the client serves: it can be used for every provider of that family.
      */
     provider: string;
     /**
@@ -7050,6 +7126,12 @@ export type StartOAuthRequest = {
      * Any of the provider's ``oauth.optional_scopes``.
      */
     optional_scopes?: Array<string>;
+    /**
+     * Login Hint
+     *
+     * Email of the account to suggest, e.g. the one an existing connection of the same family uses, so the provider can skip the account chooser and ask only for the new permissions.
+     */
+    login_hint?: string | null;
 };
 
 /**
@@ -13776,6 +13858,50 @@ export type TestConnectionApiV1IntegrationsConnectionsConnectionIdTestPostRespon
 };
 
 export type TestConnectionApiV1IntegrationsConnectionsConnectionIdTestPostResponse = TestConnectionApiV1IntegrationsConnectionsConnectionIdTestPostResponses[keyof TestConnectionApiV1IntegrationsConnectionsConnectionIdTestPostResponses];
+
+export type SyncConnectionApiV1IntegrationsConnectionsConnectionIdSyncPostData = {
+    body?: never;
+    headers?: {
+        /**
+         * Authorization
+         */
+        authorization?: string | null;
+        /**
+         * X-Api-Key
+         */
+        'X-API-Key'?: string | null;
+    };
+    path: {
+        /**
+         * Connection Id
+         */
+        connection_id: string;
+    };
+    query?: never;
+    url: '/api/v1/integrations/connections/{connection_id}/sync';
+};
+
+export type SyncConnectionApiV1IntegrationsConnectionsConnectionIdSyncPostErrors = {
+    /**
+     * Not found
+     */
+    404: unknown;
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type SyncConnectionApiV1IntegrationsConnectionsConnectionIdSyncPostError = SyncConnectionApiV1IntegrationsConnectionsConnectionIdSyncPostErrors[keyof SyncConnectionApiV1IntegrationsConnectionsConnectionIdSyncPostErrors];
+
+export type SyncConnectionApiV1IntegrationsConnectionsConnectionIdSyncPostResponses = {
+    /**
+     * Successful Response
+     */
+    202: IntegrationSyncStatus;
+};
+
+export type SyncConnectionApiV1IntegrationsConnectionsConnectionIdSyncPostResponse = SyncConnectionApiV1IntegrationsConnectionsConnectionIdSyncPostResponses[keyof SyncConnectionApiV1IntegrationsConnectionsConnectionIdSyncPostResponses];
 
 export type ListProviderAppsApiV1IntegrationsProviderAppsGetData = {
     body?: never;

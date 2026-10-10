@@ -33,11 +33,11 @@ const CALENDAR_SCHEMA = {
             type: "array",
         },
         open_hour: { default: 9, maximum: 23, minimum: 0, title: "Open Hour", type: "integer" },
-        orders_sheet_id: {
+        event_color_id: {
             anyOf: [{ maxLength: 256, type: "string" }, { type: "null" }],
             default: null,
-            description: "Google Sheet id for read-only order lookup; unset disables it.",
-            title: "Orders Sheet Id",
+            description: "Colour of booked events; unset uses the calendar default.",
+            title: "Event Color Id",
         },
         nested: { type: "object", properties: {} },
     },
@@ -51,18 +51,18 @@ describe("fieldsFromSchema", () => {
             ["timezone", "string"],
             ["booking_days", "integer_array"],
             ["open_hour", "integer"],
-            ["orders_sheet_id", "string"],
+            ["event_color_id", "string"],
         ]);
     });
 
     it("reads required, nullable, limits and descriptions", () => {
         const byKey = Object.fromEntries(fieldsFromSchema(CALENDAR_SCHEMA).map((f) => [f.key, f]));
         expect(byKey.calendar_id).toMatchObject({ required: true, nullable: false, minLength: 1, label: "Calendar ID" });
-        expect(byKey.orders_sheet_id).toMatchObject({
+        expect(byKey.event_color_id).toMatchObject({
             required: false,
             nullable: true,
             maxLength: 256,
-            description: "Google Sheet id for read-only order lookup; unset disables it.",
+            description: "Colour of booked events; unset uses the calendar default.",
         });
         expect(byKey.booking_days).toMatchObject({ minimum: 0, maximum: 6, minItems: 1 });
         expect(byKey.open_hour).toMatchObject({ minimum: 0, maximum: 23, default: 9 });
@@ -118,7 +118,7 @@ describe("initialValues", () => {
             timezone: "Europe/Dublin",
             booking_days: "0, 1, 2, 3, 4",
             open_hour: "9",
-            orders_sheet_id: "",
+            event_color_id: "",
         });
     });
 
@@ -137,14 +137,14 @@ describe("valuesToConfig", () => {
             timezone: "",
             booking_days: "0, 2,4",
             open_hour: "10",
-            orders_sheet_id: "",
+            event_color_id: "",
         });
         expect(errors).toEqual({});
         expect(config).toEqual({
             calendar_id: "team@group.calendar.google.com",
             booking_days: [0, 2, 4],
             open_hour: 10,
-            orders_sheet_id: null,
+            event_color_id: null,
         });
     });
 
@@ -154,7 +154,7 @@ describe("valuesToConfig", () => {
             timezone: "x",
             booking_days: "1, 9",
             open_hour: "9.5",
-            orders_sheet_id: "",
+            event_color_id: "",
         });
         expect(errors).toEqual({
             calendar_id: "Required",

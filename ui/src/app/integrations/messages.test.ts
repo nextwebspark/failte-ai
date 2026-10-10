@@ -5,12 +5,16 @@ import { describe, expect, it } from "vitest";
 import {
     connectionErrorMessage,
     connectionState,
+    credentialFamily,
+    humanToolName,
     integrationErrorMessage,
+    isSyncing,
     isUnavailableError,
     needsReconnect,
     oauthFailureMessage,
     parseIntegrationReturn,
     scopeLabel,
+    syncSummary,
     urlWithoutReturnParams,
 } from "./messages";
 
@@ -157,9 +161,39 @@ describe("API errors", () => {
 
 describe("scopeLabel", () => {
     it("names known scopes and derives a label for others", () => {
-        expect(scopeLabel("https://www.googleapis.com/auth/spreadsheets.readonly")).toBe(
-            "Read Google Sheets (for order lookup)",
-        );
+        expect(scopeLabel("https://www.googleapis.com/auth/spreadsheets")).toBe("Read and edit Google Sheets");
         expect(scopeLabel("https://www.googleapis.com/auth/drive.file")).toBe("drive file");
+    });
+});
+
+describe("sync helpers", () => {
+    const base = { started_at: "2026-10-10T10:00:00Z", item_count: 0 };
+
+    it("summarises each sync state", () => {
+        expect(syncSummary(null, "products")).toBe("Not synced yet. Sync to import products.");
+        expect(syncSummary({ ...base, status: "running" }, "products")).toBe("Syncing products…");
+        expect(isSyncing({ ...base, status: "running" })).toBe(true);
+        expect(syncSummary({ ...base, status: "failed", last_error: "robots.txt answered HTTP 503" })).toBe(
+            "Last sync failed: robots.txt answered HTTP 503",
+        );
+        const done = syncSummary(
+            { ...base, status: "succeeded", item_count: 42, last_synced_at: "2026-10-10T11:00:00Z" },
+            "products",
+        );
+        expect(done.startsWith("42 products · last synced ")).toBe(true);
+    });
+
+    it("keys credentials by family", () => {
+        expect(credentialFamily({ id: "google-sheets", auth_family: "google" })).toBe("google");
+        expect(credentialFamily({ id: "website-catalogue", auth_family: null })).toBe("website-catalogue");
+    });
+});
+
+describe("humanToolName", () => {
+    it("prefers the summary and never shows agent instructions", () => {
+        expect(humanToolName({ name: "find_rows", summary: "Find rows by a column value" })).toBe(
+            "Find rows by a column value",
+        );
+        expect(humanToolName({ name: "book_appointment", summary: null })).toBe("Book appointment");
     });
 });
