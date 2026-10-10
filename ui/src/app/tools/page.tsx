@@ -149,7 +149,16 @@ export default function ToolsPage() {
         }
     }, [isCreateDialogOpen, newToolCategory, fetchAgentOptions]);
 
+    const selectedCategoryHref = getCategoryConfig(newToolCategory)?.href;
+
     const handleCreateTool = async () => {
+        if (selectedCategoryHref) {
+            // Created on its own page (e.g. integrations), not as an empty tool here.
+            setIsCreateDialogOpen(false);
+            router.push(selectedCategoryHref);
+            return;
+        }
+
         if (!newToolName.trim()) {
             setCreateError("Please enter a name for the tool");
             return;
@@ -587,30 +596,34 @@ export default function ToolsPage() {
                                 {getCategoryConfig(newToolCategory)?.description}
                             </p>
                         </div>
-                        <div className="grid gap-2">
-                            <Label htmlFor="name">Tool Name</Label>
-                            <Label className="text-xs text-muted-foreground">
-                                Use a descriptive name, like &quot;Get Weather using API&quot; for a tool that fetches weather
-                            </Label>
-                            <Input
-                                id="name"
-                                value={newToolName}
-                                onChange={(e) => setNewToolName(e.target.value)}
-                                placeholder="e.g., Book Appointment, Check Inventory"
-                            />
-                        </div>
-                        <div className="grid gap-2">
-                            <Label htmlFor="description">Description (Optional)</Label>
-                            <Label className="text-xs text-muted-foreground">
-                                Provide a description which makes it easy for LLM to understand what this tool does
-                            </Label>
-                            <Input
-                                id="description"
-                                value={newToolDescription}
-                                onChange={(e) => setNewToolDescription(e.target.value)}
-                                placeholder="What does this tool do?"
-                            />
-                        </div>
+                        {!selectedCategoryHref && (
+                            <>
+                                <div className="grid gap-2">
+                                    <Label htmlFor="name">Tool Name</Label>
+                                    <Label className="text-xs text-muted-foreground">
+                                        Use a descriptive name, like &quot;Get Weather using API&quot; for a tool that fetches weather
+                                    </Label>
+                                    <Input
+                                        id="name"
+                                        value={newToolName}
+                                        onChange={(e) => setNewToolName(e.target.value)}
+                                        placeholder="e.g., Book Appointment, Check Inventory"
+                                    />
+                                </div>
+                                <div className="grid gap-2">
+                                    <Label htmlFor="description">Description (Optional)</Label>
+                                    <Label className="text-xs text-muted-foreground">
+                                        Provide a description which makes it easy for LLM to understand what this tool does
+                                    </Label>
+                                    <Input
+                                        id="description"
+                                        value={newToolDescription}
+                                        onChange={(e) => setNewToolDescription(e.target.value)}
+                                        placeholder="What does this tool do?"
+                                    />
+                                </div>
+                            </>
+                        )}
 
                         {newToolCategory === "transfer_agent" && (
                             <div className="grid gap-2">
@@ -695,7 +708,9 @@ export default function ToolsPage() {
                             Cancel
                         </Button>
                         <Button onClick={handleCreateTool} disabled={isCreating}>
-                            {isCreating ? "Creating..." : "Create Tool"}
+                            {selectedCategoryHref
+                                ? "Open Integrations"
+                                : isCreating ? "Creating..." : "Create Tool"}
                         </Button>
                     </DialogFooter>
                 </DialogContent>

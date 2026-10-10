@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowLeftRight, Calculator, Cog, Globe, type LucideIcon, PhoneForwarded, PhoneOff, Puzzle } from "lucide-react";
+import { ArrowLeftRight, Calculator, Cog, Globe, type LucideIcon, PhoneForwarded, PhoneOff, Plug, Puzzle } from "lucide-react";
 import { type ReactNode } from "react";
 
 import type {
@@ -88,6 +88,8 @@ export interface ToolCategoryConfig {
     iconName: string; // String name for storing in database
     iconColor: string;
     disabled?: boolean;
+    /** Created elsewhere: choosing this category opens that page instead of creating a tool here. */
+    href?: string;
     autoFill?: {
         name: string;
         description: string;
@@ -170,12 +172,12 @@ export const TOOL_CATEGORIES: ToolCategoryConfig[] = [
     },
     {
         value: "integration",
-        label: "Integration (Coming Soon)",
-        description: "Third-party integrations like Google Calendar",
-        icon: Puzzle,
-        iconName: "puzzle",
-        iconColor: "#8B5CF6",
-        disabled: true,
+        label: "Integration",
+        description: "Connect apps like Google Calendar on the Integrations page; each connection adds an agent tool",
+        icon: Plug,
+        iconName: "plug",
+        iconColor: "#0F7547",
+        href: "/integrations",
     },
 ];
 
