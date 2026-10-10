@@ -103,22 +103,39 @@ class NodeSkills:
                 return skill
         return None
 
-    def prompt_block(self) -> str:
+    def prompt_block(
+        self,
+        *,
+        with_builtins: bool = True,
+        preload_allowed_tools: Sequence[str] | None = None,
+    ) -> str:
         """Text appended to the node's system prompt; empty when the node has
-        no skills."""
+        no skills.
+
+        ``with_builtins=False`` (the built-ins could not be registered): no
+        index and no file list, only the preloaded bodies.
+        ``preload_allowed_tools``: the tool restriction preloaded skills put
+        in force, as function names, stated after the preloaded sections.
+        """
         parts: list[str] = []
-        if self.listed:
+        if self.listed and with_builtins:
             lines = [INDEX_HEADER]
             lines.extend(f"- {s.name}: {s.description}" for s in self.listed)
             lines.append(INDEX_INSTRUCTION)
             parts.append("\n".join(lines))
         for skill in self.preloaded:
             section = f'Skill "{skill.name}" (loaded; follow it):\n{skill.body_md}'
-            if skill.files:
+            if skill.files and with_builtins:
                 section += f"\nFiles (read with {READ_SKILL_FILE}): " + ", ".join(
                     skill.file_paths
                 )
             parts.append(section)
+        if self.preloaded and preload_allowed_tools is not None:
+            allowed = ", ".join(preload_allowed_tools) or "none"
+            parts.append(
+                f"Only these tools are available: {allowed} (plus step "
+                "transitions and call controls)."
+            )
         return "\n\n".join(parts)
 
 
@@ -153,8 +170,9 @@ class SkillSet:
     ) -> NodeSkills:
         """Select a node's skills.
 
-        ``skill_uuids`` empty or None lists every skill; otherwise only those.
-        Preloaded skills are inlined and left out of the index. UUIDs that are
+        ``skill_uuids`` None lists every skill (the default); an explicit empty
+        list lists none (the node opts out); otherwise only those. Preloaded
+        skills are explicit, inlined and left out of the index. UUIDs that are
         no longer active skills (archived since the workflow was saved) are
         ignored.
         """
@@ -162,7 +180,7 @@ class SkillSet:
             self._by_uuid[u] for u in _dedupe(preload_skill_uuids) if u in self._by_uuid
         )
         preloaded_uuids = {s.skill_uuid for s in preloaded}
-        if skill_uuids:
+        if skill_uuids is not None:
             candidates = [
                 self._by_uuid[u] for u in _dedupe(skill_uuids) if u in self._by_uuid
             ]
@@ -194,6 +212,29 @@ async def load_skill_set(store: RuntimeSkillStore, organization_id: int) -> Skil
         )
         return SkillSet.empty()
     return SkillSet.of(RuntimeSkill.from_workspace(row) for row in rows)
+
+
+SKILLS_ENABLED_CONFIG_KEY = "skills_enabled"
+
+
+def skills_enabled(workflow_configurations: Mapping[str, Any] | None) -> bool:
+    """The workflow-level switch (``workflow_configurations.skills_enabled``,
+    default true). Off: no skills, index or built-ins anywhere in the
+    workflow."""
+    value = (workflow_configurations or {}).get(SKILLS_ENABLED_CONFIG_KEY)
+    return value is not False
+
+
+async def load_call_skill_set(
+    store: RuntimeSkillStore,
+    organization_id: int,
+    workflow_configurations: Mapping[str, Any] | None,
+) -> SkillSet | None:
+    """The call's skills, or None (nothing loaded) when the workflow turns
+    skills off."""
+    if not skills_enabled(workflow_configurations):
+        return None
+    return await load_skill_set(store, organization_id)
 
 
 # -- built-in functions ---------------------------------------------------------
@@ -325,6 +366,8 @@ class NodeSkillSession:
         self._loaded: list[str] = []
         # LLM function name -> tool UUID for the node's restrictable tools.
         self.tool_functions: dict[str, str] = {}
+        # False when the built-ins could not be registered on this node.
+        self.builtins_active = False
 
     @property
     def allowed_tool_uuids(self) -> frozenset[str] | None:
@@ -341,6 +384,9 @@ class NodeSkillSession:
         if self._allowed is None:
             return skill.allowed_tool_uuids
         return self._allowed | skill.allowed_tool_uuids
+
+    def clear_restriction(self) -> None:
+        self._allowed = None
 
     def record_load(self, skill: RuntimeSkill) -> None:
         self._allowed = self.restriction_after(skill)

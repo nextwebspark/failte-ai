@@ -274,6 +274,21 @@ async def test_generate_preserves_all_edge_dto_fields():
     assert result["workflow"]["edges"][0]["data"] == edge_data
 
 
+@pytest.mark.asyncio
+async def test_round_trip_keeps_explicit_empty_skill_uuids():
+    """`skill_uuids: []` (node opts out of skills) must not collapse into
+    "unset" (every skill) through MCP authoring."""
+    wf = _minimal_workflow()
+    wf["nodes"][0]["data"]["skill_uuids"] = []
+    code = await generate_code(wf)
+    assert "skill_uuids: []" in code
+    result = await parse_code(code)
+    assert result["ok"] is True, result
+    data = result["workflow"]["nodes"][0]["data"]
+    assert data["skill_uuids"] == []
+    assert "preload_skill_uuids" not in data
+
+
 # ─── parse_code ──────────────────────────────────────────────────────────
 
 

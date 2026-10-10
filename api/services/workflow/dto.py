@@ -186,10 +186,13 @@ class _ToolDocumentRefsMixin(BaseModel):
         ui_type=PropertyType.skill_refs,
         display_name="Skills",
         description=(
-            "Workspace skills this node lists for on-demand loading. Leave "
-            "empty to list every active skill."
+            "Workspace skills this node lists for on-demand loading. Unset "
+            "lists every active skill; an empty list lists none."
         ),
-        llm_hint="List of skill UUIDs from `list_skills`; empty means all skills.",
+        llm_hint=(
+            "List of skill UUIDs from `list_skills`. Omit for all skills; "
+            "`[]` opts this node out of skills."
+        ),
     )
     preload_skill_uuids: Optional[List[str]] = spec_field(
         default=None,

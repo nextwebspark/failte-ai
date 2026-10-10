@@ -33,6 +33,7 @@ from api.services.pipecat.service_factory import (
     create_llm_service,
     create_tts_service,
 )
+from api.services.skills.runtime import skills_enabled
 from api.services.workflow.agent_runtime import AgentRuntime, new_visit_id
 from api.services.workflow.dto import ReactFlowDTO
 from api.services.workflow.run_creation import definition_to_run
@@ -243,6 +244,7 @@ class AgentRuntimeFactory:
             },
             is_child=True,
             entered_at=None,
+            skills_enabled=skills_enabled(run_configs),
         )
         try:
             await self.attach(runtime)

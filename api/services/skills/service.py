@@ -343,6 +343,7 @@ class SkillService:
                 allowed_tool_uuids=tools,
                 source_library_uuid=source_library_uuid,
                 source_version=source_version,
+                max_active=validation.MAX_ACTIVE_SKILLS,
             )
         except SkillNameConflictError as exc:
             raise await self._with_suggestion(organization_id, exc.name) from None

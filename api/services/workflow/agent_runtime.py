@@ -109,6 +109,9 @@ class AgentRuntime:
     error: str | None = None
     retired: bool = False
     greeting_override: dict | None = None
+    # Fork (agent skills): workflow_configurations.skills_enabled of this
+    # visit's definition.
+    skills_enabled: bool = True
     tools: Any = None
     system_prompt: str = ""
     mcp_sessions: dict[str, Any] = field(default_factory=dict)

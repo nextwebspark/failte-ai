@@ -762,6 +762,10 @@ class WorkflowConfigurationDefaults(BaseModel):
     """
     Reuse generated speech for repeated phrases. Supports MiniMax TTS.
     """
+    skills_enabled: Annotated[bool | None, Field(title='Skills Enabled')] = True
+    """
+    Offer the workspace's agent skills (load_skill, read_skill_file and the skills index) on this workflow's nodes. Turn off for tuned agents that must not see skills.
+    """
     call_dispositions: Annotated[
         list[CallDispositionOption] | None,
         Field(max_length=50, title='Call Dispositions'),

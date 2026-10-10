@@ -1410,6 +1410,12 @@ export interface components {
              */
             tts_cache_enabled: boolean;
             /**
+             * Skills Enabled
+             * @description Offer the workspace's agent skills (load_skill, read_skill_file and the skills index) on this workflow's nodes. Turn off for tuned agents that must not see skills.
+             * @default true
+             */
+            skills_enabled: boolean;
+            /**
              * Call Dispositions
              * @description Allowed business outcomes for terminal call classification. Each entry defines the exact stored code and the criteria for selecting it.
              */

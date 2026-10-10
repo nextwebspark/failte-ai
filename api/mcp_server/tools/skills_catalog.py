@@ -14,9 +14,10 @@ async def list_skills() -> list[dict]:
     """List the workspace's active agent skills.
 
     Returns each skill's `skill_uuid` (use this in node `skill_uuids` and
-    `preload_skill_uuids` properties), `name` and `description`. Every
-    active skill is offered on every node unless the node narrows the list
-    with `skill_uuids`.
+    `preload_skill_uuids` properties), `name` and `description`. Skills are
+    on by default: every active skill is offered on every node unless the
+    node narrows the list with `skill_uuids` (`[]` opts the node out), or the
+    workflow's `skills_enabled` setting is off.
     """
     user = await authenticate_mcp_request()
     skills = await db_client.list_workspace_skills(user.selected_organization_id)

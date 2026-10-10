@@ -50,6 +50,20 @@ class SkillNameConflictError(SkillError):
             self.extra = {"suggested_name": suggestion}
 
 
+class SkillLimitError(SkillError):
+    """The organization already has the maximum number of active skills."""
+
+    status_code = 409
+    code = "skill_limit_reached"
+
+    def __init__(self, limit: int) -> None:
+        super().__init__(
+            f"This workspace already has {limit} active skills, the maximum; "
+            "archive one before adding another"
+        )
+        self.limit = limit
+
+
 class SkillStateError(SkillError):
     """The operation does not apply to the skill in its current state (e.g.
     copying an unpublished library skill, updating a modified copy without

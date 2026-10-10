@@ -102,7 +102,6 @@ def _py_type_for(prop: dict[str, Any], owner_class_name: str) -> tuple[str, str]
     elif t == "multi_options" or t == "fixed_collection" or t in (
         "tool_refs",
         "document_refs",
-        "skill_refs",
     ):
         default_src = "field(default_factory=list)"
     else:

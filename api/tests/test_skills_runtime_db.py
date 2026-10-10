@@ -94,16 +94,23 @@ def _workflow(**data) -> dict:
 
 
 @pytest.mark.asyncio
-async def test_save_validation_rejects_foreign_and_archived_skills(orgs) -> None:
+async def test_save_validation_rejects_unknown_and_foreign_but_not_archived(
+    orgs,
+) -> None:
     ok = await validate_workflow_tool_name_collisions(
-        _workflow(skill_uuids=[orgs.returns.skill_uuid]), orgs.a
+        _workflow(
+            skill_uuids=[orgs.returns.skill_uuid],
+            preload_skill_uuids=[orgs.archived.skill_uuid],
+        ),
+        orgs.a,
     )
     assert ok == []
 
+    unknown = str(uuid.uuid4())
     errors = await validate_workflow_tool_name_collisions(
         _workflow(
             skill_uuids=[orgs.returns.skill_uuid, orgs.private_b.skill_uuid],
-            preload_skill_uuids=[orgs.archived.skill_uuid],
+            preload_skill_uuids=[unknown, orgs.archived.skill_uuid],
         ),
         orgs.a,
     )
@@ -111,4 +118,30 @@ async def test_save_validation_rejects_foreign_and_archived_skills(orgs) -> None
     assert set(by_field) == {"data.skill_uuids", "data.preload_skill_uuids"}
     assert orgs.private_b.skill_uuid in by_field["data.skill_uuids"]
     assert orgs.returns.skill_uuid not in by_field["data.skill_uuids"]
-    assert orgs.archived.skill_uuid in by_field["data.preload_skill_uuids"]
+    assert unknown in by_field["data.preload_skill_uuids"]
+    assert orgs.archived.skill_uuid not in by_field["data.preload_skill_uuids"]
+
+
+@pytest.mark.asyncio
+async def test_active_skill_cap(orgs, monkeypatch) -> None:
+    from api.errors.skills import SkillLimitError
+    from api.services.skills import get_skill_service, validation
+
+    service = get_skill_service()
+    monkeypatch.setattr(validation, "MAX_ACTIVE_SKILLS", 2)
+    content = SkillContent(name="second", description="d", body_md="b")
+    await service.create_skill(orgs.a, created_by=None, content=content)
+    with pytest.raises(SkillLimitError) as exc:
+        await service.create_skill(
+            orgs.a,
+            created_by=None,
+            content=SkillContent(name="third", description="d", body_md="b"),
+        )
+    assert exc.value.status_code == 409
+    # Archived skills do not count.
+    await db_client.archive_workspace_skill(orgs.a, orgs.returns.skill_uuid)
+    await service.create_skill(
+        orgs.a,
+        created_by=None,
+        content=SkillContent(name="third", description="d", body_md="b"),
+    )

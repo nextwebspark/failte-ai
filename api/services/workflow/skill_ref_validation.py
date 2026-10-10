@@ -3,9 +3,10 @@
 Fork-owned; called from ``validate_workflow_tool_name_collisions`` so every
 save path (UI routes, MCP create/save) runs it.
 
-- ``skill_uuids`` / ``preload_skill_uuids`` must name active skills of the
-  saving organization (a foreign or archived UUID is rejected, never
-  silently dropped).
+- ``skill_uuids`` / ``preload_skill_uuids`` must name skills of the saving
+  organization. Unknown and other-org UUIDs are rejected (indistinguishably);
+  an archived skill of the same organization is accepted, since archiving
+  must not make its workflows unsaveable, and the call ignores it.
 - Transition edges must not generate a skill built-in function name
   (``load_skill``, ``read_skill_file``); custom tools are checked alongside
   the other custom-tool name rules.
@@ -54,10 +55,10 @@ async def validate_workflow_skill_refs(
     if not refs:
         return []
     wanted = {u for values in refs.values() for u in values}
-    active = await directory.find_active_skill_uuids(organization_id, wanted)
+    known = await directory.skill_uuid_states(organization_id, wanted)
     errors: list[WorkflowError] = []
     for (node_id, field), values in refs.items():
-        missing = [u for u in dict.fromkeys(values) if u not in active]
+        missing = [u for u in dict.fromkeys(values) if u not in known]
         if missing:
             errors.append(
                 WorkflowError(
@@ -65,8 +66,7 @@ async def validate_workflow_skill_refs(
                     id=node_id,
                     field=f"data.{field}",
                     message=(
-                        "Unknown or archived skill(s) for this workspace: "
-                        + ", ".join(missing)
+                        "Unknown skill(s) for this workspace: " + ", ".join(missing)
                     ),
                 )
             )

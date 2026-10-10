@@ -6,6 +6,7 @@ from collections.abc import Collection
 import pytest
 
 from api.db.skill_client import SkillFile
+from api.db.skill_models import SkillStatus
 from api.services.skills.runtime import (
     INDEX_HEADER,
     LOAD_SKILL,
@@ -15,6 +16,7 @@ from api.services.skills.runtime import (
     RuntimeSkill,
     SkillSet,
     builtin_function_definitions,
+    load_call_skill_set,
     load_skill_result,
     load_skill_set,
     read_skill_file_result,
@@ -50,16 +52,21 @@ SKILLS = SkillSet.of([RETURNS, BOOKING, WARRANTY])
 
 
 class TestSelection:
-    def test_empty_narrowing_lists_all_skills(self) -> None:
-        narrowings: tuple[list[str] | None, ...] = (None, [])
-        for narrowing in narrowings:
-            node = SKILLS.for_node(narrowing)
-            assert [s.name for s in node.listed] == [
-                "appointment-booking",
-                "returns-policy",
-                "warranty",
-            ]
-            assert node.preloaded == ()
+    def test_unset_narrowing_lists_all_skills(self) -> None:
+        node = SKILLS.for_node(None)
+        assert [s.name for s in node.listed] == [
+            "appointment-booking",
+            "returns-policy",
+            "warranty",
+        ]
+        assert node.preloaded == ()
+
+    def test_explicit_empty_narrowing_opts_the_node_out(self) -> None:
+        assert SKILLS.for_node([]).is_empty
+        # Preloads are explicit and still apply.
+        node = SKILLS.for_node([], [BOOKING.skill_uuid])
+        assert node.listed == ()
+        assert node.preloaded == (BOOKING,)
 
     def test_narrowing_lists_only_named_skills_and_ignores_unknown(self) -> None:
         node = SKILLS.for_node([RETURNS.skill_uuid, "not-a-skill", RETURNS.skill_uuid])
@@ -216,15 +223,15 @@ async def test_load_skill_set_degrades_to_empty_on_error() -> None:
 
 
 class _Directory:
-    def __init__(self, active: set[str]) -> None:
-        self.active = active
+    def __init__(self, states: dict[str, SkillStatus]) -> None:
+        self.states = states
         self.calls: list[tuple[int, set[str]]] = []
 
-    async def find_active_skill_uuids(
+    async def skill_uuid_states(
         self, organization_id: int, skill_uuids: Collection[str]
-    ) -> set[str]:
+    ) -> dict[str, SkillStatus]:
         self.calls.append((organization_id, set(skill_uuids)))
-        return self.active & set(skill_uuids)
+        return {u: st for u, st in self.states.items() if u in skill_uuids}
 
 
 def _definition(**data: object) -> dict:
@@ -236,8 +243,8 @@ def _definition(**data: object) -> dict:
 
 class TestSaveValidation:
     @pytest.mark.asyncio
-    async def test_foreign_skill_uuids_rejected(self) -> None:
-        directory = _Directory({"mine"})
+    async def test_unknown_or_foreign_skill_uuids_rejected(self) -> None:
+        directory = _Directory({"mine": SkillStatus.ACTIVE})
         errors = await validate_workflow_skill_refs(
             _definition(skill_uuids=["mine", "theirs"], preload_skill_uuids=["x"]),
             5,
@@ -251,10 +258,15 @@ class TestSaveValidation:
 
     @pytest.mark.asyncio
     async def test_owned_or_absent_refs_pass_without_query(self) -> None:
-        directory = _Directory({"mine"})
+        directory = _Directory(
+            {"mine": SkillStatus.ACTIVE, "old": SkillStatus.ARCHIVED}
+        )
+        # An archived skill of the same workspace is accepted.
         assert (
             await validate_workflow_skill_refs(
-                _definition(skill_uuids=["mine"]), 5, directory
+                _definition(skill_uuids=["mine"], preload_skill_uuids=["old"]),
+                5,
+                directory,
             )
             == []
         )
@@ -278,3 +290,47 @@ class TestSaveValidation:
     def test_custom_tool_cannot_shadow_builtins(self) -> None:
         assert reserved_custom_tool_name_error("n", "load_skill", "Load Skill")
         assert reserved_custom_tool_name_error("n", "lookup", "Lookup") is None
+
+
+class TestPreloadPrompt:
+    def test_preload_restriction_line(self) -> None:
+        node = SKILLS.for_node([], [RETURNS.skill_uuid])
+        block = node.prompt_block(preload_allowed_tools=["lookup_order"])
+        assert block.endswith(
+            "Only these tools are available: lookup_order (plus step "
+            "transitions and call controls)."
+        )
+        assert "Only these tools" not in node.prompt_block()
+
+    def test_without_builtins_no_index_and_no_file_list(self) -> None:
+        node = SKILLS.for_node(None, [RETURNS.skill_uuid])
+        block = node.prompt_block(with_builtins=False)
+        assert INDEX_HEADER not in block
+        assert RETURNS.body_md in block
+        assert "references/policy.md" not in block
+
+
+@pytest.mark.asyncio
+async def test_disabled_workflow_loads_nothing() -> None:
+    store = _Store()
+    assert await load_call_skill_set(store, 3, {"skills_enabled": False}) is None
+    assert store.calls == []
+    assert await load_call_skill_set(store, 3, {}) is not None
+    assert await load_call_skill_set(store, 3, None) is not None
+    assert store.calls == [3, 3]
+
+
+def test_python_sdk_keeps_explicit_empty_skill_uuids() -> None:
+    import sys
+    from pathlib import Path
+
+    sdk_src = Path(__file__).resolve().parents[2] / "sdk" / "python" / "src"
+    if str(sdk_src) not in sys.path:
+        sys.path.insert(0, str(sdk_src))
+    from dograh_sdk.typed.agent_node import AgentNode
+
+    opted_out = AgentNode(name="A", prompt="p", skill_uuids=[]).to_dict()
+    assert opted_out["skill_uuids"] == []
+    default = AgentNode(name="A", prompt="p").to_dict()
+    assert "skill_uuids" not in default
+    assert "tool_uuids" not in AgentNode(name="A", prompt="p", tool_uuids=[]).to_dict()

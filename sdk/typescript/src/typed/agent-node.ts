@@ -70,9 +70,9 @@ export interface AgentNode {
      */
     document_uuids?: string[];
     /**
-     * Workspace skills this node lists for on-demand loading. Leave empty to list every active skill.
+     * Workspace skills this node lists for on-demand loading. Unset lists every active skill; an empty list lists none.
      *
-     * LLM hint: List of skill UUIDs from `list_skills`; empty means all skills.
+     * LLM hint: List of skill UUIDs from `list_skills`. Omit for all skills; `[]` opts this node out of skills.
      */
     skill_uuids?: string[];
     /**

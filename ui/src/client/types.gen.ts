@@ -9196,6 +9196,12 @@ export type WorkflowConfigurationDefaults = {
      */
     tts_cache_enabled?: boolean;
     /**
+     * Skills Enabled
+     *
+     * Offer the workspace's agent skills (load_skill, read_skill_file and the skills index) on this workflow's nodes. Turn off for tuned agents that must not see skills.
+     */
+    skills_enabled?: boolean;
+    /**
      * Call Dispositions
      *
      * Allowed business outcomes for terminal call classification. Each entry defines the exact stored code and the criteria for selecting it.

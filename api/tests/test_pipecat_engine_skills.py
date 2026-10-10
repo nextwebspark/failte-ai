@@ -3,11 +3,13 @@ built-in registration), load/read handlers, the tool restriction and its
 reset on node change, ``skills_loaded`` logging, and one full pipeline run
 with a mock LLM calling ``load_skill``."""
 
+import asyncio
 from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from pipecat.adapters.schemas.function_schema import FunctionSchema
 from pipecat.pipeline.pipeline import Pipeline
 from pipecat.pipeline.worker import PipelineParams, PipelineWorker
 from pipecat.processors.aggregators.llm_context import LLMContext
@@ -39,14 +41,17 @@ from api.services.workflow.dto import (
     StartCallNodeData,
 )
 from api.services.workflow.pipecat_engine import PipecatEngine
+from api.services.workflow.pipecat_engine_custom_tools import CustomToolManager
 from api.services.workflow.workflow_graph import WorkflowGraph
-from api.tests.pipecat_test_utils import run_engine_test_pipeline
+from api.tests.pipecat_test_utils import run_engine_test_pipeline, stub_agent_runtime
 from pipecat.tests import MockLLMService, MockTTSService
 
 LOOKUP_UUID = "tool-lookup"
 WARRANTY_UUID = "tool-warranty"
 END_UUID = "tool-end"
 CALC_UUID = "tool-calc"
+TRANSFER_UUID = "tool-transfer"
+MCP_UUID = "tool-mcp"
 
 RETURNS = RuntimeSkill(
     skill_uuid="11111111-1111-1111-1111-111111111111",
@@ -87,13 +92,18 @@ TOOLS = [
     _tool(WARRANTY_UUID, "Check Warranty", "http_api"),
     _tool(END_UUID, "Hang Up", "end_call"),
     _tool(CALC_UUID, "Calculator", "calculator"),
+    _tool(TRANSFER_UUID, "Transfer Desk", "transfer_call"),
+    _tool(MCP_UUID, "Cal", "mcp"),
 ]
 
 
 def _workflow(
-    *, start: dict[str, Any] | None = None, help_: dict[str, Any] | None = None
+    *,
+    start: dict[str, Any] | None = None,
+    help_: dict[str, Any] | None = None,
+    tool_uuids: list[str] | None = None,
 ) -> WorkflowGraph:
-    tool_uuids = [LOOKUP_UUID, WARRANTY_UUID, END_UUID, CALC_UUID]
+    tool_uuids = tool_uuids or [LOOKUP_UUID, WARRANTY_UUID, END_UUID, CALC_UUID]
     return WorkflowGraph(
         ReactFlowDTO(
             nodes=[
@@ -168,7 +178,7 @@ def patched_db(monkeypatch):
 
 
 class _Harness:
-    def __init__(self, workflow: WorkflowGraph, skill_set: SkillSet) -> None:
+    def __init__(self, workflow: WorkflowGraph, skill_set: SkillSet | None) -> None:
         self.registered: dict[str, Any] = {}
         llm = MagicMock()
         llm._context = None
@@ -201,6 +211,11 @@ class _Harness:
         return [f.name for f in self.engine.active_agent.tools.standard_tools]
 
     async def call(self, name: str, arguments: dict[str, Any]) -> Any:
+        return await self.call_handler(self.registered[name], name, arguments)
+
+    async def call_handler(
+        self, handler: Any, name: str, arguments: dict[str, Any]
+    ) -> Any:
         self._calls += 1
         captured: dict[str, Any] = {}
 
@@ -213,8 +228,8 @@ class _Harness:
             arguments=arguments,
             result_callback=result_callback,
         )
-        await self.registered[name](params)
-        return captured["result"]
+        await handler(params)
+        return captured.get("result")
 
 
 @pytest.mark.asyncio
@@ -451,3 +466,196 @@ async def test_allowed_tool_still_runs_under_restriction(patched_db) -> None:
     assert loaded["allowed_tools"] == ["safe_calculator"]
     assert (await h.call("safe_calculator", {"expression": "6 * 7"}))["result"] == 42
     assert "error" in await h.call("lookup_order", {})
+
+
+# -- review follow-ups ------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_preloaded_restriction_is_stated_in_the_prompt(patched_db) -> None:
+    h = _Harness(_workflow(help_={"preload_skill_uuids": [RETURNS.skill_uuid]}), SKILLS)
+    await h.start()
+    await h.engine.set_node("help")
+    assert h.system_prompt.endswith(
+        "Only these tools are available: lookup_order (plus step transitions "
+        "and call controls)."
+    )
+    assert "check_warranty" in h.function_names  # tool list is unchanged
+
+
+@pytest.mark.asyncio
+async def test_explicit_empty_skill_uuids_opts_the_node_out(patched_db) -> None:
+    h = _Harness(_workflow(start={"skill_uuids": []}), SKILLS)
+    await h.start()
+    assert h.system_prompt == "START PROMPT"
+    assert LOAD_SKILL not in h.function_names
+    await h.engine.set_node("help")  # unset: every skill
+    assert INDEX_HEADER in h.system_prompt
+    assert LOAD_SKILL in h.function_names
+
+
+@pytest.mark.asyncio
+async def test_workflow_with_skills_disabled_gets_none(patched_db) -> None:
+    disabled = _Harness(_workflow(), None)  # nothing loaded for the call
+    await disabled.start()
+    assert disabled.system_prompt == "START PROMPT"
+    assert LOAD_SKILL not in disabled.function_names
+
+    # A visit whose own workflow turns skills off sees none either.
+    h = _Harness(_workflow(), SKILLS)
+    h.engine.active_agent.skills_enabled = False
+    await h.start()
+    assert h.system_prompt == "START PROMPT"
+    assert LOAD_SKILL not in h.registered
+
+
+@pytest.mark.asyncio
+async def test_load_skill_from_previous_node_cannot_restrict_the_next(
+    patched_db,
+) -> None:
+    """A load_skill in the same tool-call batch as a transition is bound to
+    the node it was called on."""
+    h = _Harness(_workflow(), SKILLS)
+    await h.start()
+    stale_load = h.registered[LOAD_SKILL]
+    transition = h.registered["get_help"]
+
+    await asyncio.gather(
+        h.call_handler(transition, "get_help", {}),
+        h.call_handler(stale_load, LOAD_SKILL, {"name": "returns-policy"}),
+    )
+
+    assert h.engine.active_agent.current_node.id == "help"
+    session = h.engine.skill_tools.session(h.engine.active_agent)
+    assert session is not None and session.node_id == "help"
+    assert session.allowed_tool_uuids is None
+    assert session.loaded_skill_names == ()
+    context = await h.engine.get_gathered_context()
+    assert [(e["name"], e["node"]) for e in context["skills_loaded"]] == [
+        ("returns-policy", "Start")
+    ]
+
+
+@pytest.mark.asyncio
+async def test_transfer_destination_preloads_logged_on_commit(patched_db) -> None:
+    h = _Harness(_workflow(), SKILLS)
+    await h.start()
+    destination = stub_agent_runtime(llm=MagicMock(), visit_id="visit-dest")
+    destination.workflow = _workflow(
+        start={"preload_skill_uuids": [BOOKING.skill_uuid]}
+    )
+    node = destination.workflow.nodes["start"]
+
+    await h.engine._prepare_node(destination, node, apply_settings=False)
+    assert BOOKING.body_md in destination.system_prompt
+    context = await h.engine.get_gathered_context()
+    assert "skills_loaded" not in context  # not committed yet
+
+    h.engine.skill_tools.flush_pending(destination)
+    context = await h.engine.get_gathered_context()
+    assert [(e["name"], e["via"]) for e in context["skills_loaded"]] == [
+        ("appointment-booking", "preload")
+    ]
+    h.engine.skill_tools.flush_pending(destination)  # idempotent
+    assert len((await h.engine.get_gathered_context())["skills_loaded"]) == 1
+
+
+@pytest.mark.asyncio
+async def test_clash_drops_index_and_preload_restriction(patched_db) -> None:
+    workflow = _workflow(start={"preload_skill_uuids": [RETURNS.skill_uuid]})
+    workflow.nodes["start"].out_edges[0].label = "load skill"
+    h = _Harness(workflow, SKILLS)
+    await h.start()
+    assert INDEX_HEADER not in h.system_prompt
+    assert RETURNS.body_md in h.system_prompt  # body still inlined
+    assert "references/policy.md" not in h.system_prompt  # unreadable here
+    assert "Only these tools" not in h.system_prompt
+    session = h.engine.skill_tools.session(h.engine.active_agent)
+    assert session is not None and session.allowed_tool_uuids is None
+    assert "skills_loaded" not in await h.engine.get_gathered_context()
+
+
+@pytest.mark.asyncio
+async def test_end_call_and_transfer_still_callable_under_restriction(
+    patched_db, monkeypatch
+) -> None:
+    ran: list[str] = []
+
+    def stub(label: str):
+        async def handler(params) -> None:
+            ran.append(label)
+            await params.result_callback({"status": label})
+
+        return handler
+
+    monkeypatch.setattr(
+        CustomToolManager, "_create_end_call_handler", lambda self, t, f: stub("end")
+    )
+    monkeypatch.setattr(
+        CustomToolManager,
+        "_create_transfer_call_handler",
+        lambda self, t, f: stub("transfer"),
+    )
+    h = _Harness(
+        _workflow(tool_uuids=[LOOKUP_UUID, WARRANTY_UUID, END_UUID, TRANSFER_UUID]),
+        SKILLS,
+    )
+    await h.start()
+    await h.call(LOAD_SKILL, {"name": "returns-policy"})
+    assert "error" in await h.call("check_warranty", {})
+    assert await h.call("hang_up", {}) == {"status": "end"}
+    assert await h.call("transfer_desk", {}) == {"status": "transfer"}
+    assert ran == ["end", "transfer"]
+
+
+class _FakeMcpSession:
+    available = True
+    call_timeout_secs = 5.0
+
+    def function_schemas(self, allowed):
+        return [
+            FunctionSchema(name=name, description=name, properties={}, required=[])
+            for name in ("mcp__cal__book", "mcp__cal__cancel")
+        ]
+
+    async def call(self, name, arguments):
+        return {"ok": name}
+
+
+@pytest.mark.asyncio
+async def test_mcp_functions_share_their_server_tool_uuid(
+    patched_db, monkeypatch
+) -> None:
+    cal = RuntimeSkill(
+        skill_uuid="55555555-5555-5555-5555-555555555555",
+        name="calendar",
+        description="Book appointments.",
+        body_md="Use the calendar.",
+        allowed_tool_uuids=frozenset({MCP_UUID}),
+    )
+    monkeypatch.setattr(PipecatEngine, "_open_mcp_sessions", AsyncMock())
+    h = _Harness(
+        _workflow(tool_uuids=[LOOKUP_UUID, MCP_UUID]), SkillSet.of([RETURNS, cal])
+    )
+    h.engine.active_agent.mcp_sessions[MCP_UUID] = _FakeMcpSession()
+    await h.start()
+    session = h.engine.skill_tools.session(h.engine.active_agent)
+    assert session is not None
+    assert session.tool_functions == {
+        "lookup_order": LOOKUP_UUID,
+        "mcp__cal__book": MCP_UUID,
+        "mcp__cal__cancel": MCP_UUID,
+    }
+
+    loaded = await h.call(LOAD_SKILL, {"name": "calendar"})
+    assert loaded["allowed_tools"] == ["mcp__cal__book", "mcp__cal__cancel"]
+    assert await h.call("mcp__cal__book", {}) == {"ok": "mcp__cal__book"}
+    assert "error" in await h.call("lookup_order", {})
+
+    # Another node visit; a skill restricted to lookup blocks every function
+    # of the MCP server.
+    await h.engine.set_node("help")
+    await h.engine.set_node("start")
+    await h.call(LOAD_SKILL, {"name": "returns-policy"})
+    for name in ("mcp__cal__book", "mcp__cal__cancel"):
+        assert "error" in await h.call(name, {})

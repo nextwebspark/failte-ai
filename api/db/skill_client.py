@@ -27,7 +27,11 @@ from api.db.skill_models import (
     SkillStatus,
 )
 from api.enums import ToolStatus
-from api.errors.skills import SkillModifiedError, SkillNameConflictError
+from api.errors.skills import (
+    SkillLimitError,
+    SkillModifiedError,
+    SkillNameConflictError,
+)
 
 _SEED_LOCK_KEY = "skill_library:seed_sync"
 
@@ -389,8 +393,30 @@ class SkillClient(BaseDBClient):
         allowed_tool_uuids: tuple[str, ...] | None,
         source_library_uuid: str | None = None,
         source_version: int | None = None,
+        max_active: int | None = None,
     ) -> WorkspaceSkill:
+        """Create an active skill. ``max_active`` caps the organization's
+        active skills; concurrent creates are serialized per organization so
+        the cap holds (SkillLimitError when reached)."""
         async with self.async_session() as session:
+            if max_active is not None:
+                await session.execute(
+                    select(
+                        func.pg_advisory_xact_lock(
+                            func.hashtextextended(f"skills:active:{organization_id}", 0)
+                        )
+                    )
+                )
+                active = await session.scalar(
+                    select(func.count())
+                    .select_from(SkillModel)
+                    .where(
+                        SkillModel.organization_id == organization_id,
+                        SkillModel.status == SkillStatus.ACTIVE.value,
+                    )
+                )
+                if int(active or 0) >= max_active:
+                    raise SkillLimitError(max_active)
             row = SkillModel(
                 organization_id=organization_id,
                 name=content.name,
@@ -527,21 +553,22 @@ class SkillClient(BaseDBClient):
                 for row in rows
             ]
 
-    async def find_active_skill_uuids(
+    async def skill_uuid_states(
         self, organization_id: int, skill_uuids: Collection[str]
-    ) -> set[str]:
-        """The subset of ``skill_uuids`` that are active skills of the org."""
+    ) -> dict[str, SkillStatus]:
+        """Status of each of ``skill_uuids`` that is a skill of the org. A UUID
+        that is absent is unknown or belongs to another organization (the two
+        are deliberately indistinguishable)."""
         if not skill_uuids:
-            return set()
+            return {}
         async with self.async_session() as session:
             result = await session.execute(
-                select(SkillModel.skill_uuid).where(
+                select(SkillModel.skill_uuid, SkillModel.status).where(
                     SkillModel.organization_id == organization_id,
                     SkillModel.skill_uuid.in_(list(skill_uuids)),
-                    SkillModel.status == SkillStatus.ACTIVE.value,
                 )
             )
-            return {str(u) for u in result.scalars().all()}
+            return {str(u): SkillStatus(str(status)) for u, status in result.all()}
 
     async def find_active_tool_uuids(
         self, organization_id: int, tool_uuids: Collection[str]

@@ -255,7 +255,8 @@ class PipecatEngine:
         # Custom tool manager (initialized in initialize())
         self._custom_tool_manager: Optional[CustomToolManager] = None
         # Workspace skills preloaded at call start (fork: agent skills)
-        self.skill_tools = SkillToolManager(self, skill_set or SkillSet.empty())
+        # (None: the workflow turned skills off, nothing loaded)
+        self.skill_tools = SkillToolManager(self, skill_set)
 
         # Cached organization ID (resolved lazily from workflow run)
         self._organization_id: Optional[int] = None
@@ -843,7 +844,7 @@ class PipecatEngine:
             node=node, custom_tool_manager=manager
         )
         functions.extend(self.skill_tools.attach(agent, node_skills, functions))
-        system_prompt = self.skill_tools.compose_prompt(prompt.text, node_skills)
+        system_prompt = self.skill_tools.compose_prompt(agent, prompt.text)
         agent.tools = ToolsSchema(standard_tools=functions)
         agent.system_prompt = system_prompt
         if agent.recording_router is not None:
@@ -1744,6 +1745,7 @@ class PipecatEngine:
 
     async def prepare_agent(self, runtime: AgentRuntime) -> None:
         await self._open_mcp_sessions(runtime)
+        await self.skill_tools.prepare_agent(runtime, await self._get_organization_id())
         node = runtime.workflow.nodes[runtime.workflow.start_node_id]
         await self._prepare_node(runtime, node)
         runtime.current_node = node
@@ -1760,6 +1762,7 @@ class PipecatEngine:
         runtime.entered_at = time.time()
         self.install_agent(runtime, previous=self.active_agent)
         self._custom_tool_manager = CustomToolManager(self, runtime)
+        self.skill_tools.flush_pending(runtime)
         self._agent_on_hold = False
         nodes = self._gathered_context.setdefault("nodes_visited", [])
         if runtime.current_node.name not in nodes:

@@ -15,7 +15,7 @@ from api.db.skill_client import (
     SkillContent,
     WorkspaceSkill,
 )
-from api.db.skill_models import LibrarySkillStatus
+from api.db.skill_models import LibrarySkillStatus, SkillStatus
 
 
 class WorkspaceSkillStore(Protocol):
@@ -38,6 +38,7 @@ class WorkspaceSkillStore(Protocol):
         allowed_tool_uuids: tuple[str, ...] | None,
         source_library_uuid: str | None = None,
         source_version: int | None = None,
+        max_active: int | None = None,
     ) -> WorkspaceSkill: ...
 
     async def update_workspace_skill(
@@ -86,6 +87,6 @@ class RuntimeSkillStore(Protocol):
 
 
 class SkillDirectory(Protocol):
-    async def find_active_skill_uuids(
+    async def skill_uuid_states(
         self, organization_id: int, skill_uuids: Collection[str]
-    ) -> set[str]: ...
+    ) -> dict[str, SkillStatus]: ...
