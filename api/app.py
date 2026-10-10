@@ -17,9 +17,14 @@ setup_logging()
 if SENTRY_DSN and (
     DEPLOYMENT_MODE != "oss" or (DEPLOYMENT_MODE == "oss" and ENABLE_TELEMETRY)
 ):
+    from sentry_sdk.scrubber import DEFAULT_DENYLIST, EventScrubber
+
     sentry_sdk.init(
         dsn=SENTRY_DSN,
         send_default_pii=True,
+        # The OAuth browser nonce travels in a request body (integrations
+        # activate); keep it out of error reports.
+        event_scrubber=EventScrubber(denylist=DEFAULT_DENYLIST + ["browser_nonce"]),
         environment=ENVIRONMENT,
     )
     print(f"Sentry initialized in environment: {ENVIRONMENT}")

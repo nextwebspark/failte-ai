@@ -5,8 +5,8 @@ single-flight token refresh.
   state bound to org, user, provider and client, with an encrypted PKCE
   verifier and the hash of a browser nonce) and completes it from the
   provider's callback, creating a PENDING ``oauth2`` connection. Only the
-  user who started the flow, presenting the nonce from the same browser (a
-  cookie set by the Fallcha API), can confirm it; so a start link sent to
+  user who started the flow, presenting the nonce the Fallcha API returned
+  to their browser tab when the flow started, can confirm it; so a start link sent to
   someone else can never connect their account to the sender's workspace.
 * :class:`OAuthTokenManager` hands out access tokens, refreshing one when it
   expires within :data:`REFRESH_MARGIN`. A refresh runs under a Postgres
@@ -303,7 +303,7 @@ class StartedAuthorization:
     authorization_url: str
     redirect_uri: str
     expires_at: datetime
-    # Handed to the user's browser only (an HttpOnly cookie, set by the API).
+    # Returned only to the starting user's browser tab (via the API response).
     browser_nonce: str = field(repr=False)
 
 

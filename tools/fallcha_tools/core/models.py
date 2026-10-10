@@ -201,7 +201,7 @@ class OAuthState(Base):
         nullable=True,
     )
     code_verifier_enc: Mapped[str] = mapped_column(Text, nullable=False)
-    # SHA-256 of the nonce the starting user's browser holds as a cookie.
+    # SHA-256 of the nonce returned to the starting user's browser tab.
     browser_nonce_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     redirect_uri: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(

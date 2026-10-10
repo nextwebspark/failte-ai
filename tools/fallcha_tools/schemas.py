@@ -169,8 +169,8 @@ class OAuthStartOut(BaseModel):
     )
     expires_at: datetime = Field(description="The flow must finish before this.")
     browser_nonce: str = Field(
-        description="For the starting user's browser only (the Fallcha API sets "
-        "it as an HttpOnly cookie); required to confirm the connection."
+        description="For the starting user's browser tab only (the Fallcha API "
+        "returns it in the start response); required to confirm the connection."
     )
 
 
