@@ -67,7 +67,7 @@ server {
     # browser to {TOOLS_PUBLIC_BASE_URL}/oauth/<provider>/callback. This one
     # path is the service's only public route; everything else under /oauth/
     # still goes to the UI (and 404s there).
-    location ~ ^/oauth/[a-z0-9-]+/callback$ {
+    location ~ ^/oauth/(?<fallcha_oauth_provider>[a-z0-9-]+)/callback$ {
         limit_except GET { deny all; }
 
         # Never log the query string (code + state). The code is single-use
@@ -82,7 +82,11 @@ server {
         # the callback then answers 502 instead.
         resolver 127.0.0.11 valid=30s ipv6=off;
         set $fallcha_tools_upstream fallcha-tools:8000;
-        proxy_pass http://$fallcha_tools_upstream;
+        # Rebuild a clean path from the matched provider id instead of
+        # forwarding the client's raw URI: the location matched the
+        # normalised path, so dot segments or encoded slashes in the raw
+        # request can never reach another route of the service.
+        proxy_pass http://$fallcha_tools_upstream/oauth/$fallcha_oauth_provider/callback$is_args$args;
         proxy_http_version 1.1;
 
         proxy_set_header Host $host;
