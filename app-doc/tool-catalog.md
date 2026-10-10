@@ -1,6 +1,15 @@
 # Tool catalog — architecture, database, Java service, and UI
 
-> **Status: design of record.** Companion to
+> **Status (2026-10): superseded for tools.** The Java parts of this design (the `failte_catalog`
+> service and schema, Java-side OAuth and token rotation, §3, §4.1, §5, §7–§9 where they describe Java)
+> were not built. The catalog, connections, OAuth (bring-your-own client) and token refresh live in the
+> FastAPI **`fallcha-tools`** service instead, and Fallcha holds only an opaque per-connection key, so no
+> token is ever rotated into `external_credentials`. See [`tools/README.md`](../tools/README.md), the user
+> docs `docs/voice-agent/tools/integrations.mdx` and `docs/developer/tool-providers.mdx`. Credential
+> encryption (§3 "Credential encryption becomes mandatory") shipped as `CREDENTIALS_ENCRYPTION_KEYS`. The
+> text below is kept unchanged as the original design record.
+>
+> **Original status: design of record.** Companion to
 > [`app-doc/tenancy-auth-roadmap.md`](./tenancy-auth-roadmap.md), which covers tenancy, RBAC and passwordless
 > auth. This document depends on that one only for the Java service existing, and for vendor-scoped visibility
 > in the final phase. [`saas/docs/FORK.md`](../saas/docs/FORK.md) remains binding on where code may live.
@@ -106,6 +115,8 @@ valid tool is — no validation logic is duplicated in Java.
 
 ## 3. OAuth without touching the live call path
 
+> **Superseded:** not built; replaced by the FastAPI `fallcha-tools` service (see the status note at the top).
+
 This is the load-bearing decision in the whole design.
 
 ### The constraint
@@ -172,6 +183,8 @@ independent of this feature.
 ## 4. Database
 
 ### 4.1 Java — `failte_catalog`, owned by Flyway
+
+> **Superseded:** not built; replaced by the FastAPI `fallcha-tools` service (see the status note at the top).
 
 Alembic never sees this schema; Flyway never touches `public`.
 
@@ -250,6 +263,8 @@ result to Python.
 ---
 
 ## 5. Java Spring application changes
+
+> **Superseded:** not built; replaced by the FastAPI `fallcha-tools` service (see the status note at the top).
 
 All new code, in the top-level `java/` directory — zero merge cost per FORK.md.
 
