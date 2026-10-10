@@ -69,7 +69,7 @@ def _load_folder(folder: Path) -> LibrarySeed:
         raise SkillValidationError(
             f"frontmatter name '{content.name}' must match the folder name"
         )
-    if document.allowed_tools:
+    if document.allowed_tools is not None:
         raise SkillValidationError(
             "library skills cannot set allowed-tools (tools are per workspace)"
         )

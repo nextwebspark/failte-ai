@@ -248,6 +248,15 @@ async def test_library_lifecycle_and_versions(client, org):
     assert (await client(viewer).get(f"{LIBRARY}/{uuid_}")).status_code == 404
     assert (await developer.post(f"{SKILLS}/from-library/{uuid_}")).status_code == 404
 
+    # Re-publishing unchanged content keeps the version; an edit made while
+    # deprecated is a new version when it is published.
+    assert (await su.post(f"{LIBRARY}/{uuid_}/publish")).json()["version"] == 2
+    await su.post(f"{LIBRARY}/{uuid_}/deprecate")
+    edited = await su.patch(f"{LIBRARY}/{uuid_}", json={"body_md": "v3"})
+    assert edited.json()["version"] == 2
+    assert (await su.post(f"{LIBRARY}/{uuid_}/publish")).json()["version"] == 3
+    await su.post(f"{LIBRARY}/{uuid_}/deprecate")
+
     assert (await su.delete(f"{LIBRARY}/{uuid_}")).status_code == 204
     assert (await su.get(f"{LIBRARY}/{uuid_}")).status_code == 404
 
@@ -471,7 +480,7 @@ async def test_copy_on_select_update_detection_diff_and_apply(client, org):
         f"{SKILLS}/{copy['skill_uuid']}/apply-library-update", json={}
     )
     assert refused.status_code == 409
-    assert refused.json()["code"] == "skill_state_conflict"
+    assert refused.json()["code"] == "skill_modified"
     forced = await dev.post(
         f"{SKILLS}/{copy['skill_uuid']}/apply-library-update", json={"force": True}
     )
@@ -564,6 +573,14 @@ async def test_allowed_tool_uuids_are_org_scoped(client, org, other_org):
         )
         assert response.status_code == 422, bad
         assert "Unknown tools" in response.json()["detail"]
+    malformed = await http.post(
+        SKILLS, json=_skill_body(_name(), allowed_tool_uuids=["not-a-uuid"])
+    )
+    assert malformed.status_code == 422
+    assert "must be tool UUIDs" in malformed.json()["detail"]
+    # [] means "no tools", distinct from null ("no restriction").
+    empty = await http.post(SKILLS, json=_skill_body(_name(), allowed_tool_uuids=[]))
+    assert empty.json()["allowed_tool_uuids"] == []
 
     skill_uuid = ok.json()["skill_uuid"]
     rejected = await http.patch(
@@ -626,11 +643,36 @@ async def test_import_and_export(client, org):
     claude_style = (
         f"---\nname: {_name()}\ndescription: d\nallowed-tools: Read Grep\n---\nb"
     )
-    rejected = await http.post(
+    narrowed = await http.post(
         f"{SKILLS}/import", files={"file": ("SKILL.md", claude_style.encode())}
     )
-    assert rejected.status_code == 422
-    assert "Read, Grep" in rejected.json()["detail"]
+    assert narrowed.status_code == 201, narrowed.text
+    # Every entry dropped: no tools at all, never "any tool".
+    assert narrowed.json()["allowed_tool_uuids"] == []
+    assert "Read, Grep" in narrowed.json()["warnings"][0]
+
+    mixed = (
+        f"---\nname: {_name()}\ndescription: d\n"
+        f"allowed-tools: Read {tool.upper()} {uuid.uuid4()}\n---\nb"
+    )
+    kept = await http.post(
+        f"{SKILLS}/import", files={"file": ("SKILL.md", mixed.encode())}
+    )
+    assert kept.status_code == 201
+    assert kept.json()["allowed_tool_uuids"] == [tool]
+    assert len(kept.json()["warnings"]) == 1
+
+    no_key = await http.post(
+        f"{SKILLS}/import",
+        files={
+            "file": (
+                "SKILL.md",
+                f"---\nname: {_name()}\ndescription: d\n---\nb".encode(),
+            )
+        },
+    )
+    assert no_key.json()["allowed_tool_uuids"] is None
+    assert no_key.json()["warnings"] == []
 
     # Traversal inside a zip: rejected with a clear error.
     buffer = io.BytesIO()
@@ -717,3 +759,26 @@ async def test_migration_downgrade_and_upgrade(setup_test_database, monkeypatch)
             await transaction.rollback()
     finally:
         await engine.dispose()
+
+
+async def test_apply_update_rechecks_modified_under_lock(client, org):
+    """The is_modified check is repeated on the locked row, so an edit that
+    lands after the service's read is never overwritten without force."""
+    from api.db.skill_client import SkillChanges
+    from api.errors.skills import SkillModifiedError
+
+    dev = client(org.members[OrgRole.DEVELOPER])
+    lib = await _published_library_skill(client, org.superuser)
+    copy = (await dev.post(f"{SKILLS}/from-library/{lib['library_skill_uuid']}")).json()
+    # Simulate the concurrent edit: the row is modified after the read.
+    await db_client.update_workspace_skill(
+        org.id, copy["skill_uuid"], SkillChanges(body_md="mine", is_modified=True)
+    )
+    with pytest.raises(SkillModifiedError):
+        await db_client.update_workspace_skill(
+            org.id,
+            copy["skill_uuid"],
+            SkillChanges(body_md="library", expect_unmodified=True),
+        )
+    kept = (await dev.get(f"{SKILLS}/{copy['skill_uuid']}")).json()
+    assert kept["body_md"] == "mine"

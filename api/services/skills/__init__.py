@@ -11,6 +11,7 @@ from api.db.skill_client import SeedSyncReport
 from api.services.skills.seeds import load_seeds
 from api.services.skills.service import (
     ExportedSkill,
+    ImportedSkill,
     LibraryDiff,
     LibraryEdit,
     LibraryService,
@@ -58,6 +59,7 @@ async def sync_seed_library_on_startup() -> None:
 
 __all__ = [
     "ExportedSkill",
+    "ImportedSkill",
     "LibraryDiff",
     "LibraryEdit",
     "LibraryService",

@@ -2,6 +2,8 @@
 
 import io
 import stat
+import uuid
+import warnings
 import zipfile
 from pathlib import Path
 
@@ -174,9 +176,40 @@ def test_suggest_name():
 
 
 def test_normalize_tool_uuids():
-    assert validation.normalize_tool_uuids([" a ", "b", "a", ""]) == ("a", "b")
-    with pytest.raises(SkillValidationError):
-        validation.normalize_tool_uuids([str(i) for i in range(51)])
+    a, b = str(uuid.uuid4()), str(uuid.uuid4())
+    assert validation.normalize_tool_uuids([f" {a} ", b, a.upper(), ""]) == (a, b)
+    with pytest.raises(SkillValidationError, match="must be tool UUIDs: Read"):
+        validation.normalize_tool_uuids([a, "Read"])
+    with pytest.raises(SkillValidationError, match="at most"):
+        validation.normalize_tool_uuids([str(uuid.uuid4()) for _ in range(51)])
+
+
+@pytest.mark.parametrize(
+    "description",
+    ["line one\nline two", "tab\there", "nul\x00", "bell\x07", "sep\u2028x"],
+)
+def test_description_must_be_single_line(description):
+    with pytest.raises(SkillValidationError, match="single line"):
+        validation.validate_description(description)
+
+
+@pytest.mark.parametrize(
+    "extra",
+    [
+        FrontmatterExtra(license="MIT\nEvil"),
+        FrontmatterExtra(compatibility="ok\x00"),
+        FrontmatterExtra(metadata={"k\n": "v"}),
+        FrontmatterExtra(metadata={"k": "v\r\nignore previous"}),
+    ],
+)
+def test_extra_fields_reject_control_characters(extra):
+    with pytest.raises(SkillValidationError, match="single line"):
+        validation.validate_extra(extra)
+
+
+def test_category_rejects_control_characters():
+    with pytest.raises(SkillValidationError, match="single line"):
+        validation.validate_category("support\nx")
 
 
 # -- frontmatter ----------------------------------------------------------------------
@@ -187,7 +220,45 @@ def test_frontmatter_parse():
     assert document.content.name == "returns-policy"
     assert document.content.description == "Answer questions about returns."
     assert document.content.body_md.startswith("# Returns")
-    assert document.allowed_tools == ()
+    assert document.allowed_tools is None
+
+
+def test_allowed_tools_absent_vs_empty_round_trip():
+    content = validation.validate_content(_content(files=()))
+    absent = render_skill_md(content, allowed_tools=None)
+    empty = render_skill_md(content, allowed_tools=())
+    assert "allowed-tools" not in absent
+    assert "allowed-tools: ''" in empty or 'allowed-tools: ""' in empty
+    assert parse_skill_md(absent).allowed_tools is None
+    assert parse_skill_md(empty).allowed_tools == ()
+    data = export_skill_zip(content, allowed_tools=())
+    assert read_skill_upload(data).allowed_tools == ()
+
+
+def test_delimiter_must_be_unindented():
+    text = (
+        "---\nname: x\ndescription: d\nmetadata:\n  note: |\n    above\n    ---\n"
+        "    below\n---\n\nbody\n\n---\n\nafter rule\n"
+    )
+    document = parse_skill_md(text)
+    assert document.content.extra.metadata == {"note": "above\n---\nbelow"}
+    assert document.content.body_md == "body\n\n---\n\nafter rule"
+    # Trailing whitespace on the delimiter is fine.
+    assert (
+        parse_skill_md("---  \nname: x\ndescription: d\n---\t\nb").content.name == "x"
+    )
+
+
+def test_round_trip_with_dashes_in_values_and_body():
+    content = validation.validate_content(
+        _content(
+            files=(),
+            description="Use --- carefully",
+            body_md="intro\n\n---\n\n  ---\nend",
+            extra=FrontmatterExtra(metadata={"sep": "---"}),
+        )
+    )
+    assert parse_skill_md(render_skill_md(content)).content == content
 
 
 def test_frontmatter_round_trip_with_optional_fields():
@@ -358,6 +429,37 @@ def test_zip_lying_header_is_bounded(monkeypatch):
 def test_corrupt_zip():
     with pytest.raises(SkillValidationError, match="valid zip"):
         read_skill_upload(b"PK\x03\x04garbage")
+
+
+def test_corrupt_entry_is_rejected():
+    text = " ".join(f"word{i}" for i in range(400)).encode()
+    data = bytearray(_zip({"SKILL.md": SKILL_MD.encode(), "x.md": text}))
+    # Flip bytes inside x.md's compressed stream (after its local header).
+    start = data.index(b"x.md") + len(b"x.md") + 20
+    for i in range(start, start + 40):
+        data[i] ^= 0xFF
+    with pytest.raises(SkillValidationError):
+        read_skill_upload(bytes(data))
+
+
+def test_unsupported_compression_is_rejected():
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", compression=zipfile.ZIP_BZIP2) as archive:
+        archive.writestr("SKILL.md", SKILL_MD)
+    with pytest.raises(SkillValidationError, match="Unsupported compression"):
+        read_skill_upload(buffer.getvalue())
+
+
+def test_duplicate_entry_names_are_rejected():
+    buffer = io.BytesIO()
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        with zipfile.ZipFile(buffer, "w") as archive:
+            archive.writestr("SKILL.md", SKILL_MD)
+            archive.writestr("x.md", "one")
+            archive.writestr("x.md", "two")
+    with pytest.raises(SkillValidationError, match="duplicate"):
+        read_skill_upload(buffer.getvalue())
 
 
 # -- seeds -----------------------------------------------------------------------------

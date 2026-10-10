@@ -36,6 +36,7 @@ def upgrade() -> None:
         sa.Column("category", sa.String(length=64), nullable=True),
         sa.Column("frontmatter_extra", sa.JSON(), nullable=True),
         sa.Column("seed_hash", sa.String(length=64), nullable=True),
+        sa.Column("published_hash", sa.String(length=64), nullable=True),
         sa.Column(
             "created_at",
             sa.DateTime(timezone=True),

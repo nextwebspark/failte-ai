@@ -13,13 +13,18 @@ Claude Code's ``model``) that we would otherwise ignore without telling the
 author. Custom data belongs under ``metadata``, which round-trips.
 
 ``allowed-tools`` entries are returned as-is; mapping them to workspace tool
-UUIDs (and rejecting unknown ones) is the caller's job.
+UUIDs is the caller's job. An absent key (``None``: no restriction) is kept
+distinct from an empty one (``()``: no tools), and rendering preserves that
+(``allowed-tools: ""``).
+
+Only an unindented ``---`` line (trailing whitespace allowed) opens or closes
+the frontmatter, so an indented ``---`` inside a YAML block value does not.
 
 YAML is read with ``yaml.safe_load`` only, after a size cap, so no Python
 objects are constructed and alias expansion stays bounded.
 """
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any
 
 import yaml  # type: ignore[import-untyped]
@@ -44,7 +49,8 @@ class SkillDocument:
     """A parsed ``SKILL.md``: content without files, plus ``allowed-tools``."""
 
     content: SkillContent
-    allowed_tools: tuple[str, ...] = field(default=())
+    # None when the key is absent; () when present but empty.
+    allowed_tools: tuple[str, ...] | None = None
 
 
 def parse_skill_md(text: str) -> SkillDocument:
@@ -52,12 +58,12 @@ def parse_skill_md(text: str) -> SkillDocument:
     by ``api.services.skills.validation``."""
     text = text.removeprefix("﻿").replace("\r\n", "\n")
     lines = text.split("\n")
-    if not lines or lines[0].strip() != _DELIMITER:
+    if not lines or lines[0].rstrip() != _DELIMITER:
         raise SkillValidationError(
             "SKILL.md must start with YAML frontmatter between '---' lines"
         )
     try:
-        end = next(i for i in range(1, len(lines)) if lines[i].strip() == _DELIMITER)
+        end = next(i for i in range(1, len(lines)) if lines[i].rstrip() == _DELIMITER)
     except StopIteration:
         raise SkillValidationError(
             "SKILL.md frontmatter is not closed with a '---' line"
@@ -105,7 +111,7 @@ def render_skill_md(
         data["license"] = content.extra.license
     if content.extra.compatibility is not None:
         data["compatibility"] = content.extra.compatibility
-    if allowed_tools:
+    if allowed_tools is not None:
         data["allowed-tools"] = " ".join(allowed_tools)
     if content.extra.metadata:
         data["metadata"] = dict(content.extra.metadata)
@@ -173,9 +179,9 @@ def _metadata(value: object) -> dict[str, str]:
     return result
 
 
-def _allowed_tools(value: object) -> tuple[str, ...]:
+def _allowed_tools(value: object) -> tuple[str, ...] | None:
     if value is None:
-        return ()
+        return None
     if isinstance(value, str):
         return tuple(token for token in value.split() if token)
     if isinstance(value, list) and all(isinstance(v, str) for v in value):

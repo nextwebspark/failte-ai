@@ -80,6 +80,9 @@ class SkillLibraryModel(Base):  # type: ignore[valid-type,misc]
     # SHA-256 of the seed folder (api/skills_library/<name>) this row was last
     # synced from; null for skills authored through the API.
     seed_hash: Mapped[str | None] = mapped_column(String(64))
+    # Content fingerprint at the last publish: re-publishing unchanged content
+    # (e.g. deprecate -> publish) does not bump the version.
+    published_hash: Mapped[str | None] = mapped_column(String(64))
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_now, server_default=func.now()
     )

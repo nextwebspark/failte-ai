@@ -42,6 +42,30 @@ UNSCOPED_ROUTES = {
 }
 
 
+# Platform-admin routes (no organization role): each must depend on
+# require_platform_admin, checked below.
+PLATFORM_ADMIN_ROUTES = {
+    ("POST", "/api/v1/skill-library"),
+    ("POST", "/api/v1/skill-library/sync-seeds"),
+    ("PATCH", "/api/v1/skill-library/{library_skill_uuid}"),
+    ("DELETE", "/api/v1/skill-library/{library_skill_uuid}"),
+    ("POST", "/api/v1/skill-library/{library_skill_uuid}/publish"),
+    ("POST", "/api/v1/skill-library/{library_skill_uuid}/deprecate"),
+}
+
+
+def test_platform_admin_routes_are_guarded():
+    found = set()
+    for route in app.routes:
+        if not isinstance(route, APIRoute):
+            continue
+        for method in route.methods - {"HEAD", "OPTIONS"}:
+            if (method, route.path) in PLATFORM_ADMIN_ROUTES:
+                assert require_platform_admin in _dependency_calls(route.dependant)
+                found.add((method, route.path))
+    assert found == PLATFORM_ADMIN_ROUTES
+
+
 def _dependency_calls(dependant) -> set:
     calls = set()
     for sub in dependant.dependencies:
@@ -58,9 +82,11 @@ def test_every_authenticated_route_checks_an_org_role():
         calls = _dependency_calls(route.dependant)
         if get_user not in calls or get_org_membership in calls:
             continue
-        # Platform-wide resources (e.g. the skill library) belong to no
+        # Platform-wide resources (the skill library) belong to no
         # organization; their writes are guarded by the platform-admin check.
-        if require_platform_admin in calls:
+        if require_platform_admin in calls and any(
+            (method, route.path) in PLATFORM_ADMIN_ROUTES for method in route.methods
+        ):
             continue
         for method in route.methods - {"HEAD", "OPTIONS"}:
             if (method, route.path) not in UNSCOPED_ROUTES:

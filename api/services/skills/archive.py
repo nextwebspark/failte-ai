@@ -11,7 +11,8 @@ possible, when they:
 
 - exceed the upload size, entry count, per-file or total uncompressed size;
 - have an overall compression ratio above ``max_compression_ratio`` (bomb);
-- contain absolute paths, ``..``, backslashes, hidden or otherwise invalid
+- contain duplicate entry names, compression other than stored/deflate,
+  absolute paths, ``..``, backslashes, hidden or otherwise invalid
   paths (traversal), symlinks, encrypted entries or non-UTF-8/binary files.
 
 Declared sizes are not trusted: each entry is read with a hard byte limit.
@@ -36,6 +37,7 @@ from api.services.skills.validation import DEFAULT_LIMITS, SkillLimits
 _SKILL_MD = validation.SKILL_FILE_NAME
 _SKILL_MD_MAX_BYTES = validation.BODY_MAX_BYTES + FRONTMATTER_MAX_BYTES + 1024
 _JUNK_PREFIXES = ("__MACOSX/",)
+_COMPRESS_TYPES = (zipfile.ZIP_STORED, zipfile.ZIP_DEFLATED)
 _JUNK_NAMES = (".DS_Store",)
 # Fixed timestamp so identical skills export to identical bytes.
 _EPOCH = (1980, 1, 1, 0, 0, 0)
@@ -102,6 +104,12 @@ def _read_zip(data: bytes, limits: SkillLimits) -> tuple[str, tuple[SkillFile, .
             raise SkillValidationError(
                 f"The archive has more than {limits.max_archive_entries} entries"
             )
+        names = [info.filename for info in infos]
+        if len(set(names)) != len(names):
+            duplicate = next(n for n in names if names.count(n) > 1)
+            raise SkillValidationError(
+                f"The archive has duplicate entries named '{duplicate[:80]}'"
+            )
         entries = [info for info in infos if not _skip(info)]
         for info in entries:
             _check_entry(info)
@@ -150,6 +158,10 @@ def _skip(info: zipfile.ZipInfo) -> bool:
 def _check_entry(info: zipfile.ZipInfo) -> None:
     name = info.filename
     shown = name[:80]
+    if info.compress_type not in _COMPRESS_TYPES:
+        raise SkillValidationError(
+            f"Unsupported compression for '{shown}' (use stored or deflate)"
+        )
     if info.flag_bits & 0x1:
         raise SkillValidationError(
             f"Encrypted archive entries are not supported: {shown}"
@@ -187,7 +199,14 @@ def _read_bounded(archive: zipfile.ZipFile, info: zipfile.ZipInfo, limit: int) -
     try:
         with archive.open(info) as handle:
             data = handle.read(limit + 1)
-    except (zipfile.BadZipFile, zlib.error, NotImplementedError, RuntimeError):
+    except (
+        zipfile.BadZipFile,
+        zlib.error,
+        NotImplementedError,
+        RuntimeError,
+        OSError,
+        EOFError,
+    ):
         raise SkillValidationError(
             f"Could not read '{info.filename[:80]}' from the archive"
         ) from None

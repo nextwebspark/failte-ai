@@ -57,3 +57,15 @@ class SkillStateError(SkillError):
 
     status_code = 409
     code = "skill_state_conflict"
+
+
+class SkillModifiedError(SkillStateError):
+    """A library update would overwrite workspace edits without ``force``."""
+
+    code = "skill_modified"
+
+    def __init__(self) -> None:
+        super().__init__(
+            "This skill was edited in the workspace; review the library diff "
+            "and pass force=true to replace your changes"
+        )

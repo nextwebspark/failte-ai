@@ -19,6 +19,7 @@ too, since the edit is live for new copies immediately.
 """
 
 import difflib
+import uuid
 from collections.abc import Sequence
 from dataclasses import dataclass, replace
 
@@ -32,10 +33,12 @@ from api.db.skill_client import (
     SkillContent,
     SkillFile,
     WorkspaceSkill,
+    content_hash,
 )
 from api.db.skill_models import LibrarySkillStatus
 from api.errors.skills import (
     LibrarySkillNotFoundError,
+    SkillModifiedError,
     SkillNameConflictError,
     SkillNotFoundError,
     SkillStateError,
@@ -78,6 +81,12 @@ class LibraryDiff:
     library: LibrarySkill
     # Unified diff, workspace copy (a/) -> latest library (b/); "" if equal.
     diff: str
+
+
+@dataclass(frozen=True, slots=True)
+class ImportedSkill:
+    skill: WorkspaceSkill
+    warnings: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -218,10 +227,7 @@ class SkillService:
                 "The library skill is no longer published; there is no update to apply"
             )
         if skill.is_modified and not force:
-            raise SkillStateError(
-                "This skill was edited in the workspace; review the library diff "
-                "and pass force=true to replace your changes"
-            )
+            raise SkillModifiedError()
         changes = SkillChanges(
             description=library.content.description,
             body_md=library.content.body_md,
@@ -229,22 +235,54 @@ class SkillService:
             extra=library.content.extra,
             is_modified=False,
             source_version=library.version,
+            # Re-checked under the row lock: an edit landing between the read
+            # above and this write must not be overwritten.
+            expect_unmodified=not force,
         )
         return await self._update(organization_id, skill_uuid, changes)
 
     async def import_skill(
         self, organization_id: int, *, created_by: int | None, data: bytes
-    ) -> WorkspaceSkill:
+    ) -> ImportedSkill:
+        """Import a skill. ``allowed-tools`` entries that are not active tools
+        of this workspace (e.g. Claude's ``Read``, or another workspace's
+        UUIDs) are dropped with a warning: narrowing is always safe. If the
+        key listed tools and none survive, the skill allows no tools (``()``),
+        never "any tool" (``None``)."""
         document = read_skill_upload(data)
-        tools = await self._resolve_tools(
-            organization_id, document.allowed_tools or None
-        )
-        return await self._create(
+        warnings: list[str] = []
+        tools: tuple[str, ...] | None = None
+        if document.allowed_tools is not None:
+            candidates = [
+                str(uuid.UUID(t))
+                for t in document.allowed_tools
+                if validation.is_uuid(t)
+            ]
+            found = await self._tools.find_active_tool_uuids(
+                organization_id, candidates
+            )
+            kept: list[str] = []
+            dropped: list[str] = []
+            for entry in document.allowed_tools:
+                canonical = str(uuid.UUID(entry)) if validation.is_uuid(entry) else None
+                if canonical is not None and canonical in found:
+                    if canonical not in kept:
+                        kept.append(canonical)
+                else:
+                    dropped.append(entry[:64])
+            if dropped:
+                warnings.append(
+                    "Dropped allowed-tools entries that are not tools in this "
+                    "workspace: " + ", ".join(dropped[:20])
+                )
+            tools = validation.normalize_tool_uuids(kept)
+        skill = await self._create(
             organization_id,
             created_by=created_by,
             content=document.content,
             tools=tools,
         )
+        return ImportedSkill(skill=skill, warnings=tuple(warnings))
 
     async def export_skill(
         self, organization_id: int, skill_uuid: str
@@ -384,6 +422,22 @@ class LibraryService:
             or (files is not None and files != old.files)
             or (extra is not None and extra != old.extra)
         )
+        # Editing a published skill's content is live for new copies, so it
+        # is a new published version.
+        republish = content_changed and current.status is LibrarySkillStatus.PUBLISHED
+        published_hash = (
+            content_hash(
+                replace(
+                    old,
+                    description=description or old.description,
+                    body_md=body or old.body_md,
+                    files=files if files is not None else old.files,
+                    extra=extra if extra is not None else old.extra,
+                )
+            )
+            if republish
+            else None
+        )
         return await self._apply(
             library_skill_uuid,
             LibraryChanges(
@@ -400,19 +454,27 @@ class LibraryService:
                     if edit.set_category
                     else None
                 ),
-                bump_version=(
-                    content_changed and current.status is LibrarySkillStatus.PUBLISHED
-                ),
+                bump_version=republish,
+                published_hash=published_hash,
             ),
         )
 
     async def publish(self, library_skill_uuid: str) -> LibrarySkill:
+        """Publish. The version is bumped only when the content differs from
+        what was last published, so deprecate -> publish of unchanged content
+        does not make every workspace copy report an update."""
         current = await self.get_skill(library_skill_uuid, include_unpublished=True)
         if current.status is LibrarySkillStatus.PUBLISHED:
             return current
+        digest = content_hash(current.content)
+        changed = digest != current.published_hash
         return await self._apply(
             library_skill_uuid,
-            LibraryChanges(status=LibrarySkillStatus.PUBLISHED, bump_version=True),
+            LibraryChanges(
+                status=LibrarySkillStatus.PUBLISHED,
+                bump_version=changed,
+                published_hash=digest if changed else None,
+            ),
         )
 
     async def deprecate(self, library_skill_uuid: str) -> LibrarySkill:

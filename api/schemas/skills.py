@@ -179,6 +179,14 @@ class SkillResponse(SkillSummaryResponse):
         )
 
 
+class SkillImportResponse(SkillResponse):
+    warnings: list[str] = Field(
+        default_factory=list,
+        description="Non-fatal notes, e.g. allowed-tools entries that were "
+        "dropped because they are not tools of this workspace.",
+    )
+
+
 class SkillListResponse(BaseModel):
     skills: list[SkillSummaryResponse]
 

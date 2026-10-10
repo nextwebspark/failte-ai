@@ -5,6 +5,8 @@ library methods are platform-wide (the library has no organization).
 Content is validated by ``api.services.skills`` before it reaches here.
 """
 
+import hashlib
+import json
 from collections.abc import Collection, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -25,7 +27,7 @@ from api.db.skill_models import (
     SkillStatus,
 )
 from api.enums import ToolStatus
-from api.errors.skills import SkillNameConflictError
+from api.errors.skills import SkillModifiedError, SkillNameConflictError
 
 _SEED_LOCK_KEY = "skill_library:seed_sync"
 
@@ -122,6 +124,8 @@ class LibrarySkill:
     status: LibrarySkillStatus
     category: str | None
     is_seeded: bool
+    # content_hash() of the content last published; None if never published.
+    published_hash: str | None
     created_at: datetime
     updated_at: datetime
     files_loaded: bool = True
@@ -144,6 +148,8 @@ class SkillChanges:
     allowed_tool_uuids: tuple[str, ...] | None = None
     is_modified: bool | None = None
     source_version: int | None = None
+    # Refuse (SkillModifiedError) if the locked row is already modified.
+    expect_unmodified: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -157,6 +163,7 @@ class LibraryChanges:
     category: str | None = None
     status: LibrarySkillStatus | None = None
     bump_version: bool = False
+    published_hash: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -173,6 +180,22 @@ class SeedSyncReport:
     unchanged: tuple[str, ...] = ()
     # Names held by an API-authored library skill; never overwritten.
     skipped: tuple[str, ...] = ()
+
+
+def content_hash(content: SkillContent) -> str:
+    """Fingerprint of a skill's portable content (name excluded: renames are
+    not new versions)."""
+    canonical = json.dumps(
+        {
+            "description": content.description,
+            "body_md": content.body_md,
+            "extra": content.extra.to_json(),
+            "files": [[f.path, f.content] for f in content.files],
+        },
+        sort_keys=True,
+        ensure_ascii=False,
+    )
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
 def _files(
@@ -200,6 +223,7 @@ def _to_library(
         status=LibrarySkillStatus(row.status),
         category=row.category,
         is_seeded=row.seed_hash is not None,
+        published_hash=row.published_hash,
         created_at=row.created_at,
         updated_at=row.updated_at,
         files_loaded=files is not None,
@@ -237,6 +261,17 @@ def _to_workspace(
         library_status=LibrarySkillStatus(library[1]) if library else None,
         files_loaded=files is not None,
     )
+
+
+def _republish_fields(row: SkillLibraryModel, content: SkillContent) -> dict[str, Any]:
+    """A seed change to a published skill publishes a new version, unless it
+    only touched fields outside the content hash (e.g. category)."""
+    if row.status != LibrarySkillStatus.PUBLISHED.value:
+        return {}
+    digest = content_hash(content)
+    if digest == row.published_hash:
+        return {}
+    return {"bump_version": True, "published_hash": digest}
 
 
 def _is_name_conflict(exc: IntegrityError) -> bool:
@@ -403,6 +438,8 @@ class SkillClient(BaseDBClient):
             )
             if row is None:
                 return None
+            if changes.expect_unmodified and row.is_modified:
+                raise SkillModifiedError()
             if changes.name is not None:
                 row.name = changes.name
             if changes.description is not None:
@@ -547,6 +584,7 @@ class SkillClient(BaseDBClient):
         status: LibrarySkillStatus = LibrarySkillStatus.DRAFT,
         version: int = 0,
         seed_hash: str | None = None,
+        published_hash: str | None = None,
     ) -> SkillLibraryModel:
         return SkillLibraryModel(
             name=content.name,
@@ -557,6 +595,7 @@ class SkillClient(BaseDBClient):
             category=category,
             frontmatter_extra=content.extra.to_json(),
             seed_hash=seed_hash,
+            published_hash=published_hash,
         )
 
     @staticmethod
@@ -607,6 +646,8 @@ class SkillClient(BaseDBClient):
             row.status = changes.status.value
         if changes.bump_version:
             row.version = row.version + 1
+        if changes.published_hash is not None:
+            row.published_hash = changes.published_hash
         if changes.files is not None:
             await session.execute(
                 delete(SkillLibraryFileModel).where(
@@ -638,6 +679,10 @@ class SkillClient(BaseDBClient):
         published at version 1. A name held by an API-authored skill (no
         ``seed_hash``) is skipped. Concurrent syncs (several API workers
         starting at once) are serialized by an advisory lock.
+
+        Accepted limitation: seeds are matched by name, so renaming a seeded
+        skill through the API detaches it and the next sync recreates the
+        seed under its original name.
         """
         created: list[str] = []
         updated: list[str] = []
@@ -664,6 +709,7 @@ class SkillClient(BaseDBClient):
                         status=LibrarySkillStatus.PUBLISHED,
                         version=1,
                         seed_hash=seed.seed_hash,
+                        published_hash=content_hash(seed.content),
                     )
                     session.add(row)
                     await session.flush()
@@ -688,7 +734,7 @@ class SkillClient(BaseDBClient):
                         extra=seed.content.extra,
                         set_category=True,
                         category=seed.category,
-                        bump_version=row.status == LibrarySkillStatus.PUBLISHED.value,
+                        **_republish_fields(row, seed.content),
                     ),
                 )
                 row.seed_hash = seed.seed_hash

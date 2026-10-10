@@ -7,6 +7,10 @@ the library, import and archive need ``AGENTS_WRITE`` (developer, admin).
 Library reads need ``AGENTS_READ`` and see published skills only (platform
 admins also see drafts and deprecated ones); library writes need a platform
 admin (``is_superuser``).
+
+Accepted limitation: library reads go through the org-membership dependency,
+so a platform admin needs a selected organization to browse the library
+(every real admin has one). Library writes need no organization.
 """
 
 from typing import Annotated
@@ -24,6 +28,7 @@ from api.schemas.skills import (
     LibrarySkillResponse,
     LibrarySkillSummaryResponse,
     SeedSyncResponse,
+    SkillImportResponse,
     SkillListResponse,
     SkillResponse,
     SkillSummaryResponse,
@@ -89,14 +94,18 @@ async def import_skill(
     membership: Writer,
     skills: Skills,
     file: Annotated[UploadFile, File(description="A skill .zip or a SKILL.md")],
-) -> SkillResponse:
+) -> SkillImportResponse:
     """Import a skill folder (``.zip``, standard layout) or a single
-    ``SKILL.md``. ``allowed-tools`` must list tool UUIDs of this workspace."""
+    ``SKILL.md``. ``allowed-tools`` entries that are not tool UUIDs of this
+    workspace are dropped and reported in ``warnings``."""
     data = await file.read(DEFAULT_LIMITS.max_archive_bytes + 1)
-    skill = await skills.import_skill(
+    result = await skills.import_skill(
         membership.organization_id, created_by=membership.user.id, data=data
     )
-    return SkillResponse.from_skill(skill)
+    return SkillImportResponse(
+        **SkillResponse.from_skill(result.skill).model_dump(),
+        warnings=list(result.warnings),
+    )
 
 
 @router.post("/from-library/{library_skill_uuid}", status_code=status.HTTP_201_CREATED)

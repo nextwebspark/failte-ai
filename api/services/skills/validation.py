@@ -21,6 +21,7 @@ scope for v1.
 
 import re
 import unicodedata
+import uuid
 from collections.abc import Iterable
 from dataclasses import dataclass
 
@@ -48,6 +49,9 @@ SKILL_FILE_NAME = "SKILL.md"
 _XML_TAG = re.compile(r"</?[A-Za-z][\w:.-]*(\s[^<>]*)?/?>")
 _CONTROL = re.compile(r"[\x00-\x1f\x7f]")
 _TEXT_CONTROL = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f]")
+# Single-line fields (description, license, ...) are injected into prompts and
+# frontmatter: no control characters at all, including newlines and tabs.
+_LINE_CONTROL = re.compile(r"[\x00-\x1f\x7f-\x9f\u2028\u2029]")
 
 
 @dataclass(frozen=True, slots=True)
@@ -84,6 +88,7 @@ def validate_description(description: str) -> str:
         raise SkillValidationError(
             f"Skill description must be at most {DESCRIPTION_MAX} characters"
         )
+    _require_single_line(description, "Skill description")
     if _XML_TAG.search(description):
         raise SkillValidationError("Skill description must not contain XML tags")
     return description
@@ -175,15 +180,21 @@ def validate_files(files: Iterable[SkillFile]) -> tuple[SkillFile, ...]:
 
 def validate_extra(extra: FrontmatterExtra) -> FrontmatterExtra:
     license_ = extra.license.strip() if extra.license is not None else None
-    if license_ is not None and len(license_) > LICENSE_MAX:
-        raise SkillValidationError(f"license must be at most {LICENSE_MAX} characters")
+    if license_ is not None:
+        if len(license_) > LICENSE_MAX:
+            raise SkillValidationError(
+                f"license must be at most {LICENSE_MAX} characters"
+            )
+        _require_single_line(license_, "license")
     compatibility = (
         extra.compatibility.strip() if extra.compatibility is not None else None
     )
-    if compatibility is not None and len(compatibility) > COMPATIBILITY_MAX:
-        raise SkillValidationError(
-            f"compatibility must be at most {COMPATIBILITY_MAX} characters"
-        )
+    if compatibility is not None:
+        if len(compatibility) > COMPATIBILITY_MAX:
+            raise SkillValidationError(
+                f"compatibility must be at most {COMPATIBILITY_MAX} characters"
+            )
+        _require_single_line(compatibility, "compatibility")
     if len(extra.metadata) > METADATA_MAX_KEYS:
         raise SkillValidationError(
             f"metadata can have at most {METADATA_MAX_KEYS} entries"
@@ -193,11 +204,13 @@ def validate_extra(extra: FrontmatterExtra) -> FrontmatterExtra:
             raise SkillValidationError(
                 f"metadata keys must be 1-{METADATA_KEY_MAX} characters"
             )
+        _require_single_line(key, "metadata keys")
         if len(value) > METADATA_VALUE_MAX:
             raise SkillValidationError(
                 f"metadata value for '{_preview(key)}' must be at most "
                 f"{METADATA_VALUE_MAX} characters"
             )
+        _require_single_line(value, f"metadata value for '{_preview(key)}'")
     return FrontmatterExtra(
         license=license_ or None,
         compatibility=compatibility or None,
@@ -225,16 +238,37 @@ def validate_category(category: str | None) -> str | None:
         raise SkillValidationError(
             f"category must be at most {CATEGORY_MAX} characters"
         )
+    _require_single_line(category, "category")
     return category
 
 
+def is_uuid(value: str) -> bool:
+    try:
+        uuid.UUID(value)
+    except ValueError:
+        return False
+    return True
+
+
 def normalize_tool_uuids(tool_uuids: Iterable[str]) -> tuple[str, ...]:
-    """De-duplicated, order-preserving; existence is checked by the caller."""
+    """De-duplicated, order-preserving canonical UUID strings; existence is
+    checked by the caller. Malformed entries are rejected before any query."""
     result: list[str] = []
-    for tool_uuid in tool_uuids:
-        tool_uuid = tool_uuid.strip()
-        if tool_uuid and tool_uuid not in result:
-            result.append(tool_uuid)
+    malformed: list[str] = []
+    for raw in tool_uuids:
+        tool_uuid = raw.strip()
+        if not tool_uuid:
+            continue
+        if not is_uuid(tool_uuid):
+            malformed.append(_preview(tool_uuid, 64))
+            continue
+        canonical = str(uuid.UUID(tool_uuid))
+        if canonical not in result:
+            result.append(canonical)
+    if malformed:
+        raise SkillValidationError(
+            "Allowed tools must be tool UUIDs: " + ", ".join(malformed[:10])
+        )
     if len(result) > MAX_ALLOWED_TOOLS:
         raise SkillValidationError(
             f"A skill can allow at most {MAX_ALLOWED_TOOLS} tools"
@@ -250,6 +284,13 @@ def suggest_name(base: str, taken: set[str]) -> str:
         if candidate not in taken:
             return candidate
     raise SkillValidationError("Could not find a free skill name")
+
+
+def _require_single_line(value: str, label: str) -> None:
+    if _LINE_CONTROL.search(value):
+        raise SkillValidationError(
+            f"{label} must be a single line without control characters"
+        )
 
 
 def _require_text(content: str, label: str) -> None:
