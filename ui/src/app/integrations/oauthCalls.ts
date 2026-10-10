@@ -4,20 +4,34 @@ import {
 } from "@/client/sdk.gen";
 import type { StartOAuthRequest } from "@/client/types.gen";
 
-/**
- * `oauth/start` sets an HttpOnly cookie that binds the flow to this browser,
- * and `activate` must send it back to confirm the new connection. Both calls
- * therefore include credentials, also when the API is on another origin.
- */
-export const OAUTH_FETCH_OPTIONS = { credentials: "include" } as const satisfies RequestInit;
-
 export function startOAuth(body: StartOAuthRequest) {
-    return startOauthApiV1IntegrationsOauthStartPost({ body, ...OAUTH_FETCH_OPTIONS });
+    return startOauthApiV1IntegrationsOauthStartPost({ body });
 }
 
-export function activateConnection(connectionId: string) {
+/**
+ * Installs a connection as an agent tool. A just-authorized OAuth connection
+ * also needs the `browser_nonce` its `oauth/start` returned.
+ */
+export function activateConnection(connectionId: string, browserNonce?: string) {
     return activateConnectionApiV1IntegrationsConnectionsConnectionIdActivatePost({
         path: { connection_id: connectionId },
-        ...OAUTH_FETCH_OPTIONS,
+        ...(browserNonce ? { body: { browser_nonce: browserNonce } } : {}),
     });
+}
+
+/** Hosts the browser may be sent to for sign-in. */
+export const TRUSTED_AUTHORIZE_HOSTS: readonly string[] = ["accounts.google.com"];
+
+/** True for an https URL on a trusted sign-in host. */
+export function isTrustedAuthorizationUrl(
+    value: string,
+    hosts: readonly string[] = TRUSTED_AUTHORIZE_HOSTS,
+): boolean {
+    let url: URL;
+    try {
+        url = new URL(value);
+    } catch {
+        return false;
+    }
+    return url.protocol === "https:" && !url.username && !url.password && hosts.includes(url.host);
 }

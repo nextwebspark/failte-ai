@@ -21,7 +21,6 @@ import { StatusPill, type StatusTone } from "@/components/ui/status-pill";
 
 import { authModeLabel, connectionErrorMessage, type ConnectionState, connectionState, needsReconnect } from "./messages";
 import { ProviderIcon } from "./ProviderIcon";
-import { fieldsFromSchema } from "./schemaForm";
 
 const STATE_PILL: Record<ConnectionState, { tone: StatusTone; label: string }> = {
     active: { tone: "ok", label: "Connected" },
@@ -38,22 +37,25 @@ export interface ConnectionPermissions {
     canWrite: boolean;
     /** Connect, finish setup and remove (these also create or archive a tool). */
     canInstall: boolean;
+    /** Open the agent tool (the tools screen needs agents:write). */
+    canOpenTool: boolean;
 }
 
 interface ConnectionCardProps {
     connection: IntegrationConnectionResponse;
     provider: IntegrationProvider | undefined;
+    /** The provider has settings to edit. */
+    hasSettings: boolean;
     permissions: ConnectionPermissions;
     busy: ConnectionAction | null;
     onAction: (action: ConnectionAction) => void;
 }
 
-export function ConnectionCard({ connection, provider, permissions, busy, onAction }: ConnectionCardProps) {
+export function ConnectionCard({ connection, provider, hasSettings, permissions, busy, onAction }: ConnectionCardProps) {
     const state = connectionState(connection);
     const pill = STATE_PILL[state];
     const title = provider?.title ?? connection.provider;
-    const hasSettings = fieldsFromSchema(provider?.config_schema).length > 0;
-    const toolUuid = connection.tool_uuids?.[0];
+    const toolUuid = permissions.canOpenTool ? connection.tool_uuids?.[0] : undefined;
     const disabled = busy !== null;
     const spinner = (action: ConnectionAction) =>
         busy === action ? <Loader2 className="animate-spin" aria-hidden /> : null;
@@ -92,7 +94,7 @@ export function ConnectionCard({ connection, provider, permissions, busy, onActi
             </div>
 
             {state === "error" && (
-                <p className="text-sm text-danger" role="status">
+                <p className="text-sm text-danger">
                     {connectionErrorMessage(connection)}
                 </p>
             )}

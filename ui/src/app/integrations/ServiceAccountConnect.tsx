@@ -34,34 +34,34 @@ export function ServiceAccountConnect({ provider, onCancel, onInstalled }: Servi
     const [formError, setFormError] = useState<string | null>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
+    const [fileError, setFileError] = useState<string | null>(null);
+
     const parsed = useMemo(() => parseServiceAccountKey(keyText), [keyText]);
-    const showKeyError = keyTouched && !parsed.ok;
+    // One message at a time: a file problem replaces the parse error.
+    const keyError = fileError ?? (keyTouched && !parsed.ok ? parsed.error : null);
 
     const readFile = async (file: File | undefined) => {
         if (!file) return;
+        setFileName(file.name);
+        setKeyText("");
         if (file.size > MAX_KEY_BYTES) {
-            setFileName(file.name);
-            setKeyText("");
-            setKeyTouched(true);
-            setFormError("That file is too large to be a key.");
+            setFileError("That file is too large to be a key.");
             return;
         }
-        setFormError(null);
-        setFileName(file.name);
         try {
             setKeyText(await file.text());
+            setFileError(null);
+            setKeyTouched(true);
         } catch {
-            setKeyText("");
-            setFormError("Couldn't read that file.");
+            setFileError("Couldn't read that file.");
         }
-        setKeyTouched(true);
     };
 
     const install = async () => {
         setKeyTouched(true);
         const { config, errors: nextErrors } = valuesToConfig(fields, values);
         setErrors(nextErrors);
-        if (!parsed.ok || Object.keys(nextErrors).length > 0) return;
+        if (fileError || !parsed.ok || Object.keys(nextErrors).length > 0) return;
         setInstalling(true);
         setFormError(null);
         try {
@@ -125,28 +125,29 @@ export function ServiceAccountConnect({ provider, onCancel, onInstalled }: Servi
                     onChange={(e) => {
                         setKeyText(e.target.value);
                         setFileName(null);
+                        setFileError(null);
                     }}
                     onBlur={() => setKeyTouched(true)}
                     placeholder='{"type": "service_account", "client_email": "…", "private_key": "…"}'
                     className="h-28 font-mono text-xs"
                     spellCheck={false}
                     autoComplete="off"
-                    aria-invalid={showKeyError}
-                    aria-describedby={showKeyError ? "sa-key-error" : parsed.ok ? "sa-key-ok" : undefined}
+                    aria-invalid={keyError !== null}
+                    aria-describedby={keyError ? "sa-key-error" : parsed.ok ? "sa-key-ok" : undefined}
                     disabled={installing}
                 />
-                {parsed.ok ? (
-                    <p id="sa-key-ok" className="flex items-start gap-1.5 text-xs text-ok">
-                        <CheckCircle2 className="mt-px size-3.5 shrink-0" aria-hidden />
-                        <span>
-                            Key for <span className="font-mono">{parsed.clientEmail}</span>. Share the Google resources
-                            your agents need (for example the calendar) with this address.
-                        </span>
+                {keyError ? (
+                    <p id="sa-key-error" className="text-xs text-destructive" role="alert">
+                        {keyError}
                     </p>
                 ) : (
-                    showKeyError && (
-                        <p id="sa-key-error" className="text-xs text-destructive" role="alert">
-                            {parsed.error}
+                    parsed.ok && (
+                        <p id="sa-key-ok" className="flex items-start gap-1.5 text-xs text-ok">
+                            <CheckCircle2 className="mt-px size-3.5 shrink-0" aria-hidden />
+                            <span>
+                                Key for <span className="font-mono">{parsed.clientEmail}</span>. Share the Google
+                                resources your agents need (for example the calendar) with this address.
+                            </span>
                         </p>
                     )
                 )}

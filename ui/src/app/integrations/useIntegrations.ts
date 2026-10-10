@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { toast } from "sonner";
 
 import {
     getCatalogApiV1IntegrationsCatalogGet,
@@ -16,23 +17,30 @@ import { useAuth } from "@/lib/auth";
 
 import { integrationErrorMessage, isUnavailableError } from "./messages";
 
+const NETWORK_ERROR = "Couldn't reach the server. Check your connection and try again.";
+
 export interface IntegrationsState {
     providers: IntegrationProvider[];
     connections: IntegrationConnectionResponse[];
     providerApps: ProviderAppResponse[];
+    /** True until the first load finishes (and during a full reload). */
     loading: boolean;
     /** The server has no integrations backend configured. */
     unavailable: boolean;
+    /** A failure of the initial load; later refresh failures are toasts. */
     error: string | null;
-    /** Auth is ready and the first load can run. */
-    ready: boolean;
     refresh: () => Promise<void>;
-    refreshConnections: () => Promise<void>;
-    refreshProviderApps: () => Promise<void>;
+    /** Reloads the connections; resolves false (after a toast) on failure. */
+    refreshConnections: () => Promise<boolean>;
     upsertConnection: (connection: IntegrationConnectionResponse) => void;
+    addProviderApp: (app: ProviderAppResponse) => void;
 }
 
-export function useIntegrations(): IntegrationsState {
+/**
+ * Loads the catalog, connections and OAuth clients once auth is ready and
+ * `enabled` (the caller may read integrations) is true.
+ */
+export function useIntegrations(enabled: boolean): IntegrationsState {
     const { user, loading: authLoading } = useAuth();
     const [providers, setProviders] = useState<IntegrationProvider[]>([]);
     const [connections, setConnections] = useState<IntegrationConnectionResponse[]>([]);
@@ -42,20 +50,32 @@ export function useIntegrations(): IntegrationsState {
     const [error, setError] = useState<string | null>(null);
     const hasFetched = useRef(false);
 
-    const refreshConnections = useCallback(async () => {
-        const response = await listConnectionsApiV1IntegrationsConnectionsGet();
-        if (response.error) {
-            setError(integrationErrorMessage(response.error, "Couldn't load your connections"));
-            return;
+    const loadConnections = useCallback(async (): Promise<string | null> => {
+        try {
+            const response = await listConnectionsApiV1IntegrationsConnectionsGet();
+            if (response.error) return integrationErrorMessage(response.error, "Couldn't load your connections");
+            setConnections(response.data?.connections ?? []);
+            return null;
+        } catch {
+            return NETWORK_ERROR;
         }
-        setConnections(response.data?.connections ?? []);
     }, []);
 
-    const refreshProviderApps = useCallback(async () => {
-        const response = await listProviderAppsApiV1IntegrationsProviderAppsGet();
-        // OAuth clients are optional extras: a failure here only hides them.
-        if (!response.error) setProviderApps(response.data?.provider_apps ?? []);
+    const loadProviderApps = useCallback(async () => {
+        try {
+            const response = await listProviderAppsApiV1IntegrationsProviderAppsGet();
+            // OAuth clients are optional extras: a failure here only hides them.
+            if (!response.error) setProviderApps(response.data?.provider_apps ?? []);
+        } catch {
+            // ignore
+        }
     }, []);
+
+    const refreshConnections = useCallback(async () => {
+        const failure = await loadConnections();
+        if (failure) toast.error(failure);
+        return failure === null;
+    }, [loadConnections]);
 
     const refresh = useCallback(async () => {
         setLoading(true);
@@ -63,28 +83,26 @@ export function useIntegrations(): IntegrationsState {
         try {
             const catalog = await getCatalogApiV1IntegrationsCatalogGet();
             if (catalog.error) {
-                if (isUnavailableError(catalog.error)) {
-                    setUnavailable(true);
-                } else {
-                    setError(integrationErrorMessage(catalog.error, "Couldn't load integrations"));
-                }
+                if (isUnavailableError(catalog.error)) setUnavailable(true);
+                else setError(integrationErrorMessage(catalog.error, "Couldn't load integrations"));
                 return;
             }
             setUnavailable(false);
             setProviders(catalog.data?.providers ?? []);
-            await Promise.all([refreshConnections(), refreshProviderApps()]);
+            const [failure] = await Promise.all([loadConnections(), loadProviderApps()]);
+            if (failure) setError(failure);
         } catch {
-            setError("Couldn't reach the server. Check your connection and try again.");
+            setError(NETWORK_ERROR);
         } finally {
             setLoading(false);
         }
-    }, [refreshConnections, refreshProviderApps]);
+    }, [loadConnections, loadProviderApps]);
 
     useEffect(() => {
-        if (authLoading || !user || hasFetched.current) return;
+        if (!enabled || authLoading || !user || hasFetched.current) return;
         hasFetched.current = true;
         void refresh();
-    }, [authLoading, user, refresh]);
+    }, [enabled, authLoading, user, refresh]);
 
     const upsertConnection = useCallback((connection: IntegrationConnectionResponse) => {
         setConnections((current) => {
@@ -96,6 +114,10 @@ export function useIntegrations(): IntegrationsState {
         });
     }, []);
 
+    const addProviderApp = useCallback((app: ProviderAppResponse) => {
+        setProviderApps((current) => [app, ...current.filter((a) => a.id !== app.id)]);
+    }, []);
+
     return {
         providers,
         connections,
@@ -103,10 +125,9 @@ export function useIntegrations(): IntegrationsState {
         loading,
         unavailable,
         error,
-        ready: !authLoading && Boolean(user),
         refresh,
         refreshConnections,
-        refreshProviderApps,
         upsertConnection,
+        addProviderApp,
     };
 }

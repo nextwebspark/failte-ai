@@ -1,7 +1,7 @@
 "use client";
 
 import { Loader2 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { toast } from "sonner";
 
 import { updateConnectionConfigApiV1IntegrationsConnectionsConnectionIdPatch } from "@/client/sdk.gen";
@@ -31,21 +31,45 @@ interface ConfigDialogProps {
 
 /** Edit a connection's settings (PATCH merges the given keys). */
 export function ConfigDialog({ connection, provider, onOpenChange, onSaved, justConnected = false }: ConfigDialogProps) {
-    const fields = useMemo(() => fieldsFromSchema(provider?.config_schema), [provider]);
-    const [values, setValues] = useState<FormValues>({});
-    const [errors, setErrors] = useState<FormErrors>({});
     const [saving, setSaving] = useState(false);
+    return (
+        <Dialog open={connection !== null} onOpenChange={(open) => !saving && onOpenChange(open)}>
+            <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
+                {connection && (
+                    // Keyed so each connection starts from its own stored config.
+                    <ConfigBody
+                        key={connection.id}
+                        connection={connection}
+                        provider={provider}
+                        justConnected={justConnected}
+                        saving={saving}
+                        setSaving={setSaving}
+                        onClose={() => onOpenChange(false)}
+                        onSaved={onSaved}
+                    />
+                )}
+            </DialogContent>
+        </Dialog>
+    );
+}
+
+interface ConfigBodyProps {
+    connection: IntegrationConnectionResponse;
+    provider: IntegrationProvider | undefined;
+    justConnected: boolean;
+    saving: boolean;
+    setSaving: (saving: boolean) => void;
+    onClose: () => void;
+    onSaved: (connection: IntegrationConnectionResponse) => void;
+}
+
+function ConfigBody({ connection, provider, justConnected, saving, setSaving, onClose, onSaved }: ConfigBodyProps) {
+    const fields = useMemo(() => fieldsFromSchema(provider?.config_schema), [provider]);
+    const [values, setValues] = useState<FormValues>(() => initialValues(fields, connection.config));
+    const [errors, setErrors] = useState<FormErrors>({});
     const [formError, setFormError] = useState<string | null>(null);
 
-    useEffect(() => {
-        if (!connection) return;
-        setValues(initialValues(fields, connection.config));
-        setErrors({});
-        setFormError(null);
-    }, [connection, fields]);
-
     const save = async () => {
-        if (!connection) return;
         const { config, errors: nextErrors } = valuesToConfig(fields, values);
         setErrors(nextErrors);
         if (Object.keys(nextErrors).length > 0) return;
@@ -62,7 +86,8 @@ export function ConfigDialog({ connection, provider, onOpenChange, onSaved, just
             }
             toast.success("Settings saved");
             onSaved(response.data);
-            onOpenChange(false);
+            setSaving(false);
+            onClose();
         } catch {
             setFormError("Couldn't reach the server. Please try again.");
         } finally {
@@ -70,57 +95,55 @@ export function ConfigDialog({ connection, provider, onOpenChange, onSaved, just
         }
     };
 
-    const title = provider?.title ?? connection?.provider ?? "Integration";
+    const title = provider?.title ?? connection.provider;
 
     return (
-        <Dialog open={connection !== null} onOpenChange={(open) => !saving && onOpenChange(open)}>
-            <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
-                <DialogHeader>
-                    <DialogTitle>{justConnected ? `Review ${title} settings` : `${title} settings`}</DialogTitle>
-                    <DialogDescription>
-                        {justConnected
-                            ? "Connected. Check these settings before your agents use it — you can change them later."
-                            : "How your agents use this connection."}
-                    </DialogDescription>
-                </DialogHeader>
-                <form
-                    id="integration-config-form"
-                    onSubmit={(e) => {
-                        e.preventDefault();
-                        void save();
-                    }}
-                    noValidate
-                >
-                    {fields.length > 0 ? (
-                        <ConfigSchemaForm
-                            fields={fields}
-                            values={values}
-                            errors={errors}
-                            onChange={(key, value) => setValues((v) => ({ ...v, [key]: value }))}
-                            disabled={saving}
-                            idPrefix="edit-cfg"
-                        />
-                    ) : (
-                        <p className="text-sm text-muted-foreground">This integration has no settings.</p>
-                    )}
-                </form>
-                {formError && (
-                    <p className="text-sm text-destructive" role="alert">
-                        {formError}
-                    </p>
+        <>
+            <DialogHeader>
+                <DialogTitle>{justConnected ? `Review ${title} settings` : `${title} settings`}</DialogTitle>
+                <DialogDescription>
+                    {justConnected
+                        ? "Connected. Check these settings before your agents use it — you can change them later."
+                        : "How your agents use this connection."}
+                </DialogDescription>
+            </DialogHeader>
+            <form
+                id="integration-config-form"
+                onSubmit={(e) => {
+                    e.preventDefault();
+                    void save();
+                }}
+                noValidate
+            >
+                {fields.length > 0 ? (
+                    <ConfigSchemaForm
+                        fields={fields}
+                        values={values}
+                        errors={errors}
+                        onChange={(key, value) => setValues((v) => ({ ...v, [key]: value }))}
+                        disabled={saving}
+                        idPrefix="edit-cfg"
+                    />
+                ) : (
+                    <p className="text-sm text-muted-foreground">This integration has no settings.</p>
                 )}
-                <DialogFooter>
-                    <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>
-                        {justConnected ? "Skip" : "Cancel"}
+            </form>
+            {formError && (
+                <p className="whitespace-pre-line text-sm text-destructive" role="alert">
+                    {formError}
+                </p>
+            )}
+            <DialogFooter>
+                <Button variant="outline" onClick={onClose} disabled={saving}>
+                    {justConnected ? "Skip" : "Cancel"}
+                </Button>
+                {fields.length > 0 && (
+                    <Button type="submit" form="integration-config-form" disabled={saving}>
+                        {saving && <Loader2 className="animate-spin" aria-hidden />}
+                        Save settings
                     </Button>
-                    {fields.length > 0 && (
-                        <Button type="submit" form="integration-config-form" disabled={saving}>
-                            {saving && <Loader2 className="animate-spin" aria-hidden />}
-                            Save settings
-                        </Button>
-                    )}
-                </DialogFooter>
-            </DialogContent>
-        </Dialog>
+                )}
+            </DialogFooter>
+        </>
     );
 }

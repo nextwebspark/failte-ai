@@ -9,6 +9,7 @@ import {
     uninstallIntegrationApiV1IntegrationsConnectionsConnectionIdDelete,
 } from "@/client/sdk.gen";
 import type { IntegrationConnectionResponse, IntegrationProvider } from "@/client/types.gen";
+import { NoAccess } from "@/components/auth/NoAccess";
 import {
     AlertDialog,
     AlertDialogAction,
@@ -31,9 +32,9 @@ import { ConnectDialog, type ConnectTarget } from "./ConnectDialog";
 import { type ConnectionAction, ConnectionCard } from "./ConnectionCard";
 import { integrationErrorMessage, oauthFailureMessage, parseIntegrationReturn, urlWithoutReturnParams } from "./messages";
 import { activateConnection } from "./oauthCalls";
+import { clearPendingOAuth, takePendingOAuth } from "./pendingOAuth";
 import { ProviderCard } from "./ProviderCard";
-import { forgetReconnect, takeReconnect } from "./reconnect";
-import { hasRequiredConfig } from "./schemaForm";
+import { fieldsFromSchema, hasRequiredConfig } from "./schemaForm";
 import { useIntegrations } from "./useIntegrations";
 
 interface ConfigTarget {
@@ -41,10 +42,26 @@ interface ConfigTarget {
     justConnected: boolean;
 }
 
+const NETWORK_ERROR = "Couldn't reach the server. Please try again.";
+const NOT_CONFIRMED =
+    "This sign-in can't be confirmed here. Finish connecting in the same browser tab you started from, within 10 minutes.";
+
 export default function IntegrationsPage() {
+    const { can, role, loading: orgLoading } = useOrgConfig();
+    const canRead = can("integrations:read");
+    if (!canRead) {
+        // The role is still loading: render nothing rather than flash "no access".
+        if (role === null && orgLoading) return null;
+        return <NoAccess role={role} />;
+    }
+    return <IntegrationsScreen />;
+}
+
+function IntegrationsScreen() {
     const { can } = useOrgConfig();
     const canWrite = can("integrations:write");
     const canInstall = can("integrations:write", "agents:write");
+    const canOpenTool = can("agents:write");
     const {
         providers,
         connections,
@@ -52,16 +69,15 @@ export default function IntegrationsPage() {
         loading,
         unavailable,
         error,
-        ready,
         refresh,
         refreshConnections,
-        refreshProviderApps,
         upsertConnection,
-    } = useIntegrations();
+        addProviderApp,
+    } = useIntegrations(true);
 
     const [connectTarget, setConnectTarget] = useState<ConnectTarget | null>(null);
     const [configTarget, setConfigTarget] = useState<ConfigTarget | null>(null);
-    /** A just-connected connection whose settings to review once the catalog is loaded. */
+    /** A just-connected connection whose required settings to offer for review. */
     const [pendingReview, setPendingReview] = useState<IntegrationConnectionResponse | null>(null);
     /** The errored connection a reconnect replaced, offered for removal. */
     const [replaceCandidate, setReplaceCandidate] = useState<string | null>(null);
@@ -70,75 +86,86 @@ export default function IntegrationsPage() {
     const [returnError, setReturnError] = useState<string | null>(null);
 
     const providerById = useMemo(() => new Map(providers.map((p) => [p.id, p])), [providers]);
+    const providersWithSettings = useMemo(
+        () => new Set(providers.filter((p) => fieldsFromSchema(p.config_schema).length > 0).map((p) => p.id)),
+        [providers],
+    );
     const titleOf = useCallback(
         (providerId: string) => providerById.get(providerId)?.title ?? providerId,
         [providerById],
     );
 
     // -- OAuth return: /integrations?integration_result=… ----------------------
+    // Runs once, after the first load: activating earlier would race the initial
+    // connections list, which could then overwrite the activated connection.
     const handledReturn = useRef(false);
     useEffect(() => {
-        if (!ready || handledReturn.current) return;
+        if (loading || handledReturn.current) return;
         const result = parseIntegrationReturn(new URLSearchParams(window.location.search));
         if (!result) return;
         handledReturn.current = true;
         window.history.replaceState(window.history.state, "", urlWithoutReturnParams(window.location.href));
 
         if (result.kind === "error") {
-            forgetReconnect();
+            clearPendingOAuth();
             setReturnError(oauthFailureMessage(result.reason));
             return;
         }
 
-        const replaced = takeReconnect(result.provider);
+        const pending = result.provider ? takePendingOAuth(result.provider) : null;
+        if (!pending) {
+            clearPendingOAuth();
+            setReturnError(NOT_CONFIRMED);
+            return;
+        }
         setFinishing(true);
         void (async () => {
             try {
-                const response = await activateConnection(result.connectionId);
+                const response = await activateConnection(result.connectionId, pending.nonce);
                 if (response.error || !response.data) {
                     setReturnError(integrationErrorMessage(response.error, "Couldn't finish connecting. Please try again."));
-                    await refreshConnections();
                     return;
                 }
-                upsertConnection(response.data);
-                toast.success(
-                    response.data.account_label
-                        ? `Connected as ${response.data.account_label}`
-                        : "Connected",
-                );
-                if (replaced) setReplaceCandidate(replaced.oldConnectionId);
-                setPendingReview(response.data);
+                const connected = response.data;
+                upsertConnection(connected);
+                toast.success(connected.account_label ? `Connected as ${connected.account_label}` : "Connected");
+                await refreshConnections();
+                if (pending.replacesConnectionId) setReplaceCandidate(pending.replacesConnectionId);
+                setPendingReview(connected);
             } catch {
                 setReturnError("Couldn't reach the server to finish connecting. Please try again.");
             } finally {
                 setFinishing(false);
             }
         })();
-    }, [ready, refreshConnections, upsertConnection]);
+    }, [loading, refreshConnections, upsertConnection]);
 
-    // Ask for required settings once the catalog (with the schema) is in.
+    // Offer required settings for review (the catalog is loaded by now).
     useEffect(() => {
-        if (!pendingReview || loading) return;
+        if (!pendingReview) return;
         const provider = providerById.get(pendingReview.provider);
         if (provider && hasRequiredConfig(provider.config_schema) && canWrite) {
             setConfigTarget({ connection: pendingReview, justConnected: true });
         }
         setPendingReview(null);
-    }, [pendingReview, loading, providerById, canWrite]);
+    }, [pendingReview, providerById, canWrite]);
 
     // -- connection actions ------------------------------------------------------
     const removeConnection = useCallback(
-        async (connection: IntegrationConnectionResponse): Promise<boolean> => {
-            const response = await uninstallIntegrationApiV1IntegrationsConnectionsConnectionIdDelete({
-                path: { connection_id: connection.id },
-            });
-            if (response.error) {
-                toast.error(integrationErrorMessage(response.error, "Couldn't remove the connection"));
-                return false;
+        async (connection: IntegrationConnectionResponse) => {
+            try {
+                const response = await uninstallIntegrationApiV1IntegrationsConnectionsConnectionIdDelete({
+                    path: { connection_id: connection.id },
+                });
+                if (response.error) {
+                    toast.error(integrationErrorMessage(response.error, "Couldn't remove the connection"));
+                    return;
+                }
+                toast.success(`${titleOf(connection.provider)} connection removed`);
+                await refreshConnections();
+            } catch {
+                toast.error(NETWORK_ERROR);
             }
-            toast.success(`${titleOf(connection.provider)} connection removed`);
-            await refreshConnections();
-            return true;
         },
         [refreshConnections, titleOf],
     );
@@ -183,7 +210,7 @@ export default function IntegrationsPage() {
                 await removeConnection(connection);
             }
         } catch {
-            toast.error("Couldn't reach the server. Please try again.");
+            toast.error(NETWORK_ERROR);
         } finally {
             setBusy(null);
         }
@@ -265,7 +292,8 @@ export default function IntegrationsPage() {
                                             key={connection.id}
                                             connection={connection}
                                             provider={providerById.get(connection.provider)}
-                                            permissions={{ canWrite, canInstall }}
+                                            hasSettings={providersWithSettings.has(connection.provider)}
+                                            permissions={{ canWrite, canInstall, canOpenTool }}
                                             busy={busy?.id === connection.id ? busy.action : null}
                                             onAction={(action) => void runAction(connection, action)}
                                         />
@@ -301,7 +329,7 @@ export default function IntegrationsPage() {
                 providerApps={providerApps}
                 onOpenChange={(open) => !open && setConnectTarget(null)}
                 onInstalled={onInstalled}
-                onProviderAppCreated={() => void refreshProviderApps()}
+                onProviderAppCreated={addProviderApp}
             />
 
             <ConfigDialog

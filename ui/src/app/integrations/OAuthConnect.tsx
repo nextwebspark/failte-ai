@@ -1,7 +1,7 @@
 "use client";
 
 import { Check, Copy, ExternalLink, Loader2 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { createProviderAppApiV1IntegrationsProviderAppsPost } from "@/client/sdk.gen";
 import type { IntegrationProvider, ProviderAppResponse } from "@/client/types.gen";
@@ -15,8 +15,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { copyTextToClipboard } from "@/lib/clipboard";
 
 import { integrationErrorMessage, isUnavailableError, scopeLabel } from "./messages";
-import { startOAuth } from "./oauthCalls";
-import { rememberReconnect } from "./reconnect";
+import { isTrustedAuthorizationUrl, startOAuth } from "./oauthCalls";
+import { rememberPendingOAuth } from "./pendingOAuth";
 
 const NEW_CLIENT = "__new__";
 
@@ -49,6 +49,16 @@ export function OAuthConnect({
     const [busy, setBusy] = useState<"saving" | "redirecting" | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [copied, setCopied] = useState(false);
+
+    useEffect(() => {
+        // Coming back with the browser's Back button restores this page from the
+        // back/forward cache with "Opening sign-in…" still showing: reset it.
+        const onPageShow = (event: PageTransitionEvent) => {
+            if (event.persisted) setBusy(null);
+        };
+        window.addEventListener("pageshow", onPageShow);
+        return () => window.removeEventListener("pageshow", onPageShow);
+    }, []);
 
     const redirectUri = provider.oauth?.redirect_uri ?? null;
     const addingClient = selected === NEW_CLIENT;
@@ -121,11 +131,15 @@ export function OAuthConnect({
                 setBusy(null);
                 return;
             }
-            if (replacesConnectionId) {
-                rememberReconnect({ provider: provider.id, oldConnectionId: replacesConnectionId });
+            const { authorization_url: authorizationUrl, browser_nonce: nonce } = response.data;
+            if (!isTrustedAuthorizationUrl(authorizationUrl)) {
+                setError("The server returned an unexpected sign-in address, so it wasn't opened.");
+                setBusy(null);
+                return;
             }
+            rememberPendingOAuth(provider.id, { nonce, replacesConnectionId });
             // Full-page redirect: the provider sends the browser back to /integrations.
-            window.location.assign(response.data.authorization_url);
+            window.location.assign(authorizationUrl);
         } catch {
             setError("Couldn't reach the server. Please try again.");
             setBusy(null);
@@ -148,7 +162,13 @@ export function OAuthConnect({
                 <p className="text-xs text-muted-foreground">
                     Your own OAuth client from Google Cloud. Google shows its name on the sign-in screen.
                 </p>
-                <Select value={selected} onValueChange={(v) => { setSelected(v); setError(null); }} disabled={busy !== null}>
+                <Select value={selected} onValueChange={(v) => {
+                        // Radix's hidden native select can report "" while a just-saved
+                        // client's option mounts: only a real switch counts.
+                        if (!v || v === selected) return;
+                        setSelected(v);
+                        setError(null);
+                    }} disabled={busy !== null}>
                     <SelectTrigger id="oauth-client" className="w-full">
                         <SelectValue />
                     </SelectTrigger>
