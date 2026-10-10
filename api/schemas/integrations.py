@@ -62,6 +62,11 @@ class IntegrationProvider(BaseModel):
         description="Providers of one family (e.g. ``google``) share OAuth "
         "clients and can reuse each other's service-account keys.",
     )
+    share_hint: str | None = Field(
+        default=None,
+        description="What a service account must be given access to, e.g. "
+        "'the spreadsheet'.",
+    )
     auth_modes: list[str]
     scopes: list[str]
     tools: list[IntegrationToolSummary]
@@ -94,6 +99,10 @@ class IntegrationSyncStatus(BaseModel):
     )
     item_count: int = Field(description="Items imported, e.g. products.")
     last_error: str | None = None
+    note: str | None = Field(
+        default=None,
+        description="Caveat of a successful sync, e.g. 'stopped at 2000 pages'.",
+    )
 
 
 class IntegrationConnection(BaseModel):

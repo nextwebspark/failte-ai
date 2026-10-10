@@ -1361,6 +1361,7 @@ CATALOGUE = {
     "description": "Import a shop's products.",
     "icon": "products",
     "auth_family": None,
+    "share_hint": None,
     "auth_modes": ["none"],
     "scopes": [],
     "tools": [
@@ -1439,13 +1440,19 @@ async def test_catalog_and_connections_carry_sync_metadata(client_as, catalogue_
                     FIXED_ID,
                     provider="website-catalogue",
                     auth_mode="none",
-                    sync={**SYNC_STATUS, "status": "succeeded", "item_count": 42},
+                    sync={
+                        **SYNC_STATUS,
+                        "status": "succeeded",
+                        "item_count": 42,
+                        "note": "stopped at 42 pages",
+                    },
                 )
             ]
         }
     )
     listed = await client.get("/api/v1/integrations/connections")
-    assert listed.json()["connections"][0]["sync"]["item_count"] == 42
+    sync = listed.json()["connections"][0]["sync"]
+    assert sync["item_count"] == 42 and sync["note"] == "stopped at 42 pages"
 
 
 async def test_install_without_a_secret_for_none_auth(client_as, catalogue_api):
