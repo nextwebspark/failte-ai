@@ -38,6 +38,7 @@ _SCALAR_PY_TYPES = {
     "credential_ref": "str",
     "tool_refs": "list[str]",
     "document_refs": "list[str]",
+    "skill_refs": "list[str]",
 }
 
 

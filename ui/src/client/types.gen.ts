@@ -6029,7 +6029,7 @@ export type PropertySpec = {
  * Adding a value here requires a matching arm in the frontend
  * `<PropertyInput>` switch and (where relevant) the SDK codegen template.
  */
-export type PropertyType = 'string' | 'number' | 'boolean' | 'options' | 'multi_options' | 'fixed_collection' | 'json' | 'tool_refs' | 'document_refs' | 'recording_ref' | 'credential_ref' | 'mention_textarea' | 'url';
+export type PropertyType = 'string' | 'number' | 'boolean' | 'options' | 'multi_options' | 'fixed_collection' | 'json' | 'tool_refs' | 'document_refs' | 'recording_ref' | 'credential_ref' | 'skill_refs' | 'mention_textarea' | 'url';
 
 /**
  * ProviderAppListResponse
@@ -9195,6 +9195,12 @@ export type WorkflowConfigurationDefaults = {
      * Reuse generated speech for repeated phrases. Supports MiniMax TTS.
      */
     tts_cache_enabled?: boolean;
+    /**
+     * Skills Enabled
+     *
+     * Offer the workspace's agent skills (load_skill, read_skill_file and the skills index) on this workflow's nodes. Turn off for tuned agents that must not see skills.
+     */
+    skills_enabled?: boolean;
     /**
      * Call Dispositions
      *

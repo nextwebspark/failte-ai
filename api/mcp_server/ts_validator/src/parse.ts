@@ -570,6 +570,7 @@ function checkPropertyShape(prop: PropertySpec, value: unknown): string | null {
             return null;
         case "tool_refs":
         case "document_refs":
+        case "skill_refs":
         case "multi_options":
             if (!Array.isArray(value)) return `expected array, got ${jsTypeOf(value)}.`;
             for (const el of value) {

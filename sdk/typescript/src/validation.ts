@@ -22,6 +22,7 @@ const SCALAR_TYPES: Record<string, ReadonlyArray<string> | null> = {
     json: null,
     tool_refs: ["array"],
     document_refs: ["array"],
+    skill_refs: ["array"],
     recording_ref: ["string"],
     credential_ref: ["string"],
     mention_textarea: ["string"],

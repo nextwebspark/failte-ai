@@ -25,6 +25,7 @@ _SCALAR_TYPES: dict[str, tuple[type, ...] | None] = {
     "json": None,  # any JSON-serializable
     "tool_refs": (list,),
     "document_refs": (list,),
+    "skill_refs": (list,),
     "recording_ref": (str,),
     "credential_ref": (str,),
     "mention_textarea": (str,),

@@ -1,6 +1,6 @@
 """Narrow storage interfaces the skill services depend on.
 
-``api.db.db_client`` satisfies all three structurally; tests may pass fakes.
+``api.db.db_client`` satisfies them structurally; tests may pass fakes.
 """
 
 from collections.abc import Collection, Sequence
@@ -15,7 +15,7 @@ from api.db.skill_client import (
     SkillContent,
     WorkspaceSkill,
 )
-from api.db.skill_models import LibrarySkillStatus
+from api.db.skill_models import LibrarySkillStatus, SkillStatus
 
 
 class WorkspaceSkillStore(Protocol):
@@ -38,6 +38,7 @@ class WorkspaceSkillStore(Protocol):
         allowed_tool_uuids: tuple[str, ...] | None,
         source_library_uuid: str | None = None,
         source_version: int | None = None,
+        max_active: int | None = None,
     ) -> WorkspaceSkill: ...
 
     async def update_workspace_skill(
@@ -77,3 +78,15 @@ class ToolDirectory(Protocol):
     async def find_active_tool_uuids(
         self, organization_id: int, tool_uuids: Collection[str]
     ) -> set[str]: ...
+
+
+class RuntimeSkillStore(Protocol):
+    async def list_runtime_skills(
+        self, organization_id: int
+    ) -> list[WorkspaceSkill]: ...
+
+
+class SkillDirectory(Protocol):
+    async def skill_uuid_states(
+        self, organization_id: int, skill_uuids: Collection[str]
+    ) -> dict[str, SkillStatus]: ...

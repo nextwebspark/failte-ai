@@ -85,6 +85,7 @@ from api.services.pipecat.worker_runner import (
     run_worker_runner,
 )
 from api.services.pipecat.ws_sender_registry import get_ws_sender
+from api.services.skills.runtime import load_call_skill_set
 from api.services.telephony import registry as telephony_registry
 from api.services.workflow.answer_classification_service import (
     AnswerClassificationService,
@@ -931,7 +932,12 @@ async def _run_pipeline_impl(
 
     # Check organization-level recording availability. Node preparation enables
     # recording instructions and routing only for prompts that reference them.
-    has_recordings = await db_client.has_active_recordings(workflow.organization_id)
+    # Agent skills (fork) are preloaded alongside, once, so load_skill needs no
+    # I/O mid-call; nothing is loaded when the workflow turns skills off.
+    has_recordings, skill_set = await asyncio.gather(
+        db_client.has_active_recordings(workflow.organization_id),
+        load_call_skill_set(db_client, workflow.organization_id, run_configs),
+    )
 
     context_compaction_enabled = (workflow.workflow_configurations or {}).get(
         "context_compaction_enabled", False
@@ -960,6 +966,7 @@ async def _run_pipeline_impl(
         is_realtime=is_realtime,
         context_compaction_enabled=context_compaction_enabled,
         call_dispositions=call_dispositions,
+        skill_set=skill_set,
     )
 
     # Create pipeline components

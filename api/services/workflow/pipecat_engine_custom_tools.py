@@ -29,6 +29,7 @@ from api.services.telephony.transfer_event_protocol import (
     TransferEvent,
     TransferEventType,
 )
+from api.services.workflow.pipecat_engine_skills import SkillToolManager
 from api.services.workflow.tools.calculator import get_calculator_tools, safe_calculator
 from api.services.workflow.tools.custom_tool import (
     execute_http_tool,
@@ -233,7 +234,7 @@ class CustomToolManager:
 
             for tool in tools:
                 if tool.category == ToolCategory.CALCULATOR.value:
-                    self._register_calculator_handler()
+                    self._register_calculator_handler(str(tool.tool_uuid))
                     logger.debug(
                         f"Registered calculator tool handler "
                         f"(tool_uuid: {tool.tool_uuid})"
@@ -259,7 +260,11 @@ class CustomToolManager:
                             fs.name,
                             self._agent.bind_tool(
                                 self._engine,
-                                self._create_mcp_handler(session, fs.name),
+                                self._skill_guard(
+                                    str(tool.tool_uuid),
+                                    fs.name,
+                                    self._create_mcp_handler(session, fs.name),
+                                ),
                                 timeout_secs=session.call_timeout_secs,
                             ),
                             timeout_secs=session.call_timeout_secs,
@@ -284,6 +289,10 @@ class CustomToolManager:
                     ToolCategory.TRANSFER_CALL.value,
                     ToolCategory.TRANSFER_AGENT.value,
                 }
+                if not is_node_transition:
+                    handler = self._skill_guard(
+                        str(tool.tool_uuid), function_name, handler
+                    )
                 self._agent.llm.register_function(
                     function_name,
                     self._agent.bind_tool(
@@ -368,7 +377,14 @@ class CustomToolManager:
             + _TRANSFER_POST_HANDOFF_DELAY_SECS
         )
 
-    def _register_calculator_handler(self) -> None:
+    def _skill_guard(self, tool_uuid: str, function_name: str, handler):
+        """Apply a loaded skill's tool restriction (fork: agent skills)."""
+        skills = getattr(self._engine, "skill_tools", None)
+        if not isinstance(skills, SkillToolManager):
+            return handler
+        return skills.guard(self._agent, tool_uuid, function_name, handler)
+
+    def _register_calculator_handler(self, tool_uuid: str | None = None) -> None:
         """Register the built-in calculator function with the LLM."""
 
         async def calculate_func(function_call_params: FunctionCallParams) -> None:
@@ -383,8 +399,11 @@ class CustomToolManager:
             except Exception as e:
                 await function_call_params.result_callback({"error": str(e)})
 
+        handler = calculate_func
+        if tool_uuid is not None:
+            handler = self._skill_guard(tool_uuid, "safe_calculator", calculate_func)
         self._agent.llm.register_function(
-            "safe_calculator", self._agent.bind_tool(self._engine, calculate_func)
+            "safe_calculator", self._agent.bind_tool(self._engine, handler)
         )
 
     def _create_http_tool_handler(self, tool: Any, function_name: str):

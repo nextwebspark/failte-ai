@@ -39,11 +39,12 @@ class PropertyType(str, Enum):
 
     # Domain-specific reference types — values are UUIDs/keys looked up against
     # a reference catalog (list_tools, list_documents, list_recordings,
-    # list_credentials).
+    # list_credentials, list_skills).
     tool_refs = "tool_refs"
     document_refs = "document_refs"
     recording_ref = "recording_ref"
     credential_ref = "credential_ref"
+    skill_refs = "skill_refs"
 
     # Domain-specific input widgets
     mention_textarea = "mention_textarea"  # textarea with {{var}} mentions

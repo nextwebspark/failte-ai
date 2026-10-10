@@ -27,7 +27,11 @@ from api.db.skill_models import (
     SkillStatus,
 )
 from api.enums import ToolStatus
-from api.errors.skills import SkillModifiedError, SkillNameConflictError
+from api.errors.skills import (
+    SkillLimitError,
+    SkillModifiedError,
+    SkillNameConflictError,
+)
 
 _SEED_LOCK_KEY = "skill_library:seed_sync"
 
@@ -389,8 +393,30 @@ class SkillClient(BaseDBClient):
         allowed_tool_uuids: tuple[str, ...] | None,
         source_library_uuid: str | None = None,
         source_version: int | None = None,
+        max_active: int | None = None,
     ) -> WorkspaceSkill:
+        """Create an active skill. ``max_active`` caps the organization's
+        active skills; concurrent creates are serialized per organization so
+        the cap holds (SkillLimitError when reached)."""
         async with self.async_session() as session:
+            if max_active is not None:
+                await session.execute(
+                    select(
+                        func.pg_advisory_xact_lock(
+                            func.hashtextextended(f"skills:active:{organization_id}", 0)
+                        )
+                    )
+                )
+                active = await session.scalar(
+                    select(func.count())
+                    .select_from(SkillModel)
+                    .where(
+                        SkillModel.organization_id == organization_id,
+                        SkillModel.status == SkillStatus.ACTIVE.value,
+                    )
+                )
+                if int(active or 0) >= max_active:
+                    raise SkillLimitError(max_active)
             row = SkillModel(
                 organization_id=organization_id,
                 name=content.name,
@@ -498,6 +524,51 @@ class SkillClient(BaseDBClient):
             archived = result.first() is not None
             await session.commit()
             return archived
+
+    async def list_runtime_skills(self, organization_id: int) -> list[WorkspaceSkill]:
+        """Active skills of the organization with their files, for preloading
+        into a call. Two queries in one session; no library lookup."""
+        async with self.async_session() as session:
+            result = await session.execute(
+                select(SkillModel)
+                .where(
+                    SkillModel.organization_id == organization_id,
+                    SkillModel.status == SkillStatus.ACTIVE.value,
+                )
+                .order_by(SkillModel.name, SkillModel.id)
+            )
+            rows = list(result.scalars().all())
+            if not rows:
+                return []
+            files_result = await session.execute(
+                select(SkillFileModel).where(
+                    SkillFileModel.skill_uuid.in_([r.skill_uuid for r in rows])
+                )
+            )
+            by_skill: dict[str, list[SkillFileModel]] = {}
+            for file_row in files_result.scalars().all():
+                by_skill.setdefault(file_row.skill_uuid, []).append(file_row)
+            return [
+                _to_workspace(row, _files(by_skill.get(row.skill_uuid, [])), None)
+                for row in rows
+            ]
+
+    async def skill_uuid_states(
+        self, organization_id: int, skill_uuids: Collection[str]
+    ) -> dict[str, SkillStatus]:
+        """Status of each of ``skill_uuids`` that is a skill of the org. A UUID
+        that is absent is unknown or belongs to another organization (the two
+        are deliberately indistinguishable)."""
+        if not skill_uuids:
+            return {}
+        async with self.async_session() as session:
+            result = await session.execute(
+                select(SkillModel.skill_uuid, SkillModel.status).where(
+                    SkillModel.organization_id == organization_id,
+                    SkillModel.skill_uuid.in_(list(skill_uuids)),
+                )
+            )
+            return {str(u): SkillStatus(str(status)) for u, status in result.all()}
 
     async def find_active_tool_uuids(
         self, organization_id: int, tool_uuids: Collection[str]

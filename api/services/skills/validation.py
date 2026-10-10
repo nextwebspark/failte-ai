@@ -44,6 +44,9 @@ METADATA_KEY_MAX = 64
 METADATA_VALUE_MAX = 1024
 CATEGORY_MAX = 64
 MAX_ALLOWED_TOOLS = 50
+# Active skills per workspace. Every active skill is preloaded into each call
+# and listed in node prompts, so this bounds call memory and prompt size.
+MAX_ACTIVE_SKILLS = 50
 SKILL_FILE_NAME = "SKILL.md"
 
 _XML_TAG = re.compile(r"</?[A-Za-z][\w:.-]*(\s[^<>]*)?/?>")

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Strict type check for modules held to full typing (team, roles, invitations,
-# email, local auth, skills). The rest of api/ is checked non-strictly by scripts/lint.sh.
+# email, local auth, skills and the skills runtime). The rest of api/ is checked non-strictly by scripts/lint.sh.
 set -euo pipefail
 
 mypy --strict --follow-imports=silent \
@@ -38,6 +38,8 @@ mypy --strict --follow-imports=silent \
   api/services/rate_limit \
   api/services/skills \
   api/services/tool_integrations \
+  api/services/workflow/pipecat_engine_skills.py \
+  api/services/workflow/skill_ref_validation.py \
   api/utils/text.py \
   api/utils/trusted_origins.py \
   api/utils/clock.py \
