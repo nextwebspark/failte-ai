@@ -4,6 +4,7 @@ from datetime import datetime
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
+from loguru import logger
 from pydantic import BaseModel
 
 from api.db import db_client
@@ -12,7 +13,11 @@ from api.enums import WebhookCredentialType
 from api.sdk_expose import sdk_expose
 from api.services.auth.depends import get_user, requires
 from api.services.auth.permissions import Permission
-from api.services.tool_integrations.resources import is_integration_managed
+from api.services.tool_integrations.resources import (
+    INTEGRATION_METADATA_KEY,
+    is_integration_managed,
+)
+from api.utils.credential_crypto import ENVELOPE_MARKER
 
 router = APIRouter(prefix="/credentials")
 
@@ -98,6 +103,21 @@ def validate_credential_data(
             )
 
 
+# Fallcha: keys the server owns inside credential_data — the encryption
+# envelope marker (so plaintext can never pose as ciphertext) and the
+# integration link (written only by /integrations, never by users).
+RESERVED_CREDENTIAL_KEYS = frozenset({ENVELOPE_MARKER, INTEGRATION_METADATA_KEY})
+
+
+def reject_reserved_credential_keys(credential_data: dict) -> None:
+    reserved = sorted(RESERVED_CREDENTIAL_KEYS.intersection(credential_data))
+    if reserved:
+        raise HTTPException(
+            status_code=400,
+            detail=f"credential_data must not contain reserved keys: {', '.join(reserved)}",
+        )
+
+
 async def _refuse_if_integration_managed(
     credential_uuid: str, organization_id: int
 ) -> None:
@@ -150,7 +170,7 @@ async def list_credentials(
         )
 
     credentials = await db_client.get_credentials_for_organization(
-        user.selected_organization_id
+        user.selected_organization_id, include_data=False
     )
 
     return [build_credential_response(cred) for cred in credentials]
@@ -176,6 +196,7 @@ async def create_credential(
         )
 
     # Validate credential data structure
+    reject_reserved_credential_keys(request.credential_data)
     validate_credential_data(request.credential_type, request.credential_data)
 
     try:
@@ -197,7 +218,9 @@ async def create_credential(
                 status_code=409,
                 detail=f"A credential with the name '{request.name}' already exists",
             )
-        raise HTTPException(status_code=500, detail=str(e))
+        # Never echo the exception: SQLAlchemy errors embed bound parameters.
+        logger.error(f"Creating credential failed: {type(e).__name__}")
+        raise HTTPException(status_code=500, detail="Failed to create credential")
 
 
 @router.get(
@@ -223,7 +246,7 @@ async def get_credential(
         )
 
     credential = await db_client.get_credential_by_uuid(
-        credential_uuid, user.selected_organization_id
+        credential_uuid, user.selected_organization_id, include_data=False
     )
 
     if not credential:
@@ -259,6 +282,8 @@ async def update_credential(
     await _refuse_if_integration_managed(credential_uuid, user.selected_organization_id)
 
     # Validate credential data if provided
+    if request.credential_data is not None:
+        reject_reserved_credential_keys(request.credential_data)
     if request.credential_type and request.credential_data:
         validate_credential_data(request.credential_type, request.credential_data)
 
@@ -287,7 +312,8 @@ async def update_credential(
                 status_code=409,
                 detail=f"A credential with the name '{request.name}' already exists",
             )
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Updating credential failed: {type(e).__name__}")
+        raise HTTPException(status_code=500, detail="Failed to update credential")
 
 
 @router.delete(

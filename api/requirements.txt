@@ -19,6 +19,9 @@ sqlalchemy[asyncio]==2.0.43
 msgpack==1.1.2
 pgvector==0.4.2
 bcrypt==5.0.0
+# Fernet encryption of external credentials at rest (api/utils/credential_crypto.py);
+# already present transitively, declared because we import it directly.
+cryptography>=42
 email-validator==2.3.0
 # Bundle the full IANA tz database (incl. deprecated "backward" aliases like
 # Asia/Calcutta) so ZoneInfo resolves timezones the trimmed system tzdata omits.

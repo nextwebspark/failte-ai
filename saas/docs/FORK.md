@@ -92,6 +92,9 @@ These upstream files we expect to modify. Keep this list short and current — a
 | `api/tests/test_google_tts_service_factory.py` | One fixture paired `sw-KE` with an `en-US` voice — the combination Google rejects — so it had to become a consistent pair |
 | `ui/src/app/workflow/[workflowId]/run/[runId]/hooks/useWebSocketRTC.tsx` | Live-feedback row ids come from `@/lib/feedbackId` — `Date.now()` alone collides |
 | `ui/src/lib/publicEmbedWidget.test.ts` | The mocked embed config carries a `texts` block, as the real endpoint does |
+| `api/db/models.py` (`ExternalCredentialModel.credential_data`) | Column type `JSON` → fork-owned `EncryptedJSON` (`api/db/encrypted_json.py`, still a JSON column) so credentials are encrypted at rest; keep the type on conflict |
+| `api/app.py`, `api/tasks/arq.py` | One `verify_credential_encryption()` call at API lifespan / worker `on_startup` (fork-owned `api/services/credential_encryption.py`) |
+| `api/routes/credentials.py`, `api/db/webhook_credential_client.py` | Reserved `credential_data` keys rejected (400), generic 500 detail, and metadata-only (`include_data=False`, deferred column) reads for list/get |
 
 #### Google voice picker
 

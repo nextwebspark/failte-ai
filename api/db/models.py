@@ -26,6 +26,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, declarative_base, mapped_column, relationship
 
 from api.constants import DEFAULT_CAMPAIGN_RETRY_CONFIG
+from api.db.encrypted_json import EncryptedJSON
 
 from ..enums import (
     CallType,
@@ -1302,13 +1303,16 @@ class ExternalCredentialModel(Base):
         default=WebhookCredentialType.NONE.value,
     )
 
-    # Encrypted credential data (JSON)
-    # Structure depends on credential_type:
+    # Credential data. Encrypted at rest when CREDENTIALS_ENCRYPTION_KEYS is
+    # set (a {"_enc": "v1", "ct": ...} envelope in this JSON column, see
+    # api/db/encrypted_json.py); plaintext otherwise. Never filter on it in SQL.
+    # In-place mutation is not tracked (no MutableDict): assign a new dict.
+    # Decrypted structure depends on credential_type:
     # - api_key: {"header_name": "X-API-Key", "api_key": "value"}
     # - bearer_token: {"token": "value"}
     # - basic_auth: {"username": "user", "password": "value"}
     # - custom_header: {"header_name": "X-Custom", "header_value": "value"}
-    credential_data = Column(JSON, nullable=False, default=dict)
+    credential_data = Column(EncryptedJSON, nullable=False, default=dict)
 
     # Audit fields
     created_by = Column(Integer, ForeignKey("users.id"), nullable=False)

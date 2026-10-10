@@ -101,6 +101,15 @@ TOOLS_SERVICE_URL = (
     os.getenv("TOOLS_SERVICE_URL") or "http://fallcha-tools:8000"
 ).rstrip("/")
 TOOLS_INTERNAL_SECRET = os.getenv("TOOLS_INTERNAL_SECRET") or None
+# Comma-separated Fernet keys encrypting external_credentials.credential_data
+# at rest; the first key encrypts, all decrypt (rotation: prepend a new key,
+# run `python -m scripts.reencrypt_credentials`, drop the old key). Unset keeps
+# plaintext storage with a startup warning. See api/utils/credential_crypto.py.
+CREDENTIALS_ENCRYPTION_KEYS: tuple[str, ...] = tuple(
+    k.strip()
+    for k in os.getenv("CREDENTIALS_ENCRYPTION_KEYS", "").split(",")
+    if k.strip()
+)
 # Comma-separated origins (scheme://host[:port]) that user-configured tool
 # URLs may target even in SaaS mode, where private addresses are otherwise
 # refused. The tools service origin is added when TOOLS_INTERNAL_SECRET is set.

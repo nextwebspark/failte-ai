@@ -5,6 +5,8 @@ set -euo pipefail
 
 mypy --strict --follow-imports=silent \
   api/db/account_client.py \
+  api/db/credential_encryption_client.py \
+  api/db/encrypted_json.py \
   api/errors/account.py \
   api/routes/auth.py \
   api/schemas/auth.py \
@@ -23,6 +25,7 @@ mypy --strict --follow-imports=silent \
   api/schemas/integrations.py \
   api/schemas/team.py \
   api/services/auth/permissions.py \
+  api/services/credential_encryption.py \
   api/services/email \
   api/services/invitations \
   api/services/membership \
@@ -31,4 +34,5 @@ mypy --strict --follow-imports=silent \
   api/utils/text.py \
   api/utils/trusted_origins.py \
   api/utils/clock.py \
+  api/utils/credential_crypto.py \
   api/utils/secure_token.py

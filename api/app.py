@@ -42,6 +42,7 @@ from api.errors.domain import DomainError
 from api.errors.mps import MPS_UNAVAILABLE_PUBLIC_MESSAGE, MPSUnavailableError
 from api.mcp_server import mcp
 from api.routes.main import router as main_router
+from api.services.credential_encryption import verify_credential_encryption
 from api.services.pipecat.tracing_config import (
     handle_langfuse_sync,
     load_all_org_langfuse_credentials,
@@ -62,6 +63,10 @@ mcp_app = mcp.http_app(path="/", stateless_http=True)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Fallcha: refuse to start with unreadable or (outside OSS) plaintext
+    # credential storage. See api/services/credential_encryption.py.
+    await verify_credential_encryption()
+
     async with mcp_app.lifespan(app):
         # warmup arq pool
         await get_arq_redis()

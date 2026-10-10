@@ -5,9 +5,18 @@ from typing import List, Optional
 
 from loguru import logger
 from sqlalchemy import select, update
+from sqlalchemy.orm import defer
 
 from api.db.base_client import BaseDBClient
 from api.db.models import ExternalCredentialModel
+
+
+def _maybe_without_data(query, include_data: bool):
+    """Fallcha: metadata-only reads skip (and so never decrypt) credential_data;
+    touching it on such an instance raises instead of lazy-loading."""
+    if include_data:
+        return query
+    return query.options(defer(ExternalCredentialModel.credential_data, raiseload=True))
 
 
 class WebhookCredentialClient(BaseDBClient):
@@ -56,7 +65,7 @@ class WebhookCredentialClient(BaseDBClient):
             return credential
 
     async def get_credentials_for_organization(
-        self, organization_id: int, active_only: bool = True
+        self, organization_id: int, active_only: bool = True, include_data: bool = True
     ) -> List[ExternalCredentialModel]:
         """Get all credentials for an organization.
 
@@ -74,6 +83,7 @@ class WebhookCredentialClient(BaseDBClient):
 
             if active_only:
                 query = query.where(ExternalCredentialModel.is_active.is_(True))
+            query = _maybe_without_data(query, include_data)
 
             query = query.order_by(ExternalCredentialModel.name)
 
@@ -81,7 +91,11 @@ class WebhookCredentialClient(BaseDBClient):
             return list(result.scalars().all())
 
     async def get_credential_by_uuid(
-        self, credential_uuid: str, organization_id: int, active_only: bool = True
+        self,
+        credential_uuid: str,
+        organization_id: int,
+        active_only: bool = True,
+        include_data: bool = True,
     ) -> Optional[ExternalCredentialModel]:
         """Get a credential by its UUID, scoped to organization.
 
@@ -101,6 +115,7 @@ class WebhookCredentialClient(BaseDBClient):
 
             if active_only:
                 query = query.where(ExternalCredentialModel.is_active.is_(True))
+            query = _maybe_without_data(query, include_data)
 
             result = await session.execute(query)
             return result.scalar_one_or_none()
