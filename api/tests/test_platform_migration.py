@@ -1,5 +1,6 @@
 """Moving existing organizations onto platform models (#46)."""
 
+import copy
 import importlib
 import json
 import os
@@ -198,8 +199,22 @@ def test_byok_vertex_realtime_keeps_voice_and_language():
 
     config = result.configuration
     assert (config.realtime.voice, config.realtime.language) == ("Puck", "es")
+    # The Live model the organization ran is kept, not swapped for the default.
+    assert config.realtime.model == "google/gemini-live-2.5-flash-native-audio"
     assert config.pipeline.llm.model == "gemini-3.5-flash"
     assert result.notes == []
+
+
+def test_byok_gemini_api_live_model_maps_onto_the_vertex_catalog_id():
+    realtime = copy.deepcopy(BYOK_REALTIME_VERTEX)
+    service = realtime["byok"]["realtime"]["realtime"]
+    service.update(provider="google_realtime", model="gemini-3.8-live", api_key="k")
+    for key in ("project_id", "location", "credentials"):
+        service.pop(key, None)
+
+    result = _migrate(realtime)
+
+    assert result.configuration.realtime.model == "google/gemini-3.8-live"
 
 
 def test_workflow_override_and_legacy_overlay_are_migrated():

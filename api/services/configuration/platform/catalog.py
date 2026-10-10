@@ -67,11 +67,26 @@ def google_voice_preview_url(voice_name: str) -> str:
 
 REALTIME_MODELS: Final[tuple[PlatformOption, ...]] = (
     PlatformOption(
-        id="google/gemini-live-2.5-flash-native-audio",
-        label="Gemini Live 2.5 Flash",
-        description="Natural, low-latency native audio conversation.",
+        id="google/gemini-3.8-live",
+        label="Gemini Live 3.8",
+        description="Follows the agent's instructions and tools most reliably.",
         recommended=True,
     ),
+    PlatformOption(
+        id="google/gemini-live-2.5-flash-native-audio",
+        label="Gemini Live 2.5 Flash",
+        description=(
+            "Earlier native-audio model. Can act on half-heard requests; "
+            "test booking flows before using it."
+        ),
+    ),
+)
+
+# Gemini 3.x Live is served from the multi-region endpoint the text models use
+# (PLATFORM_VERTEX_LLM_LOCATION, "eu"); 2.5 native audio only from single
+# regions (PLATFORM_VERTEX_REALTIME_LOCATION, "europe-west1").
+MULTI_REGION_REALTIME_MODELS: Final[frozenset[str]] = frozenset(
+    {"google/gemini-3.8-live"}
 )
 
 
@@ -87,12 +102,39 @@ def _live_voice(name: str, gender: str, description: str) -> PlatformOption:
     )
 
 
+# All 30 Gemini Live voices, each checked against both Live models on Vertex
+# (2026-10-10). Styles are Google's own one-word descriptions.
 REALTIME_VOICES: Final[tuple[PlatformOption, ...]] = (
     _live_voice("Charon", "male", "Informative"),
-    _live_voice("Puck", "male", "Upbeat"),
-    _live_voice("Fenrir", "male", "Excitable"),
     _live_voice("Kore", "female", "Firm"),
+    _live_voice("Puck", "male", "Upbeat"),
     _live_voice("Aoede", "female", "Breezy"),
+    _live_voice("Fenrir", "male", "Excitable"),
+    _live_voice("Zephyr", "female", "Bright"),
+    _live_voice("Orus", "male", "Firm"),
+    _live_voice("Leda", "female", "Youthful"),
+    _live_voice("Enceladus", "male", "Breathy"),
+    _live_voice("Callirrhoe", "female", "Easy-going"),
+    _live_voice("Iapetus", "male", "Clear"),
+    _live_voice("Autonoe", "female", "Bright"),
+    _live_voice("Umbriel", "male", "Easy-going"),
+    _live_voice("Despina", "female", "Smooth"),
+    _live_voice("Algieba", "male", "Smooth"),
+    _live_voice("Erinome", "female", "Clear"),
+    _live_voice("Algenib", "male", "Gravelly"),
+    _live_voice("Laomedeia", "female", "Upbeat"),
+    _live_voice("Rasalgethi", "male", "Informative"),
+    _live_voice("Achernar", "female", "Soft"),
+    _live_voice("Alnilam", "male", "Firm"),
+    _live_voice("Gacrux", "female", "Mature"),
+    _live_voice("Schedar", "male", "Even"),
+    _live_voice("Pulcherrima", "female", "Forward"),
+    _live_voice("Achird", "male", "Friendly"),
+    _live_voice("Vindemiatrix", "female", "Gentle"),
+    _live_voice("Zubenelgenubi", "male", "Casual"),
+    _live_voice("Sulafat", "female", "Warm"),
+    _live_voice("Sadachbia", "male", "Lively"),
+    _live_voice("Sadaltager", "male", "Knowledgeable"),
 )
 
 REALTIME_LANGUAGES: Final[tuple[str, ...]] = tuple(GOOGLE_VERTEX_REALTIME_LANGUAGES)
@@ -184,7 +226,7 @@ _TTS_VOICE_PATTERN: Final = {
 # --- Defaults ----------------------------------------------------------------
 
 DEFAULT_PIPELINE_MODE: Final = PlatformPipelineMode.REALTIME
-DEFAULT_REALTIME_MODEL: Final = "google/gemini-live-2.5-flash-native-audio"
+DEFAULT_REALTIME_MODEL: Final = "google/gemini-3.8-live"
 DEFAULT_REALTIME_VOICE: Final = "Charon"
 DEFAULT_REALTIME_LANGUAGE: Final = "en"
 DEFAULT_LLM_MODEL: Final = "gemini-3.5-flash"

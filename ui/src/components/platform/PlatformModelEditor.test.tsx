@@ -143,7 +143,29 @@ describe("PlatformModelEditor", () => {
 
     it("explains starting from defaults for a workspace on its own keys", () => {
         renderEditor({ version: 2, mode: "byok", byok: {} });
-        expect(screen.getByText(/default managed setup/)).toBeTruthy();
+        expect(screen.getByText(/older provider setup/)).toBeTruthy();
+        // Nothing managed is saved yet, so test calls still run the old setup.
+        expect(screen.getByText(/You have unsaved changes/)).toBeTruthy();
+    });
+
+    it("asks a new workspace to choose, without claiming an older setup", () => {
+        renderEditor(null);
+        expect(screen.getByText("Choose how your agents talk, then save to set it up.")).toBeTruthy();
+        expect(screen.queryByText(/older provider setup/)).toBeNull();
+    });
+
+    it("clears the unsaved-changes note once the change is saved", async () => {
+        const onSave = vi.fn().mockResolvedValue(undefined);
+        render(<PlatformModelEditor catalog={catalog} configuration={PIPELINE} onSave={onSave} />);
+        expect(screen.queryByText(/You have unsaved changes/)).toBeNull();
+
+        fireEvent.change(screen.getByLabelText("Temperature"), { target: { value: "0.4" } });
+        fireEvent.blur(screen.getByLabelText("Temperature"));
+        expect(screen.getByText(/You have unsaved changes/)).toBeTruthy();
+
+        save();
+        await waitFor(() => expect(onSave).toHaveBeenCalledOnce());
+        await waitFor(() => expect(screen.queryByText(/You have unsaved changes/)).toBeNull());
     });
 
     it("is read-only for viewers without permission", () => {

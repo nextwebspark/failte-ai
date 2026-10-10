@@ -16,7 +16,11 @@ V2_URL = "/api/v1/organizations/model-configurations/v2"
 REALTIME = {
     "version": 2,
     "mode": "platform",
-    "platform": {"pipeline_mode": "realtime", "realtime": {}},
+    # A single-region model, so the realtime location applies.
+    "platform": {
+        "pipeline_mode": "realtime",
+        "realtime": {"model": "google/gemini-live-2.5-flash-native-audio"},
+    },
 }
 
 
@@ -222,6 +226,28 @@ async def test_enterprise_placement_applies_to_that_organization_only(make_org):
     assert placed.llm.location == "eu"
     assert default.realtime.project_id == "operator-project"
     assert default.realtime.location == "europe-west1"
+
+
+@pytest.mark.asyncio
+async def test_multi_region_live_model_follows_the_llm_placement(make_org):
+    async with make_org() as (_client, enterprise, _w1):
+        await save_platform_model_policy(
+            enterprise.id,
+            PlatformModelPolicy(llm_location="eu", realtime_location="europe-west4"),
+        )
+        config = OrganizationAIModelConfigurationV2.model_validate(
+            {
+                "version": 2,
+                "mode": "platform",
+                "platform": {
+                    "pipeline_mode": "realtime",
+                    "realtime": {"model": "google/gemini-3.8-live"},
+                },
+            }
+        )
+        placed = await compile_for_organization(config, enterprise.id)
+
+    assert placed.realtime.location == "eu"
 
 
 @pytest.mark.asyncio

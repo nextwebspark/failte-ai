@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { UnsavedChangesProvider } from "@/context/UnsavedChangesContext";
 import { platformCatalogFixture as catalog } from "@/lib/__fixtures__/platformCatalog";
 import type { WorkflowConfigurations } from "@/types/workflow-configurations";
 
@@ -43,12 +44,14 @@ beforeEach(() => {
 
 function renderSection(workflowConfigurations: Record<string, unknown>, onSave = vi.fn().mockResolvedValue(undefined)) {
     render(
-        <WorkflowModelOverridesSection
-            // Only the model keys matter here.
-            workflowConfigurations={workflowConfigurations as unknown as WorkflowConfigurations}
-            workflowName="Agent A"
-            onSave={onSave}
-        />,
+        <UnsavedChangesProvider>
+            <WorkflowModelOverridesSection
+                // Only the model keys matter here.
+                workflowConfigurations={workflowConfigurations as unknown as WorkflowConfigurations}
+                workflowName="Agent A"
+                onSave={onSave}
+            />
+        </UnsavedChangesProvider>,
     );
     return onSave;
 }
@@ -103,12 +106,43 @@ describe("Agent model and voice", () => {
         expect(onSave.mock.calls[0][0].model_configuration_v2_override).toBeUndefined();
     });
 
-    it("treats an old provider override as none", async () => {
-        renderSection({ model_configuration_v2_override: { version: 2, mode: "byok", byok: {} } });
+    it("says an old provider override still runs, and opens it in its own mode", async () => {
+        renderSection({
+            model_configuration_v2_override: {
+                version: 2,
+                mode: "byok",
+                byok: {
+                    mode: "pipeline",
+                    pipeline: {
+                        llm: { provider: "google_vertex", model: "gemini-3.5-flash" },
+                        stt: { provider: "google", model: "chirp_3", language: "en-GB" },
+                        tts: { provider: "google", model: "chirp_3_hd", voice: "en-GB-Chirp3-HD-Kore", language: "en-GB" },
+                    },
+                },
+            },
+        });
 
         const toggle = await screen.findByLabelText("Use a different voice or model for this agent");
         expect(toggle.getAttribute("aria-checked")).toBe("false");
+        expect(screen.getByText(/This agent still runs/)).toBeTruthy();
+        expect(
+            screen.getByText("Speech-to-Text → LLM → Text-to-Speech · Gemini 3.5 Flash · Kore · British English (older provider setup)"),
+        ).toBeTruthy();
+        expect(screen.queryByText(/Using workspace default/)).toBeNull();
         expect(screen.getByRole("button", { name: "Use workspace default" })).toBeTruthy();
+
+        fireEvent.click(toggle);
+        const pipelineMode = screen.getByRole("radio", { name: /Speech-to-Text/ });
+        expect(pipelineMode.getAttribute("aria-checked")).toBe("true");
+    });
+
+    it("warns that test calls use the saved settings until the form is saved", async () => {
+        renderSection({ model_configuration_v2_override: WORKSPACE });
+
+        await screen.findByRole("radio", { name: /Kore/ });
+        expect(screen.queryByText(/unsaved changes/)).toBeNull();
+        fireEvent.click(screen.getByRole("radio", { name: /Kore/ }));
+        expect(screen.getByText(/You have unsaved changes/)).toBeTruthy();
     });
 
     it("shows a failed save", async () => {

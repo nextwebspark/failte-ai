@@ -1,5 +1,6 @@
 """Platform-managed models: choices compile onto the operator's Vertex project."""
 
+import copy
 import json
 import uuid
 
@@ -177,7 +178,7 @@ def test_compile_fails_loudly_without_a_server_project(monkeypatch):
     "path, value",
     [
         (("realtime", "model"), "gemini-3.8-live"),
-        (("realtime", "voice"), "Zephyr"),
+        (("realtime", "voice"), "Ghost"),
         (("realtime", "language"), "xx"),
     ],
 )
@@ -280,9 +281,30 @@ def test_default_platform_configuration_is_gemini_live_charon_english():
 
     assert config.pipeline_mode == "realtime"
     assert config.realtime is not None
-    assert config.realtime.model == "google/gemini-live-2.5-flash-native-audio"
+    assert config.realtime.model == "google/gemini-3.8-live"
     assert config.realtime.voice == "Charon"
     assert config.realtime.language == "en"
+
+
+@pytest.mark.parametrize(
+    ("model", "location"),
+    [
+        # Gemini 3.x Live is served from the multi-region endpoint.
+        ("google/gemini-3.8-live", "eu"),
+        # 2.5 native audio only from single regions.
+        ("google/gemini-live-2.5-flash-native-audio", "europe-west1"),
+    ],
+)
+def test_realtime_model_runs_where_vertex_serves_it(model, location):
+    config = copy.deepcopy(REALTIME_CONFIG)
+    config["platform"]["realtime"]["model"] = model
+    effective = compile_ai_model_configuration_v2(
+        OrganizationAIModelConfigurationV2.model_validate(config),
+        platform_settings=SETTINGS,
+    )
+
+    assert effective.realtime.model == model
+    assert effective.realtime.location == location
 
 
 def test_masked_effective_config_hides_operator_infrastructure():
@@ -343,12 +365,15 @@ async def test_defaults_include_the_platform_catalog(org_client):
     assert [mode["id"] for mode in platform["modes"]] == ["realtime", "pipeline"]
     assert platform["default_mode"] == "realtime"
     assert platform["realtime"]["defaults"] == {
-        "model": "google/gemini-live-2.5-flash-native-audio",
+        "model": "google/gemini-3.8-live",
         "voice": "Charon",
         "language": "en",
     }
     voices = {voice["id"]: voice for voice in platform["realtime"]["voices"]}
-    assert set(voices) == {"Charon", "Puck", "Fenrir", "Kore", "Aoede"}
+    # Every Gemini Live voice, each with a sample.
+    assert len(voices) == 30
+    assert {"Charon", "Kore", "Zephyr", "Sulafat"} <= set(voices)
+    assert all(voice["preview_url"] and voice["gender"] for voice in voices.values())
     assert voices["Kore"]["preview_url"].endswith("voice_id=en-US-Chirp3-HD-Kore")
     llm_models = [model["id"] for model in platform["pipeline"]["llm"]["models"]]
     assert llm_models == ["gemini-3.5-flash", "gemini-3.1-flash-lite"]

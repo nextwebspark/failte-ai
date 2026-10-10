@@ -85,9 +85,11 @@ def _from_dograh(*, language: str, temperature: float | None) -> PlatformMigrati
 
 def _from_byok_realtime(realtime: Any, llm: Any) -> PlatformMigration:
     notes: list[str] = []
+    model = catalog.DEFAULT_REALTIME_MODEL
     voice = catalog.DEFAULT_REALTIME_VOICE
     language = catalog.DEFAULT_REALTIME_LANGUAGE
     if getattr(realtime, "provider", None) in _REALTIME_PROVIDERS:
+        model = _realtime_model(getattr(realtime, "model", None), notes)
         voice = _allowed(
             getattr(realtime, "voice", None),
             catalog.option_ids(catalog.REALTIME_VOICES),
@@ -104,7 +106,9 @@ def _from_byok_realtime(realtime: Any, llm: Any) -> PlatformMigration:
     return PlatformMigration(
         PlatformAIModelConfiguration(
             pipeline_mode=PlatformPipelineMode.REALTIME,
-            realtime=PlatformRealtimeChoice(voice=voice, language=language),
+            realtime=PlatformRealtimeChoice(
+                model=model, voice=voice, language=language
+            ),
             pipeline=PlatformPipelineChoice(llm=_llm_from_service(llm, notes)),
         ),
         notes,
@@ -268,6 +272,21 @@ def _realtime_language(language: str | None, notes: list[str]) -> str:
             f"language {language!r} replaced by {catalog.DEFAULT_REALTIME_LANGUAGE!r}"
         )
     return catalog.DEFAULT_REALTIME_LANGUAGE
+
+
+def _realtime_model(model: str | None, notes: list[str]) -> str:
+    """The Live model the organization ran, as a catalog id, where offered.
+
+    Gemini API ids have no "google/" prefix; the Vertex catalog ids do.
+    """
+    offered = catalog.option_ids(catalog.REALTIME_MODELS)
+    for candidate in (model, f"google/{model}" if model else None):
+        if candidate in offered:
+            return candidate
+    notes.append(
+        f"realtime model {model!r} replaced by {catalog.DEFAULT_REALTIME_MODEL!r}"
+    )
+    return catalog.DEFAULT_REALTIME_MODEL
 
 
 def _allowed(

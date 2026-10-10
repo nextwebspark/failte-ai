@@ -208,10 +208,105 @@ describe("platform model configuration", () => {
 
     it.each([
         ["a platform override", REALTIME, REALTIME],
-        ["a legacy provider override", { mode: "byok", byok: {} }, PIPELINE],
+        ["no override", null, PIPELINE],
         ["no override", undefined, PIPELINE],
     ])("seeds an agent override from %s", (_case, saved, expected) => {
         expect(platformOverrideSeed(saved, PIPELINE)).toBe(expected);
+    });
+
+    it("seeds an agent override from its own legacy provider override", () => {
+        const legacy = { mode: "byok", byok: {} };
+        expect(platformOverrideSeed(legacy, PIPELINE)).toBe(legacy);
+    });
+
+    it("keeps a BYOK pipeline's mode, models, voice and language", () => {
+        const parsed = platformFormStateFromConfiguration(
+            {
+                mode: "byok",
+                byok: {
+                    mode: "pipeline",
+                    pipeline: {
+                        llm: { provider: "google_vertex", model: "gemini-3.1-flash-lite" },
+                        stt: { provider: "google", model: "latest_long", language: "en-GB" },
+                        tts: { provider: "google", model: "chirp_3_hd", voice: "en-GB-Chirp3-HD-Kore", language: "en-GB", speed: 1.2 },
+                    },
+                },
+            },
+            catalog,
+        );
+        expect(parsed.state.pipelineMode).toBe("pipeline");
+        expect(parsed.state.llm.model).toBe("gemini-3.1-flash-lite");
+        expect(parsed.state.stt).toEqual({ model: "latest_long", language: "en-GB" });
+        expect(parsed.state.tts).toMatchObject({ voice: "en-GB-Chirp3-HD-Kore", language: "en-GB", speed: 1.2 });
+        // The other mode follows the same voice and language.
+        expect(parsed.state.realtime).toMatchObject({ voice: "Kore", language: "en" });
+        expect(validatePlatformFormState(parsed.state, catalog)).toEqual([]);
+    });
+
+    it("starts the mode that isn't stored from the workspace, else from the stored mode", () => {
+        const workspaceGb = structuredClone(PIPELINE);
+        workspaceGb.platform.pipeline.tts.voice = "en-GB-Chirp3-HD-Puck";
+        const english = structuredClone(REALTIME);
+        english.platform.realtime.language = "en";
+        // Language and models from the workspace, the agent's own Kore persona.
+        const fromWorkspace = platformFormStateFromConfiguration(english, catalog, workspaceGb);
+        expect(fromWorkspace.state.tts).toMatchObject({ voice: "en-GB-Chirp3-HD-Kore", language: "en-GB" });
+        expect(fromWorkspace.state.stt.language).toBe("en-GB");
+
+        const fromMode = platformFormStateFromConfiguration(english, catalog);
+        // Kore in the default English variant, not the default Charon.
+        expect(fromMode.state.tts.voice).toBe("en-US-Chirp3-HD-Kore");
+
+        const fromPipeline = platformFormStateFromConfiguration(PIPELINE, catalog);
+        expect(fromPipeline.state.realtime).toMatchObject({ voice: "Kore", language: "en" });
+    });
+
+    it("keeps a BYOK Live model the catalog offers", () => {
+        const parsed = platformFormStateFromConfiguration(
+            {
+                mode: "byok",
+                byok: {
+                    mode: "realtime",
+                    realtime: { realtime: { model: "gemini-live-2.5-flash-native-audio", voice: "Kore" } },
+                },
+            },
+            catalog,
+        );
+        expect(parsed.state.realtime.model).toBe("google/gemini-live-2.5-flash-native-audio");
+    });
+
+    it("keeps the agent's language when the workspace speaks another", () => {
+        // A German speech-to-speech agent in an English pipeline workspace.
+        const parsed = platformFormStateFromConfiguration(REALTIME, catalog, PIPELINE);
+        expect(parsed.state.tts).toMatchObject({ language: "de-DE", voice: "de-DE-Chirp3-HD-Kore" });
+    });
+
+    it("keeps the agent's own Charon persona even though it is the default", () => {
+        const charonPipeline = structuredClone(PIPELINE);
+        charonPipeline.platform.pipeline.tts.voice = "en-GB-Chirp3-HD-Charon";
+        const workspace = structuredClone(REALTIME);
+        workspace.platform.realtime = { ...workspace.platform.realtime, voice: "Puck", language: "en" };
+        const parsed = platformFormStateFromConfiguration(charonPipeline, catalog, workspace);
+        expect(parsed.state.realtime.voice).toBe("Charon");
+    });
+
+    it("describes an older provider setup as what it runs", () => {
+        expect(
+            describePlatformConfiguration(
+                {
+                    mode: "byok",
+                    byok: {
+                        mode: "pipeline",
+                        pipeline: {
+                            llm: { model: "gemini-3.5-flash" },
+                            tts: { voice: "en-GB-Chirp3-HD-Gacrux", language: "en-GB" },
+                        },
+                    },
+                },
+                catalog,
+            ),
+        ).toBe("Speech-to-Text → LLM → Text-to-Speech · Gemini 3.5 Flash · Gacrux · British English (older provider setup)");
+        expect(describePlatformConfiguration(null, catalog)).toBe("Not set up yet");
     });
 
     it("describes a configuration in one line", () => {

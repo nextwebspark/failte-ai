@@ -25,12 +25,17 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { useOrgConfig } from "@/context/OrgConfigContext";
+import { useUnsavedChanges } from "@/context/UnsavedChangesContext";
 import { detailFromError } from "@/lib/apiError";
 import { fetchModelConfigurationPricing } from "@/lib/modelConfigurationPricing";
-import { describePlatformConfiguration, platformOverrideSeed } from "@/lib/platformModelConfig";
+import {
+    describePlatformConfiguration,
+    isLegacyConfiguration,
+    platformOverrideSeed,
+} from "@/lib/platformModelConfig";
 import type { WorkflowConfigurations } from "@/types/workflow-configurations";
 
-const PUBLISH_WORKFLOW_REMINDER = "Publish the agent to apply the changes.";
+const PUBLISH_WORKFLOW_REMINDER = "Test calls use it now; publish the agent to use it on phone calls.";
 
 /**
  * The organization stack this agent may override. Loaded here rather than by
@@ -124,8 +129,13 @@ export function WorkflowModelOverridesSection({
     const hasActiveOverride = platformModels
         ? savedV2Override?.mode === "platform"
         : Boolean(savedV2Override);
+    // An override from before platform models still runs until it is replaced.
+    const hasLegacyOverride = platformModels
+        && (isLegacyConfiguration(savedV2Override) || Boolean(workflowConfigurations.model_overrides));
     const [overrideEnabled, setOverrideEnabled] = useState(hasActiveOverride);
     const [isRemovingOverride, setIsRemovingOverride] = useState(false);
+    const [editorDirty, setEditorDirty] = useState(false);
+    useUnsavedChanges("model", overrideEnabled && editorDirty);
 
     useEffect(() => {
         setOverrideEnabled(hasActiveOverride);
@@ -199,7 +209,9 @@ export function WorkflowModelOverridesSection({
                                 <p id="workflow-model-v2-override-state" className="text-xs text-muted-foreground">
                                     {overrideEnabled
                                         ? "This agent uses its own voice and model."
-                                        : "This agent uses the workspace voice and model."}
+                                        : hasLegacyOverride
+                                          ? "This agent still uses an older provider setup."
+                                          : "This agent uses the workspace voice and model."}
                                 </p>
                             </div>
                             <Switch
@@ -217,9 +229,11 @@ export function WorkflowModelOverridesSection({
                                 <PlatformModelEditor
                                     catalog={catalog}
                                     configuration={platformSeed}
+                                    fallbackConfiguration={workspaceConfiguration}
                                     submitLabel="Save agent voice & model"
                                     onSave={saveV2Override}
                                     showMigrationNotice={false}
+                                    onDirtyChange={setEditorDirty}
                                 />
                                 {catalog.locked && hasSavedModelOverride && (
                                     <Button type="button" variant="outline" onClick={removeV2Override} disabled={isRemovingOverride}>
@@ -229,12 +243,25 @@ export function WorkflowModelOverridesSection({
                             </div>
                         ) : (
                             <div className="rounded-md border bg-muted/20 p-4">
-                                <p className="text-sm">
-                                    Using workspace default:{" "}
-                                    <span className="font-medium">
-                                        {describePlatformConfiguration(workspaceConfiguration, catalog)}
-                                    </span>
-                                </p>
+                                {hasLegacyOverride ? (
+                                    <p className="text-sm">
+                                        This agent still runs{" "}
+                                        <span className="font-medium">
+                                            {isLegacyConfiguration(savedV2Override)
+                                                ? describePlatformConfiguration(savedV2Override, catalog)
+                                                : "an older provider setup"}
+                                        </span>
+                                        . Turn on the switch above to choose a managed voice and model for it,
+                                        or switch it to the workspace default.
+                                    </p>
+                                ) : (
+                                    <p className="text-sm">
+                                        Using workspace default:{" "}
+                                        <span className="font-medium">
+                                            {describePlatformConfiguration(workspaceConfiguration, catalog)}
+                                        </span>
+                                    </p>
+                                )}
                                 <div className="mt-3 flex flex-wrap gap-2">
                                     {hasSavedModelOverride && (
                                         <Button type="button" onClick={removeV2Override} disabled={isRemovingOverride}>

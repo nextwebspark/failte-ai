@@ -32,7 +32,10 @@ from api.services.pipecat.gemini_json_schema_adapter import (
     DograhGeminiLiveJSONSchemaAdapter,
 )
 from api.services.pipecat.realtime.conversation import RealtimeConversationMixin
-from api.services.pipecat.realtime.static_greeting import format_static_greeting_prompt
+from api.services.pipecat.realtime.static_greeting import (
+    format_opening_line_instruction,
+    format_static_greeting_prompt,
+)
 from pipecat.frames.frames import (
     FunctionCallFromLLM,
 )
@@ -64,6 +67,9 @@ class DograhGeminiLiveLLMService(RealtimeConversationMixin, GeminiLiveLLMService
         # Text greeting captured from the first TTSSpeakFrame while the Gemini
         # session is still connecting.
         self._pending_initial_greeting_text: str | None = None
+        # The start node's text greeting, named in every session's system
+        # instruction until the greeting has been sent (see set_opening_line).
+        self._opening_line: str | None = None
         self._transition_function_call_task: asyncio.Task | None = None
         # Intentional node changes use a fresh, context-seeded connection rather
         # than a potentially stale session-resumption handle. The new connection
@@ -116,6 +122,35 @@ class DograhGeminiLiveLLMService(RealtimeConversationMixin, GeminiLiveLLMService
         else:
             await self._reconnect_for_node_transition()
         return {"system_instruction"}
+
+    def set_opening_line(self, greeting_text: str | None) -> None:
+        """Name the text greeting the call must open with.
+
+        Called by the engine before the start node's prompt is applied. Once
+        the call has opened, the greeting is in the history every later
+        session is seeded with, so a later call (a re-entered start node) is
+        ignored.
+        """
+        if self._handled_initial_context or self._session is not None:
+            return
+        self._opening_line = greeting_text or None
+
+    async def _connect(self, session_resumption_handle: str | None = None):
+        base = self._settings.system_instruction
+        if not self._opening_line or not base:
+            await super()._connect(session_resumption_handle=session_resumption_handle)
+            return
+        # Until the greeting is sent, every session (including a retry after a
+        # failed first connect) names it. _connect builds its config from the
+        # current settings before it returns, so the section never outlives
+        # this call.
+        self._settings.system_instruction = (
+            f"{base}\n\n{format_opening_line_instruction(self._opening_line)}"
+        )
+        try:
+            await super()._connect(session_resumption_handle=session_resumption_handle)
+        finally:
+            self._settings.system_instruction = base
 
     async def _run_or_defer_function_calls(
         self, function_calls_llm: list[FunctionCallFromLLM]
@@ -247,6 +282,7 @@ class DograhGeminiLiveLLMService(RealtimeConversationMixin, GeminiLiveLLMService
         self._node_transition_context_received = False
         self._node_transition_context_seed_started = False
         self._session_resumption_handle = None
+        self._opening_line = None
         should_open_new_session = await self._disconnect_for_reconnect()
         if not should_open_new_session:
             # The helper released a deferred EndFrame, so graceful shutdown now
@@ -403,6 +439,8 @@ class DograhGeminiLiveLLMService(RealtimeConversationMixin, GeminiLiveLLMService
             # Gemini 3.x also needs a realtime-input nudge to begin inference.
             if self._is_gemini_3:
                 await self._session.send_realtime_input(text=" ")
+            # Spoken now; later sessions are seeded with it as history.
+            self._opening_line = None
         except Exception as e:
             await self._handle_send_error(e)
 

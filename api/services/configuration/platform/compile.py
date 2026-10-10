@@ -8,7 +8,10 @@ from api.schemas.platform_models import (
     PlatformAIModelConfiguration,
     PlatformLLMChoice,
 )
-from api.services.configuration.platform.catalog import PlatformPipelineMode
+from api.services.configuration.platform.catalog import (
+    MULTI_REGION_REALTIME_MODELS,
+    PlatformPipelineMode,
+)
 from api.services.configuration.platform.settings import PlatformVertexSettings
 from api.services.configuration.registry import (
     GoogleSTTConfiguration,
@@ -46,7 +49,7 @@ def compile_platform_services(
                 voice=realtime.voice,
                 language=realtime.language,
                 project_id=settings.project_id,
-                location=settings.realtime_location,
+                location=_realtime_location(realtime.model, settings),
                 credentials=settings.credentials_json,
             ),
             # Realtime calls still need a text model for variable extraction,
@@ -81,6 +84,12 @@ def compile_platform_services(
             credentials=settings.credentials_json,
         ),
     )
+
+
+def _realtime_location(model: str, settings: PlatformVertexSettings) -> str:
+    if model in MULTI_REGION_REALTIME_MODELS:
+        return settings.llm_location
+    return settings.realtime_location
 
 
 def _vertex_llm(

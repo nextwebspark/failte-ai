@@ -54,16 +54,24 @@ function numberOr(value: unknown, fallback: number): number {
     return typeof value === "number" && Number.isFinite(value) ? value : fallback;
 }
 
-/** Read a stored configuration into form state, filling gaps from the catalog. */
+/**
+ * Read a stored configuration into form state, filling gaps from the catalog.
+ *
+ * Only the active mode's block is stored, so the other mode starts from
+ * *fallback* (the workspace configuration, for an agent) when that sets it,
+ * and otherwise from this configuration's own mode: flipping between modes
+ * keeps the language and voice instead of resetting them to the defaults.
+ */
 export function platformFormStateFromConfiguration(
     configuration: unknown,
     catalog: PlatformModelCatalog,
+    fallback?: unknown,
 ): PlatformFormStateResult {
     const defaults = defaultPlatformFormState(catalog);
     const stored = record(configuration);
     if (stored.mode !== "platform") {
         const mode = stored.mode === "dograh" || stored.mode === "byok" ? stored.mode : "empty";
-        return { state: carryOverLanguage(stored, defaults, catalog), migratedFrom: mode };
+        return { state: carryOverLegacy(stored, defaults, catalog), migratedFrom: mode };
     }
 
     const platform = record(stored.platform);
@@ -73,38 +81,131 @@ export function platformFormStateFromConfiguration(
     const stt = record(pipeline.stt);
     const tts = record(pipeline.tts);
 
-    return {
-        migratedFrom: null,
-        state: {
-            pipelineMode: platform.pipeline_mode === "pipeline" ? "pipeline" : "realtime",
-            realtime: {
-                model: stringOr(realtime.model, defaults.realtime.model),
-                voice: stringOr(realtime.voice, defaults.realtime.voice),
-                language: stringOr(realtime.language, defaults.realtime.language),
-            },
-            llm: {
-                model: stringOr(llm.model, defaults.llm.model),
-                temperature:
-                    llm.temperature === null || typeof llm.temperature === "number"
-                        ? (llm.temperature as number | null)
-                        : defaults.llm.temperature,
-            },
-            stt: {
-                model: stringOr(stt.model, defaults.stt.model),
-                language: stringOr(stt.language, defaults.stt.language),
-            },
-            tts: {
-                model: stringOr(tts.model, defaults.tts.model),
-                voice: stringOr(tts.voice, defaults.tts.voice),
-                language: stringOr(tts.language, defaults.tts.language),
-                speed: numberOr(tts.speed, defaults.tts.speed),
-            },
+    const state: PlatformFormState = {
+        pipelineMode: platform.pipeline_mode === "pipeline" ? "pipeline" : "realtime",
+        realtime: {
+            model: stringOr(realtime.model, defaults.realtime.model),
+            voice: stringOr(realtime.voice, defaults.realtime.voice),
+            language: stringOr(realtime.language, defaults.realtime.language),
         },
+        llm: {
+            model: stringOr(llm.model, defaults.llm.model),
+            temperature:
+                llm.temperature === null || typeof llm.temperature === "number"
+                    ? (llm.temperature as number | null)
+                    : defaults.llm.temperature,
+        },
+        stt: {
+            model: stringOr(stt.model, defaults.stt.model),
+            language: stringOr(stt.language, defaults.stt.language),
+        },
+        tts: {
+            model: stringOr(tts.model, defaults.tts.model),
+            voice: stringOr(tts.voice, defaults.tts.voice),
+            language: stringOr(tts.language, defaults.tts.language),
+            speed: numberOr(tts.speed, defaults.tts.speed),
+        },
+    };
+
+    const fallbackBlocks = fallback === undefined || fallback === configuration
+        ? {}
+        : storedBlocks(fallback, catalog);
+    // The agent keeps its language and voice persona. The workspace setting
+    // for that mode is used when it speaks the same language, since it has
+    // the regional variant (en-GB rather than en-US) and models.
+    if (Object.keys(realtime).length === 0) {
+        const derived = realtimeFromPipeline(state, defaults, catalog);
+        const workspace = fallbackBlocks.realtime;
+        const persona = state.tts.voice.split("-").pop() ?? "";
+        state.realtime = workspace && workspace.language === derived.language
+            ? {
+                ...workspace,
+                voice: catalog.realtime.voices.some((voice) => voice.id === persona) ? persona : workspace.voice,
+            }
+            : derived;
+    }
+    if (Object.keys(pipeline).length === 0) {
+        const workspace = fallbackBlocks.pipeline;
+        const blocks = workspace && workspace.tts.language.split("-")[0] === state.realtime.language
+            ? workspace
+            : pipelineFromRealtime(state.realtime, defaults, catalog);
+        const persona = voiceInLanguage(catalog, blocks.tts.model, state.realtime.voice, blocks.tts.language);
+        Object.assign(state, {
+            ...blocks,
+            tts: { ...blocks.tts, voice: persona || blocks.tts.voice },
+        });
+    }
+    return { migratedFrom: null, state };
+}
+
+type PipelineBlocks = Pick<PlatformFormState, "llm" | "stt" | "tts">;
+
+/** The mode blocks *configuration* actually sets, read as form state. */
+function storedBlocks(
+    configuration: unknown,
+    catalog: PlatformModelCatalog,
+): { realtime?: PlatformFormState["realtime"]; pipeline?: PipelineBlocks } {
+    const stored = record(configuration);
+    let hasRealtime = false;
+    let hasPipeline = false;
+    if (stored.mode === "platform") {
+        const platform = record(stored.platform);
+        hasRealtime = Object.keys(record(platform.realtime)).length > 0;
+        hasPipeline = Object.keys(record(platform.pipeline)).length > 0;
+    } else if (stored.mode === "byok") {
+        const byok = record(stored.byok);
+        hasRealtime = byok.mode === "realtime";
+        hasPipeline = byok.mode === "pipeline";
+    }
+    if (!hasRealtime && !hasPipeline) return {};
+    const { state } = platformFormStateFromConfiguration(configuration, catalog);
+    return {
+        ...(hasRealtime ? { realtime: state.realtime } : {}),
+        ...(hasPipeline ? { pipeline: { llm: state.llm, stt: state.stt, tts: state.tts } } : {}),
     };
 }
 
-/** Keep a Dograh-managed or BYOK configuration's language where the catalog has it. */
-function carryOverLanguage(
+/** Speech-to-speech choices matching a pipeline's voice persona and language. */
+function realtimeFromPipeline(
+    state: PlatformFormState,
+    defaults: PlatformFormState,
+    catalog: PlatformModelCatalog,
+): PlatformFormState["realtime"] {
+    const base = state.tts.language.split("-")[0].toLowerCase();
+    const persona = state.tts.voice.split("-").pop() ?? "";
+    return {
+        model: defaults.realtime.model,
+        voice: catalog.realtime.voices.some((voice) => voice.id === persona) ? persona : defaults.realtime.voice,
+        language: catalog.realtime.languages.includes(base) ? base : defaults.realtime.language,
+    };
+}
+
+/** Pipeline choices speaking a speech-to-speech setup's language with its voice persona. */
+function pipelineFromRealtime(
+    realtime: PlatformFormState["realtime"],
+    defaults: PlatformFormState,
+    catalog: PlatformModelCatalog,
+): PipelineBlocks {
+    const base = realtime.language;
+    const ttsLanguage = defaults.tts.language.split("-")[0] === base
+        ? defaults.tts.language
+        : (catalog.pipeline.tts.languages.find((code) => code.split("-")[0] === base) ?? defaults.tts.language);
+    const model = defaults.tts.model;
+    const voice = voiceInLanguage(catalog, model, realtime.voice, ttsLanguage)
+        || voiceInLanguage(catalog, model, defaults.tts.voice, ttsLanguage)
+        || defaults.tts.voice;
+    return {
+        llm: { ...defaults.llm },
+        stt: { model: defaults.stt.model, language: sttLanguageForModel(catalog, defaults.stt.model, ttsLanguage) },
+        tts: { ...defaults.tts, voice, language: ttsLanguage },
+    };
+}
+
+/**
+ * Start a Dograh-managed or BYOK configuration's form from what it runs today:
+ * its mode, and the models, voice and language the catalog also offers.
+ */
+function carryOverLegacy(
     stored: Record<string, unknown>,
     defaults: PlatformFormState,
     catalog: PlatformModelCatalog,
@@ -112,17 +213,26 @@ function carryOverLanguage(
     const byok = record(stored.byok);
     const realtimeService = record(record(byok.realtime).realtime);
     const pipeline = record(byok.pipeline);
-    const candidates = [
-        record(stored.dograh).language,
-        realtimeService.language,
-        record(pipeline.stt).language,
-    ].filter((value): value is string => typeof value === "string" && value.length > 0);
+    const llm = record(pipeline.llm);
+    const stt = record(pipeline.stt);
+    const tts = record(pipeline.tts);
+    const ids = (options: PlatformCatalogOption[]) => options.map((option) => option.id);
 
     const state: PlatformFormState = {
         ...defaults,
+        pipelineMode: byok.mode === "pipeline" || byok.mode === "realtime" ? byok.mode : defaults.pipelineMode,
         realtime: { ...defaults.realtime },
+        llm: { ...defaults.llm },
         stt: { ...defaults.stt },
+        tts: { ...defaults.tts },
     };
+
+    const candidates = [
+        record(stored.dograh).language,
+        realtimeService.language,
+        stt.language,
+        tts.language,
+    ].filter((value): value is string => typeof value === "string" && value.length > 0);
     for (const language of candidates) {
         const base = language.split("-")[0].toLowerCase();
         if (catalog.realtime.languages.includes(base)) {
@@ -130,15 +240,44 @@ function carryOverLanguage(
             break;
         }
     }
+    if (typeof realtimeService.voice === "string" && ids(catalog.realtime.voices).includes(realtimeService.voice)) {
+        state.realtime.voice = realtimeService.voice;
+    }
+    // Gemini API ids have no "google/" prefix; the catalog's Vertex ids do.
+    const realtimeModel = [realtimeService.model, `google/${String(realtimeService.model)}`].find(
+        (id): id is string => typeof id === "string" && ids(catalog.realtime.models).includes(id),
+    );
+    if (realtimeModel) state.realtime.model = realtimeModel;
+
+    if (typeof llm.model === "string" && ids(catalog.pipeline.llm.models).includes(llm.model)) {
+        state.llm.model = llm.model;
+    }
+    if (typeof stt.model === "string" && ids(catalog.pipeline.stt.models).includes(stt.model)) {
+        state.stt.model = stt.model;
+    }
     const sttLanguages = sttLanguagesFor(catalog, state.stt.model);
     const sttLanguage = candidates.find((language) => sttLanguages.includes(language));
     if (sttLanguage) state.stt.language = sttLanguage;
-    if (
-        typeof realtimeService.voice === "string"
-        && catalog.realtime.voices.some((voice) => voice.id === realtimeService.voice)
-    ) {
-        state.realtime.voice = realtimeService.voice;
+
+    const ttsLanguage = [tts.language, sttLanguage].find(
+        (language): language is string =>
+            typeof language === "string" && catalog.pipeline.tts.languages.includes(language),
+    );
+    if (ttsLanguage) {
+        const voice = typeof tts.voice === "string" && isVoiceFor(catalog, state.tts.model, ttsLanguage, tts.voice)
+            ? tts.voice
+            : voiceInLanguage(catalog, state.tts.model, typeof tts.voice === "string" ? tts.voice : state.tts.voice, ttsLanguage)
+              || voiceInLanguage(catalog, state.tts.model, state.tts.voice, ttsLanguage);
+        state.tts = { ...state.tts, language: ttsLanguage, voice };
     }
+    const { min, max } = catalog.pipeline.tts.speed_range;
+    if (typeof tts.speed === "number" && tts.speed >= min && tts.speed <= max) state.tts.speed = tts.speed;
+
+    // Only one mode was set up; the other follows its voice and language.
+    if (byok.mode === "realtime") {
+        Object.assign(state, pipelineFromRealtime(state.realtime, defaults, catalog));
+    }
+    if (byok.mode === "pipeline") state.realtime = realtimeFromPipeline(state, defaults, catalog);
     return state;
 }
 
@@ -268,16 +407,25 @@ export function validatePlatformFormState(
 }
 
 /**
- * Where an agent's override editor starts: its own platform override when it
- * has one, otherwise the workspace configuration. A legacy provider override
- * counts as none; saving replaces it.
+ * Where an agent's override editor starts: the override it has, platform or
+ * an older provider one (read for its mode, voice and language), otherwise
+ * the workspace configuration.
  */
 export function platformOverrideSeed(savedOverride: unknown, workspaceConfiguration: unknown): unknown {
-    return record(savedOverride).mode === "platform" ? savedOverride : workspaceConfiguration;
+    const mode = record(savedOverride).mode;
+    return mode === "platform" || mode === "byok" || mode === "dograh" ? savedOverride : workspaceConfiguration;
+}
+
+/** Whether *configuration* is an override from before platform models. */
+export function isLegacyConfiguration(configuration: unknown): boolean {
+    const mode = record(configuration).mode;
+    return mode === "byok" || mode === "dograh";
 }
 
 /** One line describing a configuration, e.g. "Speech-to-Speech · Gemini Live 2.5 Flash · Charon · English". */
 export function describePlatformConfiguration(configuration: unknown, catalog: PlatformModelCatalog): string {
+    const stored = record(configuration);
+    if (stored.mode !== "platform") return describeLegacyConfiguration(stored, catalog);
     const { state } = platformFormStateFromConfiguration(configuration, catalog);
     const label = (options: PlatformCatalogOption[], id: string) =>
         options.find((option) => option.id === id)?.label ?? id;
@@ -296,6 +444,38 @@ export function describePlatformConfiguration(configuration: unknown, catalog: P
         state.tts.voice.split("-").pop() ?? state.tts.voice,
         languageLabel(state.tts.language),
     ].join(" · ");
+}
+
+/** What a configuration from before platform models runs, described in one line. */
+function describeLegacyConfiguration(stored: Record<string, unknown>, catalog: PlatformModelCatalog): string {
+    if (stored.mode === "dograh") return "Older hosted setup";
+    if (stored.mode !== "byok") return "Not set up yet";
+    const byok = record(stored.byok);
+    const label = (options: PlatformCatalogOption[], id: unknown) =>
+        typeof id === "string" ? (options.find((option) => option.id === id)?.label ?? id) : null;
+    const mode = typeof byok.mode === "string" ? label(catalog.modes, byok.mode) : null;
+    let parts: (string | null)[];
+    if (byok.mode === "realtime") {
+        const realtime = record(record(byok.realtime).realtime);
+        parts = [
+            mode,
+            label(catalog.realtime.models, realtime.model),
+            typeof realtime.voice === "string" ? realtime.voice : null,
+            typeof realtime.language === "string" ? languageLabel(realtime.language) : null,
+        ];
+    } else {
+        const pipeline = record(byok.pipeline);
+        const tts = record(pipeline.tts);
+        const language = tts.language ?? record(pipeline.stt).language;
+        parts = [
+            mode,
+            label(catalog.pipeline.llm.models, record(pipeline.llm).model),
+            typeof tts.voice === "string" ? (tts.voice.split("-").pop() ?? tts.voice) : null,
+            typeof language === "string" ? languageLabel(language) : null,
+        ];
+    }
+    const summary = parts.filter(Boolean).join(" · ");
+    return summary ? `${summary} (older provider setup)` : "Older provider setup";
 }
 
 let displayNames: Intl.DisplayNames | null | undefined;

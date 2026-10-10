@@ -190,6 +190,8 @@ class PlatformModelPolicy(_Choice):
     # Enterprise placement: another Vertex project (the server's credentials
     # need access to it) or other locations than the server defaults.
     project_id: str | None = Field(default=None, pattern=_PROJECT_ID)
+    # Text models and Gemini 3.x Live run in llm_location; only single-region
+    # Live models (2.5 native audio) run in realtime_location.
     llm_location: str | None = Field(default=None, pattern=_MULTI_REGION_LOCATION)
     realtime_location: str | None = Field(default=None, pattern=_SINGLE_REGION_LOCATION)
     speech_location: str | None = Field(default=None, pattern=_MULTI_REGION_LOCATION)

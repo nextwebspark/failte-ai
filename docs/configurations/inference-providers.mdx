@@ -24,11 +24,13 @@ One model listens and speaks directly, with Gemini Live. Conversations feel the 
 
 | Setting | What it controls |
 |---------|------------------|
-| **Model** | The speech-to-speech model. |
+| **Model** | The speech-to-speech model. Gemini Live 3.8 (recommended) follows the agent's instructions and tools most reliably. Gemini Live 2.5 Flash can act on a half-heard request, so test booking and confirmation steps before using it. |
 | **Language** | The language the agent speaks and listens in. |
-| **Voice** | One of the Gemini Live voices. Play a sample next to each voice before choosing. |
+| **Voice** | One of the 30 Gemini Live voices, filterable by female or male. Press play on any voice to hear a sample before choosing. |
 
 Choose this for most agents.
+
+A speech-to-speech model speaks the agent's greeting itself, so it may phrase it slightly differently from the text. It also ignores the spoken line set on a tool and the instant acknowledgement from a fast router: if your prompt relies on either (for example "an acknowledgement has already been spoken"), test the agent in this mode before switching.
 
 ## Speech-to-Text → LLM → Text-to-Speech
 
@@ -38,7 +40,7 @@ Three separate steps: a transcriber turns the caller's speech into text, a langu
 |------|----------|
 | **Speech-to-text** | Model (Chirp 3, Latest long or Latest short) and the caller's language. Each model lists the languages it supports. |
 | **Language model** | Gemini model and temperature. Lower temperatures give more predictable replies; leave it blank for the model default. |
-| **Text-to-speech** | Model (Chirp 3 HD), voice language, voice (with samples you can play) and speaking speed. |
+| **Text-to-speech** | Model (Chirp 3 HD), voice language, speaking speed and voice. The voices are shown the same way as for Speech-to-Speech, with a sample on each in the chosen accent. |
 
 When you change the voice language, Fallcha.ai keeps the same voice in the new language where it exists. Otherwise pick a voice for that language.
 
@@ -48,8 +50,12 @@ An agent can use a different mode, voice or model than the workspace:
 
 1. Open the agent and go to **Model and voice**.
 2. Turn on **Use a different voice or model for this agent**.
-3. Choose the settings and click **Save agent voice & model**.
-4. Publish the agent.
+3. Choose the settings and click **Save agent voice & model**. Test calls from the agent screen use the saved settings straight away; until you save, they use the previous ones.
+4. Publish the agent so phone calls use them too.
+
+When you switch an agent between the two modes, the language and voice carry over where the other mode offers them.
+
+An agent set up before managed models shows **This agent still runs** and its older setup. It keeps running that setup until you save a managed voice and model for it or switch it to the workspace default.
 
 To go back to the workspace settings, turn the switch off and click **Use workspace default**, then publish.
 

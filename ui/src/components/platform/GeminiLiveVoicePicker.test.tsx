@@ -60,4 +60,31 @@ describe("GeminiLiveVoicePicker", () => {
 
         expect(await screen.findByText("Preview unavailable for this voice")).toBeTruthy();
     });
+    it("filters by gender and keeps the selection visible in the summary", () => {
+        render(<GeminiLiveVoicePicker voices={catalog.realtime.voices} value="Charon" onChange={vi.fn()} />);
+
+        expect(screen.getByText("Charon", { selector: "span.font-medium.text-foreground" })).toBeTruthy();
+        fireEvent.click(screen.getByRole("button", { name: /^Female/ }));
+        expect(screen.queryByRole("radio", { name: /Charon/ })).toBeNull();
+        expect(screen.getByRole("radio", { name: /Kore/ })).toBeTruthy();
+        expect(screen.getByText(/Charon is selected but hidden by the filter/)).toBeTruthy();
+
+        fireEvent.click(screen.getByRole("button", { name: /^All/ }));
+        expect(screen.getByRole("radio", { name: /Charon/ })).toBeTruthy();
+    });
+
+    it("plays a sample without selecting the voice, and stops it again", async () => {
+        vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, blob: async () => new Blob(["x"]) }));
+        vi.stubGlobal("Audio", FakeAudio);
+        vi.stubGlobal("URL", { ...URL, createObjectURL: () => "blob:1", revokeObjectURL: vi.fn() });
+        const onChange = vi.fn();
+        render(<GeminiLiveVoicePicker voices={catalog.realtime.voices} value="Kore" onChange={onChange} />);
+
+        fireEvent.click(screen.getByRole("button", { name: "Play Charon sample" }));
+        await waitFor(() => expect(screen.getByRole("button", { name: "Stop Charon sample" })).toBeTruthy());
+        expect(onChange).not.toHaveBeenCalled();
+
+        fireEvent.click(screen.getByRole("button", { name: "Stop Charon sample" }));
+        expect(screen.getByRole("button", { name: "Play Charon sample" })).toBeTruthy();
+    });
 });

@@ -55,7 +55,7 @@ describe("Models & voice page", () => {
         render(<ModelConfigurationV2 />);
 
         expect(await screen.findByText("Models & voice")).toBeTruthy();
-        expect(screen.getByText(/default managed setup/)).toBeTruthy();
+        expect(screen.getByText(/older provider setup/)).toBeTruthy();
         // Only the reassurance "no API keys needed" may mention keys.
         expect(screen.queryAllByText(/API key/)).toHaveLength(1);
         expect(screen.queryByText(/BYOK|Managed models|Dograh/)).toBeNull();
@@ -69,7 +69,7 @@ describe("Models & voice page", () => {
         expect(body).toMatchObject({ version: 2, mode: "platform", platform: { pipeline_mode: "pipeline" } });
         expect(body.platform.pipeline.llm.temperature).toBe(0.3);
         await waitFor(() => expect(mocks.toast).toHaveBeenCalledWith("Model settings saved"));
-        expect(screen.queryByText(/default managed setup/)).toBeNull();
+        expect(screen.queryByText(/older provider setup/)).toBeNull();
     });
 
     it("is read-only without permission to change model settings", async () => {

@@ -33,14 +33,20 @@ import { cn } from "@/lib/utils";
 
 interface PlatformModelEditorProps {
     catalog: PlatformModelCatalog;
-    // The stored configuration (any mode); non-platform ones start from defaults.
+    // The stored configuration (any mode); non-platform ones start from what
+    // they run today, where the catalog offers it.
     configuration: unknown;
+    // Where the mode that isn't stored starts from (the workspace
+    // configuration, for an agent).
+    fallbackConfiguration?: unknown;
     onSave: (configuration: OrganizationAiModelConfigurationV2) => Promise<void>;
     submitLabel?: string;
     // Viewers without permission to change model settings.
     readOnly?: boolean;
-    // The "default managed setup" notice is about the workspace configuration.
+    // The "older provider setup" notice is about the workspace configuration.
     showMigrationNotice?: boolean;
+    // Told whether the form differs from what was last saved.
+    onDirtyChange?: (dirty: boolean) => void;
 }
 
 const MODE_ICONS: Record<PlatformPipelineMode, typeof AudioLines> = {
@@ -172,10 +178,6 @@ function NumberField({
     );
 }
 
-function voiceName(voice: string): string {
-    return voice.split("-").pop() || voice;
-}
-
 /**
  * The managed Models editor: how the agent talks, then the models, voice and
  * language for that path, all from the server's platform catalog. No keys,
@@ -191,12 +193,19 @@ export function PlatformModelEditor({
     submitLabel = "Save Configuration",
     readOnly = false,
     showMigrationNotice = true,
+    fallbackConfiguration,
+    onDirtyChange,
 }: PlatformModelEditorProps) {
     const initial = useMemo(
-        () => platformFormStateFromConfiguration(configuration, catalog),
-        [configuration, catalog],
+        () => platformFormStateFromConfiguration(configuration, catalog, fallbackConfiguration),
+        [configuration, catalog, fallbackConfiguration],
     );
     const [state, setState] = useState<PlatformFormState>(initial.state);
+    // What the server holds; test calls run on this until the form is saved.
+    // Null while it still holds a configuration from before platform models.
+    const [savedState, setSavedState] = useState<PlatformFormState | null>(
+        initial.migratedFrom ? null : initial.state,
+    );
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [attempted, setAttempted] = useState(false);
@@ -206,10 +215,18 @@ export function PlatformModelEditor({
 
     useEffect(() => {
         setState(initial.state);
+        setSavedState(initial.migratedFrom ? null : initial.state);
         setAttempted(false);
         setError(null);
         setTtsTouched(false);
     }, [initial]);
+
+    const dirty = savedState === null
+        || JSON.stringify(buildPlatformConfiguration(state)) !== JSON.stringify(buildPlatformConfiguration(savedState));
+    useEffect(() => {
+        onDirtyChange?.(dirty);
+    }, [dirty, onDirtyChange]);
+    useEffect(() => () => onDirtyChange?.(false), [onDirtyChange]);
 
     const locked = Boolean(catalog.locked);
     const disabled = locked || readOnly;
@@ -255,6 +272,7 @@ export function PlatformModelEditor({
         setSaving(true);
         try {
             await onSave(buildPlatformConfiguration(state));
+            setSavedState(state);
         } catch (err) {
             setError(err instanceof Error ? err.message : "Failed to save configuration");
         } finally {
@@ -273,7 +291,11 @@ export function PlatformModelEditor({
             {showMigrationNotice && initial.migratedFrom && !disabled && (
                 <div className="flex items-start gap-2 rounded-md border border-sky/40 bg-sky/10 px-4 py-3 text-sm">
                     <Info className="mt-0.5 h-4 w-4 shrink-0" />
-                    <span>Your agents use the default managed setup. Review and save to confirm your choice.</span>
+                    <span>
+                        {initial.migratedFrom === "empty"
+                            ? "Choose how your agents talk, then save to set it up."
+                            : "Your agents still run an older provider setup. We have filled in the closest managed voice and model; review and save to switch to it."}
+                    </span>
                 </div>
             )}
             {error && (
@@ -415,7 +437,7 @@ export function PlatformModelEditor({
                     <Card>
                         <CardContent className="grid gap-4 pt-6 sm:grid-cols-2">
                             <h3 className="font-medium sm:col-span-2">Text-to-speech</h3>
-                            <div className="space-y-2 sm:col-span-2">
+                            <div className="space-y-2">
                                 <Label htmlFor="platform-tts-model">Model</Label>
                                 <OptionSelect
                                     id="platform-tts-model"
@@ -448,21 +470,16 @@ export function PlatformModelEditor({
                             </div>
                             <div className="space-y-2 sm:col-span-2">
                                 <Label id="platform-tts-voice-label">Voice</Label>
-                                {disabled ? (
-                                    <p className="text-sm" aria-labelledby="platform-tts-voice-label">
-                                        {state.tts.voice
-                                            ? `${voiceName(state.tts.voice)} · ${languageLabel(state.tts.language)}`
-                                            : "No voice selected"}
-                                    </p>
-                                ) : (
-                                    <PlatformTtsVoicePicker
-                                        catalog={pipeline.tts.voice_catalog}
-                                        model={state.tts.model}
-                                        language={state.tts.language}
-                                        value={state.tts.voice}
-                                        onChange={changeTtsVoice}
-                                    />
-                                )}
+                                <PlatformTtsVoicePicker
+                                    catalog={pipeline.tts.voice_catalog}
+                                    model={state.tts.model}
+                                    language={state.tts.language}
+                                    value={state.tts.voice}
+                                    onChange={changeTtsVoice}
+                                    disabled={disabled}
+                                    labelledBy="platform-tts-voice-label"
+                                    styles={realtime.voices}
+                                />
                                 {!state.tts.voice && !disabled && (
                                     <p className="text-xs text-muted-foreground">
                                         Pick a voice for {languageLabel(state.tts.language)}.
@@ -480,6 +497,13 @@ export function PlatformModelEditor({
                         <li key={message}>{message}</li>
                     ))}
                 </ul>
+            )}
+
+            {!disabled && (
+                // Always mounted so screen readers announce the text when it appears.
+                <p role="status" className="text-sm text-muted-foreground empty:hidden">
+                    {dirty ? "You have unsaved changes. Test calls use the last saved voice and model until you save." : ""}
+                </p>
             )}
 
             {!disabled && (
