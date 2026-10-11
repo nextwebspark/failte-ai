@@ -18,6 +18,7 @@ import {
     AIModelConfigurationV2Editor,
     legacyModelConfigurationDefaults,
 } from "@/components/AIModelConfigurationV2Editor";
+import { CurrentSetupCard } from "@/components/platform/CurrentSetupCard";
 import { PlatformModelEditor } from "@/components/platform/PlatformModelEditor";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAppConfig } from "@/context/AppConfigContext";
@@ -26,6 +27,7 @@ import { useUserConfig } from "@/context/UserConfigContext";
 import { detailFromError } from "@/lib/apiError";
 import { useAuth } from "@/lib/auth";
 import { fetchModelConfigurationPricing } from "@/lib/modelConfigurationPricing";
+import { isLegacyConfiguration } from "@/lib/platformModelConfig";
 
 export default function ModelConfigurationV2() {
     const auth = useAuth();
@@ -40,6 +42,7 @@ export default function ModelConfigurationV2() {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [notice, setNotice] = useState<string | null>(null);
+    const [editorDirty, setEditorDirty] = useState(false);
 
     useEffect(() => {
         if (auth.loading || !auth.user || hasFetched.current) return;
@@ -155,12 +158,23 @@ export default function ModelConfigurationV2() {
             )}
 
             {defaults && response && platformModels && (
-                <PlatformModelEditor
-                    catalog={defaults.platform}
-                    configuration={response.configuration}
-                    onSave={saveConfiguration}
-                    readOnly={!can("credentials:write")}
-                />
+                <>
+                    <CurrentSetupCard
+                        catalog={defaults.platform}
+                        configuration={response.configuration}
+                        source={isLegacyConfiguration(response.configuration) ? "legacy" : "workspace"}
+                        // An older setup opens as a converted form, which is not an edit.
+                        dirty={editorDirty && !isLegacyConfiguration(response.configuration)}
+                        note="Agents without their own voice and model use this on every call."
+                    />
+                    <PlatformModelEditor
+                        catalog={defaults.platform}
+                        configuration={response.configuration}
+                        onSave={saveConfiguration}
+                        readOnly={!can("credentials:write")}
+                        onDirtyChange={setEditorDirty}
+                    />
+                </>
             )}
             {legacyDefaults && response && !platformModels && (
                 <AIModelConfigurationV2Editor

@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { UnsavedChangesProvider } from "@/context/UnsavedChangesContext";
@@ -60,10 +60,29 @@ describe("Agent model and voice", () => {
     it("summarises the workspace default when the agent has no override", async () => {
         renderSection({});
 
-        expect(
-            await screen.findByText("Speech-to-Speech · Gemini Live 2.5 Flash · Charon · English"),
-        ).toBeTruthy();
+        const current = await screen.findByRole("region", { name: "Current setup" });
+        expect(within(current).getByText("Workspace default")).toBeTruthy();
+        expect(within(current).getByText("Speech-to-Speech · Gemini Live 2.5 Flash")).toBeTruthy();
+        expect(within(current).getByText("Charon")).toBeTruthy();
+        expect(current.textContent).toContain("Male · Informative (Calm & professional)");
         expect(screen.queryByText(/API key|BYOK/)).toBeNull();
+    });
+
+    it("shows the agent's saved setup next to the workspace default, and flags edits", async () => {
+        const override = structuredClone(WORKSPACE);
+        override.platform.realtime.voice = "Kore";
+        renderSection({ model_configuration_v2_override: override });
+
+        const current = await screen.findByRole("region", { name: "Current setup" });
+        expect(within(current).getByText("This agent's own setup")).toBeTruthy();
+        expect(within(current).getByText("Kore")).toBeTruthy();
+        expect(current.textContent).toContain("Workspace default: Speech-to-Speech · Charon · English");
+        expect(within(current).queryByText("Unsaved changes below")).toBeNull();
+
+        fireEvent.click(screen.getByRole("radio", { name: /Charon/ }));
+        // The card keeps what calls use until the form is saved.
+        expect(within(current).getByText("Kore")).toBeTruthy();
+        expect(within(current).getByText("Unsaved changes below")).toBeTruthy();
     });
 
     it("saves a full platform override for this agent only", async () => {
@@ -125,8 +144,10 @@ describe("Agent model and voice", () => {
         const toggle = await screen.findByLabelText("Use a different voice or model for this agent");
         expect(toggle.getAttribute("aria-checked")).toBe("false");
         expect(screen.getByText(/This agent still runs/)).toBeTruthy();
+        const current = screen.getByRole("region", { name: "Current setup" });
+        expect(within(current).getByText("Older provider setup")).toBeTruthy();
         expect(
-            screen.getByText("Speech-to-Text → LLM → Text-to-Speech · Gemini 3.5 Flash · Kore · British English (older provider setup)"),
+            within(current).getByText("Speech-to-Text → LLM → Text-to-Speech · Gemini 3.5 Flash · Kore · British English"),
         ).toBeTruthy();
         expect(screen.queryByText(/Using workspace default/)).toBeNull();
         expect(screen.getByRole("button", { name: "Use workspace default" })).toBeTruthy();

@@ -19,6 +19,7 @@ import {
     AIModelConfigurationV2Editor,
     legacyModelConfigurationDefaults,
 } from "@/components/AIModelConfigurationV2Editor";
+import { CurrentSetupCard, type SetupSource } from "@/components/platform/CurrentSetupCard";
 import { PlatformModelEditor } from "@/components/platform/PlatformModelEditor";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -29,7 +30,6 @@ import { useUnsavedChanges } from "@/context/UnsavedChangesContext";
 import { detailFromError } from "@/lib/apiError";
 import { fetchModelConfigurationPricing } from "@/lib/modelConfigurationPricing";
 import {
-    describePlatformConfiguration,
     isLegacyConfiguration,
     platformOverrideSeed,
 } from "@/lib/platformModelConfig";
@@ -150,6 +150,14 @@ export function WorkflowModelOverridesSection({
         [savedV2Override, workspaceConfiguration],
     );
 
+    // What calls run with now, whatever the switch and form below show.
+    const currentSource: SetupSource = hasActiveOverride ? "agent" : hasLegacyOverride ? "legacy" : "workspace";
+    const currentConfiguration = currentSource === "workspace"
+        ? workspaceConfiguration
+        // A pre-v2 `model_overrides` has nothing to describe beyond its age.
+        : isLegacyConfiguration(savedV2Override) || hasActiveOverride ? savedV2Override : { mode: "byok" };
+    const setupDirty = overrideEnabled ? editorDirty || !hasActiveOverride : hasActiveOverride;
+
     const saveV2Override = async (configuration: OrganizationAiModelConfigurationV2) => {
         const nextConfigurations = withoutModelConfigurationOverrides(workflowConfigurations);
         nextConfigurations.model_configuration_v2_override = configuration;
@@ -224,6 +232,15 @@ export function WorkflowModelOverridesSection({
                             />
                         </div>
 
+                        <CurrentSetupCard
+                            catalog={catalog}
+                            configuration={currentConfiguration}
+                            source={currentSource}
+                            workspaceConfiguration={workspaceConfiguration}
+                            dirty={setupDirty}
+                            note={currentSource === "agent" ? PUBLISH_WORKFLOW_REMINDER : undefined}
+                        />
+
                         {overrideEnabled ? (
                             <div className="space-y-3">
                                 <PlatformModelEditor
@@ -245,21 +262,15 @@ export function WorkflowModelOverridesSection({
                             <div className="rounded-md border bg-muted/20 p-4">
                                 {hasLegacyOverride ? (
                                     <p className="text-sm">
-                                        This agent still runs{" "}
-                                        <span className="font-medium">
-                                            {isLegacyConfiguration(savedV2Override)
-                                                ? describePlatformConfiguration(savedV2Override, catalog)
-                                                : "an older provider setup"}
-                                        </span>
-                                        . Turn on the switch above to choose a managed voice and model for it,
-                                        or switch it to the workspace default.
+                                        This agent still runs the older provider setup above. Turn on the switch
+                                        to choose a managed voice and model for it, or switch it to the workspace
+                                        default.
                                     </p>
                                 ) : (
                                     <p className="text-sm">
-                                        Using workspace default:{" "}
-                                        <span className="font-medium">
-                                            {describePlatformConfiguration(workspaceConfiguration, catalog)}
-                                        </span>
+                                        {hasSavedModelOverride
+                                            ? "Calls keep this agent's own setup until you switch it to the workspace default."
+                                            : "Turn on the switch above to give this agent its own voice and model."}
                                     </p>
                                 )}
                                 <div className="mt-3 flex flex-wrap gap-2">
