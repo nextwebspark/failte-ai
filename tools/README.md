@@ -366,7 +366,11 @@ never logged or returned. The callback only ever redirects to the
 configured `TOOLS_UI_RETURN_URL`, with fixed reason codes, `Cache-Control:
 no-store` and `Referrer-Policy: no-referrer`. The uvicorn access log shows
 `/oauth/...?<redacted>` instead of the code and state (a reverse proxy in
-front must not log the query of that path either).
+front must not log the query of that path either). Requests whose raw path contains a `..`
+segment, `%2e`, `%2f`, `%5c` or a backslash are refused with 400 before
+routing (`core/path_guard.py`), so a proxy that forwards only `/oauth/*`
+cannot be walked into `/internal/*`; the bundled nginx also forwards a
+rebuilt `/oauth/<provider>/callback` path rather than the client's.
 
 **Refresh.** Tokens are refreshed lazily when they expire within 5 minutes.
 In one process, concurrent calls share one refresh; across replicas, the

@@ -61,6 +61,38 @@ Back the keys up with your database backups. Losing every key that encrypted a c
 
 ---
 
+## Integrations (tools service)
+
+[Integrations](/voice-agent/tools/integrations) such as Google Calendar, Google Sheets and the website catalogue run in a separate service, `fallcha-tools` (the `tools/` folder), which the API calls over the internal network. Set these on the **API**:
+
+| Variable | Default | Description |
+|---|---|---|
+| `TOOLS_SERVICE_URL` | `http://fallcha-tools:8000` | Internal URL of the tools service. Change it only when the service runs elsewhere (for example `http://localhost:8010` when both run on your machine) |
+| `TOOLS_INTERNAL_SECRET` | unset | Shared secret the API sends to the tools service. **Must equal the tools service's value.** While unset, the integrations API answers `503 tools_service_not_configured` |
+| `TRUSTED_TOOL_HOSTS` | unset | Comma-separated origins (`scheme://host[:port]`) that user-configured service URLs (for example an HTTP API tool's URL) may target even though they are internal. Only matters when `DEPLOYMENT_MODE` is not `oss`: OSS mode applies no URL restriction. Trust is per exact scheme, host and port; entries naming `localhost` or an IP literal are ignored. The `TOOLS_SERVICE_URL` origin is trusted automatically once `TOOLS_INTERNAL_SECRET` is set |
+
+And on the **tools service**:
+
+| Variable | Default | Description |
+|---|---|---|
+| `DATABASE_URL` | N/A | **Required.** The same Postgres as the API. The service only uses its own `fallcha_tools` schema and migrates it on start |
+| `TOOLS_ENCRYPTION_KEYS` | N/A | **Required.** Comma-separated Fernet keys encrypting connection secrets and Google tokens. The first key encrypts; every key decrypts |
+| `TOOLS_INTERNAL_SECRET` | N/A | **Required.** At least 16 characters, same value as the API's |
+| `TOOLS_PUBLIC_BASE_URL` | `PUBLIC_BASE_URL` (Docker Compose) | Public URL that reaches the service's `/oauth/<provider>/callback`. Google OAuth redirect URIs are built from it. While unset, connecting with your own OAuth client is off (service accounts still work) |
+| `TOOLS_UI_RETURN_URL` | `PUBLIC_BASE_URL/integrations` (Docker Compose) | The UI page the OAuth callback sends the browser back to. While unset, OAuth is off |
+
+The service refuses to start without its three required variables; the rest of the stack keeps running. `scripts/setup_local.sh`, `scripts/setup_local.ps1`, `scripts/setup_remote.sh` and `saas/dev/bootstrap-env.sh` generate `CREDENTIALS_ENCRYPTION_KEYS`, `TOOLS_ENCRYPTION_KEYS` and `TOOLS_INTERNAL_SECRET` when they are missing, and never replace a value that is already set.
+
+<Warning>
+Docker Compose pulls the tools service as `${REGISTRY}/fallcha-tools`, alongside `dograh-api` and `dograh-ui`. The registry must publish that image. Fallcha.ai's release workflow and `deploy/gcp/cloudbuild.yaml` do. Public upstream Dograh registries do not, so an install pointing `REGISTRY` at them gets no tools service. Either set `REGISTRY` to a registry holding all three images, or build it locally (`docker compose build fallcha-tools`, or `setup_remote.sh` in build mode).
+</Warning>
+
+<Note>
+On a remote install, nginx forwards only `/oauth/<provider>/callback` to the tools service and does not write that request's query string (which carries the authorization code) to its access log. Everything else in the tools service is reachable only from inside the Docker network.
+</Note>
+
+---
+
 ## Authentication (OSS)
 
 | Variable | Default | Description |

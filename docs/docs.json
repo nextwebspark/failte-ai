@@ -91,10 +91,12 @@
                       "voice-agent/tools/http-api",
                       "voice-agent/tools/mcp-tool"
                     ]
-                  }
+                  },
+                  "voice-agent/tools/integrations"
                 ]
               },
               "voice-agent/knowledge-base",
+              "voice-agent/skills",
               {
                 "group": "Nodes",
                 "pages": [
@@ -160,7 +162,8 @@
               "developer/workflow-schema",
               "developer/call-dispositions",
               "developer/webhooks",
-              "developer/environment-variables"
+              "developer/environment-variables",
+              "developer/tool-providers"
             ]
           },
           {

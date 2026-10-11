@@ -1,0 +1,140 @@
+---
+title: "Adding an Integration Provider"
+description: "Add a new integration (a provider) to the fallcha-tools service so every workspace can connect it."
+---
+
+Every [integration](/voice-agent/tools/integrations) is a **provider** in the `fallcha-tools` service (`tools/` in the repository). A provider is a Python class:
+
+- it declares its metadata and how workspaces authenticate;
+- it registers its functions on an MCP server.
+
+Adding one publishes it to every workspace's catalog on the next deploy. You do not need a new service, route or UI change.
+
+`tools/README.md` is the full reference. It covers the internal API, OAuth, refresh, the existing providers and their settings.
+
+## How a provider is served
+
+The service mounts each provider at:
+
+- `/mcp/<id>`, a streamable-HTTP MCP server that agents call;
+- `/v1/<id>/...`, optional plain-REST routes, for HTTP API tools.
+
+`GET /internal/catalog` lists the provider's metadata, functions and settings schema, and the Integrations page renders from it.
+
+When a workspace connects a provider:
+
+1. The tools service stores the connection's secret encrypted.
+2. It issues a **connection key** for that connection.
+3. The Fallcha.ai API saves the key as a managed bearer credential and creates an MCP tool pointing at `/mcp/<id>`.
+
+At call time, each function receives the connection that the key belongs to.
+
+## The Provider protocol
+
+Implement the members of `Provider` in `tools/fallcha_tools/core/provider.py`. A frozen dataclass is the usual shape:
+
+| Member | Purpose |
+|---|---|
+| `id` | URL-safe id, `^[a-z0-9][a-z0-9-]{0,63}$`, unique, e.g. `google-sheets`. Used in `/mcp/<id>` and the OAuth redirect URI |
+| `title`, `description`, `icon` | Shown on the catalog card. The title is also the default name of the agent tool |
+| `auth_family` | Providers of one family share OAuth clients and can reuse each other's service-account keys, e.g. `"google"`. `None` means the provider is its own family |
+| `share_hint` | For service accounts: what the account must be given access to, e.g. `"the spreadsheet"`. Otherwise `None` |
+| `auth_modes` | A non-empty `frozenset` of `AuthMode`: `oauth2`, `service_account`, `api_key`, `none`. `none` is for public data: there is no secret, but calls still need the connection key |
+| `scopes` | The scopes the provider uses, for the catalog |
+| `config_model` | A Pydantic model for per-connection, **non-secret** settings, or `None` |
+| `oauth` | An `OAuthSpec` (authorize/token URLs, required, optional and identity scopes, default config) when `auth_modes` includes `oauth2`, otherwise `None`. The registry rejects any mismatch |
+| `validate_secret(auth_mode, secret)` | Raise `InvalidRequestError` for an unusable secret. Never quote the secret in the message |
+| `register_tools(mcp, ctx_factory)` | Declare the MCP functions |
+| `test_connection(ctx)` | One cheap authenticated call. Return a `ConnectionTestResult(ok, message, account_label)` |
+| `rest_router(ctx_dependency)` | An `APIRouter` for `/v1/<id>`, or `None` |
+
+<Warning>
+The Integrations page can drive `oauth2`, `service_account` and `none` connections. A provider that offers only `api_key` can be connected through the API, but has no connect form in the UI yet.
+</Warning>
+
+### Settings
+
+The Integrations page builds the settings form from `config_model`'s JSON schema. It supports:
+
+- strings, integers, numbers and booleans;
+- enums;
+- lists of strings, integers or enums.
+
+Field names are humanized (`calendar_id` is shown as "Calendar ID"), and field descriptions become hints. Nested models are not editable in the form; they can only be changed with `PATCH /api/v1/integrations/connections/{id}`. Give every field a sensible default when you can. If the schema has required fields, the settings dialog opens right after connecting.
+
+### Functions
+
+```python
+@mcp.tool(title="Find rows by a column value")
+async def find_rows(column: str, value: str) -> FindRowsResult:
+    """Find rows of the connected Google Sheet whose column matches value."""
+    ctx = await ctx_factory()
+    ...
+```
+
+- `ctx = await ctx_factory()` returns the caller's `ConnectionContext`. It holds:
+  - the org and connection ids;
+  - the decrypted `secret`;
+  - the validated `config`;
+  - a shared `httpx.AsyncClient` (`ctx.http`);
+  - for OAuth connections, `ctx.oauth`. Call `await ctx.oauth.access_token()` to get a token that is refreshed when needed.
+- Give each function a short `title` for the catalog card. The docstring and parameter types are what the agent sees, so write them for the LLM.
+- Keep calls fast. This is a live voice call: the Google providers cap each function at 5 seconds.
+- Return answers the agent can speak. Turn upstream failures into short, safe messages, never raw error bodies or secrets.
+- Keep per-connection data in the service database (`ctx.db`), and filter every query on `org_id` **and** `connection_id`.
+- Fetch workspace-supplied URLs only through `fallcha_tools.core.netguard`, which blocks private addresses and DNS rebinding.
+
+### Background sync (optional)
+
+To import data in the background, as the website catalogue does, also implement `SyncableProvider`:
+
+- `sync_item_label`: a plural noun, such as `"products"`.
+- `async run_sync(ctx, progress)`: call `await progress.heartbeat(n)` as it goes. Return `SyncResult(item_count, note)`, or raise `SyncFailed` with an admin-safe message.
+
+The catalog then lists the `sync` capability, and the Integrations page shows **Sync now** and the sync status.
+
+### Register it
+
+Add an instance to `build_registry()` in `tools/fallcha_tools/providers/__init__.py`:
+
+```python
+return ProviderRegistry(
+    [
+        GoogleCalendarProvider(booking_id_key=booking_id_key_from(secret)),
+        GoogleSheetsProvider(),
+        WebsiteCatalogueProvider(),
+        MyProvider(),
+    ]
+)
+```
+
+For a Google API, reuse `providers/google_common/`. It provides the auth modes, the OAuth spec builder, service-account signing and error mapping.
+
+## Tests and checks
+
+Mock the upstream API; tests never call real services. Existing patterns:
+
+- `tests/echo_provider.py`: a minimal provider. The `registry` fixture in `tests/conftest.py` shows how to serve a custom registry.
+- `tests/google_fakes.py`, `tests/sheets_fakes.py` and `tests/catalogue_fakes.py`: fake upstream APIs.
+- `tests/test_mcp.py`: calling functions over MCP with a connection key.
+
+Cover at least these:
+
+- `validate_secret` accepts and rejects the right secrets;
+- the config model's defaults and validation;
+- each function's happy path and its upstream-error messages;
+- `test_connection`;
+- a key from another connection or another org is refused.
+
+Then run the same checks as CI (`.github/workflows/tools-tests.yml`):
+
+```bash
+cd tools
+.venv/bin/ruff check . && .venv/bin/ruff format --check .
+.venv/bin/mypy --strict fallcha_tools
+.venv/bin/pytest
+```
+
+Tests need a Postgres database whose name ends in `_test`. See `tools/README.md` to create it.
+
+If the provider stores data, add an Alembic migration under `tools/alembic/`. It is for the `fallcha_tools` schema only.

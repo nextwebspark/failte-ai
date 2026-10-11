@@ -1,0 +1,149 @@
+---
+title: "Integrations"
+description: "Connect Google Calendar, Google Sheets or your shop's product catalogue once, then give any agent the tools it adds."
+---
+
+Integrations are ready-made tools that Fallcha.ai hosts for you. You connect an app such as Google Calendar with your workspace's own account or key. Fallcha.ai then adds an agent tool that you attach to workflow nodes like any other tool. You do not write API calls or run a server.
+
+## The catalog
+
+Open **Integrations** in the sidebar. **Available integrations** lists the catalog. It is the same for every workspace, and each card shows what your agents can do with it.
+
+| Integration | What the agent can do | Connect with |
+|---|---|---|
+| **Google Calendar** | Check free appointment slots, book a slot, cancel an event it booked | Service account key, or sign in with your Google account |
+| **Google Sheets** | Find rows by a column value, read a row, add a row, look up an order with caller verification | Service account key, or sign in with your Google account |
+| **Website product catalogue** | Search your shop's products and describe one, with spoken prices and stock | Nothing: it reads your public website |
+
+**Your connections** lists what your workspace has connected. One integration can be connected more than once, for example two calendars. Each connection becomes its own agent tool.
+
+<Note>
+The Integrations page needs the **Developer** or **Admin** role, both of which can connect and remove integrations. Members with the **Client** (viewer) role do not see it.
+</Note>
+
+## Connect with a Google service account
+
+A service account is a robot Google account owned by your Google Cloud project. It suits a shared business calendar or spreadsheet.
+
+<Steps>
+  <Step title="Create the key">
+    In the [Google Cloud console](https://console.cloud.google.com/), enable the **Google Calendar API** or the **Google Sheets API**. Then open **IAM & Admin → Service accounts**, create a service account, and choose **Keys → Add key → JSON**.
+  </Step>
+  <Step title="Upload it">
+    On the integration card, click **Connect**, choose **Service account key**, then upload the JSON file or paste its contents. Fallcha.ai shows the service account's email address.
+  </Step>
+  <Step title="Share your calendar or sheet with that address">
+    - **Calendar:** share it with the service account's email with *Make changes to events*.
+    - **Spreadsheet:** share it as *Editor* so rows can be added. *Viewer* is enough for lookups.
+  </Step>
+  <Step title="Review the settings">
+    The settings dialog opens:
+    - **Calendar:** set the calendar ID, time zone, opening hours and slot length.
+    - **Sheets:** set the spreadsheet ID (or paste its URL), the tabs the agent may use, and the orders tab.
+
+    Click **Test** on the connection to confirm Google accepts the key.
+  </Step>
+</Steps>
+
+### Reuse one service account across Google integrations
+
+After one Google integration is connected with a service account, connecting another Google integration offers **Use the same service account**. The key is copied on the server, so you do not upload it again and it never passes through your browser. You still share the new calendar or spreadsheet with the same email address.
+
+## Connect with your own Google OAuth client
+
+Sign in with a Google account when the agent should act as a person, for example to book into someone's own calendar. In this version you bring your own OAuth client, created in your own Google Cloud project.
+
+<Steps>
+  <Step title="Create the OAuth client">
+    In the Google Cloud console:
+    1. Enable the Calendar or Sheets API.
+    2. Configure the **OAuth consent screen**.
+    3. Under **Credentials → Create credentials → OAuth client ID**, choose **Web application**.
+  </Step>
+  <Step title="Register the redirect URI">
+    1. On the integration card, click **Connect**, choose **Sign in with your account**, then **Add a new OAuth client…**.
+    2. Fallcha.ai shows the exact redirect URI for that integration. It looks like `https://<your-fallcha-host>/oauth/google-calendar/callback`.
+    3. Copy it into **Authorized redirect URIs** on the Google client. It must match exactly.
+  </Step>
+  <Step title="Save the client and sign in">
+    1. Paste the **Client ID** and **Client secret**. The secret is stored encrypted and never shown again.
+    2. Click **Save and sign in**.
+    3. Approve the requested permissions on Google's screen. You come back to the Integrations page, where the connection is confirmed and its agent tool is created.
+  </Step>
+</Steps>
+
+**One client serves all your Google integrations.** A client saved for Calendar is offered for Sheets too. Each integration has its own redirect URI, though: add `.../oauth/google-sheets/callback` to the same Google client before you connect Sheets. Each sign-in stays separate, so revoking one never breaks the other. If you already signed in for one Google integration, you can choose **Continue as** that account.
+
+**Permissions requested:**
+- Calendar asks for `calendar.events` and `calendar.readonly`, never full calendar access.
+- Sheets asks for `spreadsheets`, because adding a row needs write access.
+- Both also ask for your email address, to label the connection.
+
+If you untick a permission on Google's screen, the connection is not created.
+
+<Warning>
+**Google's consent screen settings matter:**
+- **Internal** (Google Workspace accounts in your organization only): no Google review is needed.
+- **External, in testing:** works only for the test users you list, and Google expires their sign-ins after 7 days, so the connection then needs **Reconnect**.
+- **External, for everyone:** Google asks you to publish the app and verify it, because these are sensitive permissions. Until then, users see an "unverified app" warning.
+</Warning>
+
+<Note>
+If **Sign in with your account** says it isn't set up on this server, your administrator has not set `TOOLS_PUBLIC_BASE_URL` and `TOOLS_UI_RETURN_URL` yet (see [Environment Variables](/developer/environment-variables#integrations-tools-service)). Service accounts work without them.
+</Note>
+
+## Website product catalogue
+
+This integration is for a shop whose product pages publish schema.org `Product` data and appear in a sitemap. Most shop platforms do this.
+
+1. Click **Connect** and enter your shop's home page as **Site URL**.
+2. Optionally set the sitemap URL, the path prefixes to include (for example `/products/`) and the currency.
+3. Fallcha.ai starts importing your products in the background. The connection shows "Syncing products…" and then "N products · last synced …".
+
+Crawling is deliberately slow and polite:
+- It sends about one request per second and honours `robots.txt` and its crawl delay.
+- It imports 2,000 products at most by default.
+- A large shop can take tens of minutes.
+
+Click **Sync now** whenever your catalogue changes. After a sync, the catalogue matches what the sitemap listed. Pages that failed to load keep their previous data.
+
+## Use an integration in an agent
+
+Each connection creates an agent tool named after the integration, such as "Google Calendar".
+
+1. Open the workflow node and go to its tools.
+2. Under **MCP**, the tool lists its functions, such as `check_appointment_availability` and `book_appointment`.
+3. Tick the functions this node should offer. A tool with no ticked functions is not available on that node.
+4. Describe in the node prompt when to use them, as with any tool.
+
+The functions run in the Fallcha.ai tools service. Your agent reaches it over an authenticated [MCP](/voice-agent/tools/mcp-tool) session that opens when the call starts. If an integration is unreachable at that moment, the call continues without its functions.
+
+## Statuses and reconnecting
+
+| Status | Meaning | What to do |
+|---|---|---|
+| **Connected** | Working | Nothing |
+| **Needs attention** | Google refused the credentials, for example because access was revoked, the password changed or a testing-mode sign-in expired | Click **Reconnect** |
+| **Awaiting confirmation** | A Google sign-in finished but was not confirmed in the browser that started it | Click **Finish setup** in that browser, or remove it and connect again |
+| **Setup incomplete** | The connection exists but its agent tool was not created | Click **Finish setup** |
+
+When Google revokes access, the agent's calendar or sheet functions answer with an error, and Fallcha.ai stops calling Google until you reconnect.
+
+**Reconnect** creates a new connection and a new agent tool, then offers to remove the old one. Removing a connection archives its agent tool straight away. So select the new tool on your workflow nodes before you remove the old connection.
+
+## Security
+
+- **Your Google credentials are kept only by the tools service, in its own `fallcha_tools` database schema, encrypted (Fernet).** The tables the rest of Fallcha.ai uses never hold them. This covers:
+  - service-account keys;
+  - OAuth client secrets;
+  - refresh and access tokens.
+- **Your agent's tool holds only a connection key.** It is a random key that works only for that one connection, and only at that integration's endpoint. It is stored as a managed credential, which is itself encrypted when your administrator sets `CREDENTIALS_ENCRYPTION_KEYS`. You cannot edit or delete that credential directly; remove the integration instead.
+- **Removing a connection** revokes its keys, wipes its stored secrets and tokens, archives its agent tool and deletes the managed credential.
+- **Google sign-ins are bound to you and your browser.** Signing in creates a *pending* connection. It becomes active only when confirmed:
+  - in the same workspace;
+  - by the same user who started it;
+  - with a one-time value kept in that browser tab;
+  - within 10 minutes.
+
+  So a sign-in link sent to someone else cannot attach their Google account to your workspace. Unconfirmed sign-ins are discarded and their tokens wiped.
+- **Tokens refresh automatically** shortly before they expire, with no action from you.

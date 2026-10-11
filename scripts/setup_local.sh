@@ -155,6 +155,22 @@ REDIS_PASSWORD=$(openssl rand -hex 32)
 MINIO_ROOT_USER="dograh$(openssl rand -hex 6)"
 MINIO_ROOT_PASSWORD=$(openssl rand -hex 32)
 
+# Encryption keys and the api <-> tools shared secret. A re-run keeps the
+# values of an existing .env: replacing an encryption key would make the
+# credentials it encrypted unreadable. Fernet key = 32 random bytes,
+# URL-safe base64.
+existing_env_value() {
+    [[ -f .env ]] || return 0
+    grep -E "^$1=" .env | tail -1 | cut -d= -f2- || true
+}
+fernet_key() { openssl rand -base64 32 | tr '+/' '-_'; }
+CREDENTIALS_ENCRYPTION_KEYS="$(existing_env_value CREDENTIALS_ENCRYPTION_KEYS)"
+CREDENTIALS_ENCRYPTION_KEYS="${CREDENTIALS_ENCRYPTION_KEYS:-$(fernet_key)}"
+TOOLS_ENCRYPTION_KEYS="$(existing_env_value TOOLS_ENCRYPTION_KEYS)"
+TOOLS_ENCRYPTION_KEYS="${TOOLS_ENCRYPTION_KEYS:-$(fernet_key)}"
+TOOLS_INTERNAL_SECRET="$(existing_env_value TOOLS_INTERNAL_SECRET)"
+TOOLS_INTERNAL_SECRET="${TOOLS_INTERNAL_SECRET:-$(openssl rand -hex 32)}"
+
 cat > .env << ENV_EOF
 # Container registry for Dograh images
 REGISTRY=$REGISTRY
@@ -177,12 +193,22 @@ REDIS_PASSWORD=$REDIS_PASSWORD
 MINIO_ROOT_USER=$MINIO_ROOT_USER
 MINIO_ROOT_PASSWORD=$MINIO_ROOT_PASSWORD
 
+# Fernet keys encrypting workspace credentials at rest (api). Keep them with
+# your database backups; losing them makes stored credentials unreadable.
+CREDENTIALS_ENCRYPTION_KEYS=$CREDENTIALS_ENCRYPTION_KEYS
+
+# Integrations (fallcha-tools service): its Fernet keys and the secret it
+# shares with the api.
+TOOLS_ENCRYPTION_KEYS=$TOOLS_ENCRYPTION_KEYS
+TOOLS_INTERNAL_SECRET=$TOOLS_INTERNAL_SECRET
+
 # Telemetry (set to false to disable)
 ENABLE_TELEMETRY=$ENABLE_TELEMETRY
 
 # Relay-only ICE candidates for explicit TURN diagnostics
 FORCE_TURN_RELAY=$FORCE_TURN_RELAY
 ENV_EOF
+chmod 600 .env
 
 if [[ "${ENABLE_COTURN:-false}" == "true" ]]; then
     cat >> .env << ENV_EOF

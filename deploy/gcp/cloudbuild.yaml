@@ -1,5 +1,5 @@
-# Builds the two main Dograh images for linux/amd64 and pushes them to
-# Artifact Registry. One submission, one source upload, both images.
+# Builds the Fallcha.ai images (api, ui, fallcha-tools) for linux/amd64 and
+# pushes them to Artifact Registry. One submission, one source upload.
 #
 #   gcloud builds submit --config=deploy/gcp/cloudbuild.yaml \
 #     --substitutions=_TAG=$(git rev-parse --short HEAD) --project=dograh-eu
@@ -24,6 +24,8 @@ images:
   - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/dograh-api:latest'
   - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/dograh-ui:${_TAG}'
   - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/dograh-ui:latest'
+  - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/fallcha-tools:${_TAG}'
+  - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/fallcha-tools:latest'
 
 steps:
   # Build the UI first — it is the faster of the two, so a Dockerfile mistake
@@ -56,3 +58,17 @@ steps:
       - -t
       - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/dograh-api:latest'
       - .
+
+  # The tools service builds from its own directory (tools/Dockerfile) and
+  # does not need the pipecat submodule. Runs in parallel with the others.
+  - id: tools
+    name: gcr.io/cloud-builders/docker
+    waitFor: ['-']
+    env: ['DOCKER_BUILDKIT=1']
+    args:
+      - build
+      - -t
+      - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/fallcha-tools:${_TAG}'
+      - -t
+      - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/fallcha-tools:latest'
+      - tools

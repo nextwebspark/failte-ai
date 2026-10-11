@@ -31,6 +31,7 @@ from fallcha_tools.core.errors import (
 )
 from fallcha_tools.core.mcp import ConnectionResolver, McpGateway, McpMounts
 from fallcha_tools.core.oauth import Clock, OAuthFlow, OAuthTokenManager, utc_now
+from fallcha_tools.core.path_guard import PathGuardMiddleware
 from fallcha_tools.core.provider import ProviderRegistry
 from fallcha_tools.core.repositories import KeyPrincipal, KeyRepository
 from fallcha_tools.core.sync import SyncRunner
@@ -138,6 +139,8 @@ def create_app(
 
     app = FastAPI(title="Fallcha Tools", lifespan=lifespan)
     app.state.services = services
+    # Outermost: suspicious raw paths are refused before routing.
+    app.add_middleware(PathGuardMiddleware)
     app.add_exception_handler(ToolsError, _tools_error_handler)
     app.add_exception_handler(RequestValidationError, _validation_error_handler)
 
