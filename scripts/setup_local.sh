@@ -208,6 +208,7 @@ ENABLE_TELEMETRY=$ENABLE_TELEMETRY
 # Relay-only ICE candidates for explicit TURN diagnostics
 FORCE_TURN_RELAY=$FORCE_TURN_RELAY
 ENV_EOF
+chmod 600 .env
 
 if [[ "${ENABLE_COTURN:-false}" == "true" ]]; then
     cat >> .env << ENV_EOF

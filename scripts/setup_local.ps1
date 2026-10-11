@@ -34,6 +34,31 @@ function New-HexSecret([int]$ByteCount) {
     return ($buffer | ForEach-Object { $_.ToString('x2') }) -join ''
 }
 
+function New-FernetKey {
+    # 32 random bytes, URL-safe base64 (padding kept): a Fernet key.
+    $buffer = [byte[]]::new(32)
+    $rng = [System.Security.Cryptography.RandomNumberGenerator]::Create()
+    try {
+        $rng.GetBytes($buffer)
+    } finally {
+        $rng.Dispose()
+    }
+    return [Convert]::ToBase64String($buffer).Replace('+', '-').Replace('/', '_')
+}
+
+function Get-ExistingEnvValue([string]$Path, [string]$Key) {
+    if (-not (Test-Path $Path)) {
+        return $null
+    }
+    $value = $null
+    foreach ($line in [System.IO.File]::ReadLines((Resolve-Path $Path).Path)) {
+        if ($line.StartsWith("$Key=")) {
+            $value = $line.Substring($Key.Length + 1)
+        }
+    }
+    return $value
+}
+
 function Read-SecretValue([string]$Prompt) {
     $readHostCommand = Get-Command Read-Host
     if ($readHostCommand.Parameters.ContainsKey('MaskInput')) {
@@ -248,6 +273,17 @@ $redisPassword = New-HexSecret 32
 $minioRootUser = "dograh$((New-HexSecret 6).Substring(0, 12))"
 $minioRootPassword = New-HexSecret 32
 
+# Encryption keys and the api <-> tools shared secret. A re-run keeps the
+# values of an existing .env: replacing an encryption key would make the
+# credentials it encrypted unreadable.
+$existingEnv = Join-Path $CurrentDir '.env'
+$credentialsKeys = Get-ExistingEnvValue $existingEnv 'CREDENTIALS_ENCRYPTION_KEYS'
+if (-not $credentialsKeys) { $credentialsKeys = New-FernetKey }
+$toolsKeys = Get-ExistingEnvValue $existingEnv 'TOOLS_ENCRYPTION_KEYS'
+if (-not $toolsKeys) { $toolsKeys = New-FernetKey }
+$toolsSecret = Get-ExistingEnvValue $existingEnv 'TOOLS_INTERNAL_SECRET'
+if (-not $toolsSecret) { $toolsSecret = New-HexSecret 32 }
+
 $envLines = @(
     '# Container registry for Dograh images'
     "REGISTRY=$Registry"
@@ -269,6 +305,15 @@ $envLines = @(
     '# MINIO_ACCESS_KEY / MINIO_SECRET_KEY.'
     "MINIO_ROOT_USER=$minioRootUser"
     "MINIO_ROOT_PASSWORD=$minioRootPassword"
+    ''
+    '# Fernet keys encrypting workspace credentials at rest (api). Keep them with'
+    '# your database backups; losing them makes stored credentials unreadable.'
+    "CREDENTIALS_ENCRYPTION_KEYS=$credentialsKeys"
+    ''
+    '# Integrations (fallcha-tools service): its Fernet keys and the secret it'
+    '# shares with the api.'
+    "TOOLS_ENCRYPTION_KEYS=$toolsKeys"
+    "TOOLS_INTERNAL_SECRET=$toolsSecret"
     ''
     '# Telemetry (set to false to disable)'
     "ENABLE_TELEMETRY=$EnableTelemetry"
@@ -296,7 +341,7 @@ Write-Success '╔════════════════════�
 Write-Success '║                    Setup Complete!                           ║'
 Write-Success '╚══════════════════════════════════════════════════════════════╝'
 Write-Host ''
-Write-Host "Files created in $CurrentDir:" -ForegroundColor Blue
+Write-Host "Files created in ${CurrentDir}:" -ForegroundColor Blue
 Write-Host '  - docker-compose.yaml'
 Write-Host '  - .env'
 if ($UseCoturn) {

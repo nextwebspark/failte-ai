@@ -347,6 +347,9 @@ services:
   # without them it exits at startup and the rest of the stack is unaffected.
   # The only public route is the OAuth callback /oauth/<provider>/callback,
   # which the remote nginx forwards here (deploy/templates/nginx.remote.conf.template).
+  # The image must exist in ${REGISTRY} (Fallcha's release and Cloud Build
+  # publish it; upstream Dograh registries do not): otherwise build it with
+  # `docker compose build fallcha-tools`.
   fallcha-tools:
     image: ${REGISTRY:-dograhai}/fallcha-tools:latest
     build:

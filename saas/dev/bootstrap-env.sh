@@ -110,6 +110,8 @@ ensure_key tools/.env TOOLS_INTERNAL_SECRET "$(env_value api/.env TOOLS_INTERNAL
 if [[ "$(env_value api/.env TOOLS_INTERNAL_SECRET)" != "$(env_value tools/.env TOOLS_INTERNAL_SECRET)" ]]; then
   echo "  ! TOOLS_INTERNAL_SECRET differs between api/.env and tools/.env; make them equal"
 fi
+# They hold secrets: owner-only.
+chmod 600 api/.env tools/.env
 
 create_from_template ui/.env.example ui/.env || true
 
