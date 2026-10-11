@@ -133,7 +133,7 @@ When Google revokes access, the agent's calendar or sheet functions answer with 
 
 ## Security
 
-- **Your Google tokens never enter the main Fallcha.ai database.** These live encrypted (Fernet) in the tools service's own database schema:
+- **Your Google credentials are kept only by the tools service, in its own `fallcha_tools` database schema, encrypted (Fernet).** The tables the rest of Fallcha.ai uses never hold them. This covers:
   - service-account keys;
   - OAuth client secrets;
   - refresh and access tokens.

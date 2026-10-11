@@ -29,12 +29,24 @@ book and cancel events and append rows.
 The usual setup runs on the host: the API on 8001, the UI on 3000 and the tools service on
 8010. The datastores run in Docker on 5433/6380 (`saas/dev`).
 
+The `psql` commands below connect to that Postgres as `postgres` / `postgres`. Export
+`PGPASSWORD=postgres` first, or psql prompts for it. Use the value from `api/.env`
+`DATABASE_URL` if you changed it.
+
 - [ ] **Do:** `bash saas/dev/bootstrap-env.sh`.
   - **Expect:** `api/.env` gains `CREDENTIALS_ENCRYPTION_KEYS`, `TOOLS_INTERNAL_SECRET` and
     `TOOLS_SERVICE_URL=http://localhost:8010`.
   - **Expect:** `tools/.env` exists with `TOOLS_ENCRYPTION_KEYS` and the **same**
     `TOOLS_INTERNAL_SECRET`.
-  - **Expect:** a second run prints no `~ set` lines. Existing values are never replaced.
+  - **Expect:** both files are `-rw-------` (`ls -l api/.env tools/.env`).
+- [ ] **Bootstrap is idempotent.**
+  1. Run `shasum api/.env tools/.env > /tmp/env.sha`.
+  2. Run `bash saas/dev/bootstrap-env.sh` again.
+  3. Run `shasum -c /tmp/env.sha`.
+  - **Expect:** the second run prints no `~ set` lines.
+  - **Expect:** both files are reported `OK`. Existing values are never replaced.
+  - **Expect:** blanking `TOOLS_INTERNAL_SECRET=` in `tools/.env` and re-running refills it
+    with the api's value.
 - [ ] **Do:** compare the two secrets with
   `grep -h ^TOOLS_INTERNAL_SECRET api/.env tools/.env | uniq | wc -l`.
   - **Expect:** `1`.
@@ -231,9 +243,16 @@ callback, so test OAuth with the host setup above. On a remote install, use
   without `CREDENTIALS_ENCRYPTION_KEYS`.
   - **Expect:** a startup warning.
 
-  Set a key and restart (migrations run).
-  - **Expect:** `select count(*) from external_credentials where credential_data ? '_enc'`
-    equals the total count.
+  Set a key and restart. On this database the encryption migration has **already run**
+  without a key, so it will not seal the existing rows. Seal them once:
+  1. `python -m scripts.reencrypt_credentials --dry-run`
+  2. `python -m scripts.reencrypt_credentials`
+
+  In Docker, run both with `docker compose exec api`.
+  - **Expect:** before the script,
+    `select count(*) from external_credentials where credential_data::jsonb ? '_enc'` is
+    lower than the total. After it, the two counts are equal.
+  - **Expect:** a second run of the script reports `encrypted=0 failed=0`.
   - **Expect:** existing HTTP API tools still authenticate in a call.
 - [ ] **Rotate.**
   1. Generate a new key and set `CREDENTIALS_ENCRYPTION_KEYS=<new>,<old>`. Restart.
@@ -303,14 +322,58 @@ callback, so test OAuth with the host setup above. On a remote install, use
 
 ## 13. Remote nginx route (when a remote stack is available)
 
-- [ ] **Do:** `curl -sI "https://<host>/oauth/google-calendar/callback?code=x&state=y"`.
-  - **Expect:** a 302 to `.../integrations?integration_result=error&reason=invalid_state`.
-- [ ] **Do:** `curl -sI https://<host>/oauth/anything`.
-  - **Expect:** served by the UI (404 page), not the tools service.
+Set `W='%{http_code} %{redirect_url}\n'` first. Every probe uses a GET with
+`curl -s -o /dev/null --path-as-is -w "$W"`.
+
+- [ ] **Do:** probe `"https://<host>/oauth/google-calendar/callback?code=x&state=y"`.
+  - **Expect:** `302 https://<host>/integrations?integration_result=error&reason=invalid_state`.
+- [ ] **Do:** probe `https://<host>/oauth/anything`.
+  - **Expect:** `404` from the UI, not the tools service.
+- [ ] **Path probes.** Probe each of these:
+  - `https://<host>/oauth/x/../google-calendar/callback?state=y`
+  - `https://<host>/oauth/google-calendar/%2e%2e/callback`
+  - `https://<host>/oauth/%2e%2e%2finternal%2fcatalog/callback`
+  - `https://<host>/oauth/..%2f..%2finternal/callback`
+  - `https://<host>/internal/../oauth/google-calendar/callback?state=y`
+
+  - **Expect:** the first and last probes give the same `302 ...reason=invalid_state`.
+    nginx normalised them to the callback and forwarded the clean path.
+  - **Expect:** the others give `404` (UI) or `400` (nginx), never a tools-service JSON body
+    and never anything under `/internal`.
+- [ ] **Do:** confirm the service itself refuses traversal with
+the following (the api image has no curl):
+
+  ```bash
+  docker compose exec api python -c "import http.client as h; c=h.HTTPConnection('fallcha-tools', 8000); c.request('GET', '/oauth/x%2f..%2finternal/callback'); print(c.getresponse().status)"
+  ```
+  - **Expect:** `400`.
 - [ ] **Do:** `curl -s -X POST -o /dev/null -w '%{http_code}' https://<host>/oauth/google-calendar/callback`.
   - **Expect:** 403.
 - [ ] **Do:** `docker compose logs nginx | grep oauth`.
   - **Expect:** request lines without `?code=`.
+
+## 14. GCP cutover (when the VMs are back)
+
+Follow `deploy/gcp/README.md` → "Tools service cutover". These are the checks that must
+pass **before** the old sidecars are stopped.
+
+- [ ] **Do:** `./deploy/gcp/configure-env.sh`.
+  - **Expect:** it finishes and writes `deploy/gcp/secrets/tools.env` with mode 600.
+  - **Expect:** it stops with an error if `dograh-tools-internal-secret` or
+    `dograh-tools-encryption-keys` is missing.
+- [ ] **Do:** run `docker compose exec api python -m scripts.reencrypt_credentials` once after
+  setting `CREDENTIALS_ENCRYPTION_KEYS`. Cloud SQL already passed the migration.
+  - **Expect:** exit 0 and `failed=0`. A second run reports `encrypted=0 failed=0`.
+- [ ] **Transfer, while `chmarine-product-service` is still running.** Set CH Marine's
+  `transfer_to_team` tool to **Static** with the current `TRANSFER_DESTINATION` (e.g.
+  `PJSIP/200@voiptel`). Place a test call and ask for a person.
+  - **Expect:** the destination rings, and there is no "Allocation failed" in the api log.
+  - **Then:** stop the product service. Repeat the transfer test call.
+  - **Expect:** it still rings.
+- [ ] **Voiptel.** Book, cancel and run an order lookup through fallcha-tools.
+  - **Expect:** the event title starts with `Voiptel call`.
+- [ ] **CH Marine.** Run a product search and a product detail through fallcha-tools.
+  - **Expect:** answers match the old service's style.
 
 ## Sign-off
 
@@ -325,3 +388,4 @@ callback, so test OAuth with the host setup above. On a remote install, use
 | Credential encryption | | |
 | Skills | | |
 | nginx | | |
+| GCP cutover | | |
