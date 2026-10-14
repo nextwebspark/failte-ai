@@ -19,8 +19,11 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { useAppConfig } from "@/context/AppConfigContext";
+import { detailFromError } from '@/lib/apiError';
 import { useAuth } from '@/lib/auth';
 import logger from '@/lib/logger';
+
+const CREATE_WORKFLOW_FALLBACK_ERROR = 'Failed to create workflow. Please try again.';
 
 export default function CreateWorkflowPage() {
     const router = useRouter();
@@ -67,9 +70,12 @@ export default function CreateWorkflowPage() {
             if (response.data?.id) {
                 setWorkflowId(String(response.data.id));
                 setShowSuccessModal(true);
+            } else {
+                setError(detailFromError(response.error, CREATE_WORKFLOW_FALLBACK_ERROR));
+                logger.error(`Error creating workflow: ${JSON.stringify(response.error)}`);
             }
         } catch (err) {
-            setError('Failed to create workflow. Please try again.');
+            setError(CREATE_WORKFLOW_FALLBACK_ERROR);
             logger.error(`Error creating workflow: ${err}`);
         } finally {
             setIsLoading(false);
@@ -123,6 +129,7 @@ export default function CreateWorkflowPage() {
                                 id="use-case"
                                 placeholder="e.g., Lead Qualification, HR Screening, Customer Support"
                                 value={useCase}
+                                maxLength={200}
                                 onChange={(e) => setUseCase(e.target.value)}
                             />
                             <p className="text-sm text-muted-foreground">
@@ -136,6 +143,7 @@ export default function CreateWorkflowPage() {
                                 id="activity-description"
                                 placeholder="Describe briefly what your voice agent will do (e.g., Qualify leads for real estate, Screen candidates for roles, Handle customer support). This will be a prompt to an LLM."
                                 value={activityDescription}
+                                maxLength={4000}
                                 onChange={(e) => setActivityDescription(e.target.value)}
                                 className="min-h-[100px]"
                             />

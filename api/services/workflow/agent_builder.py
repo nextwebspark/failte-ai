@@ -4,13 +4,15 @@ The Agent Builder (``POST /workflow/create/template``) used to ask the hosted
 MPS service for a workflow. Platform-models deployments never hold an MPS
 service key, so there the workflow is generated here instead:
 
-1. An LLM (Gemini on the operator's Vertex project) writes a small structured
-   :class:`AgentSpec` — name, persona, greeting and a few conversation stages.
+1. An LLM (Gemini on the organization's Vertex placement) writes a small
+   structured :class:`AgentSpec` — name, persona, greeting and a few
+   conversation stages.
 2. :func:`assemble_workflow_definition` turns that spec into ReactFlow
    ``nodes``/``edges`` deterministically, so ids, positions, node types and
    edge wiring never depend on the model.
 3. The result goes through the same ``ReactFlowDTO`` + ``WorkflowGraph``
-   validation the app runs on save; a failed attempt is retried once.
+   validation the app runs on save; a transient or bad-output failure is
+   retried once.
 
 The LLM sits behind the :class:`AgentSpecGenerator` protocol so tests inject a
 fake and never touch the network.
@@ -21,16 +23,21 @@ from __future__ import annotations
 import asyncio
 import json
 import re
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Final, Protocol
 
+from google.genai import errors as genai_errors
 from loguru import logger
 from pydantic import BaseModel, Field, ValidationError
 
 from api.services.configuration.platform.catalog import DEFAULT_LLM_MODEL
+from api.services.configuration.platform.policy import (
+    platform_settings_for_organization,
+)
 from api.services.configuration.platform.settings import (
+    PlatformModelsNotConfiguredError,
     PlatformVertexSettings,
-    load_platform_vertex_settings,
 )
 from api.services.workflow.dto import NodeType, ReactFlowDTO
 from api.services.workflow.workflow_graph import WorkflowGraph
@@ -38,17 +45,22 @@ from api.services.workflow.workflow_graph import WorkflowGraph
 if TYPE_CHECKING:
     from google import genai
 
-MAX_STAGES: Final = 5
-MAX_CAPTURED_FIELDS: Final = 6
+# Main stages after the opening one.
+MAX_STAGES: Final = 4
+MAX_CAPTURED_FIELDS: Final = 5
 GENERATION_ATTEMPTS: Final = 2
-GENERATION_TIMEOUT_SECS: Final = 60.0
+GENERATION_TIMEOUT_SECS: Final = 40.0
 GENERATION_TEMPERATURE: Final = 0.4
+RATE_LIMITED_RETRY_DELAY_SECS: Final = 2.0
+# Transition labels become LLM function names, which providers cap at 64.
+MAX_TRANSITION_LABEL: Final = 60
 
 # Appended to every generated persona so the agent behaves on a phone line
 # whatever the model wrote.
 VOICE_RULES: Final = (
     "## Voice rules\n"
-    "- This is a phone call. Speak in short, natural sentences, one or two at a time.\n"
+    "- This is a phone call. Speak in short, natural sentences, one or two at "
+    "a time.\n"
     "- Never use lists, markdown, emojis or special characters; they cannot "
     "be spoken.\n"
     "- Ask one question at a time and wait for the answer.\n"
@@ -59,10 +71,18 @@ VOICE_RULES: Final = (
     "offer a follow-up."
 )
 
+EARLY_EXIT_PROMPT: Final = (
+    "The call is ending early. Do not confirm, book or promise anything. "
+    "Briefly acknowledge what the person said, thank them for their time, "
+    "and say a short, polite goodbye."
+)
+
 _CANVAS_X: Final = 175.0
+_EARLY_EXIT_X: Final = 625.0
 _ROW_HEIGHT: Final = 220.0
 _GLOBAL_X: Final = -325.0
 _IDENTIFIER_RE: Final = re.compile(r"[^a-z0-9]+")
+_TEMPLATE_MARKER: Final = "{{"
 
 
 class AgentBuilderError(RuntimeError):
@@ -116,11 +136,14 @@ class AgentSpec(BaseModel):
         description="The opening stage right after the greeting.",
     )
     stages: list[StageSpec] = Field(
-        description="The main conversation stages in order, 1 to 4 of them.",
+        description=(
+            f"The main conversation stages in order, 1 to {MAX_STAGES} of them."
+        ),
     )
     closing_prompt: str = Field(
         description=(
-            "How to wrap up: summarise next steps, thank the caller, say goodbye."
+            "How to wrap up after the last stage succeeds: summarise next steps, "
+            "thank the caller, say goodbye."
         )
     )
     end_call_when: str = Field(
@@ -130,7 +153,7 @@ class AgentSpec(BaseModel):
         )
     )
     captured_fields: list[CapturedFieldSpec] = Field(
-        description="Up to 5 facts worth recording after the call.",
+        description=f"Up to {MAX_CAPTURED_FIELDS} facts worth recording.",
     )
 
 
@@ -140,6 +163,12 @@ class AgentBuilderRequest:
     call_type: str
     use_case: str
     activity_description: str
+    # Whose Vertex placement to generate on; None uses the server defaults.
+    organization_id: int | None = None
+
+    @property
+    def is_outbound(self) -> bool:
+        return self.call_type.upper() == "OUTBOUND"
 
 
 @dataclass(frozen=True, slots=True)
@@ -156,9 +185,12 @@ class AgentSpecGenerator(Protocol):
     async def generate(self, request: AgentBuilderRequest) -> AgentSpec: ...
 
 
+SettingsProvider = Callable[[int | None], Awaitable[PlatformVertexSettings]]
+
+
 # --- Gemini on Vertex ---------------------------------------------------------
 
-_SYSTEM_INSTRUCTION: Final = """\
+_SYSTEM_INSTRUCTION: Final = f"""\
 You design voice AI phone agents. Given a call direction, a use case and a \
 description of what the agent should do, write a concise, realistic plan for \
 the agent as JSON matching the schema.
@@ -172,12 +204,13 @@ can help or confirm why they are calling.
 - OUTBOUND: the agent is calling the customer. Introduce yourself and the \
 company, state the reason for the call, and check it is a good time before \
 going further.
-- Split the conversation into an opening stage plus 1 to 4 focused stages. \
-Each stage prompt covers one goal, and its done_when condition is a concrete, \
-observable event in the conversation.
+- Split the conversation into an opening stage plus 1 to {MAX_STAGES} focused \
+stages. Each stage prompt covers one goal, and its done_when condition is a \
+concrete, observable event in the conversation.
 - end_call_when must cover every way the call can finish early from any \
 stage: for example the person is busy and wants a call back, is not \
 interested, asks to stop, or it is a wrong number.
+- List at most {MAX_CAPTURED_FIELDS} captured_fields.
 - Do not use template variables, curly braces or placeholders such as \
 [Company]. If a company or person name is not given, describe the role \
 generically ("our team", "the clinic").
@@ -187,40 +220,49 @@ team will follow up instead.
 - Keep the language of the description; default to English.
 """
 
+# One client per Vertex placement: each client owns an HTTP connection pool,
+# so building one per request would leak pools.
+_CLIENTS: dict[tuple[str, str, str | None], genai.Client] = {}
+
+
+def _client_for(settings: PlatformVertexSettings) -> genai.Client:
+    key = (settings.project_id, settings.llm_location, settings.credentials_json)
+    client = _CLIENTS.get(key)
+    if client is None:
+        from google import genai
+
+        client = genai.Client(
+            vertexai=True,
+            project=settings.project_id,
+            location=settings.llm_location,
+            credentials=_vertex_credentials(settings.credentials_json),
+        )
+        _CLIENTS[key] = client
+    return client
+
 
 class GeminiAgentSpecGenerator:
-    """Generates an :class:`AgentSpec` with Gemini on the operator's Vertex project."""
+    """Generates an :class:`AgentSpec` with Gemini on the org's Vertex placement."""
 
     def __init__(
         self,
-        settings: PlatformVertexSettings | None = None,
         *,
+        settings_provider: SettingsProvider = platform_settings_for_organization,
+        client_factory: Callable[[PlatformVertexSettings], genai.Client] = _client_for,
         model: str = DEFAULT_LLM_MODEL,
         timeout_secs: float = GENERATION_TIMEOUT_SECS,
     ) -> None:
-        self._settings = settings
+        self._settings_provider = settings_provider
+        self._client_factory = client_factory
         self._model = model
         self._timeout_secs = timeout_secs
-        self._client: genai.Client | None = None
-
-    def _get_client(self) -> genai.Client:
-        if self._client is None:
-            from google import genai
-
-            # Settings load lazily so building the generator never fails on a
-            # server without platform models (the route only uses it there).
-            settings = self._settings or load_platform_vertex_settings()
-            self._client = genai.Client(
-                vertexai=True,
-                project=settings.project_id,
-                location=settings.llm_location,
-                credentials=_vertex_credentials(settings.credentials_json),
-            )
-        return self._client
 
     async def generate(self, request: AgentBuilderRequest) -> AgentSpec:
         from google.genai import types
 
+        # Resolved per call: an Enterprise org may pin its own project/region.
+        settings = await self._settings_provider(request.organization_id)
+        client = self._client_factory(settings)
         config = types.GenerateContentConfig(
             system_instruction=_SYSTEM_INSTRUCTION,
             temperature=GENERATION_TEMPERATURE,
@@ -231,7 +273,7 @@ class GeminiAgentSpecGenerator:
             ),
         )
         response = await asyncio.wait_for(
-            self._get_client().aio.models.generate_content(
+            client.aio.models.generate_content(
                 model=self._model, contents=_user_message(request), config=config
             ),
             self._timeout_secs,
@@ -254,17 +296,19 @@ def _vertex_credentials(credentials_json: str | None) -> Any:
 
 
 def _user_message(request: AgentBuilderRequest) -> str:
+    direction = "OUTBOUND" if request.is_outbound else "INBOUND"
     return (
-        f"Call direction: {request.call_type}\n"
+        f"Call direction: {direction}\n"
         f"Use case: {request.use_case.strip()}\n"
         f"What the agent should do: {request.activity_description.strip()}"
     )
 
 
 def default_agent_spec_generator() -> AgentSpecGenerator:
-    """The production generator, on the platform's Vertex settings.
+    """The production generator (FastAPI dependency).
 
-    Cheap to build: nothing is read or connected until the first generation.
+    Cheap to build: nothing is read or connected until the first generation,
+    so it is safe on servers without platform models.
     """
     return GeminiAgentSpecGenerator()
 
@@ -275,9 +319,12 @@ def default_agent_spec_generator() -> AgentSpecGenerator:
 def assemble_workflow_definition(spec: AgentSpec, call_type: str) -> dict[str, Any]:
     """Turn an :class:`AgentSpec` into a ReactFlow workflow definition.
 
-    Layout: Start -> stage 1 -> ... -> stage N -> End, each stage advancing on
-    its ``done_when`` condition, plus an "End Call" edge from every non-final
-    step for early exits. The global node carries the persona and voice rules.
+    Layout: Start -> stage 1 -> ... -> stage N -> End, each step advancing on
+    its ``done_when`` condition. Every step also has an "End Call" edge to a
+    separate early-exit end node that only says goodbye, so an early hang-up
+    never reuses the success summary. The captured fields are extracted on
+    every prompted node, because the engine extracts on leaving a node and on
+    the node the call ends in: wherever the call stops, they are recorded.
 
     Raises AgentBuilderError when the spec is unusable (e.g. empty text).
     """
@@ -286,16 +333,17 @@ def assemble_workflow_definition(spec: AgentSpec, call_type: str) -> dict[str, A
     if not stages:
         raise AgentBuilderError("The generated agent has no conversation stages")
 
-    start_id = "start"
-    stage_ids = [f"stage_{index}" for index in range(1, len(stages) + 1)]
-    end_id = "end"
-    global_id = "global"
-
+    outbound = call_type.upper() == "OUTBOUND"
     direction = (
         "This is an OUTBOUND call: you called the customer."
-        if call_type.upper() == "OUTBOUND"
+        if outbound
         else "This is an INBOUND call: the customer called you."
     )
+    extraction = _extraction(spec.captured_fields)
+
+    start_id, end_id, early_id, global_id = "start", "end", "end_early", "global"
+    stage_ids = [f"stage_{index}" for index in range(1, len(stages) + 1)]
+
     nodes: list[dict[str, Any]] = [
         _node(
             start_id,
@@ -303,13 +351,15 @@ def assemble_workflow_definition(spec: AgentSpec, call_type: str) -> dict[str, A
             row=0,
             data={
                 "name": _title(spec.opening.name, "Greeting"),
-                "prompt": f"{direction}\n\n{opening_prompt}",
+                "prompt": opening_prompt,
                 "greeting": _required(spec.greeting, "greeting"),
                 "greeting_type": "text",
                 "is_start": True,
-                "allow_interrupt": False,
+                # Outbound: the callee often talks over the greeting
+                # ("who is this?"), so let them.
+                "allow_interrupt": outbound,
                 "add_global_prompt": True,
-                "extraction_enabled": False,
+                **extraction,
             },
         )
     ]
@@ -324,7 +374,7 @@ def assemble_workflow_definition(spec: AgentSpec, call_type: str) -> dict[str, A
                     "prompt": stage.prompt.strip(),
                     "allow_interrupt": True,
                     "add_global_prompt": True,
-                    "extraction_enabled": False,
+                    **extraction,
                 },
             )
         )
@@ -339,57 +389,89 @@ def assemble_workflow_definition(spec: AgentSpec, call_type: str) -> dict[str, A
                 "is_end": True,
                 "allow_interrupt": False,
                 "add_global_prompt": True,
-                **_extraction(spec.captured_fields),
+                **extraction,
             },
         )
     )
     nodes.append(
-        {
-            "id": global_id,
-            "type": NodeType.globalNode.value,
-            "position": {"x": _GLOBAL_X, "y": 0.0},
-            "data": {
-                "name": "Global Node",
-                "prompt": f"{_required(spec.persona, 'persona')}\n\n{VOICE_RULES}",
+        _node(
+            early_id,
+            NodeType.endNode,
+            row=len(stages) + 1,
+            x=_EARLY_EXIT_X,
+            data={
+                "name": "Polite Goodbye",
+                "prompt": EARLY_EXIT_PROMPT,
+                "is_end": True,
+                "allow_interrupt": False,
+                "add_global_prompt": True,
+                **extraction,
             },
-        }
+        )
+    )
+    persona = _required(spec.persona, "persona")
+    nodes.append(
+        _node(
+            global_id,
+            NodeType.globalNode,
+            row=0,
+            x=_GLOBAL_X,
+            data={
+                "name": "Global Node",
+                "prompt": f"{persona}\n\n{direction}\n\n{VOICE_RULES}",
+            },
+        )
     )
 
     end_when = _required(spec.end_call_when, "end_call_when")
     chain = [(start_id, spec.opening), *zip(stage_ids, stages, strict=True)]
     edges: list[dict[str, Any]] = []
     for index, (source, stage) in enumerate(chain):
-        is_last = index == len(chain) - 1
-        if is_last:
+        done_when = _required(stage.done_when, "done_when")
+        if index == len(chain) - 1:
+            edges.append(
+                _edge(source, end_id, label="Finish Call", condition=done_when)
+            )
+        else:
+            target, target_stage = chain[index + 1]
             edges.append(
                 _edge(
                     source,
-                    end_id,
-                    label="Finish Call",
-                    condition=(f"{stage.done_when.strip()} Also end when: {end_when}"),
+                    target,
+                    label=_transition_label(target_stage.name, index + 1),
+                    condition=done_when,
                 )
             )
-            continue
-        target, target_stage = chain[index + 1]
-        edges.append(
-            _edge(
-                source,
-                target,
-                label=f"Go to {_title(target_stage.name, f'Step {index + 1}')}",
-                condition=_required(stage.done_when, "done_when"),
-            )
-        )
-        edges.append(_edge(source, end_id, label="End Call", condition=end_when))
+        edges.append(_edge(source, early_id, label="End Call", condition=end_when))
 
     return {"nodes": nodes, "edges": edges, "viewport": {"x": 0, "y": 0, "zoom": 0.75}}
 
 
-def validate_workflow_definition(definition: dict[str, Any]) -> None:
-    """Run the app's own workflow validation; raise AgentBuilderError on failure."""
+def validate_workflow_definition(
+    definition: dict[str, Any], *, allow_template_variables: bool = False
+) -> None:
+    """Run the app's own workflow validation; raise AgentBuilderError on failure.
+
+    Unless *allow_template_variables*, a definition that needs ``{{variables}}``
+    is rejected: nothing would fill them on a test call.
+    """
     try:
-        WorkflowGraph(ReactFlowDTO.model_validate(definition))
+        graph = WorkflowGraph(ReactFlowDTO.model_validate(definition))
     except (ValidationError, ValueError) as exc:
         raise AgentBuilderError(f"Generated workflow is invalid: {exc}") from exc
+    required = graph.get_required_template_variables()
+    if required and not allow_template_variables:
+        raise AgentBuilderError(
+            f"Generated workflow uses template variables: {sorted(required)}"
+        )
+
+
+def _is_retryable(exc: Exception) -> bool:
+    if isinstance(exc, ValidationError | AgentBuilderError | TimeoutError):
+        return True
+    if isinstance(exc, genai_errors.ServerError):
+        return True
+    return isinstance(exc, genai_errors.ClientError) and exc.code == 429
 
 
 async def build_agent_workflow(
@@ -397,22 +479,42 @@ async def build_agent_workflow(
     generator: AgentSpecGenerator,
     *,
     attempts: int = GENERATION_ATTEMPTS,
+    rate_limited_delay_secs: float = RATE_LIMITED_RETRY_DELAY_SECS,
 ) -> GeneratedWorkflow:
-    """Generate, assemble and validate a workflow, retrying a failed attempt."""
+    """Generate, assemble and validate a workflow.
+
+    Bad model output, timeouts, server errors and 429s are retried; anything
+    else (credentials, configuration, other 4xx) fails at once. Raises
+    AgentBuilderError with a user-facing message, or
+    PlatformModelsNotConfiguredError when the server cannot reach Vertex.
+    """
+    allow_variables = _TEMPLATE_MARKER in (
+        request.use_case + request.activity_description
+    )
     last_error: Exception | None = None
     for attempt in range(1, attempts + 1):
         try:
             spec = await generator.generate(request)
             definition = assemble_workflow_definition(spec, request.call_type)
-            validate_workflow_definition(definition)
-        except asyncio.CancelledError:
+            validate_workflow_definition(
+                definition, allow_template_variables=allow_variables
+            )
+        except PlatformModelsNotConfiguredError:
             raise
-        except Exception as exc:  # noqa: BLE001 — any failure earns one retry
+        except Exception as exc:  # noqa: BLE001 — classified just below
             last_error = exc
             logger.warning(
                 f"Agent builder attempt {attempt}/{attempts} failed: "
                 f"{type(exc).__name__}: {exc}"
             )
+            if not _is_retryable(exc):
+                break
+            if (
+                attempt < attempts
+                and isinstance(exc, genai_errors.ClientError)
+                and exc.code == 429
+            ):
+                await asyncio.sleep(rate_limited_delay_secs)
             continue
         name = _title(spec.name, f"{request.use_case.strip()} agent")[:120]
         return GeneratedWorkflow(name=name, workflow_definition=definition)
@@ -426,12 +528,17 @@ async def build_agent_workflow(
 
 
 def _node(
-    node_id: str, node_type: NodeType, *, row: int, data: dict[str, Any]
+    node_id: str,
+    node_type: NodeType,
+    *,
+    row: int,
+    data: dict[str, Any],
+    x: float = _CANVAS_X,
 ) -> dict[str, Any]:
     return {
         "id": node_id,
         "type": node_type.value,
-        "position": {"x": _CANVAS_X, "y": row * _ROW_HEIGHT},
+        "position": {"x": x, "y": row * _ROW_HEIGHT},
         "data": data,
     }
 
@@ -445,6 +552,12 @@ def _edge(source: str, target: str, *, label: str, condition: str) -> dict[str, 
         "animated": True,
         "data": {"label": label, "condition": condition},
     }
+
+
+def _transition_label(stage_name: str, step: int) -> str:
+    prefix = "Go to "
+    name = _title(stage_name, f"Step {step}")[: MAX_TRANSITION_LABEL - len(prefix)]
+    return prefix + name.rstrip()
 
 
 def _extraction(fields: list[CapturedFieldSpec]) -> dict[str, Any]:
@@ -464,7 +577,10 @@ def _extraction(fields: list[CapturedFieldSpec]) -> dict[str, Any]:
         return {"extraction_enabled": False}
     return {
         "extraction_enabled": True,
-        "extraction_prompt": "Extract these details from the conversation.",
+        "extraction_prompt": (
+            "Extract these details from the whole conversation so far. Leave a "
+            "value empty if it has not been mentioned yet."
+        ),
         "extraction_variables": variables,
     }
 

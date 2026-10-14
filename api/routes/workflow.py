@@ -1,7 +1,7 @@
 import json
 import re
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Annotated, List, Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -54,12 +54,16 @@ from api.services.configuration.merge import merge_workflow_configuration_secret
 from api.services.configuration.platform.policy import (
     PlatformConfigurationLockedError,
 )
+from api.services.configuration.platform.settings import (
+    PlatformModelsNotConfiguredError,
+)
 from api.services.configuration.resolve import (
     enrich_overrides_with_api_keys,
     resolve_effective_config,
 )
 from api.services.mps_service_key_client import mps_service_key_client
 from api.services.posthog_client import capture_event
+from api.services.rate_limit import RateLimiter, get_rate_limiter
 from api.services.reports import generate_workflow_report_csv
 from api.services.storage import storage_fs
 from api.services.workflow.agent_builder import (
@@ -395,8 +399,13 @@ class CreateWorkflowRunResponse(BaseModel):
 
 class CreateWorkflowTemplateRequest(BaseModel):
     call_type: Literal[CallType.INBOUND.value, CallType.OUTBOUND.value]
-    use_case: str
-    activity_description: str
+    use_case: str = Field(..., max_length=200)
+    activity_description: str = Field(..., max_length=4000)
+
+
+# Each local Agent Builder generation is a paid LLM call on our Vertex project.
+AGENT_BUILDER_LIMIT = 20
+AGENT_BUILDER_WINDOW = timedelta(hours=1)
 
 
 @router.post(
@@ -566,6 +575,7 @@ async def create_workflow_from_template(
     request: CreateWorkflowTemplateRequest,
     user: UserModel = Depends(get_user),
     agent_spec_generator: AgentSpecGenerator = Depends(default_agent_spec_generator),
+    limiter: RateLimiter = Depends(get_rate_limiter),
 ) -> WorkflowResponse:
     """
     Create a new workflow from a natural language template request.
@@ -591,11 +601,26 @@ async def create_workflow_from_template(
             # Platform orgs have no MPS service key; build on our own Vertex.
             if DEPLOYMENT_MODE != "oss" and not user.selected_organization_id:
                 raise HTTPException(status_code=400, detail="No organization selected")
+            # OSS mode may have no organization: fall back to the user, and to
+            # the server's default Vertex placement (policy for None).
+            limit_key = (
+                f"agent-builder:org:{user.selected_organization_id}"
+                if user.selected_organization_id
+                else f"agent-builder:user:{user.provider_id}"
+            )
+            if not await limiter.allow(
+                limit_key, limit=AGENT_BUILDER_LIMIT, window=AGENT_BUILDER_WINDOW
+            ):
+                raise HTTPException(
+                    status_code=429,
+                    detail="Too many agents generated; please try again later.",
+                )
             generated = await build_agent_workflow(
                 AgentBuilderRequest(
                     call_type=request.call_type.upper(),
                     use_case=request.use_case,
                     activity_description=request.activity_description,
+                    organization_id=user.selected_organization_id,
                 ),
                 agent_spec_generator,
             )
@@ -679,8 +704,14 @@ async def create_workflow_from_template(
     except HTTPException:
         raise
     except AgentBuilderError as e:
-        logger.error(f"Agent builder failed: {e!r}")
+        logger.error(f"Agent builder failed: {e!r} (cause: {e.__cause__!r})")
         raise HTTPException(status_code=502, detail=str(e))
+    except PlatformModelsNotConfiguredError as e:
+        logger.error(f"Agent builder unavailable: {e}")
+        raise HTTPException(
+            status_code=503,
+            detail="The Agent Builder is not available on this server right now.",
+        )
     except RequestError as e:
         logger.error(f"MPS API connection error: {e}")
         raise HTTPException(
