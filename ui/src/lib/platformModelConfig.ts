@@ -416,6 +416,11 @@ export function platformOverrideSeed(savedOverride: unknown, workspaceConfigurat
     return mode === "platform" || mode === "byok" || mode === "dograh" ? savedOverride : workspaceConfiguration;
 }
 
+/** Whether *configuration* is a platform-managed one. */
+export function isPlatformConfiguration(configuration: unknown): boolean {
+    return record(configuration).mode === "platform";
+}
+
 /** Whether *configuration* is an override from before platform models. */
 export function isLegacyConfiguration(configuration: unknown): boolean {
     const mode = record(configuration).mode;

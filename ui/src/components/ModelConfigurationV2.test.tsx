@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import ModelConfigurationV2 from "@/components/ModelConfigurationV2";
@@ -70,6 +70,36 @@ describe("Models & voice page", () => {
         expect(body.platform.pipeline.llm.temperature).toBe(0.3);
         await waitFor(() => expect(mocks.toast).toHaveBeenCalledWith("Model settings saved"));
         expect(screen.queryByText(/older provider setup/)).toBeNull();
+    });
+
+    it("shows the saved setup, and no unsaved changes until the form is edited", async () => {
+        mocks.getConfig.mockResolvedValue(response({
+            version: 2,
+            mode: "platform",
+            platform: {
+                pipeline_mode: "realtime",
+                realtime: { model: "google/gemini-live-2.5-flash-native-audio", voice: "Kore", language: "en" },
+            },
+        }));
+        render(<ModelConfigurationV2 />);
+
+        const current = await screen.findByRole("region", { name: "Current setup" });
+        expect(within(current).getByText("Workspace default")).toBeTruthy();
+        expect(within(current).getByText("Kore")).toBeTruthy();
+        expect(within(current).queryByText("Unsaved changes below")).toBeNull();
+
+        fireEvent.click(screen.getByRole("radio", { name: /Charon/ }));
+        expect(within(current).getByText("Kore")).toBeTruthy();
+        expect(within(current).getByText("Unsaved changes below")).toBeTruthy();
+    });
+
+    it("shows no unsaved changes on a workspace with no setup yet", async () => {
+        mocks.getConfig.mockResolvedValue({ data: { configuration: null, effective_configuration: {}, source: "none" } });
+        render(<ModelConfigurationV2 />);
+
+        const current = await screen.findByRole("region", { name: "Current setup" });
+        expect(within(current).getByText("Not set up yet")).toBeTruthy();
+        expect(within(current).queryByText("Unsaved changes below")).toBeNull();
     });
 
     it("is read-only without permission to change model settings", async () => {

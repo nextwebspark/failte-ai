@@ -135,7 +135,6 @@ export function WorkflowModelOverridesSection({
     const [overrideEnabled, setOverrideEnabled] = useState(hasActiveOverride);
     const [isRemovingOverride, setIsRemovingOverride] = useState(false);
     const [editorDirty, setEditorDirty] = useState(false);
-    useUnsavedChanges("model", overrideEnabled && editorDirty);
 
     useEffect(() => {
         setOverrideEnabled(hasActiveOverride);
@@ -156,7 +155,9 @@ export function WorkflowModelOverridesSection({
         ? workspaceConfiguration
         // A pre-v2 `model_overrides` has nothing to describe beyond its age.
         : isLegacyConfiguration(savedV2Override) || hasActiveOverride ? savedV2Override : { mode: "byok" };
+    // Switching the override on or off is unsaved too: calls keep the saved setup.
     const setupDirty = overrideEnabled ? editorDirty || !hasActiveOverride : hasActiveOverride;
+    useUnsavedChanges("model", setupDirty);
 
     const saveV2Override = async (configuration: OrganizationAiModelConfigurationV2) => {
         const nextConfigurations = withoutModelConfigurationOverrides(workflowConfigurations);
