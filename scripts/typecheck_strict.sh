@@ -40,6 +40,7 @@ mypy --strict --follow-imports=silent \
   api/services/tool_integrations \
   api/services/workflow/pipecat_engine_skills.py \
   api/services/workflow/skill_ref_validation.py \
+  api/services/workflow/agent_builder.py \
   api/utils/text.py \
   api/utils/trusted_origins.py \
   api/utils/clock.py \
