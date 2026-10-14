@@ -30,6 +30,7 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { LANGUAGE_DISPLAY_NAMES } from "@/constants/languages";
 import { PostHogEvent } from "@/constants/posthog-events";
+import { useAppConfig } from "@/context/AppConfigContext";
 import { useUserConfig } from "@/context/UserConfigContext";
 import { useAudioPlayback } from "@/hooks/useAudioPlayback";
 
@@ -66,6 +67,7 @@ export const RecordingsDialog = ({
     ttsOverrides,
 }: RecordingsDialogProps) => {
     const { userConfig } = useUserConfig();
+    const platformModels = Boolean(useAppConfig().config?.platformModelsEnabled);
     const [recordings, setRecordings] = useState<RecordingResponseSchema[]>([]);
     const [loading, setLoading] = useState(false);
     const [uploading, setUploading] = useState(false);
@@ -400,7 +402,9 @@ export const RecordingsDialog = ({
                         </div>
                     ) : (
                         <p className="text-xs text-destructive">
-                            No TTS configuration found. Set it in Model Configurations.
+                            {platformModels
+                                ? "This agent speaks with speech-to-speech, which has no separate voice to record with. Choose a text-to-speech voice in Models & voice."
+                                : "No TTS configuration found. Set it in Model Configurations."}
                         </p>
                     )}
                 </div>

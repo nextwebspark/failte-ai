@@ -10,15 +10,10 @@
 
 import type { ReactNode } from "react";
 
+import { AuthHighlights } from "@/components/auth/AuthHighlights";
 import { BrandLogo } from "@/components/BrandLogo";
 import { BRAND } from "@/config/brand";
 
-const HIGHLIGHTS = [
-  "Done-for-you platform & configuration",
-  "Speech-to-speech",
-  "MCP-native",
-  "BYOK - any model",
-];
 
 export function AuthShell({
   children,
@@ -63,14 +58,7 @@ export function AuthShell({
             The Ireland-based voice agent platform.
           </h1>
           <ul className="flex flex-wrap gap-2">
-            {HIGHLIGHTS.map((point) => (
-              <li
-                key={point}
-                className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-xs font-medium text-zinc-300"
-              >
-                {point}
-              </li>
-            ))}
+            <AuthHighlights />
           </ul>
         </div>
 

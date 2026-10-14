@@ -13,6 +13,7 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Progress } from '@/components/ui/progress';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import { useAppConfig } from '@/context/AppConfigContext';
 import logger from '@/lib/logger';
 
 import ExternalProcessingNotice from './ExternalProcessingNotice';
@@ -27,6 +28,8 @@ const ACCEPTED_FILE_TYPES = ['.pdf', '.docx', '.doc', '.txt', '.json', '.md'];
 export default function DocumentUpload({ onUploadSuccess }: DocumentUploadProps) {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [retrievalMode, setRetrievalMode] = useState<string>('full_document');
+  // Platform models have no embedding model yet, so chunked search is off.
+  const platformModels = Boolean(useAppConfig().config?.platformModelsEnabled);
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [dragActive, setDragActive] = useState(false);
@@ -202,16 +205,17 @@ export default function DocumentUpload({ onUploadSuccess }: DocumentUploadProps)
             </label>
             <label
               htmlFor="chunked"
-              className={`flex items-start gap-3 p-3 border rounded-lg cursor-pointer transition-colors ${
-                retrievalMode === 'chunked' ? 'border-primary bg-primary/5' : 'hover:bg-muted/50'
-              }`}
+              className={`flex items-start gap-3 p-3 border rounded-lg transition-colors ${
+                platformModels ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'
+              } ${retrievalMode === 'chunked' ? 'border-primary bg-primary/5' : 'hover:bg-muted/50'}`}
             >
-              <RadioGroupItem value="chunked" id="chunked" className="mt-0.5" />
+              <RadioGroupItem value="chunked" id="chunked" className="mt-0.5" disabled={platformModels} />
               <div>
                 <p className="font-medium text-sm">Chunked Search</p>
                 <p className="text-xs text-muted-foreground">
-                  The document is split into chunks and the most relevant ones are retrieved.
-                  Better for large documents like manuals or policies.
+                  {platformModels
+                    ? "Not available on managed models yet."
+                    : "The document is split into chunks and the most relevant ones are retrieved. Better for large documents like manuals or policies."}
                 </p>
               </div>
             </label>

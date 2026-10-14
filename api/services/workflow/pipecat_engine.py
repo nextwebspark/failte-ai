@@ -60,6 +60,7 @@ import time
 from loguru import logger
 
 from api.services.managed_model_services import MPS_CORRELATION_ID_CONTEXT_KEY
+from api.services.pipecat.realtime.static_greeting import SupportsOpeningLine
 from api.services.workflow import pipecat_engine_callbacks as engine_callbacks
 from api.services.workflow.answer_handling import ANSWER_TERMINAL_REASONS, handle_answer
 from api.services.workflow.disposition_extraction import (
@@ -936,7 +937,22 @@ class PipecatEngine:
 
     async def _handle_start_node(self, node: Node) -> None:
         """Set up context immediately; the answer supervisor owns initial listening."""
+        self._hand_over_opening_line(self.active_agent, node)
         await self._setup_llm_context(node)
+
+    def _hand_over_opening_line(self, agent: AgentRuntime, node: Node) -> None:
+        """Tell a speech-to-speech service the greeting it is about to speak.
+
+        It speaks the text greeting itself, and says it reliably only when its
+        session instructions already name it, so this runs before the node's
+        prompt is applied (which opens the session).
+        """
+        if not self._is_realtime or not isinstance(agent.llm, SupportsOpeningLine):
+            return
+        greeting = self.get_node_greeting(node.id, agent=agent)
+        agent.llm.set_opening_line(
+            greeting[1] if greeting and greeting[0] == "text" else None
+        )
 
     def set_answer_supervisor(self, supervisor, user_aggregator, idle_timeout: float):
         self.answer_supervisor = supervisor
@@ -946,7 +962,9 @@ class PipecatEngine:
     async def handle_answer_supervision(self):
         await handle_answer(self, self.answer_supervisor)
 
-    def get_node_greeting(self, node_id: str) -> Optional[tuple[str, Optional[str]]]:
+    def get_node_greeting(
+        self, node_id: str, *, agent: AgentRuntime | None = None
+    ) -> Optional[tuple[str, Optional[str]]]:
         """Return the greeting info for a node, or None if not configured.
 
         Returns:
@@ -955,15 +973,20 @@ class PipecatEngine:
             - ("audio", recording primary key) for configured audio greetings
             - ("audio_recording_id", recording ID) for call-level audio overrides
             Or None if no greeting is configured.
+
+        Args:
+            node_id: The node, in *agent*'s graph.
+            agent: Whose graph to read; the active agent by default.
         """
-        node = self.active_agent.workflow.nodes.get(node_id)
+        agent = agent or self.active_agent
+        node = agent.workflow.nodes.get(node_id)
         if not node:
             return None
 
         # A programmatic override applies only to the workflow entry greeting;
         # greetings on later nodes continue to use their saved configuration.
         if node.is_start:
-            override = self.active_agent.greeting_override
+            override = agent.greeting_override
             if isinstance(override, dict):
                 override_type = override.get("type")
                 if override_type == "text":
@@ -1733,9 +1756,13 @@ class PipecatEngine:
         self._pending_agent = runtime
         return runtime
 
-    async def prepare_agent(self, runtime: AgentRuntime) -> None:
+    async def prepare_agent(
+        self, runtime: AgentRuntime, *, play_greeting: bool = False
+    ) -> None:
         await self._open_mcp_sessions(runtime)
         node = runtime.workflow.nodes[runtime.workflow.start_node_id]
+        if play_greeting:
+            self._hand_over_opening_line(runtime, node)
         await self._prepare_node(runtime, node)
         runtime.current_node = node
 

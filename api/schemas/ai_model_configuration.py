@@ -5,6 +5,12 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, model_validator
 
+from api.schemas.platform_models import PlatformAIModelConfiguration
+from api.services.configuration.platform.compile import compile_platform_services
+from api.services.configuration.platform.settings import (
+    PlatformVertexSettings,
+    load_platform_vertex_settings,
+)
 from api.services.configuration.registry import (
     DograhEmbeddingsConfiguration,
     DograhLLMService,
@@ -35,6 +41,9 @@ class EffectiveAIModelConfiguration(BaseModel):
     realtime: RealtimeConfig | None = None
     is_realtime: bool = False
     managed_service_version: int | None = None
+    # True when compiled from a platform configuration: the services run on the
+    # operator's Vertex project, whose details must not reach API responses.
+    platform_managed: bool = False
     test_phone_number: str | None = None
     timezone: str | None = None
     last_validated_at: datetime | None = None
@@ -101,9 +110,10 @@ class BYOKAIModelConfiguration(BaseModel):
 
 class OrganizationAIModelConfigurationV2(BaseModel):
     version: Literal[2] = 2
-    mode: Literal["dograh", "byok"]
+    mode: Literal["dograh", "byok", "platform"]
     dograh: DograhManagedAIModelConfiguration | None = None
     byok: BYOKAIModelConfiguration | None = None
+    platform: PlatformAIModelConfiguration | None = None
 
     @model_validator(mode="after")
     def validate_selected_mode(self):
@@ -111,6 +121,8 @@ class OrganizationAIModelConfigurationV2(BaseModel):
             raise ValueError("dograh configuration is required when mode is dograh")
         if self.mode == "byok" and self.byok is None:
             raise ValueError("byok configuration is required when mode is byok")
+        if self.mode == "platform" and self.platform is None:
+            raise ValueError("platform configuration is required when mode is platform")
         return self
 
 
@@ -122,7 +134,22 @@ class OrganizationAIModelConfigurationResponse(BaseModel):
 
 def compile_ai_model_configuration_v2(
     configuration: OrganizationAIModelConfigurationV2,
+    *,
+    platform_settings: PlatformVertexSettings | None = None,
 ) -> EffectiveAIModelConfiguration:
+    """Compile a stored configuration into the services the runtime builds.
+
+    platform_settings overrides the server's Vertex settings for platform
+    configurations; it is ignored for the other modes.
+    """
+    if configuration.mode == "platform":
+        if configuration.platform is None:
+            raise ValueError("platform configuration is required")
+        return _compile_platform_configuration(
+            configuration.platform,
+            platform_settings or load_platform_vertex_settings(),
+        )
+
     if configuration.mode == "dograh":
         if configuration.dograh is None:
             raise ValueError("dograh configuration is required")
@@ -150,6 +177,21 @@ def compile_ai_model_configuration_v2(
         realtime=realtime.realtime,
         embeddings=realtime.embeddings,
         is_realtime=True,
+    )
+
+
+def _compile_platform_configuration(
+    configuration: PlatformAIModelConfiguration,
+    settings: PlatformVertexSettings,
+) -> EffectiveAIModelConfiguration:
+    services = compile_platform_services(configuration, settings)
+    return EffectiveAIModelConfiguration(
+        llm=services.llm,
+        stt=services.stt,
+        tts=services.tts,
+        realtime=services.realtime,
+        is_realtime=services.is_realtime,
+        platform_managed=True,
     )
 
 

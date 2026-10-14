@@ -1768,7 +1768,7 @@ async def test_preparation_timeout_closes_an_attached_candidate(monkeypatch):
     await harness.start()
     candidate = None
 
-    async def stall(runtime):
+    async def stall(runtime, *, play_greeting=False):
         nonlocal candidate
         candidate = runtime
         await asyncio.Event().wait()

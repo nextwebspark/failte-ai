@@ -160,6 +160,28 @@ async def process_document(
     * Users can only process documents in their organization.
     """
 
+    if request.retrieval_mode == "chunked":
+        from api.services.configuration.ai_model_configuration import (
+            get_resolved_ai_model_configuration,
+        )
+
+        resolved = await get_resolved_ai_model_configuration(
+            organization_id=user.selected_organization_id,
+        )
+        if (
+            resolved.effective.platform_managed
+            and resolved.effective.embeddings is None
+        ):
+            # Platform models offer no embedding model yet; fail before the
+            # document is stored rather than in the background task.
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    "Chunked search isn't available on managed models yet. "
+                    "Upload the document in full-document mode."
+                ),
+            )
+
     try:
         # Extract filename from s3_key
         filename = request.s3_key.split("/")[-1]

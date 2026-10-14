@@ -17,6 +17,7 @@ from pipecat.processors.aggregators.llm_response_universal import (
     LLMContextAggregatorPair,
 )
 from pipecat.processors.frame_processor import FrameDirection
+from pipecat.services.google.gemini_live.llm import GeminiLiveLLMService
 from pipecat.services.llm_service import FunctionCallFromLLM
 
 from api.services.pipecat.realtime.gemini_live import DograhGeminiLiveLLMService
@@ -247,7 +248,8 @@ async def test_tts_greeting_sends_exact_static_greeting_prompt_to_gemini():
     assert len(turns) == 1
     assert turns[0].role == "user"
     prompt = turns[0].parts[0].text
-    assert "The phone call has just connected. Greet the caller now:" in prompt
+    assert "The phone call has just connected and nothing has been said yet." in prompt
+    assert "never speak as the caller" in prompt
     assert (
         'Do not add anything before or after it.\n\n"Hi Sam, this is Sarah from Acme."'
         in prompt
@@ -540,3 +542,69 @@ async def test_node_transition_frame_commits_user_transcript_to_context():
     }
     user_aggregator.push_context_frame.assert_awaited_once()
     assert context_aggregation_event.is_set()
+
+
+def _record_connects(monkeypatch, service) -> list[str]:
+    """Record the system instruction each upstream connect is built with."""
+    seen: list[str] = []
+
+    async def fake_connect(self, session_resumption_handle=None):
+        seen.append(self._settings.system_instruction)
+
+    monkeypatch.setattr(GeminiLiveLLMService, "_connect", fake_connect)
+    return seen
+
+
+@pytest.mark.asyncio
+async def test_opening_line_is_named_until_the_greeting_is_sent(monkeypatch):
+    service = _make_service()
+    service._settings.system_instruction = "You are Aoife."
+    seen = _record_connects(monkeypatch, service)
+    service.set_opening_line("Hello from CH Marine.")
+
+    await service._handle_changed_settings({"system_instruction": None})
+    # A retry after a failed first connect still names it.
+    await service._connect()
+
+    assert len(seen) == 2
+    for instruction in seen:
+        assert instruction.startswith("You are Aoife.\n\n# OPENING LINE")
+        assert '"Hello from CH Marine."' in instruction
+    # The setting itself never keeps the section.
+    assert service._settings.system_instruction == "You are Aoife."
+
+    service._context = LLMContext()
+    service._session = _FakeSession()
+    await service.process_frame(
+        TTSSpeakFrame("Hello from CH Marine.", append_to_context=True),
+        FrameDirection.DOWNSTREAM,
+    )
+    service._session = None
+    await service._connect()
+
+    assert seen[-1] == "You are Aoife."
+
+
+@pytest.mark.asyncio
+async def test_opening_line_is_ignored_once_the_call_has_opened(monkeypatch):
+    service = _make_service()
+    service._settings.system_instruction = "Node two."
+    seen = _record_connects(monkeypatch, service)
+    service._handled_initial_context = True
+
+    service.set_opening_line("Hello again.")
+    await service._connect()
+
+    assert seen == ["Node two."]
+
+
+@pytest.mark.asyncio
+async def test_first_session_without_opening_line_keeps_instruction(monkeypatch):
+    service = _make_service()
+    service._settings.system_instruction = "You are Aoife."
+    seen = _record_connects(monkeypatch, service)
+    service.set_opening_line(None)
+
+    await service._handle_changed_settings({"system_instruction": None})
+
+    assert seen == ["You are Aoife."]

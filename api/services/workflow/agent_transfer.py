@@ -143,7 +143,9 @@ class AgentTransferCoordinator:
                     raise AgentBuildError(
                         "destination_not_ready", "Destination did not start"
                     )
-                await engine.prepare_agent(destination)
+                await engine.prepare_agent(
+                    destination, play_greeting=request.play_greeting
+                )
                 # Ready and activated while the call boundary still blocks all
                 # candidate input/output. No shared prompt or tools change yet.
                 if not await engine.activate_agent(

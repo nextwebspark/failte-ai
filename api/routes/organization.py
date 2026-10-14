@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from loguru import logger
 from pydantic import BaseModel, Field, ValidationError
 
+from api import constants
 from api.constants import (
     DEFAULT_CAMPAIGN_RETRY_CONFIG,
     DEFAULT_ORG_CONCURRENCY_LIMIT,
@@ -36,6 +37,10 @@ from api.schemas.organization_preferences import (
     OrganizationPreferences,
     OrganizationPreferencesResponse,
 )
+from api.schemas.platform_models import (
+    ModelConfigurationV2Defaults,
+    PlatformModelPolicy,
+)
 from api.schemas.telephony_config import (
     TelephonyConfigRequest,
     TelephonyConfigurationCreateRequest,
@@ -62,9 +67,15 @@ from api.services.auth.depends import (
 )
 from api.services.auth.permissions import Permission
 from api.services.configuration.ai_model_configuration import (
+    CustomerKeysNotAllowedError,
+    PlatformModelsDisabledError,
     check_for_masked_keys_in_ai_model_configuration_v2,
     compile_ai_model_configuration_v2,
+    compile_for_organization,
     convert_legacy_ai_model_configuration_to_v2,
+    customer_keys_allowed,
+    ensure_configuration_allowed,
+    ensure_platform_choices_allowed,
     get_organization_ai_model_configuration_v2,
     get_resolved_ai_model_configuration,
     mask_ai_model_configuration_v2,
@@ -74,7 +85,22 @@ from api.services.configuration.ai_model_configuration import (
 )
 from api.services.configuration.check_validity import UserConfigurationValidator
 from api.services.configuration.defaults import DEFAULT_SERVICE_PROVIDERS
-from api.services.configuration.masking import is_mask_of, mask_key, mask_user_config
+from api.services.configuration.masking import (
+    is_mask_of,
+    mask_key,
+    mask_user_config,
+    secrets_hidden_for,
+)
+from api.services.configuration.platform.catalog_view import (
+    build_platform_model_catalog,
+)
+from api.services.configuration.platform.policy import (
+    InvalidPlatformPolicyError,
+    PlatformChoiceNotOfferedError,
+    PlatformConfigurationLockedError,
+    get_platform_model_policy,
+    offered_llm_models,
+)
 from api.services.configuration.registry import (
     DOGRAH_MULTILINGUAL_AUTODETECT_LANGUAGES,
     DOGRAH_STT_LANGUAGES,
@@ -362,26 +388,46 @@ async def _model_configuration_v2_response(
         else resolved.organization_configuration
     )
     return OrganizationAIModelConfigurationResponse(
-        configuration=mask_ai_model_configuration_v2(raw_configuration),
-        effective_configuration=mask_user_config(resolved.effective),
+        configuration=mask_ai_model_configuration_v2(
+            raw_configuration, drop_secrets=secrets_hidden_for(user)
+        ),
+        effective_configuration=mask_user_config(
+            resolved.effective, drop_secrets=secrets_hidden_for(user)
+        ),
         source=resolved.source,
     )
 
 
 @router.get(
     "/model-configurations/v2/defaults",
+    response_model=ModelConfigurationV2Defaults,
     dependencies=requires(Permission.AGENTS_READ),
 )
 async def get_model_configuration_v2_defaults(
     user: UserModel = Depends(get_user_with_selected_organization),
-):
+) -> ModelConfigurationV2Defaults:
+    try:
+        policy = await get_platform_model_policy(user.selected_organization_id)
+    except InvalidPlatformPolicyError:
+        # Show the server catalog read-only until support fixes the policy.
+        policy = PlatformModelPolicy(locked=True)
+    catalog = build_platform_model_catalog(
+        enabled=constants.PLATFORM_MODELS_ENABLED,
+        llm_models=offered_llm_models(policy),
+        locked=policy.locked,
+    )
+    if not customer_keys_allowed(user):
+        # Provider schemas describe api_key fields; customers here pick from
+        # the platform catalog only.
+        return ModelConfigurationV2Defaults(platform=catalog)
     byok_default_providers = {
         service: provider
         for service, provider in DEFAULT_SERVICE_PROVIDERS.items()
         if provider != ServiceProviders.DOGRAH.value
     }
-    return {
-        "dograh": {
+    return ModelConfigurationV2Defaults(
+        platform=catalog,
+        dograh={
             "voices": [DOGRAH_DEFAULT_VOICE],
             "allow_custom_input": _dograh_allows_custom_voice(),
             "speeds": list(DOGRAH_SPEED_OPTIONS),
@@ -398,7 +444,7 @@ async def get_model_configuration_v2_defaults(
                 "language": DOGRAH_DEFAULT_LANGUAGE,
             },
         },
-        "byok": {
+        byok={
             "pipeline": {
                 "llm": _byok_provider_schemas(ServiceType.LLM),
                 "tts": _byok_provider_schemas(ServiceType.TTS),
@@ -413,7 +459,7 @@ async def get_model_configuration_v2_defaults(
                 "default_providers": byok_default_providers,
             },
         },
-    }
+    )
 
 
 @router.get(
@@ -476,10 +522,23 @@ async def save_model_configuration_v2(
 ):
     organization_id = user.selected_organization_id
     existing = await get_organization_ai_model_configuration_v2(organization_id)
+    try:
+        ensure_configuration_allowed(request, user=user)
+        await ensure_platform_choices_allowed(
+            request, previous=existing, organization_id=organization_id, user=user
+        )
+    except (
+        CustomerKeysNotAllowedError,
+        PlatformModelsDisabledError,
+        PlatformConfigurationLockedError,
+    ) as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except PlatformChoiceNotOfferedError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     configuration = merge_ai_model_configuration_v2_secrets(request, existing)
     try:
         check_for_masked_keys_in_ai_model_configuration_v2(configuration)
-        effective = compile_ai_model_configuration_v2(configuration)
+        effective = await compile_for_organization(configuration, organization_id)
         await UserConfigurationValidator().validate(
             effective,
             organization_id=organization_id,
@@ -511,9 +570,12 @@ async def preview_model_configuration_v2_migration(
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
     return {
-        "configuration": mask_ai_model_configuration_v2(configuration),
+        "configuration": mask_ai_model_configuration_v2(
+            configuration, drop_secrets=secrets_hidden_for(user)
+        ),
         "effective_configuration": mask_user_config(
-            compile_ai_model_configuration_v2(configuration)
+            compile_ai_model_configuration_v2(configuration),
+            drop_secrets=secrets_hidden_for(user),
         ),
     }
 
@@ -528,6 +590,13 @@ async def migrate_model_configuration_v2(
     user: UserModel = Depends(get_user_with_selected_organization),
 ):
     organization_id = user.selected_organization_id
+    if constants.PLATFORM_MODELS_ENABLED:
+        # The legacy conversion only produces dograh/byok and opens an MPS
+        # billing account; neither belongs on a platform-models server.
+        raise HTTPException(
+            status_code=409,
+            detail="Model configurations are managed by the platform",
+        )
     existing = await get_organization_ai_model_configuration_v2(organization_id)
     if existing is not None and not force:
         raise HTTPException(

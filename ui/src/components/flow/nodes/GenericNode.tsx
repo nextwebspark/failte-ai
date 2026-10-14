@@ -201,6 +201,7 @@ function CanvasPreview({
     onStaleDocuments: (uuids: string[]) => void;
 }) {
     const { config: appConfig } = useAppConfig();
+    const platformModels = Boolean(appConfig?.platformModelsEnabled);
     if (spec.name === "trigger") {
         const endpoint = buildTriggerEndpoints(
             data.trigger_path,
@@ -258,8 +259,9 @@ function CanvasPreview({
     }
 
     if (spec.name === "qa") {
+        // Platform models always run QA on the agent's model.
         const llmSource =
-            data.qa_use_workflow_llm !== false
+            data.qa_use_workflow_llm !== false || platformModels
                 ? "Workflow LLM"
                 : `${data.qa_provider || "openai"}/${data.qa_model || "gpt-4.1"}`;
         const enabled = data.qa_enabled !== false;

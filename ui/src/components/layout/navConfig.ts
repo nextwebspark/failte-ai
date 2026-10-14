@@ -52,7 +52,7 @@ export const NAV_SECTIONS: NavSection[] = [
     items: [
       { title: "Voice agents", url: "/workflow", icon: GitBranch, requires: "agents:read" },
       { title: "Campaigns", url: "/campaigns", icon: Megaphone, requires: "campaigns:read" },
-      { title: "Models", url: "/model-configurations", icon: Cpu, requires: "credentials:write" },
+      { title: "Models & voice", url: "/model-configurations", icon: Cpu, requires: "credentials:write" },
       {
         title: "Telephony",
         url: "/telephony-configurations",
@@ -93,7 +93,7 @@ const PAGE_META: Record<string, PageMeta> = {
   "/workflow/create": { title: "New voice agent", subtitle: "Start from a template or a blank flow" },
   "/campaigns": { title: "Campaigns", subtitle: "Bulk runs across contact lists" },
   "/campaigns/new": { title: "New campaign", subtitle: "Pick an agent and a contact list" },
-  "/model-configurations": { title: "Models", subtitle: "LLM, speech and transcription stacks" },
+  "/model-configurations": { title: "Models & voice", subtitle: "Speech-to-speech or STT → LLM → TTS, voices" },
   "/telephony-configurations": { title: "Telephony", subtitle: "Providers, trunks and numbers" },
   "/tools": { title: "Tools", subtitle: "HTTP and MCP tools agents can call" },
   "/files": { title: "Files", subtitle: "Documents agents can reference" },
