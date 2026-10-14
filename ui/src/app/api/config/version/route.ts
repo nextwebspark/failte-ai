@@ -34,6 +34,7 @@ export async function GET() {
   let deploymentMode = "oss";
   let authProvider = "local";
   let billingProvider = "none";
+  let platformModelsEnabled = false;
   let turnEnabled = false;
   let forceTurnRelay = false;
   let tunnelUrl: string | null = null;
@@ -55,6 +56,7 @@ export async function GET() {
       deploymentMode = data.deployment_mode;
       authProvider = data.auth_provider;
       billingProvider = data.billing_provider ?? "none";
+      platformModelsEnabled = Boolean(data.platform_models_enabled);
       turnEnabled = Boolean(data.turn_enabled);
       forceTurnRelay = Boolean(data.force_turn_relay);
       tunnelUrl = data.tunnel_url ?? null;
@@ -77,6 +79,7 @@ export async function GET() {
     deploymentMode,
     authProvider,
     billingProvider,
+    platformModelsEnabled,
     turnEnabled,
     forceTurnRelay,
     tunnelUrl,

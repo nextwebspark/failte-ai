@@ -20,6 +20,7 @@ from api.services.workflow.node_specs import (
     SPEC_VERSION,
     NodeSpec,
     all_specs,
+    authoring_spec,
     get_spec,
 )
 
@@ -48,7 +49,10 @@ async def list_node_types(
     SDK clients should pin to `spec_version` and warn if the server reports
     a higher version than what they were generated against.
     """
-    return NodeTypesResponse(spec_version=SPEC_VERSION, node_types=all_specs())
+    return NodeTypesResponse(
+        spec_version=SPEC_VERSION,
+        node_types=[authoring_spec(spec) for spec in all_specs()],
+    )
 
 
 @router.get(
@@ -67,4 +71,4 @@ async def get_node_type(
     spec = get_spec(name)
     if spec is None:
         raise HTTPException(status_code=404, detail=f"Unknown node type: {name!r}")
-    return spec
+    return authoring_spec(spec)

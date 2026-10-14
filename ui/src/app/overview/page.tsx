@@ -7,11 +7,13 @@ import { Button } from '@/components/ui/button';
 import { Panel, PanelDescription, PanelTitle } from '@/components/ui/panel';
 import { SectionHeading, SectionHint } from '@/components/ui/section-heading';
 import { BRAND } from "@/config/brand";
+import { useAppConfig } from "@/context/AppConfigContext";
 import { useAuth } from '@/lib/auth';
 
 export default function OverviewPage() {
     const { user, provider } = useAuth();
     const isOSSMode = provider !== 'stack';
+    const platformModels = Boolean(useAppConfig().config?.platformModelsEnabled);
 
     return (
         <div className="page-body">
@@ -45,13 +47,15 @@ export default function OverviewPage() {
                     </Panel>
 
                     <Panel>
-                        <PanelTitle as="h2">Configure Services</PanelTitle>
+                        <PanelTitle as="h2">{platformModels ? "Models & voice" : "Configure Services"}</PanelTitle>
                         <PanelDescription>
-                            Set up your AI services like LLM, TTS, and STT providers
+                            {platformModels
+                                ? "Choose how your agents talk, their voice and language"
+                                : "Set up your AI services like LLM, TTS, and STT providers"}
                         </PanelDescription>
                         <Button asChild size="sm" variant="soft" className="mt-4">
                             <Link href="/model-configurations">
-                                Configure Models
+                                {platformModels ? "Open Models & voice" : "Configure Models"}
                             </Link>
                         </Button>
                     </Panel>

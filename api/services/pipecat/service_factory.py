@@ -385,7 +385,8 @@ def create_stt_service(
 
     logger.info(
         f"Creating STT service: provider={user_config.stt.provider}, "
-        f"model={user_config.stt.model}"
+        f"model={user_config.stt.model}, "
+        f"language={getattr(user_config.stt, 'language', None)}"
         + (f", endpoint={deepgram_base_url}" if deepgram_base_url else "")
     )
 
@@ -730,7 +731,9 @@ def create_tts_service(
 
     logger.info(
         f"Creating TTS service: provider={user_config.tts.provider}, "
-        f"model={user_config.tts.model}"
+        f"model={user_config.tts.model}, "
+        f"voice={getattr(user_config.tts, 'voice', None)}, "
+        f"language={getattr(user_config.tts, 'language', None)}"
         + (f", endpoint={deepgram_base_url}" if deepgram_base_url else "")
     )
 

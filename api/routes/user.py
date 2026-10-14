@@ -30,7 +30,10 @@ from api.services.auth.depends import (
 )
 from api.services.auth.permissions import Permission
 from api.services.configuration.ai_model_configuration import (
+    CustomerKeysNotAllowedError,
     convert_legacy_ai_model_configuration_to_v2,
+    customer_keys_allowed,
+    ensure_customer_keys_allowed,
     get_resolved_ai_model_configuration,
     update_organization_ai_model_configuration_last_validated_at,
     upsert_organization_ai_model_configuration_v2,
@@ -40,7 +43,11 @@ from api.services.configuration.check_validity import (
     UserConfigurationValidator,
 )
 from api.services.configuration.defaults import DEFAULT_SERVICE_PROVIDERS
-from api.services.configuration.masking import check_for_masked_keys, mask_user_config
+from api.services.configuration.masking import (
+    check_for_masked_keys,
+    mask_user_config,
+    secrets_hidden_for,
+)
 from api.services.configuration.merge import merge_user_configurations
 from api.services.configuration.registry import REGISTRY, ServiceType
 from api.services.mps_service_key_client import mps_service_key_client
@@ -89,29 +96,28 @@ class DefaultConfigurationsResponse(BaseModel):
     widget_text_defaults: WidgetTexts
 
 
-@router.get("/configurations/defaults")
-async def get_default_configurations() -> DefaultConfigurationsResponse:
+@router.get("/configurations/defaults", dependencies=requires(Permission.AGENTS_READ))
+async def get_default_configurations(
+    user: UserModel = Depends(get_user),
+) -> DefaultConfigurationsResponse:
+    # Provider schemas describe api_key fields; customers on platform models
+    # pick from the platform catalog instead.
+    show_providers = customer_keys_allowed(user)
+
+    def schemas(service_type: ServiceType) -> dict:
+        if not show_providers:
+            return {}
+        return {
+            provider: model_cls.model_json_schema()
+            for provider, model_cls in REGISTRY[service_type].items()
+        }
+
     configurations = {
-        "llm": {
-            provider: model_cls.model_json_schema()
-            for provider, model_cls in REGISTRY[ServiceType.LLM].items()
-        },
-        "tts": {
-            provider: model_cls.model_json_schema()
-            for provider, model_cls in REGISTRY[ServiceType.TTS].items()
-        },
-        "stt": {
-            provider: model_cls.model_json_schema()
-            for provider, model_cls in REGISTRY[ServiceType.STT].items()
-        },
-        "embeddings": {
-            provider: model_cls.model_json_schema()
-            for provider, model_cls in REGISTRY[ServiceType.EMBEDDINGS].items()
-        },
-        "realtime": {
-            provider: model_cls.model_json_schema()
-            for provider, model_cls in REGISTRY[ServiceType.REALTIME].items()
-        },
+        "llm": schemas(ServiceType.LLM),
+        "tts": schemas(ServiceType.TTS),
+        "stt": schemas(ServiceType.STT),
+        "embeddings": schemas(ServiceType.EMBEDDINGS),
+        "realtime": schemas(ServiceType.REALTIME),
         "default_providers": DEFAULT_SERVICE_PROVIDERS,
         "workflow_configurations": get_default_workflow_configurations(),
         "default_call_dispositions": get_default_call_disposition_options(),
@@ -171,7 +177,9 @@ async def get_user_configurations(
     resolved_config = await get_resolved_ai_model_configuration(
         organization_id=user.selected_organization_id,
     )
-    masked_config = mask_user_config(resolved_config.effective)
+    masked_config = mask_user_config(
+        resolved_config.effective, drop_secrets=secrets_hidden_for(user)
+    )
     if user.selected_organization_id:
         preferences = await get_organization_preferences(user.selected_organization_id)
         if preferences.test_phone_number is not None:
@@ -219,6 +227,20 @@ async def update_user_configurations(
     if incoming_dict:
         if not user.selected_organization_id:
             raise HTTPException(status_code=400, detail="No organization selected")
+        try:
+            ensure_customer_keys_allowed(user)
+        except CustomerKeysNotAllowedError as e:
+            raise HTTPException(status_code=403, detail=str(e)) from e
+        if existing_config.platform_managed:
+            # This legacy endpoint would store the platform services as BYOK,
+            # copying the operator's project onto the organization.
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    "This organization uses platform models. Change models in "
+                    "/organizations/model-configurations/v2."
+                ),
+            )
 
         # Merge via helper
         try:
@@ -269,7 +291,9 @@ async def update_user_configurations(
         )
 
     # Return masked version of updated config
-    masked_config = mask_user_config(user_configurations)
+    masked_config = mask_user_config(
+        user_configurations, drop_secrets=secrets_hidden_for(user)
+    )
     if user.selected_organization_id:
         preferences = await get_organization_preferences(user.selected_organization_id)
         if preferences.test_phone_number is not None:

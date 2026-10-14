@@ -47,7 +47,8 @@ async def test_tts_greeting_sends_exact_static_greeting_prompt():
     assert isinstance(response_event, events.ResponseCreateEvent)
     assert response_event.response.tool_choice == "none"
     prompt = response_event.response.instructions
-    assert "The phone call has just connected. Greet the caller now:" in prompt
+    assert "The phone call has just connected and nothing has been said yet." in prompt
+    assert "never speak as the caller" in prompt
     assert prompt.endswith('"Hi Sam, this is Sarah from Acme."')
     assert service._llm_needs_conversation_setup is False
     service._create_response.assert_not_awaited()

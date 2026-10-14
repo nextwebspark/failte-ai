@@ -3753,6 +3753,10 @@ export type HealthResponse = {
      */
     billing_provider?: string;
     /**
+     * Platform Models Enabled
+     */
+    platform_models_enabled?: boolean;
+    /**
      * Turn Enabled
      */
     turn_enabled: boolean;
@@ -5276,6 +5280,25 @@ export type ModelConfigurationPricingResponse = {
 };
 
 /**
+ * ModelConfigurationV2Defaults
+ */
+export type ModelConfigurationV2Defaults = {
+    /**
+     * Dograh
+     */
+    dograh?: {
+        [key: string]: unknown;
+    } | null;
+    /**
+     * Byok
+     */
+    byok?: {
+        [key: string]: unknown;
+    } | null;
+    platform: PlatformModelCatalog;
+};
+
+/**
  * MoveWorkflowToFolderRequest
  *
  * Move a workflow into a folder, or to "Uncategorized" when null.
@@ -5703,9 +5726,10 @@ export type OrganizationAiModelConfigurationV2 = {
     /**
      * Mode
      */
-    mode: 'dograh' | 'byok';
+    mode: 'dograh' | 'byok' | 'platform';
     dograh?: DograhManagedAiModelConfiguration | null;
     byok?: ByokaiModelConfiguration | null;
+    platform?: PlatformAiModelConfiguration | null;
 };
 
 /**
@@ -6006,6 +6030,342 @@ export type PhoneNumberUpdateRequest = {
     extra_metadata?: {
         [key: string]: unknown;
     } | null;
+};
+
+/**
+ * PlatformAIModelConfiguration
+ */
+export type PlatformAiModelConfiguration = {
+    pipeline_mode?: PlatformPipelineMode;
+    realtime?: PlatformRealtimeChoice | null;
+    pipeline?: PlatformPipelineChoice | null;
+};
+
+/**
+ * PlatformCatalogOption
+ */
+export type PlatformCatalogOption = {
+    /**
+     * Id
+     */
+    id: string;
+    /**
+     * Label
+     */
+    label: string;
+    /**
+     * Description
+     */
+    description?: string | null;
+    /**
+     * Recommended
+     */
+    recommended?: boolean;
+    /**
+     * Gender
+     */
+    gender?: string | null;
+    /**
+     * Preview Url
+     */
+    preview_url?: string | null;
+    /**
+     * Languages
+     */
+    languages?: Array<string> | null;
+    /**
+     * Voice Family
+     */
+    voice_family?: string | null;
+};
+
+/**
+ * PlatformCatalogRange
+ */
+export type PlatformCatalogRange = {
+    /**
+     * Min
+     */
+    min: number;
+    /**
+     * Max
+     */
+    max: number;
+    /**
+     * Step
+     */
+    step: number;
+};
+
+/**
+ * PlatformLLMCatalog
+ */
+export type PlatformLlmCatalog = {
+    /**
+     * Models
+     */
+    models: Array<PlatformCatalogOption>;
+    temperature_range: PlatformCatalogRange;
+    defaults: PlatformLlmDefaults;
+};
+
+/**
+ * PlatformLLMChoice
+ */
+export type PlatformLlmChoice = {
+    /**
+     * Model
+     */
+    model?: string;
+    /**
+     * Temperature
+     */
+    temperature?: number | null;
+};
+
+/**
+ * PlatformLLMDefaults
+ */
+export type PlatformLlmDefaults = {
+    /**
+     * Model
+     */
+    model: string;
+    /**
+     * Temperature
+     */
+    temperature: number | null;
+};
+
+/**
+ * PlatformModeOption
+ */
+export type PlatformModeOption = {
+    id: PlatformPipelineMode;
+    /**
+     * Label
+     */
+    label: string;
+    /**
+     * Description
+     */
+    description: string;
+    /**
+     * Recommended
+     */
+    recommended?: boolean;
+};
+
+/**
+ * PlatformModelCatalog
+ *
+ * Everything a customer may pick on platform models.
+ *
+ * Languages are BCP-47 codes; clients render their display names.
+ */
+export type PlatformModelCatalog = {
+    /**
+     * Enabled
+     */
+    enabled: boolean;
+    /**
+     * Locked
+     */
+    locked?: boolean;
+    default_mode: PlatformPipelineMode;
+    /**
+     * Modes
+     */
+    modes: Array<PlatformModeOption>;
+    realtime: PlatformRealtimeCatalog;
+    pipeline: PlatformPipelineCatalog;
+};
+
+/**
+ * PlatformPipelineCatalog
+ */
+export type PlatformPipelineCatalog = {
+    llm: PlatformLlmCatalog;
+    stt: PlatformSttCatalog;
+    tts: PlatformTtsCatalog;
+};
+
+/**
+ * PlatformPipelineChoice
+ */
+export type PlatformPipelineChoice = {
+    llm?: PlatformLlmChoice;
+    stt?: PlatformSttChoice;
+    tts?: PlatformTtsChoice;
+};
+
+/**
+ * PlatformPipelineMode
+ *
+ * How a platform-managed agent talks.
+ */
+export type PlatformPipelineMode = 'realtime' | 'pipeline';
+
+/**
+ * PlatformRealtimeCatalog
+ */
+export type PlatformRealtimeCatalog = {
+    /**
+     * Models
+     */
+    models: Array<PlatformCatalogOption>;
+    /**
+     * Voices
+     */
+    voices: Array<PlatformCatalogOption>;
+    /**
+     * Languages
+     */
+    languages: Array<string>;
+    defaults: PlatformRealtimeDefaults;
+};
+
+/**
+ * PlatformRealtimeChoice
+ */
+export type PlatformRealtimeChoice = {
+    /**
+     * Model
+     */
+    model?: string;
+    /**
+     * Voice
+     */
+    voice?: string;
+    /**
+     * Language
+     */
+    language?: string;
+};
+
+/**
+ * PlatformRealtimeDefaults
+ */
+export type PlatformRealtimeDefaults = {
+    /**
+     * Model
+     */
+    model: string;
+    /**
+     * Voice
+     */
+    voice: string;
+    /**
+     * Language
+     */
+    language: string;
+};
+
+/**
+ * PlatformSTTCatalog
+ */
+export type PlatformSttCatalog = {
+    /**
+     * Models
+     */
+    models: Array<PlatformCatalogOption>;
+    /**
+     * Languages
+     */
+    languages: Array<string>;
+    defaults: PlatformSttDefaults;
+};
+
+/**
+ * PlatformSTTChoice
+ */
+export type PlatformSttChoice = {
+    /**
+     * Model
+     */
+    model?: string;
+    /**
+     * Language
+     */
+    language?: string;
+};
+
+/**
+ * PlatformSTTDefaults
+ */
+export type PlatformSttDefaults = {
+    /**
+     * Model
+     */
+    model: string;
+    /**
+     * Language
+     */
+    language: string;
+};
+
+/**
+ * PlatformTTSCatalog
+ */
+export type PlatformTtsCatalog = {
+    /**
+     * Models
+     */
+    models: Array<PlatformCatalogOption>;
+    /**
+     * Languages
+     */
+    languages: Array<string>;
+    speed_range: PlatformCatalogRange;
+    /**
+     * Voice Catalog
+     */
+    voice_catalog: string;
+    defaults: PlatformTtsDefaults;
+};
+
+/**
+ * PlatformTTSChoice
+ */
+export type PlatformTtsChoice = {
+    /**
+     * Model
+     */
+    model?: string;
+    /**
+     * Voice
+     */
+    voice?: string;
+    /**
+     * Language
+     */
+    language?: string;
+    /**
+     * Speed
+     */
+    speed?: number;
+};
+
+/**
+ * PlatformTTSDefaults
+ */
+export type PlatformTtsDefaults = {
+    /**
+     * Model
+     */
+    model: string;
+    /**
+     * Voice
+     */
+    voice: string;
+    /**
+     * Language
+     */
+    language: string;
+    /**
+     * Speed
+     */
+    speed: number;
 };
 
 /**
@@ -12413,6 +12773,16 @@ export type RewindTextChatSessionApiV1WorkflowWorkflowIdTextChatSessionsRunIdRew
 
 export type GetDefaultConfigurationsApiV1UserConfigurationsDefaultsGetData = {
     body?: never;
+    headers?: {
+        /**
+         * Authorization
+         */
+        authorization?: string | null;
+        /**
+         * X-Api-Key
+         */
+        'X-API-Key'?: string | null;
+    };
     path?: never;
     query?: never;
     url: '/api/v1/user/configurations/defaults';
@@ -12423,7 +12793,13 @@ export type GetDefaultConfigurationsApiV1UserConfigurationsDefaultsGetErrors = {
      * Not found
      */
     404: unknown;
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
 };
+
+export type GetDefaultConfigurationsApiV1UserConfigurationsDefaultsGetError = GetDefaultConfigurationsApiV1UserConfigurationsDefaultsGetErrors[keyof GetDefaultConfigurationsApiV1UserConfigurationsDefaultsGetErrors];
 
 export type GetDefaultConfigurationsApiV1UserConfigurationsDefaultsGetResponses = {
     /**
@@ -14790,8 +15166,10 @@ export type GetModelConfigurationV2DefaultsApiV1OrganizationsModelConfigurations
     /**
      * Successful Response
      */
-    200: unknown;
+    200: ModelConfigurationV2Defaults;
 };
+
+export type GetModelConfigurationV2DefaultsApiV1OrganizationsModelConfigurationsV2DefaultsGetResponse = GetModelConfigurationV2DefaultsApiV1OrganizationsModelConfigurationsV2DefaultsGetResponses[keyof GetModelConfigurationV2DefaultsApiV1OrganizationsModelConfigurationsV2DefaultsGetResponses];
 
 export type GetModelConfigurationV2ApiV1OrganizationsModelConfigurationsV2GetData = {
     body?: never;
