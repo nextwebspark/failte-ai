@@ -24,6 +24,7 @@ mypy --strict --follow-imports=silent \
   api/services/invitations \
   api/services/membership \
   api/services/rate_limit \
+  api/services/workflow/agent_builder.py \
   api/utils/text.py \
   api/utils/clock.py \
   api/utils/secure_token.py

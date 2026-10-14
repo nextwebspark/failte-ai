@@ -10,6 +10,7 @@ from httpx import HTTPStatusError, RequestError
 from loguru import logger
 from pydantic import BaseModel, Field, ValidationError
 
+from api import constants
 from api.constants import DEPLOYMENT_MODE
 from api.db import db_client
 from api.db.agent_trigger_client import TriggerPathConflictError
@@ -61,6 +62,13 @@ from api.services.mps_service_key_client import mps_service_key_client
 from api.services.posthog_client import capture_event
 from api.services.reports import generate_workflow_report_csv
 from api.services.storage import storage_fs
+from api.services.workflow.agent_builder import (
+    AgentBuilderError,
+    AgentBuilderRequest,
+    AgentSpecGenerator,
+    build_agent_workflow,
+    default_agent_spec_generator,
+)
 from api.services.workflow.configuration_policy import (
     ExternalPBXConfigurationDisabledError,
     WorkflowConfigurationNotFoundError,
@@ -557,14 +565,16 @@ async def create_workflow(
 async def create_workflow_from_template(
     request: CreateWorkflowTemplateRequest,
     user: UserModel = Depends(get_user),
+    agent_spec_generator: AgentSpecGenerator = Depends(default_agent_spec_generator),
 ) -> WorkflowResponse:
     """
     Create a new workflow from a natural language template request.
 
     This endpoint:
-    1. Uses mps_service_key_client to call MPS workflow API
-    2. Passes organization ID (authenticated mode) or created_by (OSS mode)
-    3. Creates the workflow in the database
+    1. Generates the workflow: locally with Gemini on the platform's Vertex
+       project when platform models are enabled, otherwise via the MPS
+       workflow API (passing organization ID, or created_by in OSS mode)
+    2. Creates the workflow in the database
 
     Args:
         request: The template creation request with call_type, use_case, and activity_description
@@ -577,8 +587,20 @@ async def create_workflow_from_template(
         HTTPException: If MPS API call fails
     """
     try:
-        # Call MPS API to generate workflow using the client
-        if DEPLOYMENT_MODE == "oss":
+        if constants.PLATFORM_MODELS_ENABLED:
+            # Platform orgs have no MPS service key; build on our own Vertex.
+            if DEPLOYMENT_MODE != "oss" and not user.selected_organization_id:
+                raise HTTPException(status_code=400, detail="No organization selected")
+            generated = await build_agent_workflow(
+                AgentBuilderRequest(
+                    call_type=request.call_type.upper(),
+                    use_case=request.use_case,
+                    activity_description=request.activity_description,
+                ),
+                agent_spec_generator,
+            )
+            workflow_data = generated.as_workflow_data()
+        elif DEPLOYMENT_MODE == "oss":
             workflow_data = await mps_service_key_client.call_workflow_api(
                 call_type=request.call_type.upper(),
                 use_case=request.use_case,
@@ -656,6 +678,9 @@ async def create_workflow_from_template(
 
     except HTTPException:
         raise
+    except AgentBuilderError as e:
+        logger.error(f"Agent builder failed: {e!r}")
+        raise HTTPException(status_code=502, detail=str(e))
     except RequestError as e:
         logger.error(f"MPS API connection error: {e}")
         raise HTTPException(
