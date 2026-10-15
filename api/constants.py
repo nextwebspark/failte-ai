@@ -255,7 +255,9 @@ ENABLE_TELEMETRY = os.getenv("ENABLE_TELEMETRY", "true").lower() == "true"
 
 
 def _get_version() -> str:
-    """Read version from pyproject.toml."""
+    """Read version from the APP_VERSION env (set in release images), else pyproject.toml."""
+    if env_version := os.getenv("APP_VERSION"):
+        return env_version
     try:
         import tomllib
 
@@ -267,7 +269,7 @@ def _get_version() -> str:
         return "dev"
 
 
-# Application version (read from pyproject.toml)
+# Application version (APP_VERSION env, else pyproject.toml)
 APP_VERSION = _get_version()
 
 # Country code mapping: ISO country code -> international dialing prefix

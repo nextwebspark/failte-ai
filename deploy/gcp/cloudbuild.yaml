@@ -1,16 +1,25 @@
-# Builds the LightMove.ai images (api, ui, fallcha-tools) for linux/amd64 and
-# pushes them to Artifact Registry. One submission, one source upload.
+# Builds the LightMove.ai release images (api, ui, fallcha-tools) for
+# linux/amd64 and pushes them to Artifact Registry. One submission, one source
+# upload. Every image of a release carries the same version tag.
+#
+# Normally run by .github/workflows/release.yml. By hand:
 #
 #   gcloud builds submit --config=deploy/gcp/cloudbuild.yaml \
-#     --substitutions=_TAG=$(git rev-parse --short HEAD) --project=dograh-eu
+#     --substitutions=_VERSION=0.1.0,_GIT_SHA=$(git rev-parse --short HEAD) \
+#     --project=dograh-eu
 #
-# The API image is the long pole: it installs pipecat with ~18 extras plus a
-# static ffmpeg build. Expect 20-40 minutes on the first build.
+# There is no `latest` tag: the app VM pins LIGHTMOVE_VERSION, so a moving tag
+# would only invite drift. The API image is the long pole: it installs pipecat
+# with ~18 extras plus a static ffmpeg build. Expect 20-40 minutes.
 
 substitutions:
   _REGION: europe-west1
   _REPO: dograh
-  _TAG: latest
+  # Release version, X.Y.Z without the leading v. Required.
+  _VERSION: ''
+  # Short commit SHA, an extra tag for tracing an image back to its commit.
+  # `gcloud builds submit` does not populate SHORT_SHA, so it is passed in.
+  _GIT_SHA: ''
 
 options:
   machineType: E2_HIGHCPU_8
@@ -20,18 +29,31 @@ options:
 timeout: 3600s
 
 images:
-  - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/dograh-api:${_TAG}'
-  - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/dograh-api:latest'
-  - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/dograh-ui:${_TAG}'
-  - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/dograh-ui:latest'
-  - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/fallcha-tools:${_TAG}'
-  - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/fallcha-tools:latest'
+  - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/dograh-api:${_VERSION}'
+  - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/dograh-api:${_GIT_SHA}'
+  - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/dograh-ui:${_VERSION}'
+  - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/dograh-ui:${_GIT_SHA}'
+  - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/fallcha-tools:${_VERSION}'
+  - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/fallcha-tools:${_GIT_SHA}'
 
 steps:
+  # Fail in seconds, not after the long API build, when the version or SHA is
+  # missing or malformed.
+  # ($$ is a literal $ to Cloud Build; a bare $ would be read as a substitution.)
+  - id: check-substitutions
+    name: bash:5.2
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        [[ "${_VERSION}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$$ ]] || { echo "_VERSION must be X.Y.Z, got '${_VERSION}'"; exit 1; }
+        [[ "${_GIT_SHA}" =~ ^[0-9a-f]{7,40}$$ ]] || { echo "_GIT_SHA must be a commit SHA, got '${_GIT_SHA}'"; exit 1; }
+
   # Build the UI first — it is the faster of the two, so a Dockerfile mistake
   # surfaces in minutes rather than after the long API build.
   - id: ui
     name: gcr.io/cloud-builders/docker
+    waitFor: ['check-substitutions']
     # Both Dockerfiles use `RUN --mount=type=cache`, which is a BuildKit
     # feature. Without this the build fails with "the --mount option requires
     # BuildKit".
@@ -41,9 +63,9 @@ steps:
       - -f
       - ui/Dockerfile
       - -t
-      - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/dograh-ui:${_TAG}'
+      - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/dograh-ui:${_VERSION}'
       - -t
-      - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/dograh-ui:latest'
+      - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/dograh-ui:${_GIT_SHA}'
       - .
 
   - id: api
@@ -53,22 +75,25 @@ steps:
       - build
       - -f
       - api/Dockerfile
+      # Served as `version` by /api/v1/health; deploy.yml checks it.
+      - --build-arg
+      - 'APP_VERSION=${_VERSION}'
       - -t
-      - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/dograh-api:${_TAG}'
+      - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/dograh-api:${_VERSION}'
       - -t
-      - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/dograh-api:latest'
+      - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/dograh-api:${_GIT_SHA}'
       - .
 
   # The tools service builds from its own directory (tools/Dockerfile) and
   # does not need the pipecat submodule. Runs in parallel with the others.
   - id: tools
     name: gcr.io/cloud-builders/docker
-    waitFor: ['-']
+    waitFor: ['check-substitutions']
     env: ['DOCKER_BUILDKIT=1']
     args:
       - build
       - -t
-      - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/fallcha-tools:${_TAG}'
+      - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/fallcha-tools:${_VERSION}'
       - -t
-      - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/fallcha-tools:latest'
+      - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/fallcha-tools:${_GIT_SHA}'
       - tools

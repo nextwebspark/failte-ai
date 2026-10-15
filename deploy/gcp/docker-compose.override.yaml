@@ -14,6 +14,10 @@
 #   export COMPOSE_FILE=docker-compose.yaml:deploy/gcp/docker-compose.override.yaml
 #
 # Requires Compose v2.24+ for the `!reset` / `!override` merge tags.
+#
+# Images are pinned to one release version: LIGHTMOVE_VERSION in .env (X.Y.Z,
+# no leading v), written by deploy/gcp/deploy.sh. The api, ui and fallcha-tools
+# images of a release are built together by deploy/gcp/cloudbuild.yaml.
 
 services:
   # ---------------------------------------------------------------------------
@@ -43,6 +47,7 @@ services:
   # ---------------------------------------------------------------------------
 
   api:
+    image: "${REGISTRY:?REGISTRY is required}/dograh-api:${LIGHTMOVE_VERSION:?LIGHTMOVE_VERSION is required (set by deploy/gcp/deploy.sh)}"
     # Upstream sets no restart policy on the core services, so after the
     # dograh-dev-hours 19:00 stop only the sidecars came back at 08:00.
     restart: unless-stopped
@@ -71,7 +76,9 @@ services:
   # /oauth/<provider>/callback to it.
   # ---------------------------------------------------------------------------
   fallcha-tools:
-    image: "${REGISTRY:?REGISTRY is required}/fallcha-tools:${FALLCHA_TOOLS_TAG:-latest}"
+    image: "${REGISTRY:?REGISTRY is required}/fallcha-tools:${LIGHTMOVE_VERSION:?LIGHTMOVE_VERSION is required (set by deploy/gcp/deploy.sh)}"
+    # Always the released image, never a local build from ./tools.
+    build: !reset null
     restart: unless-stopped
     # TOOLS_ENCRYPTION_KEYS, TOOLS_PUBLIC_BASE_URL, TOOLS_UI_RETURN_URL.
     # Written from Secret Manager by configure-env.sh; see tools.env.example.
@@ -131,10 +138,14 @@ services:
 
   # Same reason as api: survive the scheduled VM stop/start and daemon restarts.
   ui:
+    image: "${REGISTRY:?REGISTRY is required}/dograh-ui:${LIGHTMOVE_VERSION:?LIGHTMOVE_VERSION is required (set by deploy/gcp/deploy.sh)}"
     restart: unless-stopped
   nginx:
     restart: unless-stopped
   redis:
     restart: unless-stopped
   minio:
+    # The root file prefixes this with REGISTRY, which here is Artifact
+    # Registry, where nothing mirrors MinIO. Pull it from Docker Hub instead.
+    image: dograhai/minio:2026.09.22
     restart: unless-stopped
