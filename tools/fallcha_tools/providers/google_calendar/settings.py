@@ -32,12 +32,12 @@ class CalendarConfig(BaseModel):
         default="Europe/Dublin", description="IANA time zone of the business."
     )
     event_summary_prefix: str = Field(
-        default="Fallcha.ai call",
+        default="LightMove.ai call",
         max_length=200,
         description="Event title prefix; the caller's name is appended.",
     )
     booked_by_line: str = Field(
-        default="Booked by the Fallcha.ai voice agent.",
+        default="Booked by the LightMove.ai voice agent.",
         max_length=200,
         description="First line of the event description.",
     )

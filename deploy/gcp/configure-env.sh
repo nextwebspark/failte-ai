@@ -100,7 +100,7 @@ if [[ -n "$RESEND_KEY" ]]; then
   set_key RESEND_API_KEY "$RESEND_KEY"
   # Must be on a domain verified in Resend; onboarding@resend.dev only reaches
   # the Resend account owner's own address.
-  set_key EMAIL_FROM "${DOGRAH_EMAIL_FROM:?DOGRAH_EMAIL_FROM is required with Resend, e.g. 'Fallcha.ai <no-reply@mail.example.com>'}"
+  set_key EMAIL_FROM "${DOGRAH_EMAIL_FROM:?DOGRAH_EMAIL_FROM is required with Resend, e.g. 'LightMove.ai <no-reply@mail.example.com>'}"
 fi
 
 # Workspace credentials at rest (api). Opt-in like billing: once set, never

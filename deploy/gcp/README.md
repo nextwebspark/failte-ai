@@ -1,4 +1,4 @@
-# Fallcha.ai on GCP (europe-west1)
+# LightMove.ai on GCP (europe-west1)
 
 Two VMs in `europe-west1-b`, Cloud SQL for Postgres, GCS for call recordings.
 Runs the standard Compose stack via the repo's own `setup_remote.sh` installer,
@@ -362,10 +362,10 @@ RTP_END=10120
 INBOUND_MODE=echo             # switch to `stasis` once echo works
 ```
 
-`DOGRAH_WS_URI` must carry **no query string** — Fallcha.ai appends per-call
+`DOGRAH_WS_URI` must carry **no query string** — LightMove.ai appends per-call
 parameters itself.
 
-Then configure the telephony row in the Fallcha.ai UI: ARI provider at
+Then configure the telephony row in the LightMove.ai UI: ARI provider at
 `http://<sip-internal-ip>:8088`, Stasis app name exactly matching both the
 `ari.conf` user section and the `websocket_client.conf` section name.
 
@@ -381,7 +381,7 @@ printf 'sk_test_...' | gcloud secrets create dograh-stripe-secret-key --data-fil
 printf 'whsec_...'   | gcloud secrets create dograh-stripe-webhook-secret --data-file=- --project=dograh-eu
 printf 're_...'      | gcloud secrets create dograh-resend-api-key --data-file=- --project=dograh-eu
 
-DOGRAH_SQL_IP=<ip> DOGRAH_EMAIL_FROM='Fallcha.ai <no-reply@mail.<domain>>' \
+DOGRAH_SQL_IP=<ip> DOGRAH_EMAIL_FROM='LightMove.ai <no-reply@mail.<domain>>' \
   ./deploy/gcp/configure-env.sh
 docker compose up -d api
 ```

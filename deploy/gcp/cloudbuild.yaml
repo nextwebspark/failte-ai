@@ -1,4 +1,4 @@
-# Builds the Fallcha.ai images (api, ui, fallcha-tools) for linux/amd64 and
+# Builds the LightMove.ai images (api, ui, fallcha-tools) for linux/amd64 and
 # pushes them to Artifact Registry. One submission, one source upload.
 #
 #   gcloud builds submit --config=deploy/gcp/cloudbuild.yaml \

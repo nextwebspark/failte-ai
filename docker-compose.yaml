@@ -286,7 +286,7 @@ services:
       # warnings). "none" only logs messages, links included. Use "resend" or
       # "smtp" in production.
       EMAIL_PROVIDER: "${EMAIL_PROVIDER:-none}"
-      EMAIL_FROM: "${EMAIL_FROM:-Fallcha.ai <no-reply@localhost>}"
+      EMAIL_FROM: "${EMAIL_FROM:-LightMove.ai <no-reply@localhost>}"
       RESEND_API_KEY: "${RESEND_API_KEY:-}"
       SMTP_HOST: "${SMTP_HOST:-}"
       SMTP_PORT: "${SMTP_PORT:-587}"

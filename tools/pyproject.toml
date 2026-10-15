@@ -1,7 +1,7 @@
 [project]
 name = "fallcha-tools"
 version = "0.1.0"
-description = "Fallcha.ai tools service: hosted third-party tool providers exposed over MCP."
+description = "LightMove.ai tools service: hosted third-party tool providers exposed over MCP."
 requires-python = ">=3.13"
 dependencies = [
     "fastapi>=0.135,<0.136",

@@ -1,15 +1,15 @@
 # Security Policy
 
-At Fallcha.ai we look forward to working with security researchers across the world to keep Fallcha.ai and our users safe. If you have found an issue in any of our services, please reach out to us.
+At LightMove.ai we look forward to working with security researchers across the world to keep LightMove.ai and our users safe. If you have found an issue in any of our services, please reach out to us.
 
 ## Supported Versions
 We always recommend using the latest versions of services to ensure you get all security updates
 
 ## Reporting a Vulnerability
 
-If you believe you have found a security vulnerability within Fallcha.ai, please let us know right away. We'll try and fix the problem as soon as possible.
+If you believe you have found a security vulnerability within LightMove.ai, please let us know right away. We'll try and fix the problem as soon as possible.
 
-**Do not report vulnerabilities using public GitHub issues**. Instead, email [security@fallcha.ai](mailto:security@fallcha.ai).
+**Do not report vulnerabilities using public GitHub issues**. Instead, email [security@lightmove.ai](mailto:security@lightmove.ai).
 
 Once we've received your email we'll keep you updated as we fix the vulnerability.
 
@@ -17,4 +17,4 @@ If the vulnerability is in code inherited from upstream [Dograh](https://github.
 
 ## Thanks
 
-Thank you for keeping Fallcha.ai and our users safe. 🙇
+Thank you for keeping LightMove.ai and our users safe. 🙇

@@ -1,6 +1,6 @@
-# Fallcha.ai - Project Overview
+# LightMove.ai - Project Overview
 
-Fallcha.ai is a voice AI platform for building and deploying conversational AI agents with telephony and WebRTC support.
+LightMove.ai is a voice AI platform for building and deploying conversational AI agents with telephony and WebRTC support.
 It is a private fork of the open-source [Dograh](https://github.com/dograh-hq/dograh) project (BSD 2-Clause), so many code identifiers still use the `dograh` name.
 
 ## Project Structure
