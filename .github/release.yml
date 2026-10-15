@@ -1,9 +1,9 @@
+# Release-note categories for `gh release create --generate-notes`
+# (.github/workflows/release.yml). Labels come from pr-conventional-labeler.yml.
 changelog:
   exclude:
     labels:
       - chore
-      - "autorelease: pending"
-      - "autorelease: tagged"
   categories:
     - title: Features
       labels:
