@@ -59,7 +59,9 @@ class _FakeSession:
 
 
 def _sender() -> ResendEmailSender:
-    return ResendEmailSender(SecretStr("re_test"), "LightMove.ai <onboarding@resend.dev>")
+    return ResendEmailSender(
+        SecretStr("re_test"), "LightMove.ai <onboarding@resend.dev>"
+    )
 
 
 async def test_send_posts_message_with_bearer_key() -> None:
