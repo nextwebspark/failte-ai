@@ -1,0 +1,163 @@
+name: Release
+
+# Cuts a LightMove.ai release from the head of main:
+#   1. ci       — the full CI suite (ci.yml, every suite forced on)
+#   2. version  — next vX.Y.Z from the latest tag and the chosen bump
+#                 (v0.1.0 when no release exists yet)
+#   3. build    — api, ui and fallcha-tools images via Cloud Build, tagged X.Y.Z
+#   4. publish  — tag vX.Y.Z + GitHub Release with generated notes
+#
+# The tag is created only after the images exist, so a failed build never
+# burns a version number. Deploying is a separate, deliberate step: run the
+# Deploy workflow with the new version.
+#
+# Needs repo variables GCP_WIF_PROVIDER and GCP_DEPLOY_SA (deploy/gcp/README.md
+# "Releases and deploys").
+
+on:
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: Version part to bump (ignored for the first release, v0.1.0)
+        type: choice
+        options: [patch, minor, major]
+        default: patch
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+env:
+  GCP_PROJECT: dograh-eu
+
+jobs:
+  guard:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Releases are cut from main only
+        if: github.ref != 'refs/heads/main'
+        run: |
+          echo "::error::Run Release from main (got ${GITHUB_REF})."
+          exit 1
+
+  ci:
+    needs: guard
+    uses: ./.github/workflows/ci.yml
+    with:
+      run-all: true
+    permissions:
+      contents: read
+      pull-requests: read
+
+  version:
+    needs: guard
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      version: ${{ steps.next.outputs.version }}
+      previous: ${{ steps.next.outputs.previous }}
+      short_sha: ${{ steps.next.outputs.short_sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Compute next version
+        id: next
+        env:
+          BUMP: ${{ inputs.bump }}
+        run: |
+          # Only our own vX.Y.Z tags; upstream's dograh-v* tags are ignored.
+          previous="$(git tag --list 'v[0-9]*' --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -1 || true)"
+          if [[ -z "$previous" ]]; then
+            version="0.1.0"
+          else
+            IFS=. read -r major minor patch <<< "${previous#v}"
+            case "$BUMP" in
+              major) version="$((major + 1)).0.0" ;;
+              minor) version="${major}.$((minor + 1)).0" ;;
+              patch) version="${major}.${minor}.$((patch + 1))" ;;
+              *) echo "::error::unknown bump '$BUMP'"; exit 1 ;;
+            esac
+          fi
+          if git ls-remote --exit-code --tags origin "refs/tags/v${version}" >/dev/null; then
+            echo "::error::Tag v${version} already exists."
+            exit 1
+          fi
+          {
+            echo "version=${version}"
+            echo "previous=${previous}"
+            echo "short_sha=$(git rev-parse --short=12 HEAD)"
+          } >> "$GITHUB_OUTPUT"
+          echo "### Release v${version}" >> "$GITHUB_STEP_SUMMARY"
+          echo "Previous: ${previous:-none} · bump: ${BUMP} · commit: $(git rev-parse --short=12 HEAD)" >> "$GITHUB_STEP_SUMMARY"
+
+  build:
+    needs: [ci, version]
+    runs-on: ubuntu-latest
+    timeout-minutes: 80
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+      SHORT_SHA: ${{ needs.version.outputs.short_sha }}
+    steps:
+      - name: Checkout (with pipecat submodule — part of the api build context)
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOY_SA }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      # Submitted async and polled: streaming Cloud Build logs from CI needs
+      # broader log permissions, and the console link is better for reading.
+      - name: Build images with Cloud Build
+        run: |
+          build_id="$(gcloud builds submit . \
+            --project "$GCP_PROJECT" \
+            --config deploy/gcp/cloudbuild.yaml \
+            --substitutions "_VERSION=${VERSION},_GIT_SHA=${SHORT_SHA}" \
+            --async --format 'value(id)')"
+          url="https://console.cloud.google.com/cloud-build/builds/${build_id}?project=${GCP_PROJECT}"
+          echo "Cloud Build: ${url}"
+          echo "Cloud Build: ${url}" >> "$GITHUB_STEP_SUMMARY"
+          while true; do
+            status="$(gcloud builds describe "$build_id" --project "$GCP_PROJECT" --format 'value(status)')"
+            case "$status" in
+              SUCCESS) echo "Build succeeded."; break ;;
+              QUEUED|PENDING|WORKING) echo "$(date -u +%H:%M:%S) ${status}"; sleep 30 ;;
+              *) echo "::error::Cloud Build ${build_id} ended with ${status} — ${url}"; exit 1 ;;
+            esac
+          done
+
+  publish:
+    needs: [version, build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+      PREVIOUS: ${{ needs.version.outputs.previous }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Tag and publish the GitHub Release
+        run: |
+          args=(--repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "v${VERSION}" --generate-notes)
+          [[ -n "$PREVIOUS" ]] && args+=(--notes-start-tag "$PREVIOUS")
+          gh release create "v${VERSION}" "${args[@]}"
+          {
+            echo "Published **v${VERSION}**. Images: \`dograh-api\`, \`dograh-ui\`, \`fallcha-tools\` tagged \`${VERSION}\`."
+            echo ""
+            echo "To deploy: Actions → Deploy → Run workflow → version \`${VERSION}\`."
+          } >> "$GITHUB_STEP_SUMMARY"

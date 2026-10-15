@@ -170,6 +170,11 @@ COPY --chown=dograh:dograh ./docs ./docs
 
 ENV PYTHONPATH=/app
 
+# Release version (X.Y.Z), passed in by deploy/gcp/cloudbuild.yaml. Declared
+# late so a new version does not invalidate the dependency layers above.
+ARG APP_VERSION=dev
+ENV APP_VERSION=${APP_VERSION}
+
 # Disable file logging in Docker - logs go to stdout for docker logs
 ENV LOG_TO_FILE=false
 
