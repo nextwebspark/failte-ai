@@ -2,7 +2,7 @@ name: PR Conventional Labeler
 
 # Labels each PR with its conventional-commit type (feat, fix, docs, perf,
 # refactor, chore) derived from the PR title. These labels drive the changelog
-# categories in .github/release.yml when release-please generates notes.
+# categories in .github/release.yml when release.yml generates release notes.
 # chore is labeled but excluded from the changelog (see .github/release.yml),
 # preserving the previous "chore hidden" behavior.
 

@@ -1,0 +1,137 @@
+name: CI
+
+# The single merge gate. Every PR (to main or to a feature branch) runs the
+# suites its changes touch;
+# `ci-ok` is the one check to watch (and to mark required if branch protection
+# becomes available). Path-skipped suites count as passing, so a docs-only PR
+# is not stuck waiting for checks that never start.
+#
+# release.yml calls this with run-all: true, so nothing is released without
+# the full suite passing on the exact commit being built.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_call:
+    inputs:
+      run-all:
+        description: Run every suite regardless of changed paths
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  # Distinct from the caller's group when run from release.yml (a shared
+  # group between caller and callee deadlocks).
+  group: ci-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  changes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      api: ${{ inputs.run-all || steps.filter.outputs.api == 'true' }}
+      ui: ${{ inputs.run-all || steps.filter.outputs.ui == 'true' }}
+      tools: ${{ inputs.run-all || steps.filter.outputs.tools == 'true' }}
+      drift: ${{ inputs.run-all || steps.filter.outputs.drift == 'true' }}
+    steps:
+      - uses: actions/checkout@v4
+        if: ${{ !inputs.run-all }}
+      - uses: dorny/paths-filter@v3
+        id: filter
+        if: ${{ !inputs.run-all }}
+        with:
+          # `pipecat` (no glob) is the submodule pointer itself, which is what
+          # changes on a submodule bump.
+          filters: |
+            api:
+              - "api/**"
+              - "pipecat"
+              - "pipecat/**"
+              - "scripts/**"
+              - ".github/workflows/api-tests.yml"
+              - ".github/workflows/ci.yml"
+            ui:
+              - "ui/**"
+              - ".github/workflows/ci.yml"
+            tools:
+              - "tools/**"
+              - ".github/workflows/tools-tests.yml"
+              - ".github/workflows/ci.yml"
+            drift:
+              - "api/**"
+              - "ui/**"
+              - "pipecat"
+              - "pipecat/**"
+              - "scripts/dump_docs_openapi.py"
+              - "scripts/format.sh"
+              - "docs/api-reference/openapi.json"
+              - ".github/workflows/pre-pr-drift-check.yml"
+              - ".github/workflows/ci.yml"
+
+  api-tests:
+    needs: changes
+    if: needs.changes.outputs.api == 'true'
+    uses: ./.github/workflows/api-tests.yml
+
+  drift-check:
+    needs: changes
+    if: needs.changes.outputs.drift == 'true'
+    uses: ./.github/workflows/pre-pr-drift-check.yml
+
+  tools-tests:
+    needs: changes
+    if: needs.changes.outputs.tools == 'true'
+    uses: ./.github/workflows/tools-tests.yml
+
+  ui-checks:
+    needs: changes
+    if: needs.changes.outputs.ui == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: ui
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node 22 (matches ui/Dockerfile)
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Unit tests
+        run: npm test
+
+      # Also the type check: next build fails on TypeScript errors.
+      - name: Production build
+        run: npm run build
+
+  ci-ok:
+    needs: [changes, api-tests, drift-check, tools-tests, ui-checks]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: All selected suites passed
+        env:
+          RESULTS: ${{ toJSON(needs) }}
+        run: |
+          echo "$RESULTS" | jq -r 'to_entries[] | "\(.key): \(.value.result)"'
+          if echo "$RESULTS" | jq -e 'to_entries | any(.value.result == "failure" or .value.result == "cancelled")' >/dev/null; then
+            echo "::error::One or more CI suites failed or were cancelled."
+            exit 1
+          fi

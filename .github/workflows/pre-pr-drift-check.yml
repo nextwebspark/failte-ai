@@ -1,24 +1,11 @@
 name: Pre-PR drift check
 
+# Called by ci.yml (the merge gate); not triggered on its own.
 on:
-  pull_request:
-    branches: [main]
-    paths:
-      - "api/**"
-      - "ui/**"
-      - "pipecat/**"
-      - "scripts/dump_docs_openapi.py"
-      - "scripts/format.sh"
-      - "docs/api-reference/openapi.json"
-      - ".github/workflows/pre-pr-drift-check.yml"
-
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  workflow_call:
 
 jobs:
   drift-check:
-    if: ${{ !startsWith(github.head_ref, 'release-please--') }}
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
@@ -87,19 +74,3 @@ jobs:
             exit 1
           fi
           echo "OpenAPI spec is in sync."
-
-  notify-slack-failure:
-    needs: drift-check
-    if: ${{ always() && needs.drift-check.result == 'failure' }}
-    runs-on: ubuntu-latest
-    env:
-      SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
-    steps:
-      - name: Send Slack notification - Failure
-        if: env.SLACK_WEBHOOK_URL != ''
-        uses: slackapi/slack-github-action@v1.26.0
-        with:
-          payload: |
-            {
-              "text": "❌ Dograh pre-PR drift check failed on ${{ github.ref_name }} by ${{ github.actor }} - <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Logs>"
-            }
