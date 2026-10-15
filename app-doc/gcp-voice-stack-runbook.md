@@ -48,6 +48,13 @@ SSH is via IAP: `gcloud compute ssh dograh-app --zone=europe-west1-b --tunnel-th
 
 ## 2. How the stack is deployed
 
+> **Superseded for deploys (2026-10-15).** Production now changes only through
+> the **Release** and **Deploy** GitHub Actions workflows, with versions `vX.Y.Z`
+> from `v0.1.0`. The install moves to a git checkout at `/opt/lightmove/dograh`.
+> The patch-mount loop below is retired: its four files are committed and ship in
+> the images. Current procedure: `deploy/gcp/README.md`, "Releases and deploys".
+> The rest of this section describes the 2026-09 state.
+
 **The app VM runs the standard Compose stack plus a GCP overlay.** `.env` pins both
 so a bare `docker compose` command can never miss the overlay — without it the base
 file silently starts a local Postgres and ignores Cloud SQL:
