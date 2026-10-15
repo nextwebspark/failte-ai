@@ -27,16 +27,16 @@ def generate_embed_script(token: EmbedTokenModel) -> str:
     var js, fjs = d.getElementsByTagName(s)[0];
     if (d.getElementById(id)) return;
     js = d.createElement(s); js.id = id;
-    js.src = '{base_url}/embed/fallcha-widget.js?token={token.token}&environment={ENVIRONMENT}&apiEndpoint={BACKEND_API_ENDPOINT}';
+    js.src = '{base_url}/embed/lightmove-widget.js?token={token.token}&environment={ENVIRONMENT}&apiEndpoint={BACKEND_API_ENDPOINT}';
     // Details about this visitor, available in your prompts as
     // {{{{initial_context.page_url}}}}. Edit these or add your own.
-    js.setAttribute('data-fallcha-context', JSON.stringify({{
+    js.setAttribute('data-lightmove-context', JSON.stringify({{
       page_url: window.location.href,
       today: new Date().toISOString().slice(0, 10)
     }}));
     js.async = true;
     fjs.parentNode.insertBefore(js, fjs);
-  }}(document, 'script', 'fallcha-widget'));
+  }}(document, 'script', 'lightmove-widget'));
 </script>"""
 
 

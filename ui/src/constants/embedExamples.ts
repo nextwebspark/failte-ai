@@ -1,23 +1,23 @@
 export const HEADLESS_CHAT_EXAMPLE = `let chatState = 'idle';
 
-function withFallchaWidget(callback) {
-  if (window.FallchaWidget) {
-    callback(window.FallchaWidget);
+function withLightMoveWidget(callback) {
+  if (window.LightMoveWidget) {
+    callback(window.LightMoveWidget);
     return;
   }
 
-  const script = document.getElementById('fallcha-widget');
+  const script = document.getElementById('lightmove-widget');
   if (!script) {
-    console.error('Fallcha.ai embed script not found');
+    console.error('LightMove.ai embed script not found');
     return;
   }
 
   script.addEventListener('load', () => {
-    if (window.FallchaWidget) callback(window.FallchaWidget);
+    if (window.LightMoveWidget) callback(window.LightMoveWidget);
   }, { once: true });
 }
 
-withFallchaWidget((widget) => {
+withLightMoveWidget((widget) => {
   widget.onChatStateChange((state) => {
     chatState = state; // idle | starting | ready | waiting | ended | expired | error
   });
