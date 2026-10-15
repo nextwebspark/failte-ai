@@ -23,15 +23,111 @@ pre-launch schedule is active. Full breakdown in the plan document.
 
 | File | Purpose |
 |---|---|
-| `bootstrap.sh` | Idempotent `gcloud` setup: project, APIs, IPs, firewall, bucket, Cloud SQL, registry |
-| `docker-compose.override.yaml` | App-VM overlay — drops the Postgres container, points `fallcha-tools` at Cloud SQL (the retired sidecars stay commented out for rollback) |
+| `bootstrap.sh` | Idempotent `gcloud` setup: project, APIs, IPs, firewall, bucket, Cloud SQL, registry, GitHub Actions identity (`ci`) |
+| `docker-compose.override.yaml` | App-VM overlay — drops the Postgres container, points `fallcha-tools` at Cloud SQL, pins api/ui/fallcha-tools to `LIGHTMOVE_VERSION` (the retired sidecars stay commented out for rollback) |
 | `configure-env.sh` | Writes `.env` (and `secrets/tools.env`) from Secret Manager |
-| `cloudbuild.yaml` | Builds `dograh-api`, `dograh-ui` and `fallcha-tools` for linux/amd64 |
+| `cloudbuild.yaml` | Builds the release images `dograh-api`, `dograh-ui` and `fallcha-tools` for linux/amd64, tagged `X.Y.Z` |
+| `deploy.sh` | Runs on the app VM: switches the stack to one release, health-checks it, rolls back on failure |
 | `verify_gcs.py` | Proves GCS works through the S3 API **before** anything depends on it |
 | `secrets/` | Per-service env files. Gitignored — never commit |
 
 The sip VM overlay lives with its stack, at
 `deploy/asterisk-voiptel/docker-compose.gcp.yaml`.
+
+## Releases and deploys
+
+Production changes only through two GitHub Actions workflows. Nothing is built
+or copied to the VM by hand.
+
+| Workflow | Run it when | What it does |
+|---|---|---|
+| **Release** (`release.yml`) | main has what you want to ship | Full CI on main's head → next version → Cloud Build images tagged `X.Y.Z` → tag `vX.Y.Z` + GitHub Release with notes |
+| **Deploy** (`deploy.yml`) | you approve a release for production | Checks images and both VMs → Cloud SQL backup → IAP SSH → that release's `deploy.sh` → public health check |
+
+**Versions.** Semver tags `vX.Y.Z`, starting at `v0.1.0`. When you run
+Release you pick the bump: `patch` (fixes), `minor` (features), `major`
+(breaking). Tags are the only record of versions: nothing is committed back to
+main, and `api/pyproject.toml` / `ui/package.json` keep upstream's numbers.
+The api reports the release in `/api/v1/health` → `version`.
+
+**Ship a release**
+
+1. Merge to main only when the PR's `ci-ok` check is green.
+2. Actions → **Release** → Run workflow (branch `main`) → choose the bump.
+   About 55 minutes, mostly the API image build.
+3. Actions → **Deploy** → Run workflow → version (empty = latest release).
+   This click is the production approval.
+
+**Roll back.** Run Deploy with the older version. It swaps the images back;
+it does **not** reverse database migrations (the api runs `alembic upgrade
+head` on start), so keep migrations backward compatible, or roll forward with
+a fix release. `deploy.sh` also rolls back by itself when the new version
+fails its health check.
+
+**What Deploy refuses to do**
+
+- Start a VM. Both VMs must already be running (the app VM alone parks the
+  telephony config), so outside the `dograh-dev-hours` window it fails fast.
+- Overwrite hand edits. If tracked files on the VM differ from the repo, the
+  deploy stops and lists them. Server changes go through a PR and a release.
+- Cut live calls without waiting. It waits up to 10 minutes for active calls
+  to finish before recreating the api.
+
+**Merge gate.** `ci.yml` runs on every PR: api tests, tools tests, UI lint +
+unit tests + build, and the format/OpenAPI drift check, each only when its
+paths changed. `ci-ok` sums them up. On GitHub Free a private repo cannot
+enforce it, so Release re-runs the full suite and stops on any failure. On a
+paid plan, make it binding once:
+
+```bash
+gh api -X POST repos/nextwebspark/failte-ai/rulesets --input - <<'JSON'
+{"name": "main", "target": "branch", "enforcement": "active",
+ "conditions": {"ref_name": {"include": ["~DEFAULT_BRANCH"], "exclude": []}},
+ "rules": [{"type": "deletion"}, {"type": "non_fast_forward"},
+   {"type": "pull_request", "parameters": {"required_approving_review_count": 0,
+     "dismiss_stale_reviews_on_push": false, "require_code_owner_review": false,
+     "require_last_push_approval": false, "required_review_thread_resolution": false}},
+   {"type": "required_status_checks", "parameters": {"strict_required_status_checks_policy": true,
+     "required_status_checks": [{"context": "ci-ok"}]}}]}
+JSON
+```
+
+### One-time setup
+
+1. **GCP identity for GitHub:** `./deploy/gcp/bootstrap.sh apply ci`. It
+   creates the Workload Identity pool (only `main` of this repo, pinned by repo
+   id), the `github-deployer` service account and its narrow roles, and turns
+   on OS Login for the app VM. It prints two values.
+2. **GitHub repo variables** (Settings → Secrets and variables → Actions →
+   Variables): `GCP_WIF_PROVIDER` and `GCP_DEPLOY_SA` from step 1. Optional:
+   `PUBLIC_BASE_URL` (default `https://app.lightmove.ai`) and `VM_APP_DIR`
+   (default `/opt/lightmove/dograh`).
+3. **App VM checkout.** The install is a git checkout at `/opt/lightmove/dograh`,
+   owned by root, fetching over a read-only deploy key:
+
+   ```bash
+   sudo ssh-keygen -t ed25519 -N '' -f /root/.ssh/lightmove_deploy -C dograh-app
+   # add /root/.ssh/lightmove_deploy.pub as a read-only deploy key on the repo
+   sudo mkdir -p /opt/lightmove && cd /opt/lightmove
+   sudo GIT_SSH_COMMAND='ssh -i /root/.ssh/lightmove_deploy -o IdentitiesOnly=yes' \
+     git clone --recurse-submodules git@github.com:nextwebspark/failte-ai.git dograh
+   sudo git -C dograh config core.sshCommand 'ssh -i /root/.ssh/lightmove_deploy -o IdentitiesOnly=yes'
+   ```
+
+   Carry over from the old install (`~/dograh/dograh`): `.env`,
+   `deploy/gcp/secrets/*.env` and anything else `git status --ignored` lists as
+   runtime state. In `.env` set:
+
+   ```
+   COMPOSE_PROJECT_NAME=<old project, from `docker compose ls`>   # keeps the volumes
+   COMPOSE_FILE=docker-compose.yaml:deploy/gcp/docker-compose.override.yaml
+   COMPOSE_PROFILES=remote
+   ```
+
+   Drop the old api patch mounts (their code is in the images now). The VM's
+   service account must be able to pull from Artifact Registry
+   (`gcloud auth configure-docker europe-west1-docker.pkg.dev` as root).
+4. **First deploy:** Release (any bump gives `v0.1.0`), then Deploy `0.1.0`.
 
 ## Prerequisites
 
@@ -94,7 +190,9 @@ git submodule update --init --recursive
 Build for **linux/amd64** in Cloud Build — the dev machine is arm64 and the API
 image (pipecat with ~18 extras plus a static ffmpeg) is far too slow under
 emulation. `deploy/gcp/cloudbuild.yaml` builds `dograh-api`, `dograh-ui` and
-`fallcha-tools`; build `asterisk-voiptel` for the sip VM separately.
+`fallcha-tools`; the **Release** workflow runs it (see
+[Releases and deploys](#releases-and-deploys)). Build `asterisk-voiptel` for
+the sip VM separately; it is not part of a release.
 
 ## 4. App VM
 
