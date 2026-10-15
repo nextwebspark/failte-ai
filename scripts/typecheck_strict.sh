@@ -38,6 +38,7 @@ mypy --strict --follow-imports=silent \
   api/services/rate_limit \
   api/services/skills \
   api/services/tool_integrations \
+  api/services/workflow/agent_builder.py \
   api/services/workflow/pipecat_engine_skills.py \
   api/services/workflow/skill_ref_validation.py \
   api/utils/text.py \
