@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 # Creates the local env files from upstream's templates and applies the fork's
-# port remap (see saas/docs/FORK.md). Idempotent: existing files are left alone.
+# port remap (see saas/docs/FORK.md). Idempotent: existing files are left alone,
+# except that missing integration secrets (CREDENTIALS_ENCRYPTION_KEYS,
+# TOOLS_INTERNAL_SECRET, TOOLS_ENCRYPTION_KEYS) are generated; values already
+# set are never overwritten.
 #
 #   bash saas/dev/bootstrap-env.sh
 #
@@ -69,6 +72,46 @@ else
 fi
 sedi -E "/^UVICORN_PORT=/d" api/.env
 echo "  ~ pinned UVICORN_BASE_PORT=8001 in api/.env"
+
+# Fernet key: 32 random bytes, URL-safe base64 (no python needed).
+fernet_key() { openssl rand -base64 32 | tr '+/' '-_'; }
+
+# Prints the value of KEY in FILE (quotes stripped), empty when absent.
+env_value() {
+  grep -E "^$2=" "$1" 2>/dev/null | tail -1 | cut -d= -f2- | sed -E 's/^"(.*)"$/\1/' || true
+}
+
+# Sets KEY=VALUE in FILE only when KEY is absent or empty; never overwrites.
+ensure_key() {
+  local f="$1" key="$2" value="$3"
+  if [[ -n "$(env_value "$f" "$key")" ]]; then
+    return 0
+  fi
+  if grep -qE "^$key=" "$f"; then
+    sedi -E "s#^($key=).*#\1\"$value\"#" "$f"
+  else
+    echo "$key=\"$value\"" >> "$f"
+  fi
+  echo "  ~ set $key in $f"
+}
+
+# Integrations and credential encryption (enforced on every run; existing
+# values are kept). The api and the tools service must share one
+# TOOLS_INTERNAL_SECRET, so tools/.env takes it from api/.env.
+ensure_key api/.env CREDENTIALS_ENCRYPTION_KEYS "$(fernet_key)"
+ensure_key api/.env TOOLS_INTERNAL_SECRET "$(openssl rand -hex 32)"
+ensure_key api/.env TOOLS_SERVICE_URL "http://localhost:8010"
+
+if create_from_template tools/.env.example tools/.env; then
+  remap_ports tools/.env
+fi
+ensure_key tools/.env TOOLS_ENCRYPTION_KEYS "$(fernet_key)"
+ensure_key tools/.env TOOLS_INTERNAL_SECRET "$(env_value api/.env TOOLS_INTERNAL_SECRET)"
+if [[ "$(env_value api/.env TOOLS_INTERNAL_SECRET)" != "$(env_value tools/.env TOOLS_INTERNAL_SECRET)" ]]; then
+  echo "  ! TOOLS_INTERNAL_SECRET differs between api/.env and tools/.env; make them equal"
+fi
+# They hold secrets: owner-only.
+chmod 600 api/.env tools/.env
 
 create_from_template ui/.env.example ui/.env || true
 

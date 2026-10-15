@@ -14,6 +14,7 @@ from api.mcp_server.tools.docs_search import list_docs, read_doc, search_docs
 from api.mcp_server.tools.get_workflow_code import get_workflow_code
 from api.mcp_server.tools.node_types import get_node_type, list_node_types
 from api.mcp_server.tools.save_workflow import save_workflow
+from api.mcp_server.tools.skills_catalog import list_skills
 from api.mcp_server.tools.tool_creation import create_tool
 from api.mcp_server.tools.voice_prompting_guide import get_voice_prompting_guide
 from api.mcp_server.tools.workflows import get_workflow, list_workflows
@@ -32,6 +33,7 @@ for _tool in (
     list_documents,
     list_node_types,
     list_recordings,
+    list_skills,
     list_tools,
     list_workflows,
     save_workflow,

@@ -90,6 +90,10 @@ Each node represents a step in the conversation.
 |---|---|---|
 | `tool_uuids` | string[] | IDs of tools (HTTP API, call transfer, etc.) to attach to this node |
 | `document_uuids` | string[] | IDs of knowledge base documents available to this node |
+| `skill_uuids` | string[] | Workspace skills listed on this node for on-demand loading (`load_skill`). Omitted (or `null`) lists every active skill, the default; `[]` opts the node out of the skills index |
+| `preload_skill_uuids` | string[] | Workspace skills whose instructions are inlined in this node's prompt from the start (no `load_skill` round trip). Honoured even when `skill_uuids` is `[]` |
+
+Agent skills are on by default. To turn them off for a whole workflow (a tuned agent), set `workflow_configurations.skills_enabled` to `false`: no skills index, `load_skill`/`read_skill_file` or preloaded skills appear on any node, and the call does not load skills at all.
 
 ### trigger node
 

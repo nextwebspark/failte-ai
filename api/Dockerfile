@@ -146,6 +146,8 @@ COPY --chown=dograh:dograh ./api ./api
 #     with the command:[] entries in deploy/helm/dograh/templates/*.yaml.
 #   drain_web.sh             — web pod preStop hook (call-safe scale-down); see
 #     lifecycle.preStop in deploy/helm/dograh/templates/web-deployment.yaml.
+#   reencrypt_credentials.py, sync_skill_library.py — operator one-offs, run
+#     as `docker compose exec api python -m scripts.<name>`.
 COPY --chown=dograh:dograh \
      ./scripts/start_services_docker.sh \
      ./scripts/run_migrate.sh \
@@ -154,6 +156,8 @@ COPY --chown=dograh:dograh \
      ./scripts/run_ari_manager.sh \
      ./scripts/run_campaign_orchestrator.sh \
      ./scripts/drain_web.sh \
+     ./scripts/reencrypt_credentials.py \
+     ./scripts/sync_skill_library.py \
      ./scripts/
 
 # ts_validator Node deps (built in ts-deps stage with full node:22-slim image).

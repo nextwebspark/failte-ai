@@ -1,0 +1,143 @@
+---
+title: "Skills"
+description: "Give agents playbooks they load only when a caller needs them, written in the standard SKILL.md format."
+---
+
+A skill is a playbook: instructions for one kind of request, such as handling a return or booking an appointment, plus optional reference files. Agents see only each skill's name and description. They load the full instructions when a caller's request matches, so a long policy costs prompt space only on the calls that use it.
+
+Skills use the [Agent Skills](https://docs.claude.com/en/docs/agents-and-tools/agent-skills/overview) `SKILL.md` format. A skill written for Claude imports unchanged, and an exported skill works elsewhere.
+
+<Note>
+Skills are not the [knowledge base](/voice-agent/knowledge-base). The knowledge base searches your documents for relevant passages. A skill is a whole set of instructions that the agent chooses to follow.
+</Note>
+
+## The SKILL.md format
+
+A skill is a folder holding a `SKILL.md` file and, optionally, reference files:
+
+```text
+returns-policy/
+├── SKILL.md
+└── references/
+    └── returns-policy.md
+```
+
+`SKILL.md` starts with YAML frontmatter between `---` lines, followed by the instructions in Markdown:
+
+```markdown
+---
+name: returns-policy
+description: Answer questions about returns, refunds and exchanges, and start a return. Use when the caller mentions returning, refunding, exchanging or a faulty or damaged item.
+---
+
+# Returns and refunds
+
+Ask what they bought and when it arrived. Read `references/returns-policy.md`
+with read_skill_file before quoting any time limit or fee.
+```
+
+| Frontmatter key | Required | Rules |
+|---|---|---|
+| `name` | Yes | 1–64 characters: lowercase letters, digits and single hyphens (`returns-policy`). Unique among the workspace's active skills |
+| `description` | Yes | 1–1024 characters on one line, no XML-like tags. Say what the skill does **and when to use it**: the agent decides from this alone |
+| `allowed-tools` | No | Tools the agent may use while following the skill (see [Allowed tools](#allowed-tools)) |
+| `license`, `compatibility`, `metadata` | No | Kept as they are. Put any custom field under `metadata`; other top-level keys are rejected |
+
+**Limits:**
+
+| Item | Limit |
+|---|---|
+| Instructions (body) | 64 KB, required |
+| Reference files | 20 per skill, 256 KB each, 1 MB in total, text only |
+| File paths | Relative, up to 8 folders deep and 255 characters. No `..`, no hidden names (`.x`), no backslashes |
+| Active skills per workspace | 50 |
+| Imported `.zip` | 2 MB, 64 entries |
+
+## Workspace skills and the library
+
+**My skills** holds your workspace's own skills. Only your workspace sees them. Each one is either:
+- **Custom**, which you wrote or imported;
+- **From library vN**, which you copied from the library.
+
+**Library** holds skills Fallcha.ai publishes for every workspace. To use one, click **Add to workspace**. This copies it into **My skills**, where it is yours to edit.
+- If the name is taken, you are asked for another (for example `returns-policy-2`).
+- Agents only ever use workspace skills, never library skills directly.
+
+**Library updates:**
+- When Fallcha.ai publishes a newer version of a library skill you copied, your copy shows **Update available**. Click **Review update** to see a diff of your copy against the new version.
+- If you have not edited your copy, **Apply update** replaces it.
+- If you have edited it (the card shows **Modified**), tick **Replace my edits** to take the new version, or simply don't apply the update to keep yours.
+- There is no merge. An update keeps your copy's name and allowed tools.
+- Renaming a copy or changing its allowed tools does not count as an edit.
+
+**Archiving** a skill removes it from every agent on their next call and frees its name.
+
+Clients (viewers) can read skills. Developers and Admins can create, edit, import, copy and archive them.
+
+## Create, import and export
+
+- **New skill** opens the editor. It has:
+  - name and description;
+  - the instructions, with a preview;
+  - reference files;
+  - allowed tools.
+- **Import** takes a `.zip` or a single `SKILL.md`. In the zip, `SKILL.md` must be at the root or inside one top-level folder (`returns-policy/SKILL.md`).
+- **Export** downloads `<name>.zip` in the same standard layout.
+
+## Allowed tools
+
+`allowed-tools` narrows what the agent may do while it follows a skill. In Fallcha.ai, its entries are the **UUIDs of tools in your workspace**. In the editor, choose **Only selected tools** and pick them.
+
+| `allowed-tools` | Effect |
+|---|---|
+| Absent | No restriction |
+| A list of tool UUIDs | While the skill is loaded, only those tools can be called |
+| Present but empty | While the skill is loaded, no restrictable tools can be called |
+
+**On import, entries that are not tools in your workspace are dropped**, for example Claude tool names such as `Read`, or another workspace's UUIDs. The import then shows them as notes so you can pick the right tools. If every entry was dropped, the skill allows *no* tools rather than all of them.
+
+**What a restriction covers:**
+- **Restricted:** HTTP API tools, MCP tools (including integrations) and the calculator.
+- **Always available:** moving to another step, ending or transferring the call, the knowledge base, and the skill functions themselves.
+
+A blocked call returns an error to the agent naming the allowed tools. When several restricted skills are loaded, their allowed tools combine. The restriction lasts until the conversation moves to another node.
+
+## How agents use skills
+
+On each node that offers skills, Fallcha.ai adds a short index to the node's prompt:
+
+```text
+Available skills:
+- returns-policy: Answer questions about returns, refunds and exchanges, ...
+When a request matches a skill, call load_skill with its name first and follow it.
+```
+
+It also gives the agent two functions:
+
+- `load_skill(name)` returns the skill's instructions and its list of files.
+- `read_skill_file(name, path)` returns one reference file. The path must match exactly.
+
+All the workspace's active skills are read once when the call starts, so loading one mid-call adds no network or database delay.
+
+**Choose skills per node.** In a Start Call or Agent node, the **Skills** field offers three choices:
+
+| Choice | `skill_uuids` | Effect |
+|---|---|---|
+| **All skills** (default) | unset | Lists every active skill, including ones added later |
+| **None** | `[]` | The node offers no skills |
+| **Selected skills** | list | Lists only those skills |
+
+**Preloaded Skills** puts a skill's full instructions in the node's prompt from the start, with no `load_skill` step. It works even when the node's Skills choice is **None**.
+
+**Turn skills off for a workflow** in its Settings → **Enable Skills**. When off, no index, functions or preloaded skills appear on any node, and the call does not load skills at all.
+
+### Costs
+
+- **Every listed skill adds its name and description to the prompt of each turn** on that node. Keep descriptions short and specific.
+- **Loading a skill costs one extra model round trip.** The agent calls `load_skill`, then answers. Its instructions then stay in the conversation for the rest of the call.
+- **Preloading skips that round trip but adds the full instructions to every turn of the step.** Preload only what nearly every call needs.
+- **For latency-critical agents,** set the node's Skills to **None** or turn skills off for the workflow.
+
+### See which skills a call used
+
+The call's run page has a **Skills used** section. It lists each skill that was loaded or preloaded, with the node and the time. The same list is stored in the run's gathered context as `skills_loaded`.

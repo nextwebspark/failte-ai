@@ -42,6 +42,7 @@ from api.services.pipecat.speech_playback import (
     SpeechPlayback,
     SpeechPlaybackTracker,
 )
+from api.services.skills.runtime import SKILLS_LOADED_CONTEXT_KEY, SkillSet
 from api.services.workflow.agent_runtime import AgentRuntime, new_visit_id
 from api.services.workflow.workflow_graph import Node, WorkflowGraph
 
@@ -83,6 +84,7 @@ from api.services.workflow.pipecat_engine_context_summarizer import (
 from api.services.workflow.pipecat_engine_custom_tools import (
     CustomToolManager,
 )
+from api.services.workflow.pipecat_engine_skills import SkillToolManager
 from api.services.workflow.pipecat_engine_variable_extractor import (
     VariableExtractionManager,
 )
@@ -106,6 +108,7 @@ ENGINE_OWNED_CONTEXT_KEYS = frozenset(
         "call_tags",
         "answer_supervisor",
         "tool_results",
+        SKILLS_LOADED_CONTEXT_KEY,
         # Telephony persists this before the call; extraction must not replace it.
         "sip_call_id",
     }
@@ -154,6 +157,7 @@ class PipecatEngine:
         context_compaction_enabled: bool = False,
         run_transition_variable_extraction_in_background: bool = True,
         call_dispositions: Sequence[CallDispositionOption] | None = None,
+        skill_set: SkillSet | None = None,
     ):
         self._call_worker = task
         self._is_realtime = is_realtime
@@ -251,6 +255,9 @@ class PipecatEngine:
 
         # Custom tool manager (initialized in initialize())
         self._custom_tool_manager: Optional[CustomToolManager] = None
+        # Workspace skills preloaded at call start (fork: agent skills)
+        # (None: the workflow turned skills off, nothing loaded)
+        self.skill_tools = SkillToolManager(self, skill_set)
 
         # Cached organization ID (resolved lazily from workflow run)
         self._organization_id: Optional[int] = None
@@ -808,6 +815,7 @@ class PipecatEngine:
             if agent is self.active_agent
             else CustomToolManager(self, agent)
         )
+        node_skills = self.skill_tools.enter_node(agent, node)
         if not node.is_end:
             for edge in node.out_edges:
                 await self._register_transition_function_with_llm(
@@ -836,13 +844,15 @@ class PipecatEngine:
         functions = await compose_functions_for_node(
             node=node, custom_tool_manager=manager
         )
+        functions.extend(self.skill_tools.attach(agent, node_skills, functions))
+        system_prompt = self.skill_tools.compose_prompt(agent, prompt.text)
         agent.tools = ToolsSchema(standard_tools=functions)
-        agent.system_prompt = prompt.text
+        agent.system_prompt = system_prompt
         if agent.recording_router is not None:
             agent.recording_router.set_enabled(prompt.recording_enabled)
         if apply_settings:
             await agent.llm._update_settings(
-                LLMSettings(system_instruction=prompt.text)
+                LLMSettings(system_instruction=system_prompt)
             )
 
     async def _setup_llm_context(self, node: Node) -> None:
@@ -1760,6 +1770,7 @@ class PipecatEngine:
         self, runtime: AgentRuntime, *, play_greeting: bool = False
     ) -> None:
         await self._open_mcp_sessions(runtime)
+        await self.skill_tools.prepare_agent(runtime, await self._get_organization_id())
         node = runtime.workflow.nodes[runtime.workflow.start_node_id]
         if play_greeting:
             self._hand_over_opening_line(runtime, node)
@@ -1778,6 +1789,7 @@ class PipecatEngine:
         runtime.entered_at = time.time()
         self.install_agent(runtime, previous=self.active_agent)
         self._custom_tool_manager = CustomToolManager(self, runtime)
+        self.skill_tools.flush_pending(runtime)
         self._agent_on_hold = False
         nodes = self._gathered_context.setdefault("nodes_visited", [])
         if runtime.current_node.name not in nodes:
@@ -2131,6 +2143,10 @@ class PipecatEngine:
     def record_tool_result(self, result: dict) -> None:
         """Keep tool outcomes even when no live pipeline can consume their frames."""
         self._gathered_context.setdefault("tool_results", []).append(result)
+
+    def record_skill_load(self, entry: dict) -> None:
+        """Log a skill load (``load_skill`` or preload) for call logs."""
+        self._gathered_context.setdefault(SKILLS_LOADED_CONTEXT_KEY, []).append(entry)
 
     async def finish_tool_calls(self) -> None:
         agents = [self.active_agent, self.pending_agent, *self._retired_agents]

@@ -44,6 +44,8 @@ import { formatDateTime } from '@/lib/dateTime';
 import { downloadFile, getSignedUrl } from '@/lib/files';
 import { cn } from '@/lib/utils';
 
+import { SkillsLoadedSection } from './SkillsLoadedSection';
+
 interface WorkflowRunResponse {
     mode: string;
     created_at: string | null;
@@ -828,6 +830,8 @@ export default function WorkflowRunPage() {
                         logs={workflowRun?.logs ?? null}
                         gatheredContext={workflowRun?.gathered_context ?? null}
                     />
+
+                    <SkillsLoadedSection gatheredContext={workflowRun?.gathered_context ?? null} />
 
                     {!isTextChatRun && hasSplitTracks && (
                         <SplitTracksSection

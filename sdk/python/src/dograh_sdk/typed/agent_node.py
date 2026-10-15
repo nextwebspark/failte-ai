@@ -96,3 +96,15 @@ class AgentNode(TypedNode):
     Documents the agent can reference during this step.
     """
 
+    skill_uuids: Optional[list[str]] = None
+    """
+    Workspace skills this node lists for on-demand loading. Unset lists
+    every active skill; an empty list lists none.
+    """
+
+    preload_skill_uuids: Optional[list[str]] = None
+    """
+    Skills whose instructions are added to this node's prompt from the
+    start, with no load step.
+    """
+

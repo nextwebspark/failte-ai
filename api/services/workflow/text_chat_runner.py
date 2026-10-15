@@ -55,6 +55,7 @@ from api.services.pipecat.worker_runner import (
     run_pipeline_worker,
     wait_for_pipeline_worker_started,
 )
+from api.services.skills.runtime import load_call_skill_set
 from api.services.workflow.dto import ReactFlowDTO
 from api.services.workflow.initial_context import merge_external_initial_context
 from api.services.workflow.pipecat_engine import (
@@ -651,7 +652,10 @@ async def execute_text_chat_pending_turn(
         embeddings_endpoint = getattr(user_config.embeddings, "endpoint", None)
         embeddings_api_version = getattr(user_config.embeddings, "api_version", None)
 
-    has_recordings = await db_client.has_active_recordings(workflow.organization_id)
+    has_recordings, skill_set = await asyncio.gather(
+        db_client.has_active_recordings(workflow.organization_id),
+        load_call_skill_set(db_client, workflow.organization_id, run_configs),
+    )
     context_compaction_enabled = (workflow.workflow_configurations or {}).get(
         "context_compaction_enabled", False
     )
@@ -673,6 +677,7 @@ async def execute_text_chat_pending_turn(
         has_recordings=has_recordings,
         context_compaction_enabled=context_compaction_enabled,
         call_dispositions=call_dispositions,
+        skill_set=skill_set,
         # Each text turn owns a short-lived pipeline. Complete extraction before
         # leaving a node so teardown cannot discard the result before checkpointing.
         run_transition_variable_extraction_in_background=False,

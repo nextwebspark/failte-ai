@@ -139,6 +139,7 @@ type WorkflowConfigurationBase = Omit<
     | "dictionary"
     | "context_compaction_enabled"
     | "tts_cache_enabled"
+    | "skills_enabled"
     | "call_dispositions"
     | "text_chat_inactivity_timeout_seconds"
     | "external_pbx_field_mappings"
@@ -158,6 +159,7 @@ export type WorkflowConfigurations = WorkflowConfigurationBase & {
     transcript_configuration: TranscriptConfiguration;
     context_compaction_enabled: boolean;  // Summarize context on node transitions to remove stale tool calls
     tts_cache_enabled: boolean;
+    skills_enabled: boolean;  // Offer workspace agent skills on this workflow's nodes
     call_dispositions: CallDispositionOption[];  // Allowed terminal business outcomes
     text_chat_inactivity_timeout_seconds?: number;  // End inactive text chats after this many seconds
     external_pbx_field_mappings: ExternalPBXFieldMapping[];
@@ -182,6 +184,7 @@ const FALLBACK_WORKFLOW_CONFIGURATIONS: WorkflowConfigurations = {
     transcript_configuration: DEFAULT_TRANSCRIPT_CONFIGURATION,
     context_compaction_enabled: false,
     tts_cache_enabled: false,
+    skills_enabled: true,
     call_dispositions: [],
     external_pbx_field_mappings: [],
     external_pbx_lead_headers: [],
@@ -237,6 +240,10 @@ export function resolveWorkflowConfigurations(
             configurations?.tts_cache_enabled
             ?? defaults?.tts_cache_enabled
             ?? FALLBACK_WORKFLOW_CONFIGURATIONS.tts_cache_enabled,
+        skills_enabled:
+            configurations?.skills_enabled
+            ?? defaults?.skills_enabled
+            ?? FALLBACK_WORKFLOW_CONFIGURATIONS.skills_enabled,
         call_dispositions:
             configurations?.call_dispositions
             ?? defaults?.call_dispositions

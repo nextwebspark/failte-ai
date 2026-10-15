@@ -13,6 +13,7 @@ from api.routes.billing_webhooks import router as billing_webhooks_router
 from api.routes.campaign import router as campaign_router
 from api.routes.credentials import router as credentials_router
 from api.routes.folder import router as folder_router
+from api.routes.integrations import router as integrations_router
 from api.routes.invitations import router as invitations_router
 from api.routes.knowledge_base import router as knowledge_base_router
 from api.routes.node_types import router as node_types_router
@@ -26,6 +27,8 @@ from api.routes.public_embed_chat import router as public_embed_chat_router
 from api.routes.reports import router as reports_router
 from api.routes.s3_signed_url import router as s3_router
 from api.routes.service_keys import router as service_keys_router
+from api.routes.skills import library_router as skill_library_router
+from api.routes.skills import router as skills_router
 from api.routes.superuser import router as superuser_router
 from api.routes.team import router as team_router
 from api.routes.telephony import router as telephony_router
@@ -53,6 +56,7 @@ router.include_router(user_router)
 router.include_router(campaign_router)
 router.include_router(credentials_router)
 router.include_router(tool_router)
+router.include_router(integrations_router)
 router.include_router(organization_router)
 router.include_router(team_router)
 router.include_router(invitations_router)
@@ -78,6 +82,8 @@ router.include_router(billing_router)
 router.include_router(billing_admin_router)
 router.include_router(platform_admin_router)
 router.include_router(billing_webhooks_router)
+router.include_router(skills_router)
+router.include_router(skill_library_router)
 
 for _integration_router in all_routers():
     router.include_router(_integration_router)

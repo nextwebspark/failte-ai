@@ -58,6 +58,7 @@ const SCALAR_TS_TYPES: Record<string, string> = {
     credential_ref: "string",
     tool_refs: "string[]",
     document_refs: "string[]",
+    skill_refs: "string[]",
 };
 
 function pascalCase(name: string): string {

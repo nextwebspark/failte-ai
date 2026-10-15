@@ -1078,7 +1078,7 @@ export interface components {
          *     `<PropertyInput>` switch and (where relevant) the SDK codegen template.
          * @enum {string}
          */
-        PropertyType: "string" | "number" | "boolean" | "options" | "multi_options" | "fixed_collection" | "json" | "tool_refs" | "document_refs" | "recording_ref" | "credential_ref" | "mention_textarea" | "url";
+        PropertyType: "string" | "number" | "boolean" | "options" | "multi_options" | "fixed_collection" | "json" | "tool_refs" | "document_refs" | "recording_ref" | "credential_ref" | "skill_refs" | "mention_textarea" | "url";
         /**
          * RecordingListResponseSchema
          * @description Response schema for list of recordings.
@@ -1409,6 +1409,12 @@ export interface components {
              * @default false
              */
             tts_cache_enabled: boolean;
+            /**
+             * Skills Enabled
+             * @description Offer the workspace's agent skills (load_skill, read_skill_file and the skills index) on this workflow's nodes. Turn off for tuned agents that must not see skills.
+             * @default true
+             */
+            skills_enabled: boolean;
             /**
              * Call Dispositions
              * @description Allowed business outcomes for terminal call classification. Each entry defines the exact stored code and the criteria for selecting it.
