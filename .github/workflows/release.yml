@@ -121,18 +121,29 @@ jobs:
 
       # Submitted async and polled: streaming Cloud Build logs from CI needs
       # broader log permissions, and the console link is better for reading.
+      # An explicit staging dir skips gcloud's bucket-ownership check, which
+      # needs project-wide storage.buckets.list.
       - name: Build images with Cloud Build
         run: |
           build_id="$(gcloud builds submit . \
             --project "$GCP_PROJECT" \
             --config deploy/gcp/cloudbuild.yaml \
+            --gcs-source-staging-dir "gs://${GCP_PROJECT}_cloudbuild/source" \
             --substitutions "_VERSION=${VERSION},_GIT_SHA=${SHORT_SHA}" \
             --async --format 'value(id)')"
           url="https://console.cloud.google.com/cloud-build/builds/${build_id}?project=${GCP_PROJECT}"
           echo "Cloud Build: ${url}"
           echo "Cloud Build: ${url}" >> "$GITHUB_STEP_SUMMARY"
+          errors=0
           while true; do
-            status="$(gcloud builds describe "$build_id" --project "$GCP_PROJECT" --format 'value(status)')"
+            # A transient API error must not fail an hour-long release.
+            if ! status="$(gcloud builds describe "$build_id" --project "$GCP_PROJECT" --format 'value(status)')"; then
+              errors=$((errors + 1))
+              (( errors < 10 )) || { echo "::error::Cannot read Cloud Build ${build_id} status — ${url}"; exit 1; }
+              sleep 30
+              continue
+            fi
+            errors=0
             case "$status" in
               SUCCESS) echo "Build succeeded."; break ;;
               QUEUED|PENDING|WORKING) echo "$(date -u +%H:%M:%S) ${status}"; sleep 30 ;;

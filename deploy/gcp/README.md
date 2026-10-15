@@ -28,6 +28,7 @@ pre-launch schedule is active. Full breakdown in the plan document.
 | `configure-env.sh` | Writes `.env` (and `secrets/tools.env`) from Secret Manager |
 | `cloudbuild.yaml` | Builds the release images `dograh-api`, `dograh-ui` and `fallcha-tools` for linux/amd64, tagged `X.Y.Z` |
 | `deploy.sh` | Runs on the app VM: switches the stack to one release, health-checks it, rolls back on failure |
+| `remote-deploy.sh` | Piped over SSH by the Deploy workflow: runs that release's `deploy.sh` as a systemd unit and streams its log |
 | `verify_gcs.py` | Proves GCS works through the S3 API **before** anything depends on it |
 | `secrets/` | Per-service env files. Gitignored — never commit |
 
@@ -62,7 +63,14 @@ The api reports the release in `/api/v1/health` → `version`.
 it does **not** reverse database migrations (the api runs `alembic upgrade
 head` on start), so keep migrations backward compatible, or roll forward with
 a fix release. `deploy.sh` also rolls back by itself when the new version
-fails its health check.
+fails its health check (from the second deploy on; the first has nothing to
+roll back to, so watch it).
+
+**Where the deploy runs.** Deploy starts `deploy.sh` on the VM as a transient
+systemd unit (`deploy/gcp/remote-deploy.sh`) and streams its log into the job.
+If the SSH session drops or the job is cancelled, the deploy still finishes or
+rolls back on the VM. The job summary names the unit; read it with
+`journalctl -u lightmove-deploy-<run>-<attempt>`.
 
 **What Deploy refuses to do**
 
@@ -94,14 +102,20 @@ JSON
 
 ### One-time setup
 
-1. **GCP identity for GitHub:** `./deploy/gcp/bootstrap.sh apply ci`. It
-   creates the Workload Identity pool (only `main` of this repo, pinned by repo
-   id), the `github-deployer` service account and its narrow roles, and turns
-   on OS Login for the app VM. It prints two values.
+1. **GCP identity for GitHub:** `./deploy/gcp/bootstrap.sh apply ci` (plan
+   first without `apply`). It enables the STS / IAM Credentials APIs and
+   creates:
+   - the Workload Identity pool (only `main` of this repo, pinned by repo id);
+   - `github-deployer`: the identity the workflows act as, with narrow roles;
+   - `lightmove-build`: the identity release builds run as, limited to pushing
+     to Artifact Registry. It replaces the project's default build account,
+     which holds Editor.
+
+   It also turns on OS Login for the app VM and prints two values.
 2. **GitHub repo variables** (Settings → Secrets and variables → Actions →
-   Variables): `GCP_WIF_PROVIDER` and `GCP_DEPLOY_SA` from step 1. Optional:
-   `PUBLIC_BASE_URL` (default `https://app.lightmove.ai`) and `VM_APP_DIR`
-   (default `/opt/lightmove/dograh`).
+   Variables): `GCP_WIF_PROVIDER` and `GCP_DEPLOY_SA` from step 1, plus
+   `PUBLIC_BASE_URL` (e.g. `https://app.lightmove.ai`; Deploy refuses to run
+   without it). Optional: `VM_APP_DIR` (default `/opt/lightmove/dograh`).
 3. **App VM checkout.** The install is a git checkout at `/opt/lightmove/dograh`,
    owned by root, fetching over a read-only deploy key:
 
@@ -110,7 +124,7 @@ JSON
    # add /root/.ssh/lightmove_deploy.pub as a read-only deploy key on the repo
    sudo mkdir -p /opt/lightmove && cd /opt/lightmove
    sudo GIT_SSH_COMMAND='ssh -i /root/.ssh/lightmove_deploy -o IdentitiesOnly=yes' \
-     git clone --recurse-submodules git@github.com:nextwebspark/failte-ai.git dograh
+     git clone git@github.com:nextwebspark/failte-ai.git dograh   # no submodules: images are prebuilt
    sudo git -C dograh config core.sshCommand 'ssh -i /root/.ssh/lightmove_deploy -o IdentitiesOnly=yes'
    ```
 
@@ -126,7 +140,9 @@ JSON
 
    Drop the old api patch mounts (their code is in the images now). The VM's
    service account must be able to pull from Artifact Registry
-   (`gcloud auth configure-docker europe-west1-docker.pkg.dev` as root).
+   (`sudo gcloud auth configure-docker europe-west1-docker.pkg.dev`; deploys
+   run as root with `HOME=/root`). To re-sync secrets later:
+   `sudo DOGRAH_SQL_IP=10.70.0.3 ./deploy/gcp/configure-env.sh`.
 4. **First deploy:** Release (any bump gives `v0.1.0`), then Deploy `0.1.0`.
 
 ## Prerequisites

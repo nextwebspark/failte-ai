@@ -3,7 +3,8 @@
 #
 #   sudo /opt/lightmove/dograh/deploy/gcp/deploy.sh 0.2.0     # or v0.2.0
 #
-# Normally run by .github/workflows/deploy.yml over IAP SSH. Steps:
+# Normally started by .github/workflows/deploy.yml, through remote-deploy.sh,
+# as a systemd unit (so an SSH drop cannot interrupt it). Steps:
 #   1. git fetch, refuse if tracked files were edited on the VM, check out tag vX.Y.Z
 #   2. wait for live calls to finish (per uvicorn worker, via /health/active-calls)
 #   3. pin LIGHTMOVE_VERSION in .env, pull the release images, `compose up -d`
@@ -65,8 +66,10 @@ git rev-parse --quiet --verify "refs/tags/$TAG" >/dev/null || fail "tag $TAG not
 
 # Hand edits to tracked files would be silently overwritten by the checkout.
 # Changes go through the repo and a release instead.
-if ! git diff --quiet HEAD --; then
-  git status --short --untracked-files=no
+# Submodules are ignored: the VM runs prebuilt images, and `git checkout` does
+# not move the pipecat pointer, which would otherwise read as an edit.
+if ! git diff --quiet --ignore-submodules HEAD --; then
+  git status --short --untracked-files=no --ignore-submodules
   fail "tracked files were edited on the VM (above). Commit them to the repo or discard them, then redeploy."
 fi
 
@@ -79,13 +82,20 @@ git checkout --quiet --detach "$TAG"
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-api_running() { [[ -n "$(docker compose ps -q --status running api 2>/dev/null)" ]]; }
+# The overlay requires LIGHTMOVE_VERSION. Every compose call names the version
+# that is running right now, so they also work on the first deploy, before
+# .env has it. Passed per command, never exported: an exported value would
+# override the .env value that switch_to writes.
+ACTIVE_VERSION="${PREV_VERSION:-$VERSION}"
+dc() { LIGHTMOVE_VERSION="$ACTIVE_VERSION" docker compose "$@"; }
+
+api_running() { [[ -n "$(dc ps -q --status running api 2>/dev/null)" ]]; }
 
 # Prints the total live calls across the api container's uvicorn workers
 # (one process per port from 8000, see scripts/start_services_docker.sh),
 # or ERR when a worker cannot be read.
 active_calls() {
-  docker compose exec -T api python - <<'PY' 2>/dev/null || echo ERR
+  dc exec -T api python - <<'PY' 2>/dev/null || echo ERR
 import json, os, urllib.request
 secret = os.environ.get("DOGRAH_DEVOPS_SECRET", "")
 total = 0
@@ -121,13 +131,13 @@ drain_calls() {
 
 container_health() {
   local id
-  id="$(docker compose ps -q "$1" 2>/dev/null)"
+  id="$(dc ps -q "$1" 2>/dev/null)"
   [[ -n "$id" ]] || { echo missing; return; }
   docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "$id"
 }
 
 api_version() {
-  docker compose exec -T api python -c \
+  dc exec -T api python -c \
     "import json,urllib.request;print(json.load(urllib.request.urlopen('http://127.0.0.1:8000/api/v1/health',timeout=5))['version'])" \
     2>/dev/null || true
 }
@@ -150,16 +160,21 @@ wait_healthy() {
     sleep 10
   done
   log "not healthy after ${HEALTH_TIMEOUT}s: $states api version='$(api_version)'"
-  docker compose ps
-  docker compose logs --tail 80 api || true
+  dc ps || true
+  dc logs --tail 80 api || true
   return 1
 }
 
+# Returns compose up's status, but always restarts nginx: health, not the
+# exit code, decides success (up also fails when a dependency is unhealthy).
 switch_to() {
+  local rc=0
+  ACTIVE_VERSION="$1"
   env_set LIGHTMOVE_VERSION "$1"
-  docker compose up -d --remove-orphans
+  dc up -d --remove-orphans || rc=$?
   # nginx resolves the api container's IP once; a recreated api gets a new one.
-  docker compose restart nginx
+  dc restart nginx || rc=$?
+  return "$rc"
 }
 
 rollback() {
@@ -169,7 +184,7 @@ rollback() {
   fi
   log "ROLLING BACK to $PREV_VERSION"
   git checkout --quiet --detach "$PREV_REF"
-  switch_to "$PREV_VERSION"
+  switch_to "$PREV_VERSION" || log "compose reported errors while rolling back"
   if wait_healthy "$PREV_VERSION"; then
     log "rolled back to $PREV_VERSION"
   else
@@ -189,7 +204,8 @@ fi
 drain_calls
 
 log "switching to $VERSION"
-if ! switch_to "$VERSION" || ! wait_healthy "$VERSION"; then
+switch_to "$VERSION" || log "compose reported errors — checking health anyway"
+if ! wait_healthy "$VERSION"; then
   rollback
   fail "deploy of $VERSION failed"
 fi

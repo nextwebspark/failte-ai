@@ -7,12 +7,13 @@ name: Deploy
 #   1. resolve the version (default: the latest GitHub Release)
 #   2. check the release images exist and both VMs are running
 #   3. on-demand Cloud SQL backup
-#   4. IAP SSH to dograh-app and run that release's deploy/gcp/deploy.sh
-#      (drains calls, switches images, health-checks, auto-rolls back)
+#   4. IAP SSH to dograh-app; deploy/gcp/remote-deploy.sh runs that release's
+#      deploy/gcp/deploy.sh as a systemd unit (drains calls, switches images,
+#      health-checks, auto-rolls back) and streams its log
 #   5. check the public health endpoint reports the new version
 #
-# Needs repo variables GCP_WIF_PROVIDER and GCP_DEPLOY_SA; optional
-# PUBLIC_BASE_URL and VM_APP_DIR (defaults below).
+# Needs repo variables GCP_WIF_PROVIDER, GCP_DEPLOY_SA and PUBLIC_BASE_URL;
+# optional VM_APP_DIR (default below).
 
 on:
   workflow_dispatch:
@@ -37,8 +38,11 @@ env:
   SIP_VM: dograh-sip
   SQL_INSTANCE: dograh-pg
   REGISTRY: europe-west1-docker.pkg.dev/dograh-eu/dograh
-  PUBLIC_BASE_URL: ${{ vars.PUBLIC_BASE_URL || 'https://app.lightmove.ai' }}
+  PUBLIC_BASE_URL: ${{ vars.PUBLIC_BASE_URL }}
   APP_DIR: ${{ vars.VM_APP_DIR || '/opt/lightmove/dograh' }}
+  # Each runner brings a fresh key; expiring it keeps the deployer's OS Login
+  # profile from filling up.
+  SSH_FLAGS: --tunnel-through-iap --quiet --strict-host-key-checking=no --ssh-key-expire-after=1h
 
 jobs:
   deploy:
@@ -51,6 +55,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           INPUT_VERSION: ${{ inputs.version }}
         run: |
+          [[ -n "$PUBLIC_BASE_URL" ]] || { echo "::error::Set the PUBLIC_BASE_URL repo variable (e.g. https://app.lightmove.ai)."; exit 1; }
           version="${INPUT_VERSION#v}"
           if [[ -z "$version" ]]; then
             version="$(gh release view --repo "$GITHUB_REPOSITORY" --json tagName --jq .tagName)"
@@ -62,6 +67,13 @@ jobs:
           echo "version=${version}" >> "$GITHUB_OUTPUT"
           echo "### Deploy v${version} → ${PUBLIC_BASE_URL}" >> "$GITHUB_STEP_SUMMARY"
 
+      # Only the remote wrapper is needed from the repo; the VM fetches the
+      # release itself.
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: deploy/gcp/remote-deploy.sh
+          sparse-checkout-cone-mode: false
+
       - uses: google-github-actions/auth@v2
         with:
           workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
@@ -69,13 +81,15 @@ jobs:
 
       - uses: google-github-actions/setup-gcloud@v2
 
+      # tags list, not images describe: describe also queries Container
+      # Analysis once vulnerability scanning is on, which the deployer can't.
       - name: Release images exist
         env:
           VERSION: ${{ steps.version.outputs.version }}
         run: |
           for image in dograh-api dograh-ui fallcha-tools; do
-            gcloud artifacts docker images describe "${REGISTRY}/${image}:${VERSION}" \
-              --project "$GCP_PROJECT" --format 'value(image_summary.digest)' >/dev/null \
+            gcloud artifacts docker tags list "${REGISTRY}/${image}" --project "$GCP_PROJECT" \
+              --format 'value(name.basename())' | grep -qx "$VERSION" \
               || { echo "::error::${image}:${VERSION} is not in Artifact Registry."; exit 1; }
           done
 
@@ -98,8 +112,8 @@ jobs:
       - name: SSH reachable (IAP)
         run: |
           for attempt in 1 2 3 4 5; do
-            if gcloud compute ssh "$APP_VM" --zone "$ZONE" --project "$GCP_PROJECT" \
-                 --tunnel-through-iap --quiet --strict-host-key-checking=no --command true; then
+            # shellcheck disable=SC2086  # SSH_FLAGS is a flag list
+            if gcloud compute ssh "$APP_VM" --zone "$ZONE" --project "$GCP_PROJECT" $SSH_FLAGS --command true; then
               exit 0
             fi
             echo "ssh attempt ${attempt} failed — retrying"
@@ -108,21 +122,17 @@ jobs:
           echo "::error::Cannot SSH to ${APP_VM} over IAP."
           exit 1
 
-      # Runs the deploy script from the *target* release (git show), so a
-      # release that changes deploy.sh is deployed by its own logic.
       - name: Deploy on the app VM
         env:
           VERSION: ${{ steps.version.outputs.version }}
         run: |
-          gcloud compute ssh "$APP_VM" --zone "$ZONE" --project "$GCP_PROJECT" \
-            --tunnel-through-iap --quiet --strict-host-key-checking=no \
+          unit="lightmove-deploy-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          echo "On the VM: journalctl -u ${unit}" >> "$GITHUB_STEP_SUMMARY"
+          # shellcheck disable=SC2086  # SSH_FLAGS is a flag list
+          gcloud compute ssh "$APP_VM" --zone "$ZONE" --project "$GCP_PROJECT" $SSH_FLAGS \
             --ssh-flag "-o ServerAliveInterval=30" \
-            --command "set -e
-              script=\$(mktemp)
-              trap 'rm -f \"\$script\"' EXIT
-              sudo git -C '${APP_DIR}' fetch --quiet --tags --force origin
-              sudo git -C '${APP_DIR}' show 'v${VERSION}:deploy/gcp/deploy.sh' > \"\$script\"
-              sudo env LIGHTMOVE_APP_DIR='${APP_DIR}' bash \"\$script\" '${VERSION}'"
+            --command "bash -s -- '${VERSION}' '${APP_DIR}' '${unit}'" \
+            < deploy/gcp/remote-deploy.sh
 
       - name: Public health reports the new version
         env:

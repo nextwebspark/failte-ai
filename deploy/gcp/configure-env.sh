@@ -5,8 +5,9 @@
 # repo, in an image, or in shell history.
 #
 # Run AFTER setup_remote.sh (which creates the base .env and the TLS cert).
+# The release-deploy install (/opt/lightmove/dograh) is root-owned, so:
 #
-#   ./deploy/gcp/configure-env.sh
+#   sudo DOGRAH_SQL_IP=10.70.0.3 ./deploy/gcp/configure-env.sh
 #
 # Idempotent — re-run any time to re-sync from Secret Manager.
 
@@ -17,8 +18,9 @@ REGION="${DOGRAH_REGION:-europe-west1}"
 REPO="${DOGRAH_AR_REPO:-dograh}"
 SQL_IP="${DOGRAH_SQL_IP:?DOGRAH_SQL_IP is required (Cloud SQL private IP)}"
 BUCKET="${DOGRAH_BUCKET:-dograh-voice-audio-eu}"
-# setup_remote.sh installs into a nested dograh/dograh directory.
-ENV_FILE="${ENV_FILE:-$HOME/dograh/dograh/.env}"
+# The git checkout that deploy/gcp/deploy.sh manages (README "Releases and
+# deploys"). The pre-pipeline install was ~/dograh/dograh; pass ENV_FILE for it.
+ENV_FILE="${ENV_FILE:-/opt/lightmove/dograh/.env}"
 
 [[ -f "$ENV_FILE" ]] || { echo "no .env at $ENV_FILE — run setup_remote.sh first" >&2; exit 1; }
 

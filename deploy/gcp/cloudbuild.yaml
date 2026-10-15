@@ -21,9 +21,15 @@ substitutions:
   # `gcloud builds submit` does not populate SHORT_SHA, so it is passed in.
   _GIT_SHA: ''
 
+# A dedicated, narrowly scoped build identity (bootstrap.sh `ci`: Artifact
+# Registry writer + log writer + read on the source bucket). The project's
+# default build account is the Compute Engine default, which holds Editor.
+serviceAccount: 'projects/${PROJECT_ID}/serviceAccounts/lightmove-build@${PROJECT_ID}.iam.gserviceaccount.com'
+
 options:
   machineType: E2_HIGHCPU_8
   diskSizeGb: 100
+  # Required with a user-specified service account.
   logging: CLOUD_LOGGING_ONLY
 
 timeout: 3600s
