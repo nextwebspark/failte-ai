@@ -1,4 +1,4 @@
-"""Quota checking service for Fallcha.ai credits.
+"""Quota checking service for LightMove.ai credits.
 
 This module provides reusable quota checking functionality that can be used
 across different endpoints (WebRTC signaling, telephony, public API triggers).
@@ -411,7 +411,7 @@ async def _authorize_hosted_workflow_run_start(
             error_message=f"Could not verify {BRAND_NAME} credits. Please try again.",
         )
     logger.info(
-        "Fallcha.ai run authorization passed for org {}: {:.2f} credits remaining",
+        "LightMove.ai run authorization passed for org {}: {:.2f} credits remaining",
         organization_id,
         remaining,
     )
@@ -473,7 +473,7 @@ async def _authorize_oss_dograh_keys(
                 return _insufficient_oss_quota_result()
 
             logger.info(
-                f"Fallcha.ai quota check passed for key ...{api_key[-8:]}: "
+                f"LightMove.ai quota check passed for key ...{api_key[-8:]}: "
                 f"{remaining:.2f} credits remaining"
             )
         except _MPS_UNREACHABLE_ERRORS as e:
@@ -657,7 +657,7 @@ async def _authorize_oss_managed_v2_run(
         )
 
     logger.info(
-        "Fallcha.ai run authorization passed for key ...{}: {:.2f} credits remaining",
+        "LightMove.ai run authorization passed for key ...{}: {:.2f} credits remaining",
         service_key[-8:],
         remaining,
     )

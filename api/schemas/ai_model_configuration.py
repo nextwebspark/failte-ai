@@ -232,4 +232,4 @@ def _reject_dograh_provider(section: str, service) -> None:
     if service is None:
         return
     if getattr(service, "provider", None) == ServiceProviders.DOGRAH:
-        raise ValueError(f"BYOK {section} cannot use the Fallcha.ai managed provider")
+        raise ValueError(f"BYOK {section} cannot use the LightMove.ai managed provider")

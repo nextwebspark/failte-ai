@@ -70,7 +70,7 @@ def migrate_to_platform(
 
 
 def _from_dograh(*, language: str, temperature: float | None) -> PlatformMigration:
-    notes = ["Fallcha.ai managed voice replaced by Gemini Live voice Charon"]
+    notes = ["LightMove.ai managed voice replaced by Gemini Live voice Charon"]
     realtime = PlatformRealtimeChoice(language=_realtime_language(language, notes))
     llm = _llm_choice(catalog.DEFAULT_LLM_MODEL, temperature, notes)
     return PlatformMigration(

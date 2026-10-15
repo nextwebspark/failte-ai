@@ -684,7 +684,7 @@ async def test_smtp_sender_strips_line_breaks_from_subject():
 
     sender = SmtpEmailSender(
         SmtpSettings("localhost", 25, None, None, SmtpSecurity.NONE, 1.0),
-        "Fallcha.ai <no-reply@example.com>",
+        "LightMove.ai <no-reply@example.com>",
     )
     delivered = []
     sender._deliver = delivered.append  # type: ignore[method-assign]

@@ -9,8 +9,8 @@ ENVIRONMENT = os.getenv("ENVIRONMENT", Environment.LOCAL.value)
 # Product branding shown to users, LLM agents and email recipients. Internal
 # identifiers (env vars, headers, DB columns, class names) keep the upstream
 # "dograh" naming so merges from the upstream fork stay clean.
-BRAND_NAME: Final = "Fallcha.ai"
-BRAND_DOMAIN: Final = "fallcha.ai"
+BRAND_NAME: Final = "LightMove.ai"
+BRAND_DOMAIN: Final = "lightmove.ai"
 BRAND_APP_URL: Final = f"https://app.{BRAND_DOMAIN}"
 # Absolute path to the project root directory (i.e. the directory containing
 # the top-level api/ package). Having a single canonical location helps

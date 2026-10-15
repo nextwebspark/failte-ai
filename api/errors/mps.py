@@ -1,7 +1,7 @@
 """Errors raised at the Model Proxy Service boundary."""
 
 MPS_UNAVAILABLE_PUBLIC_MESSAGE = (
-    "A Fallcha.ai service is temporarily unavailable. Please try again later."
+    "A LightMove.ai service is temporarily unavailable. Please try again later."
 )
 
 

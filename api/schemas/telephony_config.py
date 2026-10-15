@@ -117,7 +117,7 @@ class TrunkResponse(BaseModel):
 
     ``settings`` is the provider's own trunk schema (validated on write against
     ``ProviderSpec.trunk_settings_cls``). The provider-side identifier is
-    Fallcha.ai's bookkeeping and is not exposed.
+    LightMove.ai's bookkeeping and is not exposed.
     """
 
     model_config = ConfigDict(from_attributes=True)

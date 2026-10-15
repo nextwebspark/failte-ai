@@ -131,7 +131,7 @@ async def create_topup_checkout(
         organization_id=organization_id,
         customer_email=customer_email,
         amount_eur=amount_eur,
-        product_name="Fáilte AI call credit",
+        product_name="LightMove.ai call credit",
         purpose=PURPOSE_TOPUP,
         created_by=created_by,
     )
@@ -155,7 +155,7 @@ async def create_setup_fee_checkout(
         organization_id=organization_id,
         customer_email=customer_email,
         amount_eur=SETUP_FEE_EUR,
-        product_name="Fáilte AI done-for-you agent setup",
+        product_name="LightMove.ai done-for-you agent setup",
         purpose=PURPOSE_SETUP_FEE,
         created_by=created_by,
     )
