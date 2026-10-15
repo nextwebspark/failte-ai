@@ -204,14 +204,14 @@ describe("PlatformModelEditor", () => {
         render(<PlatformModelEditor catalog={catalog} configuration={PIPELINE} onSave={vi.fn()} readOnly />);
 
         expect(screen.queryByRole("button", { name: "Save Configuration" })).toBeNull();
-        expect(screen.queryByText(/managed by Fallcha.ai support/)).toBeNull();
+        expect(screen.queryByText(/managed by LightMove.ai support/)).toBeNull();
         expect((screen.getByLabelText("Speed") as HTMLInputElement).disabled).toBe(true);
     });
 
     it("is read-only when support pinned the settings", () => {
         renderEditor(PIPELINE, vi.fn(), { ...catalog, locked: true });
 
-        expect(screen.getByText(/managed by Fallcha.ai support/)).toBeTruthy();
+        expect(screen.getByText(/managed by LightMove.ai support/)).toBeTruthy();
         expect(screen.queryByRole("button", { name: "Save Configuration" })).toBeNull();
         expect((screen.getByLabelText("Temperature") as HTMLInputElement).disabled).toBe(true);
     });

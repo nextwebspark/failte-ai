@@ -21,6 +21,7 @@ import {
 import { CurrentSetupCard } from "@/components/platform/CurrentSetupCard";
 import { PlatformModelEditor } from "@/components/platform/PlatformModelEditor";
 import { Skeleton } from "@/components/ui/skeleton";
+import { BRAND } from "@/config/brand";
 import { useAppConfig } from "@/context/AppConfigContext";
 import { useOrgConfig } from "@/context/OrgConfigContext";
 import { useUserConfig } from "@/context/UserConfigContext";
@@ -135,7 +136,7 @@ export default function ModelConfigurationV2() {
                     </h1>
                     <p className="mt-2 text-sm text-muted-foreground">
                         {platformModels
-                            ? "Choose how your agents listen, think and speak. Everything runs on Fallcha's managed models in the EU, no API keys needed."
+                            ? `Choose how your agents listen, think and speak. Everything runs on ${BRAND.shortName}'s managed models in the EU, no API keys needed.`
                             : "Organization-scoped model settings."}
                     </p>
                 </div>
