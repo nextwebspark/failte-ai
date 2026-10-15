@@ -32,6 +32,7 @@ STORAGE_SA="dograh-storage"
 # GitHub Actions identity for .github/workflows/release.yml and deploy.yml.
 GITHUB_REPO="${DOGRAH_GITHUB_REPO:-nextwebspark/failte-ai}"
 DEPLOY_SA="github-deployer"
+BUILD_SA="lightmove-build"
 WIF_POOL="github"
 WIF_PROVIDER="github-oidc"
 APP_VM="${DOGRAH_APP_VM:-dograh-app}"
@@ -294,8 +295,21 @@ if want ci; then
   step "ci (GitHub Actions)"
   PROJECT_NUMBER="$(gcloud projects describe "$PROJECT_ID" --format='value(projectNumber)')"
   DEPLOY_SA_EMAIL="${DEPLOY_SA}@${PROJECT_ID}.iam.gserviceaccount.com"
+  BUILD_SA_EMAIL="${BUILD_SA}@${PROJECT_ID}.iam.gserviceaccount.com"
   GITHUB_REPO_ID="${DOGRAH_GITHUB_REPO_ID:-$(gh api "repos/$GITHUB_REPO" --jq .id 2>/dev/null || true)}"
   [[ -n "$GITHUB_REPO_ID" ]] || { echo "set DOGRAH_GITHUB_REPO_ID (gh api repos/$GITHUB_REPO --jq .id)" >&2; exit 1; }
+
+  # Token exchange for Workload Identity Federation (also in the apis step,
+  # repeated here so `apply ci` alone is enough).
+  ENABLED="$(gcloud services list --enabled --project="$PROJECT_ID" --format='value(config.name)' 2>/dev/null || true)"
+  for api in sts.googleapis.com iamcredentials.googleapis.com; do
+    if grep -qx "$api" <<<"$ENABLED"; then
+      skip "$api"
+    else
+      run gcloud services enable "$api" --project="$PROJECT_ID"
+      ok "$api"
+    fi
+  done
 
   if exists gcloud iam workload-identity-pools describe "$WIF_POOL" --location=global --project="$PROJECT_ID"; then
     skip "workload identity pool $WIF_POOL"
@@ -353,10 +367,35 @@ if want ci; then
     ok "$role"
   done
 
-  # Source uploads for `gcloud builds submit` (bucket-scoped).
+  # Source uploads for `gcloud builds submit` (bucket-scoped). release.yml
+  # passes --gcs-source-staging-dir, so no project-wide bucket listing is needed.
   run gcloud storage buckets add-iam-policy-binding "gs://${PROJECT_ID}_cloudbuild" \
     --member="serviceAccount:$DEPLOY_SA_EMAIL" --role=roles/storage.admin --format=none
   ok "storage.admin on gs://${PROJECT_ID}_cloudbuild"
+
+  # The identity release builds run as (cloudbuild.yaml `serviceAccount`).
+  # Not the project default, the Compute Engine account, which holds Editor:
+  # actAs on that would make the deployer an Editor in all but name.
+  if exists gcloud iam service-accounts describe "$BUILD_SA_EMAIL" --project="$PROJECT_ID"; then
+    skip "service account $BUILD_SA"
+  else
+    run gcloud iam service-accounts create "$BUILD_SA" \
+      --project="$PROJECT_ID" --display-name="Cloud Build: release images"
+    ok "service account $BUILD_SA"
+  fi
+  run gcloud artifacts repositories add-iam-policy-binding "$AR_REPO" \
+    --location="$REGION" --project="$PROJECT_ID" \
+    --member="serviceAccount:$BUILD_SA_EMAIL" --role=roles/artifactregistry.writer --format=none
+  ok "$BUILD_SA: artifactregistry.writer on $AR_REPO"
+  run gcloud projects add-iam-policy-binding "$PROJECT_ID" --condition=None --quiet \
+    --member="serviceAccount:$BUILD_SA_EMAIL" --role=roles/logging.logWriter --format=none
+  ok "$BUILD_SA: logging.logWriter"
+  run gcloud storage buckets add-iam-policy-binding "gs://${PROJECT_ID}_cloudbuild" \
+    --member="serviceAccount:$BUILD_SA_EMAIL" --role=roles/storage.objectViewer --format=none
+  ok "$BUILD_SA: objectViewer on gs://${PROJECT_ID}_cloudbuild (source)"
+  run gcloud iam service-accounts add-iam-policy-binding "$BUILD_SA_EMAIL" --project="$PROJECT_ID" \
+    --member="serviceAccount:$DEPLOY_SA_EMAIL" --role=roles/iam.serviceAccountUser --format=none
+  ok "$DEPLOY_SA may run builds as $BUILD_SA"
 
   # Check release images exist (repo-scoped).
   run gcloud artifacts repositories add-iam-policy-binding "$AR_REPO" \
