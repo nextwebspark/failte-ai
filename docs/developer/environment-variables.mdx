@@ -1,16 +1,16 @@
 ---
 title: "Environment Variables"
-description: "Complete reference for all environment variables used by the Fallcha.ai backend"
+description: "Complete reference for all environment variables used by the LightMove.ai backend"
 ---
 
 Core environment variables are centralized in `api/constants.py`. Variables marked **Required** in the description must be explicitly set — the application will either fail to boot or behave insecurely without them.
 
 ## Deployment Modes
 
-Fallcha.ai supports two deployment modes, set via `DEPLOYMENT_MODE`:
+LightMove.ai supports two deployment modes, set via `DEPLOYMENT_MODE`:
 
-- **OSS**: The default mode. Designed for self-hosted deployments using [Docker Compose](/deployment/docker) — the fastest way to get Fallcha.ai running. Uses local JWT authentication and MinIO for storage.
-- **SaaS**: Intended for customised deployments outside of Docker. Authentication and API key management are handled through Dograh Managed Platform Services (MPS, the upstream service Fallcha.ai is built on), allowing greater flexibility in how the platform is hosted and integrated.
+- **OSS**: The default mode. Designed for self-hosted deployments using [Docker Compose](/deployment/docker) — the fastest way to get LightMove.ai running. Uses local JWT authentication and MinIO for storage.
+- **SaaS**: Intended for customised deployments outside of Docker. Authentication and API key management are handled through Dograh Managed Platform Services (MPS, the upstream service LightMove.ai is built on), allowing greater flexibility in how the platform is hosted and integrated.
 
 The relevant required variables for each mode are noted in the descriptions below.
 
@@ -84,7 +84,7 @@ And on the **tools service**:
 The service refuses to start without its three required variables; the rest of the stack keeps running. `scripts/setup_local.sh`, `scripts/setup_local.ps1`, `scripts/setup_remote.sh` and `saas/dev/bootstrap-env.sh` generate `CREDENTIALS_ENCRYPTION_KEYS`, `TOOLS_ENCRYPTION_KEYS` and `TOOLS_INTERNAL_SECRET` when they are missing, and never replace a value that is already set.
 
 <Warning>
-Docker Compose pulls the tools service as `${REGISTRY}/fallcha-tools`, alongside `dograh-api` and `dograh-ui`. The registry must publish that image. Fallcha.ai's release workflow and `deploy/gcp/cloudbuild.yaml` do. Public upstream Dograh registries do not, so an install pointing `REGISTRY` at them gets no tools service. Either set `REGISTRY` to a registry holding all three images, or build it locally (`docker compose build fallcha-tools`, or `setup_remote.sh` in build mode).
+Docker Compose pulls the tools service as `${REGISTRY}/fallcha-tools`, alongside `dograh-api` and `dograh-ui`. The registry must publish that image. LightMove.ai's release workflow and `deploy/gcp/cloudbuild.yaml` do. Public upstream Dograh registries do not, so an install pointing `REGISTRY` at them gets no tools service. Either set `REGISTRY` to a registry holding all three images, or build it locally (`docker compose build fallcha-tools`, or `setup_remote.sh` in build mode).
 </Warning>
 
 <Note>
@@ -127,7 +127,7 @@ Outgoing email covers account verification, password reset, team invitations and
 | Variable | Default | Description |
 |---|---|---|
 | `EMAIL_PROVIDER` | `none` | `none` writes each message, links included, to the API log instead of sending it. `resend` sends through [Resend](https://resend.com). `smtp` sends through any SMTP relay |
-| `EMAIL_FROM` | `Fallcha.ai <no-reply@localhost>` | Sender address. With Resend it must be on a verified domain; until then use `onboarding@resend.dev`, which only delivers to the Resend account owner's address |
+| `EMAIL_FROM` | `LightMove.ai <no-reply@localhost>` | Sender address. With Resend it must be on a verified domain; until then use `onboarding@resend.dev`, which only delivers to the Resend account owner's address |
 | `RESEND_API_KEY` | `null` | **Required for `resend`.** Resend API key (`re_...`) |
 | `SMTP_HOST` | `null` | **Required for `smtp`.** SMTP server host |
 | `SMTP_PORT` | `587` | SMTP server port |
@@ -158,7 +158,7 @@ For local development, `docker-compose-local.yaml` runs Mailpit. Set `EMAIL_PROV
 
 ## Storage
 
-Fallcha.ai uses **MinIO by default**, which is bundled with the self-hosted deployment and requires no external setup. Set `ENABLE_AWS_S3=true` to switch to AWS S3 — typically used for cloud or managed deployments where S3 is already part of the infrastructure.
+LightMove.ai uses **MinIO by default**, which is bundled with the self-hosted deployment and requires no external setup. Set `ENABLE_AWS_S3=true` to switch to AWS S3 — typically used for cloud or managed deployments where S3 is already part of the infrastructure.
 
 ### MinIO (OSS default)
 
@@ -202,7 +202,7 @@ AWS_SECRET_ACCESS_KEY=...
 ```
 
 <Note>
-Presigned URLs point at `S3_ENDPOINT_URL`, so that host must be reachable from the browser. Because browsers fetch transcripts cross-origin, the bucket also needs a CORS rule allowing your app's origin for `GET`/`HEAD` — configure this on the storage server (e.g. via `PutBucketCors`), not in Fallcha.ai.
+Presigned URLs point at `S3_ENDPOINT_URL`, so that host must be reachable from the browser. Because browsers fetch transcripts cross-origin, the bucket also needs a CORS rule allowing your app's origin for `GET`/`HEAD` — configure this on the storage server (e.g. via `PutBucketCors`), not in LightMove.ai.
 </Note>
 
 ---
@@ -237,7 +237,7 @@ Tracing activates automatically as soon as credentials are available — either 
 
 ## Telephony
 
-Carriers dial the media WebSocket back at `/api/v1/telephony/ws/{workflow_id}/{organization_id}/{workflow_run_id}`. Those ids travel in a caller-visible URL, so on their own they are a guessable capability. Setting a secret makes Fallcha.ai sign that URL with an HMAC and verify the signature when the socket opens.
+Carriers dial the media WebSocket back at `/api/v1/telephony/ws/{workflow_id}/{organization_id}/{workflow_run_id}`. Those ids travel in a caller-visible URL, so on their own they are a guessable capability. Setting a secret makes LightMove.ai sign that URL with an HMAC and verify the signature when the socket opens.
 
 The signature travels as a trailing path segment — `/api/v1/telephony/ws/{workflow_id}/{organization_id}/{workflow_run_id}/{token}` — because carriers do not reliably forward query strings. Twilio [documents that its `<Stream>` url "does not support query string parameters"](https://www.twilio.com/docs/voice/twiml/stream) and drops them outright. Asterisk ARI is the exception: it connects to `/api/v1/telephony/ws/ari` and passes `token` as a query parameter alongside its other routing values, which works because Asterisk builds that URL itself.
 
@@ -285,7 +285,7 @@ The signed URL is a bearer credential, and it is not hidden: the token appears i
 
 ## Campaigns
 
-Controls concurrency for [Campaigns](/core-concepts/campaigns), Fallcha.ai's bulk outbound calling feature.
+Controls concurrency for [Campaigns](/core-concepts/campaigns), LightMove.ai's bulk outbound calling feature.
 
 | Variable | Default | Description |
 |---|---|---|

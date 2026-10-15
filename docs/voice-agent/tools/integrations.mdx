@@ -3,7 +3,7 @@ title: "Integrations"
 description: "Connect Google Calendar, Google Sheets or your shop's product catalogue once, then give any agent the tools it adds."
 ---
 
-Integrations are ready-made tools that Fallcha.ai hosts for you. You connect an app such as Google Calendar with your workspace's own account or key. Fallcha.ai then adds an agent tool that you attach to workflow nodes like any other tool. You do not write API calls or run a server.
+Integrations are ready-made tools that LightMove.ai hosts for you. You connect an app such as Google Calendar with your workspace's own account or key. LightMove.ai then adds an agent tool that you attach to workflow nodes like any other tool. You do not write API calls or run a server.
 
 ## The catalog
 
@@ -30,7 +30,7 @@ A service account is a robot Google account owned by your Google Cloud project. 
     In the [Google Cloud console](https://console.cloud.google.com/), enable the **Google Calendar API** or the **Google Sheets API**. Then open **IAM & Admin → Service accounts**, create a service account, and choose **Keys → Add key → JSON**.
   </Step>
   <Step title="Upload it">
-    On the integration card, click **Connect**, choose **Service account key**, then upload the JSON file or paste its contents. Fallcha.ai shows the service account's email address.
+    On the integration card, click **Connect**, choose **Service account key**, then upload the JSON file or paste its contents. LightMove.ai shows the service account's email address.
   </Step>
   <Step title="Share your calendar or sheet with that address">
     - **Calendar:** share it with the service account's email with *Make changes to events*.
@@ -62,7 +62,7 @@ Sign in with a Google account when the agent should act as a person, for example
   </Step>
   <Step title="Register the redirect URI">
     1. On the integration card, click **Connect**, choose **Sign in with your account**, then **Add a new OAuth client…**.
-    2. Fallcha.ai shows the exact redirect URI for that integration. It looks like `https://<your-fallcha-host>/oauth/google-calendar/callback`.
+    2. LightMove.ai shows the exact redirect URI for that integration. It looks like `https://<your-lightmove-host>/oauth/google-calendar/callback`.
     3. Copy it into **Authorized redirect URIs** on the Google client. It must match exactly.
   </Step>
   <Step title="Save the client and sign in">
@@ -98,7 +98,7 @@ This integration is for a shop whose product pages publish schema.org `Product` 
 
 1. Click **Connect** and enter your shop's home page as **Site URL**.
 2. Optionally set the sitemap URL, the path prefixes to include (for example `/products/`) and the currency.
-3. Fallcha.ai starts importing your products in the background. The connection shows "Syncing products…" and then "N products · last synced …".
+3. LightMove.ai starts importing your products in the background. The connection shows "Syncing products…" and then "N products · last synced …".
 
 Crawling is deliberately slow and polite:
 - It sends about one request per second and honours `robots.txt` and its crawl delay.
@@ -116,7 +116,7 @@ Each connection creates an agent tool named after the integration, such as "Goog
 3. Tick the functions this node should offer. A tool with no ticked functions is not available on that node.
 4. Describe in the node prompt when to use them, as with any tool.
 
-The functions run in the Fallcha.ai tools service. Your agent reaches it over an authenticated [MCP](/voice-agent/tools/mcp-tool) session that opens when the call starts. If an integration is unreachable at that moment, the call continues without its functions.
+The functions run in the LightMove.ai tools service. Your agent reaches it over an authenticated [MCP](/voice-agent/tools/mcp-tool) session that opens when the call starts. If an integration is unreachable at that moment, the call continues without its functions.
 
 ## Statuses and reconnecting
 
@@ -127,13 +127,13 @@ The functions run in the Fallcha.ai tools service. Your agent reaches it over an
 | **Awaiting confirmation** | A Google sign-in finished but was not confirmed in the browser that started it | Click **Finish setup** in that browser, or remove it and connect again |
 | **Setup incomplete** | The connection exists but its agent tool was not created | Click **Finish setup** |
 
-When Google revokes access, the agent's calendar or sheet functions answer with an error, and Fallcha.ai stops calling Google until you reconnect.
+When Google revokes access, the agent's calendar or sheet functions answer with an error, and LightMove.ai stops calling Google until you reconnect.
 
 **Reconnect** creates a new connection and a new agent tool, then offers to remove the old one. Removing a connection archives its agent tool straight away. So select the new tool on your workflow nodes before you remove the old connection.
 
 ## Security
 
-- **Your Google credentials are kept only by the tools service, in its own `fallcha_tools` database schema, encrypted (Fernet).** The tables the rest of Fallcha.ai uses never hold them. This covers:
+- **Your Google credentials are kept only by the tools service, in its own `fallcha_tools` database schema, encrypted (Fernet).** The tables the rest of LightMove.ai uses never hold them. This covers:
   - service-account keys;
   - OAuth client secrets;
   - refresh and access tokens.

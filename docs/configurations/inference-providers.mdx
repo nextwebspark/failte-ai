@@ -1,13 +1,13 @@
 ---
 title: "Models & voice"
-description: "Choose how your Fallcha.ai agents listen, think and speak: speech-to-speech or a transcriber, language model and voice, all managed in the EU with no API keys."
+description: "Choose how your LightMove.ai agents listen, think and speak: speech-to-speech or a transcriber, language model and voice, all managed in the EU with no API keys."
 ---
 
 ## How it works
 
-**Models & voice** sets how every agent in your workspace talks. Fallcha.ai runs the models for you on Google Cloud in the EU, so there are no provider accounts or API keys to manage.
+**Models & voice** sets how every agent in your workspace talks. LightMove.ai runs the models for you on Google Cloud in the EU, so there are no provider accounts or API keys to manage.
 
-Open **Models & voice** in your Fallcha.ai dashboard (`/model-configurations`). You make two choices:
+Open **Models & voice** in your LightMove.ai dashboard (`/model-configurations`). You make two choices:
 
 1. **How should your agent talk?** Speech-to-Speech, or Speech-to-Text → LLM → Text-to-Speech.
 2. **The models, voice and language** for that choice.
@@ -42,7 +42,7 @@ Three separate steps: a transcriber turns the caller's speech into text, a langu
 | **Language model** | Gemini model and temperature. Lower temperatures give more predictable replies; leave it blank for the model default. |
 | **Text-to-speech** | Model (Chirp 3 HD), voice language and accent, speaking speed and voice. English comes in American, Australian, British and Indian accents; Spanish, French and Dutch have two each. The voices are shown and filtered the same way as for Speech-to-Speech, with a sample on each in the chosen accent. |
 
-When you change the voice language or accent, Fallcha.ai keeps the same voice where it exists. Otherwise pick a voice for that language. The accent only changes how the agent sounds. Set how callers speak in the speech-to-text **Language**; for Irish callers choose English (UK), the closest match.
+When you change the voice language or accent, LightMove.ai keeps the same voice where it exists. Otherwise pick a voice for that language. The accent only changes how the agent sounds. Set how callers speak in the speech-to-text **Language**; for Irish callers choose English (UK), the closest match.
 
 ## Per-agent voice and model
 
@@ -62,7 +62,7 @@ An agent set up before managed models shows **This agent still runs** and its ol
 To go back to the workspace settings, turn the switch off and click **Use workspace default**, then publish.
 
 <Note>
-If Fallcha.ai support manages your workspace's model settings (for example on an Enterprise plan), the page is read-only. Contact support to change them.
+If LightMove.ai support manages your workspace's model settings (for example on an Enterprise plan), the page is read-only. Contact support to change them.
 </Note>
 
 ## Self-hosted deployments with your own providers
@@ -74,7 +74,7 @@ On those deployments the Models page has three top-level sections:
 | Section | When to use it |
 |---------|----------------|
 | **Speech to Speech** | Use a realtime speech-to-speech model for the live conversation. You still configure an LLM alongside it for variable extraction and QA. |
-| **Fallcha.ai** | Use Fallcha.ai-managed LLM, voice, and transcriber models behind one Fallcha.ai Service Key. |
+| **LightMove.ai** | Use LightMove.ai-managed LLM, voice, and transcriber models behind one LightMove.ai Service Key. |
 | **BYOK** | Bring your own provider keys and configure LLM, Voice, Transcriber, and Embedding models separately. |
 
 <Note>
@@ -96,23 +96,23 @@ The Speech to Speech section has nested tabs:
 | **Embedding** | An embedding model used by features that need embeddings, such as retrieval from knowledge base content. |
 
 <Warning>
-An LLM is still required when you use Speech to Speech. The realtime model handles the live voice conversation, but Fallcha.ai uses the LLM for analysis tasks that happen outside the live audio stream.
+An LLM is still required when you use Speech to Speech. The realtime model handles the live voice conversation, but LightMove.ai uses the LLM for analysis tasks that happen outside the live audio stream.
 </Warning>
 
-## Fallcha.ai
+## LightMove.ai
 
-Use **Fallcha.ai** when you want Fallcha.ai to manage the model providers for you. This path uses one Fallcha.ai Service Key for Fallcha.ai-managed models instead of separate provider keys for LLM, Voice, and Transcriber.
+Use **LightMove.ai** when you want LightMove.ai to manage the model providers for you. This path uses one LightMove.ai Service Key for LightMove.ai-managed models instead of separate provider keys for LLM, Voice, and Transcriber.
 
-![Fallcha.ai model configuration](../images/model-configuration-dograh.png)
+![LightMove.ai model configuration](../images/model-configuration-dograh.png)
 
 Configure:
 
 | Field | What it controls |
 |-------|------------------|
-| **Voice** | The Fallcha.ai-managed voice to use. |
+| **Voice** | The LightMove.ai-managed voice to use. |
 | **Speed** | The voice playback speed. |
 | **Language** | The language behavior, including multilingual auto-detect when available. |
-| **API Key** | Your Fallcha.ai Service Key. Create Service Keys from **Developers**. |
+| **API Key** | Your LightMove.ai Service Key. Create Service Keys from **Developers**. |
 
 For details on creating and using Service Keys, see [API Keys and Service Keys](api-keys#service-keys).
 
@@ -121,7 +121,7 @@ For details on creating and using Service Keys, see [API Keys and Service Keys](
 Use **BYOK** when you want to bring your own provider accounts and API keys. This gives you separate control over each model category.
 
 <Warning>
-When you use BYOK or external model providers, Fallcha.ai sends only the data required for the selected service to operate. Depending on the provider and service type, this may include prompts, conversation history, transcripts, audio, generated text, tool/function definitions, tool inputs or results, and request metadata.
+When you use BYOK or external model providers, LightMove.ai sends only the data required for the selected service to operate. Depending on the provider and service type, this may include prompts, conversation history, transcripts, audio, generated text, tool/function definitions, tool inputs or results, and request metadata.
 
 Provider data handling varies. Review each provider's data processing, retention, model training, and regional hosting policies before using sensitive data.
 </Warning>
