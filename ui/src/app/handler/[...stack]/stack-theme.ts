@@ -17,8 +17,8 @@ export const stackAuthDarkTheme: ThemeConfig = {
     cardForeground: "#f1f3f6",
     popover: "#12151b",
     popoverForeground: "#f1f3f6",
-    primary: "#4fd49a", // --brand
-    primaryForeground: "#071f17", // --brand-ink
+    primary: "#3ddc97", // --brand
+    primaryForeground: "#0a1f17", // --brand-ink
     secondary: "#171b22", // --panel-2
     secondaryForeground: "#f1f3f6",
     muted: "#171b22",
