@@ -2,9 +2,20 @@ import ipaddress
 import socket
 from urllib.parse import urlparse
 
-from api.constants import DEPLOYMENT_MODE
+from api.constants import (
+    DEPLOYMENT_MODE,
+    TOOLS_INTERNAL_SECRET,
+    TOOLS_SERVICE_URL,
+    TRUSTED_TOOL_HOSTS,
+)
+from api.utils.trusted_origins import build_trusted_origins, origin_of
 
 _CGNAT_NETWORK = ipaddress.ip_network("100.64.0.0/10")
+TRUSTED_ORIGINS = build_trusted_origins(
+    TRUSTED_TOOL_HOSTS,
+    tools_service_url=TOOLS_SERVICE_URL,
+    tools_internal_secret=TOOLS_INTERNAL_SECRET,
+)
 
 
 def validate_user_configured_service_url(
@@ -26,6 +37,9 @@ def validate_user_configured_service_url(
         raise ValueError(f"{field_name} must be an http, https, ws, or wss URL")
 
     hostname = parsed.hostname
+    # Operator-trusted internal services (e.g. the Fallcha tools service).
+    if origin_of(url) in TRUSTED_ORIGINS:
+        return
     if hostname.lower() == "localhost":
         raise ValueError(f"{field_name} cannot point to localhost in SaaS mode")
 

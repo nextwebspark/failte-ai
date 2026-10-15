@@ -14,6 +14,7 @@ export type PropertyType =
     | "document_refs"
     | "recording_ref"
     | "credential_ref"
+    | "skill_refs"
     | "mention_textarea"
     | "url";
 

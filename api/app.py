@@ -17,9 +17,14 @@ setup_logging()
 if SENTRY_DSN and (
     DEPLOYMENT_MODE != "oss" or (DEPLOYMENT_MODE == "oss" and ENABLE_TELEMETRY)
 ):
+    from sentry_sdk.scrubber import DEFAULT_DENYLIST, EventScrubber
+
     sentry_sdk.init(
         dsn=SENTRY_DSN,
         send_default_pii=True,
+        # The OAuth browser nonce travels in a request body (integrations
+        # activate); keep it out of error reports.
+        event_scrubber=EventScrubber(denylist=DEFAULT_DENYLIST + ["browser_nonce"]),
         environment=ENVIRONMENT,
     )
     print(f"Sentry initialized in environment: {ENVIRONMENT}")
@@ -37,11 +42,14 @@ from api.errors.domain import DomainError
 from api.errors.mps import MPS_UNAVAILABLE_PUBLIC_MESSAGE, MPSUnavailableError
 from api.mcp_server import mcp
 from api.routes.main import router as main_router
+from api.services.credential_encryption import verify_credential_encryption
 from api.services.pipecat.tracing_config import (
     handle_langfuse_sync,
     load_all_org_langfuse_credentials,
 )
 from api.services.pipecat.tts_cache.runtime import close_speech_cache
+from api.services.skills import sync_seed_library_on_startup
+from api.services.tool_integrations.client import close_shared_http_client
 from api.services.worker_sync.manager import (
     WorkerSyncManager,
     set_worker_sync_manager,
@@ -56,6 +64,12 @@ mcp_app = mcp.http_app(path="/", stateless_http=True)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Fallcha: refuse to start with unreadable or (outside OSS) plaintext
+    # credential storage. See api/services/credential_encryption.py.
+    await verify_credential_encryption()
+    # Fallcha: sync seed skills (api/skills_library) into the library.
+    await sync_seed_library_on_startup()
+
     async with mcp_app.lifespan(app):
         # warmup arq pool
         await get_arq_redis()
@@ -100,6 +114,7 @@ async def lifespan(app: FastAPI):
                 finally:
                     await loop_lag.stop()
                     metrics.stop()
+                    await close_shared_http_client()
 
 
 app = FastAPI(
@@ -132,7 +147,7 @@ async def handle_mps_unavailable_error(
 async def handle_domain_error(_request: Request, exc: DomainError) -> JSONResponse:
     """Map business-rule violations raised below the HTTP layer."""
 
-    content: dict[str, str] = {"detail": exc.message}
+    content: dict[str, str] = {**exc.extra, "detail": exc.message}
     if exc.code:
         content["code"] = exc.code
     return JSONResponse(status_code=exc.status_code, content=content)

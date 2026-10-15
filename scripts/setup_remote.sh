@@ -331,6 +331,22 @@ REDIS_PASSWORD=$(openssl rand -hex 32)
 MINIO_ROOT_USER="dograh$(openssl rand -hex 6)"
 MINIO_ROOT_PASSWORD=$(openssl rand -hex 32)
 
+# Encryption keys and the api <-> tools shared secret. A re-run keeps the
+# values of an existing .env: replacing an encryption key would make the
+# credentials it encrypted unreadable. Fernet key = 32 random bytes,
+# URL-safe base64.
+existing_env_value() {
+    [[ -f .env ]] || return 0
+    grep -E "^$1=" .env | tail -1 | cut -d= -f2- || true
+}
+fernet_key() { openssl rand -base64 32 | tr '+/' '-_'; }
+CREDENTIALS_ENCRYPTION_KEYS="$(existing_env_value CREDENTIALS_ENCRYPTION_KEYS)"
+CREDENTIALS_ENCRYPTION_KEYS="${CREDENTIALS_ENCRYPTION_KEYS:-$(fernet_key)}"
+TOOLS_ENCRYPTION_KEYS="$(existing_env_value TOOLS_ENCRYPTION_KEYS)"
+TOOLS_ENCRYPTION_KEYS="${TOOLS_ENCRYPTION_KEYS:-$(fernet_key)}"
+TOOLS_INTERNAL_SECRET="$(existing_env_value TOOLS_INTERNAL_SECRET)"
+TOOLS_INTERNAL_SECRET="${TOOLS_INTERNAL_SECRET:-$(openssl rand -hex 32)}"
+
 cat > .env << ENV_EOF
 # Remote deployments run with production signaling and HTTPS defaults
 ENVIRONMENT=production
@@ -373,6 +389,16 @@ ENABLE_TELEMETRY=$ENABLE_TELEMETRY
 
 # Number of uvicorn worker processes; nginx load-balances across them
 FASTAPI_WORKERS=$FASTAPI_WORKERS
+
+# Fernet keys encrypting workspace credentials at rest (api). Keep them with
+# your database backups; losing them makes stored credentials unreadable.
+CREDENTIALS_ENCRYPTION_KEYS=$CREDENTIALS_ENCRYPTION_KEYS
+
+# Integrations (fallcha-tools service): its Fernet keys and the secret it
+# shares with the api. The image is \${REGISTRY}/fallcha-tools; build mode
+# builds it from tools/.
+TOOLS_ENCRYPTION_KEYS=$TOOLS_ENCRYPTION_KEYS
+TOOLS_INTERNAL_SECRET=$TOOLS_INTERNAL_SECRET
 ENV_EOF
 echo -e "${GREEN}✓ .env file created${NC}"
 
@@ -400,6 +426,12 @@ services:
       context: .
       dockerfile: ui/Dockerfile
     image: dograh-local/dograh-ui:local
+    pull_policy: never
+
+  fallcha-tools:
+    build:
+      context: ./tools
+    image: dograh-local/fallcha-tools:local
     pull_policy: never
 OVERRIDE_EOF
     echo -e "${GREEN}✓ docker-compose.override.yaml created${NC}"

@@ -6,6 +6,11 @@ from typing import Any
 from api.db import db_client
 from api.enums import ToolCategory
 from api.services.workflow.errors import ItemKind, WorkflowError
+from api.services.workflow.skill_ref_validation import (
+    reserved_custom_tool_name_error,
+    reserved_transition_name_errors,
+    validate_workflow_skill_refs,
+)
 from api.services.workflow.tools.custom_tool import custom_tool_function_name
 from api.services.workflow.workflow_graph import transition_tool_name
 
@@ -16,6 +21,22 @@ _DYNAMIC_SCHEMA_CATEGORIES = {
 
 
 async def validate_workflow_tool_name_collisions(
+    workflow_definition: dict[str, Any] | None,
+    organization_id: int,
+) -> list[WorkflowError]:
+    """Custom-tool name collisions, plus the agent-skills checks (fork):
+    names reserved for the skill built-ins and org-owned skill references."""
+    errors = await _custom_tool_name_collisions(workflow_definition, organization_id)
+    errors.extend(reserved_transition_name_errors(workflow_definition))
+    errors.extend(
+        await validate_workflow_skill_refs(
+            workflow_definition, organization_id, db_client
+        )
+    )
+    return errors
+
+
+async def _custom_tool_name_collisions(
     workflow_definition: dict[str, Any] | None,
     organization_id: int,
 ) -> list[WorkflowError]:
@@ -70,6 +91,11 @@ async def validate_workflow_tool_name_collisions(
         custom_tools_by_node[node_id] = by_function_name
 
         for function_name, matching_tools in by_function_name.items():
+            reserved = reserved_custom_tool_name_error(
+                node_id, function_name, matching_tools[0].name
+            )
+            if reserved is not None:
+                errors.append(reserved)
             if len(matching_tools) < 2:
                 continue
             tool_names = ", ".join(f'"{tool.name}"' for tool in matching_tools)

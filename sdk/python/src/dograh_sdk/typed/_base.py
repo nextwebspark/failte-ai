@@ -13,7 +13,7 @@ ergonomic layer, not a second validator.
 
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, fields
 from typing import Any, ClassVar
 
 
@@ -37,13 +37,18 @@ class TypedNode:
         `type` is a ClassVar and is NOT included — the caller passes it
         separately.
 
-        Fields with "unset" sentinels (`None`, empty list) are filtered
-        out so the output matches what `Workflow.add(**kwargs)` would
-        produce when the user omits them. Downstream validation applies
-        spec defaults for absent keys.
+        Fields with "unset" sentinels (`None`, or an empty list on a field
+        whose default is an empty list) are filtered out so the output
+        matches what `Workflow.add(**kwargs)` would produce when the user
+        omits them. Downstream validation applies spec defaults for absent
+        keys. An explicit `[]` on a field that defaults to `None` (e.g.
+        `skill_uuids`, where `[]` opts out) is kept.
         """
         raw = asdict(self)
+        list_defaults = {
+            f.name for f in fields(self) if f.default_factory is list
+        }
         return {
             k: v for k, v in raw.items()
-            if v is not None and v != []
+            if v is not None and not (v == [] and k in list_defaults)
         }

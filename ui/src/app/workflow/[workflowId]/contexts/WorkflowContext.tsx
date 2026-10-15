@@ -1,6 +1,6 @@
 import { createContext, useContext } from 'react';
 
-import type { DocumentResponseSchema, ToolResponse } from '@/client/types.gen';
+import type { DocumentResponseSchema, SkillSummaryResponse, ToolResponse } from '@/client/types.gen';
 import type { RecordingResponseSchema } from '@/client/types.gen';
 
 interface WorkflowContextType {
@@ -12,6 +12,12 @@ interface WorkflowContextType {
         updater: (tool: ToolResponse) => ToolResponse,
     ) => void;
     recordings?: RecordingResponseSchema[];
+    /** Active workspace skills (undefined until loaded). */
+    skills?: SkillSummaryResponse[];
+    /** The skills list failed to load (skills is then [] or the last good list). */
+    skillsError?: boolean;
+    /** Reload the skills list, e.g. when a node editor opens. */
+    refreshSkills?: () => Promise<void>;
     readOnly?: boolean;
 }
 

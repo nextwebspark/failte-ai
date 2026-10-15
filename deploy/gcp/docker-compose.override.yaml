@@ -64,46 +64,70 @@ services:
         condition: service_healthy
 
   # ---------------------------------------------------------------------------
-  # Agent sidecars. Both are called by the api container as `http_api` tools
-  # during a live conversation, so they sit on app-network and publish NO host
-  # ports — nothing outside the VM can reach them.
+  # Hosted tool providers (Google Calendar, Google Sheets, website catalogue).
+  # Replaces the calendar-shim and chmarine-product-service sidecars; see
+  # README.md "Tools service cutover". Internal only (no host ports): the api
+  # reaches it at http://fallcha-tools:8000, and nginx forwards only
+  # /oauth/<provider>/callback to it.
   # ---------------------------------------------------------------------------
-  calendar-shim:
-    image: "${REGISTRY:?REGISTRY is required}/calendar-shim:${CALENDAR_SHIM_TAG:-latest}"
-    container_name: calendar-shim
+  fallcha-tools:
+    image: "${REGISTRY:?REGISTRY is required}/fallcha-tools:${FALLCHA_TOOLS_TAG:-latest}"
     restart: unless-stopped
+    # TOOLS_ENCRYPTION_KEYS, TOOLS_PUBLIC_BASE_URL, TOOLS_UI_RETURN_URL.
+    # Written from Secret Manager by configure-env.sh; see tools.env.example.
     env_file:
-      - ./deploy/gcp/secrets/calendar-shim.env
-    volumes:
-      # Google service-account key, materialised from Secret Manager at boot.
-      - /etc/dograh/sa.json:/secrets/sa.json:ro
-    healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://localhost:8080/health')"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
-      start_period: 10s
-    networks:
-      - app-network
+      - ./deploy/gcp/secrets/tools.env
+    # Replaces the root file's environment wholesale: keys set there would
+    # otherwise win over env_file (with empty defaults).
+    environment: !override
+      # Same Cloud SQL database as the api; the service only touches its own
+      # fallcha_tools schema.
+      DATABASE_URL: "${DATABASE_URL:?DATABASE_URL is required — point it at the Cloud SQL private IP}"
+      # Shared with the api service, so it lives in .env (one source).
+      TOOLS_INTERNAL_SECRET: "${TOOLS_INTERNAL_SECRET:?TOOLS_INTERNAL_SECRET is required (16+ characters, same value as the api)}"
+      LOG_LEVEL: "${TOOLS_LOG_LEVEL:-INFO}"
+    # The postgres container is dropped above.
+    depends_on: !reset {}
 
-  chmarine-product-service:
-    image: "${REGISTRY:?REGISTRY is required}/product-service:${PRODUCT_SERVICE_TAG:-latest}"
-    container_name: chmarine-product-service
-    restart: unless-stopped
-    env_file:
-      - ./deploy/gcp/secrets/product-service.env
-    volumes:
-      # catalogue.sqlite lives on the VM's persistent disk so PD snapshots cover
-      # it. Rebuilding it means re-crawling chmarine.com — copy, do not rebuild.
-      - /var/lib/dograh/chmarine:/data
-    healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://localhost:8080/health')"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
-      start_period: 10s
-    networks:
-      - app-network
+  # ---------------------------------------------------------------------------
+  # ROLLBACK ONLY: the retired agent sidecars. To roll back the tools cutover,
+  # uncomment both, restore their env files and images, and re-point the
+  # http_api tools at them (see README.md). Their data (catalogue.sqlite under
+  # /var/lib/dograh/chmarine) is left on disk for this reason.
+  # ---------------------------------------------------------------------------
+  # calendar-shim:
+  #   image: "${REGISTRY:?REGISTRY is required}/calendar-shim:${CALENDAR_SHIM_TAG:-latest}"
+  #   container_name: calendar-shim
+  #   restart: unless-stopped
+  #   env_file:
+  #     - ./deploy/gcp/secrets/calendar-shim.env
+  #   volumes:
+  #     - /etc/dograh/sa.json:/secrets/sa.json:ro
+  #   healthcheck:
+  #     test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://localhost:8080/health')"]
+  #     interval: 30s
+  #     timeout: 5s
+  #     retries: 3
+  #     start_period: 10s
+  #   networks:
+  #     - app-network
+  #
+  # chmarine-product-service:
+  #   image: "${REGISTRY:?REGISTRY is required}/product-service:${PRODUCT_SERVICE_TAG:-latest}"
+  #   container_name: chmarine-product-service
+  #   restart: unless-stopped
+  #   env_file:
+  #     - ./deploy/gcp/secrets/product-service.env
+  #   volumes:
+  #     - /var/lib/dograh/chmarine:/data
+  #   healthcheck:
+  #     test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://localhost:8080/health')"]
+  #     interval: 30s
+  #     timeout: 5s
+  #     retries: 3
+  #     start_period: 10s
+  #   networks:
+  #     - app-network
 
   # Same reason as api: survive the scheduled VM stop/start and daemon restarts.
   ui:

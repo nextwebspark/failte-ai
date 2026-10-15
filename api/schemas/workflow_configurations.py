@@ -155,6 +155,14 @@ class WorkflowConfigurationDefaults(BaseModel):
         default=False,
         description="Reuse generated speech for repeated phrases. Supports MiniMax TTS.",
     )
+    skills_enabled: bool = Field(
+        default=True,
+        description=(
+            "Offer the workspace's agent skills (load_skill, read_skill_file and "
+            "the skills index) on this workflow's nodes. Turn off for tuned "
+            "agents that must not see skills."
+        ),
+    )
     call_dispositions: list[CallDispositionOption] = Field(
         default_factory=list,
         max_length=MAX_CALL_DISPOSITIONS,

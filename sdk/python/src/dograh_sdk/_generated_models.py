@@ -550,6 +550,7 @@ class PropertyType(Enum):
     document_refs = 'document_refs'
     recording_ref = 'recording_ref'
     credential_ref = 'credential_ref'
+    skill_refs = 'skill_refs'
     mention_textarea = 'mention_textarea'
     url = 'url'
 
@@ -760,6 +761,10 @@ class WorkflowConfigurationDefaults(BaseModel):
     tts_cache_enabled: Annotated[bool | None, Field(title='Tts Cache Enabled')] = False
     """
     Reuse generated speech for repeated phrases. Supports MiniMax TTS.
+    """
+    skills_enabled: Annotated[bool | None, Field(title='Skills Enabled')] = True
+    """
+    Offer the workspace's agent skills (load_skill, read_skill_file and the skills index) on this workflow's nodes. Turn off for tuned agents that must not see skills.
     """
     call_dispositions: Annotated[
         list[CallDispositionOption] | None,

@@ -195,6 +195,11 @@ app VM with no published ports, reachable only from the api container:
 `http://chmarine-product-service:8080` and `http://calendar-shim:8080`, authenticated
 with `X-API-Key`.
 
+> **Superseded (2026-10):** both sidecars are replaced by the in-repo `fallcha-tools`
+> service (Integrations). The cutover steps, including moving `transfer_to_team` off the
+> product service's `/transfer_destination` resolver, are in `deploy/gcp/README.md`
+> ("Tools service cutover"). This section records the state as of 2026-09-12.
+
 ---
 
 ## 5. What we measured about latency
@@ -381,6 +386,9 @@ docker exec asterisk-voiptel asterisk -rx "ari show apps"             # dograh
 - `external_credentials.credential_data` is stored in plaintext despite the model comment.
 - Tool rows store their `X-API-Key` in the database, and the same key lives in the
   sidecars' `.env`. Rotating means changing both.
+  *(2026-10: credentials are encrypted at rest once `CREDENTIALS_ENCRYPTION_KEYS` is
+  set, and integration tools use per-connection keys issued by `fallcha-tools`; see
+  `deploy/gcp/README.md`.)*
 
 **Product / infrastructure**
 

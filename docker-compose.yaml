@@ -255,6 +255,23 @@ services:
 
       OSS_JWT_SECRET: "${OSS_JWT_SECRET:?OSS_JWT_SECRET must be set to a strong secret}"
 
+      # Comma-separated Fernet keys (first one encrypts) for workspace
+      # credentials at rest. Unset stores them in plaintext (with a warning);
+      # outside DEPLOYMENT_MODE=oss the API refuses to start without them.
+      # Generate: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+      CREDENTIALS_ENCRYPTION_KEYS: "${CREDENTIALS_ENCRYPTION_KEYS:-}"
+
+      # Integrations (fallcha-tools service below). The integrations API
+      # answers 503 until TOOLS_INTERNAL_SECRET is set; it must equal the
+      # tools service's value. With it set, the TOOLS_SERVICE_URL origin is
+      # also trusted by the non-OSS tool-URL guard.
+      TOOLS_SERVICE_URL: "${TOOLS_SERVICE_URL:-http://fallcha-tools:8000}"
+      TOOLS_INTERNAL_SECRET: "${TOOLS_INTERNAL_SECRET:-}"
+      # Extra comma-separated origins (scheme://host[:port]) that user tool
+      # URLs may target outside DEPLOYMENT_MODE=oss although they are
+      # internal. Host names only: IP literals and localhost are ignored.
+      TRUSTED_TOOL_HOSTS: "${TRUSTED_TOOL_HOSTS:-}"
+
       # Auth. UI_APP_URL is where emailed links (verify, reset, invite) and
       # Stripe's return URLs point; nginx serves the UI on PUBLIC_BASE_URL, so
       # that is the default for remote installs.
@@ -330,6 +347,54 @@ services:
       timeout: 10s
       retries: 3
       start_period: 60s
+    networks:
+      - app-network
+
+  # Hosted third-party tool providers (Google Calendar, Sheets, ...) served
+  # over MCP at http://fallcha-tools:8000/mcp/<provider>. Internal only: no
+  # published port. Shares postgres but keeps its tables in the
+  # fallcha_tools schema with its own migrations (run on container start).
+  # Needs TOOLS_ENCRYPTION_KEYS (comma-separated Fernet keys) and
+  # TOOLS_INTERNAL_SECRET (16+ characters, same value as the api's) in .env;
+  # without them it exits at startup and the rest of the stack is unaffected.
+  # The only public route is the OAuth callback /oauth/<provider>/callback,
+  # which the remote nginx forwards here (deploy/templates/nginx.remote.conf.template).
+  # The image must exist in ${REGISTRY} (Fallcha's release and Cloud Build
+  # publish it; upstream Dograh registries do not): otherwise build it with
+  # `docker compose build fallcha-tools`.
+  fallcha-tools:
+    image: ${REGISTRY:-dograhai}/fallcha-tools:latest
+    build:
+      context: ./tools
+    environment:
+      DATABASE_URL: "postgresql+asyncpg://postgres:${POSTGRES_PASSWORD:-postgres}@postgres:5432/postgres"
+      TOOLS_ENCRYPTION_KEYS: "${TOOLS_ENCRYPTION_KEYS:-}"
+      TOOLS_INTERNAL_SECRET: "${TOOLS_INTERNAL_SECRET:-}"
+      # Public origin serving /oauth/*; Google redirect URIs are built from
+      # it ({TOOLS_PUBLIC_BASE_URL}/oauth/<provider>/callback).
+      TOOLS_PUBLIC_BASE_URL: "${TOOLS_PUBLIC_BASE_URL:-${PUBLIC_BASE_URL:-}}"
+      # UI page the OAuth callback sends the browser back to. OAuth (bring-
+      # your-own client) stays off (503) until both URLs are set.
+      TOOLS_UI_RETURN_URL: "${TOOLS_UI_RETURN_URL:-${PUBLIC_BASE_URL:+${PUBLIC_BASE_URL}/integrations}}"
+      LOG_LEVEL: "${TOOLS_LOG_LEVEL:-INFO}"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          'python -c "import urllib.request; urllib.request.urlopen(''http://localhost:8000/health'').read()"',
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
     networks:
       - app-network
 

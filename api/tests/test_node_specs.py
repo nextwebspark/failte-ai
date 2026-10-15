@@ -313,6 +313,8 @@ def test_all_registered_node_models_inherit_base_node_data():
                 "extraction_variables",
                 "tool_uuids",
                 "document_uuids",
+                "skill_uuids",
+                "preload_skill_uuids",
                 "pre_call_fetch_mode",
                 "pre_call_fetch_url",
                 "pre_call_fetch_credential_uuid",
@@ -330,6 +332,8 @@ def test_all_registered_node_models_inherit_base_node_data():
                 "extraction_variables",
                 "tool_uuids",
                 "document_uuids",
+                "skill_uuids",
+                "preload_skill_uuids",
             ],
         ),
         (

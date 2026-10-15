@@ -9,8 +9,8 @@ with a thin overlay for what differs on GCP.
  static IP A                       static IP B  <- VoIPTel whitelists this
  nginx / api / ui / redis          asterisk 22
  coturn                             SIP  tcp 5060      (carrier IPs only)
- calendar-shim                      RTP  udp 10000-10120 (carrier IPs only)
- chmarine-product-service           ARI  tcp 8088      (app VM only)
+ fallcha-tools                      RTP  udp 10000-10120 (carrier IPs only)
+                                    ARI  tcp 8088      (app VM only)
    |
    +-- Cloud SQL PostgreSQL 17 + pgvector (private IP)
    +-- gs://dograh-voice-audio-eu (S3-compatible XML API)
@@ -24,7 +24,9 @@ pre-launch schedule is active. Full breakdown in the plan document.
 | File | Purpose |
 |---|---|
 | `bootstrap.sh` | Idempotent `gcloud` setup: project, APIs, IPs, firewall, bucket, Cloud SQL, registry |
-| `docker-compose.override.yaml` | App-VM overlay — drops the Postgres container, adds the two sidecars |
+| `docker-compose.override.yaml` | App-VM overlay — drops the Postgres container, points `fallcha-tools` at Cloud SQL (the retired sidecars stay commented out for rollback) |
+| `configure-env.sh` | Writes `.env` (and `secrets/tools.env`) from Secret Manager |
+| `cloudbuild.yaml` | Builds `dograh-api`, `dograh-ui` and `fallcha-tools` for linux/amd64 |
 | `verify_gcs.py` | Proves GCS works through the S3 API **before** anything depends on it |
 | `secrets/` | Per-service env files. Gitignored — never commit |
 
@@ -33,11 +35,11 @@ The sip VM overlay lives with its stack, at
 
 ## Prerequisites
 
-**The two agent sidecars are not in version control.** `~/dev/chmarine-agent` and
-`~/dev/voiptel-agent` are untracked folders that exist only on one laptop. Cloud
-Build has nothing to build from until they are in a repo, so this is a hard
-blocker, not a nicety. Commit both (with `.env` gitignored) and push before
-starting.
+The agent tools (calendar booking, order lookup, product search) are served by
+the in-repo `fallcha-tools` service (`tools/`), so nothing outside this repo has
+to be built. The old `calendar-shim` / `product-service` sidecars from
+`~/dev/voiptel-agent` and `~/dev/chmarine-agent` are needed only during the
+cutover and for rollback (see [Tools service cutover](#tools-service-cutover)).
 
 ## 1. Bootstrap the project
 
@@ -91,8 +93,8 @@ git submodule update --init --recursive
 
 Build for **linux/amd64** in Cloud Build — the dev machine is arm64 and the API
 image (pipecat with ~18 extras plus a static ffmpeg) is far too slow under
-emulation. Build four images: `dograh-api`, `dograh-ui`, `calendar-shim`,
-`product-service`, plus `asterisk-voiptel` for the sip VM.
+emulation. `deploy/gcp/cloudbuild.yaml` builds `dograh-api`, `dograh-ui` and
+`fallcha-tools`; build `asterisk-voiptel` for the sip VM separately.
 
 ## 4. App VM
 
@@ -173,22 +175,170 @@ It is inert once `ENABLE_AWS_S3=true` — `MinioFileSystem` is only constructed 
 rows whose backend is `minio`, so the anonymous bucket policy is never applied.
 Remove it **together with** the nginx `/voice-audio/` location, never separately.
 
-## 5. Sidecar configuration
+## 5. Tools service (`fallcha-tools`)
 
-Both are reached over the Docker network with no published ports:
-`http://calendar-shim:8080` and `http://chmarine-product-service:8080`.
+`fallcha-tools` (`tools/`, see `tools/README.md`) hosts the agents' third-party
+tools: Google Calendar, Google Sheets and the website product catalogue. It
+replaces the `calendar-shim` and `chmarine-product-service` sidecars. It sits on
+`app-network` with no host ports: the api reaches it at
+`http://fallcha-tools:8000`, and nginx forwards only
+`/oauth/<provider>/callback` to it. It shares the Cloud SQL database (its own
+`fallcha_tools` schema, migrated on container start).
 
-**The tool URLs live in the database** and currently say `http://localhost:8090` /
-`:8091`. Re-point them with `voiptel-agent/scripts/setup_calendar_tools.py` and
-`chmarine-agent/scripts/setup_tools.py`, or every tool call fails at runtime while
-the agent still sounds healthy.
+### Secrets
 
-Copy `catalogue.sqlite` to `/var/lib/dograh/chmarine` rather than re-crawling —
-a rebuild costs an hour of deliberately slow crawling. Refresh later with:
+All three are **required**: the overlay runs `fallcha-tools`, and
+`configure-env.sh` stops with an error if `dograh-tools-internal-secret` or
+`dograh-tools-encryption-keys` is missing. Create them once (values are never
+printed back):
 
 ```bash
-docker compose run --rm chmarine-product-service python ingest.py --limit 400
+P=dograh-eu
+fernet() { python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"; }
+fernet | gcloud secrets create dograh-credentials-encryption-keys --data-file=- --project=$P
+fernet | gcloud secrets create dograh-tools-encryption-keys --data-file=- --project=$P
+openssl rand -hex 32 | gcloud secrets create dograh-tools-internal-secret --data-file=- --project=$P
 ```
+
+`configure-env.sh` then writes `CREDENTIALS_ENCRYPTION_KEYS` and
+`TOOLS_INTERNAL_SECRET` into `.env` (the api and the tools service share the
+secret) and the tools-only keys into `deploy/gcp/secrets/tools.env` (see
+`secrets/tools.env.example`). `TOOLS_PUBLIC_BASE_URL` defaults to
+`PUBLIC_BASE_URL` and `TOOLS_UI_RETURN_URL` to `PUBLIC_BASE_URL/integrations`;
+override with `DOGRAH_TOOLS_PUBLIC_BASE_URL` / `DOGRAH_TOOLS_UI_RETURN_URL`.
+
+**Encrypting existing credentials.** The api's migration seals plaintext rows
+only when it first runs with the key set. Once the key is set on an install
+whose database already passed that migration, run the re-encryption once.
+GCP's Cloud SQL is such an install. The script is idempotent and safe to repeat:
+
+```bash
+docker compose up -d api        # restart with CREDENTIALS_ENCRYPTION_KEYS
+docker compose exec api python -m scripts.reencrypt_credentials --dry-run
+docker compose exec api python -m scripts.reencrypt_credentials
+```
+
+Never drop a key while rows encrypted with it exist. Rotation is in
+`docs/developer/environment-variables.mdx`.
+
+The nginx config is rendered by `dograh-init` from
+`deploy/templates/nginx.remote.conf.template`, so pulling this repo and
+recreating `dograh-init` + `nginx` picks up the callback route.
+
+### Tools service cutover
+
+GCP is stopped as of 2026-10; this is the plan for when it comes back. Do it in
+this order, so no step leaves an agent without a working tool. The old
+sidecars keep running until step 7.
+
+1. **Deploy.** Build with `cloudbuild.yaml`, create the secrets, run
+   `configure-env.sh`, then bring the stack up with the overlay. For the
+   cutover window, uncomment the two sidecar blocks in the overlay so the
+   old tools keep answering.
+   The VM's copy of the overlay may carry local additions. Merge this file
+   into it rather than overwriting it. The api patch mounts described in
+   `app-doc/gcp-voice-stack-runbook.md` are the exception: drop them, since
+   they would shadow files of the new api image this cutover needs. First
+   confirm their changes are in the image.
+   `docker compose ps fallcha-tools` must be healthy, and the Integrations
+   page must list Google Calendar, Google Sheets and Website product
+   catalogue.
+2. **Voiptel: Google Calendar.** Integrations → Google Calendar → Connect →
+   *Service account key*. Upload the key that is in Secret Manager today
+   (`/etc/dograh/sa.json`). In the settings that follow, set:
+   - `calendar_id`: the shim's `CALENDAR_ID`;
+   - `timezone`: `Europe/Dublin`;
+   - `event_summary_prefix`: `Voiptel call`.
+
+   Test the connection.
+3. **Voiptel: Google Sheets (orders).** Integrations → Google Sheets →
+   Connect → *Use the same service account*. Set:
+   - `spreadsheet_id`: the shim's `ORDERS_SHEET_ID`;
+   - `orders_tab`: `Orders`.
+
+   Share the spreadsheet with the service account (Viewer is enough for
+   lookups). The order header mapping (`order_columns`) defaults to the
+   shim's headers. Only if the sheet's headers differ, set it through the API
+   (the UI form does not edit nested settings):
+
+   ```bash
+   curl -X PATCH https://<host>/api/v1/integrations/connections/<id> \
+     -H "Authorization: Bearer <token>" -H 'Content-Type: application/json' \
+     -d '{"config": {"order_columns": {"order_id": "Order ID", "status": "Status"}}}'
+   ```
+
+4. **CH Marine: Website product catalogue.** Integrations → Website product
+   catalogue → Connect. Set `site_url` to `https://www.chmarine.com`. The
+   first sync starts by itself, takes tens of minutes (paced crawling; 2000
+   products at most by default) and must finish with a product count.
+   - If the count is far off, set `sitemap_url` / `include_paths` and press
+     **Sync now**.
+   - The old `catalogue.sqlite` is not imported; the catalogue is re-crawled
+     into Cloud SQL.
+5. **Re-point the agents.** Each connection created an MCP tool ("Google
+   Calendar", "Google Sheets", "Website product catalogue"), authenticated by
+   a managed bearer credential "<Provider> integration (...)". For each agent,
+   pick one of the two options below.
+   - **MCP (preferred).** In the node's tool selector → *MCP*, tick the
+     functions:
+     - Calendar: `check_appointment_availability`, `book_appointment`,
+       `cancel_appointment`;
+     - Sheets: `look_up_order`;
+     - Catalogue: `search_products`, `product_detail`.
+
+     Then untick the old `http_api` tools. The LLM sees the functions as
+     `mcp__<tool>__<function>`, so update any prompt text that names the old
+     tools.
+   - **Keep the `http_api` tools.** Edit each one:
+     - Set the URL to the compatibility route, `http://fallcha-tools:8000`
+       plus the route below.
+       - Calendar: `/v1/google-calendar/availability`, `/book`, `/cancel`.
+       - Orders: `/v1/google-sheets/order_lookup`.
+       - Catalogue: `/v1/website-catalogue/product_search`,
+         `/product_detail`.
+     - Replace the old `X-API-Key` credential with the integration's managed
+       credential (it sends `Authorization: Bearer <key>`).
+     - Each key works only on its own provider's routes.
+     - Bodies and responses are unchanged.
+
+     Removing the integration later deletes that credential but does not
+     archive these `http_api` tools.
+
+   Do **not** re-run `voiptel-agent/scripts/setup_calendar_tools.py` or
+   `chmarine-agent/scripts/setup_tools.py` afterwards. They re-point the tools
+   at the sidecars.
+6. **Call transfer.** The CH Marine `transfer_to_team` tool resolves its
+   destination dynamically from
+   `http://chmarine-product-service:8080/transfer_destination`. That endpoint
+   is the `TRANSFER_DESTINATION` from `product-service.env` and is **not**
+   ported to fallcha-tools. Before stopping the product service, edit the
+   tool:
+   - set *Destination source* to **Static**;
+   - set *Destination* to the current `TRANSFER_DESTINATION` value. It must
+     stay trunk-qualified, for example `PJSIP/200@voiptel`; a bare name fails
+     with "Allocation failed".
+
+   Changing the destination later is a tool edit, not an env change.
+
+   Then place a test call on a CH Marine workflow and ask for a person. It
+   must ring the destination while `chmarine-product-service` is still
+   running. Only then go on to step 7. A failed transfer here shows up as
+   "Allocation failed" in the api log.
+7. **Verify, then retire.** Place a test call per agent:
+   - Voiptel: availability → book (the event appears with the "Voiptel call"
+     prefix) → cancel. Also run an order lookup.
+   - CH Marine: product search → detail → transfer.
+
+   Then comment the sidecar blocks out again and run
+   `docker compose up -d --remove-orphans`. Events booked by the old shim
+   carry no marker, so the agent cannot cancel them; cancel those in Google
+   Calendar.
+
+**Rollback:** uncomment the sidecars, `docker compose up -d calendar-shim
+chmarine-product-service`, and re-point the tools (re-running the two setup
+scripts does this). Restore the transfer tool's dynamic resolver. Keep
+`/var/lib/dograh/chmarine` and the shim env files until the cutover has been
+stable for a while.
 
 ## 6. SIP VM
 
@@ -259,8 +409,12 @@ docker compose up -d api
 - [ ] Stop stopping the Cloud SQL instance.
 - [ ] Uptime check on `/api/v1/health` + alert policy.
 - [ ] Ops Agent on both VMs (memory and disk are not collected by default).
-- [ ] Daily PD snapshot schedule — this is what protects the SQLite catalogue and
-      the Redis AOF, neither of which Cloud SQL backups cover.
+- [ ] Daily PD snapshot schedule — this is what protects the Redis AOF, which
+      Cloud SQL backups do not cover. (The product catalogue now lives in Cloud
+      SQL, schema `fallcha_tools`.)
+- [ ] Back up `dograh-credentials-encryption-keys` and
+      `dograh-tools-encryption-keys` alongside the database backups: a restored
+      database is unreadable without them.
 - [ ] Verify externally with `nmap` that Postgres/Redis/MinIO are unreachable.
       Docker's published ports bypass host firewalls like `ufw`, so check from
       outside rather than trusting the host config.
