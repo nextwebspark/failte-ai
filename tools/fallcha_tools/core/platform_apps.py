@@ -36,7 +36,7 @@ class PlatformClient:
 async def sync_platform_client(
     db: Database, box: SecretBox, client: PlatformClient
 ) -> None:
-    """Upsert the client's row, keep replaced rows readable under the primary
+    """Upsert the client's row, move replaced platform rows to the primary
     encryption key, and give connections rejected for this client another
     try. Safe to run on every start and replica."""
     async with db.session() as session:

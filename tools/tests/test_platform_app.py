@@ -576,3 +576,48 @@ async def test_connections_keep_only_their_providers_scopes(
         "https://www.googleapis.com/auth/spreadsheets" not in stored["scopes_granted"]
     )
     assert "https://www.googleapis.com/auth/calendar.events" in stored["scopes_granted"]
+
+
+async def test_restart_revives_only_client_rejections(
+    app: FastAPI,
+    client: httpx.AsyncClient,
+    engine: AsyncEngine,
+    google: FakeGoogle,
+    settings: Settings,
+    registry: ProviderRegistry,
+) -> None:
+    connection_id = await finish(client, await started(client, PLATFORM_APP_ID))
+    await expire_access_token(engine, connection_id)
+    google.token.mock(return_value=httpx.Response(400, json={"error": "invalid_grant"}))
+    with pytest.raises(OAuthReconnectRequired):
+        await refresh(services(app), connection_id)
+    assert (await row(engine, connection_id))["error_code"] == "grant_revoked"
+
+    async with restarted(settings, registry):
+        pass
+    stored = await row(engine, connection_id)
+    assert (stored["status"], stored["error_code"]) == ("error", "grant_revoked")
+
+
+async def test_refresh_keeps_only_the_providers_scopes(
+    app: FastAPI, client: httpx.AsyncClient, engine: AsyncEngine, google: FakeGoogle
+) -> None:
+    connection_id = await finish(client, await started(client, PLATFORM_APP_ID))
+    await expire_access_token(engine, connection_id)
+    google.token.mock(
+        return_value=refreshed(
+            scope=f"{GRANTED} https://www.googleapis.com/auth/spreadsheets"
+        )
+    )
+    await refresh(services(app), connection_id)
+    stored = (await row(engine, connection_id))["scopes_granted"]
+    assert "https://www.googleapis.com/auth/spreadsheets" not in stored
+    assert "https://www.googleapis.com/auth/calendar.events" in stored
+
+
+def test_is_primary_tells_whether_rotation_is_due() -> None:
+    old, new = generate_key(), generate_key()
+    token = SecretBox([old]).encrypt("s")
+    rotated_box = SecretBox([new, old])
+    assert not rotated_box.is_primary(token)
+    assert rotated_box.is_primary(rotated_box.rotate(token))

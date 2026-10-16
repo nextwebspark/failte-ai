@@ -562,6 +562,7 @@ for name in dograh-resend-api-key dograh-google-oauth-client-id dograh-google-oa
     --member=serviceAccount:dograh-app-sa@dograh-eu.iam.gserviceaccount.com \
     --role=roles/secretmanager.secretAccessor
 done
+unset V
 # Stripe works the same way: dograh-stripe-secret-key (sk_...) and
 # dograh-stripe-webhook-secret (whsec_...).
 
@@ -574,15 +575,17 @@ sudo docker compose up -d api fallcha-tools
 
 `up -d` recreates the containers with the new values; `docker compose restart`
 does not re-read them. `DOGRAH_EMAIL_FROM` is needed on the first run with
-Resend; later runs keep the sender already in `.env`. Deleting the Google
-secrets turns Google sign-in and the platform client off on the next run; for
-the other secrets `set_key` never removes a key, so deleting one later also
-needs the matching lines removed from `.env` by hand. A Secret Manager error
-other than "absent" stops the script rather than switching a feature off.
+Resend; later runs keep the sender already in `.env`. To turn Google sign-in
+and the platform client off, run the script with `DOGRAH_GOOGLE=off` (a
+deleted secret looks the same to the VM as a missing grant, so the script
+keeps the current values in that case). For the other secrets `set_key` never
+removes a key, so deleting one later also needs the matching lines removed
+from `.env` by hand. A Secret Manager error other than "absent" or "not
+readable" stops the script rather than switching a feature off.
 
 **Rotating the Google client secret:** add the new secret in Google Auth
 Platform, then `gcloud secrets versions add dograh-google-oauth-client-secret
---data-file=-`, re-run the script, `sudo docker compose up -d api fallcha-tools`,
+--data-file=- --project=dograh-eu`, re-run the script, `sudo docker compose up -d api fallcha-tools`,
 and only then disable the old secret in Google.
 
 - **Stripe webhook:** add a dashboard endpoint at

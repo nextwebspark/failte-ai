@@ -27,7 +27,9 @@ class SecretBox:
         if not keys:
             raise ValueError("at least one encryption key is required")
         try:
-            self._fernet = MultiFernet([Fernet(key.encode()) for key in keys])
+            fernets = [Fernet(key.encode()) for key in keys]
+            self._primary = fernets[0]
+            self._fernet = MultiFernet(fernets)
         except ValueError as exc:
             raise ValueError("invalid Fernet key in TOOLS_ENCRYPTION_KEYS") from exc
 
@@ -46,6 +48,14 @@ class SecretBox:
     def decrypt_json(self, token: str) -> JsonValue:
         decoded: JsonValue = json.loads(self.decrypt(token))
         return decoded
+
+    def is_primary(self, token: str) -> bool:
+        """Whether the primary key alone can read ``token`` (no rotation due)."""
+        try:
+            self._primary.decrypt(token.encode())
+        except InvalidToken:
+            return False
+        return True
 
     def rotate(self, token: str) -> str:
         """Re-encrypt ``token`` under the primary key (it may use any known key)."""

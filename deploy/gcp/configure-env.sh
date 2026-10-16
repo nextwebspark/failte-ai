@@ -103,26 +103,42 @@ set_key TELEPHONY_WS_TOKEN_ENFORCE false
 # (whsec_ of the dashboard endpoint), dograh-resend-api-key (re_...),
 # dograh-google-oauth-client-id / dograh-google-oauth-client-secret.
 #
-# Prints the value, or nothing when the secret is absent. Without
-# project-wide access a missing secret reads as PERMISSION_DENIED ("or it may
-# not exist"), so that counts as absent too, with a note in case only the
-# grant is missing. Any other error (network, quota) stops the script instead
-# of quietly switching a feature off.
-sm_optional() {
+# sm_read NAME VAR: reads secret NAME into variable VAR (empty unless read).
+# Returns 0 when read, 3 when absent (NOT_FOUND), 4 when not readable: without
+# project-wide access a missing secret answers PERMISSION_DENIED ("or it may
+# not exist"), the same as a missing grant. Any other error (network, quota)
+# stops the script instead of quietly switching a feature off.
+sm_read() {
   local err val rc=0
   err="$(mktemp)"
   val="$(gcloud secrets versions access latest --secret="$1" --project="$PROJECT" 2>"$err")" || rc=$?
+  printf -v "$2" '%s' "$val"
   if (( rc == 0 )); then
-    printf '%s' "$val"
-  elif grep -q PERMISSION_DENIED "$err"; then
-    echo "  skipped $1: absent, or this VM's service account may not read it" >&2
-  elif ! grep -q NOT_FOUND "$err"; then
-    cat "$err" >&2
     rm -f "$err"
-    return 1
+    return 0
+  elif grep -q PERMISSION_DENIED "$err"; then
+    rm -f "$err"
+    return 4
+  elif grep -q NOT_FOUND "$err"; then
+    rm -f "$err"
+    return 3
   fi
+  cat "$err" >&2
   rm -f "$err"
+  exit 1
 }
+
+# Prints an optional secret's value, or nothing when absent or not readable.
+sm_optional() {
+  local value status=0
+  sm_read "$1" value || status=$?
+  if (( status == 4 )); then
+    echo "  skipped $1: absent, or this VM's service account may not read it" >&2
+  fi
+  printf '%s' "$value"
+}
+
+env_value() { grep -E "^$1=" "$ENV_FILE" | tail -1 | cut -d= -f2- || true; }
 
 STRIPE_KEY="$(sm_optional dograh-stripe-secret-key)"
 if [[ -n "$STRIPE_KEY" ]]; then
@@ -151,19 +167,34 @@ fi
 
 # One Google OAuth client serves "Continue with Google" sign-in (api, .env)
 # and the platform client for Calendar and Sheets (fallcha-tools, tools.env
-# below). Both secrets or neither, decided once for both services; with
-# neither (or only one) both are off and stale values are removed. The client
-# (Google Auth Platform, this project) must list these redirect URIs:
-# <PUBLIC_BASE_URL>/auth/google/callback and
+# below), decided once for both: on with both secrets, off with neither (or
+# only one), when stale values are removed. When a secret is not readable the
+# script can't tell "deleted" from "grant missing", so it keeps what .env has
+# rather than switching sign-in off; DOGRAH_GOOGLE=off turns it off
+# explicitly. The client (Google Auth Platform, this project) must list these
+# redirect URIs: <PUBLIC_BASE_URL>/auth/google/callback and
 # <PUBLIC_BASE_URL>/oauth/google-{calendar,sheets}/callback.
-GOOGLE_ID="$(sm_optional dograh-google-oauth-client-id)"
-GOOGLE_SECRET="$(sm_optional dograh-google-oauth-client-secret)"
+GOOGLE_ID="" GOOGLE_SECRET=""
+GOOGLE_ID_STATUS=0 GOOGLE_SECRET_STATUS=0
+if [[ "${DOGRAH_GOOGLE:-}" != off ]]; then
+  sm_read dograh-google-oauth-client-id GOOGLE_ID || GOOGLE_ID_STATUS=$?
+  sm_read dograh-google-oauth-client-secret GOOGLE_SECRET || GOOGLE_SECRET_STATUS=$?
+fi
 if [[ -n "$GOOGLE_ID" && -n "$GOOGLE_SECRET" ]]; then
   set_key GOOGLE_CLIENT_ID "$GOOGLE_ID"
   set_key GOOGLE_CLIENT_SECRET "$GOOGLE_SECRET"
+elif (( GOOGLE_ID_STATUS == 4 || GOOGLE_SECRET_STATUS == 4 )); then
+  GOOGLE_ID="$(env_value GOOGLE_CLIENT_ID)"
+  GOOGLE_SECRET="$(env_value GOOGLE_CLIENT_SECRET)"
+  if [[ -n "$GOOGLE_ID" && -n "$GOOGLE_SECRET" ]]; then
+    echo "  Google client secrets not readable by this VM's service account:" \
+      "keeping the values already in .env (DOGRAH_GOOGLE=off removes them)" >&2
+  else
+    GOOGLE_ID="" GOOGLE_SECRET=""
+  fi
 else
   if [[ -n "$GOOGLE_ID" || -n "$GOOGLE_SECRET" ]]; then
-    echo "  only one of dograh-google-oauth-client-id / -secret is readable:" \
+    echo "  only one of dograh-google-oauth-client-id / -secret exists:" \
       "Google sign-in and the platform Google client stay off" >&2
     GOOGLE_ID="" GOOGLE_SECRET=""
   fi

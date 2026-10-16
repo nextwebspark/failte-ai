@@ -710,18 +710,28 @@ class PlatformAppRepository:
         return app_id
 
     async def reencrypt_replaced(self, current_id: uuid.UUID) -> int:
-        """Re-encrypt older platform rows under the primary key, so retiring
-        an encryption key never strands connections still on a replaced
-        client. Rows no current key can read are left alone (and counted)."""
+        """Re-encrypt replaced platform clients under the primary key.
+
+        The current client is re-encrypted by :meth:`upsert`; replaced ones
+        are never written again, so without this they would be the one thing
+        a key rotation (prepend a key, re-encrypt, drop the old key) misses
+        for the platform. Connections, workspace clients and OAuth states
+        still need that rotation's own re-encryption. Rows already under the
+        primary key are skipped; rows no current key can read are left alone
+        and counted."""
         rows = (
             await self._session.scalars(
                 select(ProviderApp)
                 .where(ProviderApp.org_id.is_(None), ProviderApp.id != current_id)
-                .with_for_update()
+                # NO KEY UPDATE: doesn't block connections being inserted
+                # against these rows (their FK check takes KEY SHARE).
+                .with_for_update(key_share=True)
             )
         ).all()
         unreadable = 0
         for row in rows:
+            if self._box.is_primary(row.client_secret_enc):
+                continue
             try:
                 row.client_secret_enc = self._box.rotate(row.client_secret_enc)
             except DecryptionError:
