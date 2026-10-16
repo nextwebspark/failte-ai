@@ -657,6 +657,7 @@ describe("IntegrationsPage", () => {
         }
 
         it("connects with the platform client in one click", async () => {
+            mocks.listProviderApps.mockResolvedValue({ data: { provider_apps: [MANAGED] } });
             const dialog = await openConnect();
 
             const own = within(dialog).getByRole("switch", { name: "Use your own OAuth client (advanced)" });
@@ -675,8 +676,17 @@ describe("IntegrationsPage", () => {
         });
 
         it("keeps your own OAuth client behind the advanced switch", async () => {
+            mocks.listProviderApps.mockResolvedValue({ data: { provider_apps: [MANAGED] } });
             const dialog = await openConnect();
             fireEvent.click(within(dialog).getByRole("switch", { name: /Use your own OAuth client/ }));
+
+            expect(await within(dialog).findByLabelText("Client ID")).toBeTruthy();
+        });
+
+        it("stays on the workspace's own client when it has one", async () => {
+            const dialog = await openConnect();
+            const own = within(dialog).getByRole("switch", { name: /Use your own OAuth client/ });
+            expect(own.getAttribute("aria-checked")).toBe("true");
 
             expect(await within(dialog).findByLabelText("OAuth client")).toBeTruthy();
             expect(within(dialog).queryByRole("button", { name: "Connect with Google" })).toBeNull();
@@ -700,12 +710,15 @@ describe("IntegrationsPage", () => {
             expect(within(dialog).getByRole("button", { name: "Connect with Google" })).toBeTruthy();
         });
 
-        it("suggests the signed-in user's email when no Google account is connected yet", async () => {
+        it("offers the signed-in user's email when no Google account is connected yet", async () => {
             mocks.user = { id: "1", email: "owner@acme.test" };
+            mocks.listProviderApps.mockResolvedValue({ data: { provider_apps: [MANAGED] } });
             const dialog = await openConnect();
 
+            // Offered, not chosen: the address may not be a Google account.
             const radio = await within(dialog).findByRole("radio", { name: "Continue as owner@acme.test" });
-            expect(radio.getAttribute("aria-checked")).toBe("true");
+            expect(radio.getAttribute("aria-checked")).toBe("false");
+            fireEvent.click(radio);
             fireEvent.click(within(dialog).getByRole("button", { name: "Connect with Google" }));
             await waitFor(() => expect(mocks.startOauth).toHaveBeenCalledTimes(1));
             expect(mocks.startOauth.mock.calls[0][0].body).toEqual({

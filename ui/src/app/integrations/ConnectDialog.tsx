@@ -19,7 +19,7 @@ import { type AuthUser, useAuth } from "@/lib/auth";
 
 import { authModeLabel, credentialFamily, isEmail } from "./messages";
 import { NoAuthConnect } from "./NoAuthConnect";
-import { OAuthConnect } from "./OAuthConnect";
+import { OAuthConnect, SUGGESTED_ACCOUNT_ID } from "./OAuthConnect";
 import { type ReusableKey, ServiceAccountConnect } from "./ServiceAccountConnect";
 
 /** Auth modes this screen can drive, in the order they are offered. */
@@ -149,9 +149,9 @@ function ConnectBody({
             ];
         }
         if (accounts.length > 0 || !isEmail(ownEmail)) return accounts;
-        // Nothing signed in for this family yet: suggest the user's own address,
-        // so someone who signed in here with Google sees one short consent.
-        return [{ connectionId: "signed-in-user", label: ownEmail }];
+        // Nothing signed in for this family yet: offer the user's own address,
+        // so someone who signed in here with Google can skip the account chooser.
+        return [{ connectionId: SUGGESTED_ACCOUNT_ID, label: ownEmail }];
     }, [provider, providers, connections, replaces, ownEmail]);
 
     return (

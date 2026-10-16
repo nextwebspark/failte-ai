@@ -135,8 +135,24 @@ PUBLIC_URL="$(grep -E '^PUBLIC_BASE_URL=' "$ENV_FILE" | tail -1 | cut -d= -f2- |
 #   printf %s '…apps.googleusercontent.com' | gcloud secrets create dograh-google-oauth-client-id --data-file=-
 #   printf %s 'GOCSPX-…' | gcloud secrets create dograh-google-oauth-client-secret --data-file=-
 # tools.env is rewritten on every run, so deleting the secrets turns it off.
-TOOLS_GOOGLE_ID="$(sm_optional dograh-google-oauth-client-id)"
-TOOLS_GOOGLE_SECRET="$(sm_optional dograh-google-oauth-client-secret)"
+# tools.env is rewritten, so a transient Secret Manager error must not read as
+# "secret absent" (that would silently drop the client): only NOT_FOUND counts
+# as absent, anything else stops the script.
+sm_if_exists() {
+  local err val rc=0
+  err="$(mktemp)"
+  val="$(gcloud secrets versions access latest --secret="$1" --project="$PROJECT" 2>"$err")" || rc=$?
+  if (( rc == 0 )); then
+    printf '%s' "$val"
+  elif ! grep -q NOT_FOUND "$err"; then
+    cat "$err" >&2
+    rm -f "$err"
+    return 1
+  fi
+  rm -f "$err"
+}
+TOOLS_GOOGLE_ID="$(sm_if_exists dograh-google-oauth-client-id)"
+TOOLS_GOOGLE_SECRET="$(sm_if_exists dograh-google-oauth-client-secret)"
 if [[ -n "$TOOLS_GOOGLE_ID" && -z "$TOOLS_GOOGLE_SECRET" ]] || [[ -z "$TOOLS_GOOGLE_ID" && -n "$TOOLS_GOOGLE_SECRET" ]]; then
   echo "  only one of dograh-google-oauth-client-id / -secret exists: platform Google client left off" >&2
 fi

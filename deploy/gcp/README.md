@@ -367,6 +367,14 @@ script. A new secret for the same client applies in place; a new client id
 leaves existing connections on the old client, so keep that client alive
 until they reconnect.
 
+Those scopes are *sensitive*: until Google verifies the app (privacy policy and
+terms URLs on a verified domain, scope justification, a demo video), the
+consent screen warns "Google hasn't verified this app" and at most 100 users
+can grant them. Sign-in's `openid email profile` needs no review. Google also
+keeps only about 100 live refresh tokens per Google account per client, and
+every connect re-consents, so one account connecting very many workspaces
+loses its oldest connections (they show as `grant_revoked`).
+
 **Encrypting existing credentials.** The api's migration seals plaintext rows
 only when it first runs with the key set. Once the key is set on an install
 whose database already passed that migration, run the re-encryption once.

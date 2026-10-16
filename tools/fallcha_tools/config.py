@@ -24,7 +24,11 @@ def normalize_database_url(url: str) -> str:
 class DatabaseSettings(BaseSettings):
     """The subset Alembic needs; it must not require the app's secrets."""
 
-    model_config = SettingsConfigDict(env_file=None, extra="ignore")
+    # hide_input_in_errors: a validation error must not echo the environment,
+    # which holds the secrets.
+    model_config = SettingsConfigDict(
+        env_file=None, extra="ignore", hide_input_in_errors=True
+    )
 
     database_url: str = Field(alias="DATABASE_URL")
 

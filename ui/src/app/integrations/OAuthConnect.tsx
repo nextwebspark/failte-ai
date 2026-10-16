@@ -22,6 +22,10 @@ import { rememberPendingOAuth } from "./pendingOAuth";
 import type { ReusableKey } from "./ServiceAccountConnect";
 
 const NEW_CLIENT = "__new__";
+/** ``connectionId`` of the signed-in user's own address, offered as a sign-in
+ *  hint before any account is connected. Offered, not pre-selected: it may not
+ *  be a Google account. */
+export const SUGGESTED_ACCOUNT_ID = "signed-in-user";
 const OTHER_ACCOUNT = "__other__";
 
 interface OAuthConnectProps {
@@ -59,15 +63,19 @@ export function OAuthConnect({
     );
     const familyTitle = family === provider.id ? provider.title : family.charAt(0).toUpperCase() + family.slice(1);
     // The platform's client needs no setup, so it is the default; the
-    // workspace's own clients stay available as an advanced option.
+    // workspace's own clients stay available as an advanced option. A
+    // workspace that already set up its own client (e.g. an Internal one its
+    // Google Workspace admin requires) keeps using it unless it switches.
     const managedApp = apps.find((a) => a.managed);
     const ownApps = apps.filter((a) => !a.managed);
-    const [ownClientChosen, setOwnClientChosen] = useState(false);
+    const [ownClientChosen, setOwnClientChosen] = useState(() => ownApps.length > 0);
     const ownClient = ownClientChosen || !managedApp;
     const [selected, setSelected] = useState<string>(() => ownApps[0]?.id ?? NEW_CLIENT);
     // "Continue as alice@…": Google skips the account chooser and asks only for
     // this integration's new permissions. Each integration keeps its own grant.
-    const [chosenAccount, setAccount] = useState<string>(() => knownAccounts[0]?.label ?? OTHER_ACCOUNT);
+    const [chosenAccount, setAccount] = useState<string>(
+        () => knownAccounts.find((k) => k.connectionId !== SUGGESTED_ACCOUNT_ID)?.label ?? OTHER_ACCOUNT,
+    );
     // An account that is no longer offered falls back to "a different account".
     const account = knownAccounts.some((k) => k.label === chosenAccount) ? chosenAccount : OTHER_ACCOUNT;
     const loginHint = account === OTHER_ACCOUNT ? undefined : account;

@@ -230,6 +230,24 @@ def test_google_client_needs_both_halves(half: dict[str, str]) -> None:
     assert PLATFORM_SECRET not in str(raised.value)
 
 
+def test_settings_errors_never_echo_the_environment(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Pydantic would print a truncated dict of every env value it read."""
+    secret = "GOCSPX-" + "s3cr3t" * 8
+    monkeypatch.setenv("DATABASE_URL", TEST_DATABASE_URL)
+    monkeypatch.setenv("TOOLS_ENCRYPTION_KEYS", generate_key())
+    monkeypatch.setenv("TOOLS_INTERNAL_SECRET", INTERNAL_SECRET)
+    monkeypatch.delenv("TOOLS_GOOGLE_CLIENT_ID", raising=False)
+    monkeypatch.delenv("LOG_LEVEL", raising=False)
+    monkeypatch.setenv("TOOLS_GOOGLE_CLIENT_SECRET", secret)
+
+    with pytest.raises(ValidationError, match="both") as raised:
+        Settings()
+    assert "s3cr3t" not in str(raised.value)
+    assert INTERNAL_SECRET not in str(raised.value)
+
+
 @pytest.mark.usefixtures("_no_google_env")
 def test_google_client_settings() -> None:
     blank = base_settings(TOOLS_GOOGLE_CLIENT_ID="", TOOLS_GOOGLE_CLIENT_SECRET="")
