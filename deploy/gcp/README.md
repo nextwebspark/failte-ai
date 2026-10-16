@@ -44,7 +44,7 @@ or copied to the VM by hand.
 | Workflow | Run it when | What it does |
 |---|---|---|
 | **Release** (`release.yml`) | main has what you want to ship | Full CI on main's head → next version → Cloud Build images tagged `X.Y.Z` → tag `vX.Y.Z` + GitHub Release with notes |
-| **Deploy** (`deploy.yml`) | you approve a release for production | Checks images and both VMs → Cloud SQL backup → IAP SSH → that release's `deploy.sh` → public health check |
+| **Deploy** (`deploy.yml`) | you approve a release for production | Checks images and both VMs → Cloud SQL backup → IAP SSH → that release's `deploy.sh` (re-syncs `.env` from Secret Manager, swaps the images) → public health check |
 
 **Versions.** Semver tags `vX.Y.Z`, starting at `v0.1.0`. When you run
 Release you pick the bump: `patch` (fixes), `minor` (features), `major`
@@ -72,6 +72,16 @@ systemd unit (`deploy/gcp/remote-deploy.sh`) and streams its log into the job.
 If the SSH session drops or the job is cancelled, the deploy still finishes or
 rolls back on the VM. The job summary names the unit; read it with
 `journalctl -u lightmove-deploy-<run>-<attempt>`.
+
+**Settings ship with the release.** Before switching, `deploy.sh` runs that
+release's `configure-env.sh`. A secret added to Secret Manager (and granted to
+`dograh-app-sa`) goes live with the next Deploy, with no SSH. Values an
+operator chooses keep what `.env` has: `ENABLE_SIGNUP`, `FASTAPI_WORKERS`,
+`TELEPHONY_WS_TOKEN_ENFORCE`, `EMAIL_FROM`, `STRIPE_AUTOMATIC_TAX`,
+`PLATFORM_MODELS_ENABLED`, `PLATFORM_VERTEX_PROJECT_ID` and the tools URLs.
+Secrets and the install's fixed values are rewritten. The `.env` and
+`tools.env` from before the deploy stay in `/var/backups/lightmove/pre-deploy/`
+and are put back if the sync fails or the deploy rolls back.
 
 **What Deploy refuses to do**
 
@@ -548,9 +558,11 @@ the full carrier source-IP list. Everything else ships without it.
 
 ## Billing (Stripe), email (Resend) and Google sign-in
 
-All optional. `configure-env.sh` turns each on only when its secret exists.
-`dograh-app-sa` has no project-wide Secret Manager access, so grant it each new
-secret (otherwise the script reports it as skipped and the feature stays off):
+All optional. `configure-env.sh` turns each on only when its secret exists,
+and every Deploy runs it, so the next Deploy after creating a secret turns the
+feature on. `dograh-app-sa` has no project-wide Secret Manager access, so grant
+it each new secret (otherwise the script reports it as skipped and the feature
+stays off):
 
 ```bash
 # For each secret you use: paste the value at the prompt (keeps it out of
@@ -566,19 +578,21 @@ unset V
 # Stripe works the same way: dograh-stripe-secret-key (sk_...) and
 # dograh-stripe-webhook-secret (whsec_...).
 
-# On the app VM:
+# Then run Release + Deploy. Or, to switch it on before the next release,
+# on the app VM:
 cd /opt/lightmove/dograh
-sudo DOGRAH_SQL_IP=<ip> DOGRAH_EMAIL_FROM='LightMove.ai <no-reply@mail.<domain>>' \
-  ./deploy/gcp/configure-env.sh
+sudo ./deploy/gcp/configure-env.sh
 sudo docker compose up -d api fallcha-tools
 ```
 
 `up -d` recreates the containers with the new values; `docker compose restart`
-does not re-read them. `DOGRAH_EMAIL_FROM` is needed on the first run with
-Resend; later runs keep the sender already in `.env`. To turn Google sign-in
-and the platform client off, run the script with `DOGRAH_GOOGLE=off` (a
-deleted secret looks the same to the VM as a missing grant, so the script
-keeps the current values in that case). For the other secrets `set_key` never
+does not re-read them. The sender defaults to
+`LightMove.ai <no-reply@mail.lightmove.ai>`; `DOGRAH_EMAIL_FROM` changes it,
+and later runs keep it. To turn Google sign-in and the platform client off, run
+the script with `DOGRAH_GOOGLE=off` and delete the two secrets, or the next
+Deploy turns them back on (a deleted secret looks the same to the VM as a
+missing grant, so the script keeps the current values in that case). For the
+other secrets `set_key` never
 removes a key, so deleting one later also needs the matching lines removed
 from `.env` by hand. A Secret Manager error other than "absent" or "not
 readable" stops the script rather than switching a feature off.

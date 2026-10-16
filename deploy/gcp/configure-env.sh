@@ -5,24 +5,34 @@
 # repo, in an image, or in shell history.
 #
 # Run AFTER setup_remote.sh (which creates the base .env and the TLS cert).
-# The release-deploy install (/opt/lightmove/dograh) is root-owned, so:
+# The release-deploy install (/opt/lightmove/dograh) is root-owned, so the
+# first run is:
 #
 #   sudo DOGRAH_SQL_IP=10.70.0.3 ./deploy/gcp/configure-env.sh
 #
-# Idempotent — re-run any time to re-sync from Secret Manager.
+# Idempotent — re-run any time to re-sync from Secret Manager. deploy.sh runs
+# the release's copy on every Deploy, with no variables: settings an operator
+# may choose (DOGRAH_* below, or a hand edit to .env) keep the value .env
+# already has, so a deploy never undoes them.
 
 set -euo pipefail
 
 PROJECT="${DOGRAH_PROJECT_ID:-dograh-eu}"
 REGION="${DOGRAH_REGION:-europe-west1}"
 REPO="${DOGRAH_AR_REPO:-dograh}"
-SQL_IP="${DOGRAH_SQL_IP:?DOGRAH_SQL_IP is required (Cloud SQL private IP)}"
 BUCKET="${DOGRAH_BUCKET:-dograh-voice-audio-eu}"
 # The git checkout that deploy/gcp/deploy.sh manages (README "Releases and
 # deploys"). The pre-pipeline install was ~/dograh/dograh; pass ENV_FILE for it.
 ENV_FILE="${ENV_FILE:-/opt/lightmove/dograh/.env}"
 
 [[ -f "$ENV_FILE" ]] || { echo "no .env at $ENV_FILE — run setup_remote.sh first" >&2; exit 1; }
+
+env_value() { grep -E "^$1=" "$ENV_FILE" | tail -1 | cut -d= -f2- || true; }
+
+# Cloud SQL private IP. Later runs reuse the host in DATABASE_URL (the last
+# '@', since the password may contain one).
+SQL_IP="${DOGRAH_SQL_IP:-$(env_value DATABASE_URL | sed -nE 's#^.*@([^@:/]+):[0-9]+/[^@]*$#\1#p')}"
+SQL_IP="${SQL_IP:?DOGRAH_SQL_IP is required on the first run (Cloud SQL private IP)}"
 
 sm() { gcloud secrets versions access latest --secret="$1" --project="$PROJECT"; }
 
@@ -44,6 +54,15 @@ PY
   echo "  set $key"
 }
 
+# setting KEY DEFAULT [OVERRIDE]: for values an operator may choose. Writes
+# OVERRIDE (a DOGRAH_* variable) when given, else keeps what .env has, else
+# DEFAULT.
+setting() {
+  local key="$1" default="$2" override="${3:-}" current
+  current="$(env_value "$key")"
+  set_key "$key" "${override:-${current:-$default}}"
+}
+
 unset_key() {
   local key="$1"
   grep -q "^${key}=" "$ENV_FILE" || return 0
@@ -58,9 +77,15 @@ PY
 }
 
 echo "reading secrets from Secret Manager (project $PROJECT)..."
+# Bare assignments, so set -e stops the script when a lookup fails: inside
+# set_key's arguments it would write an empty value instead.
 DB_PW="$(sm dograh-db-password)"
 HMAC_ID="$(sm dograh-s3-hmac-access-id)"
 HMAC_SECRET="$(sm dograh-s3-hmac-secret)"
+JWT_SECRET="$(sm dograh-oss-jwt-secret)"
+TURN_SECRET="$(sm dograh-turn-secret)"
+DEVOPS_SECRET="$(sm dograh-devops-secret)"
+WS_TOKEN_SECRET="$(sm dograh-telephony-ws-token-secret)"
 
 echo "writing $ENV_FILE ..."
 set_key ENVIRONMENT production
@@ -83,13 +108,14 @@ set_key S3_ADDRESSING_STYLE virtual
 set_key AWS_ACCESS_KEY_ID "$HMAC_ID"
 set_key AWS_SECRET_ACCESS_KEY "$HMAC_SECRET"
 
-set_key OSS_JWT_SECRET "$(sm dograh-oss-jwt-secret)"
-set_key TURN_SECRET "$(sm dograh-turn-secret)"
-set_key DOGRAH_DEVOPS_SECRET "$(sm dograh-devops-secret)"
-set_key TELEPHONY_WS_TOKEN_SECRET "$(sm dograh-telephony-ws-token-secret)"
+set_key OSS_JWT_SECRET "$JWT_SECRET"
+set_key TURN_SECRET "$TURN_SECRET"
+set_key DOGRAH_DEVOPS_SECRET "$DEVOPS_SECRET"
+set_key TELEPHONY_WS_TOKEN_SECRET "$WS_TOKEN_SECRET"
 
-# Enforcement stays off until the carrier leg is proven end to end.
-set_key TELEPHONY_WS_TOKEN_ENFORCE false
+# Enforcement stays off until the carrier leg is proven end to end; switching
+# it on in .env survives later runs.
+setting TELEPHONY_WS_TOKEN_ENFORCE false
 
 # Billing, email and Google are opt-in: each is configured only when its secret
 # exists in Secret Manager, so an install without them keeps working unchanged.
@@ -138,8 +164,6 @@ sm_optional() {
   printf '%s' "$value"
 }
 
-env_value() { grep -E "^$1=" "$ENV_FILE" | tail -1 | cut -d= -f2- || true; }
-
 STRIPE_KEY="$(sm_optional dograh-stripe-secret-key)"
 if [[ -n "$STRIPE_KEY" ]]; then
   # A bare assignment, so set -e stops the script if the secret is missing
@@ -148,7 +172,7 @@ if [[ -n "$STRIPE_KEY" ]]; then
   set_key BILLING_PROVIDER stripe
   set_key STRIPE_SECRET_KEY "$STRIPE_KEY"
   set_key STRIPE_WEBHOOK_SECRET "$STRIPE_WEBHOOK"
-  set_key STRIPE_AUTOMATIC_TAX "${DOGRAH_STRIPE_AUTOMATIC_TAX:-false}"
+  setting STRIPE_AUTOMATIC_TAX false "${DOGRAH_STRIPE_AUTOMATIC_TAX:-}"
   if [[ -n "${DOGRAH_BILLING_SALES_CONTACT:-}" ]]; then
     set_key BILLING_SALES_CONTACT "$DOGRAH_BILLING_SALES_CONTACT"
   fi
@@ -159,10 +183,9 @@ if [[ -n "$RESEND_KEY" ]]; then
   set_key EMAIL_PROVIDER resend
   set_key RESEND_API_KEY "$RESEND_KEY"
   # Must be on a domain verified in Resend; onboarding@resend.dev only reaches
-  # the Resend account owner's own address. A re-run without DOGRAH_EMAIL_FROM
-  # keeps the sender already in .env.
-  EMAIL_FROM_VALUE="${DOGRAH_EMAIL_FROM:-$(grep -E '^EMAIL_FROM=' "$ENV_FILE" | tail -1 | cut -d= -f2- || true)}"
-  set_key EMAIL_FROM "${EMAIL_FROM_VALUE:?DOGRAH_EMAIL_FROM is required with Resend, e.g. 'LightMove.ai <no-reply@mail.example.com>'}"
+  # the Resend account owner's own address. The default is this install's
+  # sending domain, verified in Resend.
+  setting EMAIL_FROM 'LightMove.ai <no-reply@mail.lightmove.ai>' "${DOGRAH_EMAIL_FROM:-}"
 fi
 
 # One Google OAuth client serves "Continue with Google" sign-in (api, .env)
@@ -171,7 +194,8 @@ fi
 # only one), when stale values are removed. When a secret is not readable the
 # script can't tell "deleted" from "grant missing", so it keeps what .env has
 # rather than switching sign-in off; DOGRAH_GOOGLE=off turns it off
-# explicitly. The client (Google Auth Platform, this project) must list these
+# explicitly. The next Deploy reads the secrets again, so to keep it off also
+# delete them. The client (Google Auth Platform, this project) must list these
 # redirect URIs: <PUBLIC_BASE_URL>/auth/google/callback and
 # <PUBLIC_BASE_URL>/oauth/google-{calendar,sheets}/callback.
 GOOGLE_ID="" GOOGLE_SECRET=""
@@ -230,13 +254,20 @@ PUBLIC_URL="$(grep -E '^PUBLIC_BASE_URL=' "$ENV_FILE" | tail -1 | cut -d= -f2- |
 TOOLS_DIR="$(dirname "$ENV_FILE")/deploy/gcp/secrets"
 TOOLS_ENV="$TOOLS_DIR/tools.env"
 mkdir -p "$TOOLS_DIR"
+# The file is rewritten below; URLs chosen earlier (DOGRAH_TOOLS_*) are kept.
+tools_value() {
+  [[ -f "$TOOLS_ENV" ]] || return 0
+  grep -E "^$1=" "$TOOLS_ENV" | tail -1 | cut -d= -f2- || true
+}
+TOOLS_PUBLIC_URL="${DOGRAH_TOOLS_PUBLIC_BASE_URL:-$(tools_value TOOLS_PUBLIC_BASE_URL)}"
+TOOLS_RETURN_URL="${DOGRAH_TOOLS_UI_RETURN_URL:-$(tools_value TOOLS_UI_RETURN_URL)}"
 (
   umask 077
   {
     printf 'TOOLS_ENCRYPTION_KEYS=%s\n' "$TOOLS_KEYS"
     # Empty URLs keep OAuth off; service-account connections still work.
-    printf 'TOOLS_PUBLIC_BASE_URL=%s\n' "${DOGRAH_TOOLS_PUBLIC_BASE_URL:-$PUBLIC_URL}"
-    printf 'TOOLS_UI_RETURN_URL=%s\n' "${DOGRAH_TOOLS_UI_RETURN_URL:-${PUBLIC_URL:+$PUBLIC_URL/integrations}}"
+    printf 'TOOLS_PUBLIC_BASE_URL=%s\n' "${TOOLS_PUBLIC_URL:-$PUBLIC_URL}"
+    printf 'TOOLS_UI_RETURN_URL=%s\n' "${TOOLS_RETURN_URL:-${PUBLIC_URL:+$PUBLIC_URL/integrations}}"
     # The Google client read above (both or neither). if/fi, not
     # `[[ … ]] && printf`: under set -e a false test would end the subshell.
     if [[ -n "$GOOGLE_ID" && -n "$GOOGLE_SECRET" ]]; then
@@ -248,16 +279,16 @@ mkdir -p "$TOOLS_DIR"
 chmod 600 "$TOOLS_ENV"
 echo "  wrote $TOOLS_ENV"
 
-set_key ENABLE_SIGNUP true
-set_key FASTAPI_WORKERS 2
+setting ENABLE_SIGNUP true
+setting FASTAPI_WORKERS 2
 
 # Platform-managed models: every org runs on this project's Vertex AI, Speech
 # and TTS (locations default to eu / europe-west1, see api/constants.py), with
 # the VM service account's credentials, so customers pick models without
 # holding keys. Existing BYOK configurations keep running until an admin saves
 # the Models page. DOGRAH_PLATFORM_MODELS=false keeps the BYOK editor instead.
-set_key PLATFORM_MODELS_ENABLED "${DOGRAH_PLATFORM_MODELS:-true}"
-set_key PLATFORM_VERTEX_PROJECT_ID "${DOGRAH_PLATFORM_VERTEX_PROJECT_ID:-$PROJECT}"
+setting PLATFORM_MODELS_ENABLED true "${DOGRAH_PLATFORM_MODELS:-}"
+setting PLATFORM_VERTEX_PROJECT_ID "$PROJECT" "${DOGRAH_PLATFORM_VERTEX_PROJECT_ID:-}"
 
 # The upstream PostHog key is hardcoded in docker-compose.yaml and points at the
 # Dograh project's own analytics. Off unless a key of our own is supplied.
