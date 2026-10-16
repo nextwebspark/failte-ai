@@ -1,10 +1,10 @@
-import { BRAND } from "@/config/brand";
-
-// Our own policies (upstream linked Dograh's, which don't govern this service).
-const LEGAL_LINKS: { label: string; href: string }[] = [
-  { label: "Terms of Service", href: BRAND.termsUrl },
-  { label: "Privacy Policy", href: BRAND.privacyUrl },
-];
+// Upstream linked this footer to dograh.com/privacy-policy and
+// dograh.com/terms-of-service. Those are the upstream project's legal
+// documents, not ours — presenting them under the Fallcha.ai wordmark would tell
+// users another company's terms govern this service. They are removed until
+// Fallcha.ai has its own policies; restore by putting our URLs in the array
+// below and the links render again.
+const LEGAL_LINKS: { label: string; href: string }[] = [];
 
 export default function Footer() {
   if (LEGAL_LINKS.length === 0) {
