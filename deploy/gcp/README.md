@@ -65,7 +65,9 @@ it does **not** reverse database migrations (the api runs `alembic upgrade
 head` on start), so keep migrations backward compatible, or roll forward with
 a fix release. `deploy.sh` also rolls back by itself when the new version
 fails its health check (from the second deploy on; the first has nothing to
-roll back to, so watch it).
+roll back to, so watch it). A manual roll back keeps the current settings: the
+older release re-syncs `.env` from Secret Manager if it already does so (see
+below), otherwise it leaves `.env` as it is.
 
 **Where the deploy runs.** Deploy starts `deploy.sh` on the VM as a transient
 systemd unit (`deploy/gcp/remote-deploy.sh`) and streams its log into the job.
@@ -75,13 +77,20 @@ rolls back on the VM. The job summary names the unit; read it with
 
 **Settings ship with the release.** Before switching, `deploy.sh` runs that
 release's `configure-env.sh`. A secret added to Secret Manager (and granted to
-`dograh-app-sa`) goes live with the next Deploy, with no SSH. Values an
-operator chooses keep what `.env` has: `ENABLE_SIGNUP`, `FASTAPI_WORKERS`,
-`TELEPHONY_WS_TOKEN_ENFORCE`, `EMAIL_FROM`, `STRIPE_AUTOMATIC_TAX`,
-`PLATFORM_MODELS_ENABLED`, `PLATFORM_VERTEX_PROJECT_ID` and the tools URLs.
-Secrets and the install's fixed values are rewritten. The `.env` and
-`tools.env` from before the deploy stay in `/var/backups/lightmove/pre-deploy/`
-and are put back if the sync fails or the deploy rolls back.
+`dograh-app-sa`) goes live with the next Deploy, with no SSH; re-running
+Deploy for the current version is enough. Values an operator chooses keep what
+`.env` has: `ENABLE_SIGNUP`, `FASTAPI_WORKERS`, `TELEPHONY_WS_TOKEN_ENFORCE`,
+`EMAIL_FROM`, `STRIPE_AUTOMATIC_TAX`, `PLATFORM_MODELS_ENABLED` and
+`PLATFORM_VERTEX_PROJECT_ID`. Everything else (secrets, `DATABASE_URL`,
+storage, the tools URLs, which follow `PUBLIC_BASE_URL`) is rewritten, so a
+hand edit to those lasts only until the next Deploy. A Secret Manager value
+that drops an encryption key still in `.env` or `tools.env` stops the deploy
+(see `keeps_keys` in `configure-env.sh`). Copies of `.env` and `tools.env` from
+before the deploy stay in `/var/backups/lightmove/pre-deploy/` (`env`,
+`tools.env`) and are put back if the deploy stops before the switch or rolls
+back. Because a rollback restores the previous secrets too, rotate a
+credential by adding the new value, deploying, and only then revoking the old
+one.
 
 **What Deploy refuses to do**
 
@@ -414,8 +423,9 @@ GCP is stopped as of 2026-10; this is the plan for when it comes back. Do it in
 this order, so no step leaves an agent without a working tool. The old
 sidecars keep running until step 7.
 
-1. **Deploy.** Create the secrets, run `configure-env.sh`, then Release and
-   Deploy (see [Releases and deploys](#releases-and-deploys)). For the cutover
+1. **Deploy.** Create the secrets, then Release and Deploy (see
+   [Releases and deploys](#releases-and-deploys)); Deploy runs
+   `configure-env.sh`. For the cutover
    window, keep the old tools answering by setting
    `COMPOSE_PROFILES=remote,legacy-sidecars` in the VM's `.env` before the
    deploy. That starts `calendar-shim` and `chmarine-product-service` from
@@ -578,8 +588,8 @@ unset V
 # Stripe works the same way: dograh-stripe-secret-key (sk_...) and
 # dograh-stripe-webhook-secret (whsec_...).
 
-# Then run Release + Deploy. Or, to switch it on before the next release,
-# on the app VM:
+# Then run Deploy (the current version is fine once it includes the settings
+# sync). Or, on the app VM:
 cd /opt/lightmove/dograh
 sudo ./deploy/gcp/configure-env.sh
 sudo docker compose up -d api fallcha-tools

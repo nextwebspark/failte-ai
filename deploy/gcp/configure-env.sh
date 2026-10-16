@@ -11,9 +11,11 @@
 #   sudo DOGRAH_SQL_IP=10.70.0.3 ./deploy/gcp/configure-env.sh
 #
 # Idempotent — re-run any time to re-sync from Secret Manager. deploy.sh runs
-# the release's copy on every Deploy, with no variables: settings an operator
-# may choose (DOGRAH_* below, or a hand edit to .env) keep the value .env
-# already has, so a deploy never undoes them.
+# the release's copy on every Deploy, with no variables. Keys written with
+# `setting` (ENABLE_SIGNUP, EMAIL_FROM, PLATFORM_MODELS_ENABLED, ...) keep the
+# value .env already has, whether set by hand or with a DOGRAH_* variable.
+# Everything else is rewritten from Secret Manager and this script's defaults
+# on every Deploy, so change those here, not in .env.
 
 set -euo pipefail
 
@@ -33,6 +35,9 @@ env_value() { grep -E "^$1=" "$ENV_FILE" | tail -1 | cut -d= -f2- || true; }
 # '@', since the password may contain one).
 SQL_IP="${DOGRAH_SQL_IP:-$(env_value DATABASE_URL | sed -nE 's#^.*@([^@:/]+):[0-9]+/[^@]*$#\1#p')}"
 SQL_IP="${SQL_IP:?DOGRAH_SQL_IP is required on the first run (Cloud SQL private IP)}"
+
+# Secret values must never reach the deploy log, whatever root's gcloud config says.
+export CLOUDSDK_CORE_LOG_HTTP=false CLOUDSDK_CORE_VERBOSITY=error
 
 sm() { gcloud secrets versions access latest --secret="$1" --project="$PROJECT"; }
 
@@ -86,6 +91,9 @@ JWT_SECRET="$(sm dograh-oss-jwt-secret)"
 TURN_SECRET="$(sm dograh-turn-secret)"
 DEVOPS_SECRET="$(sm dograh-devops-secret)"
 WS_TOKEN_SECRET="$(sm dograh-telephony-ws-token-secret)"
+for name in DB_PW HMAC_ID HMAC_SECRET JWT_SECRET TURN_SECRET DEVOPS_SECRET WS_TOKEN_SECRET; do
+  [[ -n "${!name}" ]] || { echo "a required secret is empty ($name)" >&2; exit 1; }
+done
 
 echo "writing $ENV_FILE ..."
 set_key ENVIRONMENT production
@@ -226,12 +234,31 @@ else
   unset_key GOOGLE_CLIENT_SECRET
 fi
 
+# keeps_keys NAME CURRENT NEW: stops when NEW (comma-separated Fernet keys)
+# drops a key CURRENT has. Stored rows encrypted with it would become
+# unreadable, and every Deploy runs this script. Rotate by adding the new key in
+# front; drop the old one only after re-encrypting, with one hand run using
+# DOGRAH_DROP_ENCRYPTION_KEYS=true.
+keeps_keys() {
+  local name="$1" current="${2// /}" new="${3// /}" key
+  local -a keys
+  [[ -n "$current" && "${DOGRAH_DROP_ENCRYPTION_KEYS:-}" != true ]] || return 0
+  IFS=, read -r -a keys <<< "$current"
+  for key in "${keys[@]}"; do
+    if [[ -n "$key" && ",$new," != *",$key,"* ]]; then
+      echo "$name from Secret Manager drops a key in use; see keeps_keys in configure-env.sh" >&2
+      exit 1
+    fi
+  done
+}
+
 # Workspace credentials at rest (api). Opt-in like billing: once set, never
 # remove a key that encrypted stored rows (see docs/developer/environment-variables.mdx).
 #   python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())" \
 #     | gcloud secrets create dograh-credentials-encryption-keys --data-file=-
 CRED_KEYS="$(sm_optional dograh-credentials-encryption-keys)"
 if [[ -n "$CRED_KEYS" ]]; then
+  keeps_keys CREDENTIALS_ENCRYPTION_KEYS "$(env_value CREDENTIALS_ENCRYPTION_KEYS)" "$CRED_KEYS"
   set_key CREDENTIALS_ENCRYPTION_KEYS "$CRED_KEYS"
 fi
 
@@ -254,20 +281,19 @@ PUBLIC_URL="$(grep -E '^PUBLIC_BASE_URL=' "$ENV_FILE" | tail -1 | cut -d= -f2- |
 TOOLS_DIR="$(dirname "$ENV_FILE")/deploy/gcp/secrets"
 TOOLS_ENV="$TOOLS_DIR/tools.env"
 mkdir -p "$TOOLS_DIR"
-# The file is rewritten below; URLs chosen earlier (DOGRAH_TOOLS_*) are kept.
-tools_value() {
-  [[ -f "$TOOLS_ENV" ]] || return 0
-  grep -E "^$1=" "$TOOLS_ENV" | tail -1 | cut -d= -f2- || true
-}
-TOOLS_PUBLIC_URL="${DOGRAH_TOOLS_PUBLIC_BASE_URL:-$(tools_value TOOLS_PUBLIC_BASE_URL)}"
-TOOLS_RETURN_URL="${DOGRAH_TOOLS_UI_RETURN_URL:-$(tools_value TOOLS_UI_RETURN_URL)}"
+if [[ -f "$TOOLS_ENV" ]]; then
+  keeps_keys TOOLS_ENCRYPTION_KEYS \
+    "$(grep -E '^TOOLS_ENCRYPTION_KEYS=' "$TOOLS_ENV" | tail -1 | cut -d= -f2- || true)" "$TOOLS_KEYS"
+fi
 (
   umask 077
   {
     printf 'TOOLS_ENCRYPTION_KEYS=%s\n' "$TOOLS_KEYS"
-    # Empty URLs keep OAuth off; service-account connections still work.
-    printf 'TOOLS_PUBLIC_BASE_URL=%s\n' "${TOOLS_PUBLIC_URL:-$PUBLIC_URL}"
-    printf 'TOOLS_UI_RETURN_URL=%s\n' "${TOOLS_RETURN_URL:-${PUBLIC_URL:+$PUBLIC_URL/integrations}}"
+    # Empty URLs keep OAuth off; service-account connections still work. They
+    # follow PUBLIC_BASE_URL; a DOGRAH_TOOLS_* override lasts until the next
+    # Deploy.
+    printf 'TOOLS_PUBLIC_BASE_URL=%s\n' "${DOGRAH_TOOLS_PUBLIC_BASE_URL:-$PUBLIC_URL}"
+    printf 'TOOLS_UI_RETURN_URL=%s\n' "${DOGRAH_TOOLS_UI_RETURN_URL:-${PUBLIC_URL:+$PUBLIC_URL/integrations}}"
     # The Google client read above (both or neither). if/fi, not
     # `[[ … ]] && printf`: under set -e a false test would end the subshell.
     if [[ -n "$GOOGLE_ID" && -n "$GOOGLE_SECRET" ]]; then
