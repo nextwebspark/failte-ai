@@ -1,11 +1,11 @@
 {
   "$schema": "https://mintlify.com/docs.json",
   "theme": "mint",
-  "name": "Fallcha.ai",
+  "name": "LightMove.ai",
   "colors": {
     "primary": "#169B62",
-    "light": "#4FD49A",
-    "dark": "#0F7547"
+    "light": "#3DDC97",
+    "dark": "#0E7A4B"
   },
   "favicon": "/favicon.svg",
   "fonts": {
@@ -298,23 +298,23 @@
   "logo": {
     "light": "/logo/light.svg",
     "dark": "/logo/dark.svg",
-    "href": "https://fallcha.ai"
+    "href": "https://lightmove.ai"
   },
   "navbar": {
     "links": [
       {
         "label": "Support",
-        "href": "mailto:support@fallcha.ai"
+        "href": "mailto:support@lightmove.ai"
       },
       {
         "label": "Website",
-        "href": "https://fallcha.ai"
+        "href": "https://lightmove.ai"
       }
     ],
     "primary": {
       "type": "button",
       "label": "Dashboard",
-      "href": "https://app.fallcha.ai"
+      "href": "https://app.lightmove.ai"
     }
   },
   "search": {
@@ -335,7 +335,7 @@
   },
   "footer": {
     "socials": {
-      "website": "https://fallcha.ai"
+      "website": "https://lightmove.ai"
     }
   },
   "api": {

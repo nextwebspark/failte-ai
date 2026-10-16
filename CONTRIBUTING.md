@@ -1,14 +1,14 @@
-# Contributing to Fallcha.ai
+# Contributing to LightMove.ai
 
-Thank you for contributing to Fallcha.ai.
+Thank you for contributing to LightMove.ai.
 
-Fallcha.ai is a voice agent platform that helps teams build, test, and deploy conversational AI agents with minimal setup. It is a private fork of the open-source [Dograh](https://github.com/dograh-hq/dograh) project (BSD 2-Clause). This guide explains how to set up your development environment and what a pull request needs.
+LightMove.ai is a voice agent platform that helps teams build, test, and deploy conversational AI agents with minimal setup. It is a private fork of the open-source [Dograh](https://github.com/dograh-hq/dograh) project (BSD 2-Clause). This guide explains how to set up your development environment and what a pull request needs.
 
 ## 🏗️ Project Overview
 
-### What is Fallcha.ai?
+### What is LightMove.ai?
 
-Fallcha.ai is a full-stack platform for building voice agents with a drag-and-drop workflow builder. It combines multiple technologies to provide a seamless experience from development to production deployment.
+LightMove.ai is a full-stack platform for building voice agents with a drag-and-drop workflow builder. It combines multiple technologies to provide a seamless experience from development to production deployment.
 
 ## 🙌 How You Can Contribute
 
@@ -16,18 +16,18 @@ Fallcha.ai is a full-stack platform for building voice agents with a drag-and-dr
 - 🔧 **Submit pull requests**
 - 📖 **Improve documentation** The documentation is hosted via Mintlify and the code is in the `docs/` folder
 
-Fixes that apply to Dograh itself, independent of Fallcha.ai's additions, can also be offered upstream at [dograh-hq/dograh](https://github.com/dograh-hq/dograh).
+Fixes that apply to Dograh itself, independent of LightMove.ai's additions, can also be offered upstream at [dograh-hq/dograh](https://github.com/dograh-hq/dograh).
 
 ## 🚀 Development Setup
 
-Please refer to our [Development Setup documentation](https://docs.fallcha.ai/contribution/setup).
+Please refer to our [Development Setup documentation](https://docs.lightmove.ai/contribution/setup).
 
 ### Getting Help
 
 **Before You Start**
 
 - Check existing [Issues](../../issues) for similar work
-- Email [support@fallcha.ai](mailto:support@fallcha.ai) to discuss larger plans
+- Email [support@lightmove.ai](mailto:support@lightmove.ai) to discuss larger plans
 
 **During Development**
 
@@ -44,8 +44,8 @@ Telephony changes require thorough review and testing. Every telephony pull requ
 
 The video must demonstrate all of the following:
 
-- All provider-side setup required before configuring the integration in Fallcha.ai, including where to find the account credentials and any other required values
-- Configuring the provider integration in Fallcha.ai
+- All provider-side setup required before configuring the integration in LightMove.ai, including where to find the account credentials and any other required values
+- Configuring the provider integration in LightMove.ai
 - Outbound calls
 - Inbound calls
 - Number provisioning and any required KYC flow
@@ -67,28 +67,28 @@ This section applies to new or changed TTS, STT, LLM, realtime, embeddings, and 
 
 #### Provider Eligibility
 
-Before maintainers perform detailed code review, the pull request must explain why Fallcha.ai should support the provider: the user need or maintainer sponsorship, the clear benefit over providers already supported, and links to the provider's public API documentation and pricing. The provider must have a usable public API, self-service account or credential setup, and a credible support or maintenance path.
+Before maintainers perform detailed code review, the pull request must explain why LightMove.ai should support the provider: the user need or maintainer sponsorship, the clear benefit over providers already supported, and links to the provider's public API documentation and pricing. The provider must have a usable public API, self-service account or credential setup, and a credible support or maintenance path.
 
 Providers must be generally available for production use, with a publicly documented and stable API, for at least six months. Alpha, beta, private-preview, or newly launched providers are not accepted by default. A maintainer may approve a documented exception before implementation when there is a compelling user or product need.
 
 #### Required Evidence
 
-Contributors must create or use a real provider account and test the complete integration manually in Fallcha.ai. Unit, mock, and provider-SDK tests are required where appropriate, but they are not evidence that the Fallcha.ai integration works.
+Contributors must create or use a real provider account and test the complete integration manually in LightMove.ai. Unit, mock, and provider-SDK tests are required where appropriate, but they are not evidence that the LightMove.ai integration works.
 
 The pull request must include redacted evidence of all of the following:
 
 - Provider-side account and credential setup (never commit or share secrets)
-- Configuring and saving the provider in the Fallcha.ai UI or API
-- Running a real Fallcha.ai workflow through the same adapter, endpoint, protocol, and authentication scheme that the PR adds
+- Configuring and saving the provider in the LightMove.ai UI or API
+- Running a real LightMove.ai workflow through the same adapter, endpoint, protocol, and authentication scheme that the PR adds
 - The resulting provider output and the selected settings
 - Redacted provider API request/response logs showing the endpoint, protocol, status, and request fields (never include credentials or user data)
 - Invalid-credential and network/error behaviour
 
-For TTS, show real audio produced by Fallcha.ai and its voice, language, speed, format, sample rate, and duration as applicable. For STT, show a known audio input and transcript. For LLM and realtime providers, show a real Fallcha.ai turn and any claimed tool or structured-output behaviour.
+For TTS, show real audio produced by LightMove.ai and its voice, language, speed, format, sample rate, and duration as applicable. For STT, show a known audio input and transcript. For LLM and realtime providers, show a real LightMove.ai turn and any claimed tool or structured-output behaviour.
 
-Include the test date, Fallcha.ai commit SHA, provider endpoint/API version, and the command, workflow, or recording used to produce the evidence. A direct API request, provider sample SDK, or smoke test using a different protocol does not satisfy this requirement.
+Include the test date, LightMove.ai commit SHA, provider endpoint/API version, and the command, workflow, or recording used to produce the evidence. A direct API request, provider sample SDK, or smoke test using a different protocol does not satisfy this requirement.
 
-Pull requests without a convincing provider-value case or complete live Fallcha.ai evidence will be rejected without detailed implementation review.
+Pull requests without a convincing provider-value case or complete live LightMove.ai evidence will be rejected without detailed implementation review.
 
 ### Bug-Fix Pull Requests
 
@@ -105,6 +105,6 @@ Link the existing or newly created issue in the bug-fix pull request. Use a [Git
 
 ## 💬 Support
 
-Questions about setup, debugging, or contribution plans: [support@fallcha.ai](mailto:support@fallcha.ai).
+Questions about setup, debugging, or contribution plans: [support@lightmove.ai](mailto:support@lightmove.ai).
 
-Thank you for helping us build Fallcha.ai! 🎉
+Thank you for helping us build LightMove.ai! 🎉

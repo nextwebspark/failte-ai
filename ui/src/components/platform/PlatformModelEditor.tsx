@@ -19,6 +19,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { BRAND } from "@/config/brand";
 import {
     buildPlatformConfiguration,
     languageLabel,
@@ -298,7 +299,7 @@ export function PlatformModelEditor({
             {locked && (
                 <div className="flex items-start gap-2 rounded-md border border-line bg-muted/40 px-4 py-3 text-sm">
                     <Lock className="mt-0.5 h-4 w-4 shrink-0" />
-                    <span>Model settings for this workspace are managed by Fallcha.ai support. Contact us to change them.</span>
+                    <span>Model settings for this workspace are managed by {BRAND.name} support. Contact us to change them.</span>
                 </div>
             )}
             {showMigrationNotice && initial.migratedFrom && !disabled && (

@@ -105,3 +105,25 @@ official brand kit (`brand-kit/fallcha-ai-logo-and-brand-kit/`).
 - Deliberately unchanged: `DOGRAH_*` env vars, `dograh_auth_*` cookies, the
   `"dograh"` provider mode, `*_dograh_tokens` columns, metrics, SDK package
   names, upstream class names, `X-Dograh-*` headers, `services.dograh.com`.
+
+## 5. LightMove.ai rebrand (branch `feat/lightmove-rebrand`)
+
+The product is renamed from Fallcha.ai to **LightMove.ai** (`lightmove.ai`)
+and adopts the kit in `brand-kit/lightmove-brand/`. Scope is deliberately
+user-visible only, so upstream Dograh merges stay cheap.
+
+- Name still lives in `ui/src/config/brand.ts` and `api/constants.py`.
+- `BrandLogo.tsx` renders the kit mark plus a live-text wordmark in Sora 600
+  (loaded only for the wordmark; the UI stays on Montserrat). Outlined
+  lockups in `ui/public/brand/` and `docs/logo/` serve the OG card and docs.
+- Theme: surfaces unchanged; `--brand` moves to the kit values
+  (`#0e7a4b` light, `#3ddc97` dark).
+- Embed widget canonical file is `lightmove-widget.js`
+  (`window.LightMoveWidget`, `data-lightmove-context`,
+  `lightmove-inline-container`); `fallcha-`, `failte-` and `dograh-widget.js`
+  are shims and every legacy name keeps working.
+- Copy in UI, API errors and schemas, MCP text, emails, Stripe product names,
+  Google Calendar event defaults, the docs site and repo docs.
+- Deliberately unchanged, as in §4, plus internal `fallcha` identifiers
+  (`fallcha-tools` service, `fallcha_tools` package, storage keys, code
+  comments) that no user sees.

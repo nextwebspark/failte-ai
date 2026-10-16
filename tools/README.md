@@ -1,6 +1,6 @@
 # fallcha-tools
 
-Hosts Fallcha.ai's third-party tool providers (Google Calendar, Sheets, ...)
+Hosts LightMove.ai's third-party tool providers (Google Calendar, Sheets, ...)
 in one FastAPI service. Each workspace brings its own credentials; the
 Fallcha API holds only an opaque connection key.
 

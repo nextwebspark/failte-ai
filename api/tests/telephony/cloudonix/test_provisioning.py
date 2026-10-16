@@ -136,15 +136,16 @@ async def test_has_managed_configuration_only_counts_our_own(
 
 
 @pytest.mark.asyncio
-async def test_managed_configuration_recognizes_pre_rebrand_name(monkeypatch):
-    """Rows provisioned before the rebrand keep their name and stay managed."""
+@pytest.mark.parametrize("name", ["Dograh Cloudonix SIP", "Fallcha.ai Cloudonix SIP"])
+async def test_managed_configuration_recognizes_pre_rebrand_name(monkeypatch, name):
+    """Rows provisioned before a rebrand keep their name and stay managed."""
     monkeypatch.setattr(
         provisioning.db_client,
         "list_telephony_configurations",
         AsyncMock(
             return_value=[
                 SimpleNamespace(
-                    name="Dograh Cloudonix SIP",
+                    name=name,
                     provider="cloudonix",
                     credentials={"managed_by": provisioning.MANAGED_BY},
                 )

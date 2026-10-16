@@ -176,7 +176,7 @@ export const TOOL_CATEGORIES: ToolCategoryConfig[] = [
         description: "Connect apps like Google Calendar on the Integrations page; each connection adds an agent tool",
         icon: Plug,
         iconName: "plug",
-        iconColor: "#0F7547",
+        iconColor: "#0E7A4B",
         href: "/integrations",
     },
 ];

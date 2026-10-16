@@ -17,7 +17,7 @@ export interface Tuner {
      */
     name?: string;
     /**
-     * When false, Fallcha.ai skips exporting this call to Tuner.
+     * When false, LightMove.ai skips exporting this call to Tuner.
      */
     tuner_enabled?: boolean;
     /**

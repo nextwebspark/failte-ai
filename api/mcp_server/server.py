@@ -19,7 +19,7 @@ from api.mcp_server.tools.tool_creation import create_tool
 from api.mcp_server.tools.voice_prompting_guide import get_voice_prompting_guide
 from api.mcp_server.tools.workflows import get_workflow, list_workflows
 
-mcp = FastMCP("fallcha", instructions=DOGRAH_MCP_INSTRUCTIONS)
+mcp = FastMCP("lightmove", instructions=DOGRAH_MCP_INSTRUCTIONS)
 
 for _tool in (
     create_workflow,

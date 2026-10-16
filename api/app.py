@@ -135,7 +135,7 @@ async def handle_mps_unavailable_error(
     _request: Request,
     _exc: MPSUnavailableError,
 ) -> JSONResponse:
-    """Tell callers this is a Fallcha.ai outage, not invalid customer config."""
+    """Tell callers this is a LightMove.ai outage, not invalid customer config."""
 
     return JSONResponse(
         status_code=503,

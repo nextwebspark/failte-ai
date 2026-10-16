@@ -295,9 +295,9 @@ export function AppSidebar({ docked = true }: { docked?: boolean }) {
           >
             {/* Collapsed rail fits only the mark; open, the full kit lockup. */}
             {isCollapsed ? (
-              <BrandLogo mark className="h-[22px]" />
+              <BrandLogo mark size={24} />
             ) : (
-              <BrandLogo className="h-6" />
+              <BrandLogo size={24} />
             )}
           </Link>
         </SidebarHeader>

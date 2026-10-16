@@ -35,7 +35,7 @@ button[data-testid*="search"]:hover,
 button[data-testid*="search"] *,
 .mintlify-search *,
 .DocSearch-Button * {
-  color: #0F7547 !important;
+  color: #0E7A4B !important;
   font-weight: 500 !important;
 }
 
@@ -79,5 +79,5 @@ button[data-testid*="search"],
   border-radius: 4px;
 }
 *::-webkit-scrollbar-thumb:hover {
-  background: #0F7547;
+  background: #0E7A4B;
 }

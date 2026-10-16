@@ -59,7 +59,9 @@ class _FakeSession:
 
 
 def _sender() -> ResendEmailSender:
-    return ResendEmailSender(SecretStr("re_test"), "Fallcha.ai <onboarding@resend.dev>")
+    return ResendEmailSender(
+        SecretStr("re_test"), "LightMove.ai <onboarding@resend.dev>"
+    )
 
 
 async def test_send_posts_message_with_bearer_key() -> None:
@@ -70,7 +72,7 @@ async def test_send_posts_message_with_bearer_key() -> None:
     request = _FakeSession.last_request
     assert request["headers"] == {"Authorization": "Bearer re_test"}
     assert request["json"]["to"] == ["owner@example.com"]
-    assert request["json"]["from"] == "Fallcha.ai <onboarding@resend.dev>"
+    assert request["json"]["from"] == "LightMove.ai <onboarding@resend.dev>"
 
 
 async def test_rejection_includes_resend_explanation() -> None:

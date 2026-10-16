@@ -104,11 +104,11 @@ async def ensure_platform_choices_allowed(
         policy = await get_platform_model_policy(organization_id)
     except InvalidPlatformPolicyError as exc:
         raise PlatformConfigurationLockedError(
-            "Model settings for this workspace are managed by Fallcha.ai support"
+            "Model settings for this workspace are managed by LightMove.ai support"
         ) from exc
     if policy.locked:
         raise PlatformConfigurationLockedError(
-            "Model settings for this workspace are managed by Fallcha.ai support"
+            "Model settings for this workspace are managed by LightMove.ai support"
         )
     ensure_choices_offered(configuration.platform, policy, previous=previous_platform)
 

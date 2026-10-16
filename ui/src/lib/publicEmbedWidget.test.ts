@@ -4,12 +4,16 @@ import { resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const widgetSource = readFileSync(
+    resolve(process.cwd(), 'public/embed/lightmove-widget.js'),
+    'utf8',
+);
+const fallchaShimSource = readFileSync(
     resolve(process.cwd(), 'public/embed/fallcha-widget.js'),
     'utf8',
 );
 
 type WidgetWindow = Window & {
-    FallchaWidget?: {
+    LightMoveWidget?: {
         init: () => Promise<void>;
         start: () => Promise<void>;
         startChat: () => Promise<void>;
@@ -17,6 +21,7 @@ type WidgetWindow = Window & {
         getState: () => { chat: { status: string } };
         getContext: () => Record<string, unknown>;
     };
+    FallchaWidget?: unknown;
     FailteWidget?: unknown;
     DograhWidget?: unknown;
 };
@@ -54,7 +59,7 @@ function createFetchMock(autoStart: boolean) {
                     settings: {
                         widgetType: 'chat',
                         embedMode: 'inline',
-                        containerId: 'fallcha-inline-container',
+                        containerId: 'lightmove-inline-container',
                     },
                     texts: WIDGET_TEXTS,
                     auto_start: autoStart,
@@ -103,13 +108,13 @@ async function loadWidget(fetchMock: ReturnType<typeof createFetchMock>) {
     window.eval(widgetSource);
     await flushMicrotasks();
 
-    const widget = (window as WidgetWindow).FallchaWidget;
+    const widget = (window as WidgetWindow).LightMoveWidget;
     expect(widget).toBeDefined();
     if (fetchMock.mock.calls.length === 0) {
         await widget?.init();
     }
     await flushMicrotasks();
-    return widget as NonNullable<WidgetWindow['FallchaWidget']>;
+    return widget as NonNullable<WidgetWindow['LightMoveWidget']>;
 }
 
 describe('public embed widget chat lifecycle', () => {
@@ -117,12 +122,13 @@ describe('public embed widget chat lifecycle', () => {
         vi.useFakeTimers();
         document.head.innerHTML = '';
         document.body.innerHTML = `
-            <script src="http://widget.test/embed/fallcha-widget.js?token=emb_TEST"></script>
-            <div id="fallcha-inline-container"></div>
+            <script src="http://widget.test/embed/lightmove-widget.js?token=emb_TEST"></script>
+            <div id="lightmove-inline-container"></div>
         `;
     });
 
     afterEach(() => {
+        delete (window as WidgetWindow).LightMoveWidget;
         delete (window as WidgetWindow).FallchaWidget;
         delete (window as WidgetWindow).FailteWidget;
         delete (window as WidgetWindow).DograhWidget;
@@ -140,23 +146,23 @@ describe('public embed widget chat lifecycle', () => {
         await flushMicrotasks();
 
         expect(countInitCalls(fetchMock)).toBe(1);
-        expect(document.querySelector('.fallcha-chat-inline-cta')).toBeNull();
-        expect(document.querySelector('.fallcha-chat-panel--inline')).not.toBeNull();
+        expect(document.querySelector('.lightmove-chat-inline-cta')).toBeNull();
+        expect(document.querySelector('.lightmove-chat-panel--inline')).not.toBeNull();
     });
 
     it('public startChat opens the inline panel and reuses its session', async () => {
         const fetchMock = createFetchMock(false);
         const widget = await loadWidget(fetchMock);
 
-        expect(document.querySelector('.fallcha-chat-inline-cta')).not.toBeNull();
+        expect(document.querySelector('.lightmove-chat-inline-cta')).not.toBeNull();
         expect(countInitCalls(fetchMock)).toBe(0);
 
         await widget.startChat();
         await flushMicrotasks();
 
         expect(countInitCalls(fetchMock)).toBe(1);
-        expect(document.querySelector('.fallcha-chat-inline-cta')).toBeNull();
-        expect(document.querySelector('.fallcha-chat-panel--inline')).not.toBeNull();
+        expect(document.querySelector('.lightmove-chat-inline-cta')).toBeNull();
+        expect(document.querySelector('.lightmove-chat-panel--inline')).not.toBeNull();
 
         await widget.startChat();
         await flushMicrotasks();
@@ -170,7 +176,7 @@ describe('public embed widget chat lifecycle', () => {
         await widget.startChat();
         await flushMicrotasks();
 
-        const endButton = document.querySelector<HTMLButtonElement>('.fallcha-chat-end');
+        const endButton = document.querySelector<HTMLButtonElement>('.lightmove-chat-end');
         expect(endButton).not.toBeNull();
         expect(endButton?.disabled).toBe(false);
 
@@ -181,13 +187,13 @@ describe('public embed widget chat lifecycle', () => {
             String(url).endsWith('/api/v1/public/embed/chat/emb_session_TEST/end'),
         )).toBe(false);
 
-        expect(document.querySelector('.fallcha-chat-end-confirmation')?.textContent)
+        expect(document.querySelector('.lightmove-chat-end-confirmation')?.textContent)
             .toContain(WIDGET_TEXTS.endChatConfirmText);
-        expect(document.querySelector('.fallcha-chat-end-confirm-cancel')?.textContent)
+        expect(document.querySelector('.lightmove-chat-end-confirm-cancel')?.textContent)
             .toBe(WIDGET_TEXTS.endChatCancelText);
 
         const confirmEndButton = document.querySelector<HTMLButtonElement>(
-            '.fallcha-chat-end-confirm-submit',
+            '.lightmove-chat-end-confirm-submit',
         );
         expect(confirmEndButton).not.toBeNull();
         confirmEndButton?.click();
@@ -198,8 +204,8 @@ describe('public embed widget chat lifecycle', () => {
         );
         expect(endCalls).toHaveLength(1);
         expect(widget.getState().chat.status).toBe('ended');
-        expect(document.querySelector('.fallcha-chat-banner')?.textContent).toContain('Conversation ended.');
-        expect(document.querySelector<HTMLButtonElement>('.fallcha-chat-send')?.disabled).toBe(true);
+        expect(document.querySelector('.lightmove-chat-banner')?.textContent).toContain('Conversation ended.');
+        expect(document.querySelector<HTMLButtonElement>('.lightmove-chat-send')?.disabled).toBe(true);
     });
 
     it('generic start waits for chat configuration before choosing a flow', async () => {
@@ -242,7 +248,7 @@ describe('public embed widget chat lifecycle', () => {
 
         window.eval(widgetSource);
         await flushMicrotasks();
-        const widget = (window as WidgetWindow).FallchaWidget;
+        const widget = (window as WidgetWindow).LightMoveWidget;
         expect(widget).toBeDefined();
 
         const startPromise = widget?.start();
@@ -259,7 +265,7 @@ describe('public embed widget chat lifecycle', () => {
                 settings: {
                     widgetType: 'chat',
                     embedMode: 'inline',
-                    containerId: 'fallcha-inline-container',
+                    containerId: 'lightmove-inline-container',
                 },
                 auto_start: false,
             }),
@@ -273,18 +279,19 @@ describe('public embed widget chat lifecycle', () => {
         expect(configCalls).toHaveLength(1);
         expect(countInitCalls(fetchMock)).toBe(1);
         expect(getUserMedia).not.toHaveBeenCalled();
-        expect(document.querySelector('.fallcha-chat-panel--inline')).not.toBeNull();
+        expect(document.querySelector('.lightmove-chat-panel--inline')).not.toBeNull();
     });
 });
 
-// Snippets and host pages written before the Failte AI and Dograh renames must
-// keep working against the canonical widget.
+// Snippets and host pages written before the Fallcha.ai, Failte AI and Dograh
+// renames must keep working against the canonical widget.
 describe('public embed widget legacy names', () => {
     beforeEach(() => {
         document.head.innerHTML = '';
     });
 
     afterEach(() => {
+        delete (window as WidgetWindow).LightMoveWidget;
         delete (window as WidgetWindow).FallchaWidget;
         delete (window as WidgetWindow).FailteWidget;
         delete (window as WidgetWindow).DograhWidget;
@@ -315,24 +322,25 @@ describe('public embed widget legacy names', () => {
 
     it('aliases the legacy globals to the canonical widget', async () => {
         document.body.innerHTML = `
-            <script src="http://widget.test/embed/fallcha-widget.js?token=emb_TEST"></script>
-            <div id="fallcha-inline-container"></div>
+            <script src="http://widget.test/embed/lightmove-widget.js?token=emb_TEST"></script>
+            <div id="lightmove-inline-container"></div>
         `;
         const widget = await loadWidget(
             configOnlyFetch({ widgetType: 'chat', embedMode: 'inline' }),
         );
 
+        expect((window as WidgetWindow).FallchaWidget).toBe(widget);
         expect((window as WidgetWindow).FailteWidget).toBe(widget);
         expect((window as WidgetWindow).DograhWidget).toBe(widget);
     });
 
-    it.each(['data-failte-context', 'data-dograh-context'])(
+    it.each(['data-fallcha-context', 'data-failte-context', 'data-dograh-context'])(
         'reads visitor context from the legacy %s attribute',
         async (attribute) => {
             document.body.innerHTML = `
-                <script src="http://widget.test/embed/fallcha-widget.js?token=emb_TEST"
+                <script src="http://widget.test/embed/lightmove-widget.js?token=emb_TEST"
                     ${attribute}='{"plan":"pro"}'></script>
-                <div id="fallcha-inline-container"></div>
+                <div id="lightmove-inline-container"></div>
             `;
             const widget = await loadWidget(
                 configOnlyFetch({ widgetType: 'chat', embedMode: 'inline' }),
@@ -342,34 +350,92 @@ describe('public embed widget legacy names', () => {
         },
     );
 
-    it.each(['failte-inline-container', 'dograh-inline-container'])(
+    it.each(['fallcha-inline-container', 'failte-inline-container', 'dograh-inline-container'])(
         'renders into a legacy #%s when the config names no container',
         async (containerId) => {
             document.body.innerHTML = `
-                <script src="http://widget.test/embed/fallcha-widget.js?token=emb_TEST"></script>
+                <script src="http://widget.test/embed/lightmove-widget.js?token=emb_TEST"></script>
                 <div id="${containerId}"></div>
             `;
             await loadWidget(configOnlyFetch({ widgetType: 'chat', embedMode: 'inline' }));
 
             expect(
-                document.querySelector(`#${containerId} .fallcha-chat-inline-cta`),
+                document.querySelector(`#${containerId} .lightmove-chat-inline-cta`),
             ).not.toBeNull();
         },
     );
 
-    it('falls back to a legacy container when the saved default id is absent', async () => {
+    it.each([
+        // Saved before the LightMove rename, host page on the current name.
+        ['fallcha-inline-container', 'lightmove-inline-container'],
+        // Saved after the rename, host page still on an older name.
+        ['lightmove-inline-container', 'fallcha-inline-container'],
+        ['lightmove-inline-container', 'failte-inline-container'],
+    ])(
+        'uses #%s as the default container and finds the page\'s #%s',
+        async (savedId, pageId) => {
+            document.body.innerHTML = `
+                <script src="http://widget.test/embed/lightmove-widget.js?token=emb_TEST"></script>
+                <div id="${pageId}"></div>
+            `;
+            await loadWidget(configOnlyFetch({
+                widgetType: 'chat',
+                embedMode: 'inline',
+                containerId: savedId,
+            }));
+
+            expect(
+                document.querySelector(`#${pageId} .lightmove-chat-inline-cta`),
+            ).not.toBeNull();
+        },
+    );
+
+    it('finds its own tag when loaded under the legacy fallcha-widget.js name', async () => {
         document.body.innerHTML = `
             <script src="http://widget.test/embed/fallcha-widget.js?token=emb_TEST"></script>
-            <div id="failte-inline-container"></div>
+            <div id="fallcha-inline-container"></div>
         `;
-        await loadWidget(configOnlyFetch({
-            widgetType: 'chat',
-            embedMode: 'inline',
-            containerId: 'fallcha-inline-container',
-        }));
+        await loadWidget(configOnlyFetch({ widgetType: 'chat', embedMode: 'inline' }));
 
         expect(
-            document.querySelector('#failte-inline-container .fallcha-chat-inline-cta'),
+            document.querySelector('#fallcha-inline-container .lightmove-chat-inline-cta'),
         ).not.toBeNull();
+    });
+});
+
+// fallcha-widget.js is now a shim: it must re-inject the canonical widget with
+// the original query string and data-* attributes.
+describe('fallcha-widget.js shim', () => {
+    afterEach(() => {
+        delete (window as WidgetWindow).LightMoveWidget;
+        document.head.innerHTML = '';
+        document.body.innerHTML = '';
+    });
+
+    it('injects lightmove-widget.js with the same query and data attributes', () => {
+        document.body.innerHTML = `
+            <script id="fallcha-widget"
+                src="http://widget.test/embed/fallcha-widget.js?token=emb_TEST&environment=prod"
+                data-fallcha-context='{"plan":"pro"}'></script>
+        `;
+        window.eval(fallchaShimSource);
+
+        const injected = document.querySelector<HTMLScriptElement>(
+            'script[src*="lightmove-widget.js"]',
+        );
+        expect(injected?.src).toBe(
+            'http://widget.test/embed/lightmove-widget.js?token=emb_TEST&environment=prod',
+        );
+        expect(injected?.getAttribute('data-fallcha-context')).toBe('{"plan":"pro"}');
+    });
+
+    it('does nothing when the canonical widget is already on the page', () => {
+        document.body.innerHTML = `
+            <script src="http://widget.test/embed/lightmove-widget.js?token=emb_TEST"></script>
+            <script src="http://widget.test/embed/fallcha-widget.js?token=emb_TEST"></script>
+        `;
+        window.eval(fallchaShimSource);
+
+        expect(document.querySelectorAll('script[src*="lightmove-widget.js"]')).toHaveLength(1);
     });
 });

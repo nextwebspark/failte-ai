@@ -115,8 +115,8 @@ export function AppTopBar({
         className="notranslate flex shrink-0 items-center gap-1.5 rounded-[7px] py-1 pl-1 pr-1.5"
         translate="no"
       >
-        {/* The kit lockup itself, at its 24px digital minimum. */}
-        <BrandLogo className="h-6" />
+        {/* The kit lockup, mark at its 24px minimum. */}
+        <BrandLogo size={24} />
       </Link>
 
       {uiVersion && (

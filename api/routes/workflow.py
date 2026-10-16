@@ -717,10 +717,10 @@ async def create_workflow_from_template(
         raise HTTPException(
             status_code=503,
             detail=(
-                "Building a workflow from a use-case description requires the Fallcha.ai "
+                "Building a workflow from a use-case description requires the LightMove.ai "
                 "cloud service (Model Proxy Service), which could not be reached. "
                 "Please check your network connectivity and the MPS_API_URL "
-                "configuration, or build the workflow manually or with the Fallcha.ai SDK."
+                "configuration, or build the workflow manually or with the LightMove.ai SDK."
             ),
         )
     except HTTPStatusError as e:

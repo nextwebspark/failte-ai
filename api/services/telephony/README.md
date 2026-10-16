@@ -1,6 +1,6 @@
 # Telephony Provider Implementation
 
-This module implements the telephony provider abstraction for Fallcha.ai. For user-facing documentation, see the [Mintlify docs](https://docs.fallcha.ai/integrations/telephony/overview).
+This module implements the telephony provider abstraction for LightMove.ai. For user-facing documentation, see the [Mintlify docs](https://docs.lightmove.ai/integrations/telephony/overview).
 
 ## Architecture
 
@@ -49,7 +49,7 @@ telephony/
 
 ## Implementing a New Provider
 
-See the [Custom Provider Guide](https://docs.fallcha.ai/integrations/telephony/custom) in the documentation for detailed implementation instructions.
+See the [Custom Provider Guide](https://docs.lightmove.ai/integrations/telephony/custom) in the documentation for detailed implementation instructions.
 
 Quick checklist:
 1. Create `providers/your_provider.py` implementing `TelephonyProvider`
@@ -170,7 +170,7 @@ await provider.initiate_call(...)
 
 ## Related Documentation
 
-- [User Documentation](https://docs.fallcha.ai/integrations/telephony/overview)
-- [Twilio Integration](https://docs.fallcha.ai/integrations/telephony/twilio)
-- [Custom Providers](https://docs.fallcha.ai/integrations/telephony/custom)
-- [Webhooks Guide](https://docs.fallcha.ai/integrations/telephony/webhooks)
+- [User Documentation](https://docs.lightmove.ai/integrations/telephony/overview)
+- [Twilio Integration](https://docs.lightmove.ai/integrations/telephony/twilio)
+- [Custom Providers](https://docs.lightmove.ai/integrations/telephony/custom)
+- [Webhooks Guide](https://docs.lightmove.ai/integrations/telephony/webhooks)

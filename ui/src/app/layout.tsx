@@ -1,7 +1,7 @@
 import "./globals.css";
 
 import type { Metadata } from "next";
-import { JetBrains_Mono, Montserrat } from "next/font/google";
+import { JetBrains_Mono, Montserrat, Sora } from "next/font/google";
 import { Suspense } from "react";
 
 import AppLayout from "@/components/layout/AppLayout";
@@ -32,6 +32,15 @@ const jetbrainsMono = JetBrains_Mono({
   subsets: ["latin"],
 });
 
+// Sora 600 is the LightMove wordmark face (brand-kit/lightmove-brand). It is
+// used only by BrandLogo's live-text wordmark (`font-display`); interface copy
+// stays on Montserrat.
+const sora = Sora({
+  variable: "--font-sora",
+  subsets: ["latin"],
+  weight: ["600"],
+});
+
 export const metadata: Metadata = {
   metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL || BRAND.appUrl),
   applicationName: BRAND.name,
@@ -41,7 +50,7 @@ export const metadata: Metadata = {
     siteName: BRAND.name,
     title: BRAND.name,
     description: BRAND.tagline,
-    images: [{ url: BRAND.assets.ogImage, width: 2016, height: 512, alt: BRAND.name }],
+    images: [{ ...BRAND.assets.ogImage, alt: BRAND.name }],
   },
 };
 
@@ -57,7 +66,7 @@ export default function RootLayout({
     // reach it and the sans stack silently falls back to system-ui.
     <html
       lang="en"
-      className={`dark ${montserrat.variable} ${jetbrainsMono.variable}`}
+      className={`dark ${montserrat.variable} ${jetbrainsMono.variable} ${sora.variable}`}
       suppressHydrationWarning
     >
       <head>

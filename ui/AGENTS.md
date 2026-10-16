@@ -1,6 +1,6 @@
 # UI - Frontend Application
 
-Next.js 15 frontend for the Fallcha.ai voice AI platform (forked from Dograh).
+Next.js 15 frontend for the LightMove.ai voice AI platform (forked from Dograh).
 
 ## Project Structure
 

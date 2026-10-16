@@ -17,7 +17,7 @@ export interface Noveum {
      */
     name?: string;
     /**
-     * When false, Fallcha.ai skips exporting this call to Noveum.
+     * When false, LightMove.ai skips exporting this call to Noveum.
      */
     noveum_enabled?: boolean;
     /**

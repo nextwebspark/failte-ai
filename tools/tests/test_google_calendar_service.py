@@ -239,7 +239,7 @@ async def test_book_inserts_event_with_prefix_timezone_and_marker(
         "id": expected_id,
         "summary": "Acme call — Jane Doe",
         "description": (
-            "Booked by the Fallcha.ai voice agent.\nCaller: Jane Doe\n"
+            "Booked by the LightMove.ai voice agent.\nCaller: Jane Doe\n"
             "Phone: 0871234567\nReason: New router"
         ),
         "start": {"dateTime": "2026-10-12T10:00:00+01:00", "timeZone": "Europe/Dublin"},

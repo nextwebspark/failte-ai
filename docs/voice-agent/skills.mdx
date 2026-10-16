@@ -59,12 +59,12 @@ with read_skill_file before quoting any time limit or fee.
 - **Custom**, which you wrote or imported;
 - **From library vN**, which you copied from the library.
 
-**Library** holds skills Fallcha.ai publishes for every workspace. To use one, click **Add to workspace**. This copies it into **My skills**, where it is yours to edit.
+**Library** holds skills LightMove.ai publishes for every workspace. To use one, click **Add to workspace**. This copies it into **My skills**, where it is yours to edit.
 - If the name is taken, you are asked for another (for example `returns-policy-2`).
 - Agents only ever use workspace skills, never library skills directly.
 
 **Library updates:**
-- When Fallcha.ai publishes a newer version of a library skill you copied, your copy shows **Update available**. Click **Review update** to see a diff of your copy against the new version.
+- When LightMove.ai publishes a newer version of a library skill you copied, your copy shows **Update available**. Click **Review update** to see a diff of your copy against the new version.
 - If you have not edited your copy, **Apply update** replaces it.
 - If you have edited it (the card shows **Modified**), tick **Replace my edits** to take the new version, or simply don't apply the update to keep yours.
 - There is no merge. An update keeps your copy's name and allowed tools.
@@ -86,7 +86,7 @@ Clients (viewers) can read skills. Developers and Admins can create, edit, impor
 
 ## Allowed tools
 
-`allowed-tools` narrows what the agent may do while it follows a skill. In Fallcha.ai, its entries are the **UUIDs of tools in your workspace**. In the editor, choose **Only selected tools** and pick them.
+`allowed-tools` narrows what the agent may do while it follows a skill. In LightMove.ai, its entries are the **UUIDs of tools in your workspace**. In the editor, choose **Only selected tools** and pick them.
 
 | `allowed-tools` | Effect |
 |---|---|
@@ -104,7 +104,7 @@ A blocked call returns an error to the agent naming the allowed tools. When seve
 
 ## How agents use skills
 
-On each node that offers skills, Fallcha.ai adds a short index to the node's prompt:
+On each node that offers skills, LightMove.ai adds a short index to the node's prompt:
 
 ```text
 Available skills:
