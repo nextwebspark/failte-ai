@@ -1172,7 +1172,7 @@ export const startOauthApiV1IntegrationsOauthStartPost = <ThrowOnError extends b
 /**
  * Get Current Organization Context
  *
- * Return organization-scoped configuration signals owned by LightMove.ai.
+ * Return organization-scoped configuration signals owned by Fallcha.ai.
  */
 export const getCurrentOrganizationContextApiV1OrganizationsContextGet = <ThrowOnError extends boolean = false>(options?: Options<GetCurrentOrganizationContextApiV1OrganizationsContextGetData, ThrowOnError>): RequestResult<GetCurrentOrganizationContextApiV1OrganizationsContextGetResponses, GetCurrentOrganizationContextApiV1OrganizationsContextGetErrors, ThrowOnError> => (options?.client ?? client).get<GetCurrentOrganizationContextApiV1OrganizationsContextGetResponses, GetCurrentOrganizationContextApiV1OrganizationsContextGetErrors, ThrowOnError>({ url: '/api/v1/organizations/context', ...options });
 
