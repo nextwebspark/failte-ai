@@ -373,8 +373,9 @@ services:
       # Public origin serving /oauth/*; Google redirect URIs are built from
       # it ({TOOLS_PUBLIC_BASE_URL}/oauth/<provider>/callback).
       TOOLS_PUBLIC_BASE_URL: "${TOOLS_PUBLIC_BASE_URL:-${PUBLIC_BASE_URL:-}}"
-      # UI page the OAuth callback sends the browser back to. OAuth (bring-
-      # your-own client) stays off (503) until both URLs are set.
+      # UI page the OAuth callback sends the browser back to. OAuth (the
+      # platform client and workspaces' own) stays off (503) until both URLs
+      # are set.
       TOOLS_UI_RETURN_URL: "${TOOLS_UI_RETURN_URL:-${PUBLIC_BASE_URL:+${PUBLIC_BASE_URL}/integrations}}"
       # Optional platform Google OAuth client, offered to every workspace so
       # Calendar/Sheets connect in one click (both or neither). Its redirect

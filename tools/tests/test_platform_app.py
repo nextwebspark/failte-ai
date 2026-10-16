@@ -21,7 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 from fallcha_tools.app import create_app
 from fallcha_tools.config import Settings
 from fallcha_tools.core.container import AppServices
-from fallcha_tools.core.crypto import generate_key
+from fallcha_tools.core.crypto import SecretBox, generate_key
 from fallcha_tools.core.oauth import OAuthReconnectRequired, OAuthTokenManager
 from fallcha_tools.core.platform_apps import PlatformClient, sync_platform_client
 from fallcha_tools.core.provider import AccessToken, ProviderRegistry
@@ -484,3 +484,95 @@ async def test_unset_platform_client_is_hidden_but_still_refreshes(
         google.token.mock(return_value=refreshed())
         assert (await refresh(svc, connection_id)).token == "ya29.refreshed"
         assert form_body(google.token.calls.last.request)["client_id"] == PLATFORM_ID
+
+
+# --- recovery after a bad platform secret, key rotation, scopes ---------------
+
+
+async def test_restart_lets_connections_rejected_for_the_platform_client_retry(
+    app: FastAPI,
+    client: httpx.AsyncClient,
+    engine: AsyncEngine,
+    google: FakeGoogle,
+    settings: Settings,
+    registry: ProviderRegistry,
+) -> None:
+    """A bad deployment secret must not force every workspace to reconnect."""
+    platform_conn = await finish(client, await started(client, PLATFORM_APP_ID))
+    own_app = (await create_app_row(client)).json()["id"]
+    own_conn = await finish(client, await started(client, own_app))
+    for connection_id in (platform_conn, own_conn):
+        await expire_access_token(engine, connection_id)
+    google.token.mock(
+        return_value=httpx.Response(401, json={"error": "invalid_client"})
+    )
+    for connection_id in (platform_conn, own_conn):
+        with pytest.raises(OAuthReconnectRequired, match="rejected the OAuth client"):
+            await refresh(services(app), connection_id)
+        assert (await row(engine, connection_id))["error_code"] == "client_rejected"
+
+    google.token.mock(return_value=refreshed())
+    async with restarted(settings, registry) as (svc, _):
+        assert (await refresh(svc, platform_conn)).token == "ya29.refreshed"
+        # A workspace's own client is its own business: still flagged.
+        with pytest.raises(OAuthReconnectRequired, match="rejected the OAuth client"):
+            await refresh(svc, own_conn)
+    stored = await row(engine, platform_conn)
+    assert (stored["status"], stored["error_code"]) == ("active", None)
+    assert (await row(engine, own_conn))["error_code"] == "client_rejected"
+
+
+async def test_sync_reencrypts_replaced_platform_clients_under_the_primary_key(
+    client: httpx.AsyncClient,
+    engine: AsyncEngine,
+    settings: Settings,
+    registry: ProviderRegistry,
+) -> None:
+    old_key = settings.encryption_keys[0]
+    new_key = generate_key()
+    replaced = settings.model_copy(
+        update={
+            "google_client_id": NEW_PLATFORM_ID,
+            "google_client_secret": SecretStr(NEW_PLATFORM_SECRET),
+            "encryption_keys_raw": SecretStr(f"{new_key},{old_key}"),
+        }
+    )
+    async with restarted(replaced, registry):
+        pass
+
+    new_only = SecretBox([new_key])
+    secrets_by_id = {
+        r["id"]: new_only.decrypt(r["client_secret_enc"])
+        for r in await platform_rows(engine)
+    }
+    assert secrets_by_id == {
+        PLATFORM_APP_ID: PLATFORM_SECRET,
+        platform_app_id("google", NEW_PLATFORM_ID): NEW_PLATFORM_SECRET,
+    }
+
+
+async def test_connections_keep_only_their_providers_scopes(
+    client: httpx.AsyncClient, engine: AsyncEngine, google: FakeGoogle
+) -> None:
+    """A token can carry scopes the same account granted the shared client for
+    another integration or workspace; they are not this connection's."""
+    params = await started(client, PLATFORM_APP_ID)
+    assert params["include_granted_scopes"] == "false"
+    google.token.mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "access_token": ACCESS_TOKEN,
+                "refresh_token": REFRESH_TOKEN,
+                "expires_in": 3599,
+                "scope": f"{GRANTED} https://www.googleapis.com/auth/spreadsheets",
+                "token_type": "Bearer",
+            },
+        )
+    )
+    connection_id = await finish(client, params)
+    stored = await row(engine, connection_id)
+    assert (
+        "https://www.googleapis.com/auth/spreadsheets" not in stored["scopes_granted"]
+    )
+    assert "https://www.googleapis.com/auth/calendar.events" in stored["scopes_granted"]

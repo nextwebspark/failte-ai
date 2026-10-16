@@ -331,7 +331,7 @@ async def test_start_builds_pkce_authorization_url(
     assert params["response_type"] == "code"
     assert params["access_type"] == "offline"
     assert params["prompt"] == "consent"
-    assert params["include_granted_scopes"] == "true"
+    assert params["include_granted_scopes"] == "false"
     assert params["code_challenge_method"] == "S256"
     assert params["scope"].split() == [
         "openid",

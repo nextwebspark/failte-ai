@@ -36,11 +36,24 @@ class PlatformClient:
 async def sync_platform_client(
     db: Database, box: SecretBox, client: PlatformClient
 ) -> None:
-    """Upsert the client's row. Safe to run on every start and replica."""
+    """Upsert the client's row, keep replaced rows readable under the primary
+    encryption key, and give connections rejected for this client another
+    try. Safe to run on every start and replica."""
     async with db.session() as session:
-        await PlatformAppRepository(session, box).upsert(
+        repo = PlatformAppRepository(session, box)
+        app_id = await repo.upsert(
             family=client.family,
             client_id=client.client_id,
             client_secret=client.client_secret,
         )
-    logger.info("platform {} OAuth client {} synced", client.family, client.app_id)
+        unreadable = await repo.reencrypt_replaced(app_id)
+        retried = await repo.clear_rejections(app_id)
+    logger.info("platform {} OAuth client {} synced", client.family, app_id)
+    if retried:
+        logger.info("{} connections rejected for this client will retry", retried)
+    if unreadable:
+        logger.warning(
+            "{} replaced platform OAuth clients cannot be decrypted with the "
+            "current TOOLS_ENCRYPTION_KEYS; their connections need reconnecting",
+            unreadable,
+        )

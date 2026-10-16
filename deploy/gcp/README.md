@@ -362,10 +362,15 @@ can connect Google Calendar and Sheets in one click. The client needs the
 redirect URIs `<TOOLS_PUBLIC_BASE_URL>/oauth/google-calendar/callback` and
 `.../google-sheets/callback`, the Calendar and Sheets APIs enabled in its
 project, and the `calendar.events`, `calendar.readonly` and `spreadsheets`
-scopes on its consent screen. Restart `fallcha-tools` after re-running the
-script. A new secret for the same client applies in place; a new client id
-leaves existing connections on the old client, so keep that client alive
-until they reconnect.
+scopes on its consent screen. The same two secrets also turn on Google
+sign-in (see "Billing (Stripe), email (Resend) and Google sign-in"): both
+features are on with both secrets and off otherwise. After re-running the
+script, `sudo docker compose up -d api fallcha-tools` (a plain `restart` does
+not re-read `tools.env`). A new secret for the same client applies in place,
+and connections the old secret got rejected for retry on that start; a new
+client id leaves existing connections on the old client, so keep that client
+alive until they reconnect. A replica or rollback started with older settings
+writes its secret back, so roll every replica forward together.
 
 Those scopes are *sensitive*: until Google verifies the app (privacy policy and
 terms URLs on a verified domain, scope justification, a demo video), the
@@ -543,23 +548,42 @@ the full carrier source-IP list. Everything else ships without it.
 
 ## Billing (Stripe), email (Resend) and Google sign-in
 
-All optional. `configure-env.sh` turns each on only when its secret exists:
+All optional. `configure-env.sh` turns each on only when its secret exists.
+`dograh-app-sa` has no project-wide Secret Manager access, so grant it each new
+secret (otherwise the script reports it as skipped and the feature stays off):
 
 ```bash
-printf 'sk_test_...' | gcloud secrets create dograh-stripe-secret-key --data-file=- --project=dograh-eu
-printf 'whsec_...'   | gcloud secrets create dograh-stripe-webhook-secret --data-file=- --project=dograh-eu
-printf 're_...'      | gcloud secrets create dograh-resend-api-key --data-file=- --project=dograh-eu
-printf %s '<id>.apps.googleusercontent.com' | gcloud secrets create dograh-google-oauth-client-id --data-file=- --project=dograh-eu
-printf %s 'GOCSPX-...' | gcloud secrets create dograh-google-oauth-client-secret --data-file=- --project=dograh-eu
+# For each secret you use: paste the value at the prompt (keeps it out of
+# shell history), then grant the VM's service account access.
+for name in dograh-resend-api-key dograh-google-oauth-client-id dograh-google-oauth-client-secret; do
+  echo "Paste $name, then Enter:"; read -rs V
+  printf %s "$V" | gcloud secrets create "$name" --data-file=- --project=dograh-eu
+  gcloud secrets add-iam-policy-binding "$name" --project=dograh-eu \
+    --member=serviceAccount:dograh-app-sa@dograh-eu.iam.gserviceaccount.com \
+    --role=roles/secretmanager.secretAccessor
+done
+# Stripe works the same way: dograh-stripe-secret-key (sk_...) and
+# dograh-stripe-webhook-secret (whsec_...).
 
+# On the app VM:
+cd /opt/lightmove/dograh
 sudo DOGRAH_SQL_IP=<ip> DOGRAH_EMAIL_FROM='LightMove.ai <no-reply@mail.<domain>>' \
   ./deploy/gcp/configure-env.sh
-docker compose up -d api
+sudo docker compose up -d api fallcha-tools
 ```
 
-`DOGRAH_EMAIL_FROM` is needed on the first run with Resend; later runs keep the
-sender already in `.env`. `set_key` never removes a key, so deleting one of these
-secrets later also needs the matching lines removed from `.env` by hand.
+`up -d` recreates the containers with the new values; `docker compose restart`
+does not re-read them. `DOGRAH_EMAIL_FROM` is needed on the first run with
+Resend; later runs keep the sender already in `.env`. Deleting the Google
+secrets turns Google sign-in and the platform client off on the next run; for
+the other secrets `set_key` never removes a key, so deleting one later also
+needs the matching lines removed from `.env` by hand. A Secret Manager error
+other than "absent" stops the script rather than switching a feature off.
+
+**Rotating the Google client secret:** add the new secret in Google Auth
+Platform, then `gcloud secrets versions add dograh-google-oauth-client-secret
+--data-file=-`, re-run the script, `sudo docker compose up -d api fallcha-tools`,
+and only then disable the old secret in Google.
 
 - **Stripe webhook:** add a dashboard endpoint at
   `https://<PUBLIC_BASE_URL>/api/v1/billing/stripe/webhook` with the five events

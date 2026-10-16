@@ -71,8 +71,8 @@ export function OAuthConnect({
     const [ownClientChosen, setOwnClientChosen] = useState(() => ownApps.length > 0);
     const ownClient = ownClientChosen || !managedApp;
     const [selected, setSelected] = useState<string>(() => ownApps[0]?.id ?? NEW_CLIENT);
-    // "Continue as alice@…": Google skips the account chooser and asks only for
-    // this integration's new permissions. Each integration keeps its own grant.
+    // "Continue as alice@…": Google skips the account chooser. Each
+    // integration keeps its own grant.
     const [chosenAccount, setAccount] = useState<string>(
         () => knownAccounts.find((k) => k.connectionId !== SUGGESTED_ACCOUNT_ID)?.label ?? OTHER_ACCOUNT,
     );

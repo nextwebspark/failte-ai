@@ -303,10 +303,12 @@ are `google`).
   auth modes 422.
 - **OAuth sign-ins are not shared.** Each provider keeps its own connection
   and refresh token, so revoking or reconnecting one never breaks another.
-  To keep it to one click, `oauth/start` accepts `login_hint` (the UI
-  passes the account an existing family connection uses) and Google's
-  `include_granted_scopes=true` makes the consent screen ask only for the
-  new scopes.
+  To keep it short, `oauth/start` accepts `login_hint` (the UI passes the
+  account an existing family connection uses), which skips Google's account
+  chooser. Grants are not merged (`include_granted_scopes=false`): with one
+  platform client serving every workspace, merging would hand a connection
+  the scopes the same account granted elsewhere. A connection stores only
+  its own provider's scopes.
 
 ## OAuth2 (platform or bring-your-own client)
 

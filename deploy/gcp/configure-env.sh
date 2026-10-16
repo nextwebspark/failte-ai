@@ -44,6 +44,19 @@ PY
   echo "  set $key"
 }
 
+unset_key() {
+  local key="$1"
+  grep -q "^${key}=" "$ENV_FILE" || return 0
+  python3 - "$ENV_FILE" "$key" <<'PY'
+import sys
+path, key = sys.argv[1], sys.argv[2]
+lines = open(path).read().splitlines()
+out = [l for l in lines if not l.startswith(key + "=")]
+open(path, "w").write("\n".join(out) + "\n")
+PY
+  echo "  removed $key"
+}
+
 echo "reading secrets from Secret Manager (project $PROJECT)..."
 DB_PW="$(sm dograh-db-password)"
 HMAC_ID="$(sm dograh-s3-hmac-access-id)"
@@ -78,18 +91,47 @@ set_key TELEPHONY_WS_TOKEN_SECRET "$(sm dograh-telephony-ws-token-secret)"
 # Enforcement stays off until the carrier leg is proven end to end.
 set_key TELEPHONY_WS_TOKEN_ENFORCE false
 
-# Billing and email are opt-in: each is configured only when its secret exists
-# in Secret Manager, so an install without them keeps working unchanged.
-#   gcloud secrets create dograh-stripe-secret-key --data-file=-     # sk_test_/sk_live_
-#   gcloud secrets create dograh-stripe-webhook-secret --data-file=- # whsec_ of the dashboard endpoint
-#   gcloud secrets create dograh-resend-api-key --data-file=-        # re_...
-sm_optional() { sm "$1" 2>/dev/null || true; }
+# Billing, email and Google are opt-in: each is configured only when its secret
+# exists in Secret Manager, so an install without them keeps working unchanged.
+# Create each secret, then let the VM's service account read it (it has no
+# project-wide Secret Manager access):
+#   read -rs V && printf %s "$V" | gcloud secrets create <name> --data-file=- --project=dograh-eu
+#   gcloud secrets add-iam-policy-binding <name> --project=dograh-eu \
+#     --member=serviceAccount:dograh-app-sa@dograh-eu.iam.gserviceaccount.com \
+#     --role=roles/secretmanager.secretAccessor
+# Names: dograh-stripe-secret-key (sk_test_/sk_live_), dograh-stripe-webhook-secret
+# (whsec_ of the dashboard endpoint), dograh-resend-api-key (re_...),
+# dograh-google-oauth-client-id / dograh-google-oauth-client-secret.
+#
+# Prints the value, or nothing when the secret is absent. Without
+# project-wide access a missing secret reads as PERMISSION_DENIED ("or it may
+# not exist"), so that counts as absent too, with a note in case only the
+# grant is missing. Any other error (network, quota) stops the script instead
+# of quietly switching a feature off.
+sm_optional() {
+  local err val rc=0
+  err="$(mktemp)"
+  val="$(gcloud secrets versions access latest --secret="$1" --project="$PROJECT" 2>"$err")" || rc=$?
+  if (( rc == 0 )); then
+    printf '%s' "$val"
+  elif grep -q PERMISSION_DENIED "$err"; then
+    echo "  skipped $1: absent, or this VM's service account may not read it" >&2
+  elif ! grep -q NOT_FOUND "$err"; then
+    cat "$err" >&2
+    rm -f "$err"
+    return 1
+  fi
+  rm -f "$err"
+}
 
 STRIPE_KEY="$(sm_optional dograh-stripe-secret-key)"
 if [[ -n "$STRIPE_KEY" ]]; then
+  # A bare assignment, so set -e stops the script if the secret is missing
+  # (inside set_key's arguments a failed lookup would write an empty value).
+  STRIPE_WEBHOOK="$(sm dograh-stripe-webhook-secret)"
   set_key BILLING_PROVIDER stripe
   set_key STRIPE_SECRET_KEY "$STRIPE_KEY"
-  set_key STRIPE_WEBHOOK_SECRET "$(sm dograh-stripe-webhook-secret)"
+  set_key STRIPE_WEBHOOK_SECRET "$STRIPE_WEBHOOK"
   set_key STRIPE_AUTOMATIC_TAX "${DOGRAH_STRIPE_AUTOMATIC_TAX:-false}"
   if [[ -n "${DOGRAH_BILLING_SALES_CONTACT:-}" ]]; then
     set_key BILLING_SALES_CONTACT "$DOGRAH_BILLING_SALES_CONTACT"
@@ -107,18 +149,26 @@ if [[ -n "$RESEND_KEY" ]]; then
   set_key EMAIL_FROM "${EMAIL_FROM_VALUE:?DOGRAH_EMAIL_FROM is required with Resend, e.g. 'LightMove.ai <no-reply@mail.example.com>'}"
 fi
 
-# "Continue with Google" sign-in. Opt-in like email: the button appears once
-# both values are set. The OAuth client (Google Auth Platform, this project)
-# must list <PUBLIC_BASE_URL>/auth/google/callback as a redirect URI.
-#   printf %s '<id>.apps.googleusercontent.com' | gcloud secrets create dograh-google-oauth-client-id --data-file=-
-#   printf %s 'GOCSPX-...' | gcloud secrets create dograh-google-oauth-client-secret --data-file=-
+# One Google OAuth client serves "Continue with Google" sign-in (api, .env)
+# and the platform client for Calendar and Sheets (fallcha-tools, tools.env
+# below). Both secrets or neither, decided once for both services; with
+# neither (or only one) both are off and stale values are removed. The client
+# (Google Auth Platform, this project) must list these redirect URIs:
+# <PUBLIC_BASE_URL>/auth/google/callback and
+# <PUBLIC_BASE_URL>/oauth/google-{calendar,sheets}/callback.
 GOOGLE_ID="$(sm_optional dograh-google-oauth-client-id)"
-if [[ -n "$GOOGLE_ID" ]]; then
-  # A bare assignment, so set -e stops the script if the secret is missing
-  # (inside set_key's arguments a failed lookup would write an empty value).
-  GOOGLE_SECRET="$(sm dograh-google-oauth-client-secret)"
+GOOGLE_SECRET="$(sm_optional dograh-google-oauth-client-secret)"
+if [[ -n "$GOOGLE_ID" && -n "$GOOGLE_SECRET" ]]; then
   set_key GOOGLE_CLIENT_ID "$GOOGLE_ID"
   set_key GOOGLE_CLIENT_SECRET "$GOOGLE_SECRET"
+else
+  if [[ -n "$GOOGLE_ID" || -n "$GOOGLE_SECRET" ]]; then
+    echo "  only one of dograh-google-oauth-client-id / -secret is readable:" \
+      "Google sign-in and the platform Google client stay off" >&2
+    GOOGLE_ID="" GOOGLE_SECRET=""
+  fi
+  unset_key GOOGLE_CLIENT_ID
+  unset_key GOOGLE_CLIENT_SECRET
 fi
 
 # Workspace credentials at rest (api). Opt-in like billing: once set, never
@@ -146,32 +196,6 @@ TOOLS_KEYS="$(sm dograh-tools-encryption-keys)"
 }
 set_key TOOLS_INTERNAL_SECRET "$TOOLS_SECRET"
 PUBLIC_URL="$(grep -E '^PUBLIC_BASE_URL=' "$ENV_FILE" | tail -1 | cut -d= -f2- | tr -d '"' || true)"
-# Optional platform Google OAuth client (the one Google sign-in uses), offered
-# to every workspace for Calendar/Sheets. Both secrets or neither:
-#   printf %s '…apps.googleusercontent.com' | gcloud secrets create dograh-google-oauth-client-id --data-file=-
-#   printf %s 'GOCSPX-…' | gcloud secrets create dograh-google-oauth-client-secret --data-file=-
-# tools.env is rewritten on every run, so deleting the secrets turns it off.
-# tools.env is rewritten, so a transient Secret Manager error must not read as
-# "secret absent" (that would silently drop the client): only NOT_FOUND counts
-# as absent, anything else stops the script.
-sm_if_exists() {
-  local err val rc=0
-  err="$(mktemp)"
-  val="$(gcloud secrets versions access latest --secret="$1" --project="$PROJECT" 2>"$err")" || rc=$?
-  if (( rc == 0 )); then
-    printf '%s' "$val"
-  elif ! grep -q NOT_FOUND "$err"; then
-    cat "$err" >&2
-    rm -f "$err"
-    return 1
-  fi
-  rm -f "$err"
-}
-TOOLS_GOOGLE_ID="$(sm_if_exists dograh-google-oauth-client-id)"
-TOOLS_GOOGLE_SECRET="$(sm_if_exists dograh-google-oauth-client-secret)"
-if [[ -n "$TOOLS_GOOGLE_ID" && -z "$TOOLS_GOOGLE_SECRET" ]] || [[ -z "$TOOLS_GOOGLE_ID" && -n "$TOOLS_GOOGLE_SECRET" ]]; then
-  echo "  only one of dograh-google-oauth-client-id / -secret exists: platform Google client left off" >&2
-fi
 TOOLS_DIR="$(dirname "$ENV_FILE")/deploy/gcp/secrets"
 TOOLS_ENV="$TOOLS_DIR/tools.env"
 mkdir -p "$TOOLS_DIR"
@@ -182,10 +206,11 @@ mkdir -p "$TOOLS_DIR"
     # Empty URLs keep OAuth off; service-account connections still work.
     printf 'TOOLS_PUBLIC_BASE_URL=%s\n' "${DOGRAH_TOOLS_PUBLIC_BASE_URL:-$PUBLIC_URL}"
     printf 'TOOLS_UI_RETURN_URL=%s\n' "${DOGRAH_TOOLS_UI_RETURN_URL:-${PUBLIC_URL:+$PUBLIC_URL/integrations}}"
-    # if/fi, not `[[ … ]] && printf`: under set -e a false test would end the subshell.
-    if [[ -n "$TOOLS_GOOGLE_ID" && -n "$TOOLS_GOOGLE_SECRET" ]]; then
-      printf 'TOOLS_GOOGLE_CLIENT_ID=%s\n' "$TOOLS_GOOGLE_ID"
-      printf 'TOOLS_GOOGLE_CLIENT_SECRET=%s\n' "$TOOLS_GOOGLE_SECRET"
+    # The Google client read above (both or neither). if/fi, not
+    # `[[ … ]] && printf`: under set -e a false test would end the subshell.
+    if [[ -n "$GOOGLE_ID" && -n "$GOOGLE_SECRET" ]]; then
+      printf 'TOOLS_GOOGLE_CLIENT_ID=%s\n' "$GOOGLE_ID"
+      printf 'TOOLS_GOOGLE_CLIENT_SECRET=%s\n' "$GOOGLE_SECRET"
     fi
   } > "$TOOLS_ENV"
 )

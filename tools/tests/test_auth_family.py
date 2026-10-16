@@ -187,7 +187,7 @@ async def test_one_oauth_client_serves_the_family(client: httpx.AsyncClient) -> 
     assert query["client_id"] == ["1234.apps.googleusercontent.com"]
     assert "https://www.googleapis.com/auth/spreadsheets" in query["scope"][0].split()
     assert query["login_hint"] == ["alice@acme.test"]
-    assert query["include_granted_scopes"] == ["true"]
+    assert query["include_granted_scopes"] == ["false"]
     assert started.json()["redirect_uri"].endswith("/oauth/google-sheets/callback")
 
     bad_hint = await client.post(
