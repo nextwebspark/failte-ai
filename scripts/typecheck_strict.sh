@@ -13,6 +13,7 @@ mypy --strict --follow-imports=silent \
   api/services/auth/account_dependencies.py \
   api/services/auth/accounts.py \
   api/services/auth/oauth \
+  api/services/auth/verification_codes.py \
   api/db/invitation_client.py \
   api/db/membership_client.py \
   api/db/skill_client.py \

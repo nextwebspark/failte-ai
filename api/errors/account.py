@@ -51,3 +51,25 @@ class InvalidAccountTokenError(AccountError):
 class OAuthLoginError(AccountError):
     status_code = 400
     code = "oauth_failed"
+
+
+class InvalidVerificationCodeError(AccountError):
+    """One answer for wrong, expired, used and locked codes and unknown
+    addresses, so the endpoint can't be used to probe accounts."""
+
+    status_code = 400
+    code = "invalid_verification_code"
+
+    def __init__(self) -> None:
+        super().__init__(
+            "That code is incorrect or has expired. Use the code from the latest "
+            "email, request a new one, or reset your password to verify instead."
+        )
+
+
+class VerificationCodeUnavailableError(AccountError):
+    status_code = 503
+    code = "verification_unavailable"
+
+    def __init__(self) -> None:
+        super().__init__("Email verification is unavailable; please try again")

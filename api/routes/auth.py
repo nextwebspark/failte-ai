@@ -22,6 +22,7 @@ from api.schemas.auth import (
     SignupResponse,
     TokenRequest,
     UserResponse,
+    VerifyEmailCodeRequest,
 )
 from api.services.auth.account_dependencies import get_account_service
 from api.services.auth.accounts import AccountService, PasswordCredentials, Session
@@ -120,6 +121,7 @@ async def login(request: LoginRequest, accounts: Accounts) -> AuthResponse:
 
 @router.post("/verify-email", response_model=AuthResponse, dependencies=LOCAL_ONLY)
 async def verify_email(request: TokenRequest, accounts: Accounts) -> AuthResponse:
+    """Verify with a link from an email sent before codes replaced links."""
     return _auth_response(await accounts.verify_email(request.token))
 
 
@@ -130,28 +132,47 @@ CLIENT_EMAIL_LIMIT = 10
 CLIENT_EMAIL_WINDOW = timedelta(minutes=15)
 GLOBAL_EMAIL_LIMIT = 300
 GLOBAL_EMAIL_WINDOW = timedelta(hours=1)
+# Code guesses per client. The real guess budget is per account (see
+# api.services.auth.verification_codes); this only slows one client spraying
+# many addresses. No global cap: it would let one client block everyone, so
+# this relies on _client_address not being spoofable behind our nginx.
+CLIENT_CODE_LIMIT = 30
+CLIENT_CODE_WINDOW = timedelta(minutes=15)
 
 
 def _client_address(request: Request) -> str:
-    # Behind the UI proxy every request shares one peer address, so prefer the
-    # forwarded client. It is spoofable, which is why a global cap backs it.
+    # Our nginx sets X-Real-IP to the connecting address, replacing anything
+    # the client sent; X-Forwarded-For keeps client-supplied entries, so its
+    # first hop is only a fallback (e.g. behind another proxy). The global
+    # caps on the email endpoints back this up where it can be spoofed.
+    real_ip = request.headers.get("x-real-ip", "").strip()
+    if real_ip:
+        return real_ip
     forwarded = request.headers.get("x-forwarded-for", "")
     first = forwarded.split(",")[0].strip()
     return first or (request.client.host if request.client else "unknown")
 
 
-def _email_throttle(name: str) -> Callable[..., Awaitable[None]]:
+def _throttle(
+    name: str,
+    *,
+    client_limit: int = CLIENT_EMAIL_LIMIT,
+    client_window: timedelta = CLIENT_EMAIL_WINDOW,
+    global_limit: int | None = GLOBAL_EMAIL_LIMIT,
+    global_window: timedelta = GLOBAL_EMAIL_WINDOW,
+) -> Callable[..., Awaitable[None]]:
     async def _dependency(
         request: Request,
         limiter: Annotated[RateLimiter, Depends(get_rate_limiter)],
     ) -> None:
         client = _client_address(request)
         allowed = await limiter.allow(
-            f"{name}:client:{client}",
-            limit=CLIENT_EMAIL_LIMIT,
-            window=CLIENT_EMAIL_WINDOW,
-        ) and await limiter.allow(
-            f"{name}:all", limit=GLOBAL_EMAIL_LIMIT, window=GLOBAL_EMAIL_WINDOW
+            f"{name}:client:{client}", limit=client_limit, window=client_window
+        ) and (
+            global_limit is None
+            or await limiter.allow(
+                f"{name}:all", limit=global_limit, window=global_window
+            )
         )
         if not allowed:
             raise HTTPException(
@@ -162,9 +183,31 @@ def _email_throttle(name: str) -> Callable[..., Awaitable[None]]:
 
 
 @router.post(
+    "/verify-email-code",
+    response_model=AuthResponse,
+    dependencies=[
+        *LOCAL_ONLY,
+        Depends(
+            _throttle(
+                "verify-email-code",
+                client_limit=CLIENT_CODE_LIMIT,
+                client_window=CLIENT_CODE_WINDOW,
+                global_limit=None,
+            )
+        ),
+    ],
+)
+async def verify_email_code(
+    request: VerifyEmailCodeRequest, accounts: Accounts
+) -> AuthResponse:
+    """Verify the email address with the 6-digit code mailed at signup."""
+    return _auth_response(await accounts.verify_email_code(request.email, request.code))
+
+
+@router.post(
     "/resend-verification",
     status_code=202,
-    dependencies=[*LOCAL_ONLY, Depends(_email_throttle("resend-verification"))],
+    dependencies=[*LOCAL_ONLY, Depends(_throttle("resend-verification"))],
 )
 async def resend_verification(request: EmailRequest, accounts: Accounts) -> Response:
     await accounts.resend_verification(request.email)
@@ -174,7 +217,7 @@ async def resend_verification(request: EmailRequest, accounts: Accounts) -> Resp
 @router.post(
     "/forgot-password",
     status_code=202,
-    dependencies=[*LOCAL_ONLY, Depends(_email_throttle("forgot-password"))],
+    dependencies=[*LOCAL_ONLY, Depends(_throttle("forgot-password"))],
 )
 async def forgot_password(request: EmailRequest, accounts: Accounts) -> Response:
     await accounts.request_password_reset(request.email)

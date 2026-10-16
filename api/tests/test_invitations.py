@@ -438,8 +438,10 @@ async def team_app(sender):
     from api.services.auth import depends as auth_depends
     from api.services.auth.account_dependencies import get_account_policy
     from api.services.auth.accounts import AccountPolicy
+    from api.services.auth.verification_codes import get_verification_code_store
     from api.services.email import get_email_sender
     from api.services.rate_limit import get_rate_limiter
+    from api.tests.support.verification_codes import InMemoryVerificationCodeStore
 
     app = FastAPI()
     app.add_exception_handler(DomainError, handle_domain_error)
@@ -448,6 +450,8 @@ async def team_app(sender):
     app.include_router(auth_router)
     app.dependency_overrides[get_email_sender] = lambda: sender
     app.dependency_overrides[get_rate_limiter] = InMemoryRateLimiter
+    codes = InMemoryVerificationCodeStore()
+    app.dependency_overrides[get_verification_code_store] = lambda: codes
     policy = SimpleNamespace(signup_enabled=True)
     app.dependency_overrides[get_account_policy] = lambda: AccountPolicy(
         signup_enabled=policy.signup_enabled,

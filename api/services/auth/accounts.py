@@ -1,7 +1,7 @@
 """Local-auth account flows: password signup/login, email verification,
 password reset and Google sign-in.
 
-Every path that proves inbox ownership (verify link, reset link, invite link,
+Every path that proves inbox ownership (emailed code, reset link, invite link,
 verified Google email) ends in ``_onboard``, which claims the address's
 pending invitations and makes sure the user has an organization.
 """
@@ -19,22 +19,35 @@ from api.errors.account import (
     EmailAlreadyRegisteredError,
     EmailNotVerifiedError,
     InvalidCredentialsError,
+    InvalidVerificationCodeError,
     OAuthLoginError,
     SignupDisabledError,
+    VerificationCodeUnavailableError,
 )
 from api.services.auth.oauth.base import OAuthIdentity
+from api.services.auth.verification_codes import (
+    CODE_TTL,
+    CodeCheck,
+    VerificationCodeStore,
+)
 from api.services.email.base import EmailDeliveryError, EmailMessage, EmailSender
-from api.services.email.templates import password_reset_message, verify_email_message
+from api.services.email.templates import (
+    password_reset_message,
+    verification_code_message,
+    verification_locked_message,
+)
 from api.services.invitations.service import InvitationService
 from api.services.rate_limit import RateLimiter
 from api.utils.clock import Clock
 from api.utils.secure_token import hash_token, issue_token
 
-EMAIL_VERIFICATION_TTL = timedelta(hours=24)
 PASSWORD_RESET_TTL = timedelta(minutes=60)
 # Per address, for emails anyone can trigger (resend verification, reset).
 ACCOUNT_EMAIL_LIMIT = 3
 ACCOUNT_EMAIL_WINDOW = timedelta(minutes=15)
+# All code emails triggered by logging in, which no route-level cap covers.
+LOGIN_REMINDER_GLOBAL_LIMIT = 300
+LOGIN_REMINDER_GLOBAL_WINDOW = timedelta(hours=1)
 
 PasswordHasher = Callable[[str], str]
 PasswordVerifier = Callable[[str, str], bool]
@@ -129,6 +142,7 @@ class AccountService:
         store: AccountStore,
         invitations: InvitationService,
         email_sender: EmailSender,
+        verification_codes: VerificationCodeStore,
         clock: Clock,
         policy: AccountPolicy,
         hash_password: PasswordHasher,
@@ -140,6 +154,7 @@ class AccountService:
         self._store = store
         self._invitations = invitations
         self._email = email_sender
+        self._codes = verification_codes
         self._clock = clock
         self._policy = policy
         self._hash_password = hash_password
@@ -196,12 +211,31 @@ class AccountService:
         ):
             raise InvalidCredentialsError()
         if self._policy.require_email_verification and not account.is_email_verified:
+            await self._remind_unverified(account)
             raise EmailNotVerifiedError()
         return await self._onboard(account)
 
     # -- email verification ----------------------------------------------------
 
+    async def verify_email_code(self, email: str, code: str) -> Session:
+        """Log in with the code mailed at signup. Every failure looks the
+        same, so this can't be used to find out which addresses exist."""
+        account = await self._store.get_account_by_email(email.strip())
+        # A verified address has nothing left to prove; a code still in Redis
+        # after Google linking or a password reset must not log anyone in.
+        pending = account if account and not account.is_email_verified else None
+        # Every request makes the same single store call (user 0 never has a
+        # code, and checking it changes nothing), so neither timing nor an
+        # outage singles out unverified accounts.
+        result = await self._codes.check(pending.user_id if pending else 0, code)
+        if pending is None or result is not CodeCheck.VERIFIED:
+            raise InvalidVerificationCodeError()
+        account = pending
+        await self._store.mark_email_verified(account.user_id, self._clock.now())
+        return await self._onboard(await self._require_account(account.user_id))
+
     async def verify_email(self, token: str) -> Session:
+        """Verification links mailed before codes replaced them."""
         now = self._clock.now()
         user_id = await self._store.consume_user_token(
             token_hash=hash_token(token),
@@ -345,23 +379,50 @@ class AccountService:
             organization_id=organization_id,
         )
 
+    async def _remind_unverified(self, account: AuthAccount) -> None:
+        """The password proved who is asking: mail a fresh code, unless the
+        last one is still live (a new code would void the one in their inbox)."""
+        try:
+            if await self._codes.has_live_code(account.user_id):
+                return
+        except VerificationCodeUnavailableError:
+            logger.exception("Could not look up the email verification code")
+            return
+        if await self._may_email(
+            TokenPurpose.EMAIL_VERIFICATION, account
+        ) and await self._limiter.allow(
+            "account-email:login-reminder:all",
+            limit=LOGIN_REMINDER_GLOBAL_LIMIT,
+            window=LOGIN_REMINDER_GLOBAL_WINDOW,
+        ):
+            await self._send_verification(account)
+
     async def _send_verification(self, account: AuthAccount) -> None:
         if account.email is None:
             return
-        now = self._clock.now()
-        token = issue_token()
-        await self._store.issue_user_token(
-            user_id=account.user_id,
-            purpose=TokenPurpose.EMAIL_VERIFICATION,
-            token_hash=token.digest,
-            expires_at=now + EMAIL_VERIFICATION_TTL,
-            now=now,
-        )
+        try:
+            locked = await self._codes.is_locked(account.user_id)
+            code = None if locked else await self._codes.issue(account.user_id)
+        except VerificationCodeUnavailableError:
+            # Signup still succeeds; the user can ask for another code.
+            logger.exception("Could not issue an email verification code")
+            return
+        if code is None:
+            # A new code could not be used while wrong guesses (possibly
+            # someone else's) lock verification; point the owner at password
+            # reset, which verifies the address too.
+            await self._send(
+                verification_locked_message(
+                    to=account.email,
+                    reset_url=f"{self._app_url}/auth/forgot-password",
+                )
+            )
+            return
         await self._send(
-            verify_email_message(
+            verification_code_message(
                 to=account.email,
-                verify_url=f"{self._app_url}/auth/verify-email?token={token.raw}",
-                expires_in_hours=int(EMAIL_VERIFICATION_TTL.total_seconds() // 3600),
+                code=code,
+                expires_in_minutes=int(CODE_TTL.total_seconds() // 60),
             )
         )
 

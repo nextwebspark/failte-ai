@@ -79,7 +79,7 @@ CORS_ALLOWED_ORIGINS = [
 ]
 AUTH_PROVIDER = os.getenv("AUTH_PROVIDER", "local")
 ENABLE_SIGNUP = os.getenv("ENABLE_SIGNUP", "true").lower() == "true"
-# Local auth: password accounts must click an emailed link before logging in.
+# Local auth: password accounts must enter an emailed code before logging in.
 REQUIRE_EMAIL_VERIFICATION = (
     os.getenv("REQUIRE_EMAIL_VERIFICATION", "true").lower() == "true"
 )

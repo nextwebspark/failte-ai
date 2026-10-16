@@ -1,8 +1,10 @@
 """Local-auth accounts: email verification, password reset, Google sign-in,
 and auto-joining pending invitations. Real PostgreSQL, fake mailer/Google."""
 
+import re
 import uuid
 from dataclasses import dataclass, field
+from datetime import timedelta
 from types import SimpleNamespace
 from urllib.parse import parse_qs, urlparse
 
@@ -22,11 +24,13 @@ from api.services.auth.account_dependencies import get_account_policy
 from api.services.auth.accounts import AccountPolicy
 from api.services.auth.oauth import get_google_oauth_provider
 from api.services.auth.oauth.base import AuthorizationRequest, OAuthIdentity
+from api.services.auth.verification_codes import get_verification_code_store
 from api.services.email import get_email_sender
 from api.services.email.base import EmailMessage
 from api.services.invitations.service import InvitationService
 from api.services.rate_limit import get_rate_limiter
 from api.tests.support.rate_limit import InMemoryRateLimiter
+from api.tests.support.verification_codes import InMemoryVerificationCodeStore
 from api.utils.auth import create_jwt_token
 from api.utils.clock import SystemClock
 
@@ -50,6 +54,11 @@ class FakeSender:
         text = self.sent[index].text
         url = next(word for word in text.split() if "token=" in word)
         return parse_qs(urlparse(url).query)["token"][0]
+
+    def code(self, index: int = -1) -> str:
+        match = re.search(r"verification code is (\d{6})", self.sent[index].text)
+        assert match, self.sent[index].text
+        return match.group(1)
 
 
 @dataclass
@@ -97,8 +106,10 @@ async def api(sessions, monkeypatch):
     app.add_exception_handler(DomainError, handle_domain_error)
     app.include_router(auth_router, prefix="/api/v1")
     limiter = InMemoryRateLimiter()
+    codes = InMemoryVerificationCodeStore()
     app.dependency_overrides[get_email_sender] = lambda: sender
     app.dependency_overrides[get_rate_limiter] = lambda: limiter
+    app.dependency_overrides[get_verification_code_store] = lambda: codes
     app.dependency_overrides[get_google_oauth_provider] = lambda: google
     app.dependency_overrides[get_account_policy] = lambda: AccountPolicy(
         signup_enabled=policy.signup_enabled,
@@ -109,7 +120,12 @@ async def api(sessions, monkeypatch):
         transport=ASGITransport(app=app), base_url="http://test"
     ) as client:
         yield SimpleNamespace(
-            client=client, sender=sender, google=google, policy=policy, limiter=limiter
+            client=client,
+            sender=sender,
+            google=google,
+            policy=policy,
+            limiter=limiter,
+            codes=codes,
         )
 
 
@@ -131,6 +147,12 @@ async def _signup(api, email: str, **extra):
 async def _login(api, email: str, password: str = PASSWORD):
     return await api.client.post(
         "/api/v1/auth/login", json={"email": email, "password": password}
+    )
+
+
+async def _verify_code(api, email: str, code: str):
+    return await api.client.post(
+        "/api/v1/auth/verify-email-code", json={"email": email, "code": code}
     )
 
 
@@ -168,30 +190,215 @@ async def test_signup_requires_verification_before_login(api):
     body = response.json()
     assert body["verification_required"] is True
     assert body["token"] is None
-    assert "Verify your email" in api.sender.sent[-1].subject
+    message = api.sender.sent[-1]
+    assert message.subject.startswith(f"{api.sender.code()} is your ")
+    assert "token=" not in message.text
 
     login = await _login(api, email)
     assert login.status_code == 403
     assert login.json()["code"] == "email_not_verified"
+    # The signup code is still live, so login doesn't replace it.
+    assert len(api.sender.sent) == 1
 
     account = await db_client.get_account_by_email(email)
     # The personal organization waits until the address is verified.
     assert await db_client.list_user_organizations(account.user_id) == []
 
 
-async def test_verify_email_logs_in_creates_org_and_is_single_use(api):
+async def test_verify_code_logs_in_creates_org_and_is_single_use(api):
     email = _email()
     await _signup(api, email)
-    token = api.sender.link_token()
+    code = api.sender.code()
 
-    verified = await api.client.post("/api/v1/auth/verify-email", json={"token": token})
+    verified = await _verify_code(api, email.upper(), code)
     assert verified.status_code == 200, verified.text
     org_id = verified.json()["user"]["organization_id"]
     user_id = verified.json()["user"]["id"]
     assert await db_client.get_member_role(user_id, org_id) is OrgRole.ADMIN
     assert (await _login(api, email)).status_code == 200
 
-    again = await api.client.post("/api/v1/auth/verify-email", json={"token": token})
+    again = await _verify_code(api, email, code)
+    assert again.status_code == 400
+    assert again.json()["code"] == "invalid_verification_code"
+
+
+async def test_wrong_unknown_and_malformed_codes_look_alike(api):
+    email = _email()
+    await _signup(api, email)
+    code = api.sender.code()
+    wrong = "000000" if code != "000000" else "111111"
+
+    responses = [
+        await _verify_code(api, email, wrong),
+        await _verify_code(api, _email(), code),
+    ]
+    assert [r.status_code for r in responses] == [400, 400]
+    assert responses[0].json() == responses[1].json()
+    assert (await _verify_code(api, email, "12345")).status_code == 422
+    assert (await _verify_code(api, email, "abcdef")).status_code == 422
+    # A wrong guess spends an attempt but leaves the code usable.
+    assert (await _verify_code(api, email, code)).status_code == 200
+
+
+async def test_code_dies_after_too_many_wrong_guesses(api):
+    email = _email()
+    await _signup(api, email)
+    code = api.sender.code()
+
+    for _ in range(5):
+        assert (await _verify_code(api, email, "000000")).status_code == 400
+    assert (await _verify_code(api, email, code)).status_code == 400
+
+
+async def test_wrong_guesses_lock_verification_across_resends(api):
+    """Resending must not reset the guess budget. A locked account is told to
+    reset its password instead of getting (unusable) codes, and the reset
+    verifies it."""
+    email = _email()
+    await _signup(api, email)
+    for attempt in range(3):
+        if attempt:
+            await api.client.post(
+                "/api/v1/auth/resend-verification", json={"email": email}
+            )
+        for _ in range(5):
+            await _verify_code(api, email, "000000")
+    assert len(api.sender.sent) == 3
+    account = await db_client.get_account_by_email(email)
+    assert await api.codes.is_locked(account.user_id)
+
+    # Even a correct, live code is refused while locked.
+    live = await api.codes.issue(account.user_id)
+    locked = await _verify_code(api, email, live)
+    assert locked.status_code == 400
+    assert "reset your password" in locked.json()["detail"]
+
+    await api.client.post("/api/v1/auth/resend-verification", json={"email": email})
+    notice = api.sender.sent[-1]
+    assert len(api.sender.sent) == 4
+    assert "resetting your password" in notice.subject
+    assert "/auth/forgot-password" in notice.text
+    assert "verification code is" not in notice.text
+
+    await api.client.post("/api/v1/auth/forgot-password", json={"email": email})
+    await api.client.post(
+        "/api/v1/auth/reset-password",
+        json={"token": api.sender.link_token(), "password": "a brand new password"},
+    )
+    assert (await _login(api, email, "a brand new password")).status_code == 200
+
+
+async def test_verify_code_is_local_auth_only(api, monkeypatch):
+    monkeypatch.setattr(auth_depends, "AUTH_PROVIDER", "stack")
+    assert (await _verify_code(api, _email(), "123456")).status_code == 404
+
+
+async def test_verify_code_is_throttled_per_real_client_address(api):
+    async def guess(real_ip: str, forwarded: str) -> int:
+        response = await api.client.post(
+            "/api/v1/auth/verify-email-code",
+            json={"email": _email(), "code": "123456"},
+            headers={"x-real-ip": real_ip, "x-forwarded-for": forwarded},
+        )
+        return response.status_code
+
+    # Rotating the client-supplied X-Forwarded-For doesn't reset the budget:
+    # our nginx sets X-Real-IP from the connection.
+    statuses = [await guess("203.0.113.7", f"10.0.0.{i}") for i in range(31)]
+    assert statuses[:30] == [400] * 30
+    assert statuses[30] == 429
+    assert await guess("203.0.113.8", "10.0.0.1") == 400
+
+
+async def test_code_store_outage_keeps_signup_and_login_working(api):
+    api.codes.down = True
+    email = _email()
+
+    signup = await _signup(api, email)
+    assert signup.status_code == 200
+    assert signup.json()["verification_required"] is True
+    assert api.sender.sent == []
+    login = await _login(api, email)
+    assert login.status_code == 403
+    assert login.json()["code"] == "email_not_verified"
+
+
+async def test_code_store_outage_fails_every_address_alike(api):
+    email = _email()
+    await _signup(api, email)
+    code = api.sender.code()
+    api.codes.down = True
+
+    for address in (email, _email()):
+        response = await _verify_code(api, address, code)
+        assert response.status_code == 503
+        assert response.json()["code"] == "verification_unavailable"
+
+
+async def test_password_reset_voids_a_pending_code(api):
+    email = _email()
+    await _signup(api, email)
+    pending_code = api.sender.code()
+    await api.client.post("/api/v1/auth/forgot-password", json={"email": email})
+    await api.client.post(
+        "/api/v1/auth/reset-password",
+        json={"token": api.sender.link_token(), "password": "a brand new password"},
+    )
+
+    assert (await _verify_code(api, email, pending_code)).status_code == 400
+
+
+async def test_unverified_login_mails_a_new_code_once_the_old_one_expired(api):
+    email = _email()
+    await _signup(api, email)
+    account = await db_client.get_account_by_email(email)
+    api.codes.expire(account.user_id)
+
+    assert (await _login(api, email)).status_code == 403
+    assert len(api.sender.sent) == 2
+    fresh = api.sender.code()
+    assert (await _login(api, email)).status_code == 403
+    assert len(api.sender.sent) == 2  # the new code is live again
+    assert (await _verify_code(api, email, fresh)).status_code == 200
+
+
+async def test_wrong_password_never_mails_a_code(api):
+    email = _email()
+    await _signup(api, email)
+    account = await db_client.get_account_by_email(email)
+    api.codes.expire(account.user_id)
+
+    assert (await _login(api, email, "not the password")).status_code == 401
+    assert len(api.sender.sent) == 1
+
+
+async def test_legacy_verification_link_still_works(api):
+    """Links mailed before codes replaced them keep working until they expire."""
+    from datetime import UTC, datetime
+
+    from api.enums import TokenPurpose
+    from api.utils.secure_token import issue_token
+
+    email = _email()
+    await _signup(api, email)
+    account = await db_client.get_account_by_email(email)
+    token = issue_token()
+    now = datetime.now(UTC)
+    await db_client.issue_user_token(
+        user_id=account.user_id,
+        purpose=TokenPurpose.EMAIL_VERIFICATION,
+        token_hash=token.digest,
+        expires_at=now + timedelta(hours=1),
+        now=now,
+    )
+
+    verified = await api.client.post(
+        "/api/v1/auth/verify-email", json={"token": token.raw}
+    )
+    assert verified.status_code == 200, verified.text
+    again = await api.client.post(
+        "/api/v1/auth/verify-email", json={"token": token.raw}
+    )
     assert again.status_code == 400
     assert again.json()["code"] == "invalid_token"
 
@@ -207,9 +414,7 @@ async def test_verification_joins_pending_invites_instead_of_new_org(sessions, a
     )
 
     await _signup(api, email)
-    verified = await api.client.post(
-        "/api/v1/auth/verify-email", json={"token": api.sender.link_token()}
-    )
+    verified = await _verify_code(api, email, api.sender.code())
 
     user = verified.json()["user"]
     assert user["organization_id"] == org.id
@@ -234,10 +439,10 @@ async def test_signup_disabled_allows_address_with_pending_invite(sessions, api)
     assert rejected.json()["code"] == "signup_disabled"
 
 
-async def test_resend_verification_replaces_token_and_hides_unknown_emails(api):
+async def test_resend_verification_replaces_code_and_hides_unknown_emails(api):
     email = _email()
     await _signup(api, email)
-    first = api.sender.link_token()
+    first = api.sender.code()
 
     unknown = await api.client.post(
         "/api/v1/auth/resend-verification", json={"email": _email()}
@@ -249,13 +454,11 @@ async def test_resend_verification_replaces_token_and_hides_unknown_emails(api):
         "/api/v1/auth/resend-verification", json={"email": email}
     )
     assert resent.status_code == 202
-    second = api.sender.link_token()
+    second = api.sender.code()
     assert second != first
 
-    stale = await api.client.post("/api/v1/auth/verify-email", json={"token": first})
-    assert stale.status_code == 400
-    fresh = await api.client.post("/api/v1/auth/verify-email", json={"token": second})
-    assert fresh.status_code == 200
+    assert (await _verify_code(api, email, first)).status_code == 400
+    assert (await _verify_code(api, email, second)).status_code == 200
 
 
 async def test_verification_disabled_returns_session_at_signup(api):
@@ -376,7 +579,7 @@ async def test_google_drops_credentials_of_unverified_account(api):
     password (or pending links) keep working."""
     email = _email()
     await _signup(api, email)  # unverified; password chosen by "someone"
-    pending_verify = api.sender.link_token()
+    pending_code = api.sender.code()
     existing = await db_client.get_account_by_email(email)
     api.google.identity = _identity(email)
 
@@ -387,18 +590,14 @@ async def test_google_drops_credentials_of_unverified_account(api):
     assert linked.google_sub == api.google.identity.subject
     assert linked.password_hash is None
     assert (await _login(api, email)).status_code == 401
-    stale = await api.client.post(
-        "/api/v1/auth/verify-email", json={"token": pending_verify}
-    )
+    stale = await _verify_code(api, email, pending_code)
     assert stale.status_code == 400
 
 
 async def test_google_keeps_password_of_verified_account(api):
     email = _email()
     await _signup(api, email)
-    await api.client.post(
-        "/api/v1/auth/verify-email", json={"token": api.sender.link_token()}
-    )
+    await _verify_code(api, email, api.sender.code())
     api.google.identity = _identity(email)
 
     assert (await _google_login(api)).status_code == 200

@@ -77,7 +77,7 @@ export function SignupForm({
   if (pendingVerification) {
     return (
       <LocalAuthShell>
-        <CheckInbox email={pendingVerification} />
+        <CheckInbox email={pendingVerification} onStartOver={() => setPendingVerification(null)} />
       </LocalAuthShell>
     );
   }
