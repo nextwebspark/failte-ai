@@ -6,10 +6,14 @@
 # Normally started by .github/workflows/deploy.yml, through remote-deploy.sh,
 # as a systemd unit (so an SSH drop cannot interrupt it). Steps:
 #   1. git fetch, refuse if tracked files were edited on the VM, check out tag vX.Y.Z
-#   2. wait for live calls to finish (per uvicorn worker, via /health/active-calls)
-#   3. pin LIGHTMOVE_VERSION in .env, pull the release images, `compose up -d`
-#   4. wait until api, ui and fallcha-tools are healthy and the api reports X.Y.Z
-#   5. on any failure after the switch: put the previous version back, exit 1
+#   2. pull the release images, then re-sync .env and secrets/tools.env from
+#      Secret Manager with that release's configure-env.sh
+#   3. wait for live calls to finish (per uvicorn worker, via /health/active-calls)
+#   4. pin LIGHTMOVE_VERSION in .env, `compose up -d`
+#   5. wait until api, ui and fallcha-tools are healthy and the api reports X.Y.Z
+#   6. on any failure after the switch: put the previous version and settings
+#      back, exit 1 (before the switch, any exit puts the code and settings back)
+#   7. drop release images other than the current and previous ones
 #
 # The api runs `alembic upgrade head` on start. Rolling back restores the old
 # images but never reverses a migration, so releases must keep migrations
@@ -18,6 +22,8 @@ set -euo pipefail
 
 APP_DIR="${LIGHTMOVE_APP_DIR:-/opt/lightmove/dograh}"
 DRAIN_MAX_WAIT="${DRAIN_MAX_WAIT:-600}"     # seconds to wait for live calls
+# .env and tools.env as they were before this deploy (secrets: root only).
+SETTINGS_BACKUP="${SETTINGS_BACKUP:-/var/backups/lightmove/pre-deploy}"
 HEALTH_TIMEOUT="${HEALTH_TIMEOUT:-420}"     # seconds for the stack to come up
 RELEASE_SERVICES=(api ui fallcha-tools)
 
@@ -78,6 +84,22 @@ PREV_REF="$(git rev-parse HEAD)"
 log "current: ${PREV_VERSION:-none} ($(git describe --tags --always HEAD)), target: $VERSION"
 
 git checkout --quiet --detach "$TAG"
+
+# Until the switch, any exit (an error, the unit being stopped, the evening
+# VM stop during the drain) puts the previous code and settings back. The VM
+# never sits half-deployed, and the next deploy's rollback point stays right.
+SWITCHING=0 SETTINGS_SAVED=0
+undo_unswitched() {
+  if (( SWITCHING )); then return 0; fi
+  # A second signal must not cut the undo short.
+  trap '' TERM INT HUP
+  git checkout --quiet --detach "$PREV_REF" || true
+  if (( SETTINGS_SAVED )); then restore_settings || true; fi
+  log "put the previous code and settings back" || true
+}
+trap 'undo_unswitched; rm -f "$LIGHTMOVE_DEPLOY_COPY"' EXIT
+trap 'exit 143' TERM HUP
+trap 'exit 130' INT
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -177,6 +199,28 @@ switch_to() {
   return "$rc"
 }
 
+# The settings files configure-env.sh rewrites. Saved before it runs, put back
+# when the deploy stops before the switch or rolls back.
+TOOLS_ENV=deploy/gcp/secrets/tools.env
+save_settings() {
+  mkdir -p "$SETTINGS_BACKUP"
+  chmod 700 "$SETTINGS_BACKUP"
+  cp -p .env "$SETTINGS_BACKUP/env"
+  rm -f "$SETTINGS_BACKUP/tools.env"
+  if [[ -f "$TOOLS_ENV" ]]; then
+    cp -p "$TOOLS_ENV" "$SETTINGS_BACKUP/tools.env"
+  fi
+}
+
+restore_settings() {
+  cp -p "$SETTINGS_BACKUP/env" .env
+  if [[ -f "$SETTINGS_BACKUP/tools.env" ]]; then
+    cp -p "$SETTINGS_BACKUP/tools.env" "$TOOLS_ENV"
+  else
+    rm -f "$TOOLS_ENV"
+  fi
+}
+
 rollback() {
   if [[ -z "$PREV_VERSION" ]]; then
     log "no previous version recorded — cannot roll back"
@@ -184,6 +228,7 @@ rollback() {
   fi
   log "ROLLING BACK to $PREV_VERSION"
   git checkout --quiet --detach "$PREV_REF"
+  restore_settings
   switch_to "$PREV_VERSION" || log "compose reported errors while rolling back"
   if wait_healthy "$PREV_VERSION"; then
     log "rolled back to $PREV_VERSION"
@@ -193,17 +238,28 @@ rollback() {
 }
 
 # ---------------------------------------------------------------------------
-# 2-3. Pull first (nothing restarts if an image is missing), drain, switch.
+# 2-6. Pull first (nothing restarts if an image is missing), settings, drain,
+#      switch, check.
 # ---------------------------------------------------------------------------
 log "pulling images for $VERSION"
 if ! LIGHTMOVE_VERSION="$VERSION" docker compose pull --quiet "${RELEASE_SERVICES[@]}"; then
-  git checkout --quiet --detach "$PREV_REF"
   fail "image pull failed — nothing was changed"
+fi
+
+# New secrets (a key added to Secret Manager) and settings ship with the
+# release instead of a hand run on the VM. Running containers keep the old
+# values until the switch recreates them.
+log "syncing settings from Secret Manager"
+save_settings
+SETTINGS_SAVED=1
+if ! ENV_FILE="$APP_DIR/.env" bash deploy/gcp/configure-env.sh; then
+  fail "configure-env.sh failed — nothing was changed"
 fi
 
 drain_calls
 
 log "switching to $VERSION"
+SWITCHING=1
 switch_to "$VERSION" || log "compose reported errors — checking health anyway"
 if ! wait_healthy "$VERSION"; then
   rollback
@@ -211,7 +267,7 @@ if ! wait_healthy "$VERSION"; then
 fi
 
 # ---------------------------------------------------------------------------
-# 4. Keep the disk in check: drop release images other than current/previous.
+# 7. Keep the disk in check: drop release images other than current/previous.
 # ---------------------------------------------------------------------------
 registry="$(env_get REGISTRY)"
 if [[ -n "$registry" ]]; then

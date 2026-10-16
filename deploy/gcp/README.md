@@ -44,7 +44,7 @@ or copied to the VM by hand.
 | Workflow | Run it when | What it does |
 |---|---|---|
 | **Release** (`release.yml`) | main has what you want to ship | Full CI on main's head → next version → Cloud Build images tagged `X.Y.Z` → tag `vX.Y.Z` + GitHub Release with notes |
-| **Deploy** (`deploy.yml`) | you approve a release for production | Checks images and both VMs → Cloud SQL backup → IAP SSH → that release's `deploy.sh` → public health check |
+| **Deploy** (`deploy.yml`) | you approve a release for production | Checks images and both VMs → Cloud SQL backup → IAP SSH → that release's `deploy.sh` (re-syncs `.env` from Secret Manager, swaps the images) → public health check |
 
 **Versions.** Semver tags `vX.Y.Z`, starting at `v0.1.0`. When you run
 Release you pick the bump: `patch` (fixes), `minor` (features), `major`
@@ -65,13 +65,32 @@ it does **not** reverse database migrations (the api runs `alembic upgrade
 head` on start), so keep migrations backward compatible, or roll forward with
 a fix release. `deploy.sh` also rolls back by itself when the new version
 fails its health check (from the second deploy on; the first has nothing to
-roll back to, so watch it).
+roll back to, so watch it). A manual roll back keeps the current settings: the
+older release re-syncs `.env` from Secret Manager if it already does so (see
+below), otherwise it leaves `.env` as it is.
 
 **Where the deploy runs.** Deploy starts `deploy.sh` on the VM as a transient
 systemd unit (`deploy/gcp/remote-deploy.sh`) and streams its log into the job.
 If the SSH session drops or the job is cancelled, the deploy still finishes or
 rolls back on the VM. The job summary names the unit; read it with
 `journalctl -u lightmove-deploy-<run>-<attempt>`.
+
+**Settings ship with the release.** Before switching, `deploy.sh` runs that
+release's `configure-env.sh`. A secret added to Secret Manager (and granted to
+`dograh-app-sa`) goes live with the next Deploy, with no SSH; re-running
+Deploy for the current version is enough. Values an operator chooses keep what
+`.env` has: `ENABLE_SIGNUP`, `FASTAPI_WORKERS`, `TELEPHONY_WS_TOKEN_ENFORCE`,
+`EMAIL_FROM`, `STRIPE_AUTOMATIC_TAX`, `PLATFORM_MODELS_ENABLED` and
+`PLATFORM_VERTEX_PROJECT_ID`. Everything else (secrets, `DATABASE_URL`,
+storage, the tools URLs, which follow `PUBLIC_BASE_URL`) is rewritten, so a
+hand edit to those lasts only until the next Deploy. A Secret Manager value
+that drops an encryption key still in `.env` or `tools.env` stops the deploy
+(see `keeps_keys` in `configure-env.sh`). Copies of `.env` and `tools.env` from
+before the deploy stay in `/var/backups/lightmove/pre-deploy/` (`env`,
+`tools.env`) and are put back if the deploy stops before the switch or rolls
+back. Because a rollback restores the previous secrets too, rotate a
+credential by adding the new value, deploying, and only then revoking the old
+one.
 
 **What Deploy refuses to do**
 
@@ -353,7 +372,8 @@ openssl rand -hex 32 | gcloud secrets create dograh-tools-internal-secret --data
 secret) and the tools-only keys into `deploy/gcp/secrets/tools.env` (see
 `secrets/tools.env.example`). `TOOLS_PUBLIC_BASE_URL` defaults to
 `PUBLIC_BASE_URL` and `TOOLS_UI_RETURN_URL` to `PUBLIC_BASE_URL/integrations`;
-override with `DOGRAH_TOOLS_PUBLIC_BASE_URL` / `DOGRAH_TOOLS_UI_RETURN_URL`.
+override with `DOGRAH_TOOLS_PUBLIC_BASE_URL` / `DOGRAH_TOOLS_UI_RETURN_URL`
+(until the next Deploy, which derives them from `PUBLIC_BASE_URL` again).
 
 **Platform Google client (optional).** When both `dograh-google-oauth-client-id`
 and `dograh-google-oauth-client-secret` exist, `tools.env` also gets
@@ -404,8 +424,9 @@ GCP is stopped as of 2026-10; this is the plan for when it comes back. Do it in
 this order, so no step leaves an agent without a working tool. The old
 sidecars keep running until step 7.
 
-1. **Deploy.** Create the secrets, run `configure-env.sh`, then Release and
-   Deploy (see [Releases and deploys](#releases-and-deploys)). For the cutover
+1. **Deploy.** Create the secrets, then Release and Deploy (see
+   [Releases and deploys](#releases-and-deploys)); Deploy runs
+   `configure-env.sh`. For the cutover
    window, keep the old tools answering by setting
    `COMPOSE_PROFILES=remote,legacy-sidecars` in the VM's `.env` before the
    deploy. That starts `calendar-shim` and `chmarine-product-service` from
@@ -548,9 +569,11 @@ the full carrier source-IP list. Everything else ships without it.
 
 ## Billing (Stripe), email (Resend) and Google sign-in
 
-All optional. `configure-env.sh` turns each on only when its secret exists.
-`dograh-app-sa` has no project-wide Secret Manager access, so grant it each new
-secret (otherwise the script reports it as skipped and the feature stays off):
+All optional. `configure-env.sh` turns each on only when its secret exists,
+and every Deploy runs it, so the next Deploy after creating a secret turns the
+feature on. `dograh-app-sa` has no project-wide Secret Manager access, so grant
+it each new secret (otherwise the script reports it as skipped and the feature
+stays off):
 
 ```bash
 # For each secret you use: paste the value at the prompt (keeps it out of
@@ -566,19 +589,21 @@ unset V
 # Stripe works the same way: dograh-stripe-secret-key (sk_...) and
 # dograh-stripe-webhook-secret (whsec_...).
 
-# On the app VM:
+# Then run Deploy (the current version is fine once it includes the settings
+# sync). Or, on the app VM:
 cd /opt/lightmove/dograh
-sudo DOGRAH_SQL_IP=<ip> DOGRAH_EMAIL_FROM='LightMove.ai <no-reply@mail.<domain>>' \
-  ./deploy/gcp/configure-env.sh
+sudo ./deploy/gcp/configure-env.sh
 sudo docker compose up -d api fallcha-tools
 ```
 
 `up -d` recreates the containers with the new values; `docker compose restart`
-does not re-read them. `DOGRAH_EMAIL_FROM` is needed on the first run with
-Resend; later runs keep the sender already in `.env`. To turn Google sign-in
-and the platform client off, run the script with `DOGRAH_GOOGLE=off` (a
-deleted secret looks the same to the VM as a missing grant, so the script
-keeps the current values in that case). For the other secrets `set_key` never
+does not re-read them. The sender defaults to
+`LightMove.ai <no-reply@mail.lightmove.ai>`; `DOGRAH_EMAIL_FROM` changes it,
+and later runs keep it. To turn Google sign-in and the platform client off, run
+the script with `DOGRAH_GOOGLE=off` and delete the two secrets, or the next
+Deploy turns them back on (a deleted secret looks the same to the VM as a
+missing grant, so the script keeps the current values in that case). For the
+other secrets `set_key` never
 removes a key, so deleting one later also needs the matching lines removed
 from `.env` by hand. A Secret Manager error other than "absent" or "not
 readable" stops the script rather than switching a feature off.
