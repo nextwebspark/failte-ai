@@ -345,15 +345,14 @@ GCP is stopped as of 2026-10; this is the plan for when it comes back. Do it in
 this order, so no step leaves an agent without a working tool. The old
 sidecars keep running until step 7.
 
-1. **Deploy.** Build with `cloudbuild.yaml`, create the secrets, run
-   `configure-env.sh`, then bring the stack up with the overlay. For the
-   cutover window, uncomment the two sidecar blocks in the overlay so the
-   old tools keep answering.
-   The VM's copy of the overlay may carry local additions. Merge this file
-   into it rather than overwriting it. The api patch mounts described in
-   `app-doc/gcp-voice-stack-runbook.md` are the exception: drop them, since
-   they would shadow files of the new api image this cutover needs. First
-   confirm their changes are in the image.
+1. **Deploy.** Create the secrets, run `configure-env.sh`, then Release and
+   Deploy (see [Releases and deploys](#releases-and-deploys)). For the cutover
+   window, keep the old tools answering by setting
+   `COMPOSE_PROFILES=remote,legacy-sidecars` in the VM's `.env` before the
+   deploy. That starts `calendar-shim` and `chmarine-product-service` from
+   the overlay's `legacy-sidecars` profile; their env files go in
+   `deploy/gcp/secrets/`. The old api patch mounts are gone: their code ships
+   in the images.
    `docker compose ps fallcha-tools` must be healthy, and the Integrations
    page must list Google Calendar, Google Sheets and Website product
    catalogue.
@@ -443,13 +442,15 @@ sidecars keep running until step 7.
      prefix) → cancel. Also run an order lookup.
    - CH Marine: product search → detail → transfer.
 
-   Then comment the sidecar blocks out again and run
-   `docker compose up -d --remove-orphans`. Events booked by the old shim
+   Then set `COMPOSE_PROFILES=remote` again and run
+   `sudo docker compose up -d --remove-orphans` in `/opt/lightmove/dograh`
+   (or just the next Deploy). Events booked by the old shim
    carry no marker, so the agent cannot cancel them; cancel those in Google
    Calendar.
 
-**Rollback:** uncomment the sidecars, `docker compose up -d calendar-shim
-chmarine-product-service`, and re-point the tools (re-running the two setup
+**Rollback:** set `COMPOSE_PROFILES=remote,legacy-sidecars`, run
+`sudo docker compose up -d calendar-shim chmarine-product-service`, and
+re-point the tools (re-running the two setup
 scripts does this). Restore the transfer tool's dynamic resolver. Keep
 `/var/lib/dograh/chmarine` and the shim env files until the cutover has been
 stable for a while.

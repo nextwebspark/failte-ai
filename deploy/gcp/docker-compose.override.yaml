@@ -97,44 +97,49 @@ services:
     depends_on: !reset {}
 
   # ---------------------------------------------------------------------------
-  # ROLLBACK ONLY: the retired agent sidecars. To roll back the tools cutover,
-  # uncomment both, restore their env files and images, and re-point the
-  # http_api tools at them (see README.md). Their data (catalogue.sqlite under
-  # /var/lib/dograh/chmarine) is left on disk for this reason.
+  # The pre-tools-service agent sidecars, behind the `legacy-sidecars` profile.
+  # They are needed during the tools cutover (README "Tools service cutover")
+  # and for rolling it back. Turn them on from the VM's .env, not by editing
+  # this file (deploy.sh refuses hand edits to tracked files):
+  #   COMPOSE_PROFILES=remote,legacy-sidecars
+  # and drop `legacy-sidecars` again once the cutover is verified. Their data
+  # (catalogue.sqlite under /var/lib/dograh/chmarine) stays on disk.
   # ---------------------------------------------------------------------------
-  # calendar-shim:
-  #   image: "${REGISTRY:?REGISTRY is required}/calendar-shim:${CALENDAR_SHIM_TAG:-latest}"
-  #   container_name: calendar-shim
-  #   restart: unless-stopped
-  #   env_file:
-  #     - ./deploy/gcp/secrets/calendar-shim.env
-  #   volumes:
-  #     - /etc/dograh/sa.json:/secrets/sa.json:ro
-  #   healthcheck:
-  #     test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://localhost:8080/health')"]
-  #     interval: 30s
-  #     timeout: 5s
-  #     retries: 3
-  #     start_period: 10s
-  #   networks:
-  #     - app-network
-  #
-  # chmarine-product-service:
-  #   image: "${REGISTRY:?REGISTRY is required}/product-service:${PRODUCT_SERVICE_TAG:-latest}"
-  #   container_name: chmarine-product-service
-  #   restart: unless-stopped
-  #   env_file:
-  #     - ./deploy/gcp/secrets/product-service.env
-  #   volumes:
-  #     - /var/lib/dograh/chmarine:/data
-  #   healthcheck:
-  #     test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://localhost:8080/health')"]
-  #     interval: 30s
-  #     timeout: 5s
-  #     retries: 3
-  #     start_period: 10s
-  #   networks:
-  #     - app-network
+  calendar-shim:
+    image: "${REGISTRY:?REGISTRY is required}/calendar-shim:${CALENDAR_SHIM_TAG:-latest}"
+    container_name: calendar-shim
+    profiles: ["legacy-sidecars"]
+    restart: unless-stopped
+    env_file:
+      - ./deploy/gcp/secrets/calendar-shim.env
+    volumes:
+      - /etc/dograh/sa.json:/secrets/sa.json:ro
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://localhost:8080/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks:
+      - app-network
+
+  chmarine-product-service:
+    image: "${REGISTRY:?REGISTRY is required}/product-service:${PRODUCT_SERVICE_TAG:-latest}"
+    container_name: chmarine-product-service
+    profiles: ["legacy-sidecars"]
+    restart: unless-stopped
+    env_file:
+      - ./deploy/gcp/secrets/product-service.env
+    volumes:
+      - /var/lib/dograh/chmarine:/data
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://localhost:8080/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks:
+      - app-network
 
   # Same reason as api: survive the scheduled VM stop/start and daemon restarts.
   ui:
