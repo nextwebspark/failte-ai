@@ -1,6 +1,7 @@
 import { StackHandler, StackTheme } from "@stackframe/stack";
 
 import { AuthShell } from "@/components/auth/AuthShell";
+import { LegalNotice } from "@/components/auth/LegalNotice";
 import { SupportLink } from "@/components/SupportLink";
 import { getAuthProvider } from "@/lib/auth/config";
 
@@ -84,6 +85,7 @@ export default async function Handler(props: unknown) {
     >
         {showBackButton && <BackButton />}
         {handler}
+        <LegalNotice />
       </AuthShell>
     );
   }

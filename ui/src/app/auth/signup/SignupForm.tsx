@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { signupApiV1AuthSignupPost } from "@/client/sdk.gen";
 import { CheckInbox } from "@/components/auth/CheckInbox";
 import { AuthDivider, GoogleSignInButton } from "@/components/auth/GoogleSignInButton";
+import { LegalNotice } from "@/components/auth/LegalNotice";
 import { LocalAuthShell } from "@/components/auth/LocalAuthShell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -156,6 +157,7 @@ export function SignupForm({
           Sign in
         </Link>
       </p>
+      <LegalNotice />
     </LocalAuthShell>
   );
 }

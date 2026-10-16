@@ -18,6 +18,8 @@ export const BRAND = {
   domain,
   appUrl: `https://app.${domain}`,
   docsUrl: `https://docs.${domain}`,
+  privacyUrl: `https://${domain}/privacy`,
+  termsUrl: `https://${domain}/terms`,
   salesEmail: `sales@${domain}`,
   supportEmail: `support@${domain}`,
   assets: {
