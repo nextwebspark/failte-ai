@@ -101,8 +101,24 @@ if [[ -n "$RESEND_KEY" ]]; then
   set_key EMAIL_PROVIDER resend
   set_key RESEND_API_KEY "$RESEND_KEY"
   # Must be on a domain verified in Resend; onboarding@resend.dev only reaches
-  # the Resend account owner's own address.
-  set_key EMAIL_FROM "${DOGRAH_EMAIL_FROM:?DOGRAH_EMAIL_FROM is required with Resend, e.g. 'LightMove.ai <no-reply@mail.example.com>'}"
+  # the Resend account owner's own address. A re-run without DOGRAH_EMAIL_FROM
+  # keeps the sender already in .env.
+  EMAIL_FROM_VALUE="${DOGRAH_EMAIL_FROM:-$(grep -E '^EMAIL_FROM=' "$ENV_FILE" | tail -1 | cut -d= -f2- || true)}"
+  set_key EMAIL_FROM "${EMAIL_FROM_VALUE:?DOGRAH_EMAIL_FROM is required with Resend, e.g. 'LightMove.ai <no-reply@mail.example.com>'}"
+fi
+
+# "Continue with Google" sign-in. Opt-in like email: the button appears once
+# both values are set. The OAuth client (Google Auth Platform, this project)
+# must list <PUBLIC_BASE_URL>/auth/google/callback as a redirect URI.
+#   printf %s '<id>.apps.googleusercontent.com' | gcloud secrets create dograh-google-oauth-client-id --data-file=-
+#   printf %s 'GOCSPX-...' | gcloud secrets create dograh-google-oauth-client-secret --data-file=-
+GOOGLE_ID="$(sm_optional dograh-google-oauth-client-id)"
+if [[ -n "$GOOGLE_ID" ]]; then
+  # A bare assignment, so set -e stops the script if the secret is missing
+  # (inside set_key's arguments a failed lookup would write an empty value).
+  GOOGLE_SECRET="$(sm dograh-google-oauth-client-secret)"
+  set_key GOOGLE_CLIENT_ID "$GOOGLE_ID"
+  set_key GOOGLE_CLIENT_SECRET "$GOOGLE_SECRET"
 fi
 
 # Workspace credentials at rest (api). Opt-in like billing: once set, never
@@ -130,6 +146,32 @@ TOOLS_KEYS="$(sm dograh-tools-encryption-keys)"
 }
 set_key TOOLS_INTERNAL_SECRET "$TOOLS_SECRET"
 PUBLIC_URL="$(grep -E '^PUBLIC_BASE_URL=' "$ENV_FILE" | tail -1 | cut -d= -f2- | tr -d '"' || true)"
+# Optional platform Google OAuth client (the one Google sign-in uses), offered
+# to every workspace for Calendar/Sheets. Both secrets or neither:
+#   printf %s '…apps.googleusercontent.com' | gcloud secrets create dograh-google-oauth-client-id --data-file=-
+#   printf %s 'GOCSPX-…' | gcloud secrets create dograh-google-oauth-client-secret --data-file=-
+# tools.env is rewritten on every run, so deleting the secrets turns it off.
+# tools.env is rewritten, so a transient Secret Manager error must not read as
+# "secret absent" (that would silently drop the client): only NOT_FOUND counts
+# as absent, anything else stops the script.
+sm_if_exists() {
+  local err val rc=0
+  err="$(mktemp)"
+  val="$(gcloud secrets versions access latest --secret="$1" --project="$PROJECT" 2>"$err")" || rc=$?
+  if (( rc == 0 )); then
+    printf '%s' "$val"
+  elif ! grep -q NOT_FOUND "$err"; then
+    cat "$err" >&2
+    rm -f "$err"
+    return 1
+  fi
+  rm -f "$err"
+}
+TOOLS_GOOGLE_ID="$(sm_if_exists dograh-google-oauth-client-id)"
+TOOLS_GOOGLE_SECRET="$(sm_if_exists dograh-google-oauth-client-secret)"
+if [[ -n "$TOOLS_GOOGLE_ID" && -z "$TOOLS_GOOGLE_SECRET" ]] || [[ -z "$TOOLS_GOOGLE_ID" && -n "$TOOLS_GOOGLE_SECRET" ]]; then
+  echo "  only one of dograh-google-oauth-client-id / -secret exists: platform Google client left off" >&2
+fi
 TOOLS_DIR="$(dirname "$ENV_FILE")/deploy/gcp/secrets"
 TOOLS_ENV="$TOOLS_DIR/tools.env"
 mkdir -p "$TOOLS_DIR"
@@ -140,6 +182,11 @@ mkdir -p "$TOOLS_DIR"
     # Empty URLs keep OAuth off; service-account connections still work.
     printf 'TOOLS_PUBLIC_BASE_URL=%s\n' "${DOGRAH_TOOLS_PUBLIC_BASE_URL:-$PUBLIC_URL}"
     printf 'TOOLS_UI_RETURN_URL=%s\n' "${DOGRAH_TOOLS_UI_RETURN_URL:-${PUBLIC_URL:+$PUBLIC_URL/integrations}}"
+    # if/fi, not `[[ … ]] && printf`: under set -e a false test would end the subshell.
+    if [[ -n "$TOOLS_GOOGLE_ID" && -n "$TOOLS_GOOGLE_SECRET" ]]; then
+      printf 'TOOLS_GOOGLE_CLIENT_ID=%s\n' "$TOOLS_GOOGLE_ID"
+      printf 'TOOLS_GOOGLE_CLIENT_SECRET=%s\n' "$TOOLS_GOOGLE_SECRET"
+    fi
   } > "$TOOLS_ENV"
 )
 chmod 600 "$TOOLS_ENV"

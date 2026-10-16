@@ -186,14 +186,15 @@ async def uninstall_integration(
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
-# -- OAuth2 (bring-your-own client) ---------------------------------------------
+# -- OAuth2 (platform or bring-your-own client) ---------------------------------
 
 
 @router.get("/provider-apps")
 async def list_provider_apps(
     membership: Reader, integrations: Integrations
 ) -> ProviderAppListResponse:
-    """This workspace's OAuth clients. Secrets are never returned."""
+    """OAuth clients this workspace can use: its own and the platform's.
+    Secrets are never returned."""
     return await integrations.list_provider_apps(_actor(membership))
 
 

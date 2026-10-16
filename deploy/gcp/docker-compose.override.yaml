@@ -86,8 +86,9 @@ services:
     # Always the released image, never a local build from ./tools.
     build: !reset null
     restart: unless-stopped
-    # TOOLS_ENCRYPTION_KEYS, TOOLS_PUBLIC_BASE_URL, TOOLS_UI_RETURN_URL.
-    # Written from Secret Manager by configure-env.sh; see tools.env.example.
+    # TOOLS_ENCRYPTION_KEYS, TOOLS_PUBLIC_BASE_URL, TOOLS_UI_RETURN_URL and the
+    # optional TOOLS_GOOGLE_CLIENT_ID/SECRET. Written from Secret Manager by
+    # configure-env.sh; see tools.env.example.
     env_file:
       - ./deploy/gcp/secrets/tools.env
     # Replaces the root file's environment wholesale: keys set there would

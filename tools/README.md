@@ -1,8 +1,9 @@
 # fallcha-tools
 
 Hosts LightMove.ai's third-party tool providers (Google Calendar, Sheets, ...)
-in one FastAPI service. Each workspace brings its own credentials; the
-Fallcha API holds only an opaque connection key.
+in one FastAPI service. Each workspace brings its own credentials (or signs
+in with the platform's Google OAuth client); the Fallcha API holds only an
+opaque connection key.
 
 - `/internal/*` is called by the Fallcha API only. It requires
   `X-Internal-Secret` plus `X-Org-Id` / `X-User-Id`. It serves the provider
@@ -11,7 +12,7 @@ Fallcha API holds only an opaque connection key.
   engine calls it with `Authorization: Bearer <connection key>`. A key works
   only at its own provider's endpoint and only for its own connection.
 - `/oauth/{provider}/callback` is the only public route: the OAuth2
-  provider redirects the user's browser here (see [OAuth2](#oauth2-bring-your-own-client)).
+  provider redirects the user's browser here (see [OAuth2](#oauth2-platform-or-bring-your-own-client)).
 - `/v1/{provider}/...` are optional plain-REST routes for `http_api` tools
   during migration. They take the same connection key, as `Authorization:
   Bearer <key>` or `X-API-Key: <key>`.
@@ -33,6 +34,7 @@ Fallcha API holds only an opaque connection key.
 | `TOOLS_INTERNAL_SECRET` | Shared secret with the Fallcha API (16+ characters) |
 | `TOOLS_PUBLIC_BASE_URL` | Public URL that reaches this service's `/oauth/*` (may include a path prefix, e.g. `https://app.example.com/tools`). OAuth is off (503) until set |
 | `TOOLS_UI_RETURN_URL` | Fixed UI page the OAuth callback redirects back to (e.g. `https://app.example.com/integrations`). OAuth is off (503) until set |
+| `TOOLS_GOOGLE_CLIENT_ID` / `TOOLS_GOOGLE_CLIENT_SECRET` | Optional [platform Google client](#platform-client), offered to every workspace. Both or neither (blank counts as unset) |
 | `LOG_LEVEL` | Default `INFO` |
 
 Generate a key with
@@ -306,11 +308,11 @@ are `google`).
   `include_granted_scopes=true` makes the consent screen ask only for the
   new scopes.
 
-## OAuth2 (bring-your-own client)
+## OAuth2 (platform or bring-your-own client)
 
-A workspace connects its own Google account with its own OAuth client; the
-platform-wide Fallcha client comes later. One-time setup in the workspace's
-Google Cloud project:
+A workspace connects its own Google account with the platform's OAuth client
+(if configured) or with its own. One-time setup of a client, in the Google
+Cloud project that owns it:
 
 1. Enable the **Google Calendar API** and/or the **Google Sheets API**.
 2. Configure the OAuth consent screen (an *Internal* app needs no Google
@@ -329,7 +331,7 @@ The flow, driven by the Fallcha API (`/api/v1/integrations/...`):
 
 | Step | Tools service |
 |---|---|
-| Save the client | `POST /internal/provider-apps {provider, client_id, client_secret}` (stored under the provider's auth family; secret encrypted, never returned; `GET` lists, `DELETE` removes one unless a live connection uses it) |
+| Save the client | `POST /internal/provider-apps {provider, client_id, client_secret}` (stored under the provider's auth family; secret encrypted, never returned; `GET` lists, `DELETE` removes one unless a live connection uses it). Not needed with the platform client |
 | Start | `POST /internal/oauth/start {provider, provider_app_id, optional_scopes?, login_hint?}` returns `authorization_url`, `redirect_uri` and a `browser_nonce`, which the Fallcha API returns to the starting user only; the UI keeps it in that tab's `sessionStorage` |
 | Consent | The browser goes to Google, then to `/oauth/{provider}/callback` |
 | Callback | Creates a **pending** `oauth2` connection, then redirects to `TOOLS_UI_RETURN_URL?integration_result=success&connection_id=...&provider=...`, or `...=error&reason=<code>` |
@@ -386,6 +388,30 @@ connection becomes `status=error`, `error_code=grant_revoked`,
 tokens are dropped; `invalid_client` sets `error_code=client_rejected`.
 With an `error_code` set, tools return the message without calling Google
 again. Reconnecting creates a new connection.
+
+### Platform client
+
+With `TOOLS_GOOGLE_CLIENT_ID` and `TOOLS_GOOGLE_CLIENT_SECRET` set, the
+service offers its own Google client to every workspace (it can be the
+client the platform signs users in with). At startup it is upserted as a
+`provider_apps` row with `org_id` NULL, `provider: "google"` and an id
+derived from the family and client id (uuid5), so every replica agrees on it.
+
+- `GET /internal/provider-apps` lists it first, with `managed: true`, next to
+  the org's own clients (never another org's). It starts and completes flows
+  like a workspace client; `DELETE` answers 409.
+- A new secret for the same client id is stored in place on the next start.
+- A new client id is a new row. Only the current one is listed and starts
+  flows, while connections (and flows in progress) made with an older one
+  keep using it: Google ties refresh tokens to the client that issued them.
+  Unsetting the variables hides the client the same way.
+- Platform rows are never deleted: connections reference their client with
+  `ON DELETE SET NULL`, so a delete would leave every one `client_missing`.
+- Disconnecting wipes the stored tokens only; nothing is revoked at Google,
+  which with a shared client could also drop the account's other grants.
+
+The client needs both redirect URIs above, the Calendar and Sheets APIs
+enabled in its project, and their scopes on its consent screen.
 
 ## Add a provider
 

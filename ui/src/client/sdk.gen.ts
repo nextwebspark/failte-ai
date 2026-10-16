@@ -1127,7 +1127,8 @@ export const syncConnectionApiV1IntegrationsConnectionsConnectionIdSyncPost = <T
 /**
  * List Provider Apps
  *
- * This workspace's OAuth clients. Secrets are never returned.
+ * OAuth clients this workspace can use: its own and the platform's.
+ * Secrets are never returned.
  */
 export const listProviderAppsApiV1IntegrationsProviderAppsGet = <ThrowOnError extends boolean = false>(options?: Options<ListProviderAppsApiV1IntegrationsProviderAppsGetData, ThrowOnError>): RequestResult<ListProviderAppsApiV1IntegrationsProviderAppsGetResponses, ListProviderAppsApiV1IntegrationsProviderAppsGetErrors, ThrowOnError> => (options?.client ?? client).get<ListProviderAppsApiV1IntegrationsProviderAppsGetResponses, ListProviderAppsApiV1IntegrationsProviderAppsGetErrors, ThrowOnError>({ url: '/api/v1/integrations/provider-apps', ...options });
 

@@ -283,7 +283,7 @@ ENVIRONMENT=production
 DATABASE_URL=postgresql+asyncpg://dograh:<pw>@<cloudsql-private-ip>:5432/dograh
 REGISTRY=europe-west1-docker.pkg.dev/<project>/dograh
 FASTAPI_WORKERS=2
-ENABLE_SIGNUP=false
+ENABLE_SIGNUP=true
 ENABLE_AWS_S3=true
 S3_BUCKET=dograh-voice-audio-eu
 S3_REGION=europe-west1
@@ -354,6 +354,26 @@ secret) and the tools-only keys into `deploy/gcp/secrets/tools.env` (see
 `secrets/tools.env.example`). `TOOLS_PUBLIC_BASE_URL` defaults to
 `PUBLIC_BASE_URL` and `TOOLS_UI_RETURN_URL` to `PUBLIC_BASE_URL/integrations`;
 override with `DOGRAH_TOOLS_PUBLIC_BASE_URL` / `DOGRAH_TOOLS_UI_RETURN_URL`.
+
+**Platform Google client (optional).** When both `dograh-google-oauth-client-id`
+and `dograh-google-oauth-client-secret` exist, `tools.env` also gets
+`TOOLS_GOOGLE_CLIENT_ID` / `TOOLS_GOOGLE_CLIENT_SECRET`, and every workspace
+can connect Google Calendar and Sheets in one click. The client needs the
+redirect URIs `<TOOLS_PUBLIC_BASE_URL>/oauth/google-calendar/callback` and
+`.../google-sheets/callback`, the Calendar and Sheets APIs enabled in its
+project, and the `calendar.events`, `calendar.readonly` and `spreadsheets`
+scopes on its consent screen. Restart `fallcha-tools` after re-running the
+script. A new secret for the same client applies in place; a new client id
+leaves existing connections on the old client, so keep that client alive
+until they reconnect.
+
+Those scopes are *sensitive*: until Google verifies the app (privacy policy and
+terms URLs on a verified domain, scope justification, a demo video), the
+consent screen warns "Google hasn't verified this app" and at most 100 users
+can grant them. Sign-in's `openid email profile` needs no review. Google also
+keeps only about 100 live refresh tokens per Google account per client, and
+every connect re-consents, so one account connecting very many workspaces
+loses its oldest connections (they show as `grant_revoked`).
 
 **Encrypting existing credentials.** The api's migration seals plaintext rows
 only when it first runs with the key set. Once the key is set on an install
@@ -521,19 +541,25 @@ Then configure the telephony row in the LightMove.ai UI: ARI provider at
 **Blocked on VoIPTel** for the SIP password, the registrar address discrepancy, and
 the full carrier source-IP list. Everything else ships without it.
 
-## Billing (Stripe) and email (Resend)
+## Billing (Stripe), email (Resend) and Google sign-in
 
-Both are optional. `configure-env.sh` turns each on only when its secret exists:
+All optional. `configure-env.sh` turns each on only when its secret exists:
 
 ```bash
 printf 'sk_test_...' | gcloud secrets create dograh-stripe-secret-key --data-file=- --project=dograh-eu
 printf 'whsec_...'   | gcloud secrets create dograh-stripe-webhook-secret --data-file=- --project=dograh-eu
 printf 're_...'      | gcloud secrets create dograh-resend-api-key --data-file=- --project=dograh-eu
+printf %s '<id>.apps.googleusercontent.com' | gcloud secrets create dograh-google-oauth-client-id --data-file=- --project=dograh-eu
+printf %s 'GOCSPX-...' | gcloud secrets create dograh-google-oauth-client-secret --data-file=- --project=dograh-eu
 
-DOGRAH_SQL_IP=<ip> DOGRAH_EMAIL_FROM='LightMove.ai <no-reply@mail.<domain>>' \
+sudo DOGRAH_SQL_IP=<ip> DOGRAH_EMAIL_FROM='LightMove.ai <no-reply@mail.<domain>>' \
   ./deploy/gcp/configure-env.sh
 docker compose up -d api
 ```
+
+`DOGRAH_EMAIL_FROM` is needed on the first run with Resend; later runs keep the
+sender already in `.env`. `set_key` never removes a key, so deleting one of these
+secrets later also needs the matching lines removed from `.env` by hand.
 
 - **Stripe webhook:** add a dashboard endpoint at
   `https://<PUBLIC_BASE_URL>/api/v1/billing/stripe/webhook` with the five events
@@ -543,8 +569,14 @@ docker compose up -d api
   real users get mail. `onboarding@resend.dev` only reaches the Resend account
   owner.
 - `UI_APP_URL` defaults to `PUBLIC_BASE_URL`, which is where emailed links and
-  Stripe's return URLs land. For Google sign-in, add
-  `<PUBLIC_BASE_URL>/auth/google/callback` to the OAuth client's redirect URIs.
+  Stripe's return URLs land.
+- **Google sign-in:** one Web OAuth client in this project (Google Auth Platform →
+  Clients), user type External, published to Production (Testing only admits
+  listed test users). Redirect URIs: `<PUBLIC_BASE_URL>/auth/google/callback` for
+  sign-in, plus `<PUBLIC_BASE_URL>/oauth/google-calendar/callback` and
+  `<PUBLIC_BASE_URL>/oauth/google-sheets/callback` when the same client also
+  serves the Calendar and Sheets integrations. Sign-in asks only for
+  `openid email profile`, which needs no Google review.
 
 ## Before go-live
 

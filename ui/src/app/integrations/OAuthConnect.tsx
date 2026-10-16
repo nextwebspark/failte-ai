@@ -13,6 +13,7 @@ import { Label } from "@/components/ui/label";
 import { Panel } from "@/components/ui/panel";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
 import { copyTextToClipboard } from "@/lib/clipboard";
 
 import { credentialFamily, integrationErrorMessage, isUnavailableError, scopeLabel } from "./messages";
@@ -21,11 +22,11 @@ import { rememberPendingOAuth } from "./pendingOAuth";
 import type { ReusableKey } from "./ServiceAccountConnect";
 
 const NEW_CLIENT = "__new__";
+/** ``connectionId`` of the signed-in user's own address, offered as a sign-in
+ *  hint before any account is connected. Offered, not pre-selected: it may not
+ *  be a Google account. */
+export const SUGGESTED_ACCOUNT_ID = "signed-in-user";
 const OTHER_ACCOUNT = "__other__";
-
-function addingClientFor(selected: string): boolean {
-    return selected === NEW_CLIENT;
-}
 
 interface OAuthConnectProps {
     provider: IntegrationProvider;
@@ -39,9 +40,11 @@ interface OAuthConnectProps {
 }
 
 /**
- * Bring-your-own OAuth: pick (or add) the workspace's OAuth client, choose any
- * optional permissions, then send the browser to the provider's sign-in page.
- * The provider redirects back to /integrations, which finishes the install.
+ * OAuth sign-in. With the platform's own (managed) client this is one click;
+ * otherwise, or when the user opts for their own client, pick (or add) the
+ * workspace's OAuth client. Then choose any optional permissions and send the
+ * browser to the provider's sign-in page. The provider redirects back to
+ * /integrations, which finishes the install.
  */
 export function OAuthConnect({
     provider,
@@ -58,14 +61,24 @@ export function OAuthConnect({
         () => providerApps.filter((a) => a.provider === family || a.provider === provider.id),
         [providerApps, family, provider.id],
     );
-    const [selected, setSelected] = useState<string>(() => apps[0]?.id ?? NEW_CLIENT);
+    const familyTitle = family === provider.id ? provider.title : family.charAt(0).toUpperCase() + family.slice(1);
+    // The platform's client needs no setup, so it is the default; the
+    // workspace's own clients stay available as an advanced option. A
+    // workspace that already set up its own client (e.g. an Internal one its
+    // Google Workspace admin requires) keeps using it unless it switches.
+    const managedApp = apps.find((a) => a.managed);
+    const ownApps = apps.filter((a) => !a.managed);
+    const [ownClientChosen, setOwnClientChosen] = useState(() => ownApps.length > 0);
+    const ownClient = ownClientChosen || !managedApp;
+    const [selected, setSelected] = useState<string>(() => ownApps[0]?.id ?? NEW_CLIENT);
     // "Continue as alice@…": Google skips the account chooser and asks only for
     // this integration's new permissions. Each integration keeps its own grant.
-    const [chosenAccount, setAccount] = useState<string>(() => knownAccounts[0]?.label ?? OTHER_ACCOUNT);
+    const [chosenAccount, setAccount] = useState<string>(
+        () => knownAccounts.find((k) => k.connectionId !== SUGGESTED_ACCOUNT_ID)?.label ?? OTHER_ACCOUNT,
+    );
     // An account that is no longer offered falls back to "a different account".
     const account = knownAccounts.some((k) => k.label === chosenAccount) ? chosenAccount : OTHER_ACCOUNT;
     const loginHint = account === OTHER_ACCOUNT ? undefined : account;
-    const sharedClient = !addingClientFor(selected) && apps.length > 0 && family !== provider.id;
     const [clientId, setClientId] = useState("");
     const [clientSecret, setClientSecret] = useState("");
     const [optionalScopes, setOptionalScopes] = useState<string[]>([]);
@@ -84,7 +97,8 @@ export function OAuthConnect({
     }, []);
 
     const redirectUri = provider.oauth?.redirect_uri ?? null;
-    const addingClient = selected === NEW_CLIENT;
+    const addingClient = ownClient && selected === NEW_CLIENT;
+    const sharedClient = ownClient && !addingClient && ownApps.length > 0 && family !== provider.id;
 
     if (!provider.oauth || !redirectUri) {
         return (
@@ -136,9 +150,9 @@ export function OAuthConnect({
     const connect = async () => {
         setError(null);
         try {
-            const appId = addingClient ? await saveClient() : selected;
+            const appId = !ownClient && managedApp ? managedApp.id : addingClient ? await saveClient() : selected;
             if (!appId) return;
-            setSelected(appId);
+            if (ownClient) setSelected(appId);
             setBusy("redirecting");
             const response = await startOAuth({
                 provider: provider.id,
@@ -181,35 +195,59 @@ export function OAuthConnect({
             }}
             noValidate
         >
-            <div className="grid gap-2">
-                <Label htmlFor="oauth-client">OAuth client</Label>
-                <p className="text-xs text-muted-foreground">
-                    Your own OAuth client from Google Cloud. Google shows its name on the sign-in screen.
-                </p>
-                <Select value={selected} onValueChange={(v) => {
-                        // Radix's hidden native select can report "" while a just-saved
-                        // client's option mounts: only a real switch counts.
-                        if (!v || v === selected) return;
-                        setSelected(v);
-                        setError(null);
-                    }} disabled={busy !== null}>
-                    <SelectTrigger id="oauth-client" className="w-full">
-                        <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                        {apps.map((app) => (
-                            <SelectItem key={app.id} value={app.id}>
-                                <span className="truncate font-mono text-xs">{app.client_id}</span>
-                            </SelectItem>
-                        ))}
-                        <SelectItem value={NEW_CLIENT}>Add a new OAuth client…</SelectItem>
-                    </SelectContent>
-                </Select>
-            </div>
+            {managedApp && (
+                <div className="grid gap-2">
+                    {!ownClient && (
+                        <p className="text-sm text-ink-2">Sign in with your {familyTitle} account. No setup needed.</p>
+                    )}
+                    <div className="flex items-center gap-2">
+                        <Switch
+                            id="oauth-own-client"
+                            checked={ownClientChosen}
+                            onCheckedChange={(checked) => {
+                                setOwnClientChosen(checked);
+                                setError(null);
+                            }}
+                            disabled={busy !== null}
+                        />
+                        <Label htmlFor="oauth-own-client" className="font-normal">
+                            Use your own OAuth client (advanced)
+                        </Label>
+                    </div>
+                </div>
+            )}
+
+            {ownClient && (
+                <div className="grid gap-2">
+                    <Label htmlFor="oauth-client">OAuth client</Label>
+                    <p className="text-xs text-muted-foreground">
+                        Your own OAuth client from Google Cloud. Google shows its name on the sign-in screen.
+                    </p>
+                    <Select value={selected} onValueChange={(v) => {
+                            // Radix's hidden native select can report "" while a just-saved
+                            // client's option mounts: only a real switch counts.
+                            if (!v || v === selected) return;
+                            setSelected(v);
+                            setError(null);
+                        }} disabled={busy !== null}>
+                        <SelectTrigger id="oauth-client" className="w-full">
+                            <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                            {ownApps.map((app) => (
+                                <SelectItem key={app.id} value={app.id}>
+                                    <span className="truncate font-mono text-xs">{app.client_id}</span>
+                                </SelectItem>
+                            ))}
+                            <SelectItem value={NEW_CLIENT}>Add a new OAuth client…</SelectItem>
+                        </SelectContent>
+                    </Select>
+                </div>
+            )}
 
             {sharedClient && (
                 <p className="text-xs text-muted-foreground">
-                    This client is shared by your {family.charAt(0).toUpperCase() + family.slice(1)} integrations. Make sure this
+                    This client is shared by your {familyTitle} integrations. Make sure this
                     address is also listed under its <strong>Authorized redirect URIs</strong>:{" "}
                     <code className="break-all font-mono" aria-label="Redirect URI">
                         {redirectUri}
@@ -363,7 +401,13 @@ export function OAuthConnect({
                 </Button>
                 <Button type="submit" disabled={busy !== null}>
                     {busy && <Loader2 className="animate-spin" aria-hidden />}
-                    {busy === "redirecting" ? "Opening sign-in…" : addingClient ? "Save and sign in" : "Sign in"}
+                    {busy === "redirecting"
+                        ? "Opening sign-in…"
+                        : !ownClient
+                          ? `Connect with ${familyTitle}`
+                          : addingClient
+                            ? "Save and sign in"
+                            : "Sign in"}
                 </Button>
             </DialogFooter>
         </form>

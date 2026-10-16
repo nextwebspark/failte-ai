@@ -1,4 +1,4 @@
-"""OAuth2 with bring-your-own clients.
+"""OAuth2 with workspace (bring-your-own) or platform clients.
 
 * ``/internal/provider-apps`` and ``/internal/oauth/start`` are called by the
   Fallcha API for a workspace user (internal secret + org/user headers).

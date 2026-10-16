@@ -80,8 +80,10 @@ And on the **tools service**:
 | `TOOLS_INTERNAL_SECRET` | N/A | **Required.** At least 16 characters, same value as the API's |
 | `TOOLS_PUBLIC_BASE_URL` | `PUBLIC_BASE_URL` (Docker Compose) | Public URL that reaches the service's `/oauth/<provider>/callback`. Google OAuth redirect URIs are built from it. While unset, connecting with your own OAuth client is off (service accounts still work) |
 | `TOOLS_UI_RETURN_URL` | `PUBLIC_BASE_URL/integrations` (Docker Compose) | The UI page the OAuth callback sends the browser back to. While unset, OAuth is off |
+| `TOOLS_GOOGLE_CLIENT_ID` | unset | Optional platform Google OAuth client (it can be the same client as Google sign-in). When set with `TOOLS_GOOGLE_CLIENT_SECRET`, every workspace can connect Google Calendar and Sheets with one click; workspaces can still use their own client. Set both or neither. The client must list `TOOLS_PUBLIC_BASE_URL/oauth/google-calendar/callback` and `.../google-sheets/callback` as redirect URIs |
+| `TOOLS_GOOGLE_CLIENT_SECRET` | unset | The platform Google client's secret, stored encrypted. Changing it updates the client in place. Changing `TOOLS_GOOGLE_CLIENT_ID` offers the new client from then on, while existing connections keep refreshing with the old one |
 
-The service refuses to start without its three required variables; the rest of the stack keeps running. `scripts/setup_local.sh`, `scripts/setup_local.ps1`, `scripts/setup_remote.sh` and `saas/dev/bootstrap-env.sh` generate `CREDENTIALS_ENCRYPTION_KEYS`, `TOOLS_ENCRYPTION_KEYS` and `TOOLS_INTERNAL_SECRET` when they are missing, and never replace a value that is already set.
+The service refuses to start without its three required variables, or with only one of the two `TOOLS_GOOGLE_*` variables; the rest of the stack keeps running. `scripts/setup_local.sh`, `scripts/setup_local.ps1`, `scripts/setup_remote.sh` and `saas/dev/bootstrap-env.sh` generate `CREDENTIALS_ENCRYPTION_KEYS`, `TOOLS_ENCRYPTION_KEYS` and `TOOLS_INTERNAL_SECRET` when they are missing, and never replace a value that is already set.
 
 <Warning>
 Docker Compose pulls the tools service as `${REGISTRY}/fallcha-tools`, alongside `dograh-api` and `dograh-ui`. The registry must publish that image. LightMove.ai's release workflow and `deploy/gcp/cloudbuild.yaml` do. Public upstream Dograh registries do not, so an install pointing `REGISTRY` at them gets no tools service. Either set `REGISTRY` to a registry holding all three images, or build it locally (`docker compose build fallcha-tools`, or `setup_remote.sh` in build mode).
@@ -100,6 +102,10 @@ On a remote install, nginx forwards only `/oauth/<provider>/callback` to the too
 | `OSS_JWT_SECRET` | N/A | **Required for OSS deployments.** Secret used to sign JWT tokens. Must be set to a strong random value in production |
 | `OSS_JWT_EXPIRY_HOURS` | `720` | JWT token lifetime in hours (default: 30 days) |
 | `ENABLE_SIGNUP` | `true` | Set to `false` to disable public signup on invite-only installs — `POST /api/v1/auth/signup` returns 403 and the login page hides the Sign up link |
+| `REQUIRE_EMAIL_VERIFICATION` | `true` | Password signups must confirm their email address before they can log in. Needs a working `EMAIL_PROVIDER`; with `none` the message is only written to the API log |
+| `GOOGLE_CLIENT_ID` | `null` | Google OAuth client id. With `GOOGLE_CLIENT_SECRET`, shows "Continue with Google" on the login and signup pages |
+| `GOOGLE_CLIENT_SECRET` | `null` | Google OAuth client secret. Keep secret |
+| `GOOGLE_REDIRECT_URI` | `UI_APP_URL` + `/auth/google/callback` | Must be listed as an authorized redirect URI on the Google OAuth client. Only for running the API outside Docker: `docker-compose.yaml` does not pass it through, so containers always use the default |
 
 <Warning>
 Never use the placeholder `OSS_JWT_SECRET` in a production deployment. Generate a strong random secret and store it securely.
