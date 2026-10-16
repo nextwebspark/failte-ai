@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { StrictMode } from "react";
 import { toast } from "sonner";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -22,6 +22,7 @@ const mocks = vi.hoisted(() => ({
     sync: vi.fn(),
     can: vi.fn<(...permissions: string[]) => boolean>(() => true),
     role: "developer" as string | null,
+    user: { id: "1" } as { id: string; email?: string },
 }));
 
 vi.stubGlobal(
@@ -48,7 +49,7 @@ vi.mock("@/client/sdk.gen", () => ({
 }));
 
 vi.mock("@/lib/auth", () => ({
-    useAuth: () => ({ user: { id: "1" }, loading: false }),
+    useAuth: () => ({ user: mocks.user, loading: false }),
 }));
 
 vi.mock("@/context/OrgConfigContext", () => ({
@@ -138,6 +139,7 @@ beforeEach(() => {
     vi.clearAllMocks();
     mocks.can.mockImplementation(() => true);
     mocks.role = "developer";
+    mocks.user = { id: "1" };
     mocks.getCatalog.mockResolvedValue({ data: { providers: [PROVIDER] } });
     mocks.listConnections.mockResolvedValue({ data: { connections: [] } });
     mocks.listProviderApps.mockResolvedValue({ data: { provider_apps: [] } });
@@ -535,6 +537,7 @@ describe("IntegrationsPage", () => {
         });
 
         it("offers to continue as the account already signed in, with the shared client", async () => {
+            mocks.user = { id: "1", email: "owner@acme.test" };
             mocks.listConnections.mockResolvedValue({ data: { connections: [connection({})] } });
             mocks.listProviderApps.mockResolvedValue({ data: { provider_apps: [{ ...APP, provider: "google" }] } });
             mocks.startOauth.mockResolvedValue({
@@ -545,6 +548,8 @@ describe("IntegrationsPage", () => {
             expect(
                 (await screen.findByRole("radio", { name: "Continue as alice@acme.test" })).getAttribute("aria-checked"),
             ).toBe("true");
+            // A signed-in family account wins over the user's own address.
+            expect(screen.queryByRole("radio", { name: /owner@acme\.test/ })).toBeNull();
             // The shared client must also list this integration's redirect URI.
             expect(screen.getByLabelText("Redirect URI").textContent).toBe(SHEETS.oauth?.redirect_uri);
             fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
@@ -611,6 +616,104 @@ describe("IntegrationsPage", () => {
             fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
             await waitFor(() => expect(mocks.startOauth).toHaveBeenCalledTimes(1));
             expect(mocks.startOauth.mock.calls[0][0].body.login_hint).toBeUndefined();
+        });
+    });
+
+    describe("platform OAuth client", () => {
+        const CALENDAR = { ...PROVIDER, auth_family: "google" };
+        const MANAGED = {
+            id: "platform-app",
+            provider: "google",
+            client_id: "999-platform.apps.googleusercontent.com",
+            created_at: "",
+            updated_at: "",
+            managed: true,
+        };
+        const OWN = { ...APP, provider: "google" };
+        const original = window.location;
+        let assign: ReturnType<typeof vi.fn>;
+
+        beforeEach(() => {
+            assign = vi.fn();
+            Object.defineProperty(window, "location", {
+                configurable: true,
+                value: { ...original, assign, search: "", href: original.href },
+            });
+            mocks.getCatalog.mockResolvedValue({ data: { providers: [CALENDAR] } });
+            mocks.listProviderApps.mockResolvedValue({ data: { provider_apps: [MANAGED, OWN] } });
+            mocks.startOauth.mockResolvedValue({
+                data: { authorization_url: AUTHORIZE_URL, redirect_uri: REDIRECT_URI, expires_at: "", browser_nonce: NONCE },
+            });
+        });
+
+        afterEach(() => {
+            Object.defineProperty(window, "location", { configurable: true, value: original });
+        });
+
+        async function openConnect() {
+            render(<IntegrationsPage />);
+            fireEvent.click(await screen.findByRole("button", { name: /^Connect$/ }));
+            return screen.findByRole("dialog");
+        }
+
+        it("connects with the platform client in one click", async () => {
+            const dialog = await openConnect();
+
+            const own = within(dialog).getByRole("switch", { name: "Use your own OAuth client (advanced)" });
+            expect(own.getAttribute("aria-checked")).toBe("false");
+            expect(within(dialog).queryByLabelText("OAuth client")).toBeNull();
+            expect(within(dialog).queryByLabelText("Client ID")).toBeNull();
+            expect(within(dialog).queryByLabelText("Redirect URI")).toBeNull();
+            // Nothing offers to remove the platform's client.
+            expect(within(dialog).queryByRole("button", { name: /delete|remove/i })).toBeNull();
+
+            fireEvent.click(within(dialog).getByRole("button", { name: "Connect with Google" }));
+            await waitFor(() => expect(assign).toHaveBeenCalledWith(AUTHORIZE_URL));
+            expect(mocks.startOauth).toHaveBeenCalledWith({
+                body: { provider: CALENDAR.id, provider_app_id: MANAGED.id, optional_scopes: [] },
+            });
+        });
+
+        it("keeps your own OAuth client behind the advanced switch", async () => {
+            const dialog = await openConnect();
+            fireEvent.click(within(dialog).getByRole("switch", { name: /Use your own OAuth client/ }));
+
+            expect(await within(dialog).findByLabelText("OAuth client")).toBeTruthy();
+            expect(within(dialog).queryByRole("button", { name: "Connect with Google" })).toBeNull();
+            fireEvent.click(within(dialog).getByRole("button", { name: "Sign in" }));
+            await waitFor(() => expect(mocks.startOauth).toHaveBeenCalledTimes(1));
+            expect(mocks.startOauth.mock.calls[0][0].body.provider_app_id).toBe(OWN.id);
+        });
+
+        it("asks for a client ID only once you opt for your own client", async () => {
+            mocks.listProviderApps.mockResolvedValue({ data: { provider_apps: [MANAGED] } });
+            const dialog = await openConnect();
+            expect(within(dialog).queryByLabelText("Client ID")).toBeNull();
+
+            const own = within(dialog).getByRole("switch", { name: /Use your own OAuth client/ });
+            fireEvent.click(own);
+            expect(await within(dialog).findByLabelText("Client ID")).toBeTruthy();
+            expect(within(dialog).getByRole("button", { name: "Save and sign in" })).toBeTruthy();
+
+            fireEvent.click(own);
+            await waitFor(() => expect(within(dialog).queryByLabelText("Client ID")).toBeNull());
+            expect(within(dialog).getByRole("button", { name: "Connect with Google" })).toBeTruthy();
+        });
+
+        it("suggests the signed-in user's email when no Google account is connected yet", async () => {
+            mocks.user = { id: "1", email: "owner@acme.test" };
+            const dialog = await openConnect();
+
+            const radio = await within(dialog).findByRole("radio", { name: "Continue as owner@acme.test" });
+            expect(radio.getAttribute("aria-checked")).toBe("true");
+            fireEvent.click(within(dialog).getByRole("button", { name: "Connect with Google" }));
+            await waitFor(() => expect(mocks.startOauth).toHaveBeenCalledTimes(1));
+            expect(mocks.startOauth.mock.calls[0][0].body).toEqual({
+                provider: CALENDAR.id,
+                provider_app_id: MANAGED.id,
+                optional_scopes: [],
+                login_hint: "owner@acme.test",
+            });
         });
     });
 

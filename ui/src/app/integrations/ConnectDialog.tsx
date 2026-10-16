@@ -15,6 +15,7 @@ import {
     DialogTitle,
 } from "@/components/ui/dialog";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { type AuthUser, useAuth } from "@/lib/auth";
 
 import { authModeLabel, credentialFamily, isEmail } from "./messages";
 import { NoAuthConnect } from "./NoAuthConnect";
@@ -58,6 +59,12 @@ export function familyConnections(
         found.push({ connectionId: c.id, label: c.account_label });
     }
     return found;
+}
+
+/** The signed-in user's address (Stack users have `primaryEmail`, local users `email`). */
+function signedInEmail(user: AuthUser | null): string | null {
+    if (!user) return null;
+    return "primaryEmail" in user ? user.primaryEmail : (user.email ?? null);
 }
 
 interface ConnectDialogProps {
@@ -126,6 +133,8 @@ function ConnectBody({
         () => familyConnections(provider, providers, connections, "service_account"),
         [provider, providers, connections],
     );
+    const { user } = useAuth();
+    const ownEmail = signedInEmail(user);
     const oauthAccounts = useMemo(() => {
         // Only email addresses can be a sign-in hint. When reconnecting, the
         // replaced connection's account comes first (it may be in error).
@@ -133,12 +142,17 @@ function ConnectBody({
             isEmail(a.label),
         );
         const previous = replaces?.auth_mode === "oauth2" ? replaces.account_label : null;
-        if (!isEmail(previous)) return accounts;
-        return [
-            { connectionId: replaces?.id ?? previous, label: previous },
-            ...accounts.filter((a) => a.label !== previous),
-        ];
-    }, [provider, providers, connections, replaces]);
+        if (isEmail(previous)) {
+            return [
+                { connectionId: replaces?.id ?? previous, label: previous },
+                ...accounts.filter((a) => a.label !== previous),
+            ];
+        }
+        if (accounts.length > 0 || !isEmail(ownEmail)) return accounts;
+        // Nothing signed in for this family yet: suggest the user's own address,
+        // so someone who signed in here with Google sees one short consent.
+        return [{ connectionId: "signed-in-user", label: ownEmail }];
+    }, [provider, providers, connections, replaces, ownEmail]);
 
     return (
         <>
