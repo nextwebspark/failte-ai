@@ -322,9 +322,10 @@ export const createWorkflowApiV1WorkflowCreateDefinitionPost = <ThrowOnError ext
  * Create a new workflow from a natural language template request.
  *
  * This endpoint:
- * 1. Uses mps_service_key_client to call MPS workflow API
- * 2. Passes organization ID (authenticated mode) or created_by (OSS mode)
- * 3. Creates the workflow in the database
+ * 1. Generates the workflow: locally with Gemini on the platform's Vertex
+ * project when platform models are enabled, otherwise via the MPS
+ * workflow API (passing organization ID, or created_by in OSS mode)
+ * 2. Creates the workflow in the database
  *
  * Args:
  * request: The template creation request with call_type, use_case, and activity_description
@@ -1171,7 +1172,7 @@ export const startOauthApiV1IntegrationsOauthStartPost = <ThrowOnError extends b
 /**
  * Get Current Organization Context
  *
- * Return organization-scoped configuration signals owned by Fallcha.ai.
+ * Return organization-scoped configuration signals owned by LightMove.ai.
  */
 export const getCurrentOrganizationContextApiV1OrganizationsContextGet = <ThrowOnError extends boolean = false>(options?: Options<GetCurrentOrganizationContextApiV1OrganizationsContextGetData, ThrowOnError>): RequestResult<GetCurrentOrganizationContextApiV1OrganizationsContextGetResponses, GetCurrentOrganizationContextApiV1OrganizationsContextGetErrors, ThrowOnError> => (options?.client ?? client).get<GetCurrentOrganizationContextApiV1OrganizationsContextGetResponses, GetCurrentOrganizationContextApiV1OrganizationsContextGetErrors, ThrowOnError>({ url: '/api/v1/organizations/context', ...options });
 
