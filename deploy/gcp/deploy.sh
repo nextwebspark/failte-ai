@@ -91,12 +91,15 @@ git checkout --quiet --detach "$TAG"
 SWITCHING=0 SETTINGS_SAVED=0
 undo_unswitched() {
   if (( SWITCHING )); then return 0; fi
-  log "putting the previous code and settings back"
+  # A second signal must not cut the undo short.
+  trap '' TERM INT HUP
   git checkout --quiet --detach "$PREV_REF" || true
   if (( SETTINGS_SAVED )); then restore_settings || true; fi
+  log "put the previous code and settings back" || true
 }
 trap 'undo_unswitched; rm -f "$LIGHTMOVE_DEPLOY_COPY"' EXIT
-trap 'exit 143' TERM INT HUP
+trap 'exit 143' TERM HUP
+trap 'exit 130' INT
 
 # ---------------------------------------------------------------------------
 # Helpers

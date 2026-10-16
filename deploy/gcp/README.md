@@ -372,7 +372,8 @@ openssl rand -hex 32 | gcloud secrets create dograh-tools-internal-secret --data
 secret) and the tools-only keys into `deploy/gcp/secrets/tools.env` (see
 `secrets/tools.env.example`). `TOOLS_PUBLIC_BASE_URL` defaults to
 `PUBLIC_BASE_URL` and `TOOLS_UI_RETURN_URL` to `PUBLIC_BASE_URL/integrations`;
-override with `DOGRAH_TOOLS_PUBLIC_BASE_URL` / `DOGRAH_TOOLS_UI_RETURN_URL`.
+override with `DOGRAH_TOOLS_PUBLIC_BASE_URL` / `DOGRAH_TOOLS_UI_RETURN_URL`
+(until the next Deploy, which derives them from `PUBLIC_BASE_URL` again).
 
 **Platform Google client (optional).** When both `dograh-google-oauth-client-id`
 and `dograh-google-oauth-client-secret` exist, `tools.env` also gets

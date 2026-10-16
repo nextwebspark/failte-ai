@@ -41,6 +41,41 @@ export CLOUDSDK_CORE_LOG_HTTP=false CLOUDSDK_CORE_VERBOSITY=error
 
 sm() { gcloud secrets versions access latest --secret="$1" --project="$PROJECT"; }
 
+# sm_read NAME VAR: reads secret NAME into variable VAR (empty unless read).
+# Returns 0 when read, 3 when absent (NOT_FOUND), 4 when not readable: without
+# project-wide access a missing secret answers PERMISSION_DENIED ("or it may
+# not exist"), the same as a missing grant. Any other error (network, quota)
+# stops the script instead of quietly switching a feature off.
+sm_read() {
+  local err val rc=0
+  err="$(mktemp)"
+  val="$(gcloud secrets versions access latest --secret="$1" --project="$PROJECT" 2>"$err")" || rc=$?
+  printf -v "$2" '%s' "$val"
+  if (( rc == 0 )); then
+    rm -f "$err"
+    return 0
+  elif grep -q PERMISSION_DENIED "$err"; then
+    rm -f "$err"
+    return 4
+  elif grep -q NOT_FOUND "$err"; then
+    rm -f "$err"
+    return 3
+  fi
+  cat "$err" >&2
+  rm -f "$err"
+  exit 1
+}
+
+# Prints an optional secret's value, or nothing when absent or not readable.
+sm_optional() {
+  local value status=0
+  sm_read "$1" value || status=$?
+  if (( status == 4 )); then
+    echo "  skipped $1: absent, or this VM's service account may not read it" >&2
+  fi
+  printf '%s' "$value"
+}
+
 set_key() {
   local key="$1" val="$2"
   # Rewrite in place if present, else append. Values are written verbatim, so
@@ -95,6 +130,44 @@ for name in DB_PW HMAC_ID HMAC_SECRET JWT_SECRET TURN_SECRET DEVOPS_SECRET WS_TO
   [[ -n "${!name}" ]] || { echo "a required secret is empty ($name)" >&2; exit 1; }
 done
 
+# keeps_keys NAME CURRENT NEW: stops when NEW (comma-separated Fernet keys)
+# drops a key CURRENT has. Stored rows encrypted with it would become
+# unreadable, and every Deploy runs this script. Rotate by adding the new key in
+# front; drop the old one only after re-encrypting, with one hand run using
+# DOGRAH_DROP_ENCRYPTION_KEYS=true.
+keeps_keys() {
+  local name="$1" key current new
+  current="$(printf %s "$2" | tr -d " \"'")" new="$(printf %s "$3" | tr -d " \"'")"
+  local -a keys
+  [[ -n "$current" && "${DOGRAH_DROP_ENCRYPTION_KEYS:-}" != true ]] || return 0
+  IFS=, read -r -a keys <<< "$current"
+  for key in "${keys[@]}"; do
+    if [[ -n "$key" && ",$new," != *",$key,"* ]]; then
+      echo "$name from Secret Manager drops a key in use; see keeps_keys in configure-env.sh" >&2
+      exit 1
+    fi
+  done
+}
+
+# Encryption keys are read and checked before anything is written, so a run
+# that stops here leaves .env and tools.env untouched.
+CRED_KEYS="$(sm_optional dograh-credentials-encryption-keys)"
+if [[ -n "$CRED_KEYS" ]]; then
+  keeps_keys CREDENTIALS_ENCRYPTION_KEYS "$(env_value CREDENTIALS_ENCRYPTION_KEYS)" "$CRED_KEYS"
+fi
+TOOLS_SECRET="$(sm dograh-tools-internal-secret)"
+TOOLS_KEYS="$(sm dograh-tools-encryption-keys)"
+[[ -n "$TOOLS_SECRET" && -n "$TOOLS_KEYS" ]] || {
+  echo "dograh-tools-internal-secret / dograh-tools-encryption-keys are empty" >&2
+  exit 1
+}
+TOOLS_DIR="$(dirname "$ENV_FILE")/deploy/gcp/secrets"
+TOOLS_ENV="$TOOLS_DIR/tools.env"
+if [[ -f "$TOOLS_ENV" ]]; then
+  keeps_keys TOOLS_ENCRYPTION_KEYS \
+    "$(grep -E '^TOOLS_ENCRYPTION_KEYS=' "$TOOLS_ENV" | tail -1 | cut -d= -f2- || true)" "$TOOLS_KEYS"
+fi
+
 echo "writing $ENV_FILE ..."
 set_key ENVIRONMENT production
 set_key REGISTRY "${REGION}-docker.pkg.dev/${PROJECT}/${REPO}"
@@ -136,41 +209,6 @@ setting TELEPHONY_WS_TOKEN_ENFORCE false
 # Names: dograh-stripe-secret-key (sk_test_/sk_live_), dograh-stripe-webhook-secret
 # (whsec_ of the dashboard endpoint), dograh-resend-api-key (re_...),
 # dograh-google-oauth-client-id / dograh-google-oauth-client-secret.
-#
-# sm_read NAME VAR: reads secret NAME into variable VAR (empty unless read).
-# Returns 0 when read, 3 when absent (NOT_FOUND), 4 when not readable: without
-# project-wide access a missing secret answers PERMISSION_DENIED ("or it may
-# not exist"), the same as a missing grant. Any other error (network, quota)
-# stops the script instead of quietly switching a feature off.
-sm_read() {
-  local err val rc=0
-  err="$(mktemp)"
-  val="$(gcloud secrets versions access latest --secret="$1" --project="$PROJECT" 2>"$err")" || rc=$?
-  printf -v "$2" '%s' "$val"
-  if (( rc == 0 )); then
-    rm -f "$err"
-    return 0
-  elif grep -q PERMISSION_DENIED "$err"; then
-    rm -f "$err"
-    return 4
-  elif grep -q NOT_FOUND "$err"; then
-    rm -f "$err"
-    return 3
-  fi
-  cat "$err" >&2
-  rm -f "$err"
-  exit 1
-}
-
-# Prints an optional secret's value, or nothing when absent or not readable.
-sm_optional() {
-  local value status=0
-  sm_read "$1" value || status=$?
-  if (( status == 4 )); then
-    echo "  skipped $1: absent, or this VM's service account may not read it" >&2
-  fi
-  printf '%s' "$value"
-}
 
 STRIPE_KEY="$(sm_optional dograh-stripe-secret-key)"
 if [[ -n "$STRIPE_KEY" ]]; then
@@ -234,31 +272,12 @@ else
   unset_key GOOGLE_CLIENT_SECRET
 fi
 
-# keeps_keys NAME CURRENT NEW: stops when NEW (comma-separated Fernet keys)
-# drops a key CURRENT has. Stored rows encrypted with it would become
-# unreadable, and every Deploy runs this script. Rotate by adding the new key in
-# front; drop the old one only after re-encrypting, with one hand run using
-# DOGRAH_DROP_ENCRYPTION_KEYS=true.
-keeps_keys() {
-  local name="$1" current="${2// /}" new="${3// /}" key
-  local -a keys
-  [[ -n "$current" && "${DOGRAH_DROP_ENCRYPTION_KEYS:-}" != true ]] || return 0
-  IFS=, read -r -a keys <<< "$current"
-  for key in "${keys[@]}"; do
-    if [[ -n "$key" && ",$new," != *",$key,"* ]]; then
-      echo "$name from Secret Manager drops a key in use; see keeps_keys in configure-env.sh" >&2
-      exit 1
-    fi
-  done
-}
-
 # Workspace credentials at rest (api). Opt-in like billing: once set, never
 # remove a key that encrypted stored rows (see docs/developer/environment-variables.mdx).
 #   python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())" \
 #     | gcloud secrets create dograh-credentials-encryption-keys --data-file=-
-CRED_KEYS="$(sm_optional dograh-credentials-encryption-keys)"
+# (read and checked with the required secrets above)
 if [[ -n "$CRED_KEYS" ]]; then
-  keeps_keys CREDENTIALS_ENCRYPTION_KEYS "$(env_value CREDENTIALS_ENCRYPTION_KEYS)" "$CRED_KEYS"
   set_key CREDENTIALS_ENCRYPTION_KEYS "$CRED_KEYS"
 fi
 
@@ -270,21 +289,10 @@ fi
 #     | gcloud secrets create dograh-tools-encryption-keys --data-file=-
 # TOOLS_INTERNAL_SECRET goes in .env (the api and the tools service share it);
 # the tools-only keys go in deploy/gcp/secrets/tools.env (the overlay's env_file).
-TOOLS_SECRET="$(sm dograh-tools-internal-secret)"
-TOOLS_KEYS="$(sm dograh-tools-encryption-keys)"
-[[ -n "$TOOLS_SECRET" && -n "$TOOLS_KEYS" ]] || {
-  echo "dograh-tools-internal-secret / dograh-tools-encryption-keys are empty" >&2
-  exit 1
-}
+# (both read and checked with the required secrets above)
 set_key TOOLS_INTERNAL_SECRET "$TOOLS_SECRET"
 PUBLIC_URL="$(grep -E '^PUBLIC_BASE_URL=' "$ENV_FILE" | tail -1 | cut -d= -f2- | tr -d '"' || true)"
-TOOLS_DIR="$(dirname "$ENV_FILE")/deploy/gcp/secrets"
-TOOLS_ENV="$TOOLS_DIR/tools.env"
 mkdir -p "$TOOLS_DIR"
-if [[ -f "$TOOLS_ENV" ]]; then
-  keeps_keys TOOLS_ENCRYPTION_KEYS \
-    "$(grep -E '^TOOLS_ENCRYPTION_KEYS=' "$TOOLS_ENV" | tail -1 | cut -d= -f2- || true)" "$TOOLS_KEYS"
-fi
 (
   umask 077
   {
