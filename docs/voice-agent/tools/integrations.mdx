@@ -49,9 +49,18 @@ A service account is a robot Google account owned by your Google Cloud project. 
 
 After one Google integration is connected with a service account, connecting another Google integration offers **Use the same service account**. The key is copied on the server, so you do not upload it again and it never passes through your browser. You still share the new calendar or spreadsheet with the same email address.
 
+## Connect with Google
+
+Sign in with a Google account when the agent should act as a person, for example to book into someone's own calendar. When your server has a platform Google client (`TOOLS_GOOGLE_CLIENT_ID`, see [Environment Variables](/developer/environment-variables#integrations-tools-service)), this needs no Google Cloud setup:
+
+1. On the integration card, click **Connect**, choose **Sign in with your account**, then click **Connect with Google**.
+2. Pick your Google account and approve the requested permissions. You come back to the Integrations page, where the connection is confirmed and its agent tool is created.
+
+Until a Google account is connected, the dialog offers **Continue as** the address you use for LightMove.ai. If that is a Google account, Google goes straight to the permissions; choose **Use a different account** otherwise.
+
 ## Connect with your own Google OAuth client
 
-Sign in with a Google account when the agent should act as a person, for example to book into someone's own calendar. In this version you bring your own OAuth client, created in your own Google Cloud project.
+You can use an OAuth client from your own Google Cloud project instead, for example an *Internal* app for your Google Workspace. When the server has a platform client, turn on **Use your own OAuth client (advanced)** in the connect dialog first.
 
 <Steps>
   <Step title="Create the OAuth client">

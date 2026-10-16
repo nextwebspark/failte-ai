@@ -248,7 +248,7 @@ class CreateProviderAppRequest(BaseModel):
 
 
 class ProviderAppResponse(BaseModel):
-    """A workspace OAuth client. The secret is write-only."""
+    """An OAuth client the workspace can use. The secret is write-only."""
 
     id: uuid.UUID
     provider: str = Field(
@@ -259,6 +259,11 @@ class ProviderAppResponse(BaseModel):
     created_by: int | None = None
     created_at: datetime
     updated_at: datetime
+    managed: bool = Field(
+        default=False,
+        description="The platform's own client, offered to every workspace "
+        "(listed first). It cannot be deleted.",
+    )
 
 
 class ProviderAppListResponse(BaseModel):

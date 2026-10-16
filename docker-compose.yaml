@@ -376,6 +376,11 @@ services:
       # UI page the OAuth callback sends the browser back to. OAuth (bring-
       # your-own client) stays off (503) until both URLs are set.
       TOOLS_UI_RETURN_URL: "${TOOLS_UI_RETURN_URL:-${PUBLIC_BASE_URL:+${PUBLIC_BASE_URL}/integrations}}"
+      # Optional platform Google OAuth client, offered to every workspace so
+      # Calendar/Sheets connect in one click (both or neither). Its redirect
+      # URIs must include {TOOLS_PUBLIC_BASE_URL}/oauth/google-{calendar,sheets}/callback.
+      TOOLS_GOOGLE_CLIENT_ID: "${TOOLS_GOOGLE_CLIENT_ID:-}"
+      TOOLS_GOOGLE_CLIENT_SECRET: "${TOOLS_GOOGLE_CLIENT_SECRET:-}"
       LOG_LEVEL: "${TOOLS_LOG_LEVEL:-INFO}"
     logging:
       driver: "json-file"

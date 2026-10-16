@@ -1007,6 +1007,33 @@ async def test_provider_app_secret_is_forwarded_never_returned(
     )
 
 
+async def test_provider_apps_pass_the_managed_flag_through(client_as, oauth_api):
+    platform_id = uuid.uuid4()
+    oauth_api["list_apps"].mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "provider_apps": [
+                    _provider_app(
+                        id=str(platform_id),
+                        provider="google",
+                        created_by=None,
+                        managed=True,
+                    ),
+                    # An older tools service sends no flag: not managed.
+                    _provider_app(),
+                ]
+            },
+        )
+    )
+    listed = await client_as(OrgRole.ADMIN).get("/api/v1/integrations/provider-apps")
+    assert listed.status_code == 200, listed.text
+    assert [(a["id"], a["managed"]) for a in listed.json()["provider_apps"]] == [
+        (str(platform_id), True),
+        (str(APP_ID), False),
+    ]
+
+
 async def test_provider_app_validation_never_echoes_secret(client_as, oauth_api):
     response = await client_as(OrgRole.ADMIN).post(
         "/api/v1/integrations/provider-apps",

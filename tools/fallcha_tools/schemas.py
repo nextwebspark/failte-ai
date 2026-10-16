@@ -181,7 +181,7 @@ class ConnectionTestOut(BaseModel):
     connection: ConnectionOut
 
 
-# -- OAuth2 (bring-your-own client) -------------------------------------------
+# -- OAuth2 (workspace or platform client) ------------------------------------
 
 _CLIENT_ID_PATTERN = r"^[\x21-\x7e]+$"  # printable ASCII, no spaces
 
@@ -208,6 +208,11 @@ class ProviderAppOut(BaseModel):
     created_by: int | None
     created_at: datetime
     updated_at: datetime
+    managed: bool = Field(
+        default=False,
+        description="The platform's own client, offered to every workspace "
+        "(listed first). It cannot be deleted.",
+    )
 
 
 class ProviderAppList(BaseModel):

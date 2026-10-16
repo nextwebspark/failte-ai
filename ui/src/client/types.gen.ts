@@ -6651,7 +6651,7 @@ export type ProviderAppListResponse = {
 /**
  * ProviderAppResponse
  *
- * A workspace OAuth client. The secret is write-only.
+ * An OAuth client the workspace can use. The secret is write-only.
  */
 export type ProviderAppResponse = {
     /**
@@ -6680,6 +6680,12 @@ export type ProviderAppResponse = {
      * Updated At
      */
     updated_at: string;
+    /**
+     * Managed
+     *
+     * The platform's own client, offered to every workspace (listed first). It cannot be deleted.
+     */
+    managed?: boolean;
 };
 
 /**

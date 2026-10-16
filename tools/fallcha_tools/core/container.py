@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import uuid
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Annotated, cast
@@ -38,6 +39,8 @@ class AppServices:
     contexts: ContextLoader
     oauth: OAuthFlow
     sync: SyncRunner
+    # The platform OAuth client offered to every workspace (None: none).
+    platform_app_id: uuid.UUID | None
 
 
 def get_services(request: Request) -> AppServices:
@@ -68,7 +71,9 @@ def get_key_repository(session: SessionDep) -> KeyRepository:
 def get_provider_app_repository(
     session: SessionDep, services: ServicesDep
 ) -> ProviderAppRepository:
-    return ProviderAppRepository(session, services.box)
+    return ProviderAppRepository(
+        session, services.box, platform_app_id=services.platform_app_id
+    )
 
 
 ConnectionRepoDep = Annotated[ConnectionRepository, Depends(get_connection_repository)]

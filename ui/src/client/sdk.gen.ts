@@ -322,9 +322,10 @@ export const createWorkflowApiV1WorkflowCreateDefinitionPost = <ThrowOnError ext
  * Create a new workflow from a natural language template request.
  *
  * This endpoint:
- * 1. Uses mps_service_key_client to call MPS workflow API
- * 2. Passes organization ID (authenticated mode) or created_by (OSS mode)
- * 3. Creates the workflow in the database
+ * 1. Generates the workflow: locally with Gemini on the platform's Vertex
+ * project when platform models are enabled, otherwise via the MPS
+ * workflow API (passing organization ID, or created_by in OSS mode)
+ * 2. Creates the workflow in the database
  *
  * Args:
  * request: The template creation request with call_type, use_case, and activity_description
@@ -1126,7 +1127,8 @@ export const syncConnectionApiV1IntegrationsConnectionsConnectionIdSyncPost = <T
 /**
  * List Provider Apps
  *
- * This workspace's OAuth clients. Secrets are never returned.
+ * OAuth clients this workspace can use: its own and the platform's.
+ * Secrets are never returned.
  */
 export const listProviderAppsApiV1IntegrationsProviderAppsGet = <ThrowOnError extends boolean = false>(options?: Options<ListProviderAppsApiV1IntegrationsProviderAppsGetData, ThrowOnError>): RequestResult<ListProviderAppsApiV1IntegrationsProviderAppsGetResponses, ListProviderAppsApiV1IntegrationsProviderAppsGetErrors, ThrowOnError> => (options?.client ?? client).get<ListProviderAppsApiV1IntegrationsProviderAppsGetResponses, ListProviderAppsApiV1IntegrationsProviderAppsGetErrors, ThrowOnError>({ url: '/api/v1/integrations/provider-apps', ...options });
 

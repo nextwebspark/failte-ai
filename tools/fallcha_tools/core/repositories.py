@@ -15,7 +15,8 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 
 from pydantic import JsonValue
-from sqlalchemy import delete, func, select, text, update
+from sqlalchemy import ColumnElement, and_, delete, func, or_, select, text, update
+from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from fallcha_tools.core.crypto import SecretBox
@@ -41,6 +42,8 @@ REFRESH_TOKEN_KEY = "refresh_token"
 PENDING_TTL = timedelta(minutes=10)
 # Max wait for the refresh locks (a refresh itself times out after 4 s).
 LOCK_TIMEOUT_MS = 6000
+# uuid5 namespace of platform OAuth client rows (see :func:`platform_app_id`).
+PLATFORM_APP_NAMESPACE = uuid.UUID("15697e03-fc83-40b0-a61d-ac48808868fe")
 
 
 class ConnectionNotFoundError(NotFoundError):
@@ -103,13 +106,18 @@ class ProviderAppNotFoundError(NotFoundError):
     pass
 
 
+class ManagedProviderAppError(ConflictError):
+    pass
+
+
 class KeyConflictError(ConflictError):
     pass
 
 
 @dataclass(frozen=True, slots=True)
 class ProviderAppInfo:
-    """A bring-your-own OAuth client, without its secret."""
+    """An OAuth client, without its secret. ``managed``: the platform's own
+    client (``org_id`` None), offered to every workspace."""
 
     id: uuid.UUID
     org_id: int | None
@@ -118,6 +126,7 @@ class ProviderAppInfo:
     created_by: int | None
     created_at: datetime
     updated_at: datetime
+    managed: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -174,7 +183,21 @@ def _app_info(row: ProviderApp) -> ProviderAppInfo:
         created_by=row.created_by,
         created_at=row.created_at,
         updated_at=row.updated_at,
+        managed=row.org_id is None,
     )
+
+
+def platform_app_id(family: str, client_id: str) -> uuid.UUID:
+    """The row id of a platform OAuth client: the same on every replica and
+    restart, and new for a new client id (Google ties refresh tokens to the
+    client, so connections made with an old one keep its row)."""
+    return uuid.uuid5(PLATFORM_APP_NAMESPACE, f"{family}:{client_id}")
+
+
+def _app_serves(org_id: int) -> ColumnElement[bool]:
+    """Clients that may finish a flow or refresh a token for the org: its own
+    and every platform client, current or replaced. Never another org's."""
+    return or_(ProviderApp.org_id == org_id, ProviderApp.org_id.is_(None))
 
 
 def hash_oauth_state(state: str) -> str:
@@ -536,12 +559,32 @@ class KeyRepository:
 
 
 class ProviderAppRepository:
-    """Org-owned OAuth clients. Platform apps (``org_id`` NULL) are not
-    managed here."""
+    """The OAuth clients a workspace may use: its own, plus the platform
+    client currently configured (``platform_app_id``; None offers none).
 
-    def __init__(self, session: AsyncSession, box: SecretBox) -> None:
+    Platform rows (``org_id`` NULL) are written only by
+    :class:`PlatformAppRepository` and can never be deleted here."""
+
+    def __init__(
+        self,
+        session: AsyncSession,
+        box: SecretBox,
+        *,
+        platform_app_id: uuid.UUID | None,
+    ) -> None:
         self._session = session
         self._box = box
+        self._platform_app_id = platform_app_id
+
+    def _offered(self, org_id: int) -> ColumnElement[bool]:
+        """Clients the org may list and start a flow with."""
+        own = ProviderApp.org_id == org_id
+        if self._platform_app_id is None:
+            return own
+        platform = and_(
+            ProviderApp.org_id.is_(None), ProviderApp.id == self._platform_app_id
+        )
+        return or_(own, platform)
 
     async def create(
         self,
@@ -565,27 +608,37 @@ class ProviderAppRepository:
         return _app_info(row)
 
     async def list_apps(self, org_id: int) -> list[ProviderAppInfo]:
+        """The platform client first, then the org's own, oldest first."""
         rows = await self._session.scalars(
             select(ProviderApp)
-            .where(ProviderApp.org_id == org_id)
-            .order_by(ProviderApp.created_at)
+            .where(self._offered(org_id))
+            .order_by(ProviderApp.org_id.is_not(None), ProviderApp.created_at)
         )
         return [_app_info(row) for row in rows]
 
     async def get(self, org_id: int, app_id: uuid.UUID) -> ProviderAppInfo:
-        return _app_info(await self._get_row(org_id, app_id))
+        """A client the org may start a flow with."""
+        return _app_info(await self._get_row(app_id, self._offered(org_id)))
 
     async def client(self, org_id: int, app_id: uuid.UUID) -> OAuthClient:
-        row = await self._get_row(org_id, app_id)
+        """Credentials to finish a flow: a flow started with a platform client
+        that has since been replaced still completes."""
+        row = await self._get_row(app_id, _app_serves(org_id))
         return OAuthClient(
             client_id=row.client_id,
             client_secret=self._box.decrypt(row.client_secret_enc),
         )
 
     async def delete_app(self, org_id: int, app_id: uuid.UUID) -> None:
-        """Delete the app (and its pending states). Refused while a live
-        connection still refreshes its tokens with it."""
-        row = await self._get_row(org_id, app_id, for_update=True)
+        """Delete the app (and its pending states). Refused for the platform
+        client, and while a live connection still refreshes its tokens with
+        it."""
+        row = await self._get_row(app_id, self._offered(org_id), for_update=True)
+        if row.org_id is None:
+            # Other workspaces' connections refresh with it too.
+            raise ManagedProviderAppError(
+                "this OAuth client is managed by the platform and cannot be removed"
+            )
         in_use = await self._session.scalar(
             select(func.count())
             .select_from(Connection)
@@ -604,17 +657,57 @@ class ProviderAppRepository:
         await self._session.commit()
 
     async def _get_row(
-        self, org_id: int, app_id: uuid.UUID, *, for_update: bool = False
+        self,
+        app_id: uuid.UUID,
+        visible: ColumnElement[bool],
+        *,
+        for_update: bool = False,
     ) -> ProviderApp:
-        query = select(ProviderApp).where(
-            ProviderApp.id == app_id, ProviderApp.org_id == org_id
-        )
+        query = select(ProviderApp).where(ProviderApp.id == app_id, visible)
         if for_update:
             query = query.with_for_update()
         row = await self._session.scalar(query)
         if row is None:
             raise ProviderAppNotFoundError("OAuth client not found")
         return row
+
+
+class PlatformAppRepository:
+    """The platform's own OAuth clients (``org_id`` NULL), synced from the
+    service's settings at startup."""
+
+    def __init__(self, session: AsyncSession, box: SecretBox) -> None:
+        self._session = session
+        self._box = box
+
+    async def upsert(
+        self, *, family: str, client_id: str, client_secret: str
+    ) -> uuid.UUID:
+        """Create the client's row, or store a rotated secret in place.
+
+        Rows are never deleted: connections refresh with the client that
+        issued their token, and deleting it would null their
+        ``provider_app_id`` (SET NULL) and break every one of them."""
+        app_id = platform_app_id(family, client_id)
+        secret_enc = self._box.encrypt(client_secret)
+        await self._session.execute(
+            insert(ProviderApp)
+            .values(
+                id=app_id,
+                org_id=None,
+                provider=family,
+                client_id=client_id,
+                client_secret_enc=secret_enc,
+            )
+            .on_conflict_do_update(
+                index_elements=[ProviderApp.id],
+                # updated_at explicitly: ORM onupdate does not apply here.
+                set_={"client_secret_enc": secret_enc, "updated_at": func.now()},
+                where=ProviderApp.org_id.is_(None),
+            )
+        )
+        await self._session.commit()
+        return app_id
 
 
 class OAuthStateRepository:
@@ -741,8 +834,7 @@ class OAuthTokenRepository:
         if row.provider_app_id is not None:
             app = await self._session.scalar(
                 select(ProviderApp).where(
-                    ProviderApp.id == row.provider_app_id,
-                    ProviderApp.org_id == org_id,
+                    ProviderApp.id == row.provider_app_id, _app_serves(org_id)
                 )
             )
             if app is not None:
