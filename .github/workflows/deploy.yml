@@ -83,13 +83,14 @@ jobs:
 
       # tags list, not images describe: describe also queries Container
       # Analysis once vulnerability scanning is on, which the deployer can't.
+      # Each row's `tag` is a full resource path ending in /tags/<tag>.
       - name: Release images exist
         env:
           VERSION: ${{ steps.version.outputs.version }}
         run: |
           for image in dograh-api dograh-ui fallcha-tools; do
             gcloud artifacts docker tags list "${REGISTRY}/${image}" --project "$GCP_PROJECT" \
-              --format 'value(name.basename())' | grep -qx "$VERSION" \
+              --format 'value(tag.basename())' | grep -qx "$VERSION" \
               || { echo "::error::${image}:${VERSION} is not in Artifact Registry."; exit 1; }
           done
 
