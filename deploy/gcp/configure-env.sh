@@ -148,6 +148,14 @@ echo "  wrote $TOOLS_ENV"
 set_key ENABLE_SIGNUP true
 set_key FASTAPI_WORKERS 2
 
+# Platform-managed models: every org runs on this project's Vertex AI, Speech
+# and TTS (locations default to eu / europe-west1, see api/constants.py), with
+# the VM service account's credentials, so customers pick models without
+# holding keys. Existing BYOK configurations keep running until an admin saves
+# the Models page. DOGRAH_PLATFORM_MODELS=false keeps the BYOK editor instead.
+set_key PLATFORM_MODELS_ENABLED "${DOGRAH_PLATFORM_MODELS:-true}"
+set_key PLATFORM_VERTEX_PROJECT_ID "${DOGRAH_PLATFORM_VERTEX_PROJECT_ID:-$PROJECT}"
+
 # The upstream PostHog key is hardcoded in docker-compose.yaml and points at the
 # Dograh project's own analytics. Off unless a key of our own is supplied.
 set_key ENABLE_TELEMETRY false
