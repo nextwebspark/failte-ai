@@ -355,6 +355,18 @@ secret) and the tools-only keys into `deploy/gcp/secrets/tools.env` (see
 `PUBLIC_BASE_URL` and `TOOLS_UI_RETURN_URL` to `PUBLIC_BASE_URL/integrations`;
 override with `DOGRAH_TOOLS_PUBLIC_BASE_URL` / `DOGRAH_TOOLS_UI_RETURN_URL`.
 
+**Platform Google client (optional).** When both `dograh-google-oauth-client-id`
+and `dograh-google-oauth-client-secret` exist, `tools.env` also gets
+`TOOLS_GOOGLE_CLIENT_ID` / `TOOLS_GOOGLE_CLIENT_SECRET`, and every workspace
+can connect Google Calendar and Sheets in one click. The client needs the
+redirect URIs `<TOOLS_PUBLIC_BASE_URL>/oauth/google-calendar/callback` and
+`.../google-sheets/callback`, the Calendar and Sheets APIs enabled in its
+project, and the `calendar.events`, `calendar.readonly` and `spreadsheets`
+scopes on its consent screen. Restart `fallcha-tools` after re-running the
+script. A new secret for the same client applies in place; a new client id
+leaves existing connections on the old client, so keep that client alive
+until they reconnect.
+
 **Encrypting existing credentials.** The api's migration seals plaintext rows
 only when it first runs with the key set. Once the key is set on an install
 whose database already passed that migration, run the re-encryption once.

@@ -130,6 +130,16 @@ TOOLS_KEYS="$(sm dograh-tools-encryption-keys)"
 }
 set_key TOOLS_INTERNAL_SECRET "$TOOLS_SECRET"
 PUBLIC_URL="$(grep -E '^PUBLIC_BASE_URL=' "$ENV_FILE" | tail -1 | cut -d= -f2- | tr -d '"' || true)"
+# Optional platform Google OAuth client (the one Google sign-in uses), offered
+# to every workspace for Calendar/Sheets. Both secrets or neither:
+#   printf %s '…apps.googleusercontent.com' | gcloud secrets create dograh-google-oauth-client-id --data-file=-
+#   printf %s 'GOCSPX-…' | gcloud secrets create dograh-google-oauth-client-secret --data-file=-
+# tools.env is rewritten on every run, so deleting the secrets turns it off.
+TOOLS_GOOGLE_ID="$(sm_optional dograh-google-oauth-client-id)"
+TOOLS_GOOGLE_SECRET="$(sm_optional dograh-google-oauth-client-secret)"
+if [[ -n "$TOOLS_GOOGLE_ID" && -z "$TOOLS_GOOGLE_SECRET" ]] || [[ -z "$TOOLS_GOOGLE_ID" && -n "$TOOLS_GOOGLE_SECRET" ]]; then
+  echo "  only one of dograh-google-oauth-client-id / -secret exists: platform Google client left off" >&2
+fi
 TOOLS_DIR="$(dirname "$ENV_FILE")/deploy/gcp/secrets"
 TOOLS_ENV="$TOOLS_DIR/tools.env"
 mkdir -p "$TOOLS_DIR"
@@ -140,6 +150,11 @@ mkdir -p "$TOOLS_DIR"
     # Empty URLs keep OAuth off; service-account connections still work.
     printf 'TOOLS_PUBLIC_BASE_URL=%s\n' "${DOGRAH_TOOLS_PUBLIC_BASE_URL:-$PUBLIC_URL}"
     printf 'TOOLS_UI_RETURN_URL=%s\n' "${DOGRAH_TOOLS_UI_RETURN_URL:-${PUBLIC_URL:+$PUBLIC_URL/integrations}}"
+    # if/fi, not `[[ … ]] && printf`: under set -e a false test would end the subshell.
+    if [[ -n "$TOOLS_GOOGLE_ID" && -n "$TOOLS_GOOGLE_SECRET" ]]; then
+      printf 'TOOLS_GOOGLE_CLIENT_ID=%s\n' "$TOOLS_GOOGLE_ID"
+      printf 'TOOLS_GOOGLE_CLIENT_SECRET=%s\n' "$TOOLS_GOOGLE_SECRET"
+    fi
   } > "$TOOLS_ENV"
 )
 chmod 600 "$TOOLS_ENV"
