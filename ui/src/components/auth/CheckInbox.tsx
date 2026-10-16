@@ -17,11 +17,27 @@ import { startLocalSession } from "@/lib/auth/localSession";
 
 const CODE_LENGTH = 6;
 
+const LINK_CLASS = "text-primary underline-offset-4 hover:underline";
+
 /** Shown after a password signup (or an unverified login) until the user
- *  enters the 6-digit code we emailed them. */
-export function CheckInbox({ email, nextPath = null }: { email: string; nextPath?: string | null }) {
+ *  enters the 6-digit code we emailed them. A link to the page this is shown
+ *  on would not leave it, so the hosting form passes a callback instead:
+ *  ``onSignIn`` from the login form, ``onStartOver`` from the signup form. */
+export function CheckInbox({
+  email,
+  nextPath = null,
+  onSignIn,
+  onStartOver,
+}: {
+  email: string;
+  nextPath?: string | null;
+  onSignIn?: () => void;
+  onStartOver?: () => void;
+}) {
   const [code, setCode] = useState("");
   const [verifying, setVerifying] = useState(false);
+  // Verified, but starting the session failed: the code is used up.
+  const [spent, setSpent] = useState(false);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -44,11 +60,12 @@ export function CheckInbox({ email, nextPath = null }: { email: string; nextPath
       await startLocalSession(res.data, nextPath);
     } catch {
       // Once verified the code is spent; the password still signs them in.
-      setError(
-        verified
-          ? "Your email is verified, but we couldn't sign you in. Please sign in."
-          : "An error occurred. Please try again.",
-      );
+      if (verified) {
+        setSpent(true);
+        setError("Your email is verified, but we couldn't sign you in. Please sign in.");
+      } else {
+        setError("An error occurred. Please try again.");
+      }
       setVerifying(false);
     }
   };
@@ -103,7 +120,7 @@ export function CheckInbox({ email, nextPath = null }: { email: string; nextPath
             {error}
           </p>
         )}
-        <Button type="submit" className="w-full" disabled={verifying || code.length !== CODE_LENGTH}>
+        <Button type="submit" className="w-full" disabled={verifying || spent || code.length !== CODE_LENGTH}>
           {verifying ? "Verifying..." : "Verify email"}
         </Button>
       </form>
@@ -112,13 +129,25 @@ export function CheckInbox({ email, nextPath = null }: { email: string; nextPath
       </Button>
       <p className="text-sm text-muted-foreground">
         Wrong address?{" "}
-        <Link href="/auth/signup" className="text-primary underline-offset-4 hover:underline">
-          Start over
-        </Link>{" "}
+        {onStartOver ? (
+          <button type="button" onClick={onStartOver} className={LINK_CLASS}>
+            Start over
+          </button>
+        ) : (
+          <Link href="/auth/signup" className={LINK_CLASS}>
+            Start over
+          </Link>
+        )}{" "}
         or{" "}
-        <Link href="/auth/login" className="text-primary underline-offset-4 hover:underline">
-          sign in
-        </Link>
+        {onSignIn ? (
+          <button type="button" onClick={onSignIn} className={LINK_CLASS}>
+            sign in
+          </button>
+        ) : (
+          <Link href="/auth/login" className={LINK_CLASS}>
+            sign in
+          </Link>
+        )}
       </p>
     </div>
   );

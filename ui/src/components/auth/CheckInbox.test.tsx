@@ -34,6 +34,7 @@ describe("CheckInbox", () => {
     vi.clearAllMocks();
     mocks.verifyCode.mockResolvedValue({ data: session });
     mocks.resend.mockResolvedValue({ data: undefined });
+    mocks.startLocalSession.mockResolvedValue(undefined);
   });
 
   it("keeps only the digits of a pasted code and verifies it", async () => {
@@ -100,5 +101,27 @@ describe("CheckInbox", () => {
     await waitFor(() => expect(mocks.startLocalSession).toHaveBeenCalled());
     const busy = screen.getByRole("button", { name: "Verifying..." }) as HTMLButtonElement;
     expect(busy.disabled).toBe(true);
+  });
+
+  it("leaves a spent code disabled when signing in fails after verifying", async () => {
+    mocks.startLocalSession.mockRejectedValue(new Error("cookie route down"));
+    render(<CheckInbox email="pat@example.com" />);
+    fireEvent.change(codeInput(), { target: { value: "123456" } });
+    fireEvent.click(screen.getByRole("button", { name: "Verify email" }));
+
+    expect((await screen.findByRole("alert")).textContent).toContain("Please sign in");
+    const submit = screen.getByRole("button", { name: "Verify email" }) as HTMLButtonElement;
+    expect(submit.disabled).toBe(true);
+  });
+
+  it("uses the host form's callbacks instead of linking to the same page", () => {
+    const onSignIn = vi.fn();
+    const onStartOver = vi.fn();
+    render(<CheckInbox email="pat@example.com" onSignIn={onSignIn} onStartOver={onStartOver} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "sign in" }));
+    fireEvent.click(screen.getByRole("button", { name: "Start over" }));
+    expect(onSignIn).toHaveBeenCalledTimes(1);
+    expect(onStartOver).toHaveBeenCalledTimes(1);
   });
 });

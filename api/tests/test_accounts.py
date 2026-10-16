@@ -251,8 +251,9 @@ async def test_code_dies_after_too_many_wrong_guesses(api):
 
 
 async def test_wrong_guesses_lock_verification_across_resends(api):
-    """Resending must not reset the guess budget, and a locked account gets
-    no new (unusable) codes; resetting the password still verifies it."""
+    """Resending must not reset the guess budget. A locked account is told to
+    reset its password instead of getting (unusable) codes, and the reset
+    verifies it."""
     email = _email()
     await _signup(api, email)
     for attempt in range(3):
@@ -263,12 +264,21 @@ async def test_wrong_guesses_lock_verification_across_resends(api):
         for _ in range(5):
             await _verify_code(api, email, "000000")
     assert len(api.sender.sent) == 3
+    account = await db_client.get_account_by_email(email)
+    assert await api.codes.is_locked(account.user_id)
 
-    await api.client.post("/api/v1/auth/resend-verification", json={"email": email})
-    assert len(api.sender.sent) == 3
-    locked = await _verify_code(api, email, api.sender.code())
+    # Even a correct, live code is refused while locked.
+    live = await api.codes.issue(account.user_id)
+    locked = await _verify_code(api, email, live)
     assert locked.status_code == 400
     assert "reset your password" in locked.json()["detail"]
+
+    await api.client.post("/api/v1/auth/resend-verification", json={"email": email})
+    notice = api.sender.sent[-1]
+    assert len(api.sender.sent) == 4
+    assert "resetting your password" in notice.subject
+    assert "/auth/forgot-password" in notice.text
+    assert "verification code is" not in notice.text
 
     await api.client.post("/api/v1/auth/forgot-password", json={"email": email})
     await api.client.post(
@@ -276,6 +286,28 @@ async def test_wrong_guesses_lock_verification_across_resends(api):
         json={"token": api.sender.link_token(), "password": "a brand new password"},
     )
     assert (await _login(api, email, "a brand new password")).status_code == 200
+
+
+async def test_verify_code_is_local_auth_only(api, monkeypatch):
+    monkeypatch.setattr(auth_depends, "AUTH_PROVIDER", "stack")
+    assert (await _verify_code(api, _email(), "123456")).status_code == 404
+
+
+async def test_verify_code_is_throttled_per_real_client_address(api):
+    async def guess(real_ip: str, forwarded: str) -> int:
+        response = await api.client.post(
+            "/api/v1/auth/verify-email-code",
+            json={"email": _email(), "code": "123456"},
+            headers={"x-real-ip": real_ip, "x-forwarded-for": forwarded},
+        )
+        return response.status_code
+
+    # Rotating the client-supplied X-Forwarded-For doesn't reset the budget:
+    # our nginx sets X-Real-IP from the connection.
+    statuses = [await guess("203.0.113.7", f"10.0.0.{i}") for i in range(31)]
+    assert statuses[:30] == [400] * 30
+    assert statuses[30] == 429
+    assert await guess("203.0.113.8", "10.0.0.1") == 400
 
 
 async def test_code_store_outage_keeps_signup_and_login_working(api):

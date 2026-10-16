@@ -58,7 +58,7 @@ export function LoginForm({
   if (unverifiedEmail) {
     return (
       <LocalAuthShell>
-        <CheckInbox email={unverifiedEmail} nextPath={nextPath} />
+        <CheckInbox email={unverifiedEmail} nextPath={nextPath} onSignIn={() => setUnverifiedEmail(null)} />
       </LocalAuthShell>
     );
   }

@@ -87,6 +87,28 @@ def verification_code_message(
     )
 
 
+def verification_locked_message(*, to: str, reset_url: str) -> EmailMessage:
+    text = (
+        f"We couldn't send a new {PRODUCT_NAME} verification code: too many "
+        "incorrect codes were entered for your account recently.\n\n"
+        f"Reset your password to verify your email instead: {reset_url}\n\n"
+        "If you didn't sign up, you can ignore this email."
+    )
+    body = (
+        f"<p>We couldn't send a new {PRODUCT_NAME} verification code: too many "
+        "incorrect codes were entered for your account recently.</p>"
+        "<p>Reset your password to verify your email instead.</p>"
+        '<p style="font-size:13px;color:#666">If you didn\'t sign up, you can '
+        "ignore this email.</p>"
+    )
+    return EmailMessage(
+        to=to,
+        subject=f"Verify your {PRODUCT_NAME} email by resetting your password",
+        text=text,
+        html=_layout("Too many incorrect codes", body, "Reset password", reset_url),
+    )
+
+
 def password_reset_message(
     *, to: str, reset_url: str, expires_in_minutes: int
 ) -> EmailMessage:

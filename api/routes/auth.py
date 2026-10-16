@@ -134,14 +134,20 @@ GLOBAL_EMAIL_LIMIT = 300
 GLOBAL_EMAIL_WINDOW = timedelta(hours=1)
 # Code guesses per client. The real guess budget is per account (see
 # api.services.auth.verification_codes); this only slows one client spraying
-# many addresses. No global cap: it would let one client block everyone.
+# many addresses. No global cap: it would let one client block everyone, so
+# this relies on _client_address not being spoofable behind our nginx.
 CLIENT_CODE_LIMIT = 30
 CLIENT_CODE_WINDOW = timedelta(minutes=15)
 
 
 def _client_address(request: Request) -> str:
-    # Behind the UI proxy every request shares one peer address, so prefer the
-    # forwarded client. It is spoofable, which is why a global cap backs it.
+    # Our nginx sets X-Real-IP to the connecting address, replacing anything
+    # the client sent; X-Forwarded-For keeps client-supplied entries, so its
+    # first hop is only a fallback (e.g. behind another proxy). The global
+    # caps on the email endpoints back this up where it can be spoofed.
+    real_ip = request.headers.get("x-real-ip", "").strip()
+    if real_ip:
+        return real_ip
     forwarded = request.headers.get("x-forwarded-for", "")
     first = forwarded.split(",")[0].strip()
     return first or (request.client.host if request.client else "unknown")

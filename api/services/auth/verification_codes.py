@@ -15,7 +15,8 @@ A code is short enough to type, so it is only safe with a tight guess budget:
 Only an HMAC of ``user_id:code`` is stored, keyed from the server secret, so a
 leaked Redis snapshot doesn't hand out codes. Unlike the rate limiter, this
 store fails closed: a Redis error raises :class:`VerificationCodeUnavailableError`.
-Keys share a ``{user_id}`` hash tag so the script also runs on Redis Cluster.
+Keys share a ``{user_id}`` hash tag, so the script's keys stay in one slot if
+this is ever moved to a cluster client.
 """
 
 import hashlib

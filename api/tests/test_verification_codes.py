@@ -3,7 +3,7 @@ verification email."""
 
 import os
 import uuid
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from redis.exceptions import ConnectionError as RedisConnectionError
@@ -21,7 +21,10 @@ from api.services.auth.verification_codes import (
     derive_code_key,
     new_code,
 )
-from api.services.email.templates import verification_code_message
+from api.services.email.templates import (
+    verification_code_message,
+    verification_locked_message,
+)
 
 requires_redis = pytest.mark.skipif(
     "REDIS_URL" not in os.environ,
@@ -176,6 +179,17 @@ async def test_redis_errors_fail_closed():
         await store.has_live_code(1)
     with pytest.raises(VerificationCodeUnavailableError):
         await store.is_locked(1)
+    client.pipeline = MagicMock(side_effect=RedisConnectionError("down"))
+    with pytest.raises(VerificationCodeUnavailableError):
+        await store.issue(1)
+
+
+def test_locked_email_points_to_password_reset():
+    message = verification_locked_message(
+        to="a@example.com", reset_url="https://app.example.com/auth/forgot-password"
+    )
+    assert "https://app.example.com/auth/forgot-password" in message.text
+    assert 'href="https://app.example.com/auth/forgot-password"' in message.html
 
 
 def test_verification_email_shows_the_code_without_a_link():
