@@ -23,15 +23,161 @@ pre-launch schedule is active. Full breakdown in the plan document.
 
 | File | Purpose |
 |---|---|
-| `bootstrap.sh` | Idempotent `gcloud` setup: project, APIs, IPs, firewall, bucket, Cloud SQL, registry |
-| `docker-compose.override.yaml` | App-VM overlay — drops the Postgres container, points `fallcha-tools` at Cloud SQL (the retired sidecars stay commented out for rollback) |
+| `bootstrap.sh` | Idempotent `gcloud` setup: project, APIs, IPs, firewall, bucket, Cloud SQL, registry, GitHub Actions identity (`ci`) |
+| `docker-compose.override.yaml` | App-VM overlay — drops the Postgres container, points `fallcha-tools` at Cloud SQL, pins api/ui/fallcha-tools to `LIGHTMOVE_VERSION` (the retired sidecars stay commented out for rollback) |
 | `configure-env.sh` | Writes `.env` (and `secrets/tools.env`) from Secret Manager |
-| `cloudbuild.yaml` | Builds `dograh-api`, `dograh-ui` and `fallcha-tools` for linux/amd64 |
+| `cloudbuild.yaml` | Builds the release images `dograh-api`, `dograh-ui` and `fallcha-tools` for linux/amd64, tagged `X.Y.Z` |
+| `deploy.sh` | Runs on the app VM: switches the stack to one release, health-checks it, rolls back on failure |
+| `remote-deploy.sh` | Piped over SSH by the Deploy workflow: runs that release's `deploy.sh` as a systemd unit and streams its log |
+| `certbot-deploy-hook.sh` | certbot renewal hook: copies the renewed certificate into the install's `certs/` and restarts nginx |
 | `verify_gcs.py` | Proves GCS works through the S3 API **before** anything depends on it |
 | `secrets/` | Per-service env files. Gitignored — never commit |
 
 The sip VM overlay lives with its stack, at
 `deploy/asterisk-voiptel/docker-compose.gcp.yaml`.
+
+## Releases and deploys
+
+Production changes only through two GitHub Actions workflows. Nothing is built
+or copied to the VM by hand.
+
+| Workflow | Run it when | What it does |
+|---|---|---|
+| **Release** (`release.yml`) | main has what you want to ship | Full CI on main's head → next version → Cloud Build images tagged `X.Y.Z` → tag `vX.Y.Z` + GitHub Release with notes |
+| **Deploy** (`deploy.yml`) | you approve a release for production | Checks images and both VMs → Cloud SQL backup → IAP SSH → that release's `deploy.sh` → public health check |
+
+**Versions.** Semver tags `vX.Y.Z`, starting at `v0.1.0`. When you run
+Release you pick the bump: `patch` (fixes), `minor` (features), `major`
+(breaking). Tags are the only record of versions: nothing is committed back to
+main, and `api/pyproject.toml` / `ui/package.json` keep upstream's numbers.
+The api reports the release in `/api/v1/health` → `version`.
+
+**Ship a release**
+
+1. Merge to main only when the PR's `ci-ok` check is green.
+2. Actions → **Release** → Run workflow (branch `main`) → choose the bump.
+   About 55 minutes, mostly the API image build.
+3. Actions → **Deploy** → Run workflow → version (empty = latest release).
+   This click is the production approval.
+
+**Roll back.** Run Deploy with the older version. It swaps the images back;
+it does **not** reverse database migrations (the api runs `alembic upgrade
+head` on start), so keep migrations backward compatible, or roll forward with
+a fix release. `deploy.sh` also rolls back by itself when the new version
+fails its health check (from the second deploy on; the first has nothing to
+roll back to, so watch it).
+
+**Where the deploy runs.** Deploy starts `deploy.sh` on the VM as a transient
+systemd unit (`deploy/gcp/remote-deploy.sh`) and streams its log into the job.
+If the SSH session drops or the job is cancelled, the deploy still finishes or
+rolls back on the VM. The job summary names the unit; read it with
+`journalctl -u lightmove-deploy-<run>-<attempt>`.
+
+**What Deploy refuses to do**
+
+- Start a VM. Both VMs must already be running (the app VM alone parks the
+  telephony config), so outside the `dograh-dev-hours` window it fails fast.
+- Overwrite hand edits. If tracked files on the VM differ from the repo, the
+  deploy stops and lists them. Server changes go through a PR and a release.
+- Cut live calls without waiting. It waits up to 10 minutes for active calls
+  to finish before recreating the api.
+
+**Merge gate.** `ci.yml` runs on every PR: api tests, tools tests, UI lint +
+unit tests + build, and the format/OpenAPI drift check, each only when its
+paths changed. `ci-ok` sums them up. On GitHub Free a private repo cannot
+enforce it, so Release re-runs the full suite and stops on any failure. On a
+paid plan, make it binding once:
+
+```bash
+gh api -X POST repos/nextwebspark/failte-ai/rulesets --input - <<'JSON'
+{"name": "main", "target": "branch", "enforcement": "active",
+ "conditions": {"ref_name": {"include": ["~DEFAULT_BRANCH"], "exclude": []}},
+ "rules": [{"type": "deletion"}, {"type": "non_fast_forward"},
+   {"type": "pull_request", "parameters": {"required_approving_review_count": 0,
+     "dismiss_stale_reviews_on_push": false, "require_code_owner_review": false,
+     "require_last_push_approval": false, "required_review_thread_resolution": false}},
+   {"type": "required_status_checks", "parameters": {"strict_required_status_checks_policy": true,
+     "required_status_checks": [{"context": "ci-ok"}]}}]}
+JSON
+```
+
+### One-time setup
+
+1. **GCP identity for GitHub:** `./deploy/gcp/bootstrap.sh apply ci` (plan
+   first without `apply`). It enables the STS / IAM Credentials APIs and
+   creates:
+   - the Workload Identity pool (only `main` of this repo, pinned by repo id);
+   - `github-deployer`: the identity the workflows act as, with narrow roles;
+   - `lightmove-build`: the identity release builds run as, limited to pushing
+     to Artifact Registry. It replaces the project's default build account,
+     which holds Editor.
+
+   It also turns on OS Login for the app VM and prints two values.
+2. **GitHub repo variables** (Settings → Secrets and variables → Actions →
+   Variables): `GCP_WIF_PROVIDER` and `GCP_DEPLOY_SA` from step 1, plus
+   `PUBLIC_BASE_URL` (e.g. `https://app.lightmove.ai`; Deploy refuses to run
+   without it). Optional: `VM_APP_DIR` (default `/opt/lightmove/dograh`).
+3. **App VM checkout** (done 2026-10-16). The install is a git checkout at
+   `/opt/lightmove/dograh`, owned by root, fetching over a read-only deploy key
+   with github.com's host key pinned:
+
+   ```bash
+   sudo ssh-keygen -t ed25519 -N '' -f /root/.ssh/lightmove_deploy -C dograh-app-deploy
+   # add /root/.ssh/lightmove_deploy.pub as a read-only deploy key on the repo
+   # put github.com's ed25519 key (api.github.com/meta) in /root/.ssh/known_hosts_github
+   SSHCMD='ssh -i /root/.ssh/lightmove_deploy -o IdentitiesOnly=yes -o UserKnownHostsFile=/root/.ssh/known_hosts_github -o StrictHostKeyChecking=yes'
+   sudo mkdir -p /opt/lightmove
+   sudo env GIT_SSH_COMMAND="$SSHCMD" git clone git@github.com:nextwebspark/failte-ai.git /opt/lightmove/dograh   # no submodules: images are prebuilt
+   sudo git -C /opt/lightmove/dograh config core.sshCommand "$SSHCMD"
+   echo /certs/ | sudo tee -a /opt/lightmove/dograh/.git/info/exclude
+   ```
+
+   Runtime state copied from the old install (`~/dograh/dograh`): `.env`,
+   `certs/` (nginx mounts it) and the sidecar env files in
+   `deploy/gcp/secrets/`. `.env` additions:
+
+   ```
+   COMPOSE_PROJECT_NAME=dograh                     # the old project: same volumes
+   COMPOSE_FILE=docker-compose.yaml:deploy/gcp/docker-compose.override.yaml
+   COMPOSE_PROFILES=remote,legacy-sidecars         # back to `remote` after the tools cutover
+   PUBLIC_HOST=app.lightmove.ai
+   PUBLIC_BASE_URL=https://app.lightmove.ai
+   ```
+
+   Then `sudo env ENV_FILE=/opt/lightmove/dograh/.env DOGRAH_SQL_IP=10.70.0.3
+   ./deploy/gcp/configure-env.sh` (after creating the three secrets, each
+   readable by `dograh-app-sa`). Root's docker already has the Artifact
+   Registry credential helper; deploys run as root with `HOME=/root`.
+4. **Domain** (done 2026-10-16). `app.lightmove.ai` is a Cloudflare DNS-only A
+   record to the app VM. The certificate was issued by webroot against the
+   nginx that was running, without restarting anything, and copied into the
+   new install:
+
+   ```bash
+   sudo certbot certonly --webroot -w <dir nginx serves certs/ from> \
+     --non-interactive --agree-tos --register-unsafely-without-email -d app.lightmove.ai
+   sudo cp /etc/letsencrypt/live/app.lightmove.ai/fullchain.pem /opt/lightmove/dograh/certs/local.crt
+   sudo cp /etc/letsencrypt/live/app.lightmove.ai/privkey.pem   /opt/lightmove/dograh/certs/local.key
+   ```
+
+   `/etc/letsencrypt/renewal/app.lightmove.ai.conf` uses
+   `/opt/lightmove/dograh/certs` as its webroot. **After the first deploy**,
+   install the renewal hook (it replaces the old one pinned to the old path),
+   then check renewal works end to end:
+
+   ```bash
+   sudo install -m 755 /opt/lightmove/dograh/deploy/gcp/certbot-deploy-hook.sh \
+     /etc/letsencrypt/renewal-hooks/deploy/dograh-reload.sh
+   sudo certbot renew --cert-name app.lightmove.ai --dry-run
+   ```
+
+   `setup_custom_domain.sh` is not used here: it force-recreates the whole
+   stack with `:latest` images through `remote_up.sh`.
+5. **First deploy:** Release (any bump gives `v0.1.0`), then Deploy `0.1.0`.
+   The first switch moves the stack from the old install to this one under
+   the same project name, so containers are recreated in place, volumes are
+   kept, and the sslip URL stops serving (its certificate is no longer
+   mounted). Then follow [Tools service cutover](#tools-service-cutover).
 
 ## Prerequisites
 
@@ -94,7 +240,9 @@ git submodule update --init --recursive
 Build for **linux/amd64** in Cloud Build — the dev machine is arm64 and the API
 image (pipecat with ~18 extras plus a static ffmpeg) is far too slow under
 emulation. `deploy/gcp/cloudbuild.yaml` builds `dograh-api`, `dograh-ui` and
-`fallcha-tools`; build `asterisk-voiptel` for the sip VM separately.
+`fallcha-tools`; the **Release** workflow runs it (see
+[Releases and deploys](#releases-and-deploys)). Build `asterisk-voiptel` for
+the sip VM separately; it is not part of a release.
 
 ## 4. App VM
 
@@ -231,15 +379,14 @@ GCP is stopped as of 2026-10; this is the plan for when it comes back. Do it in
 this order, so no step leaves an agent without a working tool. The old
 sidecars keep running until step 7.
 
-1. **Deploy.** Build with `cloudbuild.yaml`, create the secrets, run
-   `configure-env.sh`, then bring the stack up with the overlay. For the
-   cutover window, uncomment the two sidecar blocks in the overlay so the
-   old tools keep answering.
-   The VM's copy of the overlay may carry local additions. Merge this file
-   into it rather than overwriting it. The api patch mounts described in
-   `app-doc/gcp-voice-stack-runbook.md` are the exception: drop them, since
-   they would shadow files of the new api image this cutover needs. First
-   confirm their changes are in the image.
+1. **Deploy.** Create the secrets, run `configure-env.sh`, then Release and
+   Deploy (see [Releases and deploys](#releases-and-deploys)). For the cutover
+   window, keep the old tools answering by setting
+   `COMPOSE_PROFILES=remote,legacy-sidecars` in the VM's `.env` before the
+   deploy. That starts `calendar-shim` and `chmarine-product-service` from
+   the overlay's `legacy-sidecars` profile; their env files go in
+   `deploy/gcp/secrets/`. The old api patch mounts are gone: their code ships
+   in the images.
    `docker compose ps fallcha-tools` must be healthy, and the Integrations
    page must list Google Calendar, Google Sheets and Website product
    catalogue.
@@ -329,13 +476,15 @@ sidecars keep running until step 7.
      prefix) → cancel. Also run an order lookup.
    - CH Marine: product search → detail → transfer.
 
-   Then comment the sidecar blocks out again and run
-   `docker compose up -d --remove-orphans`. Events booked by the old shim
+   Then set `COMPOSE_PROFILES=remote` again and run
+   `sudo docker compose up -d --remove-orphans` in `/opt/lightmove/dograh`
+   (or just the next Deploy). Events booked by the old shim
    carry no marker, so the agent cannot cancel them; cancel those in Google
    Calendar.
 
-**Rollback:** uncomment the sidecars, `docker compose up -d calendar-shim
-chmarine-product-service`, and re-point the tools (re-running the two setup
+**Rollback:** set `COMPOSE_PROFILES=remote,legacy-sidecars`, run
+`sudo docker compose up -d calendar-shim chmarine-product-service`, and
+re-point the tools (re-running the two setup
 scripts does this). Restore the transfer tool's dynamic resolver. Keep
 `/var/lib/dograh/chmarine` and the shim env files until the cutover has been
 stable for a while.

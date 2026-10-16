@@ -14,6 +14,10 @@
 #   export COMPOSE_FILE=docker-compose.yaml:deploy/gcp/docker-compose.override.yaml
 #
 # Requires Compose v2.24+ for the `!reset` / `!override` merge tags.
+#
+# Images are pinned to one release version: LIGHTMOVE_VERSION in .env (X.Y.Z,
+# no leading v), written by deploy/gcp/deploy.sh. The api, ui and fallcha-tools
+# images of a release are built together by deploy/gcp/cloudbuild.yaml.
 
 services:
   # ---------------------------------------------------------------------------
@@ -43,6 +47,7 @@ services:
   # ---------------------------------------------------------------------------
 
   api:
+    image: "${REGISTRY:?REGISTRY is required}/dograh-api:${LIGHTMOVE_VERSION:?LIGHTMOVE_VERSION is required (set by deploy/gcp/deploy.sh)}"
     # Upstream sets no restart policy on the core services, so after the
     # dograh-dev-hours 19:00 stop only the sidecars came back at 08:00.
     restart: unless-stopped
@@ -71,7 +76,9 @@ services:
   # /oauth/<provider>/callback to it.
   # ---------------------------------------------------------------------------
   fallcha-tools:
-    image: "${REGISTRY:?REGISTRY is required}/fallcha-tools:${FALLCHA_TOOLS_TAG:-latest}"
+    image: "${REGISTRY:?REGISTRY is required}/fallcha-tools:${LIGHTMOVE_VERSION:?LIGHTMOVE_VERSION is required (set by deploy/gcp/deploy.sh)}"
+    # Always the released image, never a local build from ./tools.
+    build: !reset null
     restart: unless-stopped
     # TOOLS_ENCRYPTION_KEYS, TOOLS_PUBLIC_BASE_URL, TOOLS_UI_RETURN_URL.
     # Written from Secret Manager by configure-env.sh; see tools.env.example.
@@ -90,51 +97,60 @@ services:
     depends_on: !reset {}
 
   # ---------------------------------------------------------------------------
-  # ROLLBACK ONLY: the retired agent sidecars. To roll back the tools cutover,
-  # uncomment both, restore their env files and images, and re-point the
-  # http_api tools at them (see README.md). Their data (catalogue.sqlite under
-  # /var/lib/dograh/chmarine) is left on disk for this reason.
+  # The pre-tools-service agent sidecars, behind the `legacy-sidecars` profile.
+  # They are needed during the tools cutover (README "Tools service cutover")
+  # and for rolling it back. Turn them on from the VM's .env, not by editing
+  # this file (deploy.sh refuses hand edits to tracked files):
+  #   COMPOSE_PROFILES=remote,legacy-sidecars
+  # and drop `legacy-sidecars` again once the cutover is verified. Their data
+  # (catalogue.sqlite under /var/lib/dograh/chmarine) stays on disk.
   # ---------------------------------------------------------------------------
-  # calendar-shim:
-  #   image: "${REGISTRY:?REGISTRY is required}/calendar-shim:${CALENDAR_SHIM_TAG:-latest}"
-  #   container_name: calendar-shim
-  #   restart: unless-stopped
-  #   env_file:
-  #     - ./deploy/gcp/secrets/calendar-shim.env
-  #   volumes:
-  #     - /etc/dograh/sa.json:/secrets/sa.json:ro
-  #   healthcheck:
-  #     test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://localhost:8080/health')"]
-  #     interval: 30s
-  #     timeout: 5s
-  #     retries: 3
-  #     start_period: 10s
-  #   networks:
-  #     - app-network
-  #
-  # chmarine-product-service:
-  #   image: "${REGISTRY:?REGISTRY is required}/product-service:${PRODUCT_SERVICE_TAG:-latest}"
-  #   container_name: chmarine-product-service
-  #   restart: unless-stopped
-  #   env_file:
-  #     - ./deploy/gcp/secrets/product-service.env
-  #   volumes:
-  #     - /var/lib/dograh/chmarine:/data
-  #   healthcheck:
-  #     test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://localhost:8080/health')"]
-  #     interval: 30s
-  #     timeout: 5s
-  #     retries: 3
-  #     start_period: 10s
-  #   networks:
-  #     - app-network
+  calendar-shim:
+    image: "${REGISTRY:?REGISTRY is required}/calendar-shim:${CALENDAR_SHIM_TAG:-latest}"
+    container_name: calendar-shim
+    profiles: ["legacy-sidecars"]
+    restart: unless-stopped
+    env_file:
+      - ./deploy/gcp/secrets/calendar-shim.env
+    volumes:
+      - /etc/dograh/sa.json:/secrets/sa.json:ro
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://localhost:8080/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks:
+      - app-network
+
+  chmarine-product-service:
+    image: "${REGISTRY:?REGISTRY is required}/product-service:${PRODUCT_SERVICE_TAG:-latest}"
+    container_name: chmarine-product-service
+    profiles: ["legacy-sidecars"]
+    restart: unless-stopped
+    env_file:
+      - ./deploy/gcp/secrets/product-service.env
+    volumes:
+      - /var/lib/dograh/chmarine:/data
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://localhost:8080/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks:
+      - app-network
 
   # Same reason as api: survive the scheduled VM stop/start and daemon restarts.
   ui:
+    image: "${REGISTRY:?REGISTRY is required}/dograh-ui:${LIGHTMOVE_VERSION:?LIGHTMOVE_VERSION is required (set by deploy/gcp/deploy.sh)}"
     restart: unless-stopped
   nginx:
     restart: unless-stopped
   redis:
     restart: unless-stopped
   minio:
+    # The root file prefixes this with REGISTRY, which here is Artifact
+    # Registry, where nothing mirrors MinIO. Pull it from Docker Hub instead.
+    image: dograhai/minio:2026.09.22
     restart: unless-stopped

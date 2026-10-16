@@ -180,7 +180,13 @@ Prefix our revision messages with `saas_` so ours are greppable in a directory u
 
 ### CI
 
-Upstream's `.github/workflows/` includes `release-please` and Slack announcements wired to *their* infrastructure. On `main`: disable or repoint `release-automation.yml`, `release-deployment.yml`, `slack-announcements.yml`. **Keep `api-tests.yml`** — it is our regression signal against every upstream merge. Add our own deploy workflow as a new file rather than editing theirs.
+Upstream's release and publishing workflows have been deleted from the fork. These are `release-automation.yml` (release-please), `release-deployment.yml` (Vercel), `slack-announcements.yml`, `build-api-image.yml` (their EKS) and `docker-image.yml` (Docker Hub/GHCR). The release-please config and manifest went with them. When an upstream merge modifies one of these files, the result is a modify/delete conflict. Resolve it by keeping the deletion (`git rm <file>`).
+
+What runs instead:
+
+- **`ci.yml`** is the merge gate. It calls `api-tests.yml`, `pre-pr-drift-check.yml` and `tools-tests.yml` (now `workflow_call` only, with no triggers of their own), adds UI checks, and sums everything up in `ci-ok`. `api-tests.yml` is still our regression signal against every upstream merge. Upstream edits to those three files may conflict in their `on:` block; keep ours.
+- **`release.yml` and `deploy.yml`** handle versioned releases (`vX.Y.Z`, our own line from v0.1.0) and production deploys to GCP. See `deploy/gcp/README.md`, "Releases and deploys".
+- **`pr-conventional-labeler.yml`** stays. Its labels feed the release-note categories in `.github/release.yml`.
 
 ## The pipecat submodule
 

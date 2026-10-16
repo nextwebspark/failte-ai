@@ -9,7 +9,7 @@
 #   ./bootstrap.sh apply      # actually create resources (BILLABLE)
 #   ./bootstrap.sh apply net  # run a single step
 #
-# Steps: project apis ips firewall storage sql registry schedule
+# Steps: project apis ips firewall storage sql registry schedule ci
 #
 # See README.md for the full runbook and what each resource is for.
 
@@ -28,6 +28,14 @@ SQL_VERSION="${DOGRAH_SQL_VERSION:-POSTGRES_17}"
 AR_REPO="${DOGRAH_AR_REPO:-dograh}"
 
 STORAGE_SA="dograh-storage"
+
+# GitHub Actions identity for .github/workflows/release.yml and deploy.yml.
+GITHUB_REPO="${DOGRAH_GITHUB_REPO:-nextwebspark/failte-ai}"
+DEPLOY_SA="github-deployer"
+BUILD_SA="lightmove-build"
+WIF_POOL="github"
+WIF_PROVIDER="github-oidc"
+APP_VM="${DOGRAH_APP_VM:-dograh-app}"
 
 # Carrier signalling addresses allowed to reach SIP/RTP on the sip VM.
 # 84.39.233.90 is the only VoIPTel address confirmed responding on 5071.
@@ -69,6 +77,18 @@ run() {
 
 want() { [[ -z "$ONLY" || "$ONLY" == "$1" ]]; }
 
+# Retry a mutation a few times. A service account created a moment ago can
+# still be invisible to IAM policy calls (PERMISSION_DENIED "... or it may not
+# exist") while it propagates.
+retry() {
+  local attempt
+  for attempt in 1 2 3 4 5 6; do
+    "$@" && return 0
+    [[ $attempt -lt 6 ]] && { warn "retrying in 10s (IAM propagation)"; sleep 10; }
+  done
+  return 1
+}
+
 # Does a resource exist? Swallows the "not found" stderr that gcloud emits.
 exists() { "$@" >/dev/null 2>&1; }
 
@@ -108,6 +128,8 @@ if want apis; then
     cloudbuild.googleapis.com
     secretmanager.googleapis.com
     iap.googleapis.com
+    iamcredentials.googleapis.com      # GitHub OIDC -> service account tokens (ci step)
+    sts.googleapis.com                 # Workload Identity Federation token exchange
     sqladmin.googleapis.com
     servicenetworking.googleapis.com   # required for Cloud SQL private IP
   )
@@ -274,6 +296,151 @@ if want schedule; then
   fi
   warn "attach with: gcloud compute instances add-resource-policies <vm> --resource-policies=dograh-dev-hours --zone=$ZONE"
   warn "REMOVE THIS BEFORE GO-LIVE"
+fi
+
+# --- ci ----------------------------------------------------------------------
+# Keyless GitHub Actions access for release.yml (Cloud Build) and deploy.yml
+# (Cloud SQL backup + IAP SSH to the app VM). Only workflow runs on main of
+# GITHUB_REPO can impersonate the deployer, pinned by the repo's numeric id so
+# a renamed or re-created repo with the same name gets nothing.
+if want ci; then
+  step "ci (GitHub Actions)"
+  PROJECT_NUMBER="$(gcloud projects describe "$PROJECT_ID" --format='value(projectNumber)')"
+  DEPLOY_SA_EMAIL="${DEPLOY_SA}@${PROJECT_ID}.iam.gserviceaccount.com"
+  BUILD_SA_EMAIL="${BUILD_SA}@${PROJECT_ID}.iam.gserviceaccount.com"
+  GITHUB_REPO_ID="${DOGRAH_GITHUB_REPO_ID:-$(gh api "repos/$GITHUB_REPO" --jq .id 2>/dev/null || true)}"
+  [[ -n "$GITHUB_REPO_ID" ]] || { echo "set DOGRAH_GITHUB_REPO_ID (gh api repos/$GITHUB_REPO --jq .id)" >&2; exit 1; }
+
+  # Token exchange for Workload Identity Federation (also in the apis step,
+  # repeated here so `apply ci` alone is enough).
+  ENABLED="$(gcloud services list --enabled --project="$PROJECT_ID" --format='value(config.name)' 2>/dev/null || true)"
+  for api in sts.googleapis.com iamcredentials.googleapis.com; do
+    if grep -qx "$api" <<<"$ENABLED"; then
+      skip "$api"
+    else
+      run gcloud services enable "$api" --project="$PROJECT_ID"
+      ok "$api"
+    fi
+  done
+
+  if exists gcloud iam workload-identity-pools describe "$WIF_POOL" --location=global --project="$PROJECT_ID"; then
+    skip "workload identity pool $WIF_POOL"
+  else
+    run gcloud iam workload-identity-pools create "$WIF_POOL" --location=global \
+      --project="$PROJECT_ID" --display-name="GitHub Actions"
+    ok "workload identity pool $WIF_POOL"
+  fi
+
+  if exists gcloud iam workload-identity-pools providers describe "$WIF_PROVIDER" \
+       --workload-identity-pool="$WIF_POOL" --location=global --project="$PROJECT_ID"; then
+    skip "OIDC provider $WIF_PROVIDER"
+  else
+    run gcloud iam workload-identity-pools providers create-oidc "$WIF_PROVIDER" \
+      --workload-identity-pool="$WIF_POOL" --location=global --project="$PROJECT_ID" \
+      --issuer-uri="https://token.actions.githubusercontent.com" \
+      --attribute-mapping="google.subject=assertion.sub,attribute.repository=assertion.repository,attribute.repository_id=assertion.repository_id,attribute.ref=assertion.ref" \
+      --attribute-condition="assertion.repository_id=='${GITHUB_REPO_ID}' && assertion.ref=='refs/heads/main'"
+    ok "OIDC provider $WIF_PROVIDER (repo id $GITHUB_REPO_ID, main only)"
+  fi
+
+  if exists gcloud iam service-accounts describe "$DEPLOY_SA_EMAIL" --project="$PROJECT_ID"; then
+    skip "service account $DEPLOY_SA"
+  else
+    run gcloud iam service-accounts create "$DEPLOY_SA" \
+      --project="$PROJECT_ID" --display-name="GitHub Actions release + deploy"
+    ok "service account $DEPLOY_SA"
+  fi
+
+  retry run gcloud iam service-accounts add-iam-policy-binding "$DEPLOY_SA_EMAIL" \
+    --project="$PROJECT_ID" --role=roles/iam.workloadIdentityUser --format=none \
+    --member="principalSet://iam.googleapis.com/projects/${PROJECT_NUMBER}/locations/global/workloadIdentityPools/${WIF_POOL}/attribute.repository_id/${GITHUB_REPO_ID}"
+  ok "GitHub repo $GITHUB_REPO may impersonate $DEPLOY_SA (idempotent)"
+
+  # Least privilege for backups: create one, follow its operation.
+  if exists gcloud iam roles describe lightmoveSqlBackup --project="$PROJECT_ID"; then
+    skip "custom role lightmoveSqlBackup"
+  else
+    run gcloud iam roles create lightmoveSqlBackup --project="$PROJECT_ID" --format=none \
+      --title="LightMove pre-deploy SQL backup" \
+      --permissions=cloudsql.backupRuns.create,cloudsql.backupRuns.get,cloudsql.backupRuns.list,cloudsql.instances.get
+    ok "custom role lightmoveSqlBackup"
+  fi
+
+  # Project-level roles:
+  #   cloudbuild.builds.editor        submit + poll the release build
+  #   serviceusage.serviceUsageConsumer  required by `gcloud builds submit`
+  #   compute.viewer                  check both VMs are RUNNING
+  #   iap.tunnelResourceAccessor      SSH through the IAP tunnel
+  for role in roles/cloudbuild.builds.editor roles/serviceusage.serviceUsageConsumer \
+              roles/compute.viewer roles/iap.tunnelResourceAccessor \
+              "projects/${PROJECT_ID}/roles/lightmoveSqlBackup"; do
+    retry run gcloud projects add-iam-policy-binding "$PROJECT_ID" --condition=None --quiet \
+      --member="serviceAccount:$DEPLOY_SA_EMAIL" --role="$role" --format=none
+    ok "$role"
+  done
+
+  # Source uploads for `gcloud builds submit` (bucket-scoped). release.yml
+  # passes --gcs-source-staging-dir, so no project-wide bucket listing is needed.
+  run gcloud storage buckets add-iam-policy-binding "gs://${PROJECT_ID}_cloudbuild" \
+    --member="serviceAccount:$DEPLOY_SA_EMAIL" --role=roles/storage.admin --format=none
+  ok "storage.admin on gs://${PROJECT_ID}_cloudbuild"
+
+  # The identity release builds run as (cloudbuild.yaml `serviceAccount`).
+  # Not the project default, the Compute Engine account, which holds Editor:
+  # actAs on that would make the deployer an Editor in all but name.
+  if exists gcloud iam service-accounts describe "$BUILD_SA_EMAIL" --project="$PROJECT_ID"; then
+    skip "service account $BUILD_SA"
+  else
+    run gcloud iam service-accounts create "$BUILD_SA" \
+      --project="$PROJECT_ID" --display-name="Cloud Build: release images"
+    ok "service account $BUILD_SA"
+  fi
+  retry run gcloud artifacts repositories add-iam-policy-binding "$AR_REPO" \
+    --location="$REGION" --project="$PROJECT_ID" \
+    --member="serviceAccount:$BUILD_SA_EMAIL" --role=roles/artifactregistry.writer --format=none
+  ok "$BUILD_SA: artifactregistry.writer on $AR_REPO"
+  run gcloud projects add-iam-policy-binding "$PROJECT_ID" --condition=None --quiet \
+    --member="serviceAccount:$BUILD_SA_EMAIL" --role=roles/logging.logWriter --format=none
+  ok "$BUILD_SA: logging.logWriter"
+  run gcloud storage buckets add-iam-policy-binding "gs://${PROJECT_ID}_cloudbuild" \
+    --member="serviceAccount:$BUILD_SA_EMAIL" --role=roles/storage.objectViewer --format=none
+  ok "$BUILD_SA: objectViewer on gs://${PROJECT_ID}_cloudbuild (source)"
+  retry run gcloud iam service-accounts add-iam-policy-binding "$BUILD_SA_EMAIL" --project="$PROJECT_ID" \
+    --member="serviceAccount:$DEPLOY_SA_EMAIL" --role=roles/iam.serviceAccountUser --format=none
+  ok "$DEPLOY_SA may run builds as $BUILD_SA"
+
+  # Check release images exist (repo-scoped).
+  run gcloud artifacts repositories add-iam-policy-binding "$AR_REPO" \
+    --location="$REGION" --project="$PROJECT_ID" \
+    --member="serviceAccount:$DEPLOY_SA_EMAIL" --role=roles/artifactregistry.reader --format=none
+  ok "artifactregistry.reader on $AR_REPO"
+
+  # OS Login as root on the app VM only, plus actAs on the VM's service
+  # account (required to SSH into a VM that runs as a service account).
+  run gcloud compute instances add-iam-policy-binding "$APP_VM" --zone="$ZONE" --project="$PROJECT_ID" \
+    --member="serviceAccount:$DEPLOY_SA_EMAIL" --role=roles/compute.osAdminLogin --format=none
+  ok "compute.osAdminLogin on $APP_VM"
+  VM_SA="$(gcloud compute instances describe "$APP_VM" --zone="$ZONE" --project="$PROJECT_ID" --format='value(serviceAccounts[0].email)')"
+  if [[ -n "$VM_SA" ]]; then
+    run gcloud iam service-accounts add-iam-policy-binding "$VM_SA" --project="$PROJECT_ID" \
+      --member="serviceAccount:$DEPLOY_SA_EMAIL" --role=roles/iam.serviceAccountUser --format=none
+    ok "serviceAccountUser on $VM_SA"
+  fi
+
+  # OS Login replaces metadata SSH keys on this VM: your own `gcloud compute
+  # ssh` keeps working (as an OS Login user, e.g. you_example_com).
+  if [[ "$(gcloud compute instances describe "$APP_VM" --zone="$ZONE" --project="$PROJECT_ID" \
+          --format='value(metadata.items.enable-oslogin)')" == "TRUE" ]]; then
+    skip "OS Login on $APP_VM"
+  else
+    run gcloud compute instances add-metadata "$APP_VM" --zone="$ZONE" --project="$PROJECT_ID" \
+      --metadata=enable-oslogin=TRUE
+    ok "OS Login on $APP_VM"
+  fi
+
+  echo "  GitHub repo variables (Settings → Secrets and variables → Actions → Variables):"
+  echo "    GCP_WIF_PROVIDER=projects/${PROJECT_NUMBER}/locations/global/workloadIdentityPools/${WIF_POOL}/providers/${WIF_PROVIDER}"
+  echo "    GCP_DEPLOY_SA=${DEPLOY_SA_EMAIL}"
 fi
 
 echo

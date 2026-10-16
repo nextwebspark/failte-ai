@@ -1,21 +1,11 @@
 name: API tests
 
+# Called by ci.yml (the merge gate); not triggered on its own.
 on:
-  pull_request:
-    branches: [main]
-    paths:
-      - "api/**"
-      - "pipecat/**"
-      - "scripts/**"
-      - ".github/workflows/api-tests.yml"
-
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  workflow_call:
 
 jobs:
   pytest:
-    if: ${{ !startsWith(github.head_ref, 'release-please--') }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
@@ -90,19 +80,3 @@ jobs:
       - name: Run pytest
         working-directory: api
         run: pytest tests/ -xvs
-
-  notify-slack-failure:
-    needs: pytest
-    if: ${{ always() && needs.pytest.result == 'failure' }}
-    runs-on: ubuntu-latest
-    env:
-      SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
-    steps:
-      - name: Send Slack notification - Failure
-        if: env.SLACK_WEBHOOK_URL != ''
-        uses: slackapi/slack-github-action@v1.26.0
-        with:
-          payload: |
-            {
-              "text": "❌ Dograh API tests failed on ${{ github.ref_name }} by ${{ github.actor }} - <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Logs>"
-            }

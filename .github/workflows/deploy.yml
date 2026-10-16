@@ -1,0 +1,151 @@
+name: Deploy
+
+# Deploys a published release to production (the GCP app VM). Running this
+# workflow is the approval step; it never runs on its own. To roll back, run
+# it with an older version (images are swapped; migrations are not reversed).
+#
+#   1. resolve the version (default: the latest GitHub Release)
+#   2. check the release images exist and both VMs are running
+#   3. on-demand Cloud SQL backup
+#   4. IAP SSH to dograh-app; deploy/gcp/remote-deploy.sh runs that release's
+#      deploy/gcp/deploy.sh as a systemd unit (drains calls, switches images,
+#      health-checks, auto-rolls back) and streams its log
+#   5. check the public health endpoint reports the new version
+#
+# Needs repo variables GCP_WIF_PROVIDER, GCP_DEPLOY_SA and PUBLIC_BASE_URL;
+# optional VM_APP_DIR (default below).
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Release to deploy, e.g. 0.2.0 (empty = latest release)
+        type: string
+        required: false
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+env:
+  GCP_PROJECT: dograh-eu
+  ZONE: europe-west1-b
+  APP_VM: dograh-app
+  SIP_VM: dograh-sip
+  SQL_INSTANCE: dograh-pg
+  REGISTRY: europe-west1-docker.pkg.dev/dograh-eu/dograh
+  PUBLIC_BASE_URL: ${{ vars.PUBLIC_BASE_URL }}
+  APP_DIR: ${{ vars.VM_APP_DIR || '/opt/lightmove/dograh' }}
+  # Each runner brings a fresh key; expiring it keeps the deployer's OS Login
+  # profile from filling up.
+  SSH_FLAGS: --tunnel-through-iap --quiet --strict-host-key-checking=no --ssh-key-expire-after=1h
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Resolve version
+        id: version
+        env:
+          GH_TOKEN: ${{ github.token }}
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          [[ -n "$PUBLIC_BASE_URL" ]] || { echo "::error::Set the PUBLIC_BASE_URL repo variable (e.g. https://app.lightmove.ai)."; exit 1; }
+          version="${INPUT_VERSION#v}"
+          if [[ -z "$version" ]]; then
+            version="$(gh release view --repo "$GITHUB_REPOSITORY" --json tagName --jq .tagName)"
+            version="${version#v}"
+          fi
+          [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "::error::Bad version '$version'"; exit 1; }
+          gh release view "v${version}" --repo "$GITHUB_REPOSITORY" >/dev/null \
+            || { echo "::error::No GitHub Release v${version}. Run the Release workflow first."; exit 1; }
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "### Deploy v${version} → ${PUBLIC_BASE_URL}" >> "$GITHUB_STEP_SUMMARY"
+
+      # Only the remote wrapper is needed from the repo; the VM fetches the
+      # release itself.
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: deploy/gcp/remote-deploy.sh
+          sparse-checkout-cone-mode: false
+
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOY_SA }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      # tags list, not images describe: describe also queries Container
+      # Analysis once vulnerability scanning is on, which the deployer can't.
+      - name: Release images exist
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          for image in dograh-api dograh-ui fallcha-tools; do
+            gcloud artifacts docker tags list "${REGISTRY}/${image}" --project "$GCP_PROJECT" \
+              --format 'value(name.basename())' | grep -qx "$VERSION" \
+              || { echo "::error::${image}:${VERSION} is not in Artifact Registry."; exit 1; }
+          done
+
+      # Never start VMs from here: the app VM without the SIP VM parks the
+      # telephony config (one-way). Start both by hand, then re-run.
+      - name: Both VMs are running
+        run: |
+          for vm in "$APP_VM" "$SIP_VM"; do
+            status="$(gcloud compute instances describe "$vm" --zone "$ZONE" --project "$GCP_PROJECT" --format 'value(status)')"
+            [[ "$status" == "RUNNING" ]] || { echo "::error::${vm} is ${status}. Start both VMs, then re-run."; exit 1; }
+          done
+
+      - name: Back up Cloud SQL
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          gcloud sql backups create --instance "$SQL_INSTANCE" --project "$GCP_PROJECT" \
+            --description "pre-deploy v${VERSION} (run ${GITHUB_RUN_ID})"
+
+      - name: SSH reachable (IAP)
+        run: |
+          for attempt in 1 2 3 4 5; do
+            # shellcheck disable=SC2086  # SSH_FLAGS is a flag list
+            if gcloud compute ssh "$APP_VM" --zone "$ZONE" --project "$GCP_PROJECT" $SSH_FLAGS --command true; then
+              exit 0
+            fi
+            echo "ssh attempt ${attempt} failed — retrying"
+            sleep 15
+          done
+          echo "::error::Cannot SSH to ${APP_VM} over IAP."
+          exit 1
+
+      - name: Deploy on the app VM
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          unit="lightmove-deploy-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          echo "On the VM: journalctl -u ${unit}" >> "$GITHUB_STEP_SUMMARY"
+          # shellcheck disable=SC2086  # SSH_FLAGS is a flag list
+          gcloud compute ssh "$APP_VM" --zone "$ZONE" --project "$GCP_PROJECT" $SSH_FLAGS \
+            --ssh-flag "-o ServerAliveInterval=30" \
+            --command "bash -s -- '${VERSION}' '${APP_DIR}' '${unit}'" \
+            < deploy/gcp/remote-deploy.sh
+
+      - name: Public health reports the new version
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          for attempt in $(seq 1 12); do
+            got="$(curl -fsS --max-time 10 "${PUBLIC_BASE_URL}/api/v1/health" | jq -r .version || true)"
+            if [[ "$got" == "$VERSION" ]]; then
+              echo "Live: ${PUBLIC_BASE_URL} reports ${got}" | tee -a "$GITHUB_STEP_SUMMARY"
+              exit 0
+            fi
+            echo "attempt ${attempt}: version '${got}'"
+            sleep 10
+          done
+          echo "::error::${PUBLIC_BASE_URL}/api/v1/health does not report ${VERSION}."
+          exit 1

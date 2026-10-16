@@ -1,18 +1,11 @@
 name: Tools service tests
 
+# Called by ci.yml (the merge gate); not triggered on its own.
 on:
-  pull_request:
-    paths:
-      - "tools/**"
-      - ".github/workflows/tools-tests.yml"
-
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  workflow_call:
 
 jobs:
   checks:
-    if: ${{ !startsWith(github.head_ref, 'release-please--') }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
