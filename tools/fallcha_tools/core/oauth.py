@@ -154,6 +154,14 @@ class OAuthCallbackError(Exception):
         self.reason = reason
 
 
+def own_scopes(spec: OAuthSpec, granted: Sequence[str]) -> tuple[str, ...]:
+    """The granted scopes this provider can ask for. A token may carry more
+    (grants the same account made to the same client elsewhere); they are
+    neither this connection's to use nor to show."""
+    known = {*spec.identity_scopes, *spec.scopes, *spec.optional_scopes}
+    return tuple(scope for scope in granted if scope in known)
+
+
 # -- token endpoint -----------------------------------------------------------
 
 
@@ -413,8 +421,7 @@ class OAuthFlow:
             "code_challenge_method": "S256",
         }
         if login_hint:
-            # With include_granted_scopes (Google), a known account sees one
-            # incremental consent for the new provider's scopes only.
+            # Skips the provider's account chooser for a known account.
             params["login_hint"] = login_hint
         return StartedAuthorization(
             authorization_url=_with_query(spec.authorize_url, params),
@@ -476,7 +483,9 @@ class OAuthFlow:
         if not grant.refresh_token:
             raise OAuthCallbackError(CallbackFailure.NO_REFRESH_TOKEN)
         requested = (*spec.identity_scopes, *spec.scopes)
-        granted = grant.scopes if grant.scopes is not None else requested
+        granted = own_scopes(
+            spec, grant.scopes if grant.scopes is not None else requested
+        )
         if not set(spec.scopes) <= set(granted):
             # The user unticked a required permission on the consent screen.
             raise OAuthCallbackError(CallbackFailure.SCOPES_MISSING)
@@ -669,7 +678,9 @@ class OAuthTokenManager:
                 access_token=grant.access_token,
                 expires_at=grant.expires_at,
                 refresh_token=grant.refresh_token,
-                scopes_granted=grant.scopes,
+                scopes_granted=(
+                    own_scopes(spec, grant.scopes) if grant.scopes else None
+                ),
             )
             return AccessToken(grant.access_token, grant.expires_at)
 

@@ -19,10 +19,13 @@ SHEETS_SCOPE = "https://www.googleapis.com/auth/spreadsheets"
 GOOGLE_AUTHORIZE_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 GOOGLE_USERINFO_URL = "https://openidconnect.googleapis.com/v1/userinfo"
 # Offline access (a refresh token), re-consented on every connect so a
-# reconnect always yields a fresh refresh token.
+# reconnect always yields a fresh refresh token. No include_granted_scopes:
+# one platform client serves every workspace, and merging grants would hand a
+# connection in one workspace the scopes the same Google account granted to
+# another integration or workspace.
 GOOGLE_AUTHORIZE_PARAMS = {
     "access_type": "offline",
     "prompt": "consent",
-    "include_granted_scopes": "true",
+    "include_granted_scopes": "false",
 }
 GOOGLE_IDENTITY_SCOPES = ("openid", "email")

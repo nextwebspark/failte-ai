@@ -19,7 +19,7 @@ from sqlalchemy import ColumnElement, and_, delete, func, or_, select, text, upd
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from fallcha_tools.core.crypto import SecretBox
+from fallcha_tools.core.crypto import DecryptionError, SecretBox
 from fallcha_tools.core.errors import ConflictError, NotFoundError
 from fallcha_tools.core.keys import (
     generate_connection_key,
@@ -708,6 +708,61 @@ class PlatformAppRepository:
         )
         await self._session.commit()
         return app_id
+
+    async def reencrypt_replaced(self, current_id: uuid.UUID) -> int:
+        """Re-encrypt replaced platform clients under the primary key.
+
+        The current client is re-encrypted by :meth:`upsert`; replaced ones
+        are never written again, so without this they would be the one thing
+        a key rotation (prepend a key, re-encrypt, drop the old key) misses
+        for the platform. Connections, workspace clients and OAuth states
+        still need that rotation's own re-encryption. Rows already under the
+        primary key are skipped; rows no current key can read are left alone
+        and counted."""
+        rows = (
+            await self._session.scalars(
+                select(ProviderApp)
+                .where(ProviderApp.org_id.is_(None), ProviderApp.id != current_id)
+                # NO KEY UPDATE: doesn't block connections being inserted
+                # against these rows (their FK check takes KEY SHARE).
+                .with_for_update(key_share=True)
+            )
+        ).all()
+        unreadable = 0
+        for row in rows:
+            if self._box.is_primary(row.client_secret_enc):
+                continue
+            try:
+                row.client_secret_enc = self._box.rotate(row.client_secret_enc)
+            except DecryptionError:
+                unreadable += 1
+        await self._session.commit()
+        return unreadable
+
+    async def clear_rejections(self, app_id: uuid.UUID) -> int:
+        """Let connections the provider rejected this client for try again.
+
+        ``client_rejected`` is terminal per connection, but with a shared
+        client it usually means the deployment had a bad secret: once the
+        service restarts with a good one, every workspace would otherwise
+        have to reconnect. A still-bad client just flags them again on the
+        next refresh. Tokens were kept (``drop_tokens=False``)."""
+        result = await self._session.execute(
+            update(Connection)
+            .where(
+                Connection.provider_app_id == app_id,
+                Connection.status == ConnectionStatus.ERROR,
+                Connection.error_code == ConnectionErrorCode.CLIENT_REJECTED,
+            )
+            .values(
+                status=ConnectionStatus.ACTIVE,
+                error_code=None,
+                last_error=None,
+                updated_at=func.now(),
+            )
+        )
+        await self._session.commit()
+        return int(result.rowcount or 0)  # type: ignore[attr-defined]
 
 
 class OAuthStateRepository:
