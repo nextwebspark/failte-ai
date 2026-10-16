@@ -77,6 +77,18 @@ run() {
 
 want() { [[ -z "$ONLY" || "$ONLY" == "$1" ]]; }
 
+# Retry a mutation a few times. A service account created a moment ago can
+# still be invisible to IAM policy calls (PERMISSION_DENIED "... or it may not
+# exist") while it propagates.
+retry() {
+  local attempt
+  for attempt in 1 2 3 4 5 6; do
+    "$@" && return 0
+    [[ $attempt -lt 6 ]] && { warn "retrying in 10s (IAM propagation)"; sleep 10; }
+  done
+  return 1
+}
+
 # Does a resource exist? Swallows the "not found" stderr that gcloud emits.
 exists() { "$@" >/dev/null 2>&1; }
 
@@ -339,8 +351,8 @@ if want ci; then
     ok "service account $DEPLOY_SA"
   fi
 
-  run gcloud iam service-accounts add-iam-policy-binding "$DEPLOY_SA_EMAIL" \
-    --project="$PROJECT_ID" --role=roles/iam.workloadIdentityUser \
+  retry run gcloud iam service-accounts add-iam-policy-binding "$DEPLOY_SA_EMAIL" \
+    --project="$PROJECT_ID" --role=roles/iam.workloadIdentityUser --format=none \
     --member="principalSet://iam.googleapis.com/projects/${PROJECT_NUMBER}/locations/global/workloadIdentityPools/${WIF_POOL}/attribute.repository_id/${GITHUB_REPO_ID}"
   ok "GitHub repo $GITHUB_REPO may impersonate $DEPLOY_SA (idempotent)"
 
@@ -348,7 +360,7 @@ if want ci; then
   if exists gcloud iam roles describe lightmoveSqlBackup --project="$PROJECT_ID"; then
     skip "custom role lightmoveSqlBackup"
   else
-    run gcloud iam roles create lightmoveSqlBackup --project="$PROJECT_ID" \
+    run gcloud iam roles create lightmoveSqlBackup --project="$PROJECT_ID" --format=none \
       --title="LightMove pre-deploy SQL backup" \
       --permissions=cloudsql.backupRuns.create,cloudsql.backupRuns.get,cloudsql.backupRuns.list,cloudsql.instances.get
     ok "custom role lightmoveSqlBackup"
@@ -362,7 +374,7 @@ if want ci; then
   for role in roles/cloudbuild.builds.editor roles/serviceusage.serviceUsageConsumer \
               roles/compute.viewer roles/iap.tunnelResourceAccessor \
               "projects/${PROJECT_ID}/roles/lightmoveSqlBackup"; do
-    run gcloud projects add-iam-policy-binding "$PROJECT_ID" --condition=None --quiet \
+    retry run gcloud projects add-iam-policy-binding "$PROJECT_ID" --condition=None --quiet \
       --member="serviceAccount:$DEPLOY_SA_EMAIL" --role="$role" --format=none
     ok "$role"
   done
@@ -383,7 +395,7 @@ if want ci; then
       --project="$PROJECT_ID" --display-name="Cloud Build: release images"
     ok "service account $BUILD_SA"
   fi
-  run gcloud artifacts repositories add-iam-policy-binding "$AR_REPO" \
+  retry run gcloud artifacts repositories add-iam-policy-binding "$AR_REPO" \
     --location="$REGION" --project="$PROJECT_ID" \
     --member="serviceAccount:$BUILD_SA_EMAIL" --role=roles/artifactregistry.writer --format=none
   ok "$BUILD_SA: artifactregistry.writer on $AR_REPO"
@@ -393,7 +405,7 @@ if want ci; then
   run gcloud storage buckets add-iam-policy-binding "gs://${PROJECT_ID}_cloudbuild" \
     --member="serviceAccount:$BUILD_SA_EMAIL" --role=roles/storage.objectViewer --format=none
   ok "$BUILD_SA: objectViewer on gs://${PROJECT_ID}_cloudbuild (source)"
-  run gcloud iam service-accounts add-iam-policy-binding "$BUILD_SA_EMAIL" --project="$PROJECT_ID" \
+  retry run gcloud iam service-accounts add-iam-policy-binding "$BUILD_SA_EMAIL" --project="$PROJECT_ID" \
     --member="serviceAccount:$DEPLOY_SA_EMAIL" --role=roles/iam.serviceAccountUser --format=none
   ok "$DEPLOY_SA may run builds as $BUILD_SA"
 
