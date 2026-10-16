@@ -30,31 +30,46 @@ export function CheckInbox({ email, nextPath = null }: { email: string; nextPath
     if (code.length !== CODE_LENGTH) return;
     setVerifying(true);
     setError(null);
+    let verified = false;
     try {
       const res = await verifyEmailCodeApiV1AuthVerifyEmailCodePost({ body: { email, code } });
       if (res.error || !res.data) {
         setError(detailFromError(res.error, "Could not verify the code. Please try again."));
+        setVerifying(false);
         return;
       }
+      verified = true;
+      // Stays "Verifying..." while the browser navigates away, so the used
+      // code can't be submitted twice.
       await startLocalSession(res.data, nextPath);
     } catch {
-      setError("An error occurred. Please try again.");
-    } finally {
+      // Once verified the code is spent; the password still signs them in.
+      setError(
+        verified
+          ? "Your email is verified, but we couldn't sign you in. Please sign in."
+          : "An error occurred. Please try again.",
+      );
       setVerifying(false);
     }
   };
 
   const resend = async () => {
     setSending(true);
-    const res = await resendVerificationApiV1AuthResendVerificationPost({ body: { email } });
-    setSending(false);
-    if (res.error) {
-      toast.error(detailFromError(res.error, "Could not send a new code. Please try again."));
-      return;
+    try {
+      const res = await resendVerificationApiV1AuthResendVerificationPost({ body: { email } });
+      if (res.error) {
+        toast.error(detailFromError(res.error, "Could not send a new code. Please try again."));
+        return;
+      }
+      setError(null);
+      // The API answers the same whether or not it sent (repeat requests are
+      // dropped silently), so don't promise an email or clear a working code.
+      toast.success("If a new code is due, it's on its way. Use the code from the newest email.");
+    } catch {
+      toast.error("Could not send a new code. Please try again.");
+    } finally {
+      setSending(false);
     }
-    setCode("");
-    setError(null);
-    toast.success("We sent you a new code");
   };
 
   return (
@@ -99,6 +114,10 @@ export function CheckInbox({ email, nextPath = null }: { email: string; nextPath
         Wrong address?{" "}
         <Link href="/auth/signup" className="text-primary underline-offset-4 hover:underline">
           Start over
+        </Link>{" "}
+        or{" "}
+        <Link href="/auth/login" className="text-primary underline-offset-4 hover:underline">
+          sign in
         </Link>
       </p>
     </div>

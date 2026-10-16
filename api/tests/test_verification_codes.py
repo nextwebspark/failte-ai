@@ -11,8 +11,10 @@ from redis.exceptions import ConnectionError as RedisConnectionError
 from api.errors.account import VerificationCodeUnavailableError
 from api.services.auth.verification_codes import (
     CODE_TTL,
+    HOURLY_FAILURE_LIMIT,
+    LONG_FAILURE_LIMIT,
+    LONG_FAILURE_WINDOW,
     MAX_ATTEMPTS_PER_CODE,
-    MAX_FAILURES_PER_WINDOW,
     CodeCheck,
     RedisVerificationCodeStore,
     code_digest,
@@ -41,10 +43,28 @@ async def store():
     await store._redis().aclose()
 
 
-async def _cleanup(store: RedisVerificationCodeStore, user_id: int) -> None:
-    await store._redis().delete(
-        f"email-code:{user_id}", f"email-code-failures:{user_id}"
+def _keys(user_id: int) -> tuple[str, str, str]:
+    # One {user_id} hash tag, so the script's keys share a cluster slot.
+    return (
+        f"email-code:{{{user_id}}}",
+        f"email-code-failures-1h:{{{user_id}}}",
+        f"email-code-failures-30d:{{{user_id}}}",
     )
+
+
+async def _cleanup(store: RedisVerificationCodeStore, user_id: int) -> None:
+    await store._redis().delete(*_keys(user_id))
+
+
+async def _fail(store: RedisVerificationCodeStore, user_id: int, times: int) -> None:
+    """Spend ``times`` wrong guesses, issuing new codes as they burn out."""
+    spent = 0
+    while spent < times:
+        code = await store.issue(user_id)
+        wrong = "000000" if code != "000000" else "111111"
+        for _ in range(min(MAX_ATTEMPTS_PER_CODE, times - spent)):
+            assert await store.check(user_id, wrong) is CodeCheck.WRONG
+            spent += 1
 
 
 def test_new_code_is_six_digits():
@@ -66,9 +86,9 @@ async def test_issue_check_consume(store):
     try:
         code = await store.issue(user_id)
         assert await store.has_live_code(user_id)
-        stored = await store._redis().hgetall(f"email-code:{user_id}")
-        assert code not in stored.values()  # only the digest is kept
-        ttl = await store._redis().ttl(f"email-code:{user_id}")
+        stored = await store._redis().hgetall(_keys(user_id)[0])
+        assert stored and code not in stored.values()  # only the digest is kept
+        ttl = await store._redis().ttl(_keys(user_id)[0])
         assert 0 < ttl <= CODE_TTL.total_seconds()
 
         assert await store.check(user_id, code) is CodeCheck.VERIFIED
@@ -109,22 +129,35 @@ async def test_code_is_burned_after_max_attempts(store):
 
 
 @requires_redis
-async def test_failures_lock_across_reissues(store):
+async def test_hourly_failures_lock_across_reissues(store):
     user_id = _user_id()
     try:
-        failures = 0
-        while failures < MAX_FAILURES_PER_WINDOW:
-            code = await store.issue(user_id)
-            wrong = "000000" if code != "000000" else "111111"
-            for _ in range(MAX_ATTEMPTS_PER_CODE):
-                if failures == MAX_FAILURES_PER_WINDOW:
-                    break
-                assert await store.check(user_id, wrong) is CodeCheck.WRONG
-                failures += 1
+        await _fail(store, user_id, HOURLY_FAILURE_LIMIT)
+        assert await store.is_locked(user_id)
         fresh = await store.issue(user_id)
         assert await store.check(user_id, fresh) is CodeCheck.LOCKED
-        ttl = await store._redis().ttl(f"email-code-failures:{user_id}")
-        assert ttl > 0
+        assert 0 < await store._redis().ttl(_keys(user_id)[1]) <= 3600
+    finally:
+        await _cleanup(store, user_id)
+
+
+@requires_redis
+async def test_long_window_caps_total_guesses(store):
+    user_id = _user_id()
+    hourly, long_window = _keys(user_id)[1:]
+    try:
+        await _fail(store, user_id, HOURLY_FAILURE_LIMIT - 1)
+        assert not await store.is_locked(user_id)
+        # The hour has passed; the long-window count stays.
+        await store._redis().delete(hourly)
+        await store._redis().set(long_window, LONG_FAILURE_LIMIT - 1, keepttl=True)
+        assert not await store.is_locked(user_id)
+        await _fail(store, user_id, 1)
+        assert await store.is_locked(user_id)
+        fresh = await store.issue(user_id)
+        assert await store.check(user_id, fresh) is CodeCheck.LOCKED
+        ttl = await store._redis().ttl(long_window)
+        assert 0 < ttl <= LONG_FAILURE_WINDOW.total_seconds()
     finally:
         await _cleanup(store, user_id)
 
@@ -134,12 +167,15 @@ async def test_redis_errors_fail_closed():
     client = AsyncMock()
     client.eval.side_effect = RedisConnectionError("down")
     client.exists.side_effect = RedisConnectionError("down")
+    client.mget.side_effect = RedisConnectionError("down")
     store._client = client
 
     with pytest.raises(VerificationCodeUnavailableError):
         await store.check(1, "123456")
     with pytest.raises(VerificationCodeUnavailableError):
         await store.has_live_code(1)
+    with pytest.raises(VerificationCodeUnavailableError):
+        await store.is_locked(1)
 
 
 def test_verification_email_shows_the_code_without_a_link():

@@ -217,6 +217,9 @@ class AccountService:
         """Log in with the code mailed at signup. Every failure looks the
         same, so this can't be used to find out which addresses exist."""
         account = await self._store.get_account_by_email(email.strip())
+        # Ask the store about every address, known or not, so an outage fails
+        # all requests alike instead of singling out unverified accounts.
+        await self._codes.is_locked(account.user_id if account else 0)
         # A verified address has nothing left to prove; a code still in Redis
         # after Google linking or a password reset must not log anyone in.
         if account is None or account.is_email_verified:
@@ -387,6 +390,10 @@ class AccountService:
         if account.email is None:
             return
         try:
+            # While locked a new code could not be used; the owner verifies by
+            # resetting their password (the error message says so).
+            if await self._codes.is_locked(account.user_id):
+                return
             code = await self._codes.issue(account.user_id)
         except VerificationCodeUnavailableError:
             # Signup still succeeds; the user can ask for another code.

@@ -251,7 +251,8 @@ async def test_code_dies_after_too_many_wrong_guesses(api):
 
 
 async def test_wrong_guesses_lock_verification_across_resends(api):
-    """Resending must not reset the guess budget."""
+    """Resending must not reset the guess budget, and a locked account gets
+    no new (unusable) codes; resetting the password still verifies it."""
     email = _email()
     await _signup(api, email)
     for attempt in range(3):
@@ -261,10 +262,45 @@ async def test_wrong_guesses_lock_verification_across_resends(api):
             )
         for _ in range(5):
             await _verify_code(api, email, "000000")
+    assert len(api.sender.sent) == 3
 
     await api.client.post("/api/v1/auth/resend-verification", json={"email": email})
-    assert len(api.sender.sent) == 4
-    assert (await _verify_code(api, email, api.sender.code())).status_code == 400
+    assert len(api.sender.sent) == 3
+    locked = await _verify_code(api, email, api.sender.code())
+    assert locked.status_code == 400
+    assert "reset your password" in locked.json()["detail"]
+
+    await api.client.post("/api/v1/auth/forgot-password", json={"email": email})
+    await api.client.post(
+        "/api/v1/auth/reset-password",
+        json={"token": api.sender.link_token(), "password": "a brand new password"},
+    )
+    assert (await _login(api, email, "a brand new password")).status_code == 200
+
+
+async def test_code_store_outage_keeps_signup_and_login_working(api):
+    api.codes.down = True
+    email = _email()
+
+    signup = await _signup(api, email)
+    assert signup.status_code == 200
+    assert signup.json()["verification_required"] is True
+    assert api.sender.sent == []
+    login = await _login(api, email)
+    assert login.status_code == 403
+    assert login.json()["code"] == "email_not_verified"
+
+
+async def test_code_store_outage_fails_every_address_alike(api):
+    email = _email()
+    await _signup(api, email)
+    code = api.sender.code()
+    api.codes.down = True
+
+    for address in (email, _email()):
+        response = await _verify_code(api, address, code)
+        assert response.status_code == 503
+        assert response.json()["code"] == "verification_unavailable"
 
 
 async def test_password_reset_voids_a_pending_code(api):

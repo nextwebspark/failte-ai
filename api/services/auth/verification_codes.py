@@ -5,13 +5,17 @@ A code is short enough to type, so it is only safe with a tight guess budget:
 * one live code per user, valid for :data:`CODE_TTL`; issuing a new one
   replaces it;
 * each code dies after :data:`MAX_ATTEMPTS_PER_CODE` wrong guesses;
-* :data:`MAX_FAILURES_PER_WINDOW` wrong guesses per user per
-  :data:`FAILURE_WINDOW`, across resends, lock verification until the window
-  ends (otherwise resending would reset the budget).
+* wrong guesses per user are also counted across codes (otherwise resending
+  would reset the budget): :data:`HOURLY_FAILURE_LIMIT` per hour and
+  :data:`LONG_FAILURE_LIMIT` per :data:`LONG_FAILURE_WINDOW` lock
+  verification. The long window bounds what a patient guesser gets over an
+  invitation's lifetime to a fraction of a percent; a locked-out owner
+  verifies by resetting their password instead.
 
 Only an HMAC of ``user_id:code`` is stored, keyed from the server secret, so a
 leaked Redis snapshot doesn't hand out codes. Unlike the rate limiter, this
 store fails closed: a Redis error raises :class:`VerificationCodeUnavailableError`.
+Keys share a ``{user_id}`` hash tag so the script also runs on Redis Cluster.
 """
 
 import hashlib
@@ -31,8 +35,11 @@ from api.errors.account import VerificationCodeUnavailableError
 CODE_DIGITS = 6
 CODE_TTL = timedelta(minutes=15)
 MAX_ATTEMPTS_PER_CODE = 5
-MAX_FAILURES_PER_WINDOW = 15
-FAILURE_WINDOW = timedelta(hours=1)
+HOURLY_FAILURE_LIMIT = 15
+HOURLY_FAILURE_WINDOW = timedelta(hours=1)
+LONG_FAILURE_LIMIT = 50
+LONG_FAILURE_WINDOW = timedelta(days=30)
+_REDIS_TIMEOUT_SECONDS = 3
 
 _KEY_LABEL = b"email-verification-code"
 
@@ -42,7 +49,7 @@ class CodeCheck(StrEnum):
     WRONG = "wrong"
     # No live code: never issued, expired, used, or burned by wrong guesses.
     MISSING = "missing"
-    # Too many wrong guesses across codes; wait for the window to end.
+    # Too many wrong guesses across codes; wait, or reset the password.
     LOCKED = "locked"
 
 
@@ -52,6 +59,10 @@ class VerificationCodeStore(Protocol):
         ...
 
     async def has_live_code(self, user_id: int) -> bool: ...
+
+    async def is_locked(self, user_id: int) -> bool:
+        """True while wrong guesses have locked verification for the user."""
+        ...
 
     async def check(self, user_id: int, code: str) -> CodeCheck:
         """Spend one attempt on ``code``; a verified code is consumed."""
@@ -71,12 +82,13 @@ def code_digest(key: bytes, user_id: int, code: str) -> str:
     return hmac.new(key, f"{user_id}:{code}".encode(), hashlib.sha256).hexdigest()
 
 
-# KEYS[1] code hash, KEYS[2] failure counter.
-# ARGV: digest, max attempts per code, max failures per window, window seconds.
+# KEYS[1] code hash, KEYS[2] hourly failures, KEYS[3] long-window failures.
+# ARGV: digest, max attempts per code, hourly limit, hourly window seconds,
+# long limit, long window seconds.
 # Returns 1 verified, 0 wrong, -1 missing, -2 locked.
 _CHECK_SCRIPT = """
-local failures = tonumber(redis.call('GET', KEYS[2]) or '0')
-if failures >= tonumber(ARGV[3]) then
+if tonumber(redis.call('GET', KEYS[2]) or '0') >= tonumber(ARGV[3])
+   or tonumber(redis.call('GET', KEYS[3]) or '0') >= tonumber(ARGV[5]) then
   return -2
 end
 local stored = redis.call('HGET', KEYS[1], 'digest')
@@ -89,6 +101,9 @@ if stored == ARGV[1] then
 end
 if redis.call('INCR', KEYS[2]) == 1 then
   redis.call('EXPIRE', KEYS[2], tonumber(ARGV[4]))
+end
+if redis.call('INCR', KEYS[3]) == 1 then
+  redis.call('EXPIRE', KEYS[3], tonumber(ARGV[6]))
 end
 if redis.call('HINCRBY', KEYS[1], 'attempts', 1) >= tonumber(ARGV[2]) then
   redis.call('DEL', KEYS[1])
@@ -104,10 +119,19 @@ _RESULTS = {
 }
 
 
-class RedisVerificationCodeStore:
-    _CODE_PREFIX = "email-code:"
-    _FAILURE_PREFIX = "email-code-failures:"
+def _code_key(user_id: int) -> str:
+    return f"email-code:{{{user_id}}}"
 
+
+def _hourly_failures_key(user_id: int) -> str:
+    return f"email-code-failures-1h:{{{user_id}}}"
+
+
+def _long_failures_key(user_id: int) -> str:
+    return f"email-code-failures-30d:{{{user_id}}}"
+
+
+class RedisVerificationCodeStore:
     def __init__(self, url: str, *, key: bytes) -> None:
         self._url = url
         self._key = key
@@ -115,15 +139,19 @@ class RedisVerificationCodeStore:
 
     def _redis(self) -> aioredis.Redis:
         if self._client is None:
-            # redis-py ships from_url without annotations.
+            # redis-py ships from_url without annotations. Timeouts keep a hung
+            # Redis from stalling login (it fails closed instead).
             self._client = aioredis.from_url(  # type: ignore[no-untyped-call]
-                self._url, decode_responses=True
+                self._url,
+                decode_responses=True,
+                socket_timeout=_REDIS_TIMEOUT_SECONDS,
+                socket_connect_timeout=_REDIS_TIMEOUT_SECONDS,
             )
         return self._client
 
     async def issue(self, user_id: int) -> str:
         code = new_code()
-        name = f"{self._CODE_PREFIX}{user_id}"
+        name = _code_key(user_id)
         try:
             async with self._redis().pipeline(transaction=True) as pipe:
                 pipe.hset(
@@ -141,21 +169,36 @@ class RedisVerificationCodeStore:
 
     async def has_live_code(self, user_id: int) -> bool:
         try:
-            return bool(await self._redis().exists(f"{self._CODE_PREFIX}{user_id}"))
+            return bool(await self._redis().exists(_code_key(user_id)))
         except RedisError as exc:
             raise VerificationCodeUnavailableError() from exc
+
+    async def is_locked(self, user_id: int) -> bool:
+        try:
+            hourly, long = await self._redis().mget(
+                _hourly_failures_key(user_id), _long_failures_key(user_id)
+            )
+        except RedisError as exc:
+            raise VerificationCodeUnavailableError() from exc
+        return (
+            int(hourly or 0) >= HOURLY_FAILURE_LIMIT
+            or int(long or 0) >= LONG_FAILURE_LIMIT
+        )
 
     async def check(self, user_id: int, code: str) -> CodeCheck:
         try:
             result = await self._redis().eval(  # type: ignore[misc]
                 _CHECK_SCRIPT,
-                2,
-                f"{self._CODE_PREFIX}{user_id}",
-                f"{self._FAILURE_PREFIX}{user_id}",
+                3,
+                _code_key(user_id),
+                _hourly_failures_key(user_id),
+                _long_failures_key(user_id),
                 code_digest(self._key, user_id, code),
                 str(MAX_ATTEMPTS_PER_CODE),
-                str(MAX_FAILURES_PER_WINDOW),
-                str(int(FAILURE_WINDOW.total_seconds())),
+                str(HOURLY_FAILURE_LIMIT),
+                str(int(HOURLY_FAILURE_WINDOW.total_seconds())),
+                str(LONG_FAILURE_LIMIT),
+                str(int(LONG_FAILURE_WINDOW.total_seconds())),
             )
         except RedisError as exc:
             raise VerificationCodeUnavailableError() from exc
@@ -171,6 +214,9 @@ def get_verification_code_store() -> VerificationCodeStore:
 __all__ = [
     "CODE_DIGITS",
     "CODE_TTL",
+    "HOURLY_FAILURE_LIMIT",
+    "LONG_FAILURE_LIMIT",
+    "MAX_ATTEMPTS_PER_CODE",
     "CodeCheck",
     "RedisVerificationCodeStore",
     "VerificationCodeStore",

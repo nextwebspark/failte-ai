@@ -62,8 +62,8 @@ class InvalidVerificationCodeError(AccountError):
 
     def __init__(self) -> None:
         super().__init__(
-            "That code is incorrect or has expired. Check the latest email or "
-            "request a new code."
+            "That code is incorrect or has expired. Use the code from the latest "
+            "email, request a new one, or reset your password to verify instead."
         )
 
 

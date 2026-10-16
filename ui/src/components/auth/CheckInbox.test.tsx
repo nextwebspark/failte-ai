@@ -68,7 +68,7 @@ describe("CheckInbox", () => {
     expect(mocks.startLocalSession).not.toHaveBeenCalled();
   });
 
-  it("sends a new code and clears the field", async () => {
+  it("requests a new code without clearing the one typed in", async () => {
     render(<CheckInbox email="pat@example.com" />);
     fireEvent.change(codeInput(), { target: { value: "999999" } });
 
@@ -77,7 +77,28 @@ describe("CheckInbox", () => {
     await waitFor(() =>
       expect(mocks.resend).toHaveBeenCalledWith({ body: { email: "pat@example.com" } }),
     );
-    await waitFor(() => expect(codeInput().value).toBe(""));
-    expect(toast.success).toHaveBeenCalled();
+    await waitFor(() => expect(toast.success).toHaveBeenCalled());
+    expect(codeInput().value).toBe("999999");
+  });
+
+  it("re-enables resend when the request throws", async () => {
+    mocks.resend.mockRejectedValue(new Error("network"));
+    render(<CheckInbox email="pat@example.com" />);
+    const resend = screen.getByRole("button", { name: "Send a new code" }) as HTMLButtonElement;
+
+    fireEvent.click(resend);
+
+    await waitFor(() => expect(toast.error).toHaveBeenCalled());
+    expect(resend.disabled).toBe(false);
+  });
+
+  it("keeps the submit button busy after a successful verify", async () => {
+    render(<CheckInbox email="pat@example.com" />);
+    fireEvent.change(codeInput(), { target: { value: "123456" } });
+    fireEvent.click(screen.getByRole("button", { name: "Verify email" }));
+
+    await waitFor(() => expect(mocks.startLocalSession).toHaveBeenCalled());
+    const busy = screen.getByRole("button", { name: "Verifying..." }) as HTMLButtonElement;
+    expect(busy.disabled).toBe(true);
   });
 });
