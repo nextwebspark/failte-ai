@@ -27,16 +27,31 @@ sudo systemd-run --unit="$UNIT" --quiet --property=RemainAfterExit=yes \
   --setenv=LIGHTMOVE_APP_DIR="$APP_DIR" \
   /bin/bash "$SCRIPT" "$VERSION"
 
-sudo journalctl -u "$UNIT" -o cat -n all -f &
-follower=$!
+# Stream the unit's log by polling with a journal cursor. A background
+# `journalctl -f` can outlive this script (sudo does not reliably pass the
+# kill on) and then holds the SSH session open, so the job never finishes.
+cursor=""
+print_new_lines() {
+  local out last
+  local -a args=(-u "$UNIT" -o cat --no-pager --show-cursor)
+  if [[ -n "$cursor" ]]; then args+=(--after-cursor "$cursor"); fi
+  out="$(sudo journalctl "${args[@]}" 2>/dev/null | grep -v '^-- No entries --$' || true)"
+  if [[ -z "$out" ]]; then return 0; fi
+  last="${out##*$'\n'}"
+  if [[ "$last" == "-- cursor: "* ]]; then
+    cursor="${last#-- cursor: }"
+    if [[ "$out" == *$'\n'* ]]; then out="${out%$'\n'*}"; else out=""; fi
+  fi
+  if [[ -n "$out" ]]; then printf '%s\n' "$out"; fi
+}
 
 # Type=simple + RemainAfterExit: "running" until the script exits, then
 # "exited" (success) or "failed".
 while [[ "$(sudo systemctl show -p SubState --value "$UNIT")" == "running" ]]; do
+  print_new_lines
   sleep 5
 done
-sleep 2   # let the follower print the last lines
-sudo kill "$follower" 2>/dev/null || true
+print_new_lines
 
 status="$(sudo systemctl show -p ExecMainStatus --value "$UNIT")"
 sudo systemctl stop "$UNIT" 2>/dev/null || true
