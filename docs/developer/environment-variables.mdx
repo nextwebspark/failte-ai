@@ -100,6 +100,10 @@ On a remote install, nginx forwards only `/oauth/<provider>/callback` to the too
 | `OSS_JWT_SECRET` | N/A | **Required for OSS deployments.** Secret used to sign JWT tokens. Must be set to a strong random value in production |
 | `OSS_JWT_EXPIRY_HOURS` | `720` | JWT token lifetime in hours (default: 30 days) |
 | `ENABLE_SIGNUP` | `true` | Set to `false` to disable public signup on invite-only installs — `POST /api/v1/auth/signup` returns 403 and the login page hides the Sign up link |
+| `REQUIRE_EMAIL_VERIFICATION` | `true` | Password signups must confirm their email address before they can log in. Needs a working `EMAIL_PROVIDER`; with `none` the message is only written to the API log |
+| `GOOGLE_CLIENT_ID` | `null` | Google OAuth client id. With `GOOGLE_CLIENT_SECRET`, shows "Continue with Google" on the login and signup pages |
+| `GOOGLE_CLIENT_SECRET` | `null` | Google OAuth client secret. Keep secret |
+| `GOOGLE_REDIRECT_URI` | `UI_APP_URL` + `/auth/google/callback` | Must be listed as an authorized redirect URI on the Google OAuth client. Only for running the API outside Docker: `docker-compose.yaml` does not pass it through, so containers always use the default |
 
 <Warning>
 Never use the placeholder `OSS_JWT_SECRET` in a production deployment. Generate a strong random secret and store it securely.

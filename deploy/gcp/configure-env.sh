@@ -101,8 +101,24 @@ if [[ -n "$RESEND_KEY" ]]; then
   set_key EMAIL_PROVIDER resend
   set_key RESEND_API_KEY "$RESEND_KEY"
   # Must be on a domain verified in Resend; onboarding@resend.dev only reaches
-  # the Resend account owner's own address.
-  set_key EMAIL_FROM "${DOGRAH_EMAIL_FROM:?DOGRAH_EMAIL_FROM is required with Resend, e.g. 'LightMove.ai <no-reply@mail.example.com>'}"
+  # the Resend account owner's own address. A re-run without DOGRAH_EMAIL_FROM
+  # keeps the sender already in .env.
+  EMAIL_FROM_VALUE="${DOGRAH_EMAIL_FROM:-$(grep -E '^EMAIL_FROM=' "$ENV_FILE" | tail -1 | cut -d= -f2- || true)}"
+  set_key EMAIL_FROM "${EMAIL_FROM_VALUE:?DOGRAH_EMAIL_FROM is required with Resend, e.g. 'LightMove.ai <no-reply@mail.example.com>'}"
+fi
+
+# "Continue with Google" sign-in. Opt-in like email: the button appears once
+# both values are set. The OAuth client (Google Auth Platform, this project)
+# must list <PUBLIC_BASE_URL>/auth/google/callback as a redirect URI.
+#   printf %s '<id>.apps.googleusercontent.com' | gcloud secrets create dograh-google-oauth-client-id --data-file=-
+#   printf %s 'GOCSPX-...' | gcloud secrets create dograh-google-oauth-client-secret --data-file=-
+GOOGLE_ID="$(sm_optional dograh-google-oauth-client-id)"
+if [[ -n "$GOOGLE_ID" ]]; then
+  # A bare assignment, so set -e stops the script if the secret is missing
+  # (inside set_key's arguments a failed lookup would write an empty value).
+  GOOGLE_SECRET="$(sm dograh-google-oauth-client-secret)"
+  set_key GOOGLE_CLIENT_ID "$GOOGLE_ID"
+  set_key GOOGLE_CLIENT_SECRET "$GOOGLE_SECRET"
 fi
 
 # Workspace credentials at rest (api). Opt-in like billing: once set, never
