@@ -1,5 +1,5 @@
-"""OAuth2 with bring-your-own clients: authorization code + PKCE, and lazy,
-single-flight token refresh.
+"""OAuth2 with workspace or platform clients: authorization code + PKCE, and
+lazy, single-flight token refresh.
 
 * :class:`OAuthFlow` starts an authorization (a random, single-use, 10-minute
   state bound to org, user, provider and client, with an encrypted PKCE
@@ -37,6 +37,7 @@ import httpx
 from loguru import logger
 from pydantic import JsonValue, ValidationError
 from sqlalchemy.exc import DBAPIError
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from fallcha_tools.core.crypto import SecretBox
 from fallcha_tools.core.db import Database
@@ -335,7 +336,14 @@ class OAuthFlow:
     registry: ProviderRegistry
     public_base_url: str
     ui_return_url: str
+    # The platform client offered to every workspace; None offers none.
+    platform_app_id: uuid.UUID | None
     clock: Clock = utc_now
+
+    def _apps(self, session: AsyncSession) -> ProviderAppRepository:
+        return ProviderAppRepository(
+            session, self.box, platform_app_id=self.platform_app_id
+        )
 
     def _require_configured(self) -> None:
         if not self.configured:
@@ -370,9 +378,7 @@ class OAuthFlow:
                 f"not optional scopes of {provider.id!r}: {', '.join(unknown)}"
             )
         async with self.db.session() as session:
-            app = await ProviderAppRepository(session, self.box).get(
-                org_id, provider_app_id
-            )
+            app = await self._apps(session).get(org_id, provider_app_id)
             if app.provider != credential_family(provider):
                 raise ProviderAppNotFoundError("OAuth client not found")
             await ConnectionRepository(session, self.box).sweep_pending()
@@ -450,7 +456,7 @@ class OAuthFlow:
             raise OAuthCallbackError(CallbackFailure.CLIENT_MISSING)
         async with self.db.session() as session:
             try:
-                client = await ProviderAppRepository(session, self.box).client(
+                client = await self._apps(session).client(
                     pending.org_id, pending.provider_app_id
                 )
             except ProviderAppNotFoundError:

@@ -2,11 +2,15 @@
 
 from __future__ import annotations
 
+import re
 from functools import lru_cache
 from urllib.parse import urlsplit
 
-from pydantic import Field, SecretStr, field_validator
+from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# An OAuth client id: printable ASCII, no spaces (as for workspace clients).
+_CLIENT_ID = re.compile(r"[\x21-\x7e]{1,256}")
 
 
 def normalize_database_url(url: str) -> str:
@@ -41,6 +45,12 @@ class Settings(DatabaseSettings):
     # Fixed UI page the OAuth callback redirects the browser back to. Never
     # taken from a request, so the callback cannot be an open redirect.
     ui_return_url: str = Field(default="", alias="TOOLS_UI_RETURN_URL")
+    # The platform's own Google OAuth client, offered to every workspace next
+    # to the clients they bring. Both or neither; unset offers none.
+    google_client_id: str | None = Field(default=None, alias="TOOLS_GOOGLE_CLIENT_ID")
+    google_client_secret: SecretStr | None = Field(
+        default=None, alias="TOOLS_GOOGLE_CLIENT_SECRET"
+    )
     log_level: str = Field(default="INFO", alias="LOG_LEVEL")
 
     @field_validator("public_base_url", "ui_return_url")
@@ -69,6 +79,32 @@ class Settings(DatabaseSettings):
         if not _split_keys(value.get_secret_value()):
             raise ValueError("TOOLS_ENCRYPTION_KEYS must contain at least one key")
         return value
+
+    @field_validator("google_client_id", "google_client_secret", mode="before")
+    @classmethod
+    def _blank_is_unset(cls, value: object) -> object:
+        # Docker Compose passes unset variables as "".
+        if isinstance(value, SecretStr):
+            value = value.get_secret_value()
+        if isinstance(value, str):
+            return value.strip() or None
+        return value
+
+    @field_validator("google_client_id")
+    @classmethod
+    def _client_id_shape(cls, value: str | None) -> str | None:
+        if value is not None and not _CLIENT_ID.fullmatch(value):
+            raise ValueError("TOOLS_GOOGLE_CLIENT_ID must be printable ASCII")
+        return value
+
+    @model_validator(mode="after")
+    def _google_client_complete(self) -> Settings:
+        if (self.google_client_id is None) != (self.google_client_secret is None):
+            raise ValueError(
+                "set both TOOLS_GOOGLE_CLIENT_ID and TOOLS_GOOGLE_CLIENT_SECRET, "
+                "or neither"
+            )
+        return self
 
     @property
     def encryption_keys(self) -> list[str]:
