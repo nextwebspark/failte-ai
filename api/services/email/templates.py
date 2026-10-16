@@ -8,16 +8,23 @@ from api.services.email.base import EmailMessage
 PRODUCT_NAME = BRAND_NAME
 
 
-def _layout(heading: str, body_html: str, action_label: str, action_url: str) -> str:
+def _page(heading: str, content_html: str) -> str:
     return f"""<!doctype html>
 <html><body style="margin:0;padding:24px;background:#f6f7f9;font-family:-apple-system,Segoe UI,Roboto,sans-serif;color:#111">
 <table role="presentation" width="100%" style="max-width:520px;margin:0 auto;background:#fff;border-radius:8px;padding:32px">
 <tr><td>
 <h1 style="font-size:20px;margin:0 0 16px">{escape(heading)}</h1>
-{body_html}
-<p style="margin:24px 0"><a href="{escape(action_url, quote=True)}" style="background:#111;color:#fff;padding:10px 18px;border-radius:6px;text-decoration:none;display:inline-block">{escape(action_label)}</a></p>
-<p style="font-size:12px;color:#666">If the button doesn't work, paste this link into your browser:<br>{escape(action_url)}</p>
+{content_html}
 </td></tr></table></body></html>"""
+
+
+def _layout(heading: str, body_html: str, action_label: str, action_url: str) -> str:
+    return _page(
+        heading,
+        f"""{body_html}
+<p style="margin:24px 0"><a href="{escape(action_url, quote=True)}" style="background:#111;color:#fff;padding:10px 18px;border-radius:6px;text-decoration:none;display:inline-block">{escape(action_label)}</a></p>
+<p style="font-size:12px;color:#666">If the button doesn't work, paste this link into your browser:<br>{escape(action_url)}</p>""",
+    )
 
 
 def invitation_email(
@@ -52,28 +59,53 @@ def invitation_email(
     )
 
 
-def verify_email_message(
-    *, to: str, verify_url: str, expires_in_hours: int
+def verification_code_message(
+    *, to: str, code: str, expires_in_minutes: int
 ) -> EmailMessage:
     text = (
-        f"Confirm your email address to finish setting up your {PRODUCT_NAME} account.\n\n"
-        f"Verify your email: {verify_url}\n\n"
-        f"This link expires in {expires_in_hours} hours. If you didn't sign up, "
+        f"Your {PRODUCT_NAME} verification code is {code}\n\n"
+        "Enter it to finish setting up your account. "
+        f"It expires in {expires_in_minutes} minutes. If you didn't sign up, "
         "you can ignore this email."
     )
     body = (
-        "<p>Confirm your email address to finish setting up your "
-        f"{PRODUCT_NAME} "
-        "account.</p>"
-        f'<p style="font-size:13px;color:#666">This link expires in '
-        f"{expires_in_hours} hours. If you didn't sign up, you can ignore this "
-        "email.</p>"
+        "<p>Enter this code to finish setting up your "
+        f"{PRODUCT_NAME} account:</p>"
+        '<p style="margin:24px 0;font-family:ui-monospace,Menlo,Consolas,monospace;'
+        'font-size:32px;font-weight:600;letter-spacing:8px">'
+        f"{escape(code)}</p>"
+        f'<p style="font-size:13px;color:#666">The code expires in '
+        f"{expires_in_minutes} minutes. If you didn't sign up, you can ignore "
+        "this email.</p>"
     )
     return EmailMessage(
         to=to,
-        subject=f"Verify your email for {PRODUCT_NAME}",
+        # Code first, so it shows in the inbox preview.
+        subject=f"{code} is your {PRODUCT_NAME} verification code",
         text=text,
-        html=_layout("Verify your email", body, "Verify email", verify_url),
+        html=_page("Verify your email", body),
+    )
+
+
+def verification_locked_message(*, to: str, reset_url: str) -> EmailMessage:
+    text = (
+        f"We couldn't send a new {PRODUCT_NAME} verification code: too many "
+        "incorrect codes were entered for your account recently.\n\n"
+        f"Reset your password to verify your email instead: {reset_url}\n\n"
+        "If you didn't sign up, you can ignore this email."
+    )
+    body = (
+        f"<p>We couldn't send a new {PRODUCT_NAME} verification code: too many "
+        "incorrect codes were entered for your account recently.</p>"
+        "<p>Reset your password to verify your email instead.</p>"
+        '<p style="font-size:13px;color:#666">If you didn\'t sign up, you can '
+        "ignore this email.</p>"
+    )
+    return EmailMessage(
+        to=to,
+        subject=f"Verify your {PRODUCT_NAME} email by resetting your password",
+        text=text,
+        html=_layout("Too many incorrect codes", body, "Reset password", reset_url),
     )
 
 

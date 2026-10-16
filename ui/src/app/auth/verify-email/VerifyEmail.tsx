@@ -33,7 +33,7 @@ export function VerifyEmail({ token }: { token: string | null }) {
       {error ? (
         <AuthStatus
           title="Verification failed"
-          message={`${error} Sign in to request a new link.`}
+          message={`${error} Sign in to get a verification code instead.`}
           action={{ href: "/auth/login", label: "Back to sign in" }}
         />
       ) : (

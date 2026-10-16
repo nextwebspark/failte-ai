@@ -66,6 +66,13 @@ class EmailRequest(_Request):
     email: EmailStr
 
 
+class VerifyEmailCodeRequest(_Request):
+    email: EmailStr
+    code: Annotated[
+        str, StringConstraints(strip_whitespace=True, pattern=r"^[0-9]{6}$")
+    ]
+
+
 class ResetPasswordRequest(_Request):
     token: str
     password: NewPassword
