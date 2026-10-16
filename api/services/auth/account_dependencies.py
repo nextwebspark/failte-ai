@@ -7,6 +7,10 @@ from fastapi import Depends
 from api.constants import ENABLE_SIGNUP, REQUIRE_EMAIL_VERIFICATION, UI_APP_URL
 from api.db import db_client
 from api.services.auth.accounts import AccountPolicy, AccountService
+from api.services.auth.verification_codes import (
+    VerificationCodeStore,
+    get_verification_code_store,
+)
 from api.services.email import EmailSender, get_email_sender
 from api.services.invitations import InvitationService, get_invitation_service
 from api.services.membership import ensure_user_has_organization
@@ -34,11 +38,15 @@ def get_account_service(
     invitations: Annotated[InvitationService, Depends(get_invitation_service)],
     policy: Annotated[AccountPolicy, Depends(get_account_policy)],
     rate_limiter: Annotated[RateLimiter, Depends(get_rate_limiter)],
+    verification_codes: Annotated[
+        VerificationCodeStore, Depends(get_verification_code_store)
+    ],
 ) -> AccountService:
     return AccountService(
         store=db_client,
         invitations=invitations,
         email_sender=email_sender,
+        verification_codes=verification_codes,
         clock=SystemClock(),
         policy=policy,
         hash_password=hash_password,

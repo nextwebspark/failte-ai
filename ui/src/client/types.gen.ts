@@ -9740,6 +9740,20 @@ export type ValidationError = {
 };
 
 /**
+ * VerifyEmailCodeRequest
+ */
+export type VerifyEmailCodeRequest = {
+    /**
+     * Email
+     */
+    email: string;
+    /**
+     * Code
+     */
+    code: string;
+};
+
+/**
  * VicidialAgentAPIConfiguration
  *
  * VICIdial remote-agent call-control API configuration.
@@ -19724,6 +19738,35 @@ export type VerifyEmailApiV1AuthVerifyEmailPostResponses = {
 };
 
 export type VerifyEmailApiV1AuthVerifyEmailPostResponse = VerifyEmailApiV1AuthVerifyEmailPostResponses[keyof VerifyEmailApiV1AuthVerifyEmailPostResponses];
+
+export type VerifyEmailCodeApiV1AuthVerifyEmailCodePostData = {
+    body: VerifyEmailCodeRequest;
+    path?: never;
+    query?: never;
+    url: '/api/v1/auth/verify-email-code';
+};
+
+export type VerifyEmailCodeApiV1AuthVerifyEmailCodePostErrors = {
+    /**
+     * Not found
+     */
+    404: unknown;
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type VerifyEmailCodeApiV1AuthVerifyEmailCodePostError = VerifyEmailCodeApiV1AuthVerifyEmailCodePostErrors[keyof VerifyEmailCodeApiV1AuthVerifyEmailCodePostErrors];
+
+export type VerifyEmailCodeApiV1AuthVerifyEmailCodePostResponses = {
+    /**
+     * Successful Response
+     */
+    200: AuthResponse;
+};
+
+export type VerifyEmailCodeApiV1AuthVerifyEmailCodePostResponse = VerifyEmailCodeApiV1AuthVerifyEmailCodePostResponses[keyof VerifyEmailCodeApiV1AuthVerifyEmailCodePostResponses];
 
 export type ResendVerificationApiV1AuthResendVerificationPostData = {
     body: EmailRequest;
