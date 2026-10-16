@@ -29,6 +29,7 @@ pre-launch schedule is active. Full breakdown in the plan document.
 | `cloudbuild.yaml` | Builds the release images `dograh-api`, `dograh-ui` and `fallcha-tools` for linux/amd64, tagged `X.Y.Z` |
 | `deploy.sh` | Runs on the app VM: switches the stack to one release, health-checks it, rolls back on failure |
 | `remote-deploy.sh` | Piped over SSH by the Deploy workflow: runs that release's `deploy.sh` as a systemd unit and streams its log |
+| `certbot-deploy-hook.sh` | certbot renewal hook: copies the renewed certificate into the install's `certs/` and restarts nginx |
 | `verify_gcs.py` | Proves GCS works through the S3 API **before** anything depends on it |
 | `secrets/` | Per-service env files. Gitignored — never commit |
 
@@ -116,34 +117,67 @@ JSON
    Variables): `GCP_WIF_PROVIDER` and `GCP_DEPLOY_SA` from step 1, plus
    `PUBLIC_BASE_URL` (e.g. `https://app.lightmove.ai`; Deploy refuses to run
    without it). Optional: `VM_APP_DIR` (default `/opt/lightmove/dograh`).
-3. **App VM checkout.** The install is a git checkout at `/opt/lightmove/dograh`,
-   owned by root, fetching over a read-only deploy key:
+3. **App VM checkout** (done 2026-10-16). The install is a git checkout at
+   `/opt/lightmove/dograh`, owned by root, fetching over a read-only deploy key
+   with github.com's host key pinned:
 
    ```bash
-   sudo ssh-keygen -t ed25519 -N '' -f /root/.ssh/lightmove_deploy -C dograh-app
+   sudo ssh-keygen -t ed25519 -N '' -f /root/.ssh/lightmove_deploy -C dograh-app-deploy
    # add /root/.ssh/lightmove_deploy.pub as a read-only deploy key on the repo
-   sudo mkdir -p /opt/lightmove && cd /opt/lightmove
-   sudo GIT_SSH_COMMAND='ssh -i /root/.ssh/lightmove_deploy -o IdentitiesOnly=yes' \
-     git clone git@github.com:nextwebspark/failte-ai.git dograh   # no submodules: images are prebuilt
-   sudo git -C dograh config core.sshCommand 'ssh -i /root/.ssh/lightmove_deploy -o IdentitiesOnly=yes'
+   # put github.com's ed25519 key (api.github.com/meta) in /root/.ssh/known_hosts_github
+   SSHCMD='ssh -i /root/.ssh/lightmove_deploy -o IdentitiesOnly=yes -o UserKnownHostsFile=/root/.ssh/known_hosts_github -o StrictHostKeyChecking=yes'
+   sudo mkdir -p /opt/lightmove
+   sudo env GIT_SSH_COMMAND="$SSHCMD" git clone git@github.com:nextwebspark/failte-ai.git /opt/lightmove/dograh   # no submodules: images are prebuilt
+   sudo git -C /opt/lightmove/dograh config core.sshCommand "$SSHCMD"
+   echo /certs/ | sudo tee -a /opt/lightmove/dograh/.git/info/exclude
    ```
 
-   Carry over from the old install (`~/dograh/dograh`): `.env`,
-   `deploy/gcp/secrets/*.env` and anything else `git status --ignored` lists as
-   runtime state. In `.env` set:
+   Runtime state copied from the old install (`~/dograh/dograh`): `.env`,
+   `certs/` (nginx mounts it) and the sidecar env files in
+   `deploy/gcp/secrets/`. `.env` additions:
 
    ```
-   COMPOSE_PROJECT_NAME=<old project, from `docker compose ls`>   # keeps the volumes
+   COMPOSE_PROJECT_NAME=dograh                     # the old project: same volumes
    COMPOSE_FILE=docker-compose.yaml:deploy/gcp/docker-compose.override.yaml
-   COMPOSE_PROFILES=remote
+   COMPOSE_PROFILES=remote,legacy-sidecars         # back to `remote` after the tools cutover
+   PUBLIC_HOST=app.lightmove.ai
+   PUBLIC_BASE_URL=https://app.lightmove.ai
    ```
 
-   Drop the old api patch mounts (their code is in the images now). The VM's
-   service account must be able to pull from Artifact Registry
-   (`sudo gcloud auth configure-docker europe-west1-docker.pkg.dev`; deploys
-   run as root with `HOME=/root`). To re-sync secrets later:
-   `sudo DOGRAH_SQL_IP=10.70.0.3 ./deploy/gcp/configure-env.sh`.
-4. **First deploy:** Release (any bump gives `v0.1.0`), then Deploy `0.1.0`.
+   Then `sudo env ENV_FILE=/opt/lightmove/dograh/.env DOGRAH_SQL_IP=10.70.0.3
+   ./deploy/gcp/configure-env.sh` (after creating the three secrets, each
+   readable by `dograh-app-sa`). Root's docker already has the Artifact
+   Registry credential helper; deploys run as root with `HOME=/root`.
+4. **Domain** (done 2026-10-16). `app.lightmove.ai` is a Cloudflare DNS-only A
+   record to the app VM. The certificate was issued by webroot against the
+   nginx that was running, without restarting anything, and copied into the
+   new install:
+
+   ```bash
+   sudo certbot certonly --webroot -w <dir nginx serves certs/ from> \
+     --non-interactive --agree-tos --register-unsafely-without-email -d app.lightmove.ai
+   sudo cp /etc/letsencrypt/live/app.lightmove.ai/fullchain.pem /opt/lightmove/dograh/certs/local.crt
+   sudo cp /etc/letsencrypt/live/app.lightmove.ai/privkey.pem   /opt/lightmove/dograh/certs/local.key
+   ```
+
+   `/etc/letsencrypt/renewal/app.lightmove.ai.conf` uses
+   `/opt/lightmove/dograh/certs` as its webroot. **After the first deploy**,
+   install the renewal hook (it replaces the old one pinned to the old path),
+   then check renewal works end to end:
+
+   ```bash
+   sudo install -m 755 /opt/lightmove/dograh/deploy/gcp/certbot-deploy-hook.sh \
+     /etc/letsencrypt/renewal-hooks/deploy/dograh-reload.sh
+   sudo certbot renew --cert-name app.lightmove.ai --dry-run
+   ```
+
+   `setup_custom_domain.sh` is not used here: it force-recreates the whole
+   stack with `:latest` images through `remote_up.sh`.
+5. **First deploy:** Release (any bump gives `v0.1.0`), then Deploy `0.1.0`.
+   The first switch moves the stack from the old install to this one under
+   the same project name, so containers are recreated in place, volumes are
+   kept, and the sslip URL stops serving (its certificate is no longer
+   mounted). Then follow [Tools service cutover](#tools-service-cutover).
 
 ## Prerequisites
 
