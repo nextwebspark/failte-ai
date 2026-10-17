@@ -1,0 +1,36 @@
+{
+  "v": 3,
+  "createdOnFiles": { "v": 1, "at": "2026-10-17T12:00:00Z" },
+  "title": "LightMove UI Design Audit",
+  "launch": { "view": "canvas" },
+  "pages": [],
+  "boards": {
+    "Main.dc.html": { "x": 0, "y": 0, "w": 1440, "h": 1760, "title": "1 · Audit findings", "expand": "fill" },
+    "System.dc.html": { "x": 1520, "y": 0, "w": 1440, "h": 1760, "title": "2 · Foundations (light + dark)", "expand": "fill" },
+    "Agents.dc.html": { "x": 0, "y": 2110, "w": 1440, "h": 1100, "title": "3 · Voice agents · light", "expand": "fill" },
+    "AgentsDark.dc.html": { "x": 1520, "y": 2110, "w": 1440, "h": 1100, "title": "3 · Voice agents · dark", "expand": "fill" },
+    "CreateAgent.dc.html": { "x": 3040, "y": 2110, "w": 1440, "h": 1100, "title": "3b · Create agent dialog", "expand": "fill" },
+    "Conversation.dc.html": { "x": 0, "y": 3560, "w": 1440, "h": 940, "title": "4 · Agent · Conversation · light", "expand": "fill" },
+    "ConversationDark.dc.html": { "x": 1520, "y": 3560, "w": 1440, "h": 940, "title": "4 · Agent · Conversation · dark", "expand": "fill" },
+    "Settings.dc.html": { "x": 0, "y": 4850, "w": 1440, "h": 1240, "title": "5 · Agent · Advanced settings · light", "expand": "fill" },
+    "SettingsDark.dc.html": { "x": 1520, "y": 4850, "w": 1440, "h": 1240, "title": "5 · Agent · Advanced settings · dark", "expand": "fill" }
+  },
+  "order": [
+    "Main.dc.html",
+    "System.dc.html",
+    "Agents.dc.html",
+    "AgentsDark.dc.html",
+    "CreateAgent.dc.html",
+    "Conversation.dc.html",
+    "ConversationDark.dc.html",
+    "Settings.dc.html",
+    "SettingsDark.dc.html"
+  ],
+  "notes": {
+    "t-audit": { "x": 0, "y": -300, "text": "LightMove.ai · UI audit and design system", "kind": "title1", "maxW": 2960 },
+    "t-agents": { "x": 0, "y": 1870, "text": "Voice agents landing · redesign, light and dark", "kind": "title1", "maxW": 4480 },
+    "t-editor": { "x": 0, "y": 3320, "text": "Inside an agent · Conversation editor with test rail", "kind": "title1", "maxW": 2960 },
+    "t-settings": { "x": 0, "y": 4610, "text": "Inside an agent · Advanced settings", "kind": "title1", "maxW": 2960 }
+  },
+  "designSystems": []
+}

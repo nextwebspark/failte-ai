@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Create agent dialog</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Sora:wght@600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+body{margin:0}
+.lm{--bg:#F4F7F5;--panel:#FFFFFF;--panel2:#F5F8F6;--line:#DCE5E0;--line2:#EAF0EC;--ink:#0B2E22;--ink2:#3E5249;--ink3:#5F726A;--brand:#0E7A4B;--brand-dim:rgba(14,122,75,.08);--brand-ink:#FFFFFF;--green:#169B62;--live:#FF883E;--live-dim:rgba(255,136,62,.14);--live-text:#A84C0C;--sky:#1869B5;--sky-dim:rgba(24,105,181,.10);--amber:#8D5D06;--amber-dim:rgba(141,93,6,.10);--ok:#1A754F;--ok-dim:rgba(26,117,79,.10);--danger:#C03630;--danger-dim:rgba(192,54,48,.08);--shadow:0 24px 60px rgba(11,31,23,.18);--scrim:rgba(11,31,23,.45);--sans:"DM Sans",system-ui,sans-serif;--display:"Sora",system-ui,sans-serif;--mono:"JetBrains Mono",ui-monospace,monospace}
+.lm.dark{--bg:#0B100E;--panel:#111714;--panel2:#161D19;--line:#243029;--line2:#1B2420;--ink:#EEF3F0;--ink2:#B4C1BA;--ink3:#87958D;--brand:#3DDC97;--brand-dim:rgba(61,220,151,.14);--brand-ink:#0A1F17;--live-text:#FF9A5C;--sky:#5CB3FF;--sky-dim:rgba(92,179,255,.12);--amber:#F0B429;--amber-dim:rgba(240,180,41,.12);--ok:#3FB27F;--ok-dim:rgba(63,178,127,.12);--danger:#E8645D;--danger-dim:rgba(232,100,93,.12);--shadow:0 24px 60px rgba(0,0,0,.6);--scrim:rgba(0,0,0,.55)}
+a{color:var(--brand)}a:hover{color:var(--ink)}
+</style>
+</helmet>
+<div class="lm {{themeClass}}" style="min-height: 100vh; box-sizing: border-box; background: var(--bg); color: var(--ink); font-family: var(--sans); font-size: 13px; line-height: 1.45; position: relative; display: flex; flex-direction: column">
+
+  <header style="height: 48px; box-sizing: border-box; display: flex; align-items: center; gap: 12px; padding: 0 16px">
+    <svg width="22" height="22" viewBox="0 0 64 64" aria-hidden="true"><rect width="64" height="64" rx="16" fill="#169B62"/><rect x="14" y="26" width="6" height="12" rx="3" fill="#FFFFFF"/><rect x="24" y="19" width="6" height="26" rx="3" fill="#FFFFFF"/><rect x="34" y="13" width="6" height="38" rx="3" fill="#FFFFFF"/><rect x="44" y="24" width="6" height="16" rx="3" fill="#FFFFFF"/><circle cx="47" cy="16.5" r="3.5" fill="#FF883E"/></svg>
+    <span style="font-family: var(--display); font-weight: 600; font-size: 14px; letter-spacing: -0.03em">LightMove<span style="color: var(--brand)">.ai</span></span>
+    <span aria-hidden="true" style="color: var(--line)">/</span>
+    <span style="color: var(--ink2); font-weight: 500">Acme Dental Group</span>
+    <span aria-hidden="true" style="color: var(--line)">/</span>
+    <span style="font-weight: 600">Voice agents</span>
+  </header>
+  <div style="display: flex; gap: 14px; padding: 0 14px 14px; flex: 1">
+    <div style="width: 224px; flex: 0 0 224px; background: var(--panel); border: 1px solid var(--line); border-radius: 14px"></div>
+    <div style="flex: 1; background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 24px 28px; display: flex; flex-direction: column; gap: 20px">
+      <div style="display: flex; justify-content: space-between; align-items: flex-start">
+        <div><h1 style="margin: 0; font-size: 20px; font-weight: 700">Voice agents</h1><p style="margin: 4px 0 0; color: var(--ink2)">Every agent in Acme Dental Group.</p></div>
+        <span style="height: 36px; padding: 0 14px; border-radius: 8px; background: var(--brand); color: var(--brand-ink); font: 600 13px var(--sans); display: inline-flex; align-items: center">+ Create agent</span>
+      </div>
+      <div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px"><div style="height: 72px; border: 1px solid var(--line); border-radius: 12px"></div><div style="height: 72px; border: 1px solid var(--line); border-radius: 12px"></div><div style="height: 72px; border: 1px solid var(--line); border-radius: 12px"></div><div style="height: 72px; border: 1px solid var(--line); border-radius: 12px"></div></div>
+      <div style="height: 420px; border: 1px solid var(--line); border-radius: 12px"></div>
+    </div>
+  </div>
+
+  <div aria-hidden="true" style="position: absolute; inset: 0; background: var(--scrim)"></div>
+
+  <div role="dialog" aria-labelledby="create-title" aria-modal="true" style="position: absolute; left: 50%; top: 72px; transform: translateX(-50%); width: 720px; max-width: calc(100% - 32px); box-sizing: border-box; background: var(--panel); border: 1px solid var(--line); border-radius: 14px; box-shadow: var(--shadow); display: flex; flex-direction: column">
+    <div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding: 22px 24px 0">
+      <div style="display: flex; flex-direction: column; gap: 4px">
+        <h2 id="create-title" style="margin: 0; font-size: 18px; font-weight: 700; letter-spacing: -0.01em">Create agent</h2>
+        <p style="margin: 0; color: var(--ink2); font-size: 13.5px">Pick how you want to start. You can change everything later in the editor.</p>
+      </div>
+      <button type="button" aria-label="Close" style="width: 32px; height: 32px; border: 0; background: transparent; color: var(--ink3); border-radius: 8px; display: grid; place-items: center; cursor: pointer"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+    </div>
+
+    <div role="radiogroup" aria-label="How to start" style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; padding: 18px 24px 0">
+      <button type="button" role="radio" aria-checked="true" style="text-align: left; padding: 14px; border-radius: 12px; border: 2px solid var(--brand); background: var(--brand-dim); color: var(--ink); display: flex; flex-direction: column; gap: 8px; cursor: pointer">
+        <span style="width: 32px; height: 32px; border-radius: 8px; background: var(--brand); color: var(--brand-ink); display: grid; place-items: center"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 3l1.8 4.6L18.5 9l-4.7 1.4L12 15l-1.8-4.6L5.5 9l4.7-1.4zM19 15l.9 2.1L22 18l-2.1.9L19 21l-.9-2.1L16 18l2.1-.9z"/></svg></span>
+        <span style="font-weight: 600; font-size: 13.5px">Describe it</span>
+        <span style="font-size: 12.5px; color: var(--ink2)">Tell us the job. We draft the whole conversation for you.</span>
+      </button>
+      <button type="button" role="radio" aria-checked="false" style="text-align: left; padding: 14px; border-radius: 12px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); display: flex; flex-direction: column; gap: 8px; cursor: pointer">
+        <span style="width: 32px; height: 32px; border-radius: 8px; background: var(--panel2); color: var(--ink2); display: grid; place-items: center"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg></span>
+        <span style="font-weight: 600; font-size: 13.5px">Start from a template</span>
+        <span style="font-size: 12.5px; color: var(--ink2)">Reception, lead qualification, reminders, surveys.</span>
+      </button>
+      <button type="button" role="radio" aria-checked="false" style="text-align: left; padding: 14px; border-radius: 12px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); display: flex; flex-direction: column; gap: 8px; cursor: pointer">
+        <span style="width: 32px; height: 32px; border-radius: 8px; background: var(--panel2); color: var(--ink2); display: grid; place-items: center"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M12 9v6M9 12h6"/></svg></span>
+        <span style="font-weight: 600; font-size: 13.5px">Blank canvas</span>
+        <span style="font-size: 12.5px; color: var(--ink2)">One start node. Build the flow yourself.</span>
+      </button>
+    </div>
+
+    <form style="display: flex; flex-direction: column; gap: 16px; padding: 20px 24px 0">
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px">
+        <div style="display: flex; flex-direction: column; gap: 6px">
+          <label for="agent-name" style="font-size: 12.5px; font-weight: 600">Name</label>
+          <input id="agent-name" value="Dental reception, Cork" style="height: 36px; box-sizing: border-box; padding: 0 12px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); font: 400 13.5px var(--sans)">
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 6px">
+          <span id="direction-label" style="font-size: 12.5px; font-weight: 600">Call direction</span>
+          <div role="radiogroup" aria-labelledby="direction-label" style="display: inline-flex; border: 1px solid var(--line); border-radius: 8px; padding: 2px; background: var(--panel2); height: 36px; box-sizing: border-box">
+            <button type="button" role="radio" aria-checked="true" style="flex: 1; border-radius: 6px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); font: 500 12.5px var(--sans); display: inline-flex; align-items: center; justify-content: center; gap: 6px; cursor: pointer"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M20 4L9 15M9 6v9h9"/></svg>Inbound · callers ring the agent</button>
+            <button type="button" role="radio" aria-checked="false" style="flex: 1; border-radius: 6px; border: 0; background: transparent; color: var(--ink3); font: 500 12.5px var(--sans); display: inline-flex; align-items: center; justify-content: center; gap: 6px; cursor: pointer"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M4 20L15 9M15 18V9H6"/></svg>Outbound · the agent calls</button>
+          </div>
+        </div>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 6px">
+        <label for="agent-brief" style="font-size: 12.5px; font-weight: 600">What should it do?</label>
+        <textarea id="agent-brief" rows="5" style="box-sizing: border-box; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); font: 400 13.5px var(--sans); line-height: 1.5; resize: vertical">Answer calls for a dental practice in Cork. Book, move and cancel appointments by checking the calendar tool. Take a message for anything else and text the patient a confirmation. Be warm, brief, and use Irish English.</textarea>
+        <div style="display: flex; justify-content: space-between; gap: 12px">
+          <span style="font-size: 12px; color: var(--ink3)">Mention the tools it should use, the handover rule, and the tone. This becomes the first draft of every prompt.</span>
+          <span style="font: 400 11px var(--mono); color: var(--ink3); white-space: nowrap">231 / 4000</span>
+        </div>
+      </div>
+      <div style="display: flex; gap: 10px; flex-wrap: wrap">
+        <span style="display: inline-flex; align-items: center; gap: 6px; padding: 6px 10px; border-radius: 6px; background: var(--panel2); color: var(--ink2); font: 500 12px var(--sans)"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></svg>English (Ireland)</span>
+        <span style="display: inline-flex; align-items: center; gap: 6px; padding: 6px 10px; border-radius: 6px; background: var(--panel2); color: var(--ink2); font: 500 12px var(--sans)"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M3 12h2l2-6 3 12 3-14 3 10 2-4h3"/></svg>Voice: Workspace default (Aoife)</span>
+        <span style="display: inline-flex; align-items: center; gap: 6px; padding: 6px 10px; border-radius: 6px; background: var(--panel2); color: var(--ink2); font: 500 12px var(--sans)"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>Folder: Reception</span>
+      </div>
+    </form>
+
+    <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 18px 24px 22px; margin-top: 18px; border-top: 1px solid var(--line2)">
+      <span style="font-size: 12.5px; color: var(--ink3); display: inline-flex; align-items: center; gap: 8px"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 8v4l2.5 2.5"/></svg>Drafting takes about 20 seconds. You land in the editor with the test rail open.</span>
+      <div style="display: flex; gap: 8px">
+        <button type="button" style="height: 36px; padding: 0 14px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel); color: var(--ink2); font: 500 13px var(--sans); cursor: pointer">Cancel</button>
+        <a href="Conversation.dc.html" style="height: 36px; padding: 0 16px; border-radius: 8px; background: var(--brand); color: var(--brand-ink); font: 600 13px var(--sans); display: inline-flex; align-items: center; gap: 8px; text-decoration: none">Create and open<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"dark":{"editor":"boolean","default":false,"section":"Theme"},"$preview":{"width":1440,"height":1100}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return { themeClass: this.props.dark ? 'dark' : '' };
+  }
+}
+</script>
+</body>
+</html>

@@ -121,7 +121,7 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
 
               <div className="flex min-h-0 flex-1 gap-3.5 px-3.5 pb-3.5 md:pl-0">
                 <AppSidebar />
-                <main className="app-content-panel min-w-0 flex-1 overflow-y-auto rounded-[10px] border border-line bg-panel">
+                <main className="app-content-panel min-w-0 flex-1 overflow-y-auto rounded-xl border border-line bg-panel">
                   <BackendStatusBanner />
                   <LowBalanceBanner />
                   {awaitingRole ? null : blocked ? <NoAccess role={role} /> : children}

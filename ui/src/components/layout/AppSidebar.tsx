@@ -110,10 +110,10 @@ export function AppSidebar({ docked = true }: { docked?: boolean }) {
         asChild
         tooltip={tooltip}
         className={cn(
-          "h-auto gap-2.5 rounded-[7px] px-2.5 py-2 text-[13.5px] font-normal text-ink-2",
+          "h-auto gap-2.5 rounded-md px-2.5 py-2 text-[13.5px] font-normal text-ink-2",
           "transition-colors hover:bg-panel-2 hover:text-foreground",
           isActive &&
-            "bg-sky-dim font-semibold text-sky hover:bg-sky-dim hover:text-sky"
+            "bg-brand-dim font-semibold text-brand hover:bg-brand-dim hover:text-brand"
         )}
       >
         <Link
@@ -123,7 +123,7 @@ export function AppSidebar({ docked = true }: { docked?: boolean }) {
           className={cn(isCollapsed && "justify-center")}
           translate="no"
         >
-          <Icon className={cn("h-4 w-4 shrink-0", isActive && "text-sky")} />
+          <Icon className={cn("h-4 w-4 shrink-0", isActive && "text-brand")} />
           <span
             className={cn("notranslate min-w-0 flex-1 truncate", isCollapsed && "sr-only")}
             translate="no"
@@ -201,7 +201,7 @@ export function AppSidebar({ docked = true }: { docked?: boolean }) {
               asChild
               tooltip={{ children: <p>All voice agents</p> }}
               className={cn(
-                "h-auto gap-2.5 rounded-[7px] px-2.5 py-2 text-[13px] font-medium text-ink-2",
+                "h-auto gap-2.5 rounded-md px-2.5 py-2 text-[13px] font-medium text-ink-2",
                 "transition-colors hover:bg-panel-2 hover:text-foreground"
               )}
             >
@@ -288,7 +288,7 @@ export function AppSidebar({ docked = true }: { docked?: boolean }) {
           <Link
             href="/overview"
             className={cn(
-              "notranslate flex items-center gap-2 rounded-[7px] px-1.5 py-1",
+              "notranslate flex items-center gap-2 rounded-md px-1.5 py-1",
               isCollapsed && "justify-center px-0"
             )}
             translate="no"
@@ -328,7 +328,7 @@ export function AppSidebar({ docked = true }: { docked?: boolean }) {
         ) : (
           <ThemeToggle
             showLabel
-            className="h-auto rounded-[7px] px-2.5 py-2 text-[13.5px] text-ink-2 hover:bg-panel-2 hover:text-foreground"
+            className="h-auto rounded-md px-2.5 py-2 text-[13.5px] text-ink-2 hover:bg-panel-2 hover:text-foreground"
           />
         )}
       </SidebarFooter>

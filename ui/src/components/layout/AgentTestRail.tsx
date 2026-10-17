@@ -59,7 +59,7 @@ export function AgentTestRail() {
         // fixed rail leaves the centre panel absurdly wide. The clamps keep it
         // usable at both ends — never narrower than a readable bubble, never so
         // wide it starves the flow canvas.
-        <aside className="hidden w-[32%] min-w-[380px] max-w-[620px] shrink-0 overflow-hidden rounded-[10px] border border-line bg-panel xl:block">
+        <aside className="hidden w-[32%] min-w-[380px] max-w-[620px] shrink-0 overflow-hidden rounded-xl border border-line bg-panel xl:block">
           {/* The rounded panel around it is the surface — the tester paints
               nothing of its own so the shell's three columns match. */}
           <WorkflowTesterPanel

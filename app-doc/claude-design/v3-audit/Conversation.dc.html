@@ -1,0 +1,210 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Agent conversation editor</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Sora:wght@600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+body{margin:0}
+.lm{--bg:#F4F7F5;--panel:#FFFFFF;--panel2:#F5F8F6;--line:#DCE5E0;--line2:#EAF0EC;--ink:#0B2E22;--ink2:#3E5249;--ink3:#5F726A;--brand:#0E7A4B;--brand-dim:rgba(14,122,75,.08);--brand-ink:#FFFFFF;--green:#169B62;--live:#FF883E;--live-dim:rgba(255,136,62,.14);--live-text:#A84C0C;--sky:#1869B5;--sky-dim:rgba(24,105,181,.10);--amber:#8D5D06;--amber-dim:rgba(141,93,6,.10);--ok:#1A754F;--ok-dim:rgba(26,117,79,.10);--danger:#C03630;--danger-dim:rgba(192,54,48,.08);--shadow:0 10px 30px rgba(11,31,23,.12);--dot:#CBD6D0;--sans:"DM Sans",system-ui,sans-serif;--display:"Sora",system-ui,sans-serif;--mono:"JetBrains Mono",ui-monospace,monospace}
+.lm.dark{--bg:#0B100E;--panel:#111714;--panel2:#161D19;--line:#243029;--line2:#1B2420;--ink:#EEF3F0;--ink2:#B4C1BA;--ink3:#87958D;--brand:#3DDC97;--brand-dim:rgba(61,220,151,.14);--brand-ink:#0A1F17;--live-text:#FF9A5C;--sky:#5CB3FF;--sky-dim:rgba(92,179,255,.12);--amber:#F0B429;--amber-dim:rgba(240,180,41,.12);--ok:#3FB27F;--ok-dim:rgba(63,178,127,.12);--danger:#E8645D;--danger-dim:rgba(232,100,93,.12);--shadow:0 10px 30px rgba(0,0,0,.55);--dot:#263129}
+a{color:var(--brand)}a:hover{color:var(--ink)}
+.canvas{background-image:radial-gradient(var(--dot) 1px,transparent 1px);background-size:18px 18px}
+</style>
+</helmet>
+<div class="lm {{themeClass}}" style="min-height: 100vh; box-sizing: border-box; background: var(--bg); color: var(--ink); font-family: var(--sans); font-size: 13px; line-height: 1.45; display: flex; flex-direction: column">
+
+  <header style="height: 48px; box-sizing: border-box; display: flex; align-items: center; gap: 12px; padding: 0 16px; flex-wrap: wrap">
+    <button type="button" aria-label="Toggle navigation" style="width: 28px; height: 28px; border: 0; background: transparent; color: var(--ink3); display: grid; place-items: center; border-radius: 8px; cursor: pointer"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
+    <a href="Agents.dc.html" style="display: inline-flex; align-items: center; gap: 7px; text-decoration: none; color: var(--ink)">
+      <svg width="22" height="22" viewBox="0 0 64 64" aria-hidden="true"><rect width="64" height="64" rx="16" fill="#169B62"/><rect x="14" y="26" width="6" height="12" rx="3" fill="#FFFFFF"/><rect x="24" y="19" width="6" height="26" rx="3" fill="#FFFFFF"/><rect x="34" y="13" width="6" height="38" rx="3" fill="#FFFFFF"/><rect x="44" y="24" width="6" height="16" rx="3" fill="#FFFFFF"/><circle cx="47" cy="16.5" r="3.5" fill="#FF883E"/></svg>
+      <span style="font-family: var(--display); font-weight: 600; font-size: 14px; letter-spacing: -0.03em">LightMove<span style="color: var(--brand)">.ai</span></span>
+    </a>
+    <span aria-hidden="true" style="color: var(--line); font-size: 14px">/</span>
+    <span style="color: var(--ink2); font-weight: 500">Acme Dental Group</span>
+    <span aria-hidden="true" style="color: var(--line); font-size: 14px">/</span>
+    <a href="Agents.dc.html" style="color: var(--ink2); font-weight: 500; text-decoration: none">Voice agents</a>
+    <span aria-hidden="true" style="color: var(--line); font-size: 14px">/</span>
+    <span style="font-weight: 600">Dental reception, Cork</span>
+    <div style="margin-left: auto; display: flex; align-items: center; gap: 10px">
+      <button type="button" aria-label="Help and support" style="width: 28px; height: 28px; border: 0; background: transparent; color: var(--ink3); display: grid; place-items: center; border-radius: 8px; cursor: pointer"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.7.3-1 .9-1 1.7M12 17h.01"/></svg></button>
+      <button type="button" aria-label="Account menu" style="width: 28px; height: 28px; border-radius: 999px; border: 1px solid var(--line); background: var(--brand-dim); color: var(--brand); font: 600 10.5px var(--mono); cursor: pointer">NS</button>
+    </div>
+  </header>
+
+  <div style="display: flex; gap: 14px; padding: 0 14px 14px; flex: 1; min-height: 0; flex-wrap: wrap">
+
+    <nav aria-label="Agent" style="width: 224px; flex: 0 0 224px; box-sizing: border-box; background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 10px 8px; display: flex; flex-direction: column; gap: 2px; align-self: stretch">
+      <a href="Agents.dc.html" style="display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 8px; color: var(--ink2); font: 500 13px var(--sans); text-decoration: none"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M19 12H5M11 18l-6-6 6-6"/></svg>All voice agents</a>
+      <div style="margin: 8px 4px 4px; padding: 12px 10px; border-radius: 10px; background: var(--panel2); display: flex; gap: 10px; align-items: center">
+        <span style="width: 34px; height: 34px; border-radius: 999px; background: var(--panel); border: 1px solid var(--line); color: var(--ink2); display: grid; place-items: center; font: 600 13px var(--sans); flex: 0 0 auto">D</span>
+        <span style="display: flex; flex-direction: column; gap: 4px; min-width: 0">
+          <span style="font-weight: 600; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">Dental reception, Cork</span>
+          <span style="display: inline-flex; align-items: center; gap: 6px"><span style="padding: 2px 7px; border-radius: 6px; background: var(--ok-dim); color: var(--ok); font: 600 10px var(--mono); letter-spacing: .04em">PUBLISHED</span><span style="font: 400 11px var(--mono); color: var(--ink3)">v12</span></span>
+        </span>
+      </div>
+      <span style="padding: 10px 10px 4px; font: 600 10.5px var(--sans); letter-spacing: .08em; text-transform: uppercase; color: var(--ink3)">Configure</span>
+      <a href="#conversation" aria-current="page" style="display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 8px; background: var(--brand-dim); color: var(--brand); font: 600 13px var(--sans); text-decoration: none"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1.1-4.6A8 8 0 1 1 21 12z"/></svg>Conversation</a>
+      <a href="#model" style="display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 8px; color: var(--ink2); font: 500 13px var(--sans); text-decoration: none"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 6h10M18 6h2M4 12h2M10 12h10M4 18h12M20 18h0"/><circle cx="16" cy="6" r="2"/><circle cx="8" cy="12" r="2"/><circle cx="18" cy="18" r="2"/></svg>Model and voice</a>
+      <a href="Settings.dc.html" style="display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 8px; color: var(--ink2); font: 500 13px var(--sans); text-decoration: none"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15l.5 1.9 1.6 1.1-1 1.7-1.9-.5-1.5 1.3-.4 1.9h-2l-.4-1.9-1.5-1.3-1.9.5-1-1.7 1.6-1.1.5-1.9-.5-1.9-1.6-1.1 1-1.7 1.9.5 1.5-1.3.4-1.9h2l.4 1.9 1.5 1.3 1.9-.5 1 1.7-1.6 1.1z"/></svg>Advanced settings</a>
+      <span style="padding: 10px 10px 4px; font: 600 10.5px var(--sans); letter-spacing: .08em; text-transform: uppercase; color: var(--ink3)">Connect</span>
+      <a href="#deployment" style="display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 8px; color: var(--ink2); font: 500 13px var(--sans); text-decoration: none"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M13 2L4 14h7l-1 8 9-12h-7z"/></svg>Deployment<span style="margin-left: auto; display: inline-flex; gap: 4px"><span style="width: 18px; height: 18px; border-radius: 5px; background: var(--panel2); display: grid; place-items: center"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" role="img" aria-label="Phone connected"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.7a2 2 0 0 1-.5 2.1L8 9.8a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.7.7a2 2 0 0 1 1.7 2z"/></svg></span><span style="width: 18px; height: 18px; border-radius: 5px; background: var(--panel2); display: grid; place-items: center"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" role="img" aria-label="Website widget connected"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></svg></span></span></a>
+      <span style="padding: 10px 10px 4px; font: 600 10.5px var(--sans); letter-spacing: .08em; text-transform: uppercase; color: var(--ink3)">Analyse</span>
+      <a href="#runs" style="display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 8px; color: var(--ink2); font: 500 13px var(--sans); text-decoration: none"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M3 17l6-6 4 4 8-8"/><path d="M14 7h7v7"/></svg>Runs<span style="margin-left: auto; font: 500 11px var(--mono); color: var(--ink3)">1,284</span></a>
+      <div style="margin-top: auto; border-top: 1px solid var(--line2); padding-top: 8px">
+        <button type="button" style="width: 100%; display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 8px; border: 0; background: transparent; color: var(--ink2); font: 500 13px var(--sans); text-align: left; cursor: pointer"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>{{themeLabel}}</button>
+      </div>
+    </nav>
+
+    <main style="flex: 999 1 520px; min-width: 0; box-sizing: border-box; background: var(--panel); border: 1px solid var(--line); border-radius: 14px; display: flex; flex-direction: column; overflow: hidden; align-self: stretch">
+      <div style="display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-bottom: 1px solid var(--line2); flex-wrap: wrap">
+        <button type="button" aria-label="Rename agent" title="Click to rename" style="height: 32px; padding: 0 10px; border-radius: 8px; border: 1px solid transparent; background: transparent; color: var(--ink); font: 600 14px var(--sans); display: inline-flex; align-items: center; gap: 8px; cursor: text">Dental reception, Cork<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true" style="color: var(--ink3)"><path d="M4 20h4l10-10-4-4L4 16zM13 7l4 4"/></svg></button>
+        <button type="button" style="height: 28px; padding: 0 10px; border-radius: 6px; border: 1px solid var(--line); background: var(--panel); color: var(--ink2); font: 500 11.5px var(--mono); display: inline-flex; align-items: center; gap: 6px; cursor: pointer"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5M12 7v5l3 2"/></svg>v12 · draft since 14:02</button>
+        <span style="display: inline-flex; align-items: center; gap: 6px; padding: 4px 9px; border-radius: 6px; background: var(--amber-dim); color: var(--amber); font: 600 10.5px var(--mono); letter-spacing: .04em"><span style="width: 6px; height: 6px; border-radius: 999px; background: var(--amber)"></span>UNSAVED</span>
+        <span style="display: inline-flex; align-items: center; gap: 6px; padding: 4px 9px; border-radius: 6px; background: var(--danger-dim); color: var(--danger); font: 600 10.5px var(--mono); letter-spacing: .04em">1 ERROR</span>
+        <div style="margin-left: auto; display: flex; align-items: center; gap: 8px">
+          <button type="button" style="height: 32px; padding: 0 12px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel); color: var(--ink2); font: 500 12.5px var(--sans); display: inline-flex; align-items: center; gap: 7px; cursor: pointer"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.7a2 2 0 0 1-.5 2.1L8 9.8a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.7.7a2 2 0 0 1 1.7 2z"/></svg>Phone call</button>
+          <button type="button" style="height: 32px; padding: 0 12px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); font: 500 12.5px var(--sans); cursor: pointer">Save</button>
+          <button type="button" disabled style="height: 32px; padding: 0 12px; border-radius: 8px; border: 0; background: var(--brand); color: var(--brand-ink); font: 600 12.5px var(--sans); display: inline-flex; align-items: center; gap: 7px; opacity: .5" title="Save first"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M5 19l4-4M14 4l6 6-8 8-6-6zM4 14l6 6"/></svg>Publish</button>
+          <button type="button" aria-label="More actions" style="width: 32px; height: 32px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel); color: var(--ink3); display: grid; place-items: center; cursor: pointer"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg></button>
+        </div>
+      </div>
+
+      <div class="canvas" style="position: relative; flex: 1; min-height: 780px; overflow: hidden">
+
+        <div style="position: absolute; left: 60px; top: 48px; width: 248px; border-radius: 12px; border: 1px solid var(--line); background: var(--panel); box-shadow: 0 1px 2px rgba(11,31,23,.06); display: flex; flex-direction: column">
+          <div style="display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--line2); border-left: 3px solid var(--brand); border-radius: 12px 12px 0 0">
+            <span style="width: 22px; height: 22px; border-radius: 6px; background: var(--brand-dim); color: var(--brand); display: grid; place-items: center"><svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7 5l12 7-12 7z"/></svg></span>
+            <span style="font-weight: 600; font-size: 13px">Start call</span>
+            <span style="margin-left: auto; font: 500 10px var(--mono); color: var(--ink3); letter-spacing: .04em">START</span>
+          </div>
+          <p style="margin: 0; padding: 10px 12px; font-size: 12px; color: var(--ink2); line-height: 1.45">Hi, you're through to Cork Dental. Am I speaking with a current patient?</p>
+          <div style="display: flex; gap: 6px; padding: 0 12px 10px"><span style="padding: 2px 7px; border-radius: 6px; background: var(--panel2); color: var(--ink3); font: 500 10.5px var(--mono)">no interrupt</span></div>
+        </div>
+
+        <svg width="2" height="54" viewBox="0 0 2 54" aria-hidden="true" style="position: absolute; left: 183px; top: 171px; color: var(--ink3)"><path d="M1 0v54" stroke="currentColor" stroke-width="1.5" fill="none"/></svg>
+
+        <div style="position: absolute; left: 60px; top: 224px; width: 248px; border-radius: 12px; border: 2px solid var(--brand); background: var(--panel); box-shadow: 0 0 0 4px var(--brand-dim); display: flex; flex-direction: column">
+          <div style="display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--line2)">
+            <span style="width: 22px; height: 22px; border-radius: 6px; background: var(--brand-dim); color: var(--brand); display: grid; place-items: center"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1.1-4.6A8 8 0 1 1 21 12z"/></svg></span>
+            <span style="font-weight: 600; font-size: 13px">Identify caller</span>
+            <span style="margin-left: auto; display: inline-flex; align-items: center; gap: 5px; padding: 2px 7px; border-radius: 6px; background: var(--live-dim); color: var(--live-text); font: 600 10px var(--mono); letter-spacing: .04em"><span style="width: 5px; height: 5px; border-radius: 999px; background: var(--live)"></span>ON</span>
+          </div>
+          <p style="margin: 0; padding: 10px 12px; font-size: 12px; color: var(--ink2); line-height: 1.45">Ask for name and date of birth. Look them up with <span style="font: 500 11px var(--mono); color: var(--brand)">find_patient</span>. If not found, offer to register them.</p>
+          <div style="display: flex; gap: 6px; padding: 0 12px 10px; flex-wrap: wrap"><span style="padding: 2px 7px; border-radius: 6px; background: var(--sky-dim); color: var(--sky); font: 500 10.5px var(--mono)">1 tool</span><span style="padding: 2px 7px; border-radius: 6px; background: var(--panel2); color: var(--ink3); font: 500 10.5px var(--mono)">extracts 2 fields</span></div>
+        </div>
+
+        <svg width="200" height="80" viewBox="0 0 200 80" aria-hidden="true" style="position: absolute; left: 308px; top: 272px; color: var(--ink3)"><path d="M0 18 C 80 18, 100 62, 200 62" stroke="currentColor" stroke-width="1.5" fill="none"/></svg>
+        <span style="position: absolute; left: 380px; top: 290px; padding: 2px 8px; border-radius: 6px; border: 1px solid var(--line); background: var(--panel); font: 500 10.5px var(--mono); color: var(--ink2)">wants to book</span>
+        <svg width="2" height="60" viewBox="0 0 2 60" aria-hidden="true" style="position: absolute; left: 183px; top: 371px; color: var(--ink3)"><path d="M1 0v60" stroke="currentColor" stroke-width="1.5" fill="none"/></svg>
+        <span style="position: absolute; left: 196px; top: 390px; padding: 2px 8px; border-radius: 6px; border: 1px solid var(--line); background: var(--panel); font: 500 10.5px var(--mono); color: var(--ink2)">anything else</span>
+
+        <div style="position: absolute; left: 508px; top: 290px; width: 262px; border-radius: 12px; border: 1px solid var(--line); background: var(--panel); box-shadow: 0 1px 2px rgba(11,31,23,.06); display: flex; flex-direction: column">
+          <div style="display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--line2)">
+            <span style="width: 22px; height: 22px; border-radius: 6px; background: var(--sky-dim); color: var(--sky); display: grid; place-items: center"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg></span>
+            <span style="font-weight: 600; font-size: 13px">Book appointment</span>
+            <span style="margin-left: auto; font: 500 10px var(--mono); color: var(--ink3); letter-spacing: .04em">AGENT</span>
+          </div>
+          <p style="margin: 0; padding: 10px 12px; font-size: 12px; color: var(--ink2); line-height: 1.45">Offer the next three slots from <span style="font: 500 11px var(--mono); color: var(--brand)">calendar.free_slots</span>. Confirm, then book and read back the date.</p>
+          <div style="display: flex; gap: 6px; padding: 0 12px 10px; flex-wrap: wrap"><span style="padding: 2px 7px; border-radius: 6px; background: var(--sky-dim); color: var(--sky); font: 500 10.5px var(--mono)">2 tools</span><span style="padding: 2px 7px; border-radius: 6px; background: var(--panel2); color: var(--ink3); font: 500 10.5px var(--mono)">skill: slot etiquette</span></div>
+        </div>
+
+        <div style="position: absolute; left: 60px; top: 431px; width: 248px; border-radius: 12px; border: 1px solid var(--danger); background: var(--panel); display: flex; flex-direction: column">
+          <div style="display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--line2)">
+            <span style="width: 22px; height: 22px; border-radius: 6px; background: var(--panel2); color: var(--ink2); display: grid; place-items: center"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M4 4h16v12H8l-4 4z"/></svg></span>
+            <span style="font-weight: 600; font-size: 13px">Take a message</span>
+            <span style="margin-left: auto; display: inline-flex; align-items: center; gap: 4px; color: var(--danger); font: 600 10px var(--mono); letter-spacing: .04em"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 8v4M12 16h.01"/></svg>NO PROMPT</span>
+          </div>
+          <p style="margin: 0; padding: 10px 12px; font-size: 12px; color: var(--ink3); line-height: 1.45; font-style: italic">Add a prompt so the agent knows what to collect.</p>
+        </div>
+
+        <svg width="2" height="60" viewBox="0 0 2 60" aria-hidden="true" style="position: absolute; left: 639px; top: 418px; color: var(--ink3)"><path d="M1 0v60" stroke="currentColor" stroke-width="1.5" fill="none"/></svg>
+        <svg width="400" height="140" viewBox="0 0 400 140" aria-hidden="true" style="position: absolute; left: 183px; top: 532px; color: var(--ink3)"><path d="M0 0 v70 C 0 110, 60 118, 140 118 H 400" stroke="currentColor" stroke-width="1.5" fill="none"/></svg>
+
+        <div style="position: absolute; left: 508px; top: 478px; width: 262px; border-radius: 12px; border: 1px solid var(--line); background: var(--panel); box-shadow: 0 1px 2px rgba(11,31,23,.06); display: flex; flex-direction: column">
+          <div style="display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--line2)">
+            <span style="width: 22px; height: 22px; border-radius: 6px; background: var(--amber-dim); color: var(--amber); display: grid; place-items: center"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M4 4h16v12H5.2L4 17.2z"/><path d="M8 9h8M8 12h5"/></svg></span>
+            <span style="font-weight: 600; font-size: 13px">Text confirmation</span>
+            <span style="margin-left: auto; font: 500 10px var(--mono); color: var(--ink3); letter-spacing: .04em">TOOL</span>
+          </div>
+          <p style="margin: 0; padding: 10px 12px; font-size: 12px; color: var(--ink2); line-height: 1.45">Send the booking summary by SMS with <span style="font: 500 11px var(--mono); color: var(--brand)">sms.send</span>, then say goodbye.</p>
+        </div>
+
+        <svg width="2" height="60" viewBox="0 0 2 60" aria-hidden="true" style="position: absolute; left: 639px; top: 578px; color: var(--ink3)"><path d="M1 0v60" stroke="currentColor" stroke-width="1.5" fill="none"/></svg>
+
+        <div style="position: absolute; left: 508px; top: 638px; width: 262px; border-radius: 12px; border: 1px solid var(--line); background: var(--panel); display: flex; align-items: center; gap: 8px; padding: 10px 12px">
+          <span style="width: 22px; height: 22px; border-radius: 6px; background: var(--danger-dim); color: var(--danger); display: grid; place-items: center"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M5 5l14 14M19 5L5 19"/></svg></span>
+          <span style="font-weight: 600; font-size: 13px">End call</span>
+          <span style="margin-left: auto; font: 500 10px var(--mono); color: var(--ink3); letter-spacing: .04em">END</span>
+        </div>
+
+        <div style="position: absolute; right: 16px; top: 16px; display: flex; flex-direction: column; gap: 6px; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--panel); box-shadow: var(--shadow); width: 180px">
+          <span style="font: 600 10.5px var(--sans); letter-spacing: .08em; text-transform: uppercase; color: var(--ink3)">Legend</span>
+          <span style="display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--ink2)"><span style="width: 10px; height: 10px; border-radius: 3px; background: var(--brand)"></span>Agent speaks</span>
+          <span style="display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--ink2)"><span style="width: 10px; height: 10px; border-radius: 3px; background: var(--sky)"></span>Uses a tool</span>
+          <span style="display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--ink2)"><span style="width: 10px; height: 10px; border-radius: 3px; background: var(--live)"></span>Where the live call is</span>
+        </div>
+
+        <div role="toolbar" aria-label="Canvas" style="position: absolute; left: 50%; bottom: 18px; transform: translateX(-50%); display: flex; align-items: center; gap: 4px; padding: 6px; border-radius: 12px; border: 1px solid var(--line); background: var(--panel); box-shadow: var(--shadow)">
+          <button type="button" style="height: 34px; padding: 0 14px; border-radius: 8px; border: 0; background: var(--brand); color: var(--brand-ink); font: 600 12.5px var(--sans); display: inline-flex; align-items: center; gap: 7px; cursor: pointer"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>Add node</button>
+          <span style="width: 1px; height: 22px; background: var(--line2); margin: 0 4px"></span>
+          <button type="button" aria-label="Zoom out" style="width: 34px; height: 34px; border-radius: 8px; border: 0; background: transparent; color: var(--ink2); display: grid; place-items: center; cursor: pointer"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M5 12h14"/></svg></button>
+          <span style="min-width: 44px; text-align: center; font: 500 12px var(--mono); color: var(--ink2)">75 %</span>
+          <button type="button" aria-label="Zoom in" style="width: 34px; height: 34px; border-radius: 8px; border: 0; background: transparent; color: var(--ink2); display: grid; place-items: center; cursor: pointer"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button>
+          <button type="button" aria-label="Fit to view" style="width: 34px; height: 34px; border-radius: 8px; border: 0; background: transparent; color: var(--ink2); display: grid; place-items: center; cursor: pointer"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></button>
+          <button type="button" aria-label="Tidy layout" style="width: 34px; height: 34px; border-radius: 8px; border: 0; background: transparent; color: var(--ink2); display: grid; place-items: center; cursor: pointer"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><rect x="4" y="4" width="6" height="6" rx="1"/><rect x="14" y="4" width="6" height="6" rx="1"/><rect x="4" y="14" width="6" height="6" rx="1"/><rect x="14" y="14" width="6" height="6" rx="1"/></svg></button>
+          <span style="width: 1px; height: 22px; background: var(--line2); margin: 0 4px"></span>
+          <button type="button" aria-label="Undo" style="width: 34px; height: 34px; border-radius: 8px; border: 0; background: transparent; color: var(--ink2); display: grid; place-items: center; cursor: pointer"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M9 14L4 9l5-5"/><path d="M4 9h11a5 5 0 0 1 0 10h-3"/></svg></button>
+          <button type="button" aria-label="Redo" style="width: 34px; height: 34px; border-radius: 8px; border: 0; background: transparent; color: var(--ink3); display: grid; place-items: center; cursor: pointer"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M15 14l5-5-5-5"/><path d="M20 9H9a5 5 0 0 0 0 10h3"/></svg></button>
+        </div>
+      </div>
+    </main>
+
+    <aside aria-label="Test agent" style="width: 380px; flex: 0 0 380px; box-sizing: border-box; background: var(--panel); border: 1px solid var(--line); border-radius: 14px; display: flex; flex-direction: column; overflow: hidden; align-self: stretch">
+      <div style="display: flex; align-items: center; gap: 10px; padding: 12px 14px; border-bottom: 1px solid var(--line2)">
+        <h2 style="margin: 0; font-size: 14px; font-weight: 600">Test agent</h2>
+        <span style="display: inline-flex; align-items: center; gap: 6px; padding: 3px 9px; border-radius: 6px; background: var(--live-dim); color: var(--live-text); font: 600 10.5px var(--mono); letter-spacing: .04em"><span style="width: 6px; height: 6px; border-radius: 999px; background: var(--live)"></span>LIVE 00:42</span>
+        <div role="radiogroup" aria-label="Test mode" style="margin-left: auto; display: inline-flex; border: 1px solid var(--line); border-radius: 8px; padding: 2px; background: var(--panel2)">
+          <button type="button" role="radio" aria-checked="true" style="height: 26px; padding: 0 10px; border-radius: 6px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); font: 500 12px var(--sans); display: inline-flex; align-items: center; gap: 6px; cursor: pointer"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>Voice</button>
+          <button type="button" role="radio" aria-checked="false" style="height: 26px; padding: 0 10px; border-radius: 6px; border: 0; background: transparent; color: var(--ink3); font: 500 12px var(--sans); cursor: pointer">Text</button>
+        </div>
+      </div>
+
+      <div style="flex: 1; min-height: 0; overflow: auto; padding: 14px; display: flex; flex-direction: column; gap: 12px">
+        <div style="display: flex; align-items: center; gap: 8px; color: var(--ink3); font: 500 10.5px var(--mono); letter-spacing: .04em"><span style="flex: 1; height: 1px; background: var(--line2)"></span>START CALL<span style="flex: 1; height: 1px; background: var(--line2)"></span></div>
+        <div style="align-self: flex-start; max-width: 86%; padding: 9px 12px; border-radius: 12px 12px 12px 4px; background: var(--panel2); font-size: 13px; line-height: 1.45">Hi, you're through to Cork Dental. Am I speaking with a current patient?</div>
+        <div style="align-self: flex-end; max-width: 86%; padding: 9px 12px; border-radius: 12px 12px 4px 12px; background: var(--brand); color: var(--brand-ink); font-size: 13px; line-height: 1.45">Yeah, Niamh Sullivan, I need to move my cleaning.</div>
+        <div style="display: flex; align-items: center; gap: 8px; color: var(--ink3); font: 500 10.5px var(--mono); letter-spacing: .04em"><span style="flex: 1; height: 1px; background: var(--line2)"></span>IDENTIFY CALLER<span style="flex: 1; height: 1px; background: var(--line2)"></span></div>
+        <div style="align-self: flex-start; max-width: 86%; padding: 9px 12px; border-radius: 12px 12px 12px 4px; background: var(--panel2); font-size: 13px; line-height: 1.45">No problem, Niamh. Can I take your date of birth to find your file?</div>
+        <div style="align-self: flex-end; max-width: 86%; padding: 9px 12px; border-radius: 12px 12px 4px 12px; background: var(--brand); color: var(--brand-ink); font-size: 13px; line-height: 1.45">Third of March, ninety one.</div>
+        <div style="align-self: flex-start; display: flex; align-items: center; gap: 8px; padding: 7px 10px; border-radius: 8px; border: 1px solid var(--line); font: 500 11.5px var(--mono); color: var(--ink2)"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true" style="color: var(--sky)"><path d="M14.7 6.3a4 4 0 0 0 5 5l-9.4 9.4a2.1 2.1 0 0 1-3-3l9.4-9.4z"/></svg>find_patient · 312 ms · <span style="color: var(--ok)">found</span></div>
+        <div style="align-self: flex-start; max-width: 86%; padding: 9px 12px; border-radius: 12px 12px 12px 4px; background: var(--panel2); font-size: 13px; line-height: 1.45; display: flex; align-items: center; gap: 8px"><span style="display: inline-flex; gap: 3px; align-items: flex-end; height: 14px" aria-hidden="true"><span style="width: 3px; height: 6px; border-radius: 999px; background: var(--brand)"></span><span style="width: 3px; height: 12px; border-radius: 999px; background: var(--brand)"></span><span style="width: 3px; height: 14px; border-radius: 999px; background: var(--live)"></span><span style="width: 3px; height: 8px; border-radius: 999px; background: var(--brand)"></span></span><span style="color: var(--ink3)">Agent is speaking</span></div>
+      </div>
+
+      <div style="padding: 12px 14px; border-top: 1px solid var(--line2); display: flex; flex-direction: column; gap: 10px">
+        <div style="display: flex; align-items: center; justify-content: space-between; font: 400 11.5px var(--mono); color: var(--ink3)"><span>Mic · MacBook Pro</span><span>Latency 480 ms</span></div>
+        <div style="display: flex; gap: 8px">
+          <button type="button" aria-label="Mute microphone" style="width: 36px; height: 36px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel); color: var(--ink2); display: grid; place-items: center; cursor: pointer"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg></button>
+          <button type="button" style="flex: 1; height: 36px; border-radius: 8px; border: 0; background: var(--danger); color: #FFFFFF; font: 600 13px var(--sans); display: inline-flex; align-items: center; justify-content: center; gap: 8px; cursor: pointer"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.7a2 2 0 0 1-.5 2.1L8 9.8a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.7.7a2 2 0 0 1 1.7 2z"/></svg>End call</button>
+          <button type="button" aria-label="Restart" style="width: 36px; height: 36px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel); color: var(--ink2); display: grid; place-items: center; cursor: pointer"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg></button>
+        </div>
+      </div>
+    </aside>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"dark":{"editor":"boolean","default":false,"section":"Theme"},"$preview":{"width":1440,"height":940}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const dark = !!this.props.dark;
+    return { themeClass: dark ? 'dark' : '', themeLabel: dark ? 'Light mode' : 'Dark mode' };
+  }
+}
+</script>
+</body>
+</html>

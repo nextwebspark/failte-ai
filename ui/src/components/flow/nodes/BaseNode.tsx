@@ -22,13 +22,13 @@ export const BaseNode = forwardRef<
             className,
             // Selected state - prominent halo effect. Sky, not primary: the
             // canvas reserves the brand green for actions and marks selection blue.
-            selected ? "border-sky ring-2 ring-sky/40" : "",
+            selected ? "border-brand ring-2 ring-brand/30" : "",
             // Invalid state
             invalid ? "border-destructive ring-1 ring-destructive/30" : "",
             // Hovered through edge takes precedence over selected through edge
-            hovered_through_edge ? "ring-2 ring-sky/60" : "",
-            !hovered_through_edge && selected_through_edge ? "ring-1 ring-sky/50" : "",
-            runtimeActive ? "ring-2 ring-sky/60 shadow-panel" : "",
+            hovered_through_edge ? "ring-2 ring-brand/50" : "",
+            !hovered_through_edge && selected_through_edge ? "ring-1 ring-brand/40" : "",
+            runtimeActive ? "ring-2 ring-live/70 shadow-panel" : "",
             !selected_through_edge && !hovered_through_edge && "hover:border-ink-3/50",
         )}
         tabIndex={0}
