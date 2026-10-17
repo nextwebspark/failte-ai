@@ -768,7 +768,7 @@ export const useWebSocketRTC = ({ workflowId, workflowRunId, accessToken, initia
 
             if (workflowResponse.error) {
                 setWorkflowConfigModalOpen(true);
-                let msg = 'Workflow validation failed';
+                let msg = 'Agent validation failed';
                 const errorDetail = workflowResponse.error as { detail?: { errors: WorkflowValidationError[] } };
                 if (errorDetail?.detail?.errors) {
                     msg = errorDetail.detail.errors

@@ -68,7 +68,7 @@ export const baseFilterAttributes: Record<string, Omit<FilterAttribute, "id">> =
   },
   runId: {
     type: "number",
-    label: "Workflow Run ID",
+    label: "Run ID",
     config: {
       placeholder: "Enter run ID",
       min: 1,
@@ -78,9 +78,9 @@ export const baseFilterAttributes: Record<string, Omit<FilterAttribute, "id">> =
   },
   workflowId: {
     type: "number",
-    label: "Workflow ID",
+    label: "Agent ID",
     config: {
-      placeholder: "Enter workflow ID",
+      placeholder: "Enter agent ID",
       min: 1,
       max: 999999,
       step: 1,

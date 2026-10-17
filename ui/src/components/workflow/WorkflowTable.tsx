@@ -93,14 +93,14 @@ export function WorkflowTable({
             });
 
             if (response.data) {
-                toast.success(`Workflow ${action.toLowerCase()}d successfully`);
+                toast.success(`Agent ${action.toLowerCase()}d`);
                 startTransition(() => {
                     router.refresh();
                 });
             }
         } catch (error) {
             console.error(`Error ${action.toLowerCase()}ing workflow:`, error);
-            toast.error(`Failed to ${action.toLowerCase()} workflow`);
+            toast.error(`Failed to ${action.toLowerCase()} agent`);
         } finally {
             setLoadingWorkflowId(null);
         }
@@ -137,9 +137,9 @@ export function WorkflowTable({
                     <TableHeader>
                         <TableRow>
                             <TableHead>ID</TableHead>
-                            <TableHead>Agent Name</TableHead>
-                            <TableHead>Created At</TableHead>
-                            <TableHead className="text-center">Total Runs</TableHead>
+                            <TableHead>Agent name</TableHead>
+                            <TableHead>Created</TableHead>
+                            <TableHead className="text-center">Total runs</TableHead>
                             <TableHead className="text-right">Actions</TableHead>
                         </TableRow>
                     </TableHeader>

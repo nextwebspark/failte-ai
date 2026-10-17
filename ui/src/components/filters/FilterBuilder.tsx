@@ -329,9 +329,9 @@ export const FilterBuilder: React.FC<FilterBuilderProps> = ({
       <CardHeader>
         <div className="flex items-center justify-between">
           <div>
-            <CardTitle>Filter Workflow Runs</CardTitle>
+            <CardTitle>Filter runs</CardTitle>
             <CardDescription>
-              Build custom filters to find specific workflow runs
+              Build custom filters to find specific runs
             </CardDescription>
           </div>
           <div className="flex items-center gap-2">

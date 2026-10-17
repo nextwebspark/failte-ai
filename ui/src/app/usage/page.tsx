@@ -226,7 +226,7 @@ export default function UsagePage() {
                     a.name.localeCompare(b.name) || a.id - b.id
                 ))
                 .map((workflow: WorkflowSummaryResponse) => ({
-                    label: `${workflow.name || 'Untitled Agent'} (#${workflow.id})`,
+                    label: `${workflow.name || 'Untitled agent'} (#${workflow.id})`,
                     value: workflow.id,
                 }));
             setAgentFilterOptions(options);
@@ -589,8 +589,8 @@ export default function UsagePage() {
                                         <TableHeader>
                                             <TableRow className="bg-muted/50">
                                                 <TableHead className="font-semibold">Run ID</TableHead>
-                                                <TableHead className="font-semibold">Agent Name</TableHead>
-                                                <TableHead className="font-semibold">Call Type</TableHead>
+                                                <TableHead className="font-semibold">Agent name</TableHead>
+                                                <TableHead className="font-semibold">Call type</TableHead>
                                                 <TableHead className="font-semibold">Phone Number</TableHead>
                                                 <TableHead className="font-semibold">Disposition</TableHead>
                                                 <TableHead className="font-semibold">Date</TableHead>

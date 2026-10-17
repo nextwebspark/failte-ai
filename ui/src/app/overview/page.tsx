@@ -28,7 +28,7 @@ export default function OverviewPage() {
                         )}
                     </h1>
                     <p className="mt-1.5 font-mono text-[12.5px] text-ink-3">
-                        Get started with building voice AI workflows
+                        Get started with building voice AI agents
                     </p>
                 </div>
 

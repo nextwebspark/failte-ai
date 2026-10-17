@@ -108,8 +108,8 @@ export const WorkflowEditorHeader = ({
         });
         toast.promise(promise, {
             loading: "Publishing...",
-            success: "Workflow published successfully",
-            error: "Failed to publish workflow",
+            success: "Agent published",
+            error: "Failed to publish agent",
         });
         try {
             await promise;
@@ -126,9 +126,9 @@ export const WorkflowEditorHeader = ({
             path: { workflow_id: workflowId },
         });
         toast.promise(promise, {
-            loading: "Duplicating workflow...",
-            success: "Workflow duplicated successfully",
-            error: "Failed to duplicate workflow",
+            loading: "Duplicating agent…",
+            success: "Agent duplicated",
+            error: "Failed to duplicate agent",
         });
         try {
             const { data } = await promise;
@@ -206,7 +206,7 @@ export const WorkflowEditorHeader = ({
         } catch {
             // Roll back: keep user's typed value, reopen the input, focus it,
             // surface a sonner toast (matches existing duplicate/publish failure pattern).
-            toast.error("Failed to rename workflow");
+            toast.error("Failed to rename agent");
             setRename({ kind: "editing", draft: trimmed, error: null });
             setTimeout(() => nameInputRef.current?.focus(), 0);
         }

@@ -23,7 +23,7 @@ import { detailFromError } from '@/lib/apiError';
 import { useAuth } from '@/lib/auth';
 import logger from '@/lib/logger';
 
-const CREATE_WORKFLOW_FALLBACK_ERROR = 'Failed to create workflow. Please try again.';
+const CREATE_WORKFLOW_FALLBACK_ERROR = 'Failed to create agent. Please try again.';
 
 export default function CreateWorkflowPage() {
     const router = useRouter();
@@ -45,7 +45,7 @@ export default function CreateWorkflowPage() {
         }
 
         if (!user) {
-            setError('You must be logged in to create a workflow');
+            setError('You must be logged in to create an agent');
             return;
         }
 
@@ -97,14 +97,14 @@ export default function CreateWorkflowPage() {
 
                 <Card>
                     <CardHeader>
-                        <CardTitle>Agent Details</CardTitle>
+                        <CardTitle>Agent details</CardTitle>
                         <CardDescription>
                             Configure your voice agent settings
                         </CardDescription>
                     </CardHeader>
                     <CardContent className="space-y-6">
                         <div className="space-y-2">
-                            <Label htmlFor="call-type">Call Type</Label>
+                            <Label htmlFor="call-type">Call type</Label>
                             <Select value={callType} onValueChange={(value) => setCallType(value as 'inbound' | 'outbound')}>
                                 <SelectTrigger id="call-type">
                                     <SelectValue placeholder="Select type" />
@@ -124,10 +124,10 @@ export default function CreateWorkflowPage() {
                         </div>
 
                         <div className="space-y-2">
-                            <Label htmlFor="use-case">Use Case</Label>
+                            <Label htmlFor="use-case">Use case</Label>
                             <Input
                                 id="use-case"
-                                placeholder="e.g., Lead Qualification, HR Screening, Customer Support"
+                                placeholder="e.g. lead qualification, HR screening, customer support"
                                 value={useCase}
                                 maxLength={200}
                                 onChange={(e) => setUseCase(e.target.value)}
@@ -138,7 +138,7 @@ export default function CreateWorkflowPage() {
                         </div>
 
                         <div className="space-y-2">
-                            <Label htmlFor="activity-description">Activity Description</Label>
+                            <Label htmlFor="activity-description">What should it do?</Label>
                             <Textarea
                                 id="activity-description"
                                 placeholder="Describe briefly what your voice agent will do (e.g., Qualify leads for real estate, Screen candidates for roles, Handle customer support). This will be a prompt to an LLM."
@@ -153,7 +153,7 @@ export default function CreateWorkflowPage() {
                         </div>
 
                         {error && (
-                            <p className="text-sm text-red-500">{error}</p>
+                            <p className="text-sm text-danger">{error}</p>
                         )}
 
                         <div className="pt-4">
@@ -162,7 +162,7 @@ export default function CreateWorkflowPage() {
                                 disabled={isLoading || !useCase || !activityDescription}
                                 className="w-full"
                             >
-                                {isLoading ? 'Creating...' : 'Create Agent'}
+                                {isLoading ? 'Creating…' : 'Create agent'}
                             </Button>
                         </div>
                     </CardContent>
@@ -182,7 +182,7 @@ export default function CreateWorkflowPage() {
 
                             <div className="text-center space-y-2">
                                 <h3 className="text-lg font-semibold">
-                                    Creating Your Workflow
+                                    Creating your agent
                                 </h3>
                                 <p className="text-sm text-muted-foreground max-w-xs">
                                     We&apos;re setting up your voice agent with your specifications. This will just take a moment...
@@ -198,22 +198,22 @@ export default function CreateWorkflowPage() {
                 <DialogContent className="sm:max-w-lg">
                     <DialogHeader>
                         <DialogTitle className="flex items-center gap-2">
-                            <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <svg className="w-5 h-5 text-ok" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                             </svg>
-                            Workflow Created Successfully!
+                            Agent created
                         </DialogTitle>
                         <DialogDescription asChild>
                             <div className="mt-4 space-y-3">
                                 <p>
-                                    A voice agent workflow has been generated for your use case, with some artificial data and sample actions.
+                                    We drafted an agent for your use case, with some sample data and actions.
                                 </p>
                                 <p>
-                                    The voice bot is pre-set to communicate in English with an American accent.
+                                    The agent is set to speak English with an American accent.
                                     {platformModels && " You can change its voice and language under Models & voice."}
                                 </p>
                                 <p>
-                                    Next steps would be to test the voice bot in the editor, and then modify it to suit your use case.
+                                    Next, test it in the editor, then adjust it to suit your use case.
                                 </p>
                             </div>
                         </DialogDescription>
@@ -223,7 +223,7 @@ export default function CreateWorkflowPage() {
                             onClick={handleModalContinue}
                             className="w-full"
                         >
-                            Open and Test Agent
+                            Open and test agent
                         </Button>
                     </DialogFooter>
                 </DialogContent>

@@ -89,11 +89,11 @@ export function WorkflowRunsTable({
     onSort,
     returnTo,
     onReload,
-    title = "Workflow Run History",
+    title = "Run history",
     subtitle,
     showFilters = true,
     showAgentVersion = false,
-    emptyMessage = "No workflow runs found",
+    emptyMessage = "No runs yet",
 }: WorkflowRunsTableProps) {
     const [selectedRowId, setSelectedRowId] = useState<number | null>(null);
     const organizationTimezone = useOrganizationTimezone();
@@ -132,7 +132,7 @@ export function WorkflowRunsTable({
             {/* Loading State */}
             {loading ? (
                 <div className="flex justify-center">
-                    <div className="animate-pulse">Loading workflow runs...</div>
+                    <div className="animate-pulse">Loading runs…</div>
                 </div>
             ) : error ? (
                 <div className="bg-destructive/10 border border-destructive/30 text-destructive px-4 py-3 rounded">
@@ -147,7 +147,7 @@ export function WorkflowRunsTable({
                     <CardHeader>
                         <div className="flex items-center justify-between">
                             <div>
-                                <CardTitle>Workflow Runs</CardTitle>
+                                <CardTitle>Runs</CardTitle>
                                 <CardDescription>
                                     {subtitle || `Showing ${runs.length} of ${totalCount} total runs`}
                                 </CardDescription>
@@ -173,8 +173,8 @@ export function WorkflowRunsTable({
                                         <TableHead className="font-semibold">ID</TableHead>
                                         {showAgentVersion && <TableHead>Agent / version</TableHead>}
                                         <TableHead className="font-semibold">Status</TableHead>
-                                        <TableHead className="font-semibold">Created At</TableHead>
-                                        <TableHead className="font-semibold">Call Type</TableHead>
+                                        <TableHead className="font-semibold">Created</TableHead>
+                                        <TableHead className="font-semibold">Call type</TableHead>
                                         <TableHead
                                             className="font-semibold cursor-pointer hover:bg-muted/50 select-none"
                                             onClick={() => onSort?.('duration')}

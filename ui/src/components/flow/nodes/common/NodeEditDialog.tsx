@@ -104,7 +104,7 @@ export const NodeEditDialog = ({
                         )}
                     </div>
                     <DialogDescription>
-                        Configure the settings for this node in your workflow.
+                        Configure the settings for this node.
                     </DialogDescription>
                     {nodeData.invalid && nodeData.validationMessage && (
                         <div className="mt-2 flex items-center gap-2 rounded-md bg-red-50 p-2 text-sm text-red-500 border border-red-200">

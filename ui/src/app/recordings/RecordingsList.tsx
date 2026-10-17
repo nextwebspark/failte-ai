@@ -125,7 +125,7 @@ export default function RecordingsList({ refreshKey }: { refreshKey?: number }) 
                 throw new Error(errData?.detail || "Failed to update recording ID");
             }
 
-            toast.success(`Recording ID updated to "${newId}". All workflow references have been updated.`);
+            toast.success(`Recording ID updated to "${newId}". All agent references have been updated.`);
             cancelEditing();
             fetchRecordings();
         } catch (err) {

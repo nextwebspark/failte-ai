@@ -166,11 +166,11 @@ export function WorkflowTesterPanel({
                         <TabsList className="grid h-9 flex-1 grid-cols-2 rounded-lg bg-muted/60 p-1">
                             <TabsTrigger value="audio" className="rounded-md text-sm">
                                 <Mic className="h-4 w-4" />
-                                Test Audio
+                                Test audio
                             </TabsTrigger>
                             <TabsTrigger value="text" className="rounded-md text-sm">
                                 <MessageSquareText className="h-4 w-4" />
-                                Test Chat
+                                Test chat
                             </TabsTrigger>
                         </TabsList>
                         {onClose ? (
@@ -228,7 +228,7 @@ export function WorkflowTesterPanel({
                                             ) : (
                                                 <>
                                                     <Phone className="h-4 w-4" />
-                                                    Run Test
+                                                    Run test
                                                 </>
                                             )}
                                         </Button>
@@ -278,7 +278,7 @@ export function WorkflowTesterPanel({
             <OnboardingTooltip
                 tooltipKey="web_call"
                 targetRef={runTestButtonRef}
-                title="Try Your First Web Call"
+                title="Try your first web call"
                 message="Start a browser call here to hear the agent, inspect the transcript, and validate the workflow before you customize it further."
                 showNext={false}
                 enabled={runTestTooltipEnabled}

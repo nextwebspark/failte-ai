@@ -78,12 +78,12 @@ async function WorkflowList() {
             <>
                 {/* Active Workflows Section */}
                 <div className="mb-8">
-                    <SectionHeading>Active Agents</SectionHeading>
+                    <SectionHeading>Active agents</SectionHeading>
                     {activeWorkflows.length > 0 || folders.length > 0 ? (
                         <AgentFolderView workflows={activeWorkflows} folders={folders} />
                     ) : (
                         <div className="rounded-lg border border-dashed border-line bg-panel-2 p-8 text-center font-mono text-[12.5px] text-ink-3">
-                            No active workflows found. Create your first workflow to get started.
+                            No agents yet. Create your first agent to get started.
                         </div>
                     )}
                 </div>
@@ -100,7 +100,7 @@ async function WorkflowList() {
         logger.error(`Error fetching workflows: ${err}`);
         return (
             <div className="font-mono text-sm text-danger">
-                Failed to load Workflows. Please Try Again Later.
+                Couldn&apos;t load your agents. Please try again later.
             </div>
         );
     }

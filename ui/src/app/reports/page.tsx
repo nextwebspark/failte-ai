@@ -207,10 +207,10 @@ export default function ReportsPage() {
           {/* Workflow Selector */}
           <Select value={selectedWorkflow} onValueChange={setSelectedWorkflow}>
             <SelectTrigger className="w-[200px]">
-              <SelectValue placeholder="Select workflow" />
+              <SelectValue placeholder="Select agent" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All Workflows</SelectItem>
+              <SelectItem value="all">All agents</SelectItem>
               {workflows.map((workflow) => (
                 <SelectItem key={workflow.id} value={workflow.id.toString()}>
                   {workflow.name}
@@ -318,8 +318,8 @@ export default function ReportsPage() {
           {report.metrics.total_runs === 0 && (
             <Card className="p-6">
               <p className="text-center text-muted-foreground">
-                No workflow runs found for {format(selectedDate, 'MMMM dd, yyyy')}
-                {selectedWorkflow !== 'all' && ' for the selected workflow'}
+                No runs found for {format(selectedDate, 'MMMM dd, yyyy')}
+                {selectedWorkflow !== 'all' && ' for the selected agent'}
               </p>
             </Card>
           )}

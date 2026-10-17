@@ -469,7 +469,7 @@ export function EmbedDialog({
                             <div className="space-y-0.5">
                                 <Label htmlFor="embed-enabled">Enable Embedding</Label>
                                 <p className="text-sm text-muted-foreground">
-                                    Allow this workflow to be embedded on external websites
+                                    Allow this agent to be embedded on external websites
                                 </p>
                             </div>
                             <Switch
