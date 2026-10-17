@@ -1,6 +1,6 @@
 // Dark token overrides for the embedded Stack Auth form so it blends into the
 // auth card surface. These mirror the dark palette in globals.css — the
-// forest-tinted panel/line/ink surfaces with the brand green on the primary
+// neutral black panel/line/ink surfaces with the brand green on the primary
 // button and on the focus ring. Stack's theme parser does not accept OKLCH strings, so keep
 // these values in hex and update them whenever the .dark block changes.
 
@@ -11,24 +11,24 @@ type ThemeConfig = NonNullable<ComponentProps<typeof StackTheme>["theme"]>;
 
 export const stackAuthDarkTheme: ThemeConfig = {
   dark: {
-    background: "#111714", // --panel
-    foreground: "#eef3f0", // --ink
-    card: "#111714",
-    cardForeground: "#eef3f0",
-    popover: "#111714",
-    popoverForeground: "#eef3f0",
+    background: "#111111", // --panel
+    foreground: "#f2f2f2", // --ink
+    card: "#111111",
+    cardForeground: "#f2f2f2",
+    popover: "#111111",
+    popoverForeground: "#f2f2f2",
     primary: "#3ddc97", // --brand
     primaryForeground: "#0a1f17", // --brand-ink
-    secondary: "#161d19", // --panel-2
-    secondaryForeground: "#eef3f0",
-    muted: "#161d19",
-    mutedForeground: "#87958d", // --ink-3
-    accent: "#161d19",
-    accentForeground: "#eef3f0",
+    secondary: "#171717", // --panel-2
+    secondaryForeground: "#f2f2f2",
+    muted: "#171717",
+    mutedForeground: "#8f8f8f", // --ink-3
+    accent: "#171717",
+    accentForeground: "#f2f2f2",
     destructive: "#e5534b", // canvas --red
     destructiveForeground: "#ffffff",
-    border: "#243029", // --line
-    input: "#243029",
+    border: "#262626", // --line
+    input: "#262626",
     ring: "#3ddc97", // --brand
   },
   radius: "0.75rem",

@@ -216,18 +216,18 @@
 }
 
 .dark {
-  /* Forest-tinted near-black: the same faint green cast light mode carries,
-     so switching theme changes the lightness, not the brand. Green itself is
-     still reserved for the accents (logo, primary actions, active states). */
-  --bg: #0b100e;
-  --panel: #111714;
-  --panel-2: #161d19;
-  --line: #243029;
-  --line-soft: #1b2420;
+  /* True neutral black (user decision, v3 audit): no green or blue cast in
+     the surfaces. Mint is the only colour in dark mode — logo, primary
+     actions, active states — so it reads as an accent, not a background. */
+  --bg: #0a0a0a;
+  --panel: #111111;
+  --panel-2: #171717;
+  --line: #262626;
+  --line-soft: #1c1c1c;
 
-  --ink: #eef3f0;
-  --ink-2: #b4c1ba;
-  --ink-3: #87958d;
+  --ink: #f2f2f2;
+  --ink-2: #bdbdbd;
+  --ink-3: #8f8f8f;
 
   --brand: #3ddc97;
   --brand-dim: rgba(61, 220, 151, 0.14);
