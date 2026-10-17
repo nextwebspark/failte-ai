@@ -6,6 +6,7 @@ import {
     Folder as FolderIcon,
     FolderInput,
     Inbox,
+    MoreHorizontal,
     Pencil,
     RotateCcw,
 } from 'lucide-react';
@@ -17,97 +18,108 @@ import {
     moveWorkflowToFolderApiV1WorkflowWorkflowIdFolderPut,
     updateWorkflowStatusApiV1WorkflowWorkflowIdStatusPut,
 } from '@/client/sdk.gen';
-import type { FolderResponse } from '@/client/types.gen';
+import type { FolderResponse, WorkflowListResponse } from '@/client/types.gen';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
 import {
     DropdownMenu,
     DropdownMenuContent,
     DropdownMenuItem,
-    DropdownMenuLabel,
     DropdownMenuSeparator,
+    DropdownMenuSub,
+    DropdownMenuSubContent,
+    DropdownMenuSubTrigger,
     DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import {
-    Table,
-    TableBody,
-    TableCell,
-    TableHead,
-    TableHeader,
-    TableRow,
-} from "@/components/ui/table";
+import { StatusPill, statusTone } from '@/components/ui/status-pill';
 import { useOrganizationTimezone } from '@/hooks/useOrganizationTimezone';
+import {
+    AGENT_STATUS_LABEL,
+    agentStatus,
+    formatLastCall,
+    sparklinePoints,
+    weeklyRuns,
+} from '@/lib/agentList';
 import { formatDate } from '@/lib/dateTime';
-
-interface Workflow {
-    id: number;
-    name: string;
-    status: string;
-    created_at: string;
-    total_runs?: number | null;
-    folder_id?: number | null;
-}
+import { cn } from '@/lib/utils';
 
 interface WorkflowTableProps {
-    workflows: Workflow[];
+    workflows: WorkflowListResponse[];
     showArchived: boolean;
     /**
-     * When provided, each row gets a "Move to folder" action listing these
-     * folders. Omit it (e.g. for the archived list) to hide the control.
+     * When provided, each row's menu gets a "Move to folder" submenu listing
+     * these folders. Omit it (e.g. for the archived list) to hide the control.
      */
     folders?: FolderResponse[];
-    /** The folder this table is rendered under; null means "Uncategorized". */
-    currentFolderId?: number | null;
 }
 
-export function WorkflowTable({
-    workflows,
-    showArchived,
-    folders,
-    currentFolderId = null,
-}: WorkflowTableProps) {
-    const router = useRouter();
-    const organizationTimezone = useOrganizationTimezone();
-    const [isPending, startTransition] = useTransition();
-    const [loadingWorkflowId, setLoadingWorkflowId] = useState<number | null>(null);
-    const [movingWorkflowId, setMovingWorkflowId] = useState<number | null>(null);
+// Agent · Status · Calls (7 days) · Last call · menu. Narrow screens keep the
+// agent and the menu; the status drops under the name.
+const ROW_GRID =
+    'grid grid-cols-[minmax(0,1fr)_40px] items-center gap-3 px-4 md:grid-cols-[minmax(0,1fr)_130px_150px_130px_40px]';
 
-    const handleEdit = (id: number) => {
+function Sparkline({ values }: { values: number[] }) {
+    const active = values.some((v) => v > 0);
+    return (
+        <svg
+            width="64"
+            height="20"
+            viewBox="0 0 64 20"
+            aria-hidden
+            className={cn('shrink-0', active ? 'text-brand' : 'text-line')}
+        >
+            <polyline
+                points={sparklinePoints(values)}
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.6"
+                strokeLinejoin="round"
+                strokeLinecap="round"
+            />
+        </svg>
+    );
+}
+
+/**
+ * The Voice agents list: one row per agent. The row opens the agent; the
+ * secondary actions (move, archive, restore) live in its ⋯ menu.
+ */
+export function WorkflowTable({ workflows, showArchived, folders }: WorkflowTableProps) {
+    const router = useRouter();
+    const timezone = useOrganizationTimezone();
+    const [isPending, startTransition] = useTransition();
+    const [busyWorkflowId, setBusyWorkflowId] = useState<number | null>(null);
+
+    const handleOpen = (id: number) => {
         router.push(`/workflow/${id}`);
     };
 
     const handleArchiveToggle = async (id: number, currentStatus: string) => {
         const newStatus = currentStatus === 'active' ? 'archived' : 'active';
-        const action = currentStatus === 'active' ? 'Archive' : 'Restore';
+        const action = currentStatus === 'active' ? 'archive' : 'restore';
 
-        setLoadingWorkflowId(id);
-
+        setBusyWorkflowId(id);
         try {
             const response = await updateWorkflowStatusApiV1WorkflowWorkflowIdStatusPut({
-                path: {
-                    workflow_id: id,
-                },
-                body: {
-                    status: newStatus,
-                },
+                path: { workflow_id: id },
+                body: { status: newStatus },
             });
-
-            if (response.data) {
-                toast.success(`Agent ${action.toLowerCase()}d`);
-                startTransition(() => {
-                    router.refresh();
-                });
+            if (response.error) {
+                throw new Error(`Failed to ${action} agent`);
             }
+            toast.success(`Agent ${action}d`);
+            startTransition(() => {
+                router.refresh();
+            });
         } catch (error) {
-            console.error(`Error ${action.toLowerCase()}ing workflow:`, error);
-            toast.error(`Failed to ${action.toLowerCase()} agent`);
+            console.error(`Error trying to ${action} workflow:`, error);
+            toast.error(`Failed to ${action} agent`);
         } finally {
-            setLoadingWorkflowId(null);
+            setBusyWorkflowId(null);
         }
     };
 
     const handleMove = async (id: number, folderId: number | null) => {
-        setMovingWorkflowId(id);
+        setBusyWorkflowId(id);
         try {
             const response = await moveWorkflowToFolderApiV1WorkflowWorkflowIdFolderPut({
                 path: { workflow_id: id },
@@ -116,9 +128,7 @@ export function WorkflowTable({
             if (response.error) {
                 throw new Error('Failed to move agent');
             }
-            toast.success(
-                folderId === null ? 'Moved to Uncategorized' : 'Agent moved',
-            );
+            toast.success(folderId === null ? 'Moved to Uncategorized' : 'Agent moved');
             startTransition(() => {
                 router.refresh();
             });
@@ -126,149 +136,186 @@ export function WorkflowTable({
             console.error('Error moving workflow:', error);
             toast.error('Failed to move agent');
         } finally {
-            setMovingWorkflowId(null);
+            setBusyWorkflowId(null);
         }
     };
 
     return (
-        <Card className="overflow-hidden">
-            <CardContent className="p-0">
-                <Table>
-                    <TableHeader>
-                        <TableRow>
-                            <TableHead>ID</TableHead>
-                            <TableHead>Agent name</TableHead>
-                            <TableHead>Created</TableHead>
-                            <TableHead className="text-center">Total runs</TableHead>
-                            <TableHead className="text-right">Actions</TableHead>
-                        </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                        {workflows.map((workflow) => (
-                            <TableRow
-                                key={workflow.id}
-                                role="link"
-                                tabIndex={0}
-                                aria-label={`Edit ${workflow.name}`}
-                                className={`cursor-pointer hover:bg-muted/50 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring transition-colors ${showArchived ? 'opacity-60' : ''}`}
-                                onClick={() => handleEdit(workflow.id)}
-                                onKeyDown={(event) => {
-                                    if (event.target !== event.currentTarget) return;
-                                    if (event.key === 'Enter' || event.key === ' ') {
-                                        event.preventDefault();
-                                        handleEdit(workflow.id);
-                                    }
-                                }}
-                            >
-                                <TableCell className="text-muted-foreground">
-                                    {workflow.id}
-                                </TableCell>
-                                <TableCell className="font-medium">
-                                    {workflow.name}
-                                </TableCell>
-                                <TableCell>
-                                    {formatDate(workflow.created_at, organizationTimezone)}
-                                </TableCell>
-                                <TableCell className="text-center">
-                                    <span className="inline-flex min-w-[2rem] items-center justify-center rounded-full bg-panel-2 px-2 py-1 font-mono text-xs font-semibold text-ink-2">
-                                        {workflow.total_runs || 0}
-                                    </span>
-                                </TableCell>
-                                <TableCell
-                                    className="text-right"
-                                    onClick={(event) => event.stopPropagation()}
+        <div className="overflow-hidden rounded-lg border border-line bg-card">
+            <div
+                className={cn(
+                    ROW_GRID,
+                    'hidden h-9 border-b border-line-soft bg-panel-2 text-[10.5px] font-semibold uppercase tracking-[0.08em] text-ink-3 md:grid',
+                )}
+                aria-hidden
+            >
+                <span>Agent</span>
+                <span>Status</span>
+                <span>Calls · 7 days</span>
+                <span>Last call</span>
+                <span />
+            </div>
+            <ul className="divide-y divide-line-soft">
+                {workflows.map((workflow) => {
+                    const status = agentStatus(workflow);
+                    const busy = busyWorkflowId === workflow.id;
+                    const folderId = workflow.folder_id ?? null;
+                    const pill = (
+                        <StatusPill tone={statusTone(status)}>
+                            {AGENT_STATUS_LABEL[status]}
+                        </StatusPill>
+                    );
+
+                    return (
+                        <li
+                            key={workflow.id}
+                            role="link"
+                            tabIndex={0}
+                            aria-label={`Open ${workflow.name}`}
+                            className={cn(
+                                ROW_GRID,
+                                'min-h-[60px] cursor-pointer py-2.5 transition-colors hover:bg-panel-2 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring',
+                                showArchived && 'text-ink-2',
+                            )}
+                            onClick={() => handleOpen(workflow.id)}
+                            onKeyDown={(event) => {
+                                if (event.target !== event.currentTarget) return;
+                                if (event.key === 'Enter' || event.key === ' ') {
+                                    event.preventDefault();
+                                    handleOpen(workflow.id);
+                                }
+                            }}
+                        >
+                            <div className="flex min-w-0 items-center gap-3">
+                                <span
+                                    aria-hidden
+                                    className={cn(
+                                        'flex size-8 shrink-0 items-center justify-center rounded-full border border-line bg-panel-2 text-[13px] font-semibold text-ink-2',
+                                        showArchived && 'opacity-60',
+                                    )}
                                 >
-                                    <div className="flex justify-end gap-2">
+                                    {workflow.name.trim().charAt(0).toUpperCase() || '?'}
+                                </span>
+                                <div className="min-w-0">
+                                    <div
+                                        className={cn(
+                                            'truncate text-[14px] font-medium',
+                                            showArchived ? 'text-ink-2' : 'text-ink',
+                                        )}
+                                    >
+                                        {workflow.name}
+                                    </div>
+                                    <div className="mt-0.5 flex items-center gap-2 text-[12px] text-ink-3">
+                                        <span className="font-mono">#{workflow.id}</span>
+                                        {/* Narrow screens trade the date for the status. */}
+                                        <span className="hidden md:inline" aria-hidden>·</span>
+                                        <span className="hidden truncate md:inline" suppressHydrationWarning>
+                                            Created {formatDate(workflow.created_at, timezone)}
+                                        </span>
+                                        <span className="md:hidden">{pill}</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="hidden md:block">{pill}</div>
+
+                            <div className="hidden items-center gap-2.5 md:flex">
+                                <span className="min-w-[2.5ch] text-right font-mono text-[13px] font-medium text-ink">
+                                    {weeklyRuns(workflow)}
+                                </span>
+                                <Sparkline values={workflow.runs_7d ?? []} />
+                            </div>
+
+                            <div
+                                className="hidden text-[13px] text-ink-2 md:block"
+                                title={`${workflow.total_runs} calls in total`}
+                                suppressHydrationWarning
+                            >
+                                {formatLastCall(workflow.last_run_at, timezone)}
+                            </div>
+
+                            <div
+                                className="flex justify-end"
+                                onClick={(event) => event.stopPropagation()}
+                                onKeyDown={(event) => event.stopPropagation()}
+                            >
+                                <DropdownMenu>
+                                    <DropdownMenuTrigger asChild>
                                         <Button
-                                            variant="outline"
-                                            size="sm"
-                                            onClick={() => handleEdit(workflow.id)}
-                                            className="flex items-center gap-2"
+                                            variant="ghost"
+                                            size="icon"
+                                            className="size-8 text-ink-3 hover:text-ink"
+                                            disabled={busy || isPending}
+                                            aria-label={`Actions for ${workflow.name}`}
                                         >
-                                            <Pencil size={16} />
-                                            Edit
+                                            {busy ? (
+                                                <span className="size-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                                            ) : (
+                                                <MoreHorizontal size={16} />
+                                            )}
                                         </Button>
+                                    </DropdownMenuTrigger>
+                                    <DropdownMenuContent align="end" className="w-52">
+                                        <DropdownMenuItem onClick={() => handleOpen(workflow.id)}>
+                                            <Pencil size={14} />
+                                            Open
+                                        </DropdownMenuItem>
                                         {folders && (
-                                            <DropdownMenu>
-                                                <DropdownMenuTrigger asChild>
-                                                    <Button
-                                                        variant="outline"
-                                                        size="sm"
-                                                        disabled={movingWorkflowId === workflow.id || isPending}
-                                                        className="flex items-center gap-2"
-                                                    >
-                                                        {movingWorkflowId === workflow.id ? (
-                                                            <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
-                                                        ) : (
-                                                            <FolderInput size={16} />
-                                                        )}
-                                                        Move
-                                                    </Button>
-                                                </DropdownMenuTrigger>
-                                                <DropdownMenuContent align="end" className="w-52">
-                                                    <DropdownMenuLabel>Move to folder</DropdownMenuLabel>
-                                                    <DropdownMenuSeparator />
+                                            <DropdownMenuSub>
+                                                <DropdownMenuSubTrigger className="gap-2">
+                                                    <FolderInput size={14} />
+                                                    Move to folder
+                                                </DropdownMenuSubTrigger>
+                                                <DropdownMenuSubContent className="w-52">
                                                     <DropdownMenuItem
-                                                        disabled={currentFolderId === null}
+                                                        disabled={folderId === null}
                                                         onClick={() => handleMove(workflow.id, null)}
                                                     >
-                                                        <Inbox size={14} className="mr-2" />
+                                                        <Inbox size={14} />
                                                         Uncategorized
-                                                        {currentFolderId === null && (
+                                                        {folderId === null && (
                                                             <Check size={14} className="ml-auto" />
                                                         )}
                                                     </DropdownMenuItem>
                                                     {folders.map((folder) => (
                                                         <DropdownMenuItem
                                                             key={folder.id}
-                                                            disabled={folder.id === currentFolderId}
+                                                            disabled={folder.id === folderId}
                                                             onClick={() => handleMove(workflow.id, folder.id)}
                                                         >
-                                                            <FolderIcon size={14} className="mr-2" />
+                                                            <FolderIcon size={14} />
                                                             <span className="truncate">{folder.name}</span>
-                                                            {folder.id === currentFolderId && (
+                                                            {folder.id === folderId && (
                                                                 <Check size={14} className="ml-auto shrink-0" />
                                                             )}
                                                         </DropdownMenuItem>
                                                     ))}
-                                                </DropdownMenuContent>
-                                            </DropdownMenu>
+                                                </DropdownMenuSubContent>
+                                            </DropdownMenuSub>
                                         )}
-                                        <Button
-                                            variant={showArchived ? "default" : "outline"}
-                                            size="sm"
+                                        <DropdownMenuSeparator />
+                                        <DropdownMenuItem
                                             onClick={() => handleArchiveToggle(workflow.id, workflow.status)}
-                                            disabled={loadingWorkflowId === workflow.id || isPending}
-                                            className="flex items-center gap-2"
                                         >
-                                            {loadingWorkflowId === workflow.id ? (
+                                            {showArchived ? (
                                                 <>
-                                                    <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
-                                                    {showArchived ? 'Restoring...' : 'Archiving...'}
+                                                    <RotateCcw size={14} />
+                                                    Restore
                                                 </>
                                             ) : (
                                                 <>
-                                                    {showArchived ? (
-                                                        <>
-                                                            <RotateCcw size={16} />
-                                                            Restore
-                                                        </>
-                                                    ) : (
-                                                        <>
-                                                            <Archive size={16} />
-                                                            Archive
-                                                        </>
-                                                    )}
+                                                    <Archive size={14} />
+                                                    Archive
                                                 </>
                                             )}
-                                        </Button>
-                                    </div>
-                                </TableCell>
-                            </TableRow>
-                        ))}
-                    </TableBody>
-                </Table>
-            </CardContent>
-        </Card>
+                                        </DropdownMenuItem>
+                                    </DropdownMenuContent>
+                                </DropdownMenu>
+                            </div>
+                        </li>
+                    );
+                })}
+            </ul>
+        </div>
     );
 }

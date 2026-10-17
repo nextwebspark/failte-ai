@@ -323,6 +323,12 @@ class WorkflowListResponse(BaseModel):
     total_runs: int
     folder_id: int | None = None
     workflow_uuid: str | None = None
+    # Runs per rolling 24-hour day over the last 7 days, oldest first. Only
+    # the list endpoint fills these in.
+    runs_7d: list[int] | None = None
+    last_run_at: datetime | None = None
+    # True when the agent has edits that aren't published yet.
+    has_draft: bool | None = None
 
 
 class MoveWorkflowToFolderRequest(BaseModel):
@@ -825,22 +831,29 @@ async def get_workflows(
             organization_id=user.selected_organization_id, status=None
         )
 
-    # Get run counts for all workflows in a single query
+    # Run totals and recent activity for all workflows, batched
     workflow_ids = [workflow.id for workflow in workflows]
-    run_counts = await db_client.get_workflow_run_counts(workflow_ids)
+    activity = await db_client.get_workflow_run_activity(workflow_ids)
+    with_draft = await db_client.get_workflow_ids_with_draft(workflow_ids)
 
-    return [
-        WorkflowListResponse(
-            id=workflow.id,
-            name=workflow.name,
-            status=workflow.status,
-            created_at=workflow.created_at,
-            total_runs=run_counts.get(workflow.id, 0),
-            folder_id=workflow.folder_id,
-            workflow_uuid=workflow.workflow_uuid,
+    responses = []
+    for workflow in workflows:
+        runs = activity.get(workflow.id)
+        responses.append(
+            WorkflowListResponse(
+                id=workflow.id,
+                name=workflow.name,
+                status=workflow.status,
+                created_at=workflow.created_at,
+                total_runs=runs.total_runs if runs else 0,
+                folder_id=workflow.folder_id,
+                workflow_uuid=workflow.workflow_uuid,
+                runs_7d=runs.daily_runs if runs else [0] * 7,
+                last_run_at=runs.last_run_at if runs else None,
+                has_draft=workflow.id in with_draft,
+            )
         )
-        for workflow in workflows
-    ]
+    return responses
 
 
 @router.get(

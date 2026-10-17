@@ -10232,6 +10232,18 @@ export type WorkflowListResponse = {
      * Workflow Uuid
      */
     workflow_uuid?: string | null;
+    /**
+     * Runs 7D
+     */
+    runs_7d?: Array<number> | null;
+    /**
+     * Last Run At
+     */
+    last_run_at?: string | null;
+    /**
+     * Has Draft
+     */
+    has_draft?: boolean | null;
 };
 
 /**
