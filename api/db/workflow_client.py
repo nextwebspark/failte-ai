@@ -1,13 +1,23 @@
-from datetime import UTC, datetime
+from dataclasses import dataclass, field
+from datetime import UTC, datetime, timedelta
 from typing import Optional
 
 from loguru import logger
-from sqlalchemy import func, update
+from sqlalchemy import DateTime, Integer, cast, func, literal, update
 from sqlalchemy.future import select
 from sqlalchemy.orm import load_only, selectinload
 
 from api.db.base_client import BaseDBClient
 from api.db.models import WorkflowDefinitionModel, WorkflowModel, WorkflowRunModel
+
+
+@dataclass
+class WorkflowRunActivity:
+    """Run activity for one workflow, as shown on the agent list."""
+
+    total_runs: int = 0
+    last_run_at: datetime | None = None
+    daily_runs: list[int] = field(default_factory=list)
 
 
 class WorkflowClient(BaseDBClient):
@@ -899,35 +909,85 @@ class WorkflowClient(BaseDBClient):
                 await session.rollback()
                 raise e
 
-    async def get_workflow_run_counts(self, workflow_ids: list[int]) -> dict[int, int]:
-        """Get run counts for multiple workflows in a single query.
+    async def get_workflow_run_activity(
+        self,
+        workflow_ids: list[int],
+        days: int = 7,
+        now: datetime | None = None,
+    ) -> dict[int, WorkflowRunActivity]:
+        """Run totals, last run time and daily counts for many workflows at once.
 
-        Args:
-            workflow_ids: List of workflow IDs to get counts for
+        ``daily_runs`` has ``days`` entries, oldest first; the last entry is the
+        24 hours up to ``now``. Days are rolling 24-hour windows rather than
+        calendar days, so the buckets don't depend on a timezone.
 
-        Returns:
-            Dict mapping workflow_id to run count
+        Callers must pass ids already scoped to the caller's organization.
         """
         if not workflow_ids:
             return {}
 
+        now = now or datetime.now(UTC)
+        window_start = now - timedelta(days=days)
+        age = literal(now, DateTime(timezone=True)) - WorkflowRunModel.created_at
+        days_ago = cast(func.floor(func.extract("epoch", age) / 86400), Integer).label(
+            "days_ago"
+        )
+
         async with self.async_session() as session:
-            result = await session.execute(
+            totals = await session.execute(
                 select(
                     WorkflowRunModel.workflow_id,
-                    func.count(WorkflowRunModel.id).label("run_count"),
+                    func.count(WorkflowRunModel.id),
+                    func.max(WorkflowRunModel.created_at),
                 )
                 .where(WorkflowRunModel.workflow_id.in_(workflow_ids))
                 .group_by(WorkflowRunModel.workflow_id)
             )
-            rows = result.all()
+            daily = await session.execute(
+                select(
+                    WorkflowRunModel.workflow_id,
+                    days_ago,
+                    func.count(WorkflowRunModel.id),
+                )
+                .where(
+                    WorkflowRunModel.workflow_id.in_(workflow_ids),
+                    WorkflowRunModel.created_at > window_start,
+                )
+                .group_by(WorkflowRunModel.workflow_id, days_ago)
+            )
 
-            # Build dict with counts, defaulting to 0 for workflows with no runs
-            counts = {workflow_id: 0 for workflow_id in workflow_ids}
-            for workflow_id, run_count in rows:
-                counts[workflow_id] = run_count
+            activity = {
+                workflow_id: WorkflowRunActivity(daily_runs=[0] * days)
+                for workflow_id in workflow_ids
+            }
+            for workflow_id, total, last_run_at in totals.all():
+                activity[workflow_id].total_runs = total
+                activity[workflow_id].last_run_at = last_run_at
+            for workflow_id, bucket, count in daily.all():
+                # A clock-skewed run "from the future" lands in today's bucket.
+                index = days - 1 - min(max(bucket, 0), days - 1)
+                activity[workflow_id].daily_runs[index] += count
 
-            return counts
+            return activity
+
+    async def get_workflow_ids_with_draft(self, workflow_ids: list[int]) -> set[int]:
+        """The subset of ``workflow_ids`` that have an unpublished draft version.
+
+        Callers must pass ids already scoped to the caller's organization.
+        """
+        if not workflow_ids:
+            return set()
+
+        async with self.async_session() as session:
+            result = await session.execute(
+                select(WorkflowDefinitionModel.workflow_id)
+                .where(
+                    WorkflowDefinitionModel.workflow_id.in_(workflow_ids),
+                    WorkflowDefinitionModel.status == "draft",
+                )
+                .distinct()
+            )
+            return set(result.scalars().all())
 
     async def get_organization_disposition_codes(
         self, organization_id: int

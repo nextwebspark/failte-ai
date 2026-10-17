@@ -76,13 +76,13 @@ Status is kept here so the next session knows where to pick up.
 | --- | --- | --- |
 | 1 | **Foundations.** DM Sans, Uncava dark tokens, near-black light ink, green ring and active nav, radius scale, flat Card, system-aware theme, Stack Auth theme in step. Files: `ui/src/app/globals.css`, `ui/src/app/layout.tsx`, `ui/src/components/ui/*`, `ui/src/components/layout/*`, `ui/src/components/ThemeSwitcher.tsx`, `ui/src/app/handler/[...stack]/stack-theme.ts`. | Done |
 | 2 | **Copy pass.** "Agent" everywhere in customer-facing UI strings, default name "Untitled agent", sentence case on the agent list, create flow, editor, tester, settings, runs, reports and telephony screens. The internal superadmin pages and the CSV export column names were left as they are. | Done |
-| 3 | **Voice agents landing.** New row model (initial circle, name and meta, StatusPill, channels, runs with 7-day sparkline, last call, kebab menu), search, status filter, stat strip, empty state. Needs per-agent `runs_7d` and `last_call_at` on the workflow list endpoint in `api/`. | To do |
+| 3 | **Voice agents landing.** Stat strip (agents, calls in the last 24 h with change, calls in 7 days, last call), search, status filter (All / Published / Unpublished), sort (last call, name, newest), first-agent empty state. Rows: initial circle, name with id and created date, StatusPill, calls with a 7-day sparkline, last call, one ⋯ menu (Open, Move to folder, Archive / Restore). Folders start open; a search or filter shows one flat list of matches. The list endpoint now returns `runs_7d`, `last_run_at` and `has_draft` per agent. Files: `ui/src/components/workflow/AgentList.tsx`, `WorkflowTable.tsx`, `ui/src/lib/agentList.ts`, `api/db/workflow_client.py` (`get_workflow_run_activity`, `get_workflow_ids_with_draft`), `api/routes/workflow.py`. | Done |
 | 4 | **Create flow.** One dialog replaces the dropdown and the `/workflow/create` page; generation shown inside the dialog; land in the editor with the test rail open. | To do |
 | 5 | **Editor.** One toolbar in `WorkflowEditorHeader.tsx` (name as rename control, version pill, unsaved and error pills, Phone call / Save / Publish / more); stop portalling into the app header. One bottom-centre floating canvas toolbar in `RenderWorkflow.tsx`. Test rail header with live pill and Voice / Text control in `WorkflowTesterPanel.tsx`. | To do |
 | 6 | **Advanced settings.** Sticky section index, label-left / control-right rows, one sticky save bar driven by `UnsavedChangesContext`, replacing the seven per-card Save buttons in `workflow/[workflowId]/settings/page.tsx`. | To do |
 | Guardrail | Lint rule banning raw Tailwind palette classes (`text-red-500`, `bg-sky-50`, …), then migrate the ~54 files it flags to tokens. | To do |
 
-## Known leftovers after step 1
+## Known leftovers
 
 - `.page-actions` in `globals.css` still forces header buttons to toolbar size.
   It goes away when step 5 moves the editor actions out of the header.
@@ -90,3 +90,8 @@ Status is kept here so the next session knows where to pick up.
   uses `bg-sky-50` / `text-sky-700`). The guardrail step handles them.
 - The agent nav's version status still uses its own inline pill rather than
   `StatusPill`.
+- The Voice agents board shows a Channels column (phone, web widget) and Talk
+  time / Live now stats. They need phone-number, embed and call-duration data on
+  the list endpoint and were left out of step 3.
+- On phone widths the header actions (Import agent, New folder, Create agent)
+  overflow the top bar. Step 5 moves page actions out of the header.

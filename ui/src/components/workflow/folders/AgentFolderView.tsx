@@ -48,7 +48,6 @@ export function AgentFolderView({ workflows, folders }: AgentFolderViewProps) {
                     folder={folder}
                     workflows={byFolder.get(folder.id) ?? []}
                     allFolders={folders}
-                    defaultOpen={false}
                 />
             ))}
             {uncategorized.length > 0 && (
