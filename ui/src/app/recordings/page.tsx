@@ -72,7 +72,7 @@ export default function RecordingsPage() {
                         <CardHeader>
                             <CardTitle>Cached speech</CardTitle>
                             <CardDescription>
-                                Speech reused across your organization’s workflows. Listen to a phrase and invalidate it to generate fresh audio on its next request.
+                                Speech reused across your organization’s agents. Listen to a phrase and invalidate it to generate fresh audio on its next request.
                             </CardDescription>
                         </CardHeader>
                         <CardContent>

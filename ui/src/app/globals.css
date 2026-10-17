@@ -109,13 +109,15 @@
      is 46px tall and the body sits in a 14px gutter with a 14px column gap. */
   --app-topbar-h: 46px;
 
-  /* Surfaces — near-white with a faint green cast so the LightMove.ai greens
-     sit on a related neutral rather than a cool blue-grey. */
-  --bg: #f3f6f4;
+  /* Surfaces — Uncava's light ladder (nextwebspark/app-lightmove,
+     claude-design/uncava-tokens.css): white panels on a cool off-white page,
+     hairlines in ink alpha so they read on every step. */
+  --bg: #f7f8fa;
   --panel: #ffffff;
-  --panel-2: #f6f8f7;
-  --line: #dde5e1;
-  --line-soft: #eaf0ed;
+  --panel-2: #f7f8fa;
+  --line: rgba(3, 7, 18, 0.09);
+  --line-soft: rgba(3, 7, 18, 0.06);
+  --input: rgba(3, 7, 18, 0.16);
 
   /* Ink — a true near-black and two neutral steps (the Uncava light text
      ladder, darkened one step for body copy). The earlier forest-green ink
@@ -161,7 +163,7 @@
   --danger: #c03630;
   --danger-dim: rgba(192, 54, 48, 0.08);
 
-  --panel-shadow: 0 8px 28px rgba(20, 30, 50, 0.1);
+  --panel-shadow: 0 4px 14px -2px rgba(3, 7, 18, 0.12);
 
   /* shadcn tokens mapped onto the canvas surfaces above */
   --background: var(--bg);
@@ -184,7 +186,6 @@
   --destructive: var(--danger);
   --destructive-foreground: #ffffff;
   --border: var(--line);
-  --input: var(--line);
   --ring: var(--brand);
 
   --chart-1: var(--sky);

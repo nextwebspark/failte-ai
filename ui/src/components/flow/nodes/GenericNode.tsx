@@ -263,7 +263,7 @@ function CanvasPreview({
         // Platform models always run QA on the agent's model.
         const llmSource =
             data.qa_use_workflow_llm !== false || platformModels
-                ? "Workflow LLM"
+                ? "Agent LLM"
                 : `${data.qa_provider || "openai"}/${data.qa_model || "gpt-4.1"}`;
         const enabled = data.qa_enabled !== false;
         return (

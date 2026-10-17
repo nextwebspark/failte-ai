@@ -61,9 +61,9 @@ const PUBLISH_WORKFLOW_REMINDER = "Publish the agent to apply the changes.";
 // widget ("Deployment") are nav rows of their own now, so they are not here.
 const NAV_ITEMS = [
     { id: "general", label: "General", icon: Settings },
-    { id: "variables", label: "Template Variables", icon: Variable },
+    { id: "variables", label: "Template variables", icon: Variable },
     { id: "dictionary", label: "Dictionary", icon: BookA },
-    { id: "voicemail", label: "Voicemail & Screening", icon: PhoneOff },
+    { id: "voicemail", label: "Voicemail and screening", icon: PhoneOff },
     { id: "recordings", label: "Recordings", icon: Mic },
     { id: "report", label: "Report", icon: FileDown },
     { id: "identity", label: "Agent UUID", icon: Fingerprint },
@@ -146,7 +146,7 @@ function ReportSection({ workflowId }: { workflowId: number }) {
                     <PopoverTrigger asChild>
                         <Button variant="outline" disabled={isDownloading}>
                             <Download className="h-4 w-4 mr-2" />
-                            Download Report
+                            Download report
                         </Button>
                     </PopoverTrigger>
                     <PopoverContent className="w-auto p-4" align="start">
@@ -451,27 +451,27 @@ function GeneralSection({
             <CardContent className="space-y-6">
                 {/* Agent Name */}
                 <div className="space-y-2">
-                    <Label htmlFor="workflow_name" className="text-sm font-medium">Agent Name</Label>
+                    <Label htmlFor="workflow_name" className="text-sm font-medium">Agent name</Label>
                     <Input
                         id="workflow_name"
                         value={name}
                         onChange={(e) => setName(e.target.value)}
-                        placeholder="Enter Agent name"
+                        placeholder="Enter agent name"
                     />
                 </div>
 
                 <Separator />
 
-                {/* Ambient Noise */}
+                {/* Ambient noise */}
                 <div className="space-y-4">
                     <div>
-                        <h3 className="text-sm font-medium">Ambient Noise</h3>
+                        <h3 className="text-sm font-medium">Ambient noise</h3>
                         <p className="text-xs text-muted-foreground mt-0.5">
                             Add background ambient noise to make the conversation sound more natural.
                         </p>
                     </div>
                     <div className="flex items-center justify-between">
-                        <Label htmlFor="ambient-noise-enabled" className="text-sm">Use Ambient Noise</Label>
+                        <Label htmlFor="ambient-noise-enabled" className="text-sm">Use ambient noise</Label>
                         <Switch
                             id="ambient-noise-enabled"
                             checked={ambientNoiseConfig.enabled}
@@ -498,9 +498,9 @@ function GeneralSection({
                                 />
                             </div>
 
-                            {/* Custom Audio File */}
+                            {/* Custom audio file */}
                             <div className="space-y-2">
-                                <Label className="text-xs">Custom Audio File</Label>
+                                <Label className="text-xs">Custom audio file</Label>
                                 <p className="text-xs text-muted-foreground">
                                     Upload your own audio file or use the default office ambience.
                                 </p>
@@ -589,16 +589,16 @@ function GeneralSection({
 
                 <Separator />
 
-                {/* Turn Detection */}
+                {/* Turn detection */}
                 <div className="space-y-4">
                     <div>
-                        <h3 className="text-sm font-medium">Turn Detection</h3>
+                        <h3 className="text-sm font-medium">Turn detection</h3>
                         <p className="text-xs text-muted-foreground mt-0.5">
                             Configure how the agent detects when the user has finished speaking.
                         </p>
                     </div>
                     <div className="space-y-2">
-                        <Label htmlFor="turn_stop_strategy" className="text-xs">Detection Strategy</Label>
+                        <Label htmlFor="turn_stop_strategy" className="text-xs">Detection strategy</Label>
                         <Select
                             value={turnStopStrategy}
                             onValueChange={(value: TurnStopStrategy) => setTurnStopStrategy(value)}
@@ -652,7 +652,7 @@ function GeneralSection({
                         </p>
                     </div>
                     <div className="space-y-2">
-                        <Label htmlFor="turn_start_strategy" className="text-xs">Interruption Strategy</Label>
+                        <Label htmlFor="turn_start_strategy" className="text-xs">Interruption strategy</Label>
                         <Select
                             value={turnStartStrategy}
                             onValueChange={(value: TurnStartStrategy) => setTurnStartStrategy(value)}
@@ -675,7 +675,7 @@ function GeneralSection({
                     {turnStartStrategy === "min_words" && (
                         <div className="space-y-2">
                             <Label htmlFor="turn_start_min_words" className="text-xs">
-                                Minimum Words Before Interruption
+                                Minimum words before interruption
                             </Label>
                             <Input
                                 id="turn_start_min_words"
@@ -708,7 +708,7 @@ function GeneralSection({
                     </div>
                     <div className="flex items-center justify-between">
                         <Label htmlFor="transcript-end-timestamps-enabled" className="text-sm">
-                            Enhanced Timestamped Transcript
+                            Enhanced timestamped transcript
                         </Label>
                         <Switch
                             id="transcript-end-timestamps-enabled"
@@ -726,17 +726,17 @@ function GeneralSection({
 
                 <Separator />
 
-                {/* Context Compaction */}
+                {/* Context compaction */}
                 <div className="space-y-4">
                     <div>
-                        <h3 className="text-sm font-medium">Context Compaction</h3>
+                        <h3 className="text-sm font-medium">Context compaction</h3>
                         <p className="text-xs text-muted-foreground mt-0.5">
                             Automatically summarize conversation context when transitioning between nodes. Not applicable in Realtime mode - the speech-to-speech service manages its own conversation state and this setting is ignored.
                         </p>
                     </div>
                     <div className="flex items-center justify-between">
                         <Label htmlFor="context-compaction-enabled" className="text-sm">
-                            Enable Context Compaction
+                            Enable context compaction
                         </Label>
                         <Switch
                             id="context-compaction-enabled"
@@ -757,7 +757,7 @@ function GeneralSection({
                     </div>
                     <div className="flex items-center justify-between">
                         <Label htmlFor="skills-enabled" className="text-sm">
-                            Enable Skills
+                            Enable skills
                         </Label>
                         <Switch
                             id="skills-enabled"
@@ -771,7 +771,7 @@ function GeneralSection({
 
                 <div className="space-y-4">
                     <div>
-                        <h3 className="text-sm font-medium">Speech Caching</h3>
+                        <h3 className="text-sm font-medium">Speech caching</h3>
                         <p className="text-xs text-muted-foreground mt-0.5">
                             Reuse generated audio for repeated phrases to reduce response time and speech generation costs.
                             Cached audio expires after 24 hours. Currently available with MiniMax TTS.
@@ -779,7 +779,7 @@ function GeneralSection({
                     </div>
                     <div className="flex items-center justify-between">
                         <Label htmlFor="tts-cache-enabled" className="text-sm">
-                            Enable Speech Caching
+                            Enable speech caching
                         </Label>
                         <Switch
                             id="tts-cache-enabled"
@@ -799,17 +799,17 @@ function GeneralSection({
 
                 <Separator />
 
-                {/* Call Management */}
+                {/* Call management */}
                 <div className="space-y-4">
                     <div>
-                        <h3 className="text-sm font-medium">Call Management</h3>
+                        <h3 className="text-sm font-medium">Call management</h3>
                         <p className="text-xs text-muted-foreground mt-0.5">
                             Configure call duration limits and idle timeout settings.
                         </p>
                     </div>
                     <div className="grid grid-cols-2 gap-4">
                         <div className="space-y-2">
-                            <Label htmlFor="max_call_duration" className="text-xs">Max Call Duration (seconds)</Label>
+                            <Label htmlFor="max_call_duration" className="text-xs">Max call duration (seconds)</Label>
                             <Input
                                 id="max_call_duration"
                                 type="number"
@@ -845,16 +845,16 @@ function GeneralSection({
                     <>
                         <Separator />
 
-                        {/* External PBX Field Updates */}
+                        {/* External PBX field updates */}
                         <div className="space-y-4">
                             <div>
-                                <h3 className="text-sm font-medium">External PBX Field Updates</h3>
+                                <h3 className="text-sm font-medium">External PBX field updates</h3>
                                 <p className="text-xs text-muted-foreground mt-0.5">
                                     Optionally copy final gathered-context values into provider-native fields before transfer or hangup.
                                 </p>
                             </div>
                             <div className="flex items-center justify-between">
-                                <Label className="text-sm">Field Mappings</Label>
+                                <Label className="text-sm">Field mappings</Label>
                                 <Button
                                     type="button"
                                     variant="outline"
@@ -921,7 +921,7 @@ function GeneralSection({
 
                             <div className="space-y-4 border-t pt-4">
                                 <div>
-                                    <h3 className="text-sm font-medium">Lead Fields To Capture</h3>
+                                    <h3 className="text-sm font-medium">Lead fields to capture</h3>
                                     <p className="text-xs text-muted-foreground mt-0.5">
                                         Extra lead fields to read from the inbound call, named without the header prefix
                                         (<code>first_name</code> reads <code>X-VICIDIAL-first_name</code>). Captured values are
@@ -930,7 +930,7 @@ function GeneralSection({
                                     </p>
                                 </div>
                                 <div className="flex items-center justify-between">
-                                    <Label className="text-sm">Lead Fields</Label>
+                                    <Label className="text-sm">Lead fields</Label>
                                     <Button
                                         type="button"
                                         variant="outline"
@@ -1001,7 +1001,7 @@ function GeneralSection({
 }
 
 // ---------------------------------------------------------------------------
-// Section: Template Variables
+// Section: Template variables
 // ---------------------------------------------------------------------------
 
 function TemplateVariablesSection({
@@ -1060,7 +1060,7 @@ function TemplateVariablesSection({
             <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-base">
                     <Variable className="h-4 w-4" />
-                    Template Variables
+                    Template variables
                 </CardTitle>
                 <CardDescription>
                     Variables available in workflow prompts via {`{{variable_name}}`} syntax for testing the workflow.
@@ -1070,7 +1070,7 @@ function TemplateVariablesSection({
                 {/* Existing Variables */}
                 {Object.entries(contextVars).length > 0 && (
                     <div className="space-y-2">
-                        <Label className="text-sm font-medium">Current Variables</Label>
+                        <Label className="text-sm font-medium">Current variables</Label>
                         {Object.entries(contextVars).map(([key, value]) => (
                             <div key={key} className="flex items-center gap-2 rounded-md border p-2">
                                 <div className="flex-1 min-w-0">
@@ -1085,9 +1085,9 @@ function TemplateVariablesSection({
                     </div>
                 )}
 
-                {/* Add New Variable */}
+                {/* Add new variable */}
                 <div className="space-y-3">
-                    <Label className="text-sm font-medium">Add New Variable</Label>
+                    <Label className="text-sm font-medium">Add new variable</Label>
                     <div className="flex gap-2">
                         <div className="flex-1 space-y-1">
                             <Label htmlFor="var-key" className="text-xs">Key</Label>
@@ -1109,7 +1109,7 @@ function TemplateVariablesSection({
                         </div>
                     </div>
                     <Button size="sm" onClick={handleAdd} disabled={!newKey || !newValue}>
-                        Add Variable
+                        Add variable
                     </Button>
                 </div>
             </CardContent>
@@ -1185,7 +1185,7 @@ function DictionarySection({
 }
 
 // ---------------------------------------------------------------------------
-// Section: Voicemail & Screening
+// Section: Voicemail and screening
 // ---------------------------------------------------------------------------
 
 function VoicemailSection({
@@ -1283,7 +1283,7 @@ function VoicemailSection({
             <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-base">
                     <PhoneOff className="h-4 w-4" />
-                    Voicemail & Screening
+                    Voicemail and screening
                 </CardTitle>
                 <CardDescription>
                     Choose how the agent handles voicemail and call screening. Applies to outbound calls with separate speech and language models.
@@ -1315,7 +1315,7 @@ function VoicemailSection({
                                             checked={useWorkflowLlm}
                                             onCheckedChange={setUseWorkflowLlm}
                                         />
-                                        <Label htmlFor="voicemail-use-workflow-llm">Use Workflow LLM</Label>
+                                        <Label htmlFor="voicemail-use-workflow-llm">Use the agent&apos;s LLM</Label>
                                         <Label className="ml-2 text-xs text-muted-foreground">
                                             Use the LLM configured in your account settings.
                                         </Label>
@@ -1528,7 +1528,7 @@ function AdvancedSettings({ context }: { context: AgentSectionContext }) {
                     <CardFooter className="border-t pt-6">
                         <Button variant="outline" asChild>
                             <Link href="/recordings">
-                                Go to Recordings
+                                Go to recordings
                                 <ExternalLink className="ml-2 h-4 w-4" />
                             </Link>
                         </Button>

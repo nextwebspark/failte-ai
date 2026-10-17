@@ -43,8 +43,9 @@ light board is a change to both.
 6. **Dark uses the Uncava ladder.** Cool near-black page, two surface steps,
    white-alpha hairlines, cool grey text, all lifted from
    `nextwebspark/app-lightmove` (`claude-design/uncava-tokens.css`). Mint stays
-   the only accent; Uncava's indigo is not used. Light mode uses a true
-   near-black ink. The theme follows the OS until the user picks one.
+   the only accent; Uncava's indigo is not used. Light mode uses Uncava's
+   light surfaces and a true near-black ink. Status tones stay the
+   contrast-tuned LightMove values in both themes. The theme follows the OS until the user picks one.
 7. **"Agent" is the only word users see.** Never "workflow" in UI copy (code
    identifiers keep their names). Sentence case for buttons and headings.
 
@@ -52,10 +53,10 @@ light board is a change to both.
 
 | Token | Light | Dark |
 | --- | --- | --- |
-| `--bg` | `#f3f6f4` | `#08090b` |
+| `--bg` | `#f7f8fa` | `#08090b` |
 | `--panel` | `#ffffff` | `#0e1013` |
-| `--panel-2` | `#f6f8f7` | `#15181d` |
-| `--line` | `#dde5e1` | `rgba(255,255,255,.08)` |
+| `--panel-2` | `#f7f8fa` | `#15181d` |
+| `--line` | `rgba(3,7,18,.09)` | `rgba(255,255,255,.08)` |
 | `--ink` / `--ink-2` / `--ink-3` | `#0b0d12` / `#3a414d` / `#596170` | `#f4f6f8` / `#a6adbb` / `#7c8493` |
 | `--brand` | `#0e7a4b` | `#3ddc97` |
 | `--ring`, `--sidebar-primary` | `--brand` | `--brand` |
@@ -74,7 +75,7 @@ Status is kept here so the next session knows where to pick up.
 | Step | Scope | Status |
 | --- | --- | --- |
 | 1 | **Foundations.** DM Sans, Uncava dark tokens, near-black light ink, green ring and active nav, radius scale, flat Card, system-aware theme, Stack Auth theme in step. Files: `ui/src/app/globals.css`, `ui/src/app/layout.tsx`, `ui/src/components/ui/*`, `ui/src/components/layout/*`, `ui/src/components/ThemeSwitcher.tsx`, `ui/src/app/handler/[...stack]/stack-theme.ts`. | Done |
-| 2 | **Copy pass.** "Agent" everywhere in UI strings, default name "Untitled agent", sentence case. Files: `WorkflowTable.tsx`, `CreateWorkflowButton.tsx`, `workflow/create/page.tsx`, toasts. | To do |
+| 2 | **Copy pass.** "Agent" everywhere in customer-facing UI strings, default name "Untitled agent", sentence case on the agent list, create flow, editor, tester, settings, runs, reports and telephony screens. The internal superadmin pages and the CSV export column names were left as they are. | Done |
 | 3 | **Voice agents landing.** New row model (initial circle, name and meta, StatusPill, channels, runs with 7-day sparkline, last call, kebab menu), search, status filter, stat strip, empty state. Needs per-agent `runs_7d` and `last_call_at` on the workflow list endpoint in `api/`. | To do |
 | 4 | **Create flow.** One dialog replaces the dropdown and the `/workflow/create` page; generation shown inside the dialog; land in the editor with the test rail open. | To do |
 | 5 | **Editor.** One toolbar in `WorkflowEditorHeader.tsx` (name as rename control, version pill, unsaved and error pills, Phone call / Save / Publish / more); stop portalling into the app header. One bottom-centre floating canvas toolbar in `RenderWorkflow.tsx`. Test rail header with live pill and Voice / Text control in `WorkflowTesterPanel.tsx`. | To do |

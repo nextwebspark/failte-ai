@@ -69,7 +69,7 @@ function NodeSection({
                             disabled={disabled}
                             title={
                                 disabled
-                                    ? `${spec.display_name} limit reached for this workflow`
+                                    ? `${spec.display_name} limit reached for this agent`
                                     : undefined
                             }
                         >
@@ -131,7 +131,7 @@ export default function AddNodePanel({ isOpen, onNodeSelect, onClose, nodes }: A
         >
             <div className="p-4 h-full overflow-y-auto">
                 <div className="flex justify-between items-center mb-6">
-                    <h2 className="text-lg font-semibold">Add New Node</h2>
+                    <h2 className="text-lg font-semibold">Add node</h2>
                     <Button variant="ghost" size="icon" onClick={onClose}>
                         <X className="w-5 h-5" />
                     </Button>

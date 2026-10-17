@@ -438,7 +438,7 @@ export default function TelephonyConfigurationDetailPage() {
                   <TableHead>Type</TableHead>
                   <TableHead>Label</TableHead>
                   <TableHead>Status</TableHead>
-                  <TableHead>Inbound workflow</TableHead>
+                  <TableHead>Inbound agent</TableHead>
                   {(config.trunks?.length ?? 0) > 0 && (
                     <TableHead>Outbound trunk</TableHead>
                   )}

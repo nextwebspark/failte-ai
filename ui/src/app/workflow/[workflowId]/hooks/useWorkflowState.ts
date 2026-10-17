@@ -591,7 +591,7 @@ export const useWorkflowState = ({
 
             if (response.error) {
                 const detail = (response.error as { detail?: unknown }).detail;
-                let msg = 'Failed to save workflow configurations';
+                let msg = 'Failed to save agent settings';
                 if (typeof detail === 'string') {
                     msg = detail;
                 } else if (Array.isArray(detail)) {

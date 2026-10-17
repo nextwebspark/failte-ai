@@ -91,7 +91,7 @@ describe('workflow version links', () => {
     it.each(['', '0', '-1', 'abc', '1.5'])('rejects invalid version %j without opening the draft', async value => {
         mocks.query = `version=${value}`;
         render(<WorkflowDetailPage />);
-        await screen.findByText(/Invalid workflow version/);
+        await screen.findByText(/Invalid version\./);
         expect(mocks.workflow).not.toHaveBeenCalled();
         expect(screen.queryByTestId('workflow')).toBeNull();
     });
@@ -99,7 +99,7 @@ describe('workflow version links', () => {
     it('shows a missing version instead of silently opening the draft', async () => {
         mocks.versions.mockResolvedValue({ data: [] });
         render(<WorkflowDetailPage />);
-        await screen.findByText('Workflow version not found');
+        await screen.findByText('Version not found');
         expect(screen.queryByTestId('workflow')).toBeNull();
     });
 

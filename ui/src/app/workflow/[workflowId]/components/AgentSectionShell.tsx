@@ -77,7 +77,7 @@ export function AgentSectionShell({
                 });
                 setWorkflow(response.data);
             } catch (err) {
-                setError("Failed to fetch workflow");
+                setError("Failed to load agent");
                 logger.error(`Error fetching agent section: ${err}`);
             } finally {
                 setLoading(false);

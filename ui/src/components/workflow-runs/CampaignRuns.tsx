@@ -214,8 +214,8 @@ export function CampaignRuns({ campaignId, workflowId, searchParams }: CampaignR
             returnTo={returnTo}
             showAgentVersion
             onReload={handleReload}
-            title="Campaign Workflow Runs"
-            emptyMessage="No workflow runs found for this campaign"
+            title="Campaign runs"
+            emptyMessage="No runs for this campaign yet"
         />
     );
 }

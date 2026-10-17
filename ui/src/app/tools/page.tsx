@@ -558,7 +558,7 @@ export default function ToolsPage() {
                     <DialogHeader>
                         <DialogTitle>Create New Tool</DialogTitle>
                         <DialogDescription>
-                            Create a new tool that can be used in your workflows.
+                            Create a new tool that can be used by your agents.
                         </DialogDescription>
                     </DialogHeader>
                     <div className="grid gap-4 py-4">

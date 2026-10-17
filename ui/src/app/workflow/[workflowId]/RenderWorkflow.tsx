@@ -253,7 +253,7 @@ function RenderWorkflow({
 
         const selectedIndex = versions.findIndex((candidate) => candidate.id === version.id);
         if (selectedIndex < 0) {
-            toast.error("That workflow version is no longer in the history list");
+            toast.error("That version is no longer in the history list");
             return;
         }
 
@@ -266,7 +266,7 @@ function RenderWorkflow({
                 query: { limit: 2, offset: selectedIndex },
             });
             if (response.error) {
-                toast.error(detailFromError(response.error, "Failed to compare workflow versions"));
+                toast.error(detailFromError(response.error, "Failed to compare versions"));
                 return;
             }
 
@@ -298,7 +298,7 @@ function RenderWorkflow({
             setVersionDiffPair({ previousVersion, selectedVersion });
             setIsVersionPanelOpen(false);
         } catch {
-            toast.error("Failed to compare workflow versions");
+            toast.error("Failed to compare versions");
         } finally {
             setComparingVersionId(null);
         }
@@ -410,7 +410,7 @@ function RenderWorkflow({
             return "Return to the draft before starting a new test session.";
         }
         if (isDirty) {
-            return "Save the latest draft before testing so the session uses the workflow you are looking at.";
+            return "Save the latest draft before testing so the session uses the version you are looking at.";
         }
         if (workflowValidationErrors.length > 0) {
             return "Resolve the current validation errors before starting another test.";
@@ -567,7 +567,7 @@ function RenderWorkflow({
         // runs. Throw rather than silently sending fallback workflow configurations,
         // which would overwrite the saved server-side config.
         if (!workflowConfigurations) {
-            throw new Error("Workflow configurations not loaded");
+            throw new Error("Agent settings not loaded");
         }
         await saveWorkflowConfigurations(workflowConfigurations, newName);
     }, [saveWorkflowConfigurations, workflowConfigurations]);

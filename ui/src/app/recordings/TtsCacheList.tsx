@@ -194,7 +194,7 @@ export default function TtsCacheList() {
                     : entries.length === 0 ? <div className="py-12 text-center text-muted-foreground">
                         <AudioLines className="mx-auto mb-3 h-10 w-10" />
                         <p>No cached speech found.</p>
-                        <p className="mt-1 text-sm">Speech appears here after a successful synthesis in a workflow with Speech Caching enabled.</p>
+                        <p className="mt-1 text-sm">Speech appears here after a successful synthesis in an agent with speech caching enabled.</p>
                     </div>
                         : <>
                             <p className="text-sm text-muted-foreground">{total} cached phrase{total === 1 ? "" : "s"} matching your filters</p>

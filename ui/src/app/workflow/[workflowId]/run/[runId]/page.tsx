@@ -879,7 +879,7 @@ export default function WorkflowRunPage() {
                     <CardHeader className="space-y-2">
                         <CardTitle className="text-2xl">Run Details Unavailable</CardTitle>
                         <p className="text-sm text-muted-foreground">
-                            This run does not have a details view yet. Go back to the workflow to continue testing or make changes.
+                            This run does not have a details view yet. Go back to the agent to continue testing or make changes.
                         </p>
                     </CardHeader>
                     <CardFooter className="gap-2">
@@ -910,9 +910,9 @@ export default function WorkflowRunPage() {
             {showRunDetailsView && cameFromWorkspace && workflowName && (
                 <OnboardingTooltip
                     tooltipKey="customize_workflow"
-                    title='Customize Your Workflow'
+                    title='Customize your agent'
                     targetRef={agentLinkRef}
-                    message="Edit your workflow to adjust the voice agent's behavior, add new steps, or modify the conversation flow."
+                    message="Edit your agent to adjust the voice agent's behavior, add new steps, or modify the conversation flow."
                     showNext={false}
                 />
             )}
