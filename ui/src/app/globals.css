@@ -117,10 +117,12 @@
   --line: #dde5e1;
   --line-soft: #eaf0ed;
 
-  /* Ink — a forest-tinted near-black (#0B2E22) and two greyed steps of it. */
-  --ink: #0b2e22;
-  --ink-2: #3d5249;
-  --ink-3: #5b6e66;
+  /* Ink — a true near-black and two neutral steps (the Uncava light text
+     ladder, darkened one step for body copy). The earlier forest-green ink
+     read as soft grey-green; these sit at 19:1, 10:1 and 6:1 on --panel. */
+  --ink: #0b0d12;
+  --ink-2: #3a414d;
+  --ink-3: #596170;
 
   /* Accents + their dim washes (pill/chip backgrounds).
 
@@ -216,18 +218,20 @@
 }
 
 .dark {
-  /* True neutral black (user decision, v3 audit): no green or blue cast in
-     the surfaces. Mint is the only colour in dark mode — logo, primary
-     actions, active states — so it reads as an accent, not a background. */
-  --bg: #0a0a0a;
-  --panel: #111111;
-  --panel-2: #171717;
-  --line: #262626;
-  --line-soft: #1c1c1c;
+  /* Uncava's dark ladder, lifted from app-lightmove (claude-design/
+     uncava-tokens.css): a cool near-black page, two surface steps above it,
+     and hairlines drawn in white alpha so every edge reads on every step.
+     Mint stays the brand accent; Uncava's indigo is not used here. */
+  --bg: #08090b;
+  --panel: #0e1013;
+  --panel-2: #15181d;
+  --line: rgba(255, 255, 255, 0.08);
+  --line-soft: rgba(255, 255, 255, 0.05);
+  --input: rgba(255, 255, 255, 0.14);
 
-  --ink: #f2f2f2;
-  --ink-2: #bdbdbd;
-  --ink-3: #8f8f8f;
+  --ink: #f4f6f8;
+  --ink-2: #a6adbb;
+  --ink-3: #7c8493;
 
   --brand: #3ddc97;
   --brand-dim: rgba(61, 220, 151, 0.14);
@@ -235,17 +239,17 @@
   --live: #ff883e;
   --live-dim: rgba(255, 136, 62, 0.14);
   --live-text: #ff883e;
-  --sky: #5cb3ff;
-  --sky-dim: rgba(92, 179, 255, 0.12);
+  --sky: #5aa9ff;
+  --sky-dim: rgba(90, 169, 255, 0.12);
   --amber: #f0b429;
   --amber-dim: rgba(240, 180, 41, 0.12);
-  --ok: #3fb27f;
-  --ok-dim: rgba(63, 178, 127, 0.12);
-  --danger: #e8645d;
-  --danger-dim: rgba(232, 100, 93, 0.12);
+  --ok: #3ecf8e;
+  --ok-dim: rgba(62, 207, 142, 0.12);
+  --danger: #f2626b;
+  --danger-dim: rgba(242, 98, 107, 0.12);
   --destructive: #c2534e;
 
-  --panel-shadow: 0 8px 28px rgba(0, 0, 0, 0.45);
+  --panel-shadow: 0 4px 14px -2px rgba(0, 0, 0, 0.65);
 
   --destructive-foreground: #ffffff;
 

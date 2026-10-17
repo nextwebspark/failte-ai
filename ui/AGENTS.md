@@ -41,7 +41,7 @@ the principles, the token values, and a step-by-step plan with status. Read it
 before changing the shell, the Voice agents screens, the agent editor or any
 token, and update its status table when you finish a step. In short: brand green
 is the only interactive accent, spark orange means a live call, cards are flat,
-dark mode is true neutral black with mint only on accents, and users only ever see the word "agent".
+dark mode uses the Uncava surface ladder (app-lightmove) with mint as the only accent, and users only ever see the word "agent".
 
 ## Tech Stack
 

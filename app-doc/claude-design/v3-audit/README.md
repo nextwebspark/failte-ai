@@ -40,9 +40,11 @@ light board is a change to both.
    Shadows only on menus, popovers, dialogs and floating toolbars.
 5. **Rows, not button rows.** A list row navigates; secondary actions live in
    one kebab menu.
-6. **Dark is true black.** Neutral black surfaces with no green or blue cast;
-   Mint is the only colour, and only on accents. Same spacing and type as
-   light. The theme follows the OS until the user picks one.
+6. **Dark uses the Uncava ladder.** Cool near-black page, two surface steps,
+   white-alpha hairlines, cool grey text, all lifted from
+   `nextwebspark/app-lightmove` (`claude-design/uncava-tokens.css`). Mint stays
+   the only accent; Uncava's indigo is not used. Light mode uses a true
+   near-black ink. The theme follows the OS until the user picks one.
 7. **"Agent" is the only word users see.** Never "workflow" in UI copy (code
    identifiers keep their names). Sentence case for buttons and headings.
 
@@ -50,11 +52,11 @@ light board is a change to both.
 
 | Token | Light | Dark |
 | --- | --- | --- |
-| `--bg` | `#f3f6f4` | `#0a0a0a` |
-| `--panel` | `#ffffff` | `#111111` |
-| `--panel-2` | `#f6f8f7` | `#171717` |
-| `--line` | `#dde5e1` | `#262626` |
-| `--ink` / `--ink-2` / `--ink-3` | `#0b2e22` / `#3d5249` / `#5b6e66` | `#f2f2f2` / `#bdbdbd` / `#8f8f8f` |
+| `--bg` | `#f3f6f4` | `#08090b` |
+| `--panel` | `#ffffff` | `#0e1013` |
+| `--panel-2` | `#f6f8f7` | `#15181d` |
+| `--line` | `#dde5e1` | `rgba(255,255,255,.08)` |
+| `--ink` / `--ink-2` / `--ink-3` | `#0b0d12` / `#3a414d` / `#596170` | `#f4f6f8` / `#a6adbb` / `#7c8493` |
 | `--brand` | `#0e7a4b` | `#3ddc97` |
 | `--ring`, `--sidebar-primary` | `--brand` | `--brand` |
 
@@ -71,7 +73,7 @@ Status is kept here so the next session knows where to pick up.
 
 | Step | Scope | Status |
 | --- | --- | --- |
-| 1 | **Foundations.** DM Sans, true-black dark tokens, green ring and active nav, radius scale, flat Card, system-aware theme, Stack Auth theme in step. Files: `ui/src/app/globals.css`, `ui/src/app/layout.tsx`, `ui/src/components/ui/*`, `ui/src/components/layout/*`, `ui/src/components/ThemeSwitcher.tsx`, `ui/src/app/handler/[...stack]/stack-theme.ts`. | Done |
+| 1 | **Foundations.** DM Sans, Uncava dark tokens, near-black light ink, green ring and active nav, radius scale, flat Card, system-aware theme, Stack Auth theme in step. Files: `ui/src/app/globals.css`, `ui/src/app/layout.tsx`, `ui/src/components/ui/*`, `ui/src/components/layout/*`, `ui/src/components/ThemeSwitcher.tsx`, `ui/src/app/handler/[...stack]/stack-theme.ts`. | Done |
 | 2 | **Copy pass.** "Agent" everywhere in UI strings, default name "Untitled agent", sentence case. Files: `WorkflowTable.tsx`, `CreateWorkflowButton.tsx`, `workflow/create/page.tsx`, toasts. | To do |
 | 3 | **Voice agents landing.** New row model (initial circle, name and meta, StatusPill, channels, runs with 7-day sparkline, last call, kebab menu), search, status filter, stat strip, empty state. Needs per-agent `runs_7d` and `last_call_at` on the workflow list endpoint in `api/`. | To do |
 | 4 | **Create flow.** One dialog replaces the dropdown and the `/workflow/create` page; generation shown inside the dialog; land in the editor with the test rail open. | To do |

@@ -1,7 +1,7 @@
 // Dark token overrides for the embedded Stack Auth form so it blends into the
 // auth card surface. These mirror the dark palette in globals.css — the
-// neutral black panel/line/ink surfaces with the brand green on the primary
-// button and on the focus ring. Stack's theme parser does not accept OKLCH strings, so keep
+// Uncava dark surfaces (cool near-black panel, white-alpha hairlines, cool
+// grey ink) with the brand green on the primary button and the focus ring. Stack's theme parser does not accept OKLCH strings, so keep
 // these values in hex and update them whenever the .dark block changes.
 
 import type { StackTheme } from "@stackframe/stack";
@@ -11,24 +11,24 @@ type ThemeConfig = NonNullable<ComponentProps<typeof StackTheme>["theme"]>;
 
 export const stackAuthDarkTheme: ThemeConfig = {
   dark: {
-    background: "#111111", // --panel
-    foreground: "#f2f2f2", // --ink
-    card: "#111111",
-    cardForeground: "#f2f2f2",
-    popover: "#111111",
-    popoverForeground: "#f2f2f2",
+    background: "#0e1013", // --panel
+    foreground: "#f4f6f8", // --ink
+    card: "#0e1013",
+    cardForeground: "#f4f6f8",
+    popover: "#0e1013",
+    popoverForeground: "#f4f6f8",
     primary: "#3ddc97", // --brand
     primaryForeground: "#0a1f17", // --brand-ink
-    secondary: "#171717", // --panel-2
-    secondaryForeground: "#f2f2f2",
-    muted: "#171717",
-    mutedForeground: "#8f8f8f", // --ink-3
-    accent: "#171717",
-    accentForeground: "#f2f2f2",
+    secondary: "#15181d", // --panel-2
+    secondaryForeground: "#f4f6f8",
+    muted: "#15181d",
+    mutedForeground: "#7c8493", // --ink-3
+    accent: "#15181d",
+    accentForeground: "#f4f6f8",
     destructive: "#e5534b", // canvas --red
     destructiveForeground: "#ffffff",
-    border: "#262626", // --line
-    input: "#262626",
+    border: "#1f2226", // --line (rgba(255,255,255,.08) on --panel)
+    input: "#30333a", // --input (rgba(255,255,255,.14) on --panel)
     ring: "#3ddc97", // --brand
   },
   radius: "0.75rem",
