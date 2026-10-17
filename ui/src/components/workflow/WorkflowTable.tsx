@@ -35,7 +35,9 @@ import { useOrganizationTimezone } from '@/hooks/useOrganizationTimezone';
 import {
     AGENT_STATUS_LABEL,
     agentStatus,
+    DRAFT_EDITS_LABEL,
     formatLastCall,
+    hasDraftEdits,
     sparklinePoints,
     weeklyRuns,
 } from '@/lib/agentList';
@@ -55,7 +57,7 @@ interface WorkflowTableProps {
 // Agent · Status · Calls (7 days) · Last call · menu. Narrow screens keep the
 // agent and the menu; the status drops under the name.
 const ROW_GRID =
-    'grid grid-cols-[minmax(0,1fr)_40px] items-center gap-3 px-4 md:grid-cols-[minmax(0,1fr)_130px_150px_130px_40px]';
+    'grid grid-cols-[minmax(0,1fr)_40px] items-center gap-3 px-4 md:grid-cols-[minmax(0,1fr)_200px_150px_130px_40px]';
 
 function Sparkline({ values }: { values: number[] }) {
     const active = values.some((v) => v > 0);
@@ -85,6 +87,9 @@ function Sparkline({ values }: { values: number[] }) {
  */
 export function WorkflowTable({ workflows, showArchived, folders }: WorkflowTableProps) {
     const router = useRouter();
+    // A folder_id that points at a folder we didn't get back is shown under
+    // Uncategorized, so the menu treats it the same way.
+    const knownFolderIds = new Set((folders ?? []).map((folder) => folder.id));
     const timezone = useOrganizationTimezone();
     const [isPending, startTransition] = useTransition();
     const [busyWorkflowId, setBusyWorkflowId] = useState<number | null>(null);
@@ -159,11 +164,21 @@ export function WorkflowTable({ workflows, showArchived, folders }: WorkflowTabl
                 {workflows.map((workflow) => {
                     const status = agentStatus(workflow);
                     const busy = busyWorkflowId === workflow.id;
-                    const folderId = workflow.folder_id ?? null;
+                    const folderId =
+                        workflow.folder_id != null && knownFolderIds.has(workflow.folder_id)
+                            ? workflow.folder_id
+                            : null;
                     const pill = (
-                        <StatusPill tone={statusTone(status)}>
-                            {AGENT_STATUS_LABEL[status]}
-                        </StatusPill>
+                        <span className="inline-flex flex-wrap items-center gap-1.5">
+                            <StatusPill tone={statusTone(status)}>
+                                {AGENT_STATUS_LABEL[status]}
+                            </StatusPill>
+                            {hasDraftEdits(workflow) && (
+                                <StatusPill tone="warn" title="Saved edits that aren't published yet">
+                                    {DRAFT_EDITS_LABEL}
+                                </StatusPill>
+                            )}
+                        </span>
                     );
 
                     return (

@@ -49,14 +49,9 @@ async function WorkflowList() {
 
         const allWorkflowData = response.data ? (Array.isArray(response.data) ? response.data : [response.data]) : [];
 
-        // Separate active and archived workflows
-        const activeWorkflows = allWorkflowData
-            .filter((w: WorkflowListResponse) => w.status === 'active')
-            .sort((a: WorkflowListResponse, b: WorkflowListResponse) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-
-        const archivedWorkflows = allWorkflowData
-            .filter((w: WorkflowListResponse) => w.status === 'archived')
-            .sort((a: WorkflowListResponse, b: WorkflowListResponse) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+        // Separate active and archived workflows. AgentList owns the ordering.
+        const activeWorkflows = allWorkflowData.filter((w: WorkflowListResponse) => w.status === 'active');
+        const archivedWorkflows = allWorkflowData.filter((w: WorkflowListResponse) => w.status === 'archived');
 
         // Fetch folders for grouping active agents. A failure here shouldn't
         // break the page — fall back to an empty list (flat, ungrouped view).

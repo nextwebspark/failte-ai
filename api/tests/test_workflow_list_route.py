@@ -66,7 +66,7 @@ def test_workflow_fetch_list_includes_workflow_uuid():
     ]
 
 
-def test_workflow_fetch_list_defaults_activity_for_workflows_without_runs():
+def test_workflow_fetch_list_reports_workflows_without_runs_or_drafts():
     app = _make_test_app()
     client = TestClient(app)
 
@@ -81,7 +81,9 @@ def test_workflow_fetch_list_defaults_activity_for_workflows_without_runs():
 
     with patch("api.routes.workflow.db_client") as mock_db:
         mock_db.get_all_workflows_for_listing = AsyncMock(return_value=[workflow])
-        mock_db.get_workflow_run_activity = AsyncMock(return_value={})
+        mock_db.get_workflow_run_activity = AsyncMock(
+            return_value={workflow.id: WorkflowRunActivity(daily_runs=[0] * 7)}
+        )
         mock_db.get_workflow_ids_with_draft = AsyncMock(return_value=set())
 
         response = client.get("/workflow/fetch")

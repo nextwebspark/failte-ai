@@ -3,7 +3,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Optional
 
 from loguru import logger
-from sqlalchemy import DateTime, Integer, cast, func, literal, update
+from sqlalchemy import DateTime, Integer, case, cast, func, literal, update
 from sqlalchemy.future import select
 from sqlalchemy.orm import load_only, selectinload
 
@@ -929,44 +929,42 @@ class WorkflowClient(BaseDBClient):
         now = now or datetime.now(UTC)
         window_start = now - timedelta(days=days)
         age = literal(now, DateTime(timezone=True)) - WorkflowRunModel.created_at
-        days_ago = cast(func.floor(func.extract("epoch", age) / 86400), Integer).label(
-            "days_ago"
-        )
+        # 0 = the last 24 hours ... days - 1 = the oldest day in the window;
+        # ``days`` collects everything older. A clock-skewed run "from the
+        # future" lands in today's bucket.
+        bucket = case(
+            (
+                WorkflowRunModel.created_at > window_start,
+                func.greatest(
+                    cast(func.floor(func.extract("epoch", age) / 86400), Integer), 0
+                ),
+            ),
+            else_=days,
+        ).label("bucket")
 
         async with self.async_session() as session:
-            totals = await session.execute(
+            rows = await session.execute(
                 select(
                     WorkflowRunModel.workflow_id,
+                    bucket,
                     func.count(WorkflowRunModel.id),
                     func.max(WorkflowRunModel.created_at),
                 )
                 .where(WorkflowRunModel.workflow_id.in_(workflow_ids))
-                .group_by(WorkflowRunModel.workflow_id)
-            )
-            daily = await session.execute(
-                select(
-                    WorkflowRunModel.workflow_id,
-                    days_ago,
-                    func.count(WorkflowRunModel.id),
-                )
-                .where(
-                    WorkflowRunModel.workflow_id.in_(workflow_ids),
-                    WorkflowRunModel.created_at > window_start,
-                )
-                .group_by(WorkflowRunModel.workflow_id, days_ago)
+                .group_by(WorkflowRunModel.workflow_id, bucket)
             )
 
             activity = {
                 workflow_id: WorkflowRunActivity(daily_runs=[0] * days)
                 for workflow_id in workflow_ids
             }
-            for workflow_id, total, last_run_at in totals.all():
-                activity[workflow_id].total_runs = total
-                activity[workflow_id].last_run_at = last_run_at
-            for workflow_id, bucket, count in daily.all():
-                # A clock-skewed run "from the future" lands in today's bucket.
-                index = days - 1 - min(max(bucket, 0), days - 1)
-                activity[workflow_id].daily_runs[index] += count
+            for workflow_id, days_ago, count, last_run_at in rows.all():
+                runs = activity[workflow_id]
+                runs.total_runs += count
+                if runs.last_run_at is None or last_run_at > runs.last_run_at:
+                    runs.last_run_at = last_run_at
+                if days_ago < days:
+                    runs.daily_runs[days - 1 - days_ago] += count
 
             return activity
 

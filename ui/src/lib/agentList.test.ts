@@ -6,6 +6,7 @@ import {
     agentStatus,
     filterAgents,
     formatLastCall,
+    hasDraftEdits,
     percentChange,
     sortAgents,
     sparklinePoints,
@@ -43,16 +44,22 @@ const reminders = agent({
 const fresh = agent({ id: 9, name: 'After-hours triage', created_at: '2026-10-15T09:00:00Z' });
 
 describe('agentList', () => {
-    it('derives the status from archive state and drafts', () => {
+    it('keeps an agent with a draft published, and flags the draft separately', () => {
         expect(agentStatus(reception)).toBe('published');
-        expect(agentStatus(reminders)).toBe('draft');
-        expect(agentStatus(agent({ status: 'archived', has_draft: true }))).toBe('archived');
+        expect(agentStatus(reminders)).toBe('published');
+        expect(hasDraftEdits(reminders)).toBe(true);
+        expect(hasDraftEdits(reception)).toBe(false);
+        const archived = agent({ status: 'archived', has_draft: true });
+        expect(agentStatus(archived)).toBe('archived');
+        expect(hasDraftEdits(archived)).toBe(false);
     });
 
-    it('filters by name, exact id and status', () => {
-        const all = [reception, reminders, fresh];
+    it('filters by name, id as shown or typed, and draft edits', () => {
+        const all = [reception, reminders, fresh, agent({ id: 123, name: 'Support' })];
         expect(filterAgents(all, '  BOOK ', 'all')).toEqual([reminders]);
         expect(filterAgents(all, '9', 'all')).toEqual([fresh]);
+        expect(filterAgents(all, '#123', 'all').map((a) => a.id)).toEqual([123]);
+        expect(filterAgents(all, '12', 'all').map((a) => a.id)).toEqual([123]);
         expect(filterAgents(all, '', 'draft')).toEqual([reminders]);
         expect(filterAgents(all, 'dental', 'draft')).toEqual([]);
     });
@@ -67,7 +74,7 @@ describe('agentList', () => {
     it('totals the stat strip', () => {
         expect(agentStats([reception, reminders, fresh])).toEqual({
             total: 3,
-            published: 2,
+            withDraft: 1,
             callsToday: 6,
             callsYesterday: 7,
             callsWeek: 23,

@@ -7,19 +7,29 @@ import { formatDate } from '@/lib/dateTime';
  * call" wording. Kept free of React so they can be unit tested.
  */
 
-export type AgentStatus = 'published' | 'draft' | 'archived';
-export type AgentStatusFilter = 'all' | 'published' | 'draft';
+/**
+ * Every agent is created with a published version, and saving in the editor
+ * only adds a draft next to it, so an active agent is always live. A draft is
+ * shown as a second chip, never in place of "Published".
+ */
+export type AgentStatus = 'published' | 'archived';
+/** `draft` narrows the list to agents with saved edits that aren't published. */
+export type AgentStatusFilter = 'all' | 'draft';
 export type AgentSort = 'last_call' | 'name' | 'newest';
 
 export const AGENT_STATUS_LABEL: Record<AgentStatus, string> = {
     published: 'Published',
-    draft: 'Unpublished',
     archived: 'Archived',
 };
 
+export const DRAFT_EDITS_LABEL = 'Draft edits';
+
 export function agentStatus(agent: WorkflowListResponse): AgentStatus {
-    if (agent.status === 'archived') return 'archived';
-    return agent.has_draft ? 'draft' : 'published';
+    return agent.status === 'archived' ? 'archived' : 'published';
+}
+
+export function hasDraftEdits(agent: WorkflowListResponse): boolean {
+    return agent.status !== 'archived' && Boolean(agent.has_draft);
 }
 
 /** Calls in the last 7 days; falls back to zero when the API didn't send them. */
@@ -33,12 +43,14 @@ export function filterAgents(
     status: AgentStatusFilter,
 ): WorkflowListResponse[] {
     const needle = query.trim().toLowerCase();
+    // Rows show ids as "#123", so "#123", "123" and "12" all find agent 123.
+    const idNeedle = /^#?\d+$/.test(needle) ? needle.replace(/^#/, '') : null;
     return agents.filter((agent) => {
-        if (status !== 'all' && agentStatus(agent) !== status) return false;
+        if (status === 'draft' && !hasDraftEdits(agent)) return false;
         if (!needle) return true;
         return (
             agent.name.toLowerCase().includes(needle) ||
-            String(agent.id) === needle
+            (idNeedle !== null && String(agent.id).startsWith(idNeedle))
         );
     });
 }
@@ -70,7 +82,7 @@ export function sortAgents(
 
 export interface AgentStats {
     total: number;
-    published: number;
+    withDraft: number;
     callsToday: number;
     callsYesterday: number;
     callsWeek: number;
@@ -81,14 +93,14 @@ export interface AgentStats {
 export function agentStats(agents: WorkflowListResponse[]): AgentStats {
     const stats: AgentStats = {
         total: agents.length,
-        published: 0,
+        withDraft: 0,
         callsToday: 0,
         callsYesterday: 0,
         callsWeek: 0,
         lastCallAt: null,
     };
     for (const agent of agents) {
-        if (agentStatus(agent) === 'published') stats.published += 1;
+        if (hasDraftEdits(agent)) stats.withDraft += 1;
         const days = agent.runs_7d ?? [];
         stats.callsToday += days[days.length - 1] ?? 0;
         stats.callsYesterday += days[days.length - 2] ?? 0;

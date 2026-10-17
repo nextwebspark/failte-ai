@@ -1,3 +1,4 @@
+import asyncio
 import json
 import re
 import uuid
@@ -831,25 +832,27 @@ async def get_workflows(
             organization_id=user.selected_organization_id, status=None
         )
 
-    # Run totals and recent activity for all workflows, batched
+    # Run totals, recent activity and drafts for all workflows, fetched together
     workflow_ids = [workflow.id for workflow in workflows]
-    activity = await db_client.get_workflow_run_activity(workflow_ids)
-    with_draft = await db_client.get_workflow_ids_with_draft(workflow_ids)
+    activity, with_draft = await asyncio.gather(
+        db_client.get_workflow_run_activity(workflow_ids),
+        db_client.get_workflow_ids_with_draft(workflow_ids),
+    )
 
     responses = []
     for workflow in workflows:
-        runs = activity.get(workflow.id)
+        runs = activity[workflow.id]
         responses.append(
             WorkflowListResponse(
                 id=workflow.id,
                 name=workflow.name,
                 status=workflow.status,
                 created_at=workflow.created_at,
-                total_runs=runs.total_runs if runs else 0,
+                total_runs=runs.total_runs,
                 folder_id=workflow.folder_id,
                 workflow_uuid=workflow.workflow_uuid,
-                runs_7d=runs.daily_runs if runs else [0] * 7,
-                last_run_at=runs.last_run_at if runs else None,
+                runs_7d=runs.daily_runs,
+                last_run_at=runs.last_run_at,
                 has_draft=workflow.id in with_draft,
             )
         )

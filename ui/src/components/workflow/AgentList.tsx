@@ -21,8 +21,8 @@ import { useOrganizationTimezone } from '@/hooks/useOrganizationTimezone';
 import {
     type AgentSort,
     agentStats,
-    agentStatus,
     type AgentStatusFilter,
+    DRAFT_EDITS_LABEL,
     filterAgents,
     formatLastCall,
     percentChange,
@@ -75,17 +75,15 @@ export function AgentList({ activeWorkflows, archivedWorkflows, folders }: Agent
     const [sort, setSort] = useState<AgentSort>('last_call');
 
     const stats = useMemo(() => agentStats(activeWorkflows), [activeWorkflows]);
-    const counts = useMemo(() => {
-        const drafts = activeWorkflows.filter((w) => agentStatus(w) === 'draft').length;
-        return { all: activeWorkflows.length, published: activeWorkflows.length - drafts, draft: drafts };
-    }, [activeWorkflows]);
 
     const filtering = query.trim() !== '' || status !== 'all';
-    const active = useMemo(
-        () => sortAgents(filterAgents(activeWorkflows, query, status), sort),
-        [activeWorkflows, query, status, sort],
+    const sortedActive = useMemo(() => sortAgents(activeWorkflows, sort), [activeWorkflows, sort]);
+    const matches = useMemo(
+        () => filterAgents(sortedActive, query, status),
+        [sortedActive, query, status],
     );
-    // Archived agents have their own section; a status filter hides it.
+    // Archived agents have their own section; the draft filter hides it, since
+    // an archived agent's draft doesn't matter.
     const archived = useMemo(
         () => (status === 'all' ? sortAgents(filterAgents(archivedWorkflows, query, 'all'), sort) : []),
         [archivedWorkflows, query, status, sort],
@@ -114,7 +112,10 @@ export function AgentList({ activeWorkflows, archivedWorkflows, folders }: Agent
                 </div>
                 {archivedWorkflows.length > 0 && (
                     <div className="mt-8">
-                        <FolderSection kind="archived" workflows={archivedWorkflows} />
+                        <FolderSection
+                            kind="archived"
+                            workflows={sortAgents(archivedWorkflows, 'newest')}
+                        />
                     </div>
                 )}
             </>
@@ -123,9 +124,8 @@ export function AgentList({ activeWorkflows, archivedWorkflows, folders }: Agent
 
     const todayChange = percentChange(stats.callsYesterday, stats.callsToday);
     const filters: { value: AgentStatusFilter; label: string; count: number }[] = [
-        { value: 'all', label: 'All', count: counts.all },
-        { value: 'published', label: 'Published', count: counts.published },
-        { value: 'draft', label: 'Unpublished', count: counts.draft },
+        { value: 'all', label: 'All', count: stats.total },
+        { value: 'draft', label: DRAFT_EDITS_LABEL, count: stats.withDraft },
     ];
 
     return (
@@ -133,7 +133,9 @@ export function AgentList({ activeWorkflows, archivedWorkflows, folders }: Agent
             <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
                 <Stat label="Agents">
                     {stats.total}
-                    <StatNote>{stats.published} published</StatNote>
+                    <StatNote>
+                        {stats.withDraft > 0 ? `${stats.withDraft} with draft edits` : 'all published'}
+                    </StatNote>
                 </Stat>
                 <Stat label="Calls · 24 h">
                     {stats.callsToday.toLocaleString()}
@@ -217,31 +219,45 @@ export function AgentList({ activeWorkflows, archivedWorkflows, folders }: Agent
                 </Select>
             </div>
 
-            {filtering ? (
-                active.length > 0 ? (
+            {filtering &&
+                (matches.length > 0 ? (
                     <div className="space-y-2">
                         <p className="text-[12.5px] text-ink-3" aria-live="polite">
-                            {active.length} {active.length === 1 ? 'agent' : 'agents'}
+                            {matches.length} {matches.length === 1 ? 'agent' : 'agents'}
                         </p>
-                        <WorkflowTable workflows={active} showArchived={false} folders={folders} />
+                        <WorkflowTable
+                            workflows={matches}
+                            showArchived={false}
+                            folders={folders.length > 0 ? folders : undefined}
+                        />
                     </div>
                 ) : (
                     <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed border-line bg-panel-2 p-8 text-center text-[13.5px] text-ink-2">
-                        {query.trim()
-                            ? `No agents match “${query.trim()}”.`
-                            : 'No agents with this status.'}
+                        {archived.length > 0
+                            ? `No active agents match. ${archived.length} archived ${archived.length === 1 ? 'agent matches' : 'agents match'} below.`
+                            : query.trim()
+                              ? `No agents match “${query.trim()}”.`
+                              : 'No agents have draft edits.'}
                         <Button variant="outline" size="sm" onClick={clearFilters}>
                             <X size={14} />
                             Clear filters
                         </Button>
                     </div>
-                )
-            ) : (
-                <AgentFolderView workflows={active} folders={folders} />
-            )}
+                ))}
+
+            {/* Stays mounted while filtering so folders keep their open state. */}
+            <div hidden={filtering}>
+                <AgentFolderView workflows={sortedActive} folders={folders} />
+            </div>
 
             {archived.length > 0 && (
-                <FolderSection kind="archived" workflows={archived} />
+                // While searching, archived matches open so none of them hide.
+                <FolderSection
+                    key={filtering ? 'archived-matches' : 'archived'}
+                    kind="archived"
+                    workflows={archived}
+                    defaultOpen={filtering}
+                />
             )}
         </div>
     );
