@@ -1,7 +1,7 @@
 import "./globals.css";
 
 import type { Metadata } from "next";
-import { JetBrains_Mono, Montserrat, Sora } from "next/font/google";
+import { DM_Sans, JetBrains_Mono, Sora } from "next/font/google";
 import { Suspense } from "react";
 
 import AppLayout from "@/components/layout/AppLayout";
@@ -18,11 +18,12 @@ import { TelephonyConfigWarningsProvider } from "@/context/TelephonyConfigWarnin
 import { AuthProvider } from "@/lib/auth";
 
 
-// Montserrat is the brand kit's typeface: 700 for headings and the wordmark,
-// 500/400 for interface and body copy. JetBrains Mono stays for data, metadata
-// and numerals. Both are wired to --font-sans / --font-mono in globals.css.
-const montserrat = Montserrat({
-  variable: "--font-montserrat",
+// DM Sans is the brand kit's interface and body face (brand-kit/lightmove-brand/
+// BRAND.md): 400 body, 500 interface, 600 headings, 700 screen titles.
+// JetBrains Mono is for data only — ids, timers, numbers, keys. Both are wired
+// to --font-sans / --font-mono in globals.css.
+const dmSans = DM_Sans({
+  variable: "--font-dm-sans",
   subsets: ["latin"],
   weight: ["400", "500", "600", "700"],
 });
@@ -32,9 +33,8 @@ const jetbrainsMono = JetBrains_Mono({
   subsets: ["latin"],
 });
 
-// Sora 600 is the LightMove wordmark face (brand-kit/lightmove-brand). It is
-// used only by BrandLogo's live-text wordmark (`font-display`); interface copy
-// stays on Montserrat.
+// Sora 600 is the brand kit's display face: the BrandLogo wordmark and large
+// display numbers (`font-display`). Interface copy stays on DM Sans.
 const sora = Sora({
   variable: "--font-sora",
   subsets: ["latin"],
@@ -66,26 +66,27 @@ export default function RootLayout({
     // reach it and the sans stack silently falls back to system-ui.
     <html
       lang="en"
-      className={`dark ${montserrat.variable} ${jetbrainsMono.variable} ${sora.variable}`}
+      className={`${dmSans.variable} ${jetbrainsMono.variable} ${sora.variable}`}
       suppressHydrationWarning
     >
       <head>
-        {/* Inline script to prevent flash of light theme - runs before React hydrates.
-            Dark is the locked default: only an explicit stored 'light' opts out. */}
+        {/* Inline script to prevent a theme flash - runs before React hydrates.
+            An explicit stored choice wins; otherwise follow the OS, which is
+            what the brand kit asks for (light default, dark when the OS is). */}
         <script
           dangerouslySetInnerHTML={{
             __html: `
               (function() {
+                var dark = false;
                 try {
                   var theme = localStorage.getItem('theme');
-                  if (theme === 'light') {
-                    document.documentElement.classList.remove('dark');
-                  } else {
-                    document.documentElement.classList.add('dark');
+                  if (theme === 'dark') {
+                    dark = true;
+                  } else if (theme !== 'light') {
+                    dark = window.matchMedia('(prefers-color-scheme: dark)').matches;
                   }
-                } catch (e) {
-                  document.documentElement.classList.add('dark');
-                }
+                } catch (e) {}
+                document.documentElement.classList.toggle('dark', dark);
               })();
             `,
           }}
@@ -93,7 +94,7 @@ export default function RootLayout({
       </head>
       <body
         className="antialiased">
-        <ThemeProvider attribute="class" defaultTheme="dark" enableSystem={false} disableTransitionOnChange>
+        <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
           <SentryErrorBoundary>
             <AuthProvider>
               <AppConfigProvider>

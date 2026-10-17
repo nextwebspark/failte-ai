@@ -1,6 +1,7 @@
 "use client";
 
 import { Moon, Sun } from "lucide-react";
+import { useTheme } from "next-themes";
 import { useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -24,20 +25,21 @@ export default function ThemeToggle({
   variant = "ghost",
   size = "icon"
 }: ThemeToggleProps) {
-  // Start with null to avoid hydration mismatch - theme is set by inline script in layout.tsx
-  const [theme, setTheme] = useState<"light" | "dark" | null>(null);
-
-  useEffect(() => {
-    // Read the current theme from the DOM (already set by inline script in layout.tsx)
-    const isDark = document.documentElement.classList.contains("dark");
-    setTheme(isDark ? "dark" : "light");
-  }, []);
+  // next-themes owns the theme: it follows the OS until the user picks one
+  // here, then stores that choice under "theme" (the key the inline script in
+  // layout.tsx reads before hydration). Going through setTheme keeps its
+  // system listener in step, so an OS change can't undo an explicit choice.
+  const { resolvedTheme, setTheme } = useTheme();
+  // resolvedTheme is only known on the client; treat it as unknown until mount
+  // so the server render and the first client render agree.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+  const theme = mounted && (resolvedTheme === "dark" || resolvedTheme === "light")
+    ? resolvedTheme
+    : null;
 
   const toggleTheme = () => {
-    const newTheme = theme === "light" ? "dark" : "light";
-    setTheme(newTheme);
-    localStorage.setItem("theme", newTheme);
-    document.documentElement.classList.toggle("dark", newTheme === "dark");
+    setTheme(theme === "dark" ? "light" : "dark");
   };
 
   // The icon shows the destination too: a moon while the app is light.

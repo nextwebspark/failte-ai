@@ -112,7 +112,7 @@ export function AppTopBar({
 
       <Link
         href="/overview"
-        className="notranslate flex shrink-0 items-center gap-1.5 rounded-[7px] py-1 pl-1 pr-1.5"
+        className="notranslate flex shrink-0 items-center gap-1.5 rounded-md py-1 pl-1 pr-1.5"
         translate="no"
       >
         {/* The kit lockup, mark at its 24px minimum. */}
@@ -178,7 +178,7 @@ export function AppTopBar({
             variant="outline"
             size="sm"
             onClick={agentShell.openTester}
-            className="h-7 gap-1.5 rounded-[7px] border-line bg-transparent px-2.5 text-xs text-ink-2 hover:bg-panel-2 hover:text-foreground xl:hidden"
+            className="h-7 gap-1.5 rounded-md border-line bg-transparent px-2.5 text-xs text-ink-2 hover:bg-panel-2 hover:text-foreground xl:hidden"
           >
             <Bot className="h-3.5 w-3.5" />
             Test agent
@@ -192,7 +192,7 @@ export function AppTopBar({
             <button
               type="button"
               aria-label="Account menu"
-              className="grid h-[26px] w-[26px] shrink-0 cursor-pointer place-items-center rounded-full border border-line bg-sky-dim font-mono text-[10px] font-semibold text-sky"
+              className="grid h-[26px] w-[26px] shrink-0 cursor-pointer place-items-center rounded-full border border-line bg-brand-dim font-mono text-[10px] font-semibold text-brand"
             >
               {userInitials}
             </button>

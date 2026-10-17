@@ -31,6 +31,17 @@ ui/
 | Auth utilities      | `src/lib/auth/`                                      |
 | Helper functions    | `src/lib/utils.ts`                                   |
 | Global state        | `src/context/` - React context providers             |
+| Design tokens       | `src/app/globals.css` - colours, radii, fonts        |
+| Design plan         | `../app-doc/claude-design/v3-audit/README.md`        |
+
+## Design
+
+The current UI redesign is described in `app-doc/claude-design/v3-audit/README.md`:
+the principles, the token values, and a step-by-step plan with status. Read it
+before changing the shell, the Voice agents screens, the agent editor or any
+token, and update its status table when you finish a step. In short: brand green
+is the only interactive accent, spark orange means a live call, cards are flat,
+dark mode uses the Uncava surface ladder (app-lightmove) with mint as the only accent, and users only ever see the word "agent".
 
 ## Tech Stack
 

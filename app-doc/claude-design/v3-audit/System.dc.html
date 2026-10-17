@@ -1,0 +1,222 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Foundations, light and dark</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Sora:wght@600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+body{margin:0}
+.lm{--bg:#F4F7F5;--panel:#FFFFFF;--panel2:#F5F8F6;--line:#DCE5E0;--line2:#EAF0EC;--ink:#0B0D12;--ink2:#3A414D;--ink3:#596170;--brand:#0E7A4B;--brand-dim:rgba(14,122,75,.08);--brand-ink:#FFFFFF;--green:#169B62;--live:#FF883E;--live-dim:rgba(255,136,62,.14);--live-text:#A84C0C;--sky:#1869B5;--sky-dim:rgba(24,105,181,.10);--amber:#8D5D06;--amber-dim:rgba(141,93,6,.10);--ok:#1A754F;--ok-dim:rgba(26,117,79,.10);--danger:#C03630;--danger-dim:rgba(192,54,48,.08);--shadow:0 10px 30px rgba(11,31,23,.10);--sans:"DM Sans",system-ui,sans-serif;--display:"Sora",system-ui,sans-serif;--mono:"JetBrains Mono",ui-monospace,monospace}
+.lm.dark{--bg:#08090B;--panel:#0E1013;--panel2:#15181D;--line:rgba(255,255,255,.08);--line2:rgba(255,255,255,.05);--ink:#F4F6F8;--ink2:#A6ADBB;--ink3:#7C8493;--brand:#3DDC97;--brand-dim:rgba(61,220,151,.14);--brand-ink:#0A1F17;--live-text:#FF9A5C;--sky:#5CB3FF;--sky-dim:rgba(92,179,255,.12);--amber:#F0B429;--amber-dim:rgba(240,180,41,.12);--ok:#3FB27F;--ok-dim:rgba(63,178,127,.12);--danger:#E8645D;--danger-dim:rgba(232,100,93,.12);--shadow:0 10px 30px rgba(0,0,0,.5)}
+a{color:var(--brand)}a:hover{color:var(--ink)}
+</style>
+</helmet>
+<div style="min-height: 100vh; box-sizing: border-box; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); font-family: 'DM Sans', system-ui, sans-serif; font-size: 13px; line-height: 1.45">
+
+  <div class="lm" style="box-sizing: border-box; background: var(--bg); color: var(--ink); padding: 40px 36px 48px; display: flex; flex-direction: column; gap: 26px; border-right: 1px solid #DCE5E0">
+    <div style="display: flex; align-items: baseline; justify-content: space-between">
+      <h1 style="margin: 0; font-family: var(--display); font-weight: 600; font-size: 26px; letter-spacing: -0.02em">Light</h1>
+      <span style="font-family: var(--mono); font-size: 11px; color: var(--ink3)">default when the OS is light</span>
+    </div>
+
+    <section style="display: flex; flex-direction: column; gap: 10px">
+      <h2 style="margin: 0; font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink3)">Surfaces and ink</h2>
+      <div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px">
+        <div style="border: 1px solid var(--line); border-radius: 8px; overflow: hidden"><div style="height: 44px; background: var(--bg)"></div><div style="padding: 6px 8px; font-family: var(--mono); font-size: 10.5px; color: var(--ink2); background: var(--panel)">bg #F4F7F5</div></div>
+        <div style="border: 1px solid var(--line); border-radius: 8px; overflow: hidden"><div style="height: 44px; background: var(--panel)"></div><div style="padding: 6px 8px; font-family: var(--mono); font-size: 10.5px; color: var(--ink2); background: var(--panel)">panel #FFFFFF</div></div>
+        <div style="border: 1px solid var(--line); border-radius: 8px; overflow: hidden"><div style="height: 44px; background: var(--panel2)"></div><div style="padding: 6px 8px; font-family: var(--mono); font-size: 10.5px; color: var(--ink2); background: var(--panel)">panel-2 #F5F8F6</div></div>
+        <div style="border: 1px solid var(--line); border-radius: 8px; overflow: hidden"><div style="height: 44px; background: var(--line)"></div><div style="padding: 6px 8px; font-family: var(--mono); font-size: 10.5px; color: var(--ink2); background: var(--panel)">line #DCE5E0</div></div>
+        <div style="border: 1px solid var(--line); border-radius: 8px; overflow: hidden"><div style="height: 44px; background: var(--ink)"></div><div style="padding: 6px 8px; font-family: var(--mono); font-size: 10.5px; color: var(--ink2); background: var(--panel)">ink #0B0D12</div></div>
+        <div style="border: 1px solid var(--line); border-radius: 8px; overflow: hidden"><div style="height: 44px; background: var(--ink2)"></div><div style="padding: 6px 8px; font-family: var(--mono); font-size: 10.5px; color: var(--ink2); background: var(--panel)">ink-2 #3A414D</div></div>
+        <div style="border: 1px solid var(--line); border-radius: 8px; overflow: hidden"><div style="height: 44px; background: var(--ink3)"></div><div style="padding: 6px 8px; font-family: var(--mono); font-size: 10.5px; color: var(--ink2); background: var(--panel)">ink-3 #596170</div></div>
+        <div style="border: 1px solid var(--line); border-radius: 8px; overflow: hidden"><div style="height: 44px; background: var(--brand)"></div><div style="padding: 6px 8px; font-family: var(--mono); font-size: 10.5px; color: var(--ink2); background: var(--panel)">brand #0E7A4B</div></div>
+      </div>
+      <div style="display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px">
+        <div style="display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 8px; background: var(--brand-dim)"><span style="width: 10px; height: 10px; border-radius: 999px; background: var(--brand)"></span><span style="font-family: var(--mono); font-size: 10.5px; color: var(--brand)">brand · interactive</span></div>
+        <div style="display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 8px; background: var(--live-dim)"><span style="width: 10px; height: 10px; border-radius: 999px; background: var(--live)"></span><span style="font-family: var(--mono); font-size: 10.5px; color: var(--live-text)">live · calls only</span></div>
+        <div style="display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 8px; background: var(--sky-dim)"><span style="width: 10px; height: 10px; border-radius: 999px; background: var(--sky)"></span><span style="font-family: var(--mono); font-size: 10.5px; color: var(--sky)">sky · info</span></div>
+        <div style="display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 8px; background: var(--amber-dim)"><span style="width: 10px; height: 10px; border-radius: 999px; background: var(--amber)"></span><span style="font-family: var(--mono); font-size: 10.5px; color: var(--amber)">amber · draft, warn</span></div>
+        <div style="display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 8px; background: var(--danger-dim)"><span style="width: 10px; height: 10px; border-radius: 999px; background: var(--danger)"></span><span style="font-family: var(--mono); font-size: 10.5px; color: var(--danger)">danger · errors</span></div>
+      </div>
+    </section>
+
+    <section style="display: flex; flex-direction: column; gap: 10px">
+      <h2 style="margin: 0; font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink3)">Type scale</h2>
+      <div style="background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 18px 20px; display: flex; flex-direction: column; gap: 10px">
+        <div style="display: flex; align-items: baseline; gap: 14px"><span style="font-family: var(--display); font-weight: 600; font-size: 28px; letter-spacing: -0.02em; line-height: 1.1">Display 28 · Sora 600</span><span style="font-family: var(--mono); font-size: 10.5px; color: var(--ink3)">stat numbers, page titles on Overview</span></div>
+        <div style="display: flex; align-items: baseline; gap: 14px"><span style="font-weight: 700; font-size: 20px; letter-spacing: -0.01em">Title 20 · DM Sans 700</span><span style="font-family: var(--mono); font-size: 10.5px; color: var(--ink3)">screen title</span></div>
+        <div style="display: flex; align-items: baseline; gap: 14px"><span style="font-weight: 600; font-size: 15px">Heading 15 · 600</span><span style="font-family: var(--mono); font-size: 10.5px; color: var(--ink3)">card and section titles</span></div>
+        <div style="display: flex; align-items: baseline; gap: 14px"><span style="font-weight: 400; font-size: 14px; color: var(--ink2)">Body 14 · 400 · ink-2 for descriptions</span><span style="font-family: var(--mono); font-size: 10.5px; color: var(--ink3)">forms, help text</span></div>
+        <div style="display: flex; align-items: baseline; gap: 14px"><span style="font-weight: 500; font-size: 13px">Interface 13 · 500</span><span style="font-family: var(--mono); font-size: 10.5px; color: var(--ink3)">nav rows, table cells, buttons</span></div>
+        <div style="display: flex; align-items: baseline; gap: 14px"><span style="font-weight: 600; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink3)">Label 11 · 600 · tracked</span><span style="font-family: var(--mono); font-size: 10.5px; color: var(--ink3)">nav group labels, table heads</span></div>
+        <div style="display: flex; align-items: baseline; gap: 14px"><span style="font-family: var(--mono); font-size: 12px">Data 12 · JetBrains Mono · 00:42 · +353 1 234 5678 · wf_8a21</span><span style="font-family: var(--mono); font-size: 10.5px; color: var(--ink3)">ids, timers, numbers, keys</span></div>
+      </div>
+    </section>
+
+    <section style="display: flex; flex-direction: column; gap: 10px">
+      <h2 style="margin: 0; font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink3)">Buttons · 32 / 36 / 40 · radius 8</h2>
+      <div style="background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 18px 20px; display: flex; flex-direction: column; gap: 12px">
+        <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap">
+          <button type="button" style="height: 36px; padding: 0 14px; border-radius: 8px; border: 0; background: var(--brand); color: var(--brand-ink); font: 500 13px var(--sans); display: inline-flex; align-items: center; gap: 8px; cursor: pointer"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>Create agent</button>
+          <button type="button" style="height: 36px; padding: 0 14px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); font: 500 13px var(--sans); display: inline-flex; align-items: center; gap: 8px; cursor: pointer">Secondary</button>
+          <button type="button" style="height: 36px; padding: 0 12px; border-radius: 8px; border: 0; background: transparent; color: var(--ink2); font: 500 13px var(--sans); cursor: pointer">Ghost</button>
+          <button type="button" style="height: 36px; padding: 0 14px; border-radius: 8px; border: 1px solid var(--danger); background: transparent; color: var(--danger); font: 500 13px var(--sans); cursor: pointer">Archive</button>
+          <button type="button" disabled style="height: 36px; padding: 0 14px; border-radius: 8px; border: 0; background: var(--brand); color: var(--brand-ink); font: 500 13px var(--sans); opacity: .45">Disabled</button>
+        </div>
+        <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap">
+          <button type="button" style="height: 32px; padding: 0 12px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); font: 500 12.5px var(--sans); cursor: pointer">Toolbar 32</button>
+          <button type="button" style="height: 40px; padding: 0 18px; border-radius: 8px; border: 0; background: var(--brand); color: var(--brand-ink); font: 600 14px var(--sans); cursor: pointer">Form CTA 40</button>
+          <button type="button" aria-label="More" style="width: 32px; height: 32px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel); color: var(--ink2); display: inline-grid; place-items: center; cursor: pointer"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg></button>
+          <span style="display: inline-flex; border: 1px solid var(--line); border-radius: 8px; padding: 2px; background: var(--panel2)"><span style="padding: 5px 12px; border-radius: 6px; background: var(--panel); color: var(--ink); font: 500 12.5px var(--sans); box-shadow: 0 1px 2px rgba(11,31,23,.08)">Voice</span><span style="padding: 5px 12px; color: var(--ink3); font: 500 12.5px var(--sans)">Text</span></span>
+          <span style="display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 12px; border-radius: 8px; border: 2px solid var(--brand); background: var(--panel); color: var(--ink); font: 500 12.5px var(--sans)">Focus ring · green</span>
+        </div>
+      </div>
+    </section>
+
+    <section style="display: flex; flex-direction: column; gap: 10px">
+      <h2 style="margin: 0; font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink3)">Inputs, pills, nav rows</h2>
+      <div style="background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 18px 20px; display: grid; grid-template-columns: 1.2fr 1fr; gap: 18px">
+        <div style="display: flex; flex-direction: column; gap: 10px">
+          <label for="sys-name-l" style="font-size: 12.5px; font-weight: 600">Agent name</label>
+          <input id="sys-name-l" value="Dental reception, Cork" style="height: 36px; box-sizing: border-box; padding: 0 12px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); font: 400 13.5px var(--sans)">
+          <input aria-label="Search" placeholder="Search agents" style="height: 36px; box-sizing: border-box; padding: 0 12px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel2); color: var(--ink); font: 400 13.5px var(--sans)">
+          <div style="display: flex; gap: 6px; flex-wrap: wrap">
+            <span style="padding: 3px 9px; border-radius: 6px; background: var(--ok-dim); color: var(--ok); font: 600 10.5px var(--mono); letter-spacing: .04em">PUBLISHED</span>
+            <span style="padding: 3px 9px; border-radius: 6px; background: var(--amber-dim); color: var(--amber); font: 600 10.5px var(--mono); letter-spacing: .04em">DRAFT</span>
+            <span style="display: inline-flex; align-items: center; gap: 6px; padding: 3px 9px; border-radius: 6px; background: var(--live-dim); color: var(--live-text); font: 600 10.5px var(--mono); letter-spacing: .04em"><span style="width: 6px; height: 6px; border-radius: 999px; background: var(--live)"></span>LIVE 00:42</span>
+            <span style="padding: 3px 9px; border-radius: 6px; background: var(--sky-dim); color: var(--sky); font: 600 10.5px var(--mono); letter-spacing: .04em">V12 · VIEWING</span>
+            <span style="padding: 3px 9px; border-radius: 6px; background: var(--danger-dim); color: var(--danger); font: 600 10.5px var(--mono); letter-spacing: .04em">2 ERRORS</span>
+            <span style="padding: 3px 9px; border-radius: 6px; background: var(--panel2); color: var(--ink3); font: 600 10.5px var(--mono); letter-spacing: .04em">ARCHIVED</span>
+          </div>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 2px; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 8px">
+          <span style="padding: 6px 10px 4px; font-size: 10.5px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--ink3)">Build</span>
+          <a href="#nav" style="display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 8px; background: var(--brand-dim); color: var(--brand); font: 600 13px var(--sans); text-decoration: none"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="6" cy="6" r="2.5"/><circle cx="18" cy="18" r="2.5"/><path d="M6 8.5v3a4 4 0 0 0 4 4h5.5"/></svg>Voice agents<span style="margin-left: auto; font: 500 11px var(--mono); color: var(--brand)">12</span></a>
+          <a href="#nav" style="display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 8px; color: var(--ink2); font: 500 13px var(--sans); text-decoration: none"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M3 11l18-5v12L3 14v-3z"/><path d="M11 14v4a2 2 0 0 1-4 0v-3"/></svg>Campaigns</a>
+          <a href="#nav" style="display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 8px; background: var(--panel2); color: var(--ink); font: 500 13px var(--sans); text-decoration: none"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.7a2 2 0 0 1-.5 2.1L8 9.8a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.7.7a2 2 0 0 1 1.7 2z"/></svg>Telephony<span style="margin-left: auto; width: 6px; height: 6px; border-radius: 999px; background: var(--amber)" role="img" aria-label="Action required"></span></a>
+          <span style="padding: 4px 10px 0; font: 400 10.5px var(--mono); color: var(--ink3)">default · active · hover</span>
+        </div>
+      </div>
+    </section>
+
+    <section style="display: flex; flex-direction: column; gap: 10px">
+      <h2 style="margin: 0; font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink3)">Radius and elevation</h2>
+      <div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px">
+        <div style="height: 64px; border-radius: 6px; border: 1px solid var(--line); background: var(--panel2); display: grid; place-items: center; font: 500 11px var(--mono); color: var(--ink2)">6 · chips</div>
+        <div style="height: 64px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel); display: grid; place-items: center; font: 500 11px var(--mono); color: var(--ink2)">8 · controls</div>
+        <div style="height: 64px; border-radius: 12px; border: 1px solid var(--line); background: var(--panel); display: grid; place-items: center; font: 500 11px var(--mono); color: var(--ink2)">12 · cards (flat)</div>
+        <div style="height: 64px; border-radius: 12px; border: 1px solid var(--line); background: var(--panel); box-shadow: var(--shadow); display: grid; place-items: center; font: 500 11px var(--mono); color: var(--ink2)">12 + shadow · overlays</div>
+      </div>
+    </section>
+  </div>
+
+  <div class="lm dark" style="box-sizing: border-box; background: var(--bg); color: var(--ink); padding: 40px 36px 48px; display: flex; flex-direction: column; gap: 26px">
+    <div style="display: flex; align-items: baseline; justify-content: space-between">
+      <h1 style="margin: 0; font-family: var(--display); font-weight: 600; font-size: 26px; letter-spacing: -0.02em">Dark</h1>
+      <span style="font-family: var(--mono); font-size: 11px; color: var(--ink3)">Uncava ladder, Mint as the only colour</span>
+    </div>
+
+    <section style="display: flex; flex-direction: column; gap: 10px">
+      <h2 style="margin: 0; font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink3)">Surfaces and ink</h2>
+      <div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px">
+        <div style="border: 1px solid var(--line); border-radius: 8px; overflow: hidden"><div style="height: 44px; background: var(--bg)"></div><div style="padding: 6px 8px; font-family: var(--mono); font-size: 10.5px; color: var(--ink2); background: var(--panel)">bg #08090B</div></div>
+        <div style="border: 1px solid var(--line); border-radius: 8px; overflow: hidden"><div style="height: 44px; background: var(--panel)"></div><div style="padding: 6px 8px; font-family: var(--mono); font-size: 10.5px; color: var(--ink2); background: var(--panel)">panel #0E1013</div></div>
+        <div style="border: 1px solid var(--line); border-radius: 8px; overflow: hidden"><div style="height: 44px; background: var(--panel2)"></div><div style="padding: 6px 8px; font-family: var(--mono); font-size: 10.5px; color: var(--ink2); background: var(--panel)">panel-2 #15181D</div></div>
+        <div style="border: 1px solid var(--line); border-radius: 8px; overflow: hidden"><div style="height: 44px; background: var(--line)"></div><div style="padding: 6px 8px; font-family: var(--mono); font-size: 10.5px; color: var(--ink2); background: var(--panel)">line white 8%</div></div>
+        <div style="border: 1px solid var(--line); border-radius: 8px; overflow: hidden"><div style="height: 44px; background: var(--ink)"></div><div style="padding: 6px 8px; font-family: var(--mono); font-size: 10.5px; color: var(--ink2); background: var(--panel)">ink #F4F6F8</div></div>
+        <div style="border: 1px solid var(--line); border-radius: 8px; overflow: hidden"><div style="height: 44px; background: var(--ink2)"></div><div style="padding: 6px 8px; font-family: var(--mono); font-size: 10.5px; color: var(--ink2); background: var(--panel)">ink-2 #A6ADBB</div></div>
+        <div style="border: 1px solid var(--line); border-radius: 8px; overflow: hidden"><div style="height: 44px; background: var(--ink3)"></div><div style="padding: 6px 8px; font-family: var(--mono); font-size: 10.5px; color: var(--ink2); background: var(--panel)">ink-3 #7C8493</div></div>
+        <div style="border: 1px solid var(--line); border-radius: 8px; overflow: hidden"><div style="height: 44px; background: var(--brand)"></div><div style="padding: 6px 8px; font-family: var(--mono); font-size: 10.5px; color: var(--ink2); background: var(--panel)">brand #3DDC97</div></div>
+      </div>
+      <div style="display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px">
+        <div style="display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 8px; background: var(--brand-dim)"><span style="width: 10px; height: 10px; border-radius: 999px; background: var(--brand)"></span><span style="font-family: var(--mono); font-size: 10.5px; color: var(--brand)">brand · interactive</span></div>
+        <div style="display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 8px; background: var(--live-dim)"><span style="width: 10px; height: 10px; border-radius: 999px; background: var(--live)"></span><span style="font-family: var(--mono); font-size: 10.5px; color: var(--live-text)">live · calls only</span></div>
+        <div style="display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 8px; background: var(--sky-dim)"><span style="width: 10px; height: 10px; border-radius: 999px; background: var(--sky)"></span><span style="font-family: var(--mono); font-size: 10.5px; color: var(--sky)">sky · info</span></div>
+        <div style="display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 8px; background: var(--amber-dim)"><span style="width: 10px; height: 10px; border-radius: 999px; background: var(--amber)"></span><span style="font-family: var(--mono); font-size: 10.5px; color: var(--amber)">amber · draft, warn</span></div>
+        <div style="display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 8px; background: var(--danger-dim)"><span style="width: 10px; height: 10px; border-radius: 999px; background: var(--danger)"></span><span style="font-family: var(--mono); font-size: 10.5px; color: var(--danger)">danger · errors</span></div>
+      </div>
+    </section>
+
+    <section style="display: flex; flex-direction: column; gap: 10px">
+      <h2 style="margin: 0; font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink3)">Type scale</h2>
+      <div style="background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 18px 20px; display: flex; flex-direction: column; gap: 10px">
+        <div style="display: flex; align-items: baseline; gap: 14px"><span style="font-family: var(--display); font-weight: 600; font-size: 28px; letter-spacing: -0.02em; line-height: 1.1">Display 28 · Sora 600</span><span style="font-family: var(--mono); font-size: 10.5px; color: var(--ink3)">stat numbers, page titles on Overview</span></div>
+        <div style="display: flex; align-items: baseline; gap: 14px"><span style="font-weight: 700; font-size: 20px; letter-spacing: -0.01em">Title 20 · DM Sans 700</span><span style="font-family: var(--mono); font-size: 10.5px; color: var(--ink3)">screen title</span></div>
+        <div style="display: flex; align-items: baseline; gap: 14px"><span style="font-weight: 600; font-size: 15px">Heading 15 · 600</span><span style="font-family: var(--mono); font-size: 10.5px; color: var(--ink3)">card and section titles</span></div>
+        <div style="display: flex; align-items: baseline; gap: 14px"><span style="font-weight: 400; font-size: 14px; color: var(--ink2)">Body 14 · 400 · ink-2 for descriptions</span><span style="font-family: var(--mono); font-size: 10.5px; color: var(--ink3)">forms, help text</span></div>
+        <div style="display: flex; align-items: baseline; gap: 14px"><span style="font-weight: 500; font-size: 13px">Interface 13 · 500</span><span style="font-family: var(--mono); font-size: 10.5px; color: var(--ink3)">nav rows, table cells, buttons</span></div>
+        <div style="display: flex; align-items: baseline; gap: 14px"><span style="font-weight: 600; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink3)">Label 11 · 600 · tracked</span><span style="font-family: var(--mono); font-size: 10.5px; color: var(--ink3)">nav group labels, table heads</span></div>
+        <div style="display: flex; align-items: baseline; gap: 14px"><span style="font-family: var(--mono); font-size: 12px">Data 12 · JetBrains Mono · 00:42 · +353 1 234 5678 · wf_8a21</span><span style="font-family: var(--mono); font-size: 10.5px; color: var(--ink3)">ids, timers, numbers, keys</span></div>
+      </div>
+    </section>
+
+    <section style="display: flex; flex-direction: column; gap: 10px">
+      <h2 style="margin: 0; font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink3)">Buttons · 32 / 36 / 40 · radius 8</h2>
+      <div style="background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 18px 20px; display: flex; flex-direction: column; gap: 12px">
+        <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap">
+          <button type="button" style="height: 36px; padding: 0 14px; border-radius: 8px; border: 0; background: var(--brand); color: var(--brand-ink); font: 500 13px var(--sans); display: inline-flex; align-items: center; gap: 8px; cursor: pointer"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>Create agent</button>
+          <button type="button" style="height: 36px; padding: 0 14px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); font: 500 13px var(--sans); display: inline-flex; align-items: center; gap: 8px; cursor: pointer">Secondary</button>
+          <button type="button" style="height: 36px; padding: 0 12px; border-radius: 8px; border: 0; background: transparent; color: var(--ink2); font: 500 13px var(--sans); cursor: pointer">Ghost</button>
+          <button type="button" style="height: 36px; padding: 0 14px; border-radius: 8px; border: 1px solid var(--danger); background: transparent; color: var(--danger); font: 500 13px var(--sans); cursor: pointer">Archive</button>
+          <button type="button" disabled style="height: 36px; padding: 0 14px; border-radius: 8px; border: 0; background: var(--brand); color: var(--brand-ink); font: 500 13px var(--sans); opacity: .45">Disabled</button>
+        </div>
+        <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap">
+          <button type="button" style="height: 32px; padding: 0 12px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); font: 500 12.5px var(--sans); cursor: pointer">Toolbar 32</button>
+          <button type="button" style="height: 40px; padding: 0 18px; border-radius: 8px; border: 0; background: var(--brand); color: var(--brand-ink); font: 600 14px var(--sans); cursor: pointer">Form CTA 40</button>
+          <button type="button" aria-label="More" style="width: 32px; height: 32px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel); color: var(--ink2); display: inline-grid; place-items: center; cursor: pointer"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg></button>
+          <span style="display: inline-flex; border: 1px solid var(--line); border-radius: 8px; padding: 2px; background: var(--panel2)"><span style="padding: 5px 12px; border-radius: 6px; background: var(--panel); color: var(--ink); font: 500 12.5px var(--sans); border: 1px solid var(--line)">Voice</span><span style="padding: 5px 12px; color: var(--ink3); font: 500 12.5px var(--sans)">Text</span></span>
+          <span style="display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 12px; border-radius: 8px; border: 2px solid var(--brand); background: var(--panel); color: var(--ink); font: 500 12.5px var(--sans)">Focus ring · mint</span>
+        </div>
+      </div>
+    </section>
+
+    <section style="display: flex; flex-direction: column; gap: 10px">
+      <h2 style="margin: 0; font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink3)">Inputs, pills, nav rows</h2>
+      <div style="background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 18px 20px; display: grid; grid-template-columns: 1.2fr 1fr; gap: 18px">
+        <div style="display: flex; flex-direction: column; gap: 10px">
+          <label for="sys-name-d" style="font-size: 12.5px; font-weight: 600">Agent name</label>
+          <input id="sys-name-d" value="Dental reception, Cork" style="height: 36px; box-sizing: border-box; padding: 0 12px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel2); color: var(--ink); font: 400 13.5px var(--sans)">
+          <input aria-label="Search" placeholder="Search agents" style="height: 36px; box-sizing: border-box; padding: 0 12px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); font: 400 13.5px var(--sans)">
+          <div style="display: flex; gap: 6px; flex-wrap: wrap">
+            <span style="padding: 3px 9px; border-radius: 6px; background: var(--ok-dim); color: var(--ok); font: 600 10.5px var(--mono); letter-spacing: .04em">PUBLISHED</span>
+            <span style="padding: 3px 9px; border-radius: 6px; background: var(--amber-dim); color: var(--amber); font: 600 10.5px var(--mono); letter-spacing: .04em">DRAFT</span>
+            <span style="display: inline-flex; align-items: center; gap: 6px; padding: 3px 9px; border-radius: 6px; background: var(--live-dim); color: var(--live-text); font: 600 10.5px var(--mono); letter-spacing: .04em"><span style="width: 6px; height: 6px; border-radius: 999px; background: var(--live)"></span>LIVE 00:42</span>
+            <span style="padding: 3px 9px; border-radius: 6px; background: var(--sky-dim); color: var(--sky); font: 600 10.5px var(--mono); letter-spacing: .04em">V12 · VIEWING</span>
+            <span style="padding: 3px 9px; border-radius: 6px; background: var(--danger-dim); color: var(--danger); font: 600 10.5px var(--mono); letter-spacing: .04em">2 ERRORS</span>
+            <span style="padding: 3px 9px; border-radius: 6px; background: var(--panel2); color: var(--ink3); font: 600 10.5px var(--mono); letter-spacing: .04em">ARCHIVED</span>
+          </div>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 2px; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 8px">
+          <span style="padding: 6px 10px 4px; font-size: 10.5px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--ink3)">Build</span>
+          <a href="#nav" style="display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 8px; background: var(--brand-dim); color: var(--brand); font: 600 13px var(--sans); text-decoration: none"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="6" cy="6" r="2.5"/><circle cx="18" cy="18" r="2.5"/><path d="M6 8.5v3a4 4 0 0 0 4 4h5.5"/></svg>Voice agents<span style="margin-left: auto; font: 500 11px var(--mono); color: var(--brand)">12</span></a>
+          <a href="#nav" style="display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 8px; color: var(--ink2); font: 500 13px var(--sans); text-decoration: none"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M3 11l18-5v12L3 14v-3z"/><path d="M11 14v4a2 2 0 0 1-4 0v-3"/></svg>Campaigns</a>
+          <a href="#nav" style="display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 8px; background: var(--panel2); color: var(--ink); font: 500 13px var(--sans); text-decoration: none"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.7a2 2 0 0 1-.5 2.1L8 9.8a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.7.7a2 2 0 0 1 1.7 2z"/></svg>Telephony<span style="margin-left: auto; width: 6px; height: 6px; border-radius: 999px; background: var(--amber)" role="img" aria-label="Action required"></span></a>
+          <span style="padding: 4px 10px 0; font: 400 10.5px var(--mono); color: var(--ink3)">default · active · hover</span>
+        </div>
+      </div>
+    </section>
+
+    <section style="display: flex; flex-direction: column; gap: 10px">
+      <h2 style="margin: 0; font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink3)">Radius and elevation</h2>
+      <div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px">
+        <div style="height: 64px; border-radius: 6px; border: 1px solid var(--line); background: var(--panel2); display: grid; place-items: center; font: 500 11px var(--mono); color: var(--ink2)">6 · chips</div>
+        <div style="height: 64px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel); display: grid; place-items: center; font: 500 11px var(--mono); color: var(--ink2)">8 · controls</div>
+        <div style="height: 64px; border-radius: 12px; border: 1px solid var(--line); background: var(--panel); display: grid; place-items: center; font: 500 11px var(--mono); color: var(--ink2)">12 · cards (flat)</div>
+        <div style="height: 64px; border-radius: 12px; border: 1px solid var(--line); background: var(--panel2); box-shadow: var(--shadow); display: grid; place-items: center; font: 500 11px var(--mono); color: var(--ink2)">12 + shadow · overlays</div>
+      </div>
+    </section>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1760}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>
