@@ -4,12 +4,10 @@ import { getWorkflowsApiV1WorkflowFetchGet, listFoldersApiV1FolderGet } from '@/
 import type { FolderResponse, WorkflowListResponse } from '@/client/types.gen';
 import { PageActions } from '@/components/layout/PageActionsSlot';
 import { Card, CardContent } from '@/components/ui/card';
-import { SectionHeading } from '@/components/ui/section-heading';
 import { Skeleton } from '@/components/ui/skeleton';
+import { AgentList } from '@/components/workflow/AgentList';
 import { CreateWorkflowButton } from "@/components/workflow/CreateWorkflowButton";
-import { AgentFolderView } from '@/components/workflow/folders/AgentFolderView';
 import { CreateFolderButton } from '@/components/workflow/folders/CreateFolderButton';
-import { FolderSection } from '@/components/workflow/folders/FolderSection';
 import { UploadWorkflowButton } from '@/components/workflow/UploadWorkflowButton';
 import { getServerAccessToken, getServerAuthProvider } from '@/lib/auth/server';
 import logger from '@/lib/logger';
@@ -51,14 +49,9 @@ async function WorkflowList() {
 
         const allWorkflowData = response.data ? (Array.isArray(response.data) ? response.data : [response.data]) : [];
 
-        // Separate active and archived workflows
-        const activeWorkflows = allWorkflowData
-            .filter((w: WorkflowListResponse) => w.status === 'active')
-            .sort((a: WorkflowListResponse, b: WorkflowListResponse) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-
-        const archivedWorkflows = allWorkflowData
-            .filter((w: WorkflowListResponse) => w.status === 'archived')
-            .sort((a: WorkflowListResponse, b: WorkflowListResponse) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+        // Separate active and archived workflows. AgentList owns the ordering.
+        const activeWorkflows = allWorkflowData.filter((w: WorkflowListResponse) => w.status === 'active');
+        const archivedWorkflows = allWorkflowData.filter((w: WorkflowListResponse) => w.status === 'archived');
 
         // Fetch folders for grouping active agents. A failure here shouldn't
         // break the page — fall back to an empty list (flat, ungrouped view).
@@ -75,26 +68,11 @@ async function WorkflowList() {
         }
 
         return (
-            <>
-                {/* Active Workflows Section */}
-                <div className="mb-8">
-                    <SectionHeading>Active agents</SectionHeading>
-                    {activeWorkflows.length > 0 || folders.length > 0 ? (
-                        <AgentFolderView workflows={activeWorkflows} folders={folders} />
-                    ) : (
-                        <div className="rounded-lg border border-dashed border-line bg-panel-2 p-8 text-center font-mono text-[12.5px] text-ink-3">
-                            No agents yet. Create your first agent to get started.
-                        </div>
-                    )}
-                </div>
-
-                {/* Archived Section — collapsible, same design as the folder/Uncategorized sections */}
-                {archivedWorkflows.length > 0 && (
-                    <div className="mb-8">
-                        <FolderSection kind="archived" workflows={archivedWorkflows} />
-                    </div>
-                )}
-            </>
+            <AgentList
+                activeWorkflows={activeWorkflows}
+                archivedWorkflows={archivedWorkflows}
+                folders={folders}
+            />
         );
     } catch (err) {
         logger.error(`Error fetching workflows: ${err}`);
@@ -127,8 +105,13 @@ async function PageContent() {
 
 function WorkflowsLoading() {
     return (
-        <div className="page-body">
-            <Skeleton className="mb-4 h-5 w-36" />
+        <div className="page-body space-y-5">
+            <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+                {[0, 1, 2, 3].map((i) => (
+                    <Skeleton key={i} className="h-[76px] rounded-lg" />
+                ))}
+            </div>
+            <Skeleton className="h-9 w-full max-w-[360px]" />
             <Card>
                 <CardContent className="p-0">
                     <Skeleton className="h-96 rounded-lg" />

@@ -6,7 +6,7 @@ import {
     Folder as FolderIcon,
     FolderOpen,
     Inbox,
-    MoreVertical,
+    MoreHorizontal,
     Pencil,
     Trash2,
 } from 'lucide-react';
@@ -62,7 +62,7 @@ interface FolderSectionProps {
     workflows: WorkflowListResponse[];
     /** All folders, passed through so each row's "Move to folder" menu has targets. */
     allFolders?: FolderResponse[];
-    /** Defaults to open only for Uncategorized; folders and Archived start collapsed. */
+    /** Folders and Uncategorized start open; Archived starts collapsed. */
     defaultOpen?: boolean;
 }
 
@@ -74,7 +74,7 @@ export function FolderSection({
     defaultOpen,
 }: FolderSectionProps) {
     const router = useRouter();
-    const [open, setOpen] = useState(defaultOpen ?? kind === 'uncategorized');
+    const [open, setOpen] = useState(defaultOpen ?? kind !== 'archived');
     const [isRenaming, setIsRenaming] = useState(false);
     const [confirmDelete, setConfirmDelete] = useState(false);
     const [isDeleting, setIsDeleting] = useState(false);
@@ -169,19 +169,19 @@ export function FolderSection({
                                     className="h-8 w-8 text-muted-foreground"
                                     aria-label="Folder actions"
                                 >
-                                    <MoreVertical size={16} />
+                                    <MoreHorizontal size={16} />
                                 </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
                                 <DropdownMenuItem onClick={() => setIsRenaming(true)}>
-                                    <Pencil size={14} className="mr-2" />
+                                    <Pencil size={14} />
                                     Rename
                                 </DropdownMenuItem>
                                 <DropdownMenuItem
                                     onClick={() => setConfirmDelete(true)}
                                     className="text-destructive focus:text-destructive"
                                 >
-                                    <Trash2 size={14} className="mr-2" />
+                                    <Trash2 size={14} />
                                     Delete
                                 </DropdownMenuItem>
                             </DropdownMenuContent>
@@ -197,14 +197,13 @@ export function FolderSection({
                                 showArchived={isArchived}
                                 // Archived agents are restore-only — not a move target.
                                 folders={isArchived ? undefined : allFolders}
-                                currentFolderId={folder?.id ?? null}
                             />
                         ) : (
                             <div className="rounded-lg border border-dashed border-line bg-panel-2 p-6 text-center font-mono text-[12.5px] text-ink-3">
                                 {isArchived
                                     ? 'No archived agents.'
                                     : isFolder
-                                      ? 'This folder is empty. Use “Move to folder” on an agent to add it here.'
+                                      ? 'This folder is empty. Use “Move to folder” in an agent’s ⋯ menu to add it here.'
                                       : 'No uncategorized agents.'}
                             </div>
                         )}

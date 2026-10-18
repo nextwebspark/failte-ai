@@ -6,6 +6,7 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from api.db.workflow_client import WorkflowRunActivity
 from api.routes.workflow import router
 from api.services.auth.depends import get_user
 
@@ -35,7 +36,16 @@ def test_workflow_fetch_list_includes_workflow_uuid():
 
     with patch("api.routes.workflow.db_client") as mock_db:
         mock_db.get_all_workflows_for_listing = AsyncMock(return_value=[workflow])
-        mock_db.get_workflow_run_counts = AsyncMock(return_value={workflow.id: 9})
+        mock_db.get_workflow_ids_with_draft = AsyncMock(return_value={workflow.id})
+        mock_db.get_workflow_run_activity = AsyncMock(
+            return_value={
+                workflow.id: WorkflowRunActivity(
+                    total_runs=9,
+                    last_run_at=datetime(2026, 5, 23, 8, 0, tzinfo=timezone.utc),
+                    daily_runs=[0, 1, 0, 2, 0, 0, 3],
+                )
+            }
+        )
 
         response = client.get("/workflow/fetch")
 
@@ -49,8 +59,41 @@ def test_workflow_fetch_list_includes_workflow_uuid():
             "total_runs": 9,
             "folder_id": workflow.folder_id,
             "workflow_uuid": workflow.workflow_uuid,
+            "runs_7d": [0, 1, 0, 2, 0, 0, 3],
+            "last_run_at": "2026-05-23T08:00:00Z",
+            "has_draft": True,
         }
     ]
+
+
+def test_workflow_fetch_list_reports_workflows_without_runs_or_drafts():
+    app = _make_test_app()
+    client = TestClient(app)
+
+    workflow = SimpleNamespace(
+        id=6,
+        name="New Agent",
+        status="active",
+        created_at=datetime(2026, 5, 22, 10, 30, tzinfo=timezone.utc),
+        folder_id=None,
+        workflow_uuid=None,
+    )
+
+    with patch("api.routes.workflow.db_client") as mock_db:
+        mock_db.get_all_workflows_for_listing = AsyncMock(return_value=[workflow])
+        mock_db.get_workflow_run_activity = AsyncMock(
+            return_value={workflow.id: WorkflowRunActivity(daily_runs=[0] * 7)}
+        )
+        mock_db.get_workflow_ids_with_draft = AsyncMock(return_value=set())
+
+        response = client.get("/workflow/fetch")
+
+    assert response.status_code == 200
+    body = response.json()[0]
+    assert body["total_runs"] == 0
+    assert body["runs_7d"] == [0] * 7
+    assert body["last_run_at"] is None
+    assert body["has_draft"] is False
 
 
 def test_workflow_fetch_invalid_status_returns_422_without_db_query():
@@ -61,7 +104,7 @@ def test_workflow_fetch_invalid_status_returns_422_without_db_query():
 
     with patch("api.routes.workflow.db_client") as mock_db:
         mock_db.get_all_workflows_for_listing = AsyncMock()
-        mock_db.get_workflow_run_counts = AsyncMock()
+        mock_db.get_workflow_run_activity = AsyncMock()
 
         response = client.get("/workflow/fetch?status=published")
 
@@ -77,7 +120,8 @@ def test_workflow_fetch_valid_single_status_passes_through():
 
     with patch("api.routes.workflow.db_client") as mock_db:
         mock_db.get_all_workflows_for_listing = AsyncMock(return_value=[])
-        mock_db.get_workflow_run_counts = AsyncMock(return_value={})
+        mock_db.get_workflow_run_activity = AsyncMock(return_value={})
+        mock_db.get_workflow_ids_with_draft = AsyncMock(return_value=set())
 
         response = client.get("/workflow/fetch?status=active")
 
@@ -93,7 +137,8 @@ def test_workflow_fetch_comma_separated_status_queries_each_value():
 
     with patch("api.routes.workflow.db_client") as mock_db:
         mock_db.get_all_workflows_for_listing = AsyncMock(return_value=[])
-        mock_db.get_workflow_run_counts = AsyncMock(return_value={})
+        mock_db.get_workflow_run_activity = AsyncMock(return_value={})
+        mock_db.get_workflow_ids_with_draft = AsyncMock(return_value=set())
 
         response = client.get("/workflow/fetch?status=active,archived")
 
@@ -112,7 +157,7 @@ def test_workflow_fetch_mixed_valid_and_invalid_status_returns_422():
 
     with patch("api.routes.workflow.db_client") as mock_db:
         mock_db.get_all_workflows_for_listing = AsyncMock()
-        mock_db.get_workflow_run_counts = AsyncMock()
+        mock_db.get_workflow_run_activity = AsyncMock()
 
         response = client.get("/workflow/fetch?status=active,published")
 
@@ -127,7 +172,7 @@ def test_workflow_fetch_blank_status_token_returns_422_without_db_query(status: 
 
     with patch("api.routes.workflow.db_client") as mock_db:
         mock_db.get_all_workflows_for_listing = AsyncMock()
-        mock_db.get_workflow_run_counts = AsyncMock()
+        mock_db.get_workflow_run_activity = AsyncMock()
 
         response = client.get("/workflow/fetch", params={"status": status})
 
