@@ -96,7 +96,7 @@ async function PageContent() {
             <PageActions>
                 <UploadWorkflowButton />
                 <CreateFolderButton />
-                <CreateWorkflowButton />
+                <CreateWorkflowButton openFromUrl />
             </PageActions>
             {workflowList}
         </div>
