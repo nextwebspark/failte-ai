@@ -298,7 +298,7 @@ export default function ReportsPage() {
       {/* Error State */}
       {error && !loading && (
         <Card className="p-6">
-          <p className="text-center text-red-500">{error}</p>
+          <p className="text-center text-danger">{error}</p>
         </Card>
       )}
 

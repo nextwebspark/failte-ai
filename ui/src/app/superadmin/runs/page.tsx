@@ -305,7 +305,7 @@ export default function RunsPage() {
             </div>
 
             {error && (
-                    <div className="mb-6 bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-lg">
+                    <div className="mb-6 bg-danger-dim border border-danger/30 text-danger px-4 py-3 rounded-lg">
                         {error}
                     </div>
                 )}
@@ -411,9 +411,9 @@ export default function RunsPage() {
                                                     </TableCell>
                                                     <TableCell className="text-center">
                                                         {run.is_completed ? (
-                                                            <CheckCircle className="h-5 w-5 text-green-600" />
+                                                            <CheckCircle className="h-5 w-5 text-ok" />
                                                         ) : (
-                                                            <AlertTriangle className="h-5 w-5 text-yellow-500" />
+                                                            <AlertTriangle className="h-5 w-5 text-amber" />
                                                         )}
                                                     </TableCell>
                                                     <TableCell>
@@ -439,7 +439,7 @@ export default function RunsPage() {
                                                         )}
                                                     </TableCell>
                                                     <TableCell className="text-sm whitespace-pre-wrap break-words">
-                                                        <span className={!run.is_completed ? "font-semibold text-blue-600" : ""}>
+                                                        <span className={!run.is_completed ? "font-semibold text-sky" : ""}>
                                                             {calculateDuration(run.is_completed, run.usage_info)}
                                                         </span>
                                                     </TableCell>
@@ -448,7 +448,7 @@ export default function RunsPage() {
                                                             {run.initial_context && (
                                                                 <Tooltip>
                                                                     <TooltipTrigger asChild>
-                                                                        <Info className="h-4 w-4 text-green-600 cursor-pointer" />
+                                                                        <Info className="h-4 w-4 text-ok cursor-pointer" />
                                                                     </TooltipTrigger>
                                                                     <TooltipContent sideOffset={4} className="max-w-sm whitespace-pre-wrap break-words">
                                                                         <p className="font-semibold text-xs mb-1">Initial Context</p>
@@ -461,7 +461,7 @@ export default function RunsPage() {
                                                             {run.gathered_context && (
                                                                 <Tooltip>
                                                                     <TooltipTrigger asChild>
-                                                                        <Info className="h-4 w-4 text-blue-500 cursor-pointer" />
+                                                                        <Info className="h-4 w-4 text-sky cursor-pointer" />
                                                                     </TooltipTrigger>
                                                                     <TooltipContent sideOffset={4} className="max-w-sm whitespace-pre-wrap break-words">
                                                                         <p className="font-semibold text-xs mb-1">Gathered Context</p>

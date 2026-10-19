@@ -384,7 +384,7 @@ export const PhoneCallDialog = ({
                                 <h3 className="text-sm font-medium">
                                     Use a telephony provider
                                 </h3>
-                                <span className="rounded-full bg-teal-600/10 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-teal-700 dark:text-teal-400">
+                                <span className="rounded-full bg-ok-dim px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-ok">
                                     Recommended
                                 </span>
                             </div>
@@ -413,7 +413,7 @@ export const PhoneCallDialog = ({
                                     : ""}
                             </p>
                             {sipConfig && blockedReason && (
-                                <p className="text-sm text-amber-600 dark:text-amber-500">
+                                <p className="text-sm text-amber">
                                     {blockedReason}
                                 </p>
                             )}
@@ -468,7 +468,7 @@ export const PhoneCallDialog = ({
                         </SelectContent>
                     </Select>
                     {selectedConfigBlocked && (
-                        <p className="text-xs text-amber-600 dark:text-amber-500">
+                        <p className="text-xs text-amber">
                             {selectedConfig?.inactive
                                 ? "This configuration is disabled after repeated connection failures."
                                 : selectedConfig?.outbound_blocked_reason ??
@@ -514,7 +514,7 @@ export const PhoneCallDialog = ({
                     ) : selectedConfigBlocked ? (
                         // Never claim a fallback here: providers that require a
                         // caller ID reject the call outright when none exists.
-                        <div className="text-xs text-amber-600 dark:text-amber-500">
+                        <div className="text-xs text-amber">
                             No phone numbers in this configuration.
                         </div>
                     ) : (
@@ -577,8 +577,8 @@ export const PhoneCallDialog = ({
                     )}
                 </div>
             </DialogFooter>
-            {callError && <div className="text-red-500 text-sm mt-2">{callError}</div>}
-            {callSuccessMsg && <div className="text-green-600 text-sm mt-2">{callSuccessMsg}</div>}
+            {callError && <div className="text-danger text-sm mt-2">{callError}</div>}
+            {callSuccessMsg && <div className="text-ok text-sm mt-2">{callSuccessMsg}</div>}
         </>
     );
 

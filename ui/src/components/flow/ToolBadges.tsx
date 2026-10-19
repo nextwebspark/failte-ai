@@ -62,7 +62,7 @@ export function ToolBadges({ toolUuids, onStaleUuidsDetected, mcpToolFilters }: 
                             variant="outline"
                             className="text-xs flex items-center gap-1.5"
                         >
-                            <span className="h-1.5 w-1.5 rounded-full bg-green-500 shrink-0" />
+                            <span className="h-1.5 w-1.5 rounded-full bg-ok shrink-0" />
                             {fn}
                         </Badge>
                     ));

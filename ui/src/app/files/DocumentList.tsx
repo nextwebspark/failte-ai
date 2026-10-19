@@ -120,7 +120,7 @@ export default function DocumentList({ refreshTrigger }: DocumentListProps) {
     }
     switch (doc.processing_status) {
       case 'completed':
-        return <Badge className="bg-green-500">Completed</Badge>;
+        return <Badge className="bg-ok-dim text-ok">Completed</Badge>;
       case 'processing':
         return (
           <Badge variant="secondary" className="animate-pulse">

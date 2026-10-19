@@ -107,7 +107,7 @@ export default function SuperadminPage() {
                                     </div>
 
                                     {error?.target === "provider" && (
-                                        <div className="bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-lg text-sm">
+                                        <div className="bg-danger-dim border border-danger/30 text-danger px-4 py-3 rounded-lg text-sm">
                                             {error.message}
                                         </div>
                                     )}
@@ -152,7 +152,7 @@ export default function SuperadminPage() {
                                     </div>
 
                                     {error?.target === "email" && (
-                                        <div className="bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-lg text-sm">
+                                        <div className="bg-danger-dim border border-danger/30 text-danger px-4 py-3 rounded-lg text-sm">
                                             {error.message}
                                         </div>
                                     )}

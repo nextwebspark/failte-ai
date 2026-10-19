@@ -147,7 +147,7 @@ export function CreateCredentialDialog({
                 </DialogHeader>
 
                 {error && (
-                    <div className="flex items-start gap-2 p-3 text-sm text-red-600 bg-red-50 border border-red-200 rounded-md">
+                    <div className="flex items-start gap-2 p-3 text-sm text-danger bg-danger-dim border border-danger/30 rounded-md">
                         <AlertCircle className="h-4 w-4 mt-0.5 flex-shrink-0" />
                         <span>{error}</span>
                     </div>

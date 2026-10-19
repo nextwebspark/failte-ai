@@ -268,9 +268,9 @@ function MpsBillingPage() {
             </PageActions>
 
             {isOssMode && (
-                <div className="flex gap-3 rounded-lg border border-amber-200 bg-amber-50 p-4 dark:border-amber-900/50 dark:bg-amber-950/30">
-                    <Info className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-600 dark:text-amber-400" />
-                    <div className="text-sm text-amber-900 dark:text-amber-200">
+                <div className="flex gap-3 rounded-lg border border-amber/30 bg-amber-dim p-4">
+                    <Info className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber" />
+                    <div className="text-sm text-amber">
                         <p className="font-medium">Credit purchases are unavailable in OSS mode</p>
                         <p className="mt-1">
                             You can&apos;t purchase credits from this self-hosted app.{" "}
@@ -396,7 +396,7 @@ function MpsBillingPage() {
                                                             "-"
                                                         )}
                                                     </TableCell>
-                                                    <TableCell className={`text-right font-medium ${delta >= 0 ? "text-green-600" : "text-destructive"}`}>
+                                                    <TableCell className={`text-right font-medium ${delta >= 0 ? "text-ok" : "text-destructive"}`}>
                                                         {delta >= 0 ? "+" : ""}
                                                         {formatCredits(delta)}
                                                     </TableCell>

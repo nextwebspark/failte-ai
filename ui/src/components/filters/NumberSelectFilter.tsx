@@ -45,7 +45,7 @@ export const NumberSelectFilter: React.FC<NumberSelectFilterProps> = ({
           }}
           disabled={isLoading || options.length === 0}
         >
-          <SelectTrigger className={error ? "border-red-500" : ""}>
+          <SelectTrigger className={error ? "border-danger" : ""}>
             <SelectValue placeholder={isLoading ? "Loading options..." : placeholder} />
           </SelectTrigger>
           <SelectContent>
@@ -68,7 +68,7 @@ export const NumberSelectFilter: React.FC<NumberSelectFilterProps> = ({
           </SelectContent>
         </Select>
       </div>
-      {error && <p className="text-xs text-red-500">{error}</p>}
+      {error && <p className="text-xs text-danger">{error}</p>}
     </div>
   );
 };

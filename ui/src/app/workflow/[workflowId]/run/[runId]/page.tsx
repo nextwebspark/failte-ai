@@ -208,7 +208,7 @@ function WaveformLane({
                         key={`${track}-${index}`}
                         className={cn(
                             'min-h-1 flex-1 rounded-full',
-                            track === 'user' ? 'bg-sky-500' : 'bg-emerald-500'
+                            track === 'user' ? 'bg-sky' : 'bg-ok'
                         )}
                         style={{ height: `${Math.round(peak * 100)}%` }}
                     />
@@ -451,7 +451,7 @@ function SplitTracksSection({
                             className={cn(
                                 'gap-1.5',
                                 userTrackActive
-                                    ? 'border-sky-200 bg-sky-50 text-sky-700 hover:bg-sky-100 dark:border-sky-900/60 dark:bg-sky-950/30 dark:text-sky-300'
+                                    ? 'border-sky/30 bg-sky-dim text-sky hover:bg-sky-dim'
                                     : 'text-muted-foreground opacity-60'
                             )}
                         >
@@ -469,7 +469,7 @@ function SplitTracksSection({
                             className={cn(
                                 'gap-1.5',
                                 botTrackActive
-                                    ? 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:border-emerald-900/60 dark:bg-emerald-950/30 dark:text-emerald-300'
+                                    ? 'border-ok/30 bg-ok-dim text-ok hover:bg-ok-dim'
                                     : 'text-muted-foreground opacity-60'
                             )}
                         >
@@ -748,8 +748,8 @@ export default function WorkflowRunPage() {
                                 className={cn(
                                     'inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold',
                                     isTextChatRun
-                                        ? 'bg-sky-500/15 text-sky-500'
-                                        : 'bg-emerald-500/15 text-emerald-500'
+                                        ? 'bg-sky-dim text-sky'
+                                        : 'bg-ok-dim text-ok'
                                 )}
                             >
                                 {isTextChatRun ? <FileText className="h-3.5 w-3.5" /> : <Check className="h-3.5 w-3.5" />}

@@ -563,8 +563,8 @@ export default function APIKeysPage() {
                         </Card>
                     )}
 
-                    <div className="p-4 bg-yellow-500/10 border border-yellow-500/20 rounded-lg">
-                        <p className="text-sm text-yellow-600 dark:text-yellow-500">
+                    <div className="p-4 bg-amber-dim border border-amber/20 rounded-lg">
+                        <p className="text-sm text-amber">
                             <strong>Important:</strong> Keep your API keys secure. Never share them publicly or commit them to version control.
                             API keys provide full access to your organization&apos;s resources.
                         </p>
@@ -628,8 +628,8 @@ export default function APIKeysPage() {
                                     </Button>
                                 </div>
                             </div>
-                            <div className="p-4 bg-yellow-500/10 border border-yellow-500/20 rounded-lg">
-                                <p className="text-sm text-yellow-600 dark:text-yellow-500">
+                            <div className="p-4 bg-amber-dim border border-amber/20 rounded-lg">
+                                <p className="text-sm text-amber">
                                     Store this key securely. It will only be shown once and cannot be retrieved later.
                                 </p>
                             </div>
@@ -703,8 +703,8 @@ export default function APIKeysPage() {
                                     </Button>
                                 </div>
                             </div>
-                            <div className="p-4 bg-blue-500/10 border border-blue-500/20 rounded-lg">
-                                <p className="text-sm text-blue-600 dark:text-blue-500">
+                            <div className="p-4 bg-sky-dim border border-sky/20 rounded-lg">
+                                <p className="text-sm text-sky">
                                     This key provides access to managed AI services including LLM, Text-to-Speech, and Speech-to-Text.
                                     {createdServiceKey.expires_at && (
                                         <span className="block mt-1">
@@ -713,8 +713,8 @@ export default function APIKeysPage() {
                                     )}
                                 </p>
                             </div>
-                            <div className="p-4 bg-yellow-500/10 border border-yellow-500/20 rounded-lg">
-                                <p className="text-sm text-yellow-600 dark:text-yellow-500">
+                            <div className="p-4 bg-amber-dim border border-amber/20 rounded-lg">
+                                <p className="text-sm text-amber">
                                     Store this key securely. It will only be shown once and cannot be retrieved later.
                                 </p>
                             </div>

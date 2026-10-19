@@ -51,13 +51,13 @@ export function ToolCallCard({
                 <Collapsible
                     open={hasDetails ? open : false}
                     onOpenChange={hasDetails ? setOpen : undefined}
-                    className="rounded-2xl border border-amber-500/20 bg-amber-500/10"
+                    className="rounded-2xl border border-amber/20 bg-amber-dim"
                 >
                     <div className="flex items-start gap-2 px-3.5 py-3 text-sm">
-                        <Wrench className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" />
+                        <Wrench className="mt-0.5 h-4 w-4 shrink-0 text-amber" />
                         <div className="min-w-0 flex-1">
                             <div className="flex flex-wrap items-center gap-2">
-                                <span className="font-mono text-xs text-amber-700 dark:text-amber-400">
+                                <span className="font-mono text-xs text-amber">
                                     {functionName}()
                                 </span>
                                 <Badge
@@ -65,9 +65,9 @@ export function ToolCallCard({
                                     className={cn(
                                         "h-5 px-1.5 text-[10px] uppercase tracking-[0.14em]",
                                         status === "running"
-                                            ? "border-amber-400/60 text-amber-700 dark:text-amber-300"
+                                            ? "border-amber/60 text-amber"
                                             : status === "completed"
-                                                ? "border-emerald-500/30 text-emerald-700 dark:text-emerald-300"
+                                                ? "border-ok/30 text-ok"
                                                 : "border-destructive/40 text-destructive",
                                     )}
                                 >
@@ -95,7 +95,7 @@ export function ToolCallCard({
                         </div>
                     </div>
                     {hasDetails ? (
-                        <CollapsibleContent className="border-t border-amber-500/20 px-3.5 py-3">
+                        <CollapsibleContent className="border-t border-amber/20 px-3.5 py-3">
                             <div className="space-y-3">
                                 {hasArguments ? (
                                     <div className="space-y-1">
