@@ -62,7 +62,7 @@ describe('workflow history', () => {
       [secondNode],
       [{ id: firstNode.id, type: 'remove' }]
     );
-    useWorkflowStore.getState().commitDeletion();
+    useWorkflowStore.getState().commitSnapshot();
     expect(nodeIds()).toEqual(['b']);
     expect(useWorkflowStore.getState().edges).toEqual([]);
     expect(useWorkflowStore.getState().history).toHaveLength(2);
@@ -74,6 +74,25 @@ describe('workflow history', () => {
     useWorkflowStore.getState().redo();
     expect(nodeIds()).toEqual(['b']);
     expect(useWorkflowStore.getState().edges).toEqual([]);
+  });
+
+  it('undoes a tidy as its own step, keeping the edit before it', () => {
+    const node = createNode('a');
+    useWorkflowStore.getState().initializeWorkflow(1, 'Initial', [node], []);
+    useWorkflowStore.getState().addNode(createNode('b'));
+
+    // Tidy replaces positions without history, then commits a snapshot.
+    const tidied = useWorkflowStore
+      .getState()
+      .nodes.map((n, i) => ({ ...n, position: { x: 0, y: i * 340 } }));
+    useWorkflowStore.getState().setNodes(tidied);
+    useWorkflowStore.getState().commitSnapshot();
+    expect(useWorkflowStore.getState().isDirty).toBe(true);
+
+    useWorkflowStore.getState().undo();
+    // Back to before the tidy, with the added node still there.
+    expect(nodeIds()).toEqual(['a', 'b']);
+    expect(useWorkflowStore.getState().nodes[1].position).not.toEqual({ x: 0, y: 340 });
   });
 
   it('coalesces active dragging into one committed final position', () => {

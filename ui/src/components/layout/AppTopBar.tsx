@@ -98,7 +98,7 @@ export function AppTopBar({
 
   return (
     // Below md the header wraps: identity stays on the first row and the
-    // screen's actions drop to a second, horizontally scrollable one.
+    // screen's actions drop below it, wrapping rather than running off-screen.
     <header className="flex min-h-[46px] flex-none flex-wrap items-center gap-2 px-3.5 py-1.5 md:h-[46px] md:flex-nowrap md:py-0">
       <Button
         variant="ghost"
@@ -167,7 +167,7 @@ export function AppTopBar({
       {/* Screens portal their primary action in here — see PageActions. */}
       <div
         ref={actionsSlotRef}
-        className="order-last flex w-full min-w-0 items-center gap-2 overflow-x-auto empty:hidden md:order-none md:ml-auto md:w-auto md:justify-end md:overflow-x-visible md:empty:flex"
+        className="order-last flex w-full min-w-0 flex-wrap items-center gap-2 empty:hidden md:order-none md:ml-auto md:w-auto md:flex-nowrap md:justify-end md:empty:flex"
       />
 
       <div className="ml-auto flex flex-none items-center gap-2.5 md:ml-0">

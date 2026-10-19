@@ -9,6 +9,7 @@ import { createWorkflowRunApiV1WorkflowWorkflowIdRunsPost } from "@/client/sdk.g
 import { OnboardingTooltip } from "@/components/onboarding/OnboardingTooltip";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { StatusPill } from "@/components/ui/status-pill";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { PostHogEvent } from "@/constants/posthog-events";
 import { WORKFLOW_RUN_MODES } from "@/constants/workflowRunModes";
@@ -35,6 +36,22 @@ interface WorkflowTesterPanelProps {
     onRuntimeNodeTransition?: (transition: WorkflowRuntimeNodeTransition) => void;
 }
 
+/** "LIVE 00:42" while a browser call is connected. */
+function LiveTimer({ since }: { since: number }) {
+    const [now, setNow] = useState(() => Date.now());
+    useEffect(() => {
+        const timer = window.setInterval(() => setNow(Date.now()), 1000);
+        return () => window.clearInterval(timer);
+    }, []);
+    const seconds = Math.max(0, Math.floor((now - since) / 1000));
+    const clock = `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
+    return (
+        <StatusPill tone="live" dot role="status" aria-label={`Call live for ${clock}`}>
+            Live <span className="tabular-nums">{clock}</span>
+        </StatusPill>
+    );
+}
+
 export function WorkflowTesterPanel({
     workflowId,
     initialContextVariables,
@@ -58,6 +75,11 @@ export function WorkflowTesterPanel({
     const [creatingVoiceRun, setCreatingVoiceRun] = useState(false);
     const [tokenReady, setTokenReady] = useState(false);
     const runTestButtonRef = useRef<HTMLButtonElement>(null);
+    // When the browser call connected, for the LIVE pill; null when no call is live.
+    const [liveSince, setLiveSince] = useState<number | null>(null);
+    const handleLiveChange = useCallback((live: boolean) => {
+        setLiveSince((current) => (live ? (current ?? Date.now()) : null));
+    }, []);
 
     useEffect(() => {
         let ignore = false;
@@ -161,30 +183,33 @@ export function WorkflowTesterPanel({
                 onValueChange={handleModeChange}
                 className="min-h-0 flex-1 gap-0"
             >
-                <div className="border-b border-border/70 px-4 py-3">
-                    <div className="flex items-center gap-3">
-                        <TabsList className="grid h-9 flex-1 grid-cols-2 rounded-lg bg-muted/60 p-1">
-                            <TabsTrigger value="audio" className="rounded-md text-sm">
-                                <Mic className="h-4 w-4" />
-                                Test audio
-                            </TabsTrigger>
-                            <TabsTrigger value="text" className="rounded-md text-sm">
-                                <MessageSquareText className="h-4 w-4" />
-                                Test chat
-                            </TabsTrigger>
-                        </TabsList>
-                        {onClose ? (
-                            <Button
-                                variant="ghost"
-                                size="icon"
-                                onClick={onClose}
-                                className="shrink-0 text-muted-foreground hover:text-foreground"
-                                aria-label="Close tester panel"
-                            >
-                                <X className="h-4 w-4" />
-                            </Button>
-                        ) : null}
-                    </div>
+                <div className="flex items-center gap-2.5 border-b border-line-soft px-3.5 py-3">
+                    <h2 className="text-sm font-semibold text-foreground">Test agent</h2>
+                    {liveSince !== null && <LiveTimer since={liveSince} />}
+                    <TabsList
+                        aria-label="Test with"
+                        className="ml-auto h-8 rounded-md border border-line bg-panel-2 p-0.5"
+                    >
+                        <TabsTrigger value="audio" className="h-full gap-1.5 rounded-sm px-2.5 text-xs">
+                            <Mic className="h-3 w-3" />
+                            Voice
+                        </TabsTrigger>
+                        <TabsTrigger value="text" className="h-full gap-1.5 rounded-sm px-2.5 text-xs">
+                            <MessageSquareText className="h-3 w-3" />
+                            Text
+                        </TabsTrigger>
+                    </TabsList>
+                    {onClose ? (
+                        <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={onClose}
+                            className="size-8 shrink-0 text-ink-3 hover:text-foreground"
+                            aria-label="Close tester panel"
+                        >
+                            <X className="h-4 w-4" />
+                        </Button>
+                    ) : null}
                 </div>
 
                 <TabsContent value="audio" className="min-h-0 flex-1 px-4 py-4">
@@ -206,6 +231,7 @@ export function WorkflowTesterPanel({
                                 accessToken={accessToken}
                                 onReset={() => setVoiceRunId(null)}
                                 onNodeTransition={onRuntimeNodeTransition}
+                                onLiveChange={handleLiveChange}
                             />
                         ) : (
                             <>

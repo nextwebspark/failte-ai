@@ -78,14 +78,14 @@ Status is kept here so the next session knows where to pick up.
 | 2 | **Copy pass.** "Agent" everywhere in customer-facing UI strings, default name "Untitled agent", sentence case on the agent list, create flow, editor, tester, settings, runs, reports and telephony screens. The internal superadmin pages and the CSV export column names were left as they are. | Done |
 | 3 | **Voice agents landing.** Stat strip (agents, calls in the last 24 h with change, calls in 7 days, last call), search, filter (All / Draft edits), sort (last call, name, newest), first-agent empty state. Rows: initial circle, name with id and created date, StatusPill ("Published", plus a "Draft edits" chip when saved edits are not published yet: a draft never takes an agent offline), calls with a 7-day sparkline, last call, one ⋯ menu (Open, Move to folder, Archive / Restore). Folders start open; a search or filter shows one flat list of matches. The list endpoint now returns `runs_7d`, `last_run_at` and `has_draft` per agent. Files: `ui/src/components/workflow/AgentList.tsx`, `WorkflowTable.tsx`, `ui/src/lib/agentList.ts`, `api/db/workflow_client.py` (`get_workflow_run_activity`, `get_workflow_ids_with_draft`), `api/routes/workflow.py`. | Done |
 | 4 | **Create flow.** One Create agent dialog (`ui/src/components/workflow/CreateAgentDialog.tsx`, steps in `components/workflow/create/`), built for non-technical users around ready-made agents. It opens on "What should your agent do?": the templates as cards (featured first, filters when they both answer and make calls). Picking one asks its setup questions about the business, with a live preview of the greeting and, where the template books, a Connect Google Calendar button (sign-in runs in a pop-up so the answers stay; see `app/integrations/oauthPopup.ts`). It ends on "Your agent is ready" with Talk to your agent. "Describe it in your own words" and "Start from scratch" are the quieter links. Templates carry `setup_fields` (questions whose answers fill `{{key}}` placeholders), card details and `integrations`; starters live in `api/services/workflow/starter_templates.py` and are written with `python -m scripts.sync_agent_templates`. `/workflow/create` redirects to `/workflow?create=template`. Mockup: the "Create agent: template-first" design canvas. | Done |
-| 5 | **Editor.** One toolbar in `WorkflowEditorHeader.tsx` (name as rename control, version pill, unsaved and error pills, Phone call / Save / Publish / more); stop portalling into the app header. One bottom-centre floating canvas toolbar in `RenderWorkflow.tsx`. Test rail header with live pill and Voice / Text control in `WorkflowTesterPanel.tsx`. | To do |
+| 5 | **Editor.** One toolbar in `WorkflowEditorHeader.tsx`: the agent's name is the rename control, then the version pill (opens history), Read only / Unsaved / error pills, and Phone call / Save / Publish / more on the right. Publish is always there and says why it is disabled (save first, fix the errors, nothing new to publish). It no longer portals into the app header. One bottom-centre floating canvas toolbar (`components/CanvasToolbar.tsx`): Add step, zoom out / zoom % / zoom in, fit, tidy, undo / redo; view controls only on an old version. The test rail header reads "Test agent" with a LIVE timer pill while a browser call is connected and a compact Voice / Text switch. On phones the editor's actions and the page actions in the top bar wrap instead of running off-screen. | Done |
 | 6 | **Advanced settings.** Sticky section index, label-left / control-right rows, one sticky save bar driven by `UnsavedChangesContext`, replacing the seven per-card Save buttons in `workflow/[workflowId]/settings/page.tsx`. | To do |
 | Guardrail | Lint rule banning raw Tailwind palette classes (`text-red-500`, `bg-sky-50`, …), then migrate the ~54 files it flags to tokens. | To do |
 
 ## Known leftovers
 
-- `.page-actions` in `globals.css` still forces header buttons to toolbar size.
-  It goes away when step 5 moves the editor actions out of the header.
+- `.page-actions` in `globals.css` still sizes the buttons other screens send to
+  the top bar (Voice agents, Campaigns, Tools, …). The editor no longer uses it.
 - Raw palette classes remain in about 54 files (for example the run detail page
   uses `bg-sky-50` / `text-sky-700`). The guardrail step handles them.
 - The agent nav's version status still uses its own inline pill rather than
@@ -93,5 +93,5 @@ Status is kept here so the next session knows where to pick up.
 - The Voice agents board shows a Channels column (phone, web widget) and Talk
   time / Live now stats. They need phone-number, embed and call-duration data on
   the list endpoint and were left out of step 3.
-- On phone widths the header actions (Import agent, New folder, Create agent)
-  overflow the top bar. Step 5 moves page actions out of the header.
+- The editor design's node restyle (coloured step icons, tool/skill chips) and
+  the canvas legend were not part of step 5.
