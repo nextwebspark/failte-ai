@@ -6,5 +6,5 @@ import { redirect } from 'next/navigation';
  * that dialog.
  */
 export default function CreateWorkflowPage() {
-    redirect('/workflow?create=describe');
+    redirect('/workflow?create=template');
 }

@@ -2928,6 +2928,12 @@ export type DuplicateTemplateRequest = {
     values?: {
         [key: string]: string;
     };
+    /**
+     * Integration Tools
+     */
+    integration_tools?: {
+        [key: string]: string;
+    };
 };
 
 /**
@@ -10778,6 +10784,26 @@ export type WorkflowTemplateResponse = {
      * Setup Fields
      */
     setup_fields?: Array<TemplateSetupField>;
+    /**
+     * Call Type
+     */
+    call_type?: 'inbound' | 'outbound' | null;
+    /**
+     * Icon
+     */
+    icon?: string | null;
+    /**
+     * Featured
+     */
+    featured?: boolean;
+    /**
+     * Sample Audio Url
+     */
+    sample_audio_url?: string | null;
+    /**
+     * Integrations
+     */
+    integrations?: Array<string>;
     /**
      * Created At
      */

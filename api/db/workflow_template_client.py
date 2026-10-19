@@ -1,3 +1,5 @@
+from typing import Any
+
 from sqlalchemy.future import select
 
 from api.db.base_client import BaseDBClient
@@ -32,11 +34,7 @@ class WorkflowTemplateClient(BaseDBClient):
             return result.scalars().all()
 
     async def create_workflow_template(
-        self,
-        template_name: str,
-        template_description: str,
-        template_json: dict,
-        setup_fields: list[dict] | None = None,
+        self, template_name: str, template_description: str, template_json: dict
     ) -> WorkflowTemplates:
         """Create a new workflow template."""
         async with self.async_session() as session:
@@ -45,7 +43,6 @@ class WorkflowTemplateClient(BaseDBClient):
                     template_name=template_name,
                     template_description=template_description,
                     template_json=template_json,
-                    setup_fields=setup_fields or [],
                 )
                 session.add(new_template)
                 await session.commit()
@@ -60,8 +57,6 @@ class WorkflowTemplateClient(BaseDBClient):
         template_id: int,
         template_name: str | None = None,
         template_json: dict | None = None,
-        template_description: str | None = None,
-        setup_fields: list[dict] | None = None,
     ) -> WorkflowTemplates:
         """Update an existing workflow template."""
         async with self.async_session() as session:
@@ -79,10 +74,6 @@ class WorkflowTemplateClient(BaseDBClient):
                     template.template_name = template_name
                 if template_json is not None:
                     template.template_json = template_json
-                if template_description is not None:
-                    template.template_description = template_description
-                if setup_fields is not None:
-                    template.setup_fields = setup_fields
 
                 await session.commit()
                 await session.refresh(template)
@@ -90,6 +81,28 @@ class WorkflowTemplateClient(BaseDBClient):
             except Exception as e:
                 await session.rollback()
                 raise e
+
+    async def upsert_workflow_template(
+        self, template_name: str, values: dict[str, Any]
+    ) -> tuple[WorkflowTemplates, bool]:
+        """Create the template named *template_name*, or overwrite *values* on
+        it. Returns the template and whether it was created."""
+        async with self.async_session() as session:
+            result = await session.execute(
+                select(WorkflowTemplates).where(
+                    WorkflowTemplates.template_name == template_name
+                )
+            )
+            template = result.scalars().first()
+            created = template is None
+            if created:
+                template = WorkflowTemplates(template_name=template_name)
+                session.add(template)
+            for key, value in values.items():
+                setattr(template, key, value)
+            await session.commit()
+            await session.refresh(template)
+            return template, created
 
     async def delete_workflow_template(self, template_id: int) -> bool:
         """Delete a workflow template by ID."""

@@ -20,21 +20,11 @@ from api.services.workflow.starter_templates import STARTER_TEMPLATES
 async def main() -> None:
     client = WorkflowTemplateClient()
     for starter in STARTER_TEMPLATES:
-        fields = [field.model_dump(exclude_none=True) for field in starter.setup_fields]
-        existing = await client.get_workflow_template_by_name(starter.name)
-        if existing:
-            await client.update_workflow_template(
-                existing.id,
-                template_json=starter.definition,
-                template_description=starter.description,
-                setup_fields=fields,
-            )
-            logger.info(f"Updated template {starter.name!r} (id {existing.id})")
-        else:
-            created = await client.create_workflow_template(
-                starter.name, starter.description, starter.definition, fields
-            )
-            logger.info(f"Created template {starter.name!r} (id {created.id})")
+        template, created = await client.upsert_workflow_template(
+            starter.name, starter.row()
+        )
+        action = "Created" if created else "Updated"
+        logger.info(f"{action} template {starter.name!r} (id {template.id})")
 
 
 if __name__ == "__main__":

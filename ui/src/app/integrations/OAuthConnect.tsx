@@ -18,6 +18,7 @@ import { copyTextToClipboard } from "@/lib/clipboard";
 
 import { credentialFamily, integrationErrorMessage, isUnavailableError, scopeLabel } from "./messages";
 import { isTrustedAuthorizationUrl, startOAuth } from "./oauthCalls";
+import { clearOAuthPopupMarker } from "./oauthPopup";
 import { rememberPendingOAuth } from "./pendingOAuth";
 import type { ReusableKey } from "./ServiceAccountConnect";
 
@@ -176,6 +177,8 @@ export function OAuthConnect({
                 return;
             }
             rememberPendingOAuth(provider.id, { nonce, replacesConnectionId });
+            // This sign-in finishes here, not in a screen waiting on a pop-up.
+            clearOAuthPopupMarker();
             // Full-page redirect: the provider sends the browser back to /integrations.
             window.location.assign(authorizationUrl);
         } catch {

@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { CreateAgentDialog, type CreateMode } from '@/components/workflow/CreateAgentDialog';
 
 const CREATE_PARAM = 'create';
-const MODES: CreateMode[] = ['describe', 'template', 'blank'];
+const MODES: CreateMode[] = ['template', 'describe', 'blank'];
 
 interface CreateWorkflowButtonProps {
     /**
@@ -24,12 +24,12 @@ export function CreateWorkflowButton({ openFromUrl = false }: CreateWorkflowButt
     const pathname = usePathname();
     const searchParams = useSearchParams();
     const [open, setOpen] = useState(false);
-    const [initialMode, setInitialMode] = useState<CreateMode>('describe');
+    const [initialMode, setInitialMode] = useState<CreateMode>('template');
 
     const requested = openFromUrl ? searchParams.get(CREATE_PARAM) : null;
     useEffect(() => {
         if (requested === null) return;
-        setInitialMode(MODES.includes(requested as CreateMode) ? (requested as CreateMode) : 'describe');
+        setInitialMode(MODES.includes(requested as CreateMode) ? (requested as CreateMode) : 'template');
         setOpen(true);
         // Drop the param so a refresh or Back doesn't reopen the dialog.
         const params = new URLSearchParams(searchParams.toString());
@@ -42,7 +42,7 @@ export function CreateWorkflowButton({ openFromUrl = false }: CreateWorkflowButt
         <>
             <Button
                 onClick={() => {
-                    setInitialMode('describe');
+                    setInitialMode('template');
                     setOpen(true);
                 }}
             >

@@ -1,4 +1,4 @@
-"""add workflow template setup fields
+"""add workflow template setup fields and card details
 
 Revision ID: b7c3e9a41d20
 Revises: ea7d85c1bebb
@@ -23,7 +23,30 @@ def upgrade() -> None:
         "workflow_templates",
         sa.Column("setup_fields", sa.JSON(), nullable=False, server_default="[]"),
     )
+    op.add_column(
+        "workflow_templates", sa.Column("call_type", sa.String(), nullable=True)
+    )
+    op.add_column("workflow_templates", sa.Column("icon", sa.String(), nullable=True))
+    op.add_column(
+        "workflow_templates",
+        sa.Column("featured", sa.Boolean(), nullable=False, server_default="false"),
+    )
+    op.add_column(
+        "workflow_templates", sa.Column("sample_audio_url", sa.String(), nullable=True)
+    )
+    op.add_column(
+        "workflow_templates",
+        sa.Column("integrations", sa.JSON(), nullable=False, server_default="[]"),
+    )
 
 
 def downgrade() -> None:
-    op.drop_column("workflow_templates", "setup_fields")
+    for column in (
+        "integrations",
+        "sample_audio_url",
+        "featured",
+        "icon",
+        "call_type",
+        "setup_fields",
+    ):
+        op.drop_column("workflow_templates", column)

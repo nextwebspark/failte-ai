@@ -27,7 +27,10 @@ from api.enums import (
 from api.schemas.ai_model_configuration import OrganizationAIModelConfigurationV2
 from api.schemas.workflow import WorkflowRunResponseSchema
 from api.schemas.workflow_configurations import WorkflowConfigurationDefaults
-from api.schemas.workflow_template import TemplateSetupField
+from api.schemas.workflow_template import (
+    DuplicateTemplateRequest,
+    WorkflowTemplateResponse,
+)
 from api.sdk_expose import sdk_expose
 from api.services.auth.depends import get_user, requires
 from api.services.auth.permissions import Permission
@@ -90,6 +93,7 @@ from api.services.workflow.run_usage_response import (
 )
 from api.services.workflow.template_setup import (
     TemplateSetupError,
+    attach_integration_tools,
     fill_template_values,
     parse_setup_fields,
 )
@@ -352,25 +356,9 @@ class WorkflowCountResponse(BaseModel):
     archived: int
 
 
-class WorkflowTemplateResponse(BaseModel):
-    id: int
-    template_name: str
-    template_description: str
-    template_json: dict
-    setup_fields: list[TemplateSetupField] = []
-    created_at: datetime
-
-
 class CreateWorkflowRequest(BaseModel):
     name: str
     workflow_definition: dict
-
-
-class DuplicateTemplateRequest(BaseModel):
-    template_id: int
-    workflow_name: str
-    # Answers to the template's setup_fields, keyed by field key.
-    values: dict[str, str] = Field(default_factory=dict)
 
 
 class UpdateWorkflowRequest(BaseModel):
@@ -1555,6 +1543,11 @@ async def get_workflow_templates() -> List[WorkflowTemplateResponse]:
             "template_description": template.template_description,
             "template_json": template.template_json,
             "setup_fields": template.setup_fields or [],
+            "call_type": template.call_type,
+            "icon": template.icon,
+            "featured": bool(template.featured),
+            "sample_audio_url": template.sample_audio_url,
+            "integrations": template.integrations or [],
             "created_at": template.created_at,
         }
         for template in templates
@@ -1595,6 +1588,21 @@ async def duplicate_workflow_template(
         )
     except TemplateSetupError as e:
         raise HTTPException(status_code=422, detail=str(e))
+
+    unknown = sorted(set(request.integration_tools) - set(template.integrations or []))
+    if unknown:
+        raise HTTPException(
+            status_code=422,
+            detail=f"This template doesn't use: {', '.join(unknown)}",
+        )
+    if request.integration_tools:
+        tool_uuids = set(request.integration_tools.values())
+        tools = await db_client.get_tools_by_uuids(
+            list(tool_uuids), user.selected_organization_id
+        )
+        if {tool.tool_uuid for tool in tools} != tool_uuids:
+            raise HTTPException(status_code=404, detail="Connected tool not found")
+    filled = attach_integration_tools(filled, request.integration_tools)
 
     # Create a new workflow from the template
     # Regenerate trigger UUIDs to avoid conflicts with existing triggers

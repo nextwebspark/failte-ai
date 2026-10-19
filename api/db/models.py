@@ -709,6 +709,15 @@ class WorkflowTemplates(Base):
     # The questions the Create agent dialog asks before copying the template:
     # a list of TemplateSetupField dicts whose answers fill {{key}} placeholders.
     setup_fields = Column(JSON, nullable=False, default=list, server_default="[]")
+    # How the template's card reads in the dialog: "inbound" or "outbound",
+    # an icon name, whether it leads the list, and an optional sample call.
+    call_type = Column(String, nullable=True)
+    icon = Column(String, nullable=True)
+    featured = Column(Boolean, nullable=False, default=False, server_default="false")
+    sample_audio_url = Column(String, nullable=True)
+    # Integration providers (e.g. "google_calendar") the dialog offers to
+    # connect while setting the agent up.
+    integrations = Column(JSON, nullable=False, default=list, server_default="[]")
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
 
 

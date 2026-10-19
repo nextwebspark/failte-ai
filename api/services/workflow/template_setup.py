@@ -70,3 +70,34 @@ def fill_template_values(
         return node
 
     return fill(definition)
+
+
+INTEGRATION_TOOL_PREFIX = "integration:"
+
+
+def attach_integration_tools(
+    definition: dict[str, Any], tools: dict[str, str]
+) -> dict[str, Any]:
+    """Swap each node's ``integration:<provider>`` tool placeholder for the
+    organization's tool for that provider, or drop it when there is none.
+
+    A template marks the steps that may use, say, Google Calendar with
+    ``"tool_uuids": ["integration:google-calendar"]``; *tools* maps a provider
+    to the tool uuid the user connected while setting the agent up.
+    """
+    nodes = []
+    for node in definition.get("nodes", []):
+        data = node.get("data") or {}
+        uuids = data.get("tool_uuids")
+        if uuids:
+            resolved = []
+            for uuid in uuids:
+                if isinstance(uuid, str) and uuid.startswith(INTEGRATION_TOOL_PREFIX):
+                    tool = tools.get(uuid.removeprefix(INTEGRATION_TOOL_PREFIX))
+                    if tool and tool not in resolved:
+                        resolved.append(tool)
+                elif uuid not in resolved:
+                    resolved.append(uuid)
+            node = {**node, "data": {**data, "tool_uuids": resolved}}
+        nodes.append(node)
+    return {**definition, "nodes": nodes}

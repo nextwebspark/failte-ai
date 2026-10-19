@@ -13,6 +13,7 @@ from api.services.workflow.agent_builder import validate_workflow_definition
 from api.services.workflow.starter_templates import STARTER_TEMPLATES
 from api.services.workflow.template_setup import (
     TemplateSetupError,
+    attach_integration_tools,
     fill_template_values,
 )
 
@@ -75,6 +76,22 @@ def test_rejects_bad_answers(values, message):
         fill_template_values(DEFINITION, FIELDS, values)
 
 
+def test_attach_integration_tools_swaps_or_drops_placeholders():
+    definition = {
+        "nodes": [
+            {"id": "a", "data": {"tool_uuids": ["integration:google-calendar", "t-1"]}},
+            {"id": "b", "data": {"prompt": "no tools"}},
+        ]
+    }
+
+    connected = attach_integration_tools(definition, {"google-calendar": "cal-9"})
+    skipped = attach_integration_tools(definition, {})
+
+    assert connected["nodes"][0]["data"]["tool_uuids"] == ["cal-9", "t-1"]
+    assert skipped["nodes"][0]["data"]["tool_uuids"] == ["t-1"]
+    assert connected["nodes"][1] == definition["nodes"][1]
+
+
 def test_starter_templates_fill_into_valid_agents():
     for starter in STARTER_TEMPLATES:
         keys = {field.key for field in starter.setup_fields}
@@ -83,12 +100,16 @@ def test_starter_templates_fill_into_valid_agents():
 
         filled = fill_template_values(starter.definition, starter.setup_fields, values)
 
-        # No setup placeholder is left, and nothing else needs a variable.
-        validate_workflow_definition(filled)
-        text = str(filled)
-        assert "Sample business_name" in text
-        for key in keys:
-            assert "{{" + key not in text, (starter.name, key)
+        for tools in ({}, {provider: "tool-1" for provider in starter.integrations}):
+            agent = attach_integration_tools(filled, tools)
+            # No setup placeholder is left, and nothing else needs a variable.
+            validate_workflow_definition(agent)
+            text = str(agent)
+            assert "Sample business_name" in text
+            assert "integration:" not in text, starter.name
+            for key in keys:
+                assert "{{" + key not in text, (starter.name, key)
+        assert set(starter.row()) >= {"template_json", "setup_fields", "integrations"}
 
 
 def _client() -> TestClient:
@@ -101,18 +122,35 @@ def _client() -> TestClient:
 
 
 def _template():
+    definition = {
+        **DEFINITION,
+        "nodes": [
+            {
+                **DEFINITION["nodes"][0],
+                "data": {
+                    **DEFINITION["nodes"][0]["data"],
+                    "tool_uuids": ["integration:google-calendar"],
+                },
+            }
+        ],
+    }
     return SimpleNamespace(
         id=3,
         template_name="Reception",
         template_description="Answers calls",
-        template_json=DEFINITION,
+        template_json=definition,
         setup_fields=[field.model_dump() for field in FIELDS],
+        call_type="inbound",
+        icon="phone",
+        featured=True,
+        sample_audio_url=None,
+        integrations=["google-calendar"],
         created_at=datetime(2026, 10, 1, tzinfo=timezone.utc),
     )
 
 
-def test_duplicate_fills_the_template_with_the_answers():
-    created = SimpleNamespace(
+def _created_workflow():
+    return SimpleNamespace(
         id=42,
         name="Bloom Dental reception",
         status="active",
@@ -122,6 +160,9 @@ def test_duplicate_fills_the_template_with_the_answers():
         call_disposition_codes=None,
         workflow_configurations={},
     )
+
+
+def test_duplicate_fills_the_template_with_the_answers():
     with (
         patch("api.routes.workflow.WorkflowTemplateClient") as templates,
         patch("api.routes.workflow.db_client") as db,
@@ -129,7 +170,7 @@ def test_duplicate_fills_the_template_with_the_answers():
         templates.return_value.get_workflow_template = AsyncMock(
             return_value=_template()
         )
-        db.create_workflow = AsyncMock(return_value=created)
+        db.create_workflow = AsyncMock(return_value=_created_workflow())
 
         response = _client().post(
             "/workflow/templates/duplicate",
@@ -141,8 +182,71 @@ def test_duplicate_fills_the_template_with_the_answers():
         )
 
     assert response.status_code == 200, response.text
-    saved = db.create_workflow.await_args.args[1]
-    assert saved["nodes"][0]["data"]["greeting"] == "Hi, this is Bloom Dental."
+    data = db.create_workflow.await_args.args[1]["nodes"][0]["data"]
+    assert data["greeting"] == "Hi, this is Bloom Dental."
+    # No calendar connected: the step keeps no calendar tool.
+    assert data["tool_uuids"] == []
+
+
+def test_duplicate_attaches_the_connected_calendar():
+    with (
+        patch("api.routes.workflow.WorkflowTemplateClient") as templates,
+        patch("api.routes.workflow.db_client") as db,
+    ):
+        templates.return_value.get_workflow_template = AsyncMock(
+            return_value=_template()
+        )
+        db.get_tools_by_uuids = AsyncMock(
+            return_value=[SimpleNamespace(tool_uuid="cal-9")]
+        )
+        db.create_workflow = AsyncMock(return_value=_created_workflow())
+
+        response = _client().post(
+            "/workflow/templates/duplicate",
+            json={
+                "template_id": 3,
+                "workflow_name": "Reception",
+                "values": {"business_name": "Bloom Dental"},
+                "integration_tools": {"google-calendar": "cal-9"},
+            },
+        )
+
+    assert response.status_code == 200, response.text
+    db.get_tools_by_uuids.assert_awaited_once_with(["cal-9"], 11)
+    data = db.create_workflow.await_args.args[1]["nodes"][0]["data"]
+    assert data["tool_uuids"] == ["cal-9"]
+
+
+@pytest.mark.parametrize(
+    ("integration_tools", "found", "status"),
+    [
+        ({"outlook": "x"}, [], 422),
+        ({"google-calendar": "someone-elses"}, [], 404),
+    ],
+)
+def test_duplicate_rejects_a_bad_integration_tool(integration_tools, found, status):
+    with (
+        patch("api.routes.workflow.WorkflowTemplateClient") as templates,
+        patch("api.routes.workflow.db_client") as db,
+    ):
+        templates.return_value.get_workflow_template = AsyncMock(
+            return_value=_template()
+        )
+        db.get_tools_by_uuids = AsyncMock(return_value=found)
+        db.create_workflow = AsyncMock()
+
+        response = _client().post(
+            "/workflow/templates/duplicate",
+            json={
+                "template_id": 3,
+                "workflow_name": "Reception",
+                "values": {"business_name": "Bloom Dental"},
+                "integration_tools": integration_tools,
+            },
+        )
+
+    assert response.status_code == status
+    db.create_workflow.assert_not_awaited()
 
 
 def test_duplicate_rejects_a_missing_answer():
@@ -176,3 +280,7 @@ def test_templates_list_includes_setup_fields():
     fields = response.json()[0]["setup_fields"]
     assert [field["key"] for field in fields] == ["business_name", "address", "notes"]
     assert fields[0]["required"] is True
+    template = response.json()[0]
+    assert template["integrations"] == ["google-calendar"]
+    assert template["featured"] is True
+    assert template["call_type"] == "inbound"
