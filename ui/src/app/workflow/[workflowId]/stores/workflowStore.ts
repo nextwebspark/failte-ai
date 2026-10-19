@@ -54,7 +54,9 @@ interface WorkflowActions {
   ) => void;
 
   // History management
-  commitDeletion: () => void;
+  /** Records the current nodes and edges as one undoable step (after a
+   *  deletion, a tidy, or any change made without history). */
+  commitSnapshot: () => void;
   undo: () => void;
   redo: () => void;
   canUndo: () => boolean;
@@ -158,7 +160,7 @@ export const useWorkflowStore = create<WorkflowStore>((set, get) => ({
     });
   },
 
-  commitDeletion: () => {
+  commitSnapshot: () => {
     set((state) =>
       commitHistory(state, {
         nodes: state.nodes,

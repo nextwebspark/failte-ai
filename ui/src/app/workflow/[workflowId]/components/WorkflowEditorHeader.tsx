@@ -88,7 +88,15 @@ export const WorkflowEditorHeader = ({
     const renameButtonRef = useRef<HTMLButtonElement>(null);
 
     const hasValidationErrors = workflowValidationErrors.length > 0;
-    const isCallDisabled = isDirty || hasValidationErrors;
+    // Why the saved draft can't be called or published, in the order the user should act on it.
+    const draftBlocker = isDirty
+        ? "Save first"
+        : hasValidationErrors
+            ? "Fix the errors first"
+            : null;
+    const publishBlocker = draftBlocker ?? (hasDraft ? null : "Nothing new to publish");
+    // Disabled buttons drop pointer events by default, which would hide their title.
+    const explainWhenDisabled = "disabled:pointer-events-auto disabled:cursor-not-allowed";
 
     const handleSave = async () => {
         setSavingWorkflow(true);
@@ -229,21 +237,12 @@ export const WorkflowEditorHeader = ({
         void attemptSave();
     };
 
-    // Why Publish can't be pressed, in the order the user should act on it.
-    const publishBlocker = isDirty
-        ? "Save first"
-        : hasValidationErrors
-            ? "Fix the errors first"
-            : !hasDraft
-                ? "Nothing new to publish"
-                : null;
-
     return (
         // One toolbar for the Conversation screen: what you are editing, its
         // state, and what you can do with it. It no longer portals into the
         // app header, so the header keeps only the breadcrumb.
         <div
-            role="toolbar"
+            role="group"
             aria-label="Agent"
             className="flex min-h-[52px] flex-none flex-wrap items-center gap-x-2 gap-y-1.5 border-b border-line-soft px-3.5 py-2 md:flex-nowrap"
         >
@@ -368,9 +367,11 @@ export const WorkflowEditorHeader = ({
                         <Button
                             variant="outline"
                             size="sm"
-                            disabled={isCallDisabled}
+                            disabled={draftBlocker !== null}
                             onClick={onPhoneCallClick}
-                            title={isDirty ? "Save first" : hasValidationErrors ? "Fix the errors first" : undefined}
+                            aria-label="Phone call"
+                            title={draftBlocker ?? undefined}
+                            className={explainWhenDisabled}
                         >
                             <Phone />
                             <span className="hidden sm:inline">Phone call</span>
@@ -389,6 +390,7 @@ export const WorkflowEditorHeader = ({
                             onClick={handlePublish}
                             disabled={publishing || publishBlocker !== null}
                             title={publishBlocker ?? undefined}
+                            className={explainWhenDisabled}
                         >
                             {publishing ? <LoaderCircle className="animate-spin" /> : <Rocket />}
                             {publishing ? "Publishing…" : "Publish"}

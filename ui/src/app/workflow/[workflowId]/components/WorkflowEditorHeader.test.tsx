@@ -39,7 +39,7 @@ function renderHeader(overrides: Partial<Props> = {}) {
 describe("WorkflowEditorHeader", () => {
     it("renders its actions in one toolbar of its own", () => {
         renderHeader();
-        const toolbar = screen.getByRole("toolbar", { name: "Agent" });
+        const toolbar = screen.getByRole("group", { name: "Agent" });
         for (const name of [/Phone call/, "Save", "Publish", "More agent actions"]) {
             expect(toolbar.contains(screen.getByRole("button", { name }))).toBe(true);
         }

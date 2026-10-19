@@ -145,6 +145,7 @@ function RenderWorkflow({
         onEdgesChange,
         onNodesChange,
         onDelete,
+        commitSnapshot,
         undo,
         redo,
         canUndo,
@@ -671,8 +672,9 @@ function RenderWorkflow({
                                     readOnly={isViewingHistoricalVersion}
                                     onAddNode={() => setIsAddNodePanelOpen(true)}
                                     onTidy={() => {
+                                        // A plain setNodes skips history; commit so Undo reverts the tidy.
                                         setNodes(layoutNodes(nodes, edges, 'TB', rfInstance));
-                                        setIsDirty(true);
+                                        commitSnapshot();
                                     }}
                                     onUndo={undo}
                                     onRedo={redo}

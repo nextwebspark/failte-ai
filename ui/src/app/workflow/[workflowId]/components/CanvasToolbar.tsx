@@ -55,6 +55,16 @@ function ToolButton({
 
 const Divider = () => <span aria-hidden className="mx-1 h-[22px] w-px bg-line-soft" />;
 
+/** Its own component: useViewport re-renders on every pan/zoom frame, so only this should. */
+function ZoomReadout() {
+    const { zoom } = useViewport();
+    return (
+        <span className="hidden min-w-[44px] text-center font-mono text-xs text-ink-2 tabular-nums sm:inline">
+            {Math.round(zoom * 100)}%
+        </span>
+    );
+}
+
 /**
  * The canvas's one floating toolbar, bottom centre (Conversation.dc.html):
  * add a step, then the view (zoom, fit, tidy), then undo and redo. Rendered
@@ -62,7 +72,6 @@ const Divider = () => <span aria-hidden className="mx-1 h-[22px] w-px bg-line-so
  */
 export function CanvasToolbar({ readOnly, onAddNode, onTidy, onUndo, onRedo, canUndo, canRedo }: CanvasToolbarProps) {
     const { zoomIn, zoomOut, fitView } = useReactFlow();
-    const { zoom } = useViewport();
     const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
     const mod = isMac ? "⌘" : "Ctrl+";
 
@@ -70,7 +79,7 @@ export function CanvasToolbar({ readOnly, onAddNode, onTidy, onUndo, onRedo, can
         <Panel position="bottom-center" className="!mb-4">
             <TooltipProvider delayDuration={300}>
                 <div
-                    role="toolbar"
+                    role="group"
                     aria-label="Canvas"
                     className="flex items-center gap-1 rounded-xl border border-line bg-panel p-1.5 shadow-[var(--panel-shadow)]"
                 >
@@ -91,12 +100,7 @@ export function CanvasToolbar({ readOnly, onAddNode, onTidy, onUndo, onRedo, can
                     <ToolButton label="Zoom out" onClick={() => void zoomOut({ duration: 150 })}>
                         <Minus className="h-4 w-4" />
                     </ToolButton>
-                    <span
-                        className="hidden min-w-[44px] text-center font-mono text-xs text-ink-2 tabular-nums sm:inline"
-                        aria-label={`Zoom ${Math.round(zoom * 100)} percent`}
-                    >
-                        {Math.round(zoom * 100)}%
-                    </span>
+                    <ZoomReadout />
                     <ToolButton label="Zoom in" onClick={() => void zoomIn({ duration: 150 })}>
                         <Plus className="h-4 w-4" />
                     </ToolButton>
