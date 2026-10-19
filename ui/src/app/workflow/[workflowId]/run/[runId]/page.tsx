@@ -448,10 +448,12 @@ function SplitTracksSection({
                             aria-pressed={userTrackActive}
                             aria-label={playbackMode === 'user' ? 'Play both tracks' : 'Play user track only'}
                             onClick={() => handleTrackButtonClick('user')}
+                            // The dark: and hover: twins outrank the outline variant's
+                            // dark:bg-input/30, dark:border-input and hover:bg-accent.
                             className={cn(
                                 'gap-1.5',
                                 userTrackActive
-                                    ? 'border-sky/30 bg-sky-dim text-sky hover:bg-sky-dim'
+                                    ? 'border-sky/30 bg-sky-dim text-sky hover:bg-sky/15 hover:text-sky dark:border-sky/30 dark:bg-sky-dim dark:hover:bg-sky/15'
                                     : 'text-muted-foreground opacity-60'
                             )}
                         >
@@ -469,7 +471,7 @@ function SplitTracksSection({
                             className={cn(
                                 'gap-1.5',
                                 botTrackActive
-                                    ? 'border-ok/30 bg-ok-dim text-ok hover:bg-ok-dim'
+                                    ? 'border-ok/30 bg-ok-dim text-ok hover:bg-ok/15 hover:text-ok dark:border-ok/30 dark:bg-ok-dim dark:hover:bg-ok/15'
                                     : 'text-muted-foreground opacity-60'
                             )}
                         >

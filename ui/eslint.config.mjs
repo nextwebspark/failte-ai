@@ -16,7 +16,7 @@ const compat = new FlatCompat({
 // Tailwind palette class (text-red-500, bg-sky-50, …) bypasses them and needs
 // its own dark: twin, so it is an error. See app-doc/claude-design/v3-audit.
 const RAW_PALETTE_CLASS =
-  "/(^|[\\s\"'`:])(text|bg|border|border-[trblxy]|ring|ring-offset|outline|divide|from|via|to|fill|stroke|placeholder|decoration|caret|accent|shadow)-(red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose|slate|gray|zinc|neutral|stone)-[0-9]{2,3}/";
+  "/(^|[\\s\"'`:!])(text|bg|border|border-[trblxyse]|ring|ring-offset|outline|divide|from|via|to|fill|stroke|placeholder|decoration|caret|accent|shadow)-(red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose|slate|gray|zinc|neutral|stone)-[0-9]{2,3}/";
 const RAW_PALETTE_MESSAGE =
   "Use a design token (text-danger, bg-ok-dim, border-line, …) instead of a raw Tailwind palette colour.";
 
@@ -52,14 +52,13 @@ const eslintConfig = [
       sourceType: "module",
       ecmaVersion: "latest"
     }
-  }
+  },
+  {
+    // The sign-in screens' brand panel is dark in both themes on purpose, and
+    // tests may assert on raw classes.
+    files: ["src/components/auth/**", "src/app/handler/**", "**/*.test.ts", "**/*.test.tsx"],
+    rules: { "no-restricted-syntax": "off" },
+  },
 ];
-
-eslintConfig.push({
-  // The sign-in screens' brand panel is dark in both themes on purpose, and
-  // tests may assert on raw classes.
-  files: ["src/components/auth/**", "src/app/handler/**", "**/*.test.ts", "**/*.test.tsx"],
-  rules: { "no-restricted-syntax": "off" },
-});
 
 export default eslintConfig;

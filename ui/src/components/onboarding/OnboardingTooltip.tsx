@@ -99,10 +99,13 @@ export const OnboardingTooltip = ({
     // Actual side after flip(): 'bottom' (below target) or 'top' (above).
     const side = placement.split('-')[0] === 'top' ? 'top' : 'bottom';
 
+    // z-50 is the dialogs' layer: the tooltip shows over the test-rail Sheet it
+    // points into (mounted before it), while a dialog opened later is appended
+    // after it and covers it.
     const tooltipContent = (
         <div
             ref={refs.setFloating}
-            className={`z-40 animate-in fade-in duration-300 ${side === 'bottom' ? 'slide-in-from-top-2' : 'slide-in-from-bottom-2'}`}
+            className={`z-50 animate-in fade-in duration-300 ${side === 'bottom' ? 'slide-in-from-top-2' : 'slide-in-from-bottom-2'}`}
             style={{
                 ...floatingStyles,
                 // Avoid a flash at (0,0) before the first position resolves.
