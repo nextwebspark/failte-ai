@@ -31,7 +31,7 @@ import { useNodeHandlers } from "./common/useNodeHandlers";
 // the spec) avoids leaking UI concerns into the backend schema. Add an
 // entry when registering a new node type.
 
-type NodeStyleVariant =
+export type NodeStyleVariant =
     | "start"
     | "agent"
     | "end"
@@ -141,7 +141,7 @@ function resolveIntegrationSummary(
 }
 
 /** The header's kind label and icon colour for each step type. */
-function getKindForSpec(
+export function getKindForSpec(
     spec: NodeSpec | undefined,
     variant: NodeStyleVariant,
     data: FlowNodeData,

@@ -6,7 +6,7 @@ import { useWorkflow } from "@/app/workflow/[workflowId]/contexts/WorkflowContex
 import type { ToolResponse } from "@/client/types.gen";
 import { NodeChip } from "@/components/flow/NodeChip";
 
-/** More chips than this collapse into "+N more" so a step stays compact. */
+/** More tool chips than this collapse into "+N more"; MCP servers can list many functions. */
 const MAX_CHIPS = 3;
 
 interface ToolBadgesProps {
