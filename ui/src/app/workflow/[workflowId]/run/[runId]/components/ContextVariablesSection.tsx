@@ -65,7 +65,7 @@ export const ContextVariablesSection = ({
                                     onClick={() => handleRemoveContextVar(key)}
                                     disabled={disabled}
                                 >
-                                    <Trash2Icon className="w-4 h-4 text-red-500" />
+                                    <Trash2Icon className="w-4 h-4 text-danger" />
                                 </Button>
                             </div>
                         ))}
@@ -100,7 +100,7 @@ export const ContextVariablesSection = ({
                         </Button>
                     </div>
                     {newKey && initialContext[newKey] && (
-                        <p className="text-sm text-red-500">Variable with this key already exists</p>
+                        <p className="text-sm text-danger">Variable with this key already exists</p>
                     )}
                 </div>
             </CardContent>

@@ -179,7 +179,7 @@ export const DateRangeFilter: React.FC<DateRangeFilterProps> = ({
       </div>
 
       {error && (
-        <p className="text-sm text-red-500 mt-1">{error}</p>
+        <p className="text-sm text-danger mt-1">{error}</p>
       )}
     </div>
   );

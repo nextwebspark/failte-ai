@@ -860,10 +860,10 @@ export function EmbedDialog({
                                                 </ul>
                                             </div>
 
-                                            <div className="rounded-lg bg-blue-50 dark:bg-blue-950/20 p-4 border border-blue-200 dark:border-blue-800">
-                                                <h4 className="font-medium mb-2 text-blue-900 dark:text-blue-100">Example - drive your own chat UI</h4>
+                                            <div className="rounded-lg bg-sky-dim p-4 border border-sky/30">
+                                                <h4 className="font-medium mb-2 text-sky">Example - drive your own chat UI</h4>
                                                 <pre className="text-xs overflow-x-auto">
-                                                    <code className="text-blue-800 dark:text-blue-200">{HEADLESS_CHAT_EXAMPLE}</code>
+                                                    <code className="text-sky">{HEADLESS_CHAT_EXAMPLE}</code>
                                                 </pre>
                                             </div>
                                         </div>
@@ -885,13 +885,13 @@ export function EmbedDialog({
                                                 </ul>
                                             </div>
 
-                                            <div className="rounded-lg bg-blue-50 dark:bg-blue-950/20 p-4 border border-blue-200 dark:border-blue-800">
-                                                <h4 className="font-medium mb-2 text-blue-900 dark:text-blue-100">Example - track status in your own state</h4>
-                                                <p className="text-xs text-blue-900/80 dark:text-blue-100/80 mb-2">
+                                            <div className="rounded-lg bg-sky-dim p-4 border border-sky/30">
+                                                <h4 className="font-medium mb-2 text-sky">Example - track status in your own state</h4>
+                                                <p className="text-xs text-sky/80 mb-2">
                                                     Mirror the call status into a variable you control, then render whatever UI you like from it. The status values are <code className="text-xs">idle</code>, <code className="text-xs">connecting</code>, <code className="text-xs">connected</code>, <code className="text-xs">failed</code>.
                                                 </p>
                                                 <pre className="text-xs overflow-x-auto">
-                                                    <code className="text-blue-800 dark:text-blue-200">{`// Vanilla JS - keep your own state, render however you want
+                                                    <code className="text-sky">{`// Vanilla JS - keep your own state, render however you want
 let callStatus = 'idle';
 
 window.LightMoveWidget?.onStatusChange((status) => {
@@ -907,9 +907,9 @@ document.getElementById('talk-btn').addEventListener('click', () => {
   }
 });`}</code>
                                                 </pre>
-                                                <p className="text-xs text-blue-900/80 dark:text-blue-100/80 mt-3 mb-2">React:</p>
+                                                <p className="text-xs text-sky/80 mt-3 mb-2">React:</p>
                                                 <pre className="text-xs overflow-x-auto">
-                                                    <code className="text-blue-800 dark:text-blue-200">{`function TalkButton() {
+                                                    <code className="text-sky">{`function TalkButton() {
   const [status, setStatus] = useState('idle');
 
   useEffect(() => {
@@ -949,20 +949,20 @@ document.getElementById('talk-btn').addEventListener('click', () => {
                                             </div>
 
                                             {widgetType === "chat" ? (
-                                                <div className="rounded-lg bg-blue-50 dark:bg-blue-950/20 p-4 border border-blue-200 dark:border-blue-800">
-                                                    <h4 className="font-medium mb-2 text-blue-900 dark:text-blue-100">Example</h4>
+                                                <div className="rounded-lg bg-sky-dim p-4 border border-sky/30">
+                                                    <h4 className="font-medium mb-2 text-sky">Example</h4>
                                                     <pre className="text-xs overflow-x-auto">
-                                                        <code className="text-blue-800 dark:text-blue-200">{`<h2>Chat with Our Agent</h2>
+                                                        <code className="text-sky">{`<h2>Chat with Our Agent</h2>
 <div id="lightmove-inline-container" style="min-height: 480px">
   <!-- Chat panel renders here; no extra JS needed -->
 </div>`}</code>
                                                     </pre>
                                                 </div>
                                             ) : (
-                                                <div className="rounded-lg bg-blue-50 dark:bg-blue-950/20 p-4 border border-blue-200 dark:border-blue-800">
-                                                    <h4 className="font-medium mb-2 text-blue-900 dark:text-blue-100">Example React Component</h4>
+                                                <div className="rounded-lg bg-sky-dim p-4 border border-sky/30">
+                                                    <h4 className="font-medium mb-2 text-sky">Example React Component</h4>
                                                     <pre className="text-xs overflow-x-auto">
-                                                        <code className="text-blue-800 dark:text-blue-200">{`export function LightMoveAgent() {
+                                                        <code className="text-sky">{`export function LightMoveAgent() {
   const [isCallActive, setIsCallActive] = useState(false);
 
   useEffect(() => {

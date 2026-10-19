@@ -12,7 +12,7 @@ import Footer from './Footer';
 // Only load Stack's SignIn component when Stack provider is active
 const SignIn = dynamic(
   () => import('@stackframe/stack').then(mod => ({ default: mod.SignIn })),
-  { ssr: false, loading: () => <Loader2 className="w-5 h-5 animate-spin text-gray-600" /> }
+  { ssr: false, loading: () => <Loader2 className="w-5 h-5 animate-spin text-ink-2" /> }
 );
 
 export default function SignInClient() {
@@ -28,7 +28,7 @@ export default function SignInClient() {
   if (provider !== 'stack') {
     return (
       <div className="flex min-h-screen items-center justify-center">
-        <Loader2 className="w-5 h-5 animate-spin text-gray-600" />
+        <Loader2 className="w-5 h-5 animate-spin text-ink-2" />
       </div>
     );
   }

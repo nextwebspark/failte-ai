@@ -340,7 +340,7 @@ export function HttpToolTestDialog({
                         {isUnsafeHttpMethod(httpMethod) && (
                             <div
                                 role="alert"
-                                className="flex gap-3 rounded-lg border border-amber-300 bg-amber-50 p-4 text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200"
+                                className="flex gap-3 rounded-lg border border-amber/30 bg-amber-dim p-4 text-amber"
                             >
                                 <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0" />
                                 <div className="space-y-1">
@@ -460,8 +460,8 @@ export function HttpToolTestDialog({
                                     <span
                                         className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ${
                                             isSuccess
-                                                ? "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400"
-                                                : "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400"
+                                                ? "bg-ok-dim text-ok"
+                                                : "bg-danger-dim text-danger"
                                         }`}
                                     >
                                         <span>{isSuccess ? "✓" : "✗"}</span>
@@ -477,7 +477,7 @@ export function HttpToolTestDialog({
                                     )}
                                 </div>
                                 {result.hint && (
-                                    <div className="rounded border border-amber-200 bg-amber-100 p-3 text-sm text-amber-900 dark:border-amber-900/40 dark:bg-amber-900/20 dark:text-amber-400">
+                                    <div className="rounded border border-amber/30 bg-amber-dim p-3 text-sm text-amber">
                                         {result.hint}
                                     </div>
                                 )}

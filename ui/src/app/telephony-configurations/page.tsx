@@ -195,7 +195,7 @@ export default function TelephonyConfigurationsPage() {
         </p>
 
         {telnyxMissingWebhookPublicKeyCount > 0 && (
-          <div className="mb-6 rounded-md border border-amber-300 bg-amber-50 p-4 text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-200">
+          <div className="mb-6 rounded-md border border-amber/30 bg-amber-dim p-4 text-amber">
             <div className="flex items-start gap-3">
               <AlertTriangle className="h-5 w-5 shrink-0 mt-0.5" />
               <div className="space-y-1 text-sm">
@@ -218,7 +218,7 @@ export default function TelephonyConfigurationsPage() {
         )}
 
         {vonageMissingSignatureSecretCount > 0 && (
-          <div className="mb-6 rounded-md border border-amber-300 bg-amber-50 p-4 text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-200">
+          <div className="mb-6 rounded-md border border-amber/30 bg-amber-dim p-4 text-amber">
             <div className="flex items-start gap-3">
               <AlertTriangle className="h-5 w-5 shrink-0 mt-0.5" />
               <div className="space-y-1 text-sm">
@@ -281,7 +281,7 @@ export default function TelephonyConfigurationsPage() {
                         {!item.inactive && item.is_ready_for_outbound === false && (
                           <Badge
                             variant="outline"
-                            className="gap-1 border-amber-400 text-amber-700 dark:border-amber-700 dark:text-amber-400"
+                            className="gap-1 border-amber text-amber"
                           >
                             <AlertTriangle className="h-3 w-3" />
                             Setup incomplete
@@ -299,7 +299,7 @@ export default function TelephonyConfigurationsPage() {
                         </span>
                       )}
                       {!item.inactive && item.outbound_blocked_reason && (
-                        <span className="text-sm text-amber-700 dark:text-amber-500">
+                        <span className="text-sm text-amber">
                           {item.outbound_blocked_reason}
                         </span>
                       )}

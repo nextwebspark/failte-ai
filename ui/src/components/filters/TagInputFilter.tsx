@@ -36,7 +36,7 @@ export const TagInputFilter: React.FC<TagInputFilterProps> = ({ value, onChange,
         onChange={(e) => setText(e.target.value)}
         onBlur={handleBlur}
       />
-      {error && <p className="text-sm text-red-500 mt-1">{error}</p>}
+      {error && <p className="text-sm text-danger mt-1">{error}</p>}
     </div>
   );
 };

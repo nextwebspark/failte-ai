@@ -60,10 +60,10 @@ export const NumberFilter: React.FC<NumberFilterProps> = ({
           min={min}
           max={max}
           step={step}
-          className={error ? "border-red-500" : ""}
+          className={error ? "border-danger" : ""}
         />
       </div>
-      {error && <p className="text-xs text-red-500">{error}</p>}
+      {error && <p className="text-xs text-danger">{error}</p>}
     </div>
   );
 };

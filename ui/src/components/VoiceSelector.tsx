@@ -356,7 +356,7 @@ export const VoiceSelector: React.FC<VoiceSelectorProps> = ({
 
                         <div className="max-h-[300px] overflow-auto space-y-1">
                             {error ? (
-                                <p className="text-sm text-red-500 text-center py-4">
+                                <p className="text-sm text-danger text-center py-4">
                                     {error}
                                 </p>
                             ) : isLoading ? (

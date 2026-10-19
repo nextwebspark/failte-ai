@@ -460,7 +460,7 @@ export function StripeBilling() {
                                                     </div>
                                                 </TableCell>
                                                 <TableCell>{entry.workflow_run_id ? `#${entry.workflow_run_id}` : "-"}</TableCell>
-                                                <TableCell className={`text-right font-medium ${amount >= 0 ? "text-green-600" : "text-destructive"}`}>
+                                                <TableCell className={`text-right font-medium ${amount >= 0 ? "text-ok" : "text-destructive"}`}>
                                                     {amount >= 0 ? "+" : "-"}
                                                     {formatEur(Math.abs(amount), 4)}
                                                 </TableCell>

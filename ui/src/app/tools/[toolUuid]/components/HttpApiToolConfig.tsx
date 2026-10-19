@@ -181,7 +181,7 @@ export function HttpApiToolConfig({
                                 showValidation
                             />
                             {urlHostnameParameters.length > 0 && (
-                                <div className="rounded-lg border border-blue-500/20 bg-blue-500/10 p-3 text-sm text-blue-600 flex gap-2 items-start mt-2">
+                                <div className="rounded-lg border border-sky/20 bg-sky-dim p-3 text-sm text-sky flex gap-2 items-start mt-2">
                                     <Info className="h-4 w-4 mt-0.5 shrink-0" />
                                     <span>
                                         Hostname parameters detected: {urlHostnameParameters.join(", ")}. Values resolve from tool call arguments or workflow context at runtime.
@@ -189,7 +189,7 @@ export function HttpApiToolConfig({
                                 </div>
                             )}
                             {urlPathParameters.length > 0 && (
-                                <div className="rounded-lg border border-blue-500/20 bg-blue-500/10 p-3 text-sm text-blue-600 flex gap-2 items-start mt-2">
+                                <div className="rounded-lg border border-sky/20 bg-sky-dim p-3 text-sm text-sky flex gap-2 items-start mt-2">
                                     <Info className="h-4 w-4 mt-0.5 shrink-0" />
                                     <span>
                                         Path parameters detected: {urlPathParameters.join(", ")}. Values resolve from tool call arguments or workflow context at runtime.

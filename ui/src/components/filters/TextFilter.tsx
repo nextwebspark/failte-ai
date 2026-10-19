@@ -39,9 +39,9 @@ export const TextFilter: React.FC<TextFilterProps> = ({
         onBlur={handleBlur}
         placeholder={placeholder}
         maxLength={maxLength}
-        className={error ? "border-red-500" : ""}
+        className={error ? "border-danger" : ""}
       />
-      {error && <p className="text-sm text-red-500">{error}</p>}
+      {error && <p className="text-sm text-danger">{error}</p>}
     </div>
   );
 };

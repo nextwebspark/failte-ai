@@ -39,7 +39,7 @@ export const ApiKeyErrorDialog = ({
             : isPlatformServiceError
                 ? "Voice service unavailable"
                 : "API Configuration Error";
-    const icon = isQuotaError ? <CreditCard className="h-5 w-5 text-orange-500" /> : <Key className="h-5 w-5 text-red-500" />;
+    const icon = isQuotaError ? <CreditCard className="h-5 w-5 text-amber" /> : <Key className="h-5 w-5 text-danger" />;
     const buttonText = isBillingCreditsError
         ? "Go to Billing"
         : isServiceKeyOrgMismatch

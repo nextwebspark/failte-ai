@@ -36,7 +36,7 @@ function VoiceTraits({ voice }: { voice: VoiceSummary }) {
         <>
             <span className="font-medium">{voice.name}</span>
             {voice.recommended && (
-                <Star aria-label="Recommended" className="ml-1 inline h-3 w-3 fill-current align-[-1px] text-amber-500" />
+                <Star aria-label="Recommended" className="ml-1 inline h-3 w-3 fill-current align-[-1px] text-amber" />
             )}
             {traits.filter(Boolean).map((trait) => (
                 <span key={trait} className="text-muted-foreground"> · {trait}</span>
@@ -114,7 +114,7 @@ export function CurrentSetupCard({
                 <h3 className="text-sm font-medium">Current setup</h3>
                 <Badge variant="outline">{SOURCE_LABELS[source]}</Badge>
                 {dirty && (
-                    <Badge variant="outline" className="border-amber-500/50 text-amber-600 dark:text-amber-400">
+                    <Badge variant="outline" className="border-amber/50 text-amber">
                         Unsaved changes below
                     </Badge>
                 )}

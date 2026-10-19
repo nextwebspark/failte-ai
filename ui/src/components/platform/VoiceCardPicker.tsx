@@ -237,7 +237,7 @@ export function VoiceCardPicker({
                                     <span className="flex items-center gap-1.5">
                                         <span className="truncate font-medium">{voice.label}</span>
                                         {voice.recommended && (
-                                            <Star aria-label="Recommended" className="h-3 w-3 shrink-0 fill-current text-amber-500" />
+                                            <Star aria-label="Recommended" className="h-3 w-3 shrink-0 fill-current text-amber" />
                                         )}
                                     </span>
                                     {traits && <span className="block truncate text-xs text-muted-foreground">{traits}</span>}
