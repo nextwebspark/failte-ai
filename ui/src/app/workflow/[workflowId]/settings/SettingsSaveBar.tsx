@@ -129,8 +129,11 @@ export function SettingsSaveProvider({
         if (saving || dirty.length === 0 || blocked) return;
         setSaving(true);
         try {
+            // Run each own save's afterSave as soon as it succeeds, so a later
+            // failure doesn't leave a saved section's form out of step.
             for (const section of dirty.filter((s) => s.save)) {
                 await section.save!();
+                section.afterSave?.();
             }
             const patches = dirty.filter((s) => s.patch).map((s) => s.patch!());
             if (patches.length > 0) {
@@ -141,7 +144,7 @@ export function SettingsSaveProvider({
                 const name = patches.find((p) => p.workflowName !== undefined)?.workflowName ?? workflowName;
                 await saveWorkflowConfigurations(configurations, name);
             }
-            dirty.forEach((section) => section.afterSave?.());
+            dirty.filter((s) => !s.save).forEach((section) => section.afterSave?.());
             toast.success(savedMessage);
         } catch (error) {
             toast.error(error instanceof Error && error.message ? error.message : "Couldn’t save your changes");
@@ -157,11 +160,9 @@ export function SettingsSaveProvider({
                 // Sticky to the bottom of the scrolling content panel.
                 <div className="pointer-events-none sticky bottom-4 z-20 flex justify-center px-4">
                     <div
-                        role="status"
-                        aria-live="polite"
                         className="pointer-events-auto flex max-w-full flex-wrap items-center gap-x-4 gap-y-2 rounded-xl border border-line bg-panel py-2 pr-2 pl-4 shadow-[var(--panel-shadow)]"
                     >
-                        <span className="flex min-w-0 items-center gap-2 text-[13px] text-ink-2">
+                        <span role="status" aria-live="polite" className="flex min-w-0 items-center gap-2 text-[13px] text-ink-2">
                             <span aria-hidden className="size-2 shrink-0 rounded-full bg-amber" />
                             <span className="min-w-0">
                                 <strong className="font-semibold text-foreground">
@@ -171,7 +172,7 @@ export function SettingsSaveProvider({
                             </span>
                         </span>
                         {blocked && (
-                            <span className="text-[12.5px] text-danger">
+                            <span role="alert" className="text-[12.5px] text-danger">
                                 {blocked.label}: {blocked.blocker}
                             </span>
                         )}

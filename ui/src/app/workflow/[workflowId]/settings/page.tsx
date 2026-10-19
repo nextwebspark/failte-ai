@@ -301,8 +301,10 @@ function GeneralSection({
     );
 
     // The form spans two cards; each gets its own unsaved dot in the index.
+    // The name is saved trimmed, so compare it trimmed (or a trailing space
+    // would leave the section dirty after every save).
     const identityDirty =
-        name !== workflowName ||
+        name.trim() !== workflowName.trim() ||
         JSON.stringify(ambientNoiseConfig) !== JSON.stringify(workflowConfigurations.ambient_noise_configuration) ||
         maxCallDuration !== workflowConfigurations.max_call_duration ||
         maxUserIdleTimeout !== workflowConfigurations.max_user_idle_timeout;
@@ -333,37 +335,46 @@ function GeneralSection({
                     ? "Fix the PBX fields"
                     : null;
 
+    // The rows the last save sent, so a save doesn't rewrite rows edited meanwhile.
+    const savedDispositionRows = useRef<CallDispositionRow[] | null>(null);
+
     useSettingsSection("general", {
         label: [identityDirty && "General", behaviourDirty && "Call behaviour"].filter(Boolean).join(", ") || "General",
         dirty: isDirty,
         blocker,
-        patch: () => ({
-            workflowName: name.trim(),
-            configurations: {
-                ambient_noise_configuration: ambientNoiseConfig,
-                max_call_duration: maxCallDuration,
-                max_user_idle_timeout: maxUserIdleTimeout,
-                smart_turn_stop_secs: smartTurnStopSecs,
-                turn_start_strategy: turnStartStrategy,
-                turn_start_min_words: turnStartMinWords,
-                turn_stop_strategy: turnStopStrategy,
-                context_compaction_enabled: contextCompactionEnabled,
-                tts_cache_enabled: ttsCacheEnabled,
-                skills_enabled: skillsEnabled,
-                call_dispositions: normalizedCallDispositions,
-                transcript_configuration: {
-                    ...(workflowConfigurations.transcript_configuration ?? {}),
-                    include_end_timestamps: includeTranscriptEndTimestamps,
+        patch: () => {
+            savedDispositionRows.current = callDispositionRows;
+            return {
+                workflowName: name.trim(),
+                configurations: {
+                    ambient_noise_configuration: ambientNoiseConfig,
+                    max_call_duration: maxCallDuration,
+                    max_user_idle_timeout: maxUserIdleTimeout,
+                    smart_turn_stop_secs: smartTurnStopSecs,
+                    turn_start_strategy: turnStartStrategy,
+                    turn_start_min_words: turnStartMinWords,
+                    turn_stop_strategy: turnStopStrategy,
+                    context_compaction_enabled: contextCompactionEnabled,
+                    tts_cache_enabled: ttsCacheEnabled,
+                    skills_enabled: skillsEnabled,
+                    call_dispositions: normalizedCallDispositions,
+                    transcript_configuration: {
+                        ...(workflowConfigurations.transcript_configuration ?? {}),
+                        include_end_timestamps: includeTranscriptEndTimestamps,
+                    },
+                    external_pbx_field_mappings: externalPbxFieldMappings,
+                    external_pbx_lead_headers: externalPbxLeadHeaders.map((field) => field.trim()),
                 },
-                external_pbx_field_mappings: externalPbxFieldMappings,
-                external_pbx_lead_headers: externalPbxLeadHeaders.map((field) => field.trim()),
-            },
-        }),
-        // Show the dispositions the way they were saved (trimmed, normalised).
+            };
+        },
+        // Show the dispositions the way they were saved (trimmed, normalised),
+        // unless they were edited while the save was in flight.
         afterSave: () =>
-            setCallDispositionRows((current) =>
-                current.map((row, index) => ({ ...row, ...normalizedCallDispositions[index] })),
-            ),
+            setCallDispositionRows((current) => {
+                if (current !== savedDispositionRows.current) return current;
+                const normalized = normalizeCallDispositions(current);
+                return current.map((row, index) => ({ ...row, ...normalized[index] }));
+            }),
     });
 
     const handleAmbientFileUpload = async (file: File) => {
@@ -882,13 +893,15 @@ function TemplateVariablesSection({
 
     // A filled-in "add" row counts as a change, and is saved with the rest.
     const pendingVars = newKey.trim() && newValue ? { ...contextVars, [newKey.trim()]: newValue } : contextVars;
-    const isDirty = JSON.stringify(pendingVars) !== JSON.stringify(templateContextVariables);
+    // A half-filled add row is a change too, so it isn't silently dropped.
+    const halfFilled = Boolean(newKey.trim()) !== Boolean(newValue);
+    const isDirty = halfFilled || JSON.stringify(pendingVars) !== JSON.stringify(templateContextVariables);
 
     useUnsavedChanges("variables", isDirty);
     useSettingsSection("variables", {
         label: "Variables",
         dirty: isDirty,
-        blocker: newKey.trim() && !newValue ? "Give the new variable a value" : null,
+        blocker: !halfFilled ? null : newValue ? "Give the new variable a name" : "Give the new variable a value",
         save: () => onSave(pendingVars),
         afterSave: () => {
             setContextVars(pendingVars);
@@ -1299,7 +1312,8 @@ function AdvancedSettings({ context }: { context: AgentSectionContext }) {
             if (el) observer.observe(el);
         });
         return () => observer.disconnect();
-    }, []);
+        // Discard remounts the sections, so observe the new elements.
+    }, [formKey]);
 
     const navItems = NAV_ITEMS.filter((item) => item.id !== "identity" || workflow.workflow_uuid);
 

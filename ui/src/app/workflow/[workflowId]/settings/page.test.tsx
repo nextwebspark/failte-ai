@@ -135,4 +135,21 @@ describe("Advanced settings", () => {
         expect((screen.getByLabelText("Default value for business_name") as HTMLInputElement).value).toBe("Bloom Dental");
         expect(screen.queryByRole("button", { name: "Save changes" })).toBeNull();
     });
+
+    it("saves a trimmed name and then shows nothing unsaved", async () => {
+        mocks.saveConfigurations.mockImplementation(async () => {});
+        renderPage();
+        fireEvent.change(screen.getByLabelText("Agent name"), { target: { value: "Front desk " } });
+
+        // Only trailing space: the trimmed name is unchanged, so nothing to save.
+        expect(screen.queryByRole("button", { name: "Save changes" })).toBeNull();
+    });
+
+    it("won't drop a new variable value that has no name", () => {
+        renderPage();
+        fireEvent.change(screen.getByLabelText("New variable value"), { target: { value: "Free parking" } });
+
+        expect(screen.getByText("Variables: Give the new variable a name")).toBeTruthy();
+        expect(screen.getByRole("button", { name: "Save changes" })).toHaveProperty("disabled", true);
+    });
 });
