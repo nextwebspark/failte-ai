@@ -21,6 +21,7 @@ import { WorkflowConfigurations } from '@/types/workflow-configurations';
 import AddNodePanel from "../../../components/flow/AddNodePanel";
 import CustomEdge from "../../../components/flow/edges/CustomEdge";
 import { GenericNode } from "../../../components/flow/nodes/GenericNode";
+import { CanvasLegend } from './components/CanvasLegend';
 import { CanvasToolbar } from './components/CanvasToolbar';
 import { PhoneCallDialog } from './components/PhoneCallDialog';
 import { VersionHistoryPanel } from './components/VersionHistoryPanel';
@@ -667,6 +668,8 @@ function RenderWorkflow({
                                     size={1}
                                     color="var(--line)"
                                 />
+
+                                <CanvasLegend />
 
                                 <CanvasToolbar
                                     readOnly={isViewingHistoricalVersion}

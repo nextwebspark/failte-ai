@@ -1,55 +1,68 @@
 import { Position } from "@xyflow/react";
+import { AlertCircle } from "lucide-react";
 import { ReactNode } from "react";
 
 import { BaseHandle } from "@/components/flow/nodes/BaseHandle";
 import { BaseNode } from "@/components/flow/nodes/BaseNode";
+import { StatusPill } from "@/components/ui/status-pill";
 import { cn } from "@/lib/utils";
+
+/**
+ * The colour of a step's icon tile. It matches the canvas legend: brand when
+ * the agent speaks, sky when the step uses a tool; amber, danger and mute mark
+ * global instructions, the end of the call and steps outside the call.
+ */
+export type NodeTone = "brand" | "sky" | "amber" | "danger" | "mute";
+
+const ICON_TILE: Record<NodeTone, string> = {
+    brand: "bg-brand-dim text-brand",
+    sky: "bg-sky-dim text-sky",
+    amber: "bg-amber-dim text-amber",
+    danger: "bg-danger-dim text-danger",
+    mute: "bg-panel-2 text-ink-2",
+};
 
 interface NodeContentProps {
     selected: boolean;
     invalid?: boolean;
+    /** Why the step is invalid, shown on the card. */
+    invalidMessage?: string | null;
     selected_through_edge?: boolean;
     hovered_through_edge?: boolean;
     runtimeActive?: boolean;
     title: string;
     icon: ReactNode;
-    badgeLabel?: string;
-    badgeClassName?: string;
-    contentLabel?: string;
+    tone: NodeTone;
+    /** Short kind label at the right of the header, e.g. "Agent". */
+    kindLabel: string;
+    /** The call starts here: a brand bar down the header's left edge. */
+    isStart?: boolean;
     hasSourceHandle?: boolean;
     hasTargetHandle?: boolean;
     children?: ReactNode;
     className?: string;
     onDoubleClick?: () => void;
-    nodeId?: string;
 }
 
-// Get badge styling based on node type
-const DEFAULT_BADGE = { label: 'Node', className: 'bg-panel-2 text-ink-3' };
-
+/** One step on the canvas (Conversation.dc.html): icon, name and kind, then a preview. */
 export const NodeContent = ({
     selected,
     invalid,
+    invalidMessage,
     selected_through_edge,
     hovered_through_edge,
     runtimeActive,
     title,
     icon,
-    badgeLabel,
-    badgeClassName,
-    contentLabel = "Prompt",
+    tone,
+    kindLabel,
+    isStart = false,
     hasSourceHandle = false,
     hasTargetHandle = false,
     children,
     className = "",
     onDoubleClick,
-    nodeId,
 }: NodeContentProps) => {
-    const badge = {
-        label: badgeLabel ?? DEFAULT_BADGE.label,
-        className: badgeClassName ?? DEFAULT_BADGE.className,
-    };
-
     return (
         <BaseNode
             selected={selected}
@@ -57,41 +70,49 @@ export const NodeContent = ({
             selected_through_edge={selected_through_edge}
             hovered_through_edge={hovered_through_edge}
             runtimeActive={runtimeActive}
-            className={`p-0 ${className}`}
+            className={cn("p-0", className)}
             onDoubleClick={onDoubleClick}
         >
             {hasTargetHandle && <BaseHandle type="target" position={Position.Top} />}
 
-            {/* Node type badge - positioned at top */}
-            <div className="absolute -top-3 left-4">
-                <span className={cn(
-                    "inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-xs font-medium",
-                    badge.className
-                )}>
-                    <span className="[&>*]:w-3 [&>*]:h-3">{icon}</span>
-                    {badge.label}
+            <header
+                className={cn(
+                    "flex items-center gap-2 border-b border-line-soft px-3 py-2.5",
+                    isStart && "rounded-tl-xl border-l-[3px] border-l-brand",
+                )}
+            >
+                <span
+                    aria-hidden
+                    className={cn(
+                        "grid size-[22px] shrink-0 place-items-center rounded-md [&>svg]:size-3",
+                        ICON_TILE[tone],
+                    )}
+                >
+                    {icon}
                 </span>
-            </div>
+                <h3 className="min-w-0 flex-1 truncate text-[13px] font-semibold text-foreground" title={title}>
+                    {title}
+                </h3>
+                {runtimeActive ? (
+                    <StatusPill tone="live" dot className="px-1.5 py-0.5 text-[10px]">
+                        On
+                    </StatusPill>
+                ) : invalid ? (
+                    <span className="inline-flex shrink-0 items-center gap-1 font-mono text-[10px] font-semibold tracking-[0.04em] text-danger uppercase">
+                        <AlertCircle className="size-[11px]" aria-hidden />
+                        Needs a fix
+                    </span>
+                ) : (
+                    <span className="shrink-0 font-mono text-[10px] font-medium tracking-[0.04em] text-ink-3 uppercase">
+                        {kindLabel}
+                    </span>
+                )}
+            </header>
 
-            {/* Header with title */}
-            <div className="px-4 pt-5 pb-2 border-b border-border">
-                <div className="flex items-center justify-between">
-                    <h3 className="text-sm font-semibold text-foreground truncate">
-                        {title}
-                        {nodeId && (
-                            <span className="ml-2 text-xs font-normal text-muted-foreground">
-                                #{nodeId}
-                            </span>
-                        )}
-                    </h3>
-                </div>
-            </div>
-
-            {/* Content area with prompt label */}
-            <div className="p-4">
-                <div className="text-xs text-muted-foreground mb-1.5 font-medium">
-                    {contentLabel}:
-                </div>
+            <div className="px-3 py-2.5">
+                {invalid && invalidMessage && (
+                    <p className="mb-1.5 text-xs text-danger">{invalidMessage}</p>
+                )}
                 {children}
             </div>
 

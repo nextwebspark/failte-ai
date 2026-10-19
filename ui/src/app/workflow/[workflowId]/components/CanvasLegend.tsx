@@ -1,0 +1,33 @@
+"use client";
+
+import { Panel } from "@xyflow/react";
+
+const ITEMS = [
+    { label: "Agent speaks", swatch: "bg-brand" },
+    { label: "Uses a tool", swatch: "bg-sky" },
+    { label: "Where the live call is", swatch: "bg-live" },
+] as const;
+
+/**
+ * What the step colours mean (Conversation.dc.html), top right of the canvas.
+ * Hidden on small screens, where it would cover the steps.
+ */
+export function CanvasLegend() {
+    return (
+        <Panel position="top-right" className="!m-4 hidden md:block">
+            <div
+                role="group"
+                aria-label="Legend"
+                className="flex w-[180px] flex-col gap-1.5 rounded-[10px] border border-line bg-panel px-3 py-2.5 shadow-[var(--panel-shadow)]"
+            >
+                <span className="text-[10.5px] font-semibold tracking-[0.08em] text-ink-3 uppercase">Legend</span>
+                {ITEMS.map(({ label, swatch }) => (
+                    <span key={label} className="flex items-center gap-2 text-xs text-ink-2">
+                        <span aria-hidden className={`size-2.5 shrink-0 rounded-[3px] ${swatch}`} />
+                        {label}
+                    </span>
+                ))}
+            </div>
+        </Panel>
+    );
+}
