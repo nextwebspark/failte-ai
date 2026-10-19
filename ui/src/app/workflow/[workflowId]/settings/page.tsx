@@ -1,7 +1,7 @@
 "use client";
 
 import { format } from "date-fns";
-import { BookA, CalendarIcon, Clipboard, Download, ExternalLink, FileDown, Fingerprint, Loader2, Mic, Pause, PhoneOff, Play, Plus, Settings, Trash2Icon, Upload, Variable, X } from "lucide-react";
+import { BookA, CalendarIcon, Clipboard, Download, ExternalLink, FileDown, Fingerprint, Loader2, Mic, Pause, PhoneCall, PhoneOff, Play, Plus, Settings, Trash2Icon, Upload, Variable, X } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -13,7 +13,6 @@ import {
 import { LLMConfigSelector } from "@/components/LLMConfigSelector";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -27,6 +26,7 @@ import { useUnsavedChanges, useUnsavedChangesContext } from "@/context/UnsavedCh
 import { useAudioPlayback } from "@/hooks/useAudioPlayback";
 import { copyTextToClipboard } from "@/lib/clipboard";
 import logger from "@/lib/logger";
+import { cn } from "@/lib/utils";
 import {
     type AmbientNoiseConfiguration,
     type CallDispositionOption,
@@ -49,6 +49,8 @@ import {
     normalizeCallDispositions,
     validateCallDispositionRows,
 } from "./components/CallDispositionEditor";
+import { SettingBlock, SettingRow, SettingsSection } from "./SettingsLayout";
+import { SettingsSaveProvider, useSettingsSection } from "./SettingsSaveBar";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -56,17 +58,17 @@ import {
 
 const PUBLISH_WORKFLOW_REMINDER = "Publish the agent to apply the changes.";
 
-// Sidebar navigation items
-// On-this-page rail. Model overrides ("Model and voice") and the website
-// widget ("Deployment") are nav rows of their own now, so they are not here.
+// The section index. Model overrides ("Model and voice") and the website
+// widget ("Deployment") are agent nav rows of their own, so they are not here.
 const NAV_ITEMS = [
-    { id: "general", label: "General", icon: Settings },
-    { id: "variables", label: "Template variables", icon: Variable },
-    { id: "dictionary", label: "Dictionary", icon: BookA },
-    { id: "voicemail", label: "Voicemail and screening", icon: PhoneOff },
-    { id: "recordings", label: "Recordings", icon: Mic },
-    { id: "report", label: "Report", icon: FileDown },
-    { id: "identity", label: "Agent UUID", icon: Fingerprint },
+    { id: "general", label: "General" },
+    { id: "call", label: "Call behaviour" },
+    { id: "variables", label: "Variables" },
+    { id: "dictionary", label: "Dictionary" },
+    { id: "voicemail", label: "Voicemail and screening" },
+    { id: "identity", label: "Identity" },
+    { id: "recordings", label: "Recordings" },
+    { id: "report", label: "Reporting" },
 ];
 
 // ---------------------------------------------------------------------------
@@ -131,98 +133,89 @@ function ReportSection({ workflowId }: { workflowId: number }) {
     };
 
     return (
-        <Card id="report">
-            <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-base">
-                    <FileDown className="h-4 w-4" />
-                    Report
-                </CardTitle>
-                <CardDescription>
-                    Download a CSV report of completed runs for this agent, optionally filtered by date range.
-                </CardDescription>
-            </CardHeader>
-            <CardFooter className="border-t pt-6">
-                <Popover open={isPopoverOpen} onOpenChange={setIsPopoverOpen}>
-                    <PopoverTrigger asChild>
-                        <Button variant="outline" disabled={isDownloading}>
-                            <Download className="h-4 w-4 mr-2" />
-                            Download report
-                        </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-auto p-4" align="start">
-                        <div className="space-y-4">
-                            <div className="text-sm font-medium">Filter by date range</div>
-                            <div className="grid gap-3">
-                                <div className="space-y-1.5">
-                                    <Label className="text-xs">From</Label>
-                                    <div className="flex gap-2">
-                                        <Popover>
-                                            <PopoverTrigger asChild>
-                                                <Button variant="outline" size="sm" className="w-[140px] justify-start text-left font-normal">
-                                                    <CalendarIcon className="mr-2 h-3.5 w-3.5" />
-                                                    {startDate ? format(startDate, "MMM dd, yyyy") : "Start date"}
-                                                </Button>
-                                            </PopoverTrigger>
-                                            <PopoverContent className="w-auto p-0" align="start">
-                                                <Calendar
-                                                    mode="single"
-                                                    selected={startDate}
-                                                    onSelect={setStartDate}
-                                                    disabled={(date) => (endDate ? date > endDate : false)}
-                                                />
-                                            </PopoverContent>
-                                        </Popover>
-                                        <Input
-                                            type="time"
-                                            value={startTime}
-                                            onChange={(e) => setStartTime(e.target.value)}
-                                            className="w-[100px] h-8 text-xs"
-                                        />
-                                    </div>
-                                </div>
-                                <div className="space-y-1.5">
-                                    <Label className="text-xs">To</Label>
-                                    <div className="flex gap-2">
-                                        <Popover>
-                                            <PopoverTrigger asChild>
-                                                <Button variant="outline" size="sm" className="w-[140px] justify-start text-left font-normal">
-                                                    <CalendarIcon className="mr-2 h-3.5 w-3.5" />
-                                                    {endDate ? format(endDate, "MMM dd, yyyy") : "End date"}
-                                                </Button>
-                                            </PopoverTrigger>
-                                            <PopoverContent className="w-auto p-0" align="start">
-                                                <Calendar
-                                                    mode="single"
-                                                    selected={endDate}
-                                                    onSelect={setEndDate}
-                                                    disabled={(date) => (startDate ? date < startDate : false)}
-                                                />
-                                            </PopoverContent>
-                                        </Popover>
-                                        <Input
-                                            type="time"
-                                            value={endTime}
-                                            onChange={(e) => setEndTime(e.target.value)}
-                                            className="w-[100px] h-8 text-xs"
-                                        />
-                                    </div>
-                                </div>
-                            </div>
-                            <Separator />
-                            <div className="flex justify-between">
-                                <Button variant="ghost" size="sm" onClick={handleClear}>
-                                    Clear
-                                </Button>
-                                <Button size="sm" onClick={handleDownload} disabled={isDownloading}>
-                                    <Download className="h-3.5 w-3.5 mr-1.5" />
-                                    {startDate || endDate ? "Download Filtered" : "Download All"}
-                                </Button>
+        <SettingsSection id="report" icon={FileDown} title="Reporting" description="Completed calls for this agent as a CSV file.">
+            <SettingRow compact label="Download report" hint="All calls, or only those in a date range.">
+            <Popover open={isPopoverOpen} onOpenChange={setIsPopoverOpen}>
+                <PopoverTrigger asChild>
+                    <Button variant="outline" size="sm" disabled={isDownloading}>
+                        <Download className="h-4 w-4 mr-2" />
+                        Download report
+                    </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-4" align="start">
+                    <div className="space-y-4">
+                        <div className="text-sm font-medium">Filter by date range</div>
+                        <div className="grid gap-3">
+                        <div className="space-y-1.5">
+                            <Label className="text-xs">From</Label>
+                            <div className="flex gap-2">
+                                <Popover>
+                                    <PopoverTrigger asChild>
+                                    <Button variant="outline" size="sm" className="w-[140px] justify-start text-left font-normal">
+                                        <CalendarIcon className="mr-2 h-3.5 w-3.5" />
+                                        {startDate ? format(startDate, "MMM dd, yyyy") : "Start date"}
+                                    </Button>
+                                    </PopoverTrigger>
+                                    <PopoverContent className="w-auto p-0" align="start">
+                                    <Calendar
+                                        mode="single"
+                                        selected={startDate}
+                                        onSelect={setStartDate}
+                                        disabled={(date) => (endDate ? date > endDate : false)}
+                                    />
+                                    </PopoverContent>
+                                </Popover>
+                                <Input
+                                    type="time"
+                                    value={startTime}
+                                    onChange={(e) => setStartTime(e.target.value)}
+                                    className="w-[100px] h-8 text-xs"
+                                />
                             </div>
                         </div>
-                    </PopoverContent>
-                </Popover>
-            </CardFooter>
-        </Card>
+                        <div className="space-y-1.5">
+                            <Label className="text-xs">To</Label>
+                            <div className="flex gap-2">
+                                <Popover>
+                                    <PopoverTrigger asChild>
+                                    <Button variant="outline" size="sm" className="w-[140px] justify-start text-left font-normal">
+                                        <CalendarIcon className="mr-2 h-3.5 w-3.5" />
+                                        {endDate ? format(endDate, "MMM dd, yyyy") : "End date"}
+                                    </Button>
+                                    </PopoverTrigger>
+                                    <PopoverContent className="w-auto p-0" align="start">
+                                    <Calendar
+                                        mode="single"
+                                        selected={endDate}
+                                        onSelect={setEndDate}
+                                        disabled={(date) => (startDate ? date < startDate : false)}
+                                    />
+                                    </PopoverContent>
+                                </Popover>
+                                <Input
+                                    type="time"
+                                    value={endTime}
+                                    onChange={(e) => setEndTime(e.target.value)}
+                                    className="w-[100px] h-8 text-xs"
+                                />
+                            </div>
+                        </div>
+                        </div>
+                        <Separator />
+                        <div className="flex justify-between">
+                        <Button variant="ghost" size="sm" onClick={handleClear}>
+                            Clear
+                        </Button>
+                        <Button size="sm" onClick={handleDownload} disabled={isDownloading}>
+                            <Download className="h-3.5 w-3.5 mr-1.5" />
+                            {startDate || endDate ? "Download Filtered" : "Download All"}
+                        </Button>
+                        </div>
+                    </div>
+                </PopoverContent>
+            </Popover>
+            </SettingRow>
+        </SettingsSection>
     );
 }
 
@@ -237,13 +230,11 @@ function GeneralSection({
     defaultCallDispositions,
     workflowName,
     workflowId,
-    onSave,
 }: {
     workflowConfigurations: WorkflowConfigurations;
     defaultCallDispositions: CallDispositionOption[];
     workflowName: string;
     workflowId: number;
-    onSave: (configurations: WorkflowConfigurations, workflowName: string) => Promise<void>;
 }) {
     const { externalPbxIntegrationsEnabled } = useOrgConfig();
     const [name, setName] = useState(workflowName);
@@ -283,7 +274,6 @@ function GeneralSection({
     const [externalPbxLeadHeaders, setExternalPbxLeadHeaders] = useState<string[]>(
         workflowConfigurations.external_pbx_lead_headers,
     );
-    const [isSaving, setIsSaving] = useState(false);
     const [isUploadingAudio, setIsUploadingAudio] = useState(false);
     const [audioUploadError, setAudioUploadError] = useState<string | null>(null);
     const ambientFileInputRef = useRef<HTMLInputElement>(null);
@@ -310,32 +300,71 @@ function GeneralSection({
         [callDispositionRows],
     );
 
-    const isDirty = useMemo(() => {
-        const initAmbient = workflowConfigurations.ambient_noise_configuration;
-        return (
-            name !== workflowName ||
-            JSON.stringify(ambientNoiseConfig) !== JSON.stringify(initAmbient) ||
-            maxCallDuration !== workflowConfigurations.max_call_duration ||
-            maxUserIdleTimeout !== workflowConfigurations.max_user_idle_timeout ||
-            smartTurnStopSecs !== workflowConfigurations.smart_turn_stop_secs ||
-            turnStartStrategy !== workflowConfigurations.turn_start_strategy ||
-            turnStartMinWords !== workflowConfigurations.turn_start_min_words ||
-            turnStopStrategy !== workflowConfigurations.turn_stop_strategy ||
-            contextCompactionEnabled !== workflowConfigurations.context_compaction_enabled ||
-            ttsCacheEnabled !== workflowConfigurations.tts_cache_enabled ||
-            skillsEnabled !== workflowConfigurations.skills_enabled ||
-            JSON.stringify(normalizedCallDispositions) !==
-                JSON.stringify(workflowConfigurations.call_dispositions) ||
-            includeTranscriptEndTimestamps !==
+    // The form spans two cards; each gets its own unsaved dot in the index.
+    const identityDirty =
+        name !== workflowName ||
+        JSON.stringify(ambientNoiseConfig) !== JSON.stringify(workflowConfigurations.ambient_noise_configuration) ||
+        maxCallDuration !== workflowConfigurations.max_call_duration ||
+        maxUserIdleTimeout !== workflowConfigurations.max_user_idle_timeout;
+    const behaviourDirty =
+        smartTurnStopSecs !== workflowConfigurations.smart_turn_stop_secs ||
+        turnStartStrategy !== workflowConfigurations.turn_start_strategy ||
+        turnStartMinWords !== workflowConfigurations.turn_start_min_words ||
+        turnStopStrategy !== workflowConfigurations.turn_stop_strategy ||
+        contextCompactionEnabled !== workflowConfigurations.context_compaction_enabled ||
+        ttsCacheEnabled !== workflowConfigurations.tts_cache_enabled ||
+        skillsEnabled !== workflowConfigurations.skills_enabled ||
+        JSON.stringify(normalizedCallDispositions) !== JSON.stringify(workflowConfigurations.call_dispositions) ||
+        includeTranscriptEndTimestamps !==
             (workflowConfigurations.transcript_configuration?.include_end_timestamps ?? false) ||
-            JSON.stringify(externalPbxFieldMappings) !==
-            JSON.stringify(workflowConfigurations.external_pbx_field_mappings) ||
-            JSON.stringify(externalPbxLeadHeaders) !==
-            JSON.stringify(workflowConfigurations.external_pbx_lead_headers)
-        );
-    }, [name, workflowName, ambientNoiseConfig, maxCallDuration, maxUserIdleTimeout, smartTurnStopSecs, turnStartStrategy, turnStartMinWords, turnStopStrategy, contextCompactionEnabled, ttsCacheEnabled, skillsEnabled, normalizedCallDispositions, includeTranscriptEndTimestamps, externalPbxFieldMappings, externalPbxLeadHeaders, workflowConfigurations]);
+        JSON.stringify(externalPbxFieldMappings) !== JSON.stringify(workflowConfigurations.external_pbx_field_mappings) ||
+        JSON.stringify(externalPbxLeadHeaders) !== JSON.stringify(workflowConfigurations.external_pbx_lead_headers);
+    const isDirty = identityDirty || behaviourDirty;
+    useUnsavedChanges("general", identityDirty);
+    useUnsavedChanges("call", behaviourDirty);
 
-    useUnsavedChanges("general", isDirty);
+    const blocker = !name.trim()
+        ? "Add an agent name"
+        : isUploadingAudio
+            ? "Wait for the audio upload to finish"
+            : !callDispositionsValid
+                ? "Fix the call outcomes"
+                : externalPbxIntegrationsEnabled && !externalPbxSettingsValid
+                    ? "Fix the PBX fields"
+                    : null;
+
+    useSettingsSection("general", {
+        label: [identityDirty && "General", behaviourDirty && "Call behaviour"].filter(Boolean).join(", ") || "General",
+        dirty: isDirty,
+        blocker,
+        patch: () => ({
+            workflowName: name.trim(),
+            configurations: {
+                ambient_noise_configuration: ambientNoiseConfig,
+                max_call_duration: maxCallDuration,
+                max_user_idle_timeout: maxUserIdleTimeout,
+                smart_turn_stop_secs: smartTurnStopSecs,
+                turn_start_strategy: turnStartStrategy,
+                turn_start_min_words: turnStartMinWords,
+                turn_stop_strategy: turnStopStrategy,
+                context_compaction_enabled: contextCompactionEnabled,
+                tts_cache_enabled: ttsCacheEnabled,
+                skills_enabled: skillsEnabled,
+                call_dispositions: normalizedCallDispositions,
+                transcript_configuration: {
+                    ...(workflowConfigurations.transcript_configuration ?? {}),
+                    include_end_timestamps: includeTranscriptEndTimestamps,
+                },
+                external_pbx_field_mappings: externalPbxFieldMappings,
+                external_pbx_lead_headers: externalPbxLeadHeaders.map((field) => field.trim()),
+            },
+        }),
+        // Show the dispositions the way they were saved (trimmed, normalised).
+        afterSave: () =>
+            setCallDispositionRows((current) =>
+                current.map((row, index) => ({ ...row, ...normalizedCallDispositions[index] })),
+            ),
+    });
 
     const handleAmbientFileUpload = async (file: File) => {
         if (file.size > MAX_AMBIENT_NOISE_FILE_SIZE) {
@@ -395,92 +424,34 @@ function GeneralSection({
         }));
     };
 
-    const handleSave = async () => {
-        setIsSaving(true);
-        const callDispositionRowsAtSave = callDispositionRows;
-        try {
-            await onSave(
-                {
-                    ...workflowConfigurations,
-                    ambient_noise_configuration: ambientNoiseConfig,
-                    max_call_duration: maxCallDuration,
-                    max_user_idle_timeout: maxUserIdleTimeout,
-                    smart_turn_stop_secs: smartTurnStopSecs,
-                    turn_start_strategy: turnStartStrategy,
-                    turn_start_min_words: turnStartMinWords,
-                    turn_stop_strategy: turnStopStrategy,
-                    context_compaction_enabled: contextCompactionEnabled,
-                    tts_cache_enabled: ttsCacheEnabled,
-                    skills_enabled: skillsEnabled,
-                    call_dispositions: normalizedCallDispositions,
-                    transcript_configuration: {
-                        ...(workflowConfigurations.transcript_configuration ?? {}),
-                        include_end_timestamps: includeTranscriptEndTimestamps,
-                    },
-                    external_pbx_field_mappings: externalPbxFieldMappings,
-                    external_pbx_lead_headers: externalPbxLeadHeaders.map((field) => field.trim()),
-                },
-                name,
-            );
-            setCallDispositionRows((current) => (
-                current === callDispositionRowsAtSave
-                    ? current.map((row, index) => ({
-                        ...row,
-                        ...normalizedCallDispositions[index],
-                    }))
-                    : current
-            ));
-            toast.success(`General settings saved. ${PUBLISH_WORKFLOW_REMINDER}`);
-        } catch (error) {
-            console.error("Failed to save general settings:", error);
-        } finally {
-            setIsSaving(false);
-        }
-    };
-
     return (
-        <Card id="general">
-            <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-base">
-                    <Settings className="h-4 w-4" />
-                    General
-                </CardTitle>
-                <CardDescription>Agent name, call behavior, and turn detection.
-                </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-6">
-                {/* Agent Name */}
-                <div className="space-y-2">
-                    <Label htmlFor="workflow_name" className="text-sm font-medium">Agent name</Label>
+        <>
+            <SettingsSection id="general" icon={Settings} tone="brand" title="General" description="Name, background sound and call limits.">
+                <SettingRow label="Agent name" htmlFor="workflow_name" hint="Shown in lists, reports and the test panel.">
                     <Input
                         id="workflow_name"
                         value={name}
                         onChange={(e) => setName(e.target.value)}
-                        placeholder="Enter agent name"
+                        placeholder="Untitled agent"
+                        className="w-full"
                     />
-                </div>
-
-                <Separator />
-
-                {/* Ambient noise */}
-                <div className="space-y-4">
-                    <div>
-                        <h3 className="text-sm font-medium">Ambient noise</h3>
-                        <p className="text-xs text-muted-foreground mt-0.5">
-                            Add background ambient noise to make the conversation sound more natural.
-                        </p>
-                    </div>
-                    <div className="flex items-center justify-between">
-                        <Label htmlFor="ambient-noise-enabled" className="text-sm">Use ambient noise</Label>
-                        <Switch
-                            id="ambient-noise-enabled"
-                            checked={ambientNoiseConfig.enabled}
-                            onCheckedChange={(checked) =>
-                                setAmbientNoiseConfig((prev) => ({ ...prev, enabled: checked }))
-                            }
-                        />
-                    </div>
-                    {ambientNoiseConfig.enabled && (
+                </SettingRow>
+                <SettingRow
+                    compact
+                    label="Ambient noise"
+                    htmlFor="ambient-noise-enabled"
+                    hint="Plays quietly under the agent's voice so silence doesn't sound like a dropped line."
+                >
+                    <Switch
+                        id="ambient-noise-enabled"
+                        checked={ambientNoiseConfig.enabled}
+                        onCheckedChange={(checked) =>
+                            setAmbientNoiseConfig((prev) => ({ ...prev, enabled: checked }))
+                        }
+                    />
+                </SettingRow>
+                {ambientNoiseConfig.enabled && (
+                    <SettingBlock>
                         <div className="space-y-4">
                             <div className="space-y-2">
                                 <Label htmlFor="ambient-volume" className="text-xs">Volume</Label>
@@ -584,267 +555,175 @@ function GeneralSection({
                                 )}
                             </div>
                         </div>
-                    )}
-                </div>
+                    </SettingBlock>
+                )}
+                <SettingRow compact label="Maximum call length" htmlFor="max_call_duration" hint="In seconds. The agent wraps up when it is reached. Default 600 (10 minutes).">
+                    <Input
+                        id="max_call_duration"
+                        type="number"
+                        min="1"
+                        value={maxCallDuration}
+                        onChange={(e) => {
+                            const value = parseInt(e.target.value);
+                            if (!isNaN(value) && value > 0) setMaxCallDuration(value);
+                        }}
+                        className="w-[110px] text-right font-mono"
+                    />
+                </SettingRow>
+                <SettingRow compact label="Caller idle timeout" htmlFor="max_user_idle_timeout" hint="In seconds of silence from the caller before the agent checks in. Default 10.">
+                    <Input
+                        id="max_user_idle_timeout"
+                        type="number"
+                        min="1"
+                        value={maxUserIdleTimeout}
+                        onChange={(e) => {
+                            const value = parseInt(e.target.value);
+                            if (!isNaN(value) && value > 0) setMaxUserIdleTimeout(value);
+                        }}
+                        className="w-[110px] text-right font-mono"
+                    />
+                </SettingRow>
+            </SettingsSection>
 
-                <Separator />
-
-                {/* Turn detection */}
-                <div className="space-y-4">
-                    <div>
-                        <h3 className="text-sm font-medium">Turn detection</h3>
-                        <p className="text-xs text-muted-foreground mt-0.5">
-                            Configure how the agent detects when the user has finished speaking.
-                        </p>
-                    </div>
-                    <div className="space-y-2">
-                        <Label htmlFor="turn_stop_strategy" className="text-xs">Detection strategy</Label>
-                        <Select
-                            value={turnStopStrategy}
-                            onValueChange={(value: TurnStopStrategy) => setTurnStopStrategy(value)}
-                        >
-                            <SelectTrigger id="turn_stop_strategy">
-                                <SelectValue placeholder="Select strategy" />
-                            </SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="transcription">Transcription-based</SelectItem>
-                                <SelectItem value="turn_analyzer">Smart Turn Analyzer</SelectItem>
-                            </SelectContent>
-                        </Select>
-                        <p className="text-xs text-muted-foreground">
-                            {turnStopStrategy === "transcription"
-                                ? "Best for short responses (1-2 word statements). Ends turn when transcription indicates completion."
-                                : "Best for longer responses with natural pauses. Uses ML model to detect end of turn."}
-                        </p>
-                    </div>
-                    {turnStopStrategy === "turn_analyzer" && (
-                        <div className="space-y-2">
-                            <Label htmlFor="smart_turn_stop_secs" className="text-xs">
-                                Incomplete Turn Timeout (seconds)
-                            </Label>
-                            <Input
-                                id="smart_turn_stop_secs"
-                                type="number"
-                                step="0.5"
-                                min="0.5"
-                                max="10"
-                                value={smartTurnStopSecs}
-                                onChange={(e) => {
-                                    const value = parseFloat(e.target.value);
-                                    if (!isNaN(value) && value >= 0.5) setSmartTurnStopSecs(value);
-                                }}
-                            />
-                            <p className="text-xs text-muted-foreground">
-                                Max silence duration before ending an incomplete turn. Default: 2 seconds
-                            </p>
-                        </div>
-                    )}
-                </div>
-
-                <Separator />
-
-                {/* Interruption */}
-                <div className="space-y-4">
-                    <div>
-                        <h3 className="text-sm font-medium">Interruption</h3>
-                        <p className="text-xs text-muted-foreground mt-0.5">
-                            Configure when user speech should interrupt the agent while it is speaking.
-                        </p>
-                    </div>
-                    <div className="space-y-2">
-                        <Label htmlFor="turn_start_strategy" className="text-xs">Interruption strategy</Label>
-                        <Select
-                            value={turnStartStrategy}
-                            onValueChange={(value: TurnStartStrategy) => setTurnStartStrategy(value)}
-                        >
-                            <SelectTrigger id="turn_start_strategy">
-                                <SelectValue placeholder="Select strategy" />
-                            </SelectTrigger>
-                            <SelectContent>
-                                {TURN_START_STRATEGY_OPTIONS.map((option) => (
-                                    <SelectItem key={option.value} value={option.value}>
-                                        {option.label}
-                                    </SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
-                        <p className="text-xs text-muted-foreground">
-                            {selectedTurnStartStrategy?.description}
-                        </p>
-                    </div>
-                    {turnStartStrategy === "min_words" && (
-                        <div className="space-y-2">
-                            <Label htmlFor="turn_start_min_words" className="text-xs">
-                                Minimum words before interruption
-                            </Label>
-                            <Input
-                                id="turn_start_min_words"
-                                type="number"
-                                step="1"
-                                min="1"
-                                max="10"
-                                value={turnStartMinWords}
-                                onChange={(e) => {
-                                    const value = parseInt(e.target.value);
-                                    if (!isNaN(value) && value >= 1) setTurnStartMinWords(value);
-                                }}
-                            />
-                            <p className="text-xs text-muted-foreground">
-                                Number of transcribed words needed to interrupt while the bot is speaking. Default: {DEFAULT_TURN_START_MIN_WORDS}
-                            </p>
-                        </div>
-                    )}
-                </div>
-
-                <Separator />
-
-                {/* Transcript */}
-                <div className="space-y-4">
-                    <div>
-                        <h3 className="text-sm font-medium">Transcript</h3>
-                        <p className="text-xs text-muted-foreground mt-0.5">
-                            Include start and stop timestamps for each speaker in the uploaded transcript.
-                        </p>
-                    </div>
-                    <div className="flex items-center justify-between">
-                        <Label htmlFor="transcript-end-timestamps-enabled" className="text-sm">
-                            Enhanced timestamped transcript
-                        </Label>
-                        <Switch
-                            id="transcript-end-timestamps-enabled"
-                            checked={includeTranscriptEndTimestamps}
-                            onCheckedChange={setIncludeTranscriptEndTimestamps}
+            <SettingsSection id="call" icon={PhoneCall} tone="sky" title="Call behaviour" description="How the agent listens, when it can be interrupted, and what it records.">
+                <SettingRow
+                    label="Turn detection"
+                    htmlFor="turn_stop_strategy"
+                    hint={turnStopStrategy === "transcription"
+                        ? "Best for short answers. Ends the caller's turn when the transcription looks complete."
+                        : "Best for longer answers with pauses. A model detects the end of the caller's turn."}
+                >
+                    <Select
+                        value={turnStopStrategy}
+                        onValueChange={(value: TurnStopStrategy) => setTurnStopStrategy(value)}
+                    >
+                        <SelectTrigger id="turn_stop_strategy" className="w-full">
+                            <SelectValue placeholder="Select strategy" />
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="transcription">Transcription-based</SelectItem>
+                            <SelectItem value="turn_analyzer">Smart turn analyzer</SelectItem>
+                        </SelectContent>
+                    </Select>
+                </SettingRow>
+                {turnStopStrategy === "turn_analyzer" && (
+                    <SettingRow
+                        compact
+                        label="Incomplete turn timeout"
+                        htmlFor="smart_turn_stop_secs"
+                        hint="Seconds of silence before an unfinished turn ends. Default 2."
+                    >
+                        <Input
+                            id="smart_turn_stop_secs"
+                            type="number"
+                            step="0.5"
+                            min="0.5"
+                            max="10"
+                            value={smartTurnStopSecs}
+                            onChange={(e) => {
+                                const value = parseFloat(e.target.value);
+                                if (!isNaN(value) && value >= 0.5) setSmartTurnStopSecs(value);
+                            }}
+                            className="w-[110px] text-right font-mono"
                         />
-                    </div>
-                    <div className="rounded-md border bg-muted/20 p-3">
-                        <pre className="whitespace-pre-wrap text-xs leading-relaxed text-muted-foreground">
+                    </SettingRow>
+                )}
+                <SettingRow label="Interruptions" htmlFor="turn_start_strategy" hint={selectedTurnStartStrategy?.description}>
+                    <Select
+                        value={turnStartStrategy}
+                        onValueChange={(value: TurnStartStrategy) => setTurnStartStrategy(value)}
+                    >
+                        <SelectTrigger id="turn_start_strategy" className="w-full">
+                            <SelectValue placeholder="Select strategy" />
+                        </SelectTrigger>
+                        <SelectContent>
+                            {TURN_START_STRATEGY_OPTIONS.map((option) => (
+                                <SelectItem key={option.value} value={option.value}>
+                                    {option.label}
+                                </SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
+                </SettingRow>
+                {turnStartStrategy === "min_words" && (
+                    <SettingRow
+                        compact
+                        label="Words before an interruption"
+                        htmlFor="turn_start_min_words"
+                        hint={`Transcribed words the caller must say to interrupt. Default ${DEFAULT_TURN_START_MIN_WORDS}.`}
+                    >
+                        <Input
+                            id="turn_start_min_words"
+                            type="number"
+                            step="1"
+                            min="1"
+                            max="10"
+                            value={turnStartMinWords}
+                            onChange={(e) => {
+                                const value = parseInt(e.target.value);
+                                if (!isNaN(value) && value >= 1) setTurnStartMinWords(value);
+                            }}
+                            className="w-[110px] text-right font-mono"
+                        />
+                    </SettingRow>
+                )}
+                <SettingRow
+                    compact
+                    label="Timestamped transcript"
+                    htmlFor="transcript-end-timestamps-enabled"
+                    hint="Adds start and end times for each line of the uploaded transcript."
+                >
+                    <Switch
+                        id="transcript-end-timestamps-enabled"
+                        checked={includeTranscriptEndTimestamps}
+                        onCheckedChange={setIncludeTranscriptEndTimestamps}
+                    />
+                </SettingRow>
+                {includeTranscriptEndTimestamps && (
+                    <SettingBlock>
+                        <pre className="whitespace-pre-wrap rounded-md border border-line bg-panel-2 p-3 text-xs leading-relaxed text-ink-3">
                             {`[2026-07-06T10:00:00.000Z -> 2026-07-06T10:00:04.800Z] assistant: Can you confirm your date of birth?
 [2026-07-06T10:00:06.200Z -> 2026-07-06T10:00:08.700Z] user: January fifth, nineteen ninety.`}
                         </pre>
-                    </div>
-                </div>
-
-                <Separator />
-
-                {/* Context compaction */}
-                <div className="space-y-4">
-                    <div>
-                        <h3 className="text-sm font-medium">Context compaction</h3>
-                        <p className="text-xs text-muted-foreground mt-0.5">
-                            Automatically summarize conversation context when transitioning between nodes. Not applicable in Realtime mode - the speech-to-speech service manages its own conversation state and this setting is ignored.
-                        </p>
-                    </div>
-                    <div className="flex items-center justify-between">
-                        <Label htmlFor="context-compaction-enabled" className="text-sm">
-                            Enable context compaction
-                        </Label>
-                        <Switch
-                            id="context-compaction-enabled"
-                            checked={contextCompactionEnabled}
-                            onCheckedChange={setContextCompactionEnabled}
-                        />
-                    </div>
-                </div>
-
-                <Separator />
-
-                <div className="space-y-4">
-                    <div>
-                        <h3 className="text-sm font-medium">Skills</h3>
-                        <p className="text-xs text-muted-foreground mt-0.5">
-                            Skills add a short list to each step&apos;s prompt and two tools; turn off for latency-critical agents.
-                        </p>
-                    </div>
-                    <div className="flex items-center justify-between">
-                        <Label htmlFor="skills-enabled" className="text-sm">
-                            Enable skills
-                        </Label>
-                        <Switch
-                            id="skills-enabled"
-                            checked={skillsEnabled}
-                            onCheckedChange={setSkillsEnabled}
-                        />
-                    </div>
-                </div>
-
-                <Separator />
-
-                <div className="space-y-4">
-                    <div>
-                        <h3 className="text-sm font-medium">Speech caching</h3>
-                        <p className="text-xs text-muted-foreground mt-0.5">
-                            Reuse generated audio for repeated phrases to reduce response time and speech generation costs.
-                            Cached audio expires after 24 hours. Currently available with MiniMax TTS.
-                        </p>
-                    </div>
-                    <div className="flex items-center justify-between">
-                        <Label htmlFor="tts-cache-enabled" className="text-sm">
-                            Enable speech caching
-                        </Label>
-                        <Switch
-                            id="tts-cache-enabled"
-                            checked={ttsCacheEnabled}
-                            onCheckedChange={setTtsCacheEnabled}
-                        />
-                    </div>
-                </div>
-
-                <Separator />
-
-                <CallDispositionEditor
-                    rows={callDispositionRows}
-                    onChange={setCallDispositionRows}
-                    defaultDispositions={defaultCallDispositions}
-                />
-
-                <Separator />
-
-                {/* Call management */}
-                <div className="space-y-4">
-                    <div>
-                        <h3 className="text-sm font-medium">Call management</h3>
-                        <p className="text-xs text-muted-foreground mt-0.5">
-                            Configure call duration limits and idle timeout settings.
-                        </p>
-                    </div>
-                    <div className="grid grid-cols-2 gap-4">
-                        <div className="space-y-2">
-                            <Label htmlFor="max_call_duration" className="text-xs">Max call duration (seconds)</Label>
-                            <Input
-                                id="max_call_duration"
-                                type="number"
-                                min="1"
-                                value={maxCallDuration}
-                                onChange={(e) => {
-                                    const value = parseInt(e.target.value);
-                                    if (!isNaN(value) && value > 0) setMaxCallDuration(value);
-                                }}
-                            />
-                            <p className="text-xs text-muted-foreground">Default: 600 (10 minutes)</p>
-                        </div>
-                        <div className="space-y-2">
-                            <Label htmlFor="max_user_idle_timeout" className="text-xs">
-                                Max User Idle Timeout (seconds)
-                            </Label>
-                            <Input
-                                id="max_user_idle_timeout"
-                                type="number"
-                                min="1"
-                                value={maxUserIdleTimeout}
-                                onChange={(e) => {
-                                    const value = parseInt(e.target.value);
-                                    if (!isNaN(value) && value > 0) setMaxUserIdleTimeout(value);
-                                }}
-                            />
-                            <p className="text-xs text-muted-foreground">Default: 10 seconds</p>
-                        </div>
-                    </div>
-                </div>
-
+                    </SettingBlock>
+                )}
+                <SettingRow
+                    compact
+                    label="Context compaction"
+                    htmlFor="context-compaction-enabled"
+                    hint="Summarises the conversation when moving between steps. Ignored in speech-to-speech (Realtime) mode."
+                >
+                    <Switch
+                        id="context-compaction-enabled"
+                        checked={contextCompactionEnabled}
+                        onCheckedChange={setContextCompactionEnabled}
+                    />
+                </SettingRow>
+                <SettingRow
+                    compact
+                    label="Skills"
+                    htmlFor="skills-enabled"
+                    hint="Adds a short skills list and two tools to each step. Turn off for latency-critical agents."
+                >
+                    <Switch id="skills-enabled" checked={skillsEnabled} onCheckedChange={setSkillsEnabled} />
+                </SettingRow>
+                <SettingRow
+                    compact
+                    label="Speech caching"
+                    htmlFor="tts-cache-enabled"
+                    hint="Reuses audio for repeated phrases for 24 hours, to answer faster and cost less. MiniMax voices only."
+                >
+                    <Switch id="tts-cache-enabled" checked={ttsCacheEnabled} onCheckedChange={setTtsCacheEnabled} />
+                </SettingRow>
+                <SettingBlock>
+                    <CallDispositionEditor
+                        rows={callDispositionRows}
+                        onChange={setCallDispositionRows}
+                        defaultDispositions={defaultCallDispositions}
+                    />
+                </SettingBlock>
                 {externalPbxIntegrationsEnabled && (
-                    <>
-                        <Separator />
-
+                    <SettingBlock>
                         {/* External PBX field updates */}
                         <div className="space-y-4">
                             <div>
@@ -979,24 +858,10 @@ function GeneralSection({
                                 </div>
                             </div>
                         </div>
-                    </>
+                    </SettingBlock>
                 )}
-            </CardContent>
-            <CardFooter className="justify-end gap-3 border-t pt-6">
-                {isDirty && <span className="text-xs text-muted-foreground">Unsaved changes</span>}
-                <Button
-                    onClick={handleSave}
-                    disabled={
-                        isSaving
-                        || !isDirty
-                        || !callDispositionsValid
-                        || (externalPbxIntegrationsEnabled && !externalPbxSettingsValid)
-                    }
-                >
-                    {isSaving ? "Saving..." : "Save General Settings"}
-                </Button>
-            </CardFooter>
-        </Card>
+            </SettingsSection>
+        </>
     );
 }
 
@@ -1014,19 +879,27 @@ function TemplateVariablesSection({
     const [contextVars, setContextVars] = useState<Record<string, string>>(templateContextVariables);
     const [newKey, setNewKey] = useState("");
     const [newValue, setNewValue] = useState("");
-    const [isSaving, setIsSaving] = useState(false);
 
-    const isDirty = useMemo(() => {
-        const pendingVars = newKey && newValue ? { ...contextVars, [newKey]: newValue } : contextVars;
-        return JSON.stringify(pendingVars) !== JSON.stringify(templateContextVariables);
-    }, [contextVars, newKey, newValue, templateContextVariables]);
+    // A filled-in "add" row counts as a change, and is saved with the rest.
+    const pendingVars = newKey.trim() && newValue ? { ...contextVars, [newKey.trim()]: newValue } : contextVars;
+    const isDirty = JSON.stringify(pendingVars) !== JSON.stringify(templateContextVariables);
 
     useUnsavedChanges("variables", isDirty);
+    useSettingsSection("variables", {
+        label: "Variables",
+        dirty: isDirty,
+        blocker: newKey.trim() && !newValue ? "Give the new variable a value" : null,
+        save: () => onSave(pendingVars),
+        afterSave: () => {
+            setContextVars(pendingVars);
+            setNewKey("");
+            setNewValue("");
+        },
+    });
 
     const handleAdd = () => {
-        if (newKey && newValue) {
-            setContextVars((prev) => ({ ...prev, [newKey]: newValue }));
-        }
+        if (!newKey.trim() || !newValue) return;
+        setContextVars((prev) => ({ ...prev, [newKey.trim()]: newValue }));
         setNewKey("");
         setNewValue("");
     };
@@ -1039,87 +912,84 @@ function TemplateVariablesSection({
         });
     };
 
-    const handleSave = async () => {
-        setIsSaving(true);
-        try {
-            let varsToSave = contextVars;
-            if (newKey && newValue) {
-                varsToSave = { ...varsToSave, [newKey]: newValue };
-            }
-            await onSave(varsToSave);
-            toast.success(`Template variables saved. ${PUBLISH_WORKFLOW_REMINDER}`);
-        } catch (error) {
-            console.error("Failed to save variables:", error);
-        } finally {
-            setIsSaving(false);
-        }
-    };
+    const entries = Object.entries(contextVars);
+    const columns = "grid grid-cols-[minmax(0,180px)_minmax(0,1fr)_36px] items-center gap-3 px-[18px]";
 
     return (
-        <Card id="variables">
-            <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-base">
-                    <Variable className="h-4 w-4" />
-                    Template variables
-                </CardTitle>
-                <CardDescription>
-                    Variables available in workflow prompts via {`{{variable_name}}`} syntax for testing the workflow.
-                </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-                {/* Existing Variables */}
-                {Object.entries(contextVars).length > 0 && (
-                    <div className="space-y-2">
-                        <Label className="text-sm font-medium">Current variables</Label>
-                        {Object.entries(contextVars).map(([key, value]) => (
-                            <div key={key} className="flex items-center gap-2 rounded-md border p-2">
-                                <div className="flex-1 min-w-0">
-                                    <div className="text-sm font-medium">{key}</div>
-                                    <div className="text-xs text-muted-foreground truncate">{value}</div>
-                                </div>
-                                <Button size="sm" variant="ghost" onClick={() => handleRemove(key)}>
-                                    <Trash2Icon className="h-4 w-4" />
-                                </Button>
-                            </div>
-                        ))}
+        <SettingsSection
+            id="variables"
+            icon={Variable}
+            tone="sky"
+            title="Variables"
+            description={
+                <>
+                    Values prompts can use as <code className="font-mono text-[11.5px] text-ink-2">{"{{name}}"}</code>.
+                    Campaigns and the API can override them per call.
+                </>
+            }
+        >
+            <div>
+                <div
+                    aria-hidden
+                    className={`${columns} bg-panel-2 py-2 text-[10.5px] font-semibold uppercase tracking-[0.08em] text-ink-3`}
+                >
+                    <span>Name</span>
+                    <span>Default value</span>
+                    <span />
+                </div>
+                {entries.map(([key, value]) => (
+                    <div key={key} className={`${columns} border-t border-line-soft py-2`}>
+                        <span className="truncate font-mono text-[12.5px] text-foreground" title={key}>
+                            {key}
+                        </span>
+                        <Input
+                            aria-label={`Default value for ${key}`}
+                            value={value}
+                            onChange={(e) => setContextVars((prev) => ({ ...prev, [key]: e.target.value }))}
+                            className="h-8"
+                        />
+                        <Button
+                            size="icon"
+                            variant="ghost"
+                            onClick={() => handleRemove(key)}
+                            aria-label={`Remove ${key}`}
+                            className="size-8 text-ink-3 hover:text-danger"
+                        >
+                            <Trash2Icon className="h-4 w-4" />
+                        </Button>
                     </div>
-                )}
-
-                {/* Add new variable */}
-                <div className="space-y-3">
-                    <Label className="text-sm font-medium">Add new variable</Label>
-                    <div className="flex gap-2">
-                        <div className="flex-1 space-y-1">
-                            <Label htmlFor="var-key" className="text-xs">Key</Label>
-                            <Input
-                                id="var-key"
-                                placeholder="Enter variable key"
-                                value={newKey}
-                                onChange={(e) => setNewKey(e.target.value)}
-                            />
-                        </div>
-                        <div className="flex-1 space-y-1">
-                            <Label htmlFor="var-value" className="text-xs">Value</Label>
-                            <Input
-                                id="var-value"
-                                placeholder="Enter variable value"
-                                value={newValue}
-                                onChange={(e) => setNewValue(e.target.value)}
-                            />
-                        </div>
-                    </div>
-                    <Button size="sm" onClick={handleAdd} disabled={!newKey || !newValue}>
-                        Add variable
+                ))}
+                <div className={`${columns} border-t border-line-soft py-2`}>
+                    <Input
+                        aria-label="New variable name"
+                        placeholder="new_variable"
+                        value={newKey}
+                        onChange={(e) => setNewKey(e.target.value)}
+                        className="h-8 font-mono text-[12.5px]"
+                    />
+                    <Input
+                        aria-label="New variable value"
+                        placeholder="Default value"
+                        value={newValue}
+                        onChange={(e) => setNewValue(e.target.value)}
+                        onKeyDown={(e) => {
+                            if (e.key === "Enter") handleAdd();
+                        }}
+                        className="h-8"
+                    />
+                    <Button
+                        size="icon"
+                        variant="outline"
+                        onClick={handleAdd}
+                        disabled={!newKey.trim() || !newValue}
+                        aria-label="Add variable"
+                        className="size-8"
+                    >
+                        <Plus className="h-4 w-4" />
                     </Button>
                 </div>
-            </CardContent>
-            <CardFooter className="justify-end gap-3 border-t pt-6">
-                {isDirty && <span className="text-xs text-muted-foreground">Unsaved changes</span>}
-                <Button onClick={handleSave} disabled={isSaving || !isDirty}>
-                    {isSaving ? "Saving..." : "Save Variables"}
-                </Button>
-            </CardFooter>
-        </Card>
+            </div>
+        </SettingsSection>
     );
 }
 
@@ -1135,52 +1005,36 @@ function DictionarySection({
     onSave: (dictionary: string) => Promise<void>;
 }) {
     const [dictionaryValue, setDictionaryValue] = useState(dictionary);
-    const [isSaving, setIsSaving] = useState(false);
-
     const isDirty = dictionaryValue !== dictionary;
 
     useUnsavedChanges("dictionary", isDirty);
-
-    const handleSave = async () => {
-        setIsSaving(true);
-        try {
-            await onSave(dictionaryValue);
-            toast.success(`Dictionary saved. ${PUBLISH_WORKFLOW_REMINDER}`);
-        } catch (error) {
-            console.error("Failed to save dictionary:", error);
-        } finally {
-            setIsSaving(false);
-        }
-    };
+    useSettingsSection("dictionary", {
+        label: "Dictionary",
+        dirty: isDirty,
+        blocker: null,
+        save: () => onSave(dictionaryValue),
+    });
 
     return (
-        <Card id="dictionary">
-            <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-base">
-                    <BookA className="h-4 w-4" />
-                    Dictionary
-                </CardTitle>
-                <CardDescription>
-                    Add words the agent should actively listen for &mdash; company jargon, names,
-                    industry terms. May incur extra cost depending on provider.
-                </CardDescription>
-            </CardHeader>
-            <CardContent>
+        <SettingsSection
+            id="dictionary"
+            icon={BookA}
+            tone="amber"
+            title="Dictionary"
+            description="Names and terms the transcriber should listen for. May cost extra with some providers."
+        >
+            <SettingBlock>
+                <Label htmlFor="dictionary-terms" className="sr-only">Dictionary terms</Label>
                 <Textarea
-                    placeholder="Enter words separated by comma (e.g. billing department, tretinoin)"
+                    id="dictionary-terms"
+                    placeholder="Words separated by commas, e.g. billing department, tretinoin"
                     value={dictionaryValue}
                     onChange={(e) => setDictionaryValue(e.target.value)}
                     rows={4}
-                    className="resize-none"
+                    className="resize-y font-mono text-[13px]"
                 />
-            </CardContent>
-            <CardFooter className="justify-end gap-3 border-t pt-6">
-                {isDirty && <span className="text-xs text-muted-foreground">Unsaved changes</span>}
-                <Button onClick={handleSave} disabled={isSaving || !isDirty}>
-                    {isSaving ? "Saving..." : "Save Dictionary"}
-                </Button>
-            </CardFooter>
-        </Card>
+            </SettingBlock>
+        </SettingsSection>
     );
 }
 
@@ -1191,13 +1045,9 @@ function DictionarySection({
 function VoicemailSection({
     workflowConfigurations,
     defaultAnswerClassifierPrompt,
-    workflowName,
-    onSave,
 }: {
     workflowConfigurations: WorkflowConfigurations;
     defaultAnswerClassifierPrompt: string;
-    workflowName: string;
-    onSave: (configurations: WorkflowConfigurations, workflowName: string) => Promise<void>;
 }) {
     const getConfig = (): VoicemailDetectionConfiguration => ({
         ...DEFAULT_VOICEMAIL_DETECTION_CONFIGURATION,
@@ -1222,7 +1072,6 @@ function VoicemailSection({
         setSystemPrompt(savedPrompt || defaultAnswerClassifierPrompt);
     }, [defaultAnswerClassifierPrompt, promptEdited, savedPrompt]);
     const [answerSettings, setAnswerSettings] = useState(readAnswerSupervisorSettings(getConfig()));
-    const [isSaving, setIsSaving] = useState(false);
 
     const isDirty = useMemo(() => {
         const init = {
@@ -1244,62 +1093,52 @@ function VoicemailSection({
 
     useUnsavedChanges("voicemail", isDirty);
 
-    const handleSave = async () => {
-        setIsSaving(true);
-        try {
-            const voicemailConfig: VoicemailDetectionConfiguration = {
-                ...answerSettings,
-                enabled,
-                // Platform models classify with the agent's model; never send a key.
-                use_workflow_llm: platformModels || useWorkflowLlm,
-                provider: platformModels || useWorkflowLlm ? undefined : provider,
-                model: platformModels || useWorkflowLlm ? undefined : model,
-                api_key: platformModels || useWorkflowLlm ? undefined : apiKey,
-                // Persist only instructions that differ from the built-in text, so a
-                // workflow that never customized them keeps following platform updates
-                // instead of freezing today's copy. Clearing the box reverts to them.
-                system_prompt:
-                    systemPrompt.trim() &&
-                        systemPrompt.trim() !== defaultAnswerClassifierPrompt.trim()
-                        ? systemPrompt.trim()
-                        : undefined,
-            };
-            await onSave(
-                { ...workflowConfigurations, voicemail_detection: voicemailConfig },
-                workflowName,
-            );
-            setSystemPrompt(voicemailConfig.system_prompt || defaultAnswerClassifierPrompt);
+    const buildVoicemailConfig = (): VoicemailDetectionConfiguration => ({
+        ...answerSettings,
+        enabled,
+        // Platform models classify with the agent's model; never send a key.
+        use_workflow_llm: platformModels || useWorkflowLlm,
+        provider: platformModels || useWorkflowLlm ? undefined : provider,
+        model: platformModels || useWorkflowLlm ? undefined : model,
+        api_key: platformModels || useWorkflowLlm ? undefined : apiKey,
+        // Persist only instructions that differ from the built-in text, so a
+        // workflow that never customized them keeps following platform updates
+        // instead of freezing today's copy. Clearing the box reverts to them.
+        system_prompt:
+            systemPrompt.trim() &&
+                systemPrompt.trim() !== defaultAnswerClassifierPrompt.trim()
+                ? systemPrompt.trim()
+                : undefined,
+    });
+
+    useSettingsSection("voicemail", {
+        label: "Voicemail and screening",
+        dirty: isDirty,
+        blocker: enabled && isVoicemailMessageMissing(answerSettings) ? "Add the voicemail message" : null,
+        patch: () => ({ configurations: { voicemail_detection: buildVoicemailConfig() } }),
+        afterSave: () => {
+            setSystemPrompt(buildVoicemailConfig().system_prompt || defaultAnswerClassifierPrompt);
             setPromptEdited(false);
-            toast.success(`Voicemail settings saved. ${PUBLISH_WORKFLOW_REMINDER}`);
-        } catch (error) {
-            console.error("Failed to save voicemail settings:", error);
-        } finally {
-            setIsSaving(false);
-        }
-    };
+        },
+    });
 
     return (
-        <Card id="voicemail">
-            <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-base">
-                    <PhoneOff className="h-4 w-4" />
-                    Voicemail and screening
-                </CardTitle>
-                <CardDescription>
-                    Choose how the agent handles voicemail and call screening. Applies to outbound calls with separate speech and language models.
-                    <span className="mt-2 block">
-                        These settings do not apply to realtime speech-to-speech models. Support for realtime models is coming soon.
-                    </span>
-                </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-                <div className="flex items-center space-x-2 rounded-md border bg-muted/20 p-2">
-                    <Switch id="voicemail-enabled" checked={enabled} onCheckedChange={setEnabled} />
-                    <Label htmlFor="voicemail-enabled">Enable voicemail and screening handling</Label>
-                </div>
-
-                {enabled && (
-                    <>
+        <SettingsSection
+            id="voicemail"
+            icon={PhoneOff}
+            title="Voicemail and screening"
+            description="What the agent does when a machine or call screener answers. Outbound calls with separate speech and language models; not realtime speech-to-speech yet."
+        >
+            <SettingRow
+                compact
+                label="Handle voicemail and screening"
+                htmlFor="voicemail-enabled"
+                hint="Detects voicemail, screening services and phone menus before the agent talks."
+            >
+                <Switch id="voicemail-enabled" checked={enabled} onCheckedChange={setEnabled} />
+            </SettingRow>
+            {enabled && (
+                <SettingBlock>
                         <AnswerSupervisorFields value={answerSettings} onChange={setAnswerSettings} />
                         <details className="rounded-md border p-3">
                             <summary className="cursor-pointer text-sm font-medium">Classification model</summary>
@@ -1337,7 +1176,6 @@ function VoicemailSection({
                                     <Label htmlFor="voicemail-system-prompt">Classifier instructions</Label>
                                     <Textarea
                                         id="voicemail-system-prompt"
-                                        disabled={isSaving}
                                         rows={6}
                                         maxLength={8000}
                                         value={systemPrompt}
@@ -1362,16 +1200,9 @@ function VoicemailSection({
                                 </div>
                             </div>
                         </details>
-                    </>
-                )}
-            </CardContent>
-            <CardFooter className="justify-end gap-3 border-t pt-6">
-                {isDirty && <span className="text-xs text-muted-foreground">Unsaved changes</span>}
-                <Button onClick={handleSave} disabled={isSaving || !isDirty || (enabled && isVoicemailMessageMissing(answerSettings))}>
-                    {isSaving ? "Saving..." : "Save Voicemail Settings"}
-                </Button>
-            </CardFooter>
-        </Card>
+                </SettingBlock>
+            )}
+        </SettingsSection>
     );
 }
 
@@ -1390,41 +1221,21 @@ function AgentUuidSection({ workflowUuid }: { workflowUuid: string }) {
     };
 
     return (
-        <Card id="identity">
-            <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-base">
-                    <Fingerprint className="h-4 w-4" />
-                    Agent UUID
-                </CardTitle>
-                <CardDescription>
-                    Stable identifier for this agent. Used in agent-stream URLs and
-                    other integrations where a numeric workflow ID isn&apos;t portable.
-                </CardDescription>
-            </CardHeader>
-            <CardContent>
+        <SettingsSection id="identity" icon={Fingerprint} title="Identity" description="Stable identifiers for integrations.">
+            <SettingRow label="Agent UUID" hint="Used in agent-stream URLs and anywhere a numeric ID isn't portable.">
                 <button
                     type="button"
                     onClick={handleCopy}
-                    title="Click to copy"
-                    className="group flex w-full items-center gap-2 rounded-md border bg-muted/20 p-2 text-left font-mono text-xs transition-colors hover:bg-muted/40"
+                    aria-label="Copy agent UUID"
+                    className="group flex w-full items-center gap-2 rounded-md border border-line bg-panel-2 px-2.5 py-2 text-left font-mono text-xs transition-colors hover:bg-panel"
                 >
                     <code className="flex-1 truncate">{workflowUuid}</code>
-                    <Clipboard className="h-3.5 w-3.5 shrink-0 text-muted-foreground transition-colors group-hover:text-foreground" />
+                    <Clipboard className="h-3.5 w-3.5 shrink-0 text-ink-3 transition-colors group-hover:text-foreground" />
                 </button>
-            </CardContent>
-            <CardFooter className="border-t pt-6">
-                <Button variant="outline" size="sm" onClick={handleCopy}>
-                    <Clipboard className="h-3.5 w-3.5 mr-2" />
-                    Copy UUID
-                </Button>
-            </CardFooter>
-        </Card>
+            </SettingRow>
+        </SettingsSection>
     );
 }
-
-// ---------------------------------------------------------------------------
-// Section: Model Overrides
-// ---------------------------------------------------------------------------
 
 // ---------------------------------------------------------------------------
 // Page — "Advanced settings"
@@ -1466,6 +1277,8 @@ function AdvancedSettings({ context }: { context: AgentSectionContext }) {
     } = context;
     const { dirtySections } = useUnsavedChangesContext();
     const [activeSection, setActiveSection] = useState("general");
+    // Discard remounts the sections, so every form goes back to what is saved.
+    const [formKey, setFormKey] = useState(0);
 
     // Intersection observer for the active on-this-page link.
     useEffect(() => {
@@ -1488,84 +1301,96 @@ function AdvancedSettings({ context }: { context: AgentSectionContext }) {
         return () => observer.disconnect();
     }, []);
 
+    const navItems = NAV_ITEMS.filter((item) => item.id !== "identity" || workflow.workflow_uuid);
+
     return (
-        <div className="page-body flex max-w-5xl gap-8">
-            <div className="min-w-0 flex-1 space-y-8">
-                <GeneralSection
-                    workflowConfigurations={workflowConfigurations}
-                    defaultCallDispositions={defaultCallDispositions}
-                    workflowName={workflowName}
-                    workflowId={workflowId}
-                    onSave={saveWorkflowConfigurations}
-                />
-
-                <TemplateVariablesSection
-                    templateContextVariables={templateContextVariables}
-                    onSave={saveTemplateContextVariables}
-                />
-
-                <DictionarySection dictionary={dictionary} onSave={saveDictionary} />
-
-                <VoicemailSection
-                    defaultAnswerClassifierPrompt={defaultAnswerClassifierPrompt}
-                    workflowConfigurations={workflowConfigurations}
-                    workflowName={workflowName}
-                    onSave={saveWorkflowConfigurations}
-                />
-
-                {/* Recordings – moved to org-level page */}
-                <Card id="recordings">
-                    <CardHeader>
-                        <CardTitle className="flex items-center gap-2 text-base">
-                            <Mic className="h-4 w-4" />
-                            Recordings
-                        </CardTitle>
-                        <CardDescription>
-                            Recordings are now managed at the organization level and shared across all agents.
-                            Use <code className="rounded bg-muted px-1 text-xs">@</code> in prompt fields to insert them.
-                        </CardDescription>
-                    </CardHeader>
-                    <CardFooter className="border-t pt-6">
-                        <Button variant="outline" asChild>
-                            <Link href="/recordings">
-                                Go to recordings
-                                <ExternalLink className="ml-2 h-4 w-4" />
-                            </Link>
-                        </Button>
-                    </CardFooter>
-                </Card>
-
-                <ReportSection workflowId={workflowId} />
-
-                {workflow.workflow_uuid && (
-                    <AgentUuidSection workflowUuid={workflow.workflow_uuid} />
-                )}
-            </div>
-
-            {/* ---- Right-side sticky nav ---- */}
-            <nav className="hidden w-44 shrink-0 lg:block">
-                <div className="sticky top-4 space-y-1">
-                    <p className="mb-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                        On this page
+        <SettingsSaveProvider
+            workflowName={workflowName}
+            workflowConfigurations={workflowConfigurations}
+            saveWorkflowConfigurations={saveWorkflowConfigurations}
+            onDiscard={() => setFormKey((key) => key + 1)}
+            savedMessage={`Settings saved. ${PUBLISH_WORKFLOW_REMINDER}`}
+        >
+            <div className="page-body @container">
+                <header className="mb-5 flex flex-col gap-1">
+                    <h1 className="text-xl font-bold tracking-[-0.01em] text-foreground">Advanced settings</h1>
+                    <p className="text-[13.5px] text-ink-2">
+                        Behaviour, variables, dictionary and diagnostics for this agent. Changes apply once you publish.
                     </p>
-                    {NAV_ITEMS.map((item) => (
-                        <a
-                            key={item.id}
-                            href={`#${item.id}`}
-                            className={`flex items-center gap-1.5 rounded-md px-2 py-1 text-sm transition-colors hover:text-foreground ${
-                                activeSection === item.id
-                                    ? "font-medium text-foreground"
-                                    : "text-muted-foreground"
-                            }`}
-                        >
-                            {item.label}
-                            {dirtySections.has(item.id) && (
-                                <span className="h-1.5 w-1.5 rounded-full bg-orange-500" />
-                            )}
-                        </a>
-                    ))}
+                </header>
+                <div className="flex gap-7">
+                    <nav aria-label="Sections" className="hidden w-48 shrink-0 @4xl:block">
+                        <div className="sticky top-4 flex flex-col gap-0.5">
+                            {navItems.map((item) => (
+                                <a
+                                    key={item.id}
+                                    href={`#${item.id}`}
+                                    aria-current={activeSection === item.id ? "true" : undefined}
+                                    className={cn(
+                                        "flex items-center gap-2 rounded-md px-2.5 py-1.5 text-[13px] transition-colors hover:text-foreground",
+                                        activeSection === item.id
+                                            ? "bg-panel-2 font-semibold text-foreground"
+                                            : "font-medium text-ink-2",
+                                    )}
+                                >
+                                    {item.label}
+                                    {dirtySections.has(item.id) && (
+                                        <span
+                                            role="img"
+                                            aria-label="Unsaved changes"
+                                            className="ml-auto size-1.5 rounded-full bg-amber"
+                                        />
+                                    )}
+                                </a>
+                            ))}
+                        </div>
+                    </nav>
+                    <div key={formKey} className="flex min-w-0 max-w-[820px] flex-1 flex-col gap-[18px] pb-20">
+                        <GeneralSection
+                            workflowConfigurations={workflowConfigurations}
+                            defaultCallDispositions={defaultCallDispositions}
+                            workflowName={workflowName}
+                            workflowId={workflowId}
+                        />
+
+                        <TemplateVariablesSection
+                            templateContextVariables={templateContextVariables}
+                            onSave={saveTemplateContextVariables}
+                        />
+
+                        <DictionarySection dictionary={dictionary} onSave={saveDictionary} />
+
+                        <VoicemailSection
+                            defaultAnswerClassifierPrompt={defaultAnswerClassifierPrompt}
+                            workflowConfigurations={workflowConfigurations}
+                        />
+
+                        {workflow.workflow_uuid && <AgentUuidSection workflowUuid={workflow.workflow_uuid} />}
+
+                        <SettingsSection
+                            id="recordings"
+                            icon={Mic}
+                            title="Recordings"
+                            description={
+                                <>
+                                    Shared by every agent in the workspace. Type{" "}
+                                    <code className="font-mono text-[11.5px] text-ink-2">@</code> in a prompt to insert one.
+                                </>
+                            }
+                            action={
+                                <Button variant="outline" size="sm" asChild>
+                                    <Link href="/recordings">
+                                        Open recordings
+                                        <ExternalLink className="h-3.5 w-3.5" />
+                                    </Link>
+                                </Button>
+                            }
+                        />
+
+                        <ReportSection workflowId={workflowId} />
+                    </div>
                 </div>
-            </nav>
-        </div>
+            </div>
+        </SettingsSaveProvider>
     );
 }
