@@ -16,10 +16,14 @@ const mocks = vi.hoisted(() => ({
     providerApps: vi.fn(),
     startOAuth: vi.fn(),
     activate: vi.fn(),
+    canConnect: true,
 }));
 vi.mock('next/navigation', () => ({ useRouter: () => ({ push: mocks.push, refresh: mocks.refresh }) }));
 vi.mock('@/lib/auth', () => ({
     useAuth: () => ({ user: { id: '1' }, getAccessToken: async () => 'token' }),
+}));
+vi.mock('@/context/OrgConfigContext', () => ({
+    useOrgConfig: () => ({ can: () => mocks.canConnect }),
 }));
 vi.mock('@/client/sdk.gen', () => ({
     createWorkflowFromTemplateApiV1WorkflowCreateTemplatePost: mocks.describe,
@@ -64,6 +68,7 @@ const CALENDAR = {
 beforeEach(() => {
     vi.clearAllMocks();
     vi.restoreAllMocks();
+    mocks.canConnect = true;
     mocks.templates.mockResolvedValue({ data: [RECEPTIONIST] });
     mocks.connections.mockResolvedValue({ data: { connections: [] } });
     mocks.providerApps.mockResolvedValue({
@@ -185,13 +190,37 @@ it('leaves the calendar off when the user unticks it', async () => {
     expect(mocks.duplicate.mock.calls[0][0].body.integration_tools).toEqual({});
 });
 
-it('explains when this workspace can’t connect a calendar from here', async () => {
-    mocks.connections.mockResolvedValue({ error: { detail: 'Your role does not allow this action' } });
+it('sends a workspace with its own Google client to Integrations, and notices on return', async () => {
+    mocks.providerApps.mockResolvedValue({ data: { provider_apps: [] } });
     renderDialog();
     await openReceptionist();
 
-    expect(await screen.findByText(/A workspace admin can connect Google Calendar/)).toBeTruthy();
-    expect(screen.queryByRole('button', { name: 'Connect Google Calendar' })).toBeNull();
+    const link = await screen.findByRole('link', { name: /Connect Google Calendar/ });
+    expect(link.getAttribute('href')).toBe('/integrations');
+    expect(link.getAttribute('target')).toBe('_blank');
+
+    mocks.connections.mockResolvedValue({ data: { connections: [CALENDAR] } });
+    fireEvent.focus(window);
+    expect(await screen.findByText('Google Calendar connected')).toBeTruthy();
+});
+
+it('tells someone who can’t connect integrations to ask an admin', async () => {
+    mocks.canConnect = false;
+    renderDialog();
+    await openReceptionist();
+
+    expect(await screen.findByText(/Ask one to connect Google Calendar in Integrations/)).toBeTruthy();
+    expect(screen.getByText('Admin only')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /Connect Google Calendar/ })).toBeNull();
+});
+
+it('says so when calendar connections are off on this server', async () => {
+    mocks.connections.mockResolvedValue({ error: { code: 'tools_service_not_configured', detail: 'Not configured' } });
+    renderDialog();
+    await openReceptionist();
+
+    expect(await screen.findByText(/aren’t switched on for this server yet/)).toBeTruthy();
+    expect(screen.getByText('Not available yet')).toBeTruthy();
 });
 
 it('shows the API error and stays on the questions', async () => {

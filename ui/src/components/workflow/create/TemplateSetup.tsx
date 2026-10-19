@@ -1,6 +1,6 @@
 'use client';
 
-import { CalendarDays, Check, Loader2 } from 'lucide-react';
+import { CalendarDays, Check, ExternalLink, Loader2 } from 'lucide-react';
 
 import type { TemplateSetupField, WorkflowTemplateResponse } from '@/client/types.gen';
 import { Button } from '@/components/ui/button';
@@ -12,7 +12,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { previewParts, templateGreeting } from '@/lib/agentTemplates';
 import { cn } from '@/lib/utils';
 
-import type { IntegrationConnect } from './useIntegrationConnect';
+import type { ConnectStatus, IntegrationConnect } from './useIntegrationConnect';
 
 const INPUT_TYPE: Record<string, string> = { url: 'url', email: 'email', phone: 'tel', text: 'text' };
 
@@ -69,6 +69,16 @@ function SetupInput({
     );
 }
 
+const CALENDAR_NOTE: Partial<Record<ConnectStatus, string>> = {
+    ready: 'Not ready? Skip it. Your agent takes a message instead, and you can connect later.',
+    in_integrations:
+        'Opens Integrations in a new tab. Come back here once it’s connected. Or skip it: your agent takes a message instead.',
+    needs_admin:
+        'Only a workspace admin can connect a calendar. Ask one to connect Google Calendar in Integrations. Until then your agent takes a message.',
+    unavailable:
+        'Calendar connections aren’t switched on for this server yet. Your agent takes a message when someone wants to book.',
+};
+
 function CalendarCard({
     calendar,
     useCalendar,
@@ -80,7 +90,9 @@ function CalendarCard({
 }) {
     if (calendar.status === 'loading') return <Skeleton className="h-[74px] rounded-lg" />;
 
-    const connected = calendar.status === 'connected';
+    const { status } = calendar;
+    const connected = status === 'connected';
+    const canAct = status === 'ready' || status === 'connecting' || status === 'in_integrations';
     return (
         <div className="flex flex-col gap-2">
             <span className="text-[13px] font-semibold text-ink">Bookings</span>
@@ -97,10 +109,10 @@ function CalendarCard({
                             ? calendar.connection?.account_label
                                 ? `Bookings go into ${calendar.connection.account_label}’s calendar.`
                                 : 'Bookings go straight into your calendar.'
-                            : 'Your agent checks free times and books straight into your calendar.'}
+                            : 'Connect Google Calendar and your agent checks free times and books straight into it.'}
                     </span>
                 </div>
-                {connected ? (
+                {connected && (
                     <label className="flex shrink-0 cursor-pointer items-center gap-2 text-[13px] font-medium text-ink">
                         <Checkbox
                             checked={useCalendar}
@@ -108,21 +120,36 @@ function CalendarCard({
                         />
                         Use for bookings
                     </label>
-                ) : calendar.status === 'unavailable' ? null : (
+                )}
+                {status === 'in_integrations' && (
+                    <Button variant="outline" className="shrink-0" asChild>
+                        <a href="/integrations" target="_blank" rel="noopener">
+                            <GoogleMark />
+                            Connect Google Calendar
+                            <ExternalLink size={13} aria-hidden />
+                        </a>
+                    </Button>
+                )}
+                {(status === 'ready' || status === 'connecting') && (
                     <Button
                         type="button"
                         variant="outline"
                         className="shrink-0"
                         onClick={calendar.connect}
-                        disabled={calendar.status === 'connecting'}
+                        disabled={status === 'connecting'}
                     >
-                        {calendar.status === 'connecting' ? (
+                        {status === 'connecting' ? (
                             <Loader2 size={15} className="animate-spin" aria-hidden />
                         ) : (
                             <GoogleMark />
                         )}
-                        {calendar.status === 'connecting' ? 'Waiting for Google…' : 'Connect Google Calendar'}
+                        {status === 'connecting' ? 'Waiting for Google…' : 'Connect Google Calendar'}
                     </Button>
+                )}
+                {!connected && !canAct && (
+                    <span className="shrink-0 rounded-full border border-line bg-panel-2 px-2.5 py-1 text-[12px] font-medium text-ink-3">
+                        {status === 'needs_admin' ? 'Admin only' : 'Not available yet'}
+                    </span>
                 )}
             </div>
             {calendar.error && (
@@ -130,7 +157,7 @@ function CalendarCard({
                     {calendar.error}
                 </p>
             )}
-            {calendar.status === 'connecting' && (
+            {status === 'connecting' ? (
                 <p className="text-[12.5px] text-ink-3">
                     Finish signing in to Google in the window that opened.{' '}
                     <button
@@ -141,13 +168,8 @@ function CalendarCard({
                         Cancel
                     </button>
                 </p>
-            )}
-            {!connected && calendar.status !== 'connecting' && (
-                <p className="text-[12.5px] text-ink-3">
-                    {calendar.status === 'unavailable'
-                        ? 'For now your agent takes a message when someone wants to book. A workspace admin can connect Google Calendar in Integrations.'
-                        : 'Not ready? Skip it. Your agent takes a message instead, and you can connect later.'}
-                </p>
+            ) : (
+                CALENDAR_NOTE[status] && <p className="text-[12.5px] text-ink-3">{CALENDAR_NOTE[status]}</p>
             )}
         </div>
     );
