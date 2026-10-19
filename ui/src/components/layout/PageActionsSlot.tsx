@@ -44,7 +44,7 @@ export function PageActions({ children }: { children: ReactNode }) {
   return createPortal(
     // `page-actions` sizes whatever a screen sends down to the canvas's 28px
     // header control (globals.css) — screens keep their own buttons as-is.
-    <div className="page-actions flex items-center gap-2">{children}</div>,
+    <div className="page-actions flex flex-wrap items-center gap-2 md:flex-nowrap">{children}</div>,
     slot,
   );
 }

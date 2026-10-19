@@ -31,8 +31,18 @@ vi.mock("@/components/onboarding/OnboardingTooltip", () => ({
 
 // Stand-in for the real tester: it only needs to show which run it was handed.
 vi.mock("./workflow-tester/EmbeddedVoiceTester", () => ({
-    EmbeddedVoiceTester: ({ workflowRunId }: { workflowRunId: number }) => (
-        <div data-testid="voice-tester">run:{workflowRunId}</div>
+    EmbeddedVoiceTester: ({
+        workflowRunId,
+        onLiveChange,
+    }: {
+        workflowRunId: number;
+        onLiveChange?: (live: boolean) => void;
+    }) => (
+        <div>
+            <div data-testid="voice-tester">run:{workflowRunId}</div>
+            <button onClick={() => onLiveChange?.(true)}>connect</button>
+            <button onClick={() => onLiveChange?.(false)}>hang up</button>
+        </div>
     ),
 }));
 
@@ -90,10 +100,10 @@ describe("WorkflowTesterPanel voice run lifecycle", () => {
         renderPanel();
         await startVoiceRun();
 
-        switchTo(/test chat/i);
+        switchTo(/^text$/i);
         await waitFor(() => expect(screen.getByTestId("chat-panel")).toBeTruthy());
 
-        switchTo(/test audio/i);
+        switchTo(/^voice$/i);
 
         await waitFor(() =>
             expect(screen.queryByTestId("voice-tester")).toBeNull(),
@@ -105,13 +115,33 @@ describe("WorkflowTesterPanel voice run lifecycle", () => {
         renderPanel();
         await startVoiceRun();
 
-        switchTo(/test chat/i);
-        switchTo(/test audio/i);
+        switchTo(/^text$/i);
+        switchTo(/^voice$/i);
         await waitFor(() =>
             expect(screen.queryByTestId("voice-tester")).toBeNull(),
         );
 
         expect(await startVoiceRun()).toBe("run:630141");
         expect(createRunMock).toHaveBeenCalledTimes(2);
+    });
+});
+
+describe("WorkflowTesterPanel live pill", () => {
+    beforeEach(() => {
+        createRunMock.mockReset();
+        createRunMock.mockResolvedValue({ data: { id: 1 }, error: undefined });
+    });
+
+    it("shows LIVE with a timer only while the browser call is connected", async () => {
+        renderPanel();
+        expect(screen.getByRole("heading", { name: "Test agent" })).toBeTruthy();
+        await startVoiceRun();
+        expect(screen.queryByRole("status", { name: /Call live/ })).toBeNull();
+
+        fireEvent.click(screen.getByRole("button", { name: "connect" }));
+        expect(screen.getByRole("status", { name: "Call live for 00:00" }).textContent).toContain("Live");
+
+        fireEvent.click(screen.getByRole("button", { name: "hang up" }));
+        expect(screen.queryByRole("status", { name: /Call live/ })).toBeNull();
     });
 });

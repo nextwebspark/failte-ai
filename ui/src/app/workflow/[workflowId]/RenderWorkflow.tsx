@@ -3,10 +3,8 @@ import '@xyflow/react/dist/style.css';
 import {
     Background,
     BackgroundVariant,
-    Panel,
     ReactFlow,
 } from "@xyflow/react";
-import { BrushCleaning, Maximize2, Minus, Plus } from 'lucide-react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
@@ -15,8 +13,6 @@ import { createWorkflowDraftApiV1WorkflowWorkflowIdCreateDraftPost, getWorkflowV
 import type { DocumentResponseSchema, RecordingResponseSchema, SkillSummaryResponse, ToolResponse, WorkflowVersionResponse } from '@/client/types.gen';
 import { useNodeSpecs } from "@/components/flow/renderer";
 import { FlowEdge, FlowNode, NodeType } from "@/components/flow/types";
-import { Button } from '@/components/ui/button';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { useAgentShell } from '@/context/AgentShellContext';
 import { useUnsavedChanges } from '@/context/UnsavedChangesContext';
 import { detailFromError } from '@/lib/apiError';
@@ -25,6 +21,7 @@ import { WorkflowConfigurations } from '@/types/workflow-configurations';
 import AddNodePanel from "../../../components/flow/AddNodePanel";
 import CustomEdge from "../../../components/flow/edges/CustomEdge";
 import { GenericNode } from "../../../components/flow/nodes/GenericNode";
+import { CanvasToolbar } from './components/CanvasToolbar';
 import { PhoneCallDialog } from './components/PhoneCallDialog';
 import { VersionHistoryPanel } from './components/VersionHistoryPanel';
 import { WorkflowEditorHeader } from "./components/WorkflowEditorHeader";
@@ -148,6 +145,10 @@ function RenderWorkflow({
         onEdgesChange,
         onNodesChange,
         onDelete,
+        undo,
+        redo,
+        canUndo,
+        canRedo,
     } = useWorkflowState({
         initialWorkflowName,
         workflowId,
@@ -666,105 +667,19 @@ function RenderWorkflow({
                                     color="var(--line)"
                                 />
 
-                                {/* Top-right controls - vertical layout (hidden when viewing history) */}
-                                {!isViewingHistoricalVersion && (
-                                    <Panel position="top-right">
-                                        <TooltipProvider>
-                                            <div className="flex flex-col gap-2">
-                                                <Tooltip>
-                                                    <TooltipTrigger asChild>
-                                                        <Button
-                                                            variant="default"
-                                                            size="icon"
-                                                            onClick={() => setIsAddNodePanelOpen(true)}
-                                                            className="shadow-md hover:shadow-lg"
-                                                        >
-                                                            <Plus className="h-4 w-4" />
-                                                        </Button>
-                                                    </TooltipTrigger>
-                                                    <TooltipContent side="left">
-                                                        <p>Add node</p>
-                                                    </TooltipContent>
-                                                </Tooltip>
-                                            </div>
-                                        </TooltipProvider>
-                                    </Panel>
-                                )}
+                                <CanvasToolbar
+                                    readOnly={isViewingHistoricalVersion}
+                                    onAddNode={() => setIsAddNodePanelOpen(true)}
+                                    onTidy={() => {
+                                        setNodes(layoutNodes(nodes, edges, 'TB', rfInstance));
+                                        setIsDirty(true);
+                                    }}
+                                    onUndo={undo}
+                                    onRedo={redo}
+                                    canUndo={canUndo}
+                                    canRedo={canRedo}
+                                />
                             </ReactFlow>
-
-                            {/* Bottom-left controls - horizontal layout with custom buttons */}
-                            <div className="absolute bottom-12 left-8 z-10 flex gap-2">
-                                <TooltipProvider>
-                                    <Tooltip>
-                                        <TooltipTrigger asChild>
-                                            <Button
-                                                variant="outline"
-                                                size="icon"
-                                                onClick={() => rfInstance.current?.zoomIn()}
-                                                className="bg-panel shadow-sm hover:shadow-md h-8 w-8"
-                                            >
-                                                <Plus className="h-4 w-4" />
-                                            </Button>
-                                        </TooltipTrigger>
-                                        <TooltipContent side="top">
-                                            <p>Zoom in</p>
-                                        </TooltipContent>
-                                    </Tooltip>
-
-                                    <Tooltip>
-                                        <TooltipTrigger asChild>
-                                            <Button
-                                                variant="outline"
-                                                size="icon"
-                                                onClick={() => rfInstance.current?.zoomOut()}
-                                                className="bg-panel shadow-sm hover:shadow-md h-8 w-8"
-                                            >
-                                                <Minus className="h-4 w-4" />
-                                            </Button>
-                                        </TooltipTrigger>
-                                        <TooltipContent side="top">
-                                            <p>Zoom out</p>
-                                        </TooltipContent>
-                                    </Tooltip>
-
-                                    <Tooltip>
-                                        <TooltipTrigger asChild>
-                                            <Button
-                                                variant="outline"
-                                                size="icon"
-                                                onClick={() => rfInstance.current?.fitView()}
-                                                className="bg-panel shadow-sm hover:shadow-md h-8 w-8"
-                                            >
-                                                <Maximize2 className="h-4 w-4" />
-                                            </Button>
-                                        </TooltipTrigger>
-                                        <TooltipContent side="top">
-                                            <p>Fit view</p>
-                                        </TooltipContent>
-                                    </Tooltip>
-
-                                    {!isViewingHistoricalVersion && (
-                                        <Tooltip>
-                                            <TooltipTrigger asChild>
-                                                <Button
-                                                    variant="outline"
-                                                    size="icon"
-                                                    onClick={() => {
-                                                        setNodes(layoutNodes(nodes, edges, 'TB', rfInstance));
-                                                        setIsDirty(true);
-                                                    }}
-                                                    className="bg-panel shadow-sm hover:shadow-md h-8 w-8"
-                                                >
-                                                    <BrushCleaning className="h-4 w-4" />
-                                                </Button>
-                                            </TooltipTrigger>
-                                            <TooltipContent side="top">
-                                                <p>Tidy Up</p>
-                                            </TooltipContent>
-                                        </Tooltip>
-                                    )}
-                                </TooltipProvider>
-                            </div>
                         </div>
                     </div>
                 </div>
