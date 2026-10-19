@@ -103,8 +103,8 @@ export function AgentList({ activeWorkflows, archivedWorkflows, folders }: Agent
                     </span>
                     <h2 className="text-[16px] font-semibold text-ink">Create your first agent</h2>
                     <p className="mt-1.5 max-w-sm text-[13.5px] text-ink-2">
-                        Describe what it should do, start from a template, or build it on a blank
-                        canvas. You can test it in the browser before it takes a real call.
+                        Pick a ready-made agent, add your business details, and talk to it in your
+                        browser before it takes a real call.
                     </p>
                     <div className="mt-5">
                         <CreateWorkflowButton />

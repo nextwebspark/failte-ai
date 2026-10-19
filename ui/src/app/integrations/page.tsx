@@ -40,6 +40,7 @@ import {
     urlWithoutReturnParams,
 } from "./messages";
 import { activateConnection } from "./oauthCalls";
+import { handOffOAuthReturn } from "./oauthPopup";
 import { clearPendingOAuth, takePendingOAuth } from "./pendingOAuth";
 import { ProviderCard } from "./ProviderCard";
 import { fieldsFromSchema, hasRequiredConfig } from "./schemaForm";
@@ -109,6 +110,15 @@ function IntegrationsScreen() {
     // Runs once, after the first load: activating earlier would race the initial
     // connections list, which could then overwrite the activated connection.
     const handledReturn = useRef(false);
+    // A sign-in started from another screen ran in a pop-up: that screen
+    // finishes it, so hand the return over instead of activating here.
+    const [handedOff, setHandedOff] = useState(false);
+    useEffect(() => {
+        if (handOffOAuthReturn()) {
+            handledReturn.current = true;
+            setHandedOff(true);
+        }
+    }, []);
     useEffect(() => {
         if (loading || handledReturn.current) return;
         const result = parseIntegrationReturn(new URLSearchParams(window.location.search));
@@ -268,6 +278,17 @@ function IntegrationsScreen() {
         for (const c of connections) counts.set(c.provider, (counts.get(c.provider) ?? 0) + 1);
         return counts;
     }, [connections]);
+
+    if (handedOff) {
+        // Shown only if the browser doesn't let this pop-up close itself.
+        return (
+            <div className="page-body">
+                <p className="text-sm text-ink-2" role="status">
+                    You&apos;re signed in. You can close this window and carry on where you were.
+                </p>
+            </div>
+        );
+    }
 
     return (
         <div className="page-body">

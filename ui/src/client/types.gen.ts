@@ -2922,6 +2922,18 @@ export type DuplicateTemplateRequest = {
      * Workflow Name
      */
     workflow_name: string;
+    /**
+     * Values
+     */
+    values?: {
+        [key: string]: string;
+    };
+    /**
+     * Integration Tools
+     */
+    integration_tools?: {
+        [key: string]: string;
+    };
 };
 
 /**
@@ -8582,6 +8594,46 @@ export type TelnyxConfigurationRequest = {
 };
 
 /**
+ * TemplateSetupField
+ *
+ * One question the Create agent dialog asks before copying a template.
+ *
+ * The answer replaces every ``{{key}}`` placeholder in the template. A
+ * placeholder may carry a fallback (``{{key | fallback:text}}``), which is
+ * used when an optional field is left empty.
+ */
+export type TemplateSetupField = {
+    /**
+     * Key
+     */
+    key: string;
+    /**
+     * Label
+     */
+    label: string;
+    /**
+     * Type
+     */
+    type?: 'text' | 'textarea' | 'url' | 'email' | 'phone';
+    /**
+     * Help
+     */
+    help?: string | null;
+    /**
+     * Placeholder
+     */
+    placeholder?: string | null;
+    /**
+     * Required
+     */
+    required?: boolean;
+    /**
+     * Max Length
+     */
+    max_length?: number;
+};
+
+/**
  * TextChatInactivityTimeoutConstraints
  *
  * Backend-owned timeout metadata consumed by generated API clients.
@@ -10728,6 +10780,30 @@ export type WorkflowTemplateResponse = {
     template_json: {
         [key: string]: unknown;
     };
+    /**
+     * Setup Fields
+     */
+    setup_fields?: Array<TemplateSetupField>;
+    /**
+     * Call Type
+     */
+    call_type?: 'inbound' | 'outbound' | null;
+    /**
+     * Icon
+     */
+    icon?: string | null;
+    /**
+     * Featured
+     */
+    featured?: boolean;
+    /**
+     * Sample Audio Url
+     */
+    sample_audio_url?: string | null;
+    /**
+     * Integrations
+     */
+    integrations?: Array<string>;
     /**
      * Created At
      */

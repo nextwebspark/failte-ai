@@ -79,7 +79,7 @@ EARLY_EXIT_PROMPT: Final = (
 
 _CANVAS_X: Final = 175.0
 _EARLY_EXIT_X: Final = 625.0
-_ROW_HEIGHT: Final = 220.0
+_ROW_HEIGHT: Final = 340.0
 _GLOBAL_X: Final = -325.0
 _IDENTIFIER_RE: Final = re.compile(r"[^a-z0-9]+")
 _TEMPLATE_MARKER: Final = "{{"
