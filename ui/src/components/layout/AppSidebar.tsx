@@ -228,7 +228,7 @@ export function AppSidebar({ docked = true }: { docked?: boolean }) {
               <StatusPill
                 tone={statusTone(agentShell.agent.versionStatus)}
                 dot
-                className="mt-1.5 rounded-md px-2 py-0.5 text-[10px]"
+                className="mt-1.5 px-2 py-0.5 text-[10px]"
               >
                 {agentShell.agent.versionStatus}
               </StatusPill>

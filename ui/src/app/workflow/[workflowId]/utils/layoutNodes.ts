@@ -4,7 +4,7 @@ import { ReactFlowInstance } from "@xyflow/react";
 import { FlowEdge, FlowNode, NodeType } from "@/components/flow/types";
 
 // Node dimensions
-const NODE_WIDTH = 350;
+const NODE_WIDTH = 288; // BaseNode's w-[288px]
 const NODE_HEIGHT = 120;
 const VERTICAL_SPACING = 150; // Vertical spacing between stacked nodes
 const SECTION_HORIZONTAL_GAP = 500; // Horizontal gap between sections

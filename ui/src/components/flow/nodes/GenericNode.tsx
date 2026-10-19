@@ -150,12 +150,14 @@ function getKindForSpec(
         return { label: "Step", tone: "mute" };
     }
 
+    // Legend: brand when the step only speaks, sky when it uses a tool.
+    const speakingTone: NodeTone = (data.tool_uuids?.length ?? 0) > 0 ? "sky" : "brand";
+
     switch (variant) {
         case "start":
-            return { label: "Start", tone: "brand" };
+            return { label: "Start", tone: speakingTone };
         case "agent":
-            // Legend: brand when the agent only speaks, sky when it uses a tool.
-            return { label: "Agent", tone: (data.tool_uuids?.length ?? 0) > 0 ? "sky" : "brand" };
+            return { label: "Agent", tone: speakingTone };
         case "end":
             return { label: "End", tone: "danger" };
         case "global":

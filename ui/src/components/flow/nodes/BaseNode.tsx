@@ -15,9 +15,12 @@ export const BaseNode = forwardRef<
     <div
         ref={ref}
         className={cn(
-            "relative w-[288px] rounded-xl border border-line bg-panel text-card-foreground shadow-[0_1px_2px_rgba(11,31,23,0.06)]",
+            "relative w-[288px] rounded-lg border border-line bg-panel text-card-foreground",
             className,
-            !selected_through_edge && !hovered_through_edge && "hover:border-ink-3/50",
+            // Hover would otherwise beat every state border below (a :hover rule
+            // outranks a plain class), so only resting steps get it.
+            !selected && !invalid && !runtimeActive && !selected_through_edge && !hovered_through_edge &&
+                "hover:border-ink-3/50",
             // Later states win: an invalid step stays red even when selected,
             // and the live call's step is the one thing that glows orange.
             selected && "border-brand ring-4 ring-brand-dim",

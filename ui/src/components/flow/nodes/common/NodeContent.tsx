@@ -78,13 +78,13 @@ export const NodeContent = ({
             <header
                 className={cn(
                     "flex items-center gap-2 border-b border-line-soft px-3 py-2.5",
-                    isStart && "rounded-tl-xl border-l-[3px] border-l-brand",
+                    isStart && "rounded-tl-lg border-l-[3px] border-l-brand",
                 )}
             >
                 <span
                     aria-hidden
                     className={cn(
-                        "grid size-[22px] shrink-0 place-items-center rounded-md [&>svg]:size-3",
+                        "grid size-[22px] shrink-0 place-items-center rounded-sm [&>svg]:size-3",
                         ICON_TILE[tone],
                     )}
                 >

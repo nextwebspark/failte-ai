@@ -18,12 +18,12 @@ export function CanvasLegend() {
             <div
                 role="group"
                 aria-label="Legend"
-                className="flex w-[180px] flex-col gap-1.5 rounded-[10px] border border-line bg-panel px-3 py-2.5 shadow-[var(--panel-shadow)]"
+                className="flex w-[180px] flex-col gap-1.5 rounded-lg border border-line bg-panel px-3 py-2.5 shadow-panel"
             >
                 <span className="text-[10.5px] font-semibold tracking-[0.08em] text-ink-3 uppercase">Legend</span>
                 {ITEMS.map(({ label, swatch }) => (
                     <span key={label} className="flex items-center gap-2 text-xs text-ink-2">
-                        <span aria-hidden className={`size-2.5 shrink-0 rounded-[3px] ${swatch}`} />
+                        <span aria-hidden className={`size-2.5 shrink-0 rounded-xs ${swatch}`} />
                         {label}
                     </span>
                 ))}

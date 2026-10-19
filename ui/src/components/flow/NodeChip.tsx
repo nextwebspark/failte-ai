@@ -14,7 +14,7 @@ export function NodeChip({
     return (
         <span
             className={cn(
-                "inline-block max-w-full truncate rounded-md px-[7px] py-0.5 font-mono text-[10.5px] font-medium",
+                "inline-block max-w-full truncate rounded-sm px-[7px] py-0.5 font-mono text-[10.5px] font-medium",
                 tone === "sky" ? "bg-sky-dim text-sky" : "bg-panel-2 text-ink-3",
                 className,
             )}

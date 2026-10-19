@@ -341,7 +341,10 @@ export const WorkflowEditorHeader = ({
                                             <div className="min-w-0 flex-1">
                                                 {(error.kind === "node" || error.kind === "edge") && error.id && (
                                                     <p className="mb-1 text-xs text-ink-3">
-                                                        {error.kind === "node" ? "Step" : "Connection"}: {error.id}
+                                                        {/* Steps no longer show their id on the canvas, so name them. */}
+                                                        {error.kind === "node"
+                                                            ? `Step: ${rfInstance.current?.getNode(error.id)?.data?.name || error.id}`
+                                                            : `Connection: ${error.id}`}
                                                         {error.field && <span className="text-ink-3"> • {error.field}</span>}
                                                     </p>
                                                 )}
