@@ -706,6 +706,9 @@ class WorkflowTemplates(Base):
     template_name = Column(String, nullable=False, index=True)
     template_description = Column(String, nullable=False, index=True)
     template_json = Column(JSON, nullable=False, default=dict)
+    # The questions the Create agent dialog asks before copying the template:
+    # a list of TemplateSetupField dicts whose answers fill {{key}} placeholders.
+    setup_fields = Column(JSON, nullable=False, default=list, server_default="[]")
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
 
 

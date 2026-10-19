@@ -32,7 +32,11 @@ class WorkflowTemplateClient(BaseDBClient):
             return result.scalars().all()
 
     async def create_workflow_template(
-        self, template_name: str, template_description: str, template_json: dict
+        self,
+        template_name: str,
+        template_description: str,
+        template_json: dict,
+        setup_fields: list[dict] | None = None,
     ) -> WorkflowTemplates:
         """Create a new workflow template."""
         async with self.async_session() as session:
@@ -41,6 +45,7 @@ class WorkflowTemplateClient(BaseDBClient):
                     template_name=template_name,
                     template_description=template_description,
                     template_json=template_json,
+                    setup_fields=setup_fields or [],
                 )
                 session.add(new_template)
                 await session.commit()
@@ -55,6 +60,8 @@ class WorkflowTemplateClient(BaseDBClient):
         template_id: int,
         template_name: str | None = None,
         template_json: dict | None = None,
+        template_description: str | None = None,
+        setup_fields: list[dict] | None = None,
     ) -> WorkflowTemplates:
         """Update an existing workflow template."""
         async with self.async_session() as session:
@@ -72,6 +79,10 @@ class WorkflowTemplateClient(BaseDBClient):
                     template.template_name = template_name
                 if template_json is not None:
                     template.template_json = template_json
+                if template_description is not None:
+                    template.template_description = template_description
+                if setup_fields is not None:
+                    template.setup_fields = setup_fields
 
                 await session.commit()
                 await session.refresh(template)

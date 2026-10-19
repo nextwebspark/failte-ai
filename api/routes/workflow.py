@@ -27,6 +27,7 @@ from api.enums import (
 from api.schemas.ai_model_configuration import OrganizationAIModelConfigurationV2
 from api.schemas.workflow import WorkflowRunResponseSchema
 from api.schemas.workflow_configurations import WorkflowConfigurationDefaults
+from api.schemas.workflow_template import TemplateSetupField
 from api.sdk_expose import sdk_expose
 from api.services.auth.depends import get_user, requires
 from api.services.auth.permissions import Permission
@@ -86,6 +87,11 @@ from api.services.workflow.run_creation import prepare_workflow_run_inputs
 from api.services.workflow.run_usage_response import (
     format_public_cost_info,
     format_public_usage_info,
+)
+from api.services.workflow.template_setup import (
+    TemplateSetupError,
+    fill_template_values,
+    parse_setup_fields,
 )
 from api.services.workflow.tool_name_validation import (
     validate_workflow_tool_name_collisions,
@@ -351,6 +357,7 @@ class WorkflowTemplateResponse(BaseModel):
     template_name: str
     template_description: str
     template_json: dict
+    setup_fields: list[TemplateSetupField] = []
     created_at: datetime
 
 
@@ -362,6 +369,8 @@ class CreateWorkflowRequest(BaseModel):
 class DuplicateTemplateRequest(BaseModel):
     template_id: int
     workflow_name: str
+    # Answers to the template's setup_fields, keyed by field key.
+    values: dict[str, str] = Field(default_factory=dict)
 
 
 class UpdateWorkflowRequest(BaseModel):
@@ -1526,6 +1535,111 @@ async def update_workflow(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+# The template routes come before /{workflow_id}/duplicate: declared after it,
+# POST /templates/duplicate matched that route and failed on workflow_id.
+@router.get("/templates")
+async def get_workflow_templates() -> List[WorkflowTemplateResponse]:
+    """
+    Get all available workflow templates.
+
+    Returns:
+        List of workflow templates
+    """
+    template_client = WorkflowTemplateClient()
+    templates = await template_client.get_all_workflow_templates()
+
+    return [
+        {
+            "id": template.id,
+            "template_name": template.template_name,
+            "template_description": template.template_description,
+            "template_json": template.template_json,
+            "setup_fields": template.setup_fields or [],
+            "created_at": template.created_at,
+        }
+        for template in templates
+    ]
+
+
+@router.post(
+    "/templates/duplicate",
+    dependencies=requires(Permission.AGENTS_WRITE),
+)
+async def duplicate_workflow_template(
+    request: DuplicateTemplateRequest, user: UserModel = Depends(get_user)
+) -> WorkflowResponse:
+    """
+    Duplicate a workflow template to create a new workflow for the user.
+
+    Args:
+        request: The duplicate template request
+        user: The authenticated user
+
+    Returns:
+        The newly created workflow
+    """
+    template_client = WorkflowTemplateClient()
+    template = await template_client.get_workflow_template(request.template_id)
+
+    if not template:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Workflow template with id {request.template_id} not found",
+        )
+
+    try:
+        filled = fill_template_values(
+            template.template_json,
+            parse_setup_fields(template.setup_fields),
+            request.values,
+        )
+    except TemplateSetupError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+
+    # Create a new workflow from the template
+    # Regenerate trigger UUIDs to avoid conflicts with existing triggers
+    workflow_def = regenerate_trigger_uuids(filled)
+
+    trigger_paths = extract_trigger_paths(workflow_def) if workflow_def else []
+    if trigger_paths:
+        try:
+            await db_client.assert_trigger_paths_available(
+                trigger_paths=trigger_paths,
+            )
+        except TriggerPathConflictError as e:
+            raise HTTPException(status_code=409, detail=str(e))
+
+    workflow = await db_client.create_workflow(
+        request.workflow_name,
+        workflow_def,
+        user.id,
+        user.selected_organization_id,
+    )
+
+    if trigger_paths:
+        await db_client.sync_triggers_for_workflow(
+            workflow_id=workflow.id,
+            organization_id=user.selected_organization_id,
+            trigger_paths=trigger_paths,
+        )
+
+    return {
+        "id": workflow.id,
+        "name": workflow.name,
+        "status": workflow.status,
+        "created_at": workflow.created_at,
+        "workflow_definition": mask_workflow_definition(
+            workflow_def, drop_secrets=secrets_hidden_for(user)
+        ),
+        "current_definition_id": workflow.current_definition_id,
+        "template_context_variables": workflow.template_context_variables,
+        "call_disposition_codes": workflow.call_disposition_codes,
+        "workflow_configurations": mask_workflow_configurations(
+            workflow.workflow_configurations, drop_secrets=secrets_hidden_for(user)
+        ),
+    }
+
+
 @router.post(
     "/{workflow_id}/duplicate",
     dependencies=requires(Permission.AGENTS_WRITE),
@@ -1819,99 +1933,6 @@ async def download_workflow_report(
         media_type="text/csv",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
-
-
-@router.get("/templates")
-async def get_workflow_templates() -> List[WorkflowTemplateResponse]:
-    """
-    Get all available workflow templates.
-
-    Returns:
-        List of workflow templates
-    """
-    template_client = WorkflowTemplateClient()
-    templates = await template_client.get_all_workflow_templates()
-
-    return [
-        {
-            "id": template.id,
-            "template_name": template.template_name,
-            "template_description": template.template_description,
-            "template_json": template.template_json,
-            "created_at": template.created_at,
-        }
-        for template in templates
-    ]
-
-
-@router.post(
-    "/templates/duplicate",
-    dependencies=requires(Permission.AGENTS_WRITE),
-)
-async def duplicate_workflow_template(
-    request: DuplicateTemplateRequest, user: UserModel = Depends(get_user)
-) -> WorkflowResponse:
-    """
-    Duplicate a workflow template to create a new workflow for the user.
-
-    Args:
-        request: The duplicate template request
-        user: The authenticated user
-
-    Returns:
-        The newly created workflow
-    """
-    template_client = WorkflowTemplateClient()
-    template = await template_client.get_workflow_template(request.template_id)
-
-    if not template:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Workflow template with id {request.template_id} not found",
-        )
-
-    # Create a new workflow from the template
-    # Regenerate trigger UUIDs to avoid conflicts with existing triggers
-    workflow_def = regenerate_trigger_uuids(template.template_json)
-
-    trigger_paths = extract_trigger_paths(workflow_def) if workflow_def else []
-    if trigger_paths:
-        try:
-            await db_client.assert_trigger_paths_available(
-                trigger_paths=trigger_paths,
-            )
-        except TriggerPathConflictError as e:
-            raise HTTPException(status_code=409, detail=str(e))
-
-    workflow = await db_client.create_workflow(
-        request.workflow_name,
-        workflow_def,
-        user.id,
-        user.selected_organization_id,
-    )
-
-    if trigger_paths:
-        await db_client.sync_triggers_for_workflow(
-            workflow_id=workflow.id,
-            organization_id=user.selected_organization_id,
-            trigger_paths=trigger_paths,
-        )
-
-    return {
-        "id": workflow.id,
-        "name": workflow.name,
-        "status": workflow.status,
-        "created_at": workflow.created_at,
-        "workflow_definition": mask_workflow_definition(
-            workflow_def, drop_secrets=secrets_hidden_for(user)
-        ),
-        "current_definition_id": workflow.current_definition_id,
-        "template_context_variables": workflow.template_context_variables,
-        "call_disposition_codes": workflow.call_disposition_codes,
-        "workflow_configurations": mask_workflow_configurations(
-            workflow.workflow_configurations, drop_secrets=secrets_hidden_for(user)
-        ),
-    }
 
 
 # ---------------------------------------------------------------------------
