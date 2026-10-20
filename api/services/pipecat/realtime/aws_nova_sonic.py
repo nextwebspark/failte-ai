@@ -21,7 +21,10 @@ from typing import Any
 from loguru import logger
 
 from api.services.pipecat.realtime.conversation import RealtimeConversationMixin
-from api.services.pipecat.realtime.static_greeting import format_static_greeting_prompt
+from api.services.pipecat.realtime.static_greeting import (
+    format_recording_played_note,
+    format_static_greeting_prompt,
+)
 from pipecat.adapters.services.aws_nova_sonic_adapter import (
     AWSNovaSonicConversationHistoryMessage,
     AWSNovaSonicLLMAdapter,
@@ -210,6 +213,20 @@ class DograhAWSNovaSonicLLMService(RealtimeConversationMixin, AWSNovaSonicLLMSer
             await self._flush_pending_text_inputs()
         finally:
             self._opening_after_prerecorded_greeting = False
+
+    async def _seed_spoken_turn(self, transcript: str):
+        """Note a recording played after the model's opening line; no turn.
+
+        Sent as a non-interactive USER note rather than an ASSISTANT turn:
+        Nova's history must alternate, and the model's own opening line was
+        the last assistant turn.
+        """
+        if self._disconnecting:
+            return
+        self._pending_message_batches.append(
+            ([(Role.USER, format_recording_played_note(transcript))], False)
+        )
+        await self._flush_pending_text_inputs()
 
     def _prerecorded_greeting_turns(self, transcript: str) -> list[tuple[Role, str]]:
         """The greeting as Nova history: never opening on ASSISTANT, alternating.

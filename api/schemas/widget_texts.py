@@ -12,8 +12,11 @@ Field names are snake_case in Python and camelCase on the wire, matching the
 embed token ``settings`` keys the dashboard writes.
 """
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 from pydantic.alias_generators import to_camel
+
+# Matches the spoken call disclosure's limit; the dashboard enforces it too.
+MAX_VOICE_DISCLOSURE_TEXT_LENGTH = 250
 
 
 class WidgetTexts(BaseModel):
@@ -52,8 +55,12 @@ class WidgetTexts(BaseModel):
 
     # Voice call — notice shown next to the start control before the
     # microphone opens (EU AI Act Art. 50 and call-recording notice).
-    voice_disclosure_text: str = (
-        "You'll talk to an AI assistant. The call is recorded and uses your microphone."
+    voice_disclosure_text: str = Field(
+        default=(
+            "You'll talk to an AI assistant. "
+            "The call may be recorded and uses your microphone."
+        ),
+        max_length=MAX_VOICE_DISCLOSURE_TEXT_LENGTH,
     )
 
     @classmethod
@@ -62,12 +69,26 @@ class WidgetTexts(BaseModel):
 
         Settings is a free-form blob that also carries non-text keys, and the
         dashboard omits a label the owner left blank, so unknown and blank
-        entries both fall through to the default.
+        entries both fall through to the default, as does one over its
+        field's length limit.
         """
-        known_keys = {field.alias or name for name, field in cls.model_fields.items()}
+        limits = {
+            field.alias or name: next(
+                (
+                    meta.max_length
+                    for meta in field.metadata
+                    if getattr(meta, "max_length", None)
+                ),
+                None,
+            )
+            for name, field in cls.model_fields.items()
+        }
         overrides = {
             key: value.strip()
             for key, value in (settings or {}).items()
-            if key in known_keys and isinstance(value, str) and value.strip()
+            if key in limits
+            and isinstance(value, str)
+            and value.strip()
+            and (limits[key] is None or len(value.strip()) <= limits[key])
         }
         return cls(**overrides)

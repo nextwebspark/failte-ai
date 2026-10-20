@@ -681,7 +681,8 @@ async def execute_text_chat_pending_turn(
         context_compaction_enabled=context_compaction_enabled,
         call_dispositions=call_dispositions,
         skill_set=skill_set,
-        # Text chat has no audio, so a recorded disclosure is sent as its text.
+        # Text chat has no audio, so a recorded disclosure is sent as its text
+        # (the default notice when a recording-only disclosure has none).
         call_disclosure=resolve_call_disclosure(run_configs).model_copy(
             update={"type": "text"}
         ),

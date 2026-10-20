@@ -275,6 +275,17 @@ class DograhOpenAILiveLLMService(RealtimeConversationMixin, OpenAILiveLLMService
         await self._handle_context(self._context)
         await self._flush_prerecorded_greeting()
 
+    async def _seed_spoken_turn(self, transcript: str):
+        """Note a recording played after the model's opening line.
+
+        Uses the same thinking-channel note as a recorded greeting, which is
+        sent as soon as the session has started.
+        """
+        if self._disconnecting:
+            return
+        self._pending_prerecorded_greeting = transcript
+        await self._flush_prerecorded_greeting()
+
     async def _flush_prerecorded_greeting(self):
         if not self._session_started or self._pending_prerecorded_greeting is None:
             return

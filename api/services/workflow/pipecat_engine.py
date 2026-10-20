@@ -18,6 +18,7 @@ from pipecat.frames.frames import (
     CancelFrame,
     EndFrame,
     FunctionCallResultProperties,
+    LLMMessagesAppendFrame,
     SpeechBoundaryFrame,
 )
 from pipecat.pipeline.worker import PipelineWorker
@@ -34,6 +35,7 @@ from api.errors.failure import (
     log_failure,
 )
 from api.schemas.workflow_configurations import (
+    DEFAULT_CALL_DISCLOSURE_TEXT,
     CallDisclosureConfiguration,
     CallDispositionOption,
 )
@@ -64,7 +66,11 @@ import time
 from loguru import logger
 
 from api.services.managed_model_services import MPS_CORRELATION_ID_CONTEXT_KEY
-from api.services.pipecat.realtime.static_greeting import SupportsOpeningLine
+from api.services.pipecat.realtime.static_greeting import (
+    SupportsOpeningLine,
+    format_disclosure_for_new_party_prompt,
+    format_open_after_disclosure_prompt,
+)
 from api.services.workflow import pipecat_engine_callbacks as engine_callbacks
 from api.services.workflow.answer_handling import ANSWER_TERMINAL_REASONS, handle_answer
 from api.services.workflow.disposition_extraction import (
@@ -125,12 +131,17 @@ ENGINE_OWNED_CONTEXT_KEYS = frozenset(
 # p50 1.4s / p90 4.0s / max 21.3s, so this cuts off the tail and nothing else.
 FINAL_EXTRACTION_TIMEOUT_SECONDS = 10.0
 
+# How long an opening waits for a speech-to-speech model to say the call
+# disclosure before carrying on without it having finished.
+CALL_DISCLOSURE_REALTIME_WAIT_SECONDS = 15.0
+
 
 @dataclass(frozen=True)
 class NodeOpeningResult:
     """The opening action and the playback owned by that invocation."""
 
-    action: Literal["none", "greeting", "llm"]
+    # "disclosure": only the call disclosure was queued.
+    action: Literal["none", "greeting", "llm", "disclosure"]
     playback: SpeechPlayback | None = None
 
 
@@ -220,6 +231,13 @@ class PipecatEngine:
         # Set once the disclosure has been queued, so retries and re-entered
         # start nodes can never play it a second time.
         self._call_disclosure_done = False
+        # The disclosure playback the answering party heard. The answer
+        # supervisor plays it once more when someone else ends up on the line.
+        self._call_disclosure_speech: SpeechPlayback | None = None
+        self._call_disclosure_replayed = False
+        # Realtime only: the disclosure recording, fetched before the session
+        # opens (False when that failed and the model says the text instead).
+        self._call_disclosure_recording = None
         self._initialized = False
         self._call_disposed = False
         self._shutdown_task: asyncio.Task | None = None
@@ -963,6 +981,7 @@ class PipecatEngine:
 
     async def _handle_start_node(self, node: Node) -> None:
         """Set up context immediately; the answer supervisor owns initial listening."""
+        await self._prefetch_realtime_call_disclosure(node)
         self._hand_over_opening_line(self.active_agent, node)
         await self._setup_llm_context(node)
 
@@ -1090,93 +1109,146 @@ class PipecatEngine:
             )
             return NodeOpeningResult("none")
 
+        greeting_info = (
+            self.get_node_greeting(node_id) if previous_node_id != node_id else None
+        )
+        # A generated opening reads the context the moment it is requested, so
+        # a disclosure ahead of it is written there directly (see below).
+        llm_opening_follows = generate_if_no_greeting and greeting_info is None
+        disclosure_mute = mute_user or not self._answer_supervisor_deciding
         # Text a speech-to-speech model still has to say before anything else.
-        realtime_disclosure = await self._queue_call_disclosure(
-            node_id, previous_node_id=previous_node_id
+        realtime_disclosure, disclosure_speech = await self._queue_call_disclosure(
+            node_id,
+            previous_node_id=previous_node_id,
+            mute_user=disclosure_mute,
+            append_to_context=not llm_opening_follows,
         )
 
-        if previous_node_id != node_id:
-            greeting_info = self.get_node_greeting(node_id)
-            if greeting_info:
-                greeting_type, greeting_value = greeting_info
-                if (
-                    greeting_type in {"audio", "audio_recording_id"}
-                    and greeting_value
-                    and self._fetch_recording_audio
-                    and self._transport_output is not None
-                ):
-                    if realtime_disclosure:
-                        # Nothing can be spoken over a recording, so the model
-                        # says the disclosure first and the recording follows.
-                        disclosure_speech = await self._speak_realtime_opening(
-                            agent, realtime_disclosure, mute_user=True
-                        )
-                        await disclosure_speech.wait()
-                        realtime_disclosure = None
-                    logger.info(f"Playing audio greeting recording: {greeting_value}")
-                    fetch_kwargs = (
-                        {"recording_id": greeting_value}
-                        if greeting_type == "audio_recording_id"
-                        else {"recording_pk": int(greeting_value)}
+        if greeting_info:
+            greeting_type, greeting_value = greeting_info
+            if (
+                greeting_type in {"audio", "audio_recording_id"}
+                and greeting_value
+                and self._fetch_recording_audio
+                and self._transport_output is not None
+            ):
+                spoken_before_recording = False
+                if realtime_disclosure:
+                    # Nothing can be spoken over a recording, so the model
+                    # says the disclosure first and the recording follows.
+                    disclosure_speech = await self._speak_realtime_opening(
+                        agent, realtime_disclosure, mute_user=disclosure_mute
                     )
+                    self._call_disclosure_speech = disclosure_speech
+                    await self._wait_for_spoken_disclosure(disclosure_speech)
+                    realtime_disclosure = None
+                    spoken_before_recording = True
+                logger.info(f"Playing audio greeting recording: {greeting_value}")
+                fetch_kwargs = (
+                    {"recording_id": greeting_value}
+                    if greeting_type == "audio_recording_id"
+                    else {"recording_pk": int(greeting_value)}
+                )
+                speech = await self.queue_speech(
+                    **fetch_kwargs,
+                    append_to_context=True,
+                    persist_to_logs=False,
+                    mute_user=mute_user,
+                    greeting=not self._is_realtime,
+                )
+                if disclosure_speech is not None:
+                    speech.defer_deadline_until(disclosure_speech)
+                if speech.outcome is not PlaybackOutcome.FAILED:
+                    if wait_for_playback:
+                        await speech.wait()
+                    await self._open_realtime_after_recorded_greeting(
+                        speech.text, after_spoken_opening=spoken_before_recording
+                    )
+                    return NodeOpeningResult("greeting", speech)
+                logger.warning(
+                    f"Failed to fetch audio greeting {greeting_value}, "
+                    "falling back to LLM generation"
+                )
+            elif greeting_value and agent.worker is not None:
+                logger.info("Playing text greeting via TTS")
+                # Completed greeting playback is retained in context so
+                # the LLM knows the caller has already been greeted.
+                if self._is_realtime:
+                    # Realtime adapters consume the opening text as a prompt
+                    # and generate a response; configured tool text is skipped.
+                    # A pending disclosure leads the line, so the model
+                    # says it first.
+                    speech = await self._speak_realtime_opening(
+                        agent,
+                        _join_spoken(realtime_disclosure, greeting_value),
+                        mute_user=disclosure_mute if realtime_disclosure else mute_user,
+                    )
+                    if realtime_disclosure:
+                        self._call_disclosure_speech = speech
+                else:
                     speech = await self.queue_speech(
-                        **fetch_kwargs,
+                        greeting_value,
                         append_to_context=True,
                         persist_to_logs=False,
                         mute_user=mute_user,
-                        greeting=not self._is_realtime,
+                        greeting=True,
                     )
-                    if speech.outcome is not PlaybackOutcome.FAILED:
-                        if wait_for_playback:
-                            await speech.wait()
-                        await self._open_realtime_after_recorded_greeting(speech.text)
-                        return NodeOpeningResult("greeting", speech)
-                    logger.warning(
-                        f"Failed to fetch audio greeting {greeting_value}, "
-                        "falling back to LLM generation"
-                    )
-                elif greeting_value and agent.worker is not None:
-                    logger.info("Playing text greeting via TTS")
-                    # Completed greeting playback is retained in context so
-                    # the LLM knows the caller has already been greeted.
-                    if self._is_realtime:
-                        # Realtime adapters consume the opening text as a prompt
-                        # and generate a response; configured tool text is skipped.
-                        # A pending disclosure leads the line, so the model
-                        # says it first.
-                        speech = await self._speak_realtime_opening(
-                            agent,
-                            _join_spoken(realtime_disclosure, greeting_value),
-                            mute_user=mute_user or bool(realtime_disclosure),
-                        )
-                    else:
-                        speech = await self.queue_speech(
-                            greeting_value,
-                            append_to_context=True,
-                            persist_to_logs=False,
-                            mute_user=mute_user,
-                            greeting=True,
-                        )
-                    if wait_for_playback:
-                        await speech.wait()
-                    return NodeOpeningResult("greeting", speech)
+                    if disclosure_speech is not None:
+                        speech.defer_deadline_until(disclosure_speech)
+                if wait_for_playback:
+                    await speech.wait()
+                return NodeOpeningResult("greeting", speech)
 
-        if realtime_disclosure and agent.worker is not None:
-            # No spoken greeting to lead with: the disclosure is the opening
-            # line, and the caller answers it.
-            speech = await self._speak_realtime_opening(
-                agent, realtime_disclosure, mute_user=True
-            )
-            if wait_for_playback:
-                await speech.wait()
-            return NodeOpeningResult("greeting", speech)
-
-        if (
+        can_generate = (
             generate_if_no_greeting
             and agent.llm is not None
             and self.context is not None
-        ):
+        )
+        if realtime_disclosure and agent.worker is not None:
+            # No spoken greeting to lead with: the model says the disclosure
+            # as an exact line of its own.
+            speech = await self._speak_realtime_opening(
+                agent, realtime_disclosure, mute_user=disclosure_mute
+            )
+            self._call_disclosure_speech = speech
+            if not can_generate:
+                if wait_for_playback:
+                    await speech.wait()
+                return NodeOpeningResult("disclosure", speech)
+            # Then, as in a pipeline call, the model opens the conversation.
+            # The exact line spent the session's opening response, so the
+            # generated opening is asked for as a follow-up prompt.
+            await self._wait_for_spoken_disclosure(speech)
+            speech = self.speech_playback.expect_response(
+                source=agent.llm, mute_user=mute_user
+            )
+            try:
+                self.expect_response()
+                await agent.llm.queue_frame(
+                    LLMMessagesAppendFrame(
+                        [
+                            {
+                                "role": "user",
+                                "content": format_open_after_disclosure_prompt(),
+                            }
+                        ],
+                        run_llm=True,
+                    )
+                )
+            except BaseException:
+                speech.finish(PlaybackOutcome.FAILED)
+                raise
+            if wait_for_playback:
+                await speech.wait()
+            return NodeOpeningResult("llm", speech)
+
+        if can_generate:
             logger.debug("Queueing initial LLM generation for node opening")
+            if disclosure_speech is not None:
+                # The generation starts before the disclosure has played, and
+                # so before the aggregator would commit it. Without it in
+                # context the model introduces itself all over again.
+                self._add_disclosure_to_context(disclosure_speech, opening_context)
             # Queue after the voicemail detector in the live pipeline so the
             # detector can gate initial generations when needed.
             speech = (
@@ -1188,6 +1260,8 @@ class PipecatEngine:
                 if wait_for_playback or mute_user or not self._is_realtime
                 else None
             )
+            if speech is not None and disclosure_speech is not None:
+                speech.defer_deadline_until(disclosure_speech)
             try:
                 self.expect_response()
                 await agent.run_llm(opening_context or self.context)
@@ -1199,7 +1273,25 @@ class PipecatEngine:
                 await speech.wait()
             return NodeOpeningResult("llm", speech)
 
+        if disclosure_speech is not None:
+            # Nothing follows the disclosure, but it is still output the
+            # caller (or a text-chat turn) has to wait for.
+            if wait_for_playback:
+                await disclosure_speech.wait()
+            return NodeOpeningResult("disclosure", disclosure_speech)
         return NodeOpeningResult("none")
+
+    @property
+    def _answer_supervisor_deciding(self) -> bool:
+        """Whether the answer supervisor is still classifying who answered.
+
+        Muting the caller drops the VAD and transcription frames it classifies
+        on, so nothing it may still need to hear is muted.
+        """
+        return (
+            self.answer_supervisor is not None
+            and self.answer_supervisor.blocks_workflow
+        )
 
     def _pending_call_disclosure(
         self, node: Node | None
@@ -1216,15 +1308,39 @@ class PipecatEngine:
             return None
         return disclosure
 
+    def call_disclosure_pending(self) -> bool:
+        """Whether the start node's next opening will play the disclosure first."""
+        if self._call_disclosure is None or self._call_disclosure_done:
+            return False
+        workflow = self._active_agent.workflow
+        return (
+            self._pending_call_disclosure(workflow.nodes.get(workflow.start_node_id))
+            is not None
+        )
+
     def _call_disclosure_plays_recording(
         self, disclosure: CallDisclosureConfiguration
     ) -> bool:
-        return bool(
+        if not (
             disclosure.type == "audio"
             and disclosure.recording_id
             and self._fetch_recording_audio
             and self._transport_output is not None
-        )
+        ):
+            return False
+        # A speech-to-speech call fetches it before its session opens; when
+        # that failed, the model says the text instead.
+        return self._call_disclosure_recording is not False
+
+    def _call_disclosure_text(self, disclosure: CallDisclosureConfiguration) -> str:
+        """The disclosure's rendered text; never blank, so something is said."""
+        text = self._format_prompt(disclosure.text).strip()
+        if not text:
+            logger.warning(
+                "Call disclosure text is blank once rendered; using the default"
+            )
+            return DEFAULT_CALL_DISCLOSURE_TEXT
+        return text
 
     def _realtime_call_disclosure_text(self, node: Node | None) -> str | None:
         """Disclosure a speech-to-speech model must say, without consuming it."""
@@ -1235,64 +1351,205 @@ class PipecatEngine:
             or self._call_disclosure_plays_recording(disclosure)
         ):
             return None
-        return self._format_prompt(disclosure.text).strip() or None
+        return self._call_disclosure_text(disclosure)
+
+    async def _prefetch_realtime_call_disclosure(self, node: Node) -> None:
+        """Fetch a recorded disclosure before a speech-to-speech session opens.
+
+        The session's instructions name every line the model has to say, so
+        whether the model says the disclosure itself (because its recording
+        cannot be played) is settled before the session connects.
+        """
+        if not self._is_realtime or self._call_disclosure_recording is not None:
+            return
+        disclosure = self._pending_call_disclosure(node)
+        if disclosure is None or not self._call_disclosure_plays_recording(disclosure):
+            return
+        recording = None
+        try:
+            async with asyncio.timeout(10):
+                recording = await self._fetch_recording_audio(
+                    recording_id=disclosure.recording_id
+                )
+        except Exception:
+            logger.warning("Could not fetch the call disclosure recording")
+        if recording is None or not recording.audio:
+            logger.warning(
+                "Call disclosure recording unavailable; the model will say its text"
+            )
+            self._call_disclosure_recording = False
+        else:
+            self._call_disclosure_recording = recording
 
     async def _queue_call_disclosure(
-        self, node_id: str, *, previous_node_id: str | None
-    ) -> str | None:
+        self,
+        node_id: str,
+        *,
+        previous_node_id: str | None,
+        mute_user: bool,
+        append_to_context: bool,
+    ) -> tuple[str | None, SpeechPlayback | None]:
         """Queue the AI and recording notice ahead of the start node's greeting.
 
         Only the call's first opening may disclose, and only when it opens the
         start node fresh, so every entry point (telephony, WebRTC, supervised
         answering and text chat) shares it while a later agent transfer or a
-        resumed text-chat turn never repeats it. The caller is muted while it
-        plays so it cannot be talked over, and it is logged and kept in context
-        like any other assistant line.
+        resumed text-chat turn never repeats it. When a different party ends
+        up on the line, ``disclose_to_released_party`` plays it again.
 
         Returns:
-            Text a speech-to-speech model still has to say. Realtime services
-            have no TTS stage, so the caller prepends it to their opening line.
+            Text a speech-to-speech model still has to say (realtime services
+            have no TTS stage, so the caller has the model say it), and the
+            playback queued here, if any.
         """
         disclosure = self._pending_call_disclosure(
             self._active_agent.workflow.nodes.get(node_id)
         )
         self._call_disclosure_done = True
         if disclosure is None or previous_node_id is not None:
-            return None
-        text = self._format_prompt(disclosure.text).strip()
+            return None, None
+        return await self._play_call_disclosure(
+            disclosure, mute_user=mute_user, append_to_context=append_to_context
+        )
 
-        if disclosure.type == "audio" and disclosure.recording_id:
+    async def _play_call_disclosure(
+        self,
+        disclosure: CallDisclosureConfiguration,
+        *,
+        mute_user: bool,
+        append_to_context: bool,
+    ) -> tuple[str | None, SpeechPlayback | None]:
+        """Queue the disclosure's recording or text; see ``_queue_call_disclosure``."""
+        if self._call_disclosure_plays_recording(disclosure):
+            recording = self._call_disclosure_recording
+            source = (
+                {"audio": recording.audio, "transcript": recording.transcript}
+                if recording
+                else {"recording_id": disclosure.recording_id}
+            )
             speech = await self.queue_speech(
-                recording_id=disclosure.recording_id,
-                append_to_context=True,
+                **source,
+                append_to_context=append_to_context,
                 persist_to_logs=True,
-                mute_user=True,
+                mute_user=mute_user,
                 greeting=False,
             )
             if speech.outcome is not PlaybackOutcome.FAILED:
                 logger.info("Playing call disclosure recording")
+                self._call_disclosure_speech = speech
                 if self._is_realtime:
                     # A realtime opening starts generating at once; let the
                     # caller hear the whole notice first.
                     await speech.wait()
-                return None
+                return None, speech
             logger.warning(
-                "Could not play the call disclosure recording; speaking its text"
+                "Could not play the call disclosure recording; "
+                "speaking the disclosure text instead"
             )
 
-        if not text:
-            return None
+        text = self._call_disclosure_text(disclosure)
         if self._is_realtime:
-            return text
+            return text, None
         logger.info("Playing call disclosure")
-        await self.queue_speech(
+        speech = await self.queue_speech(
             text,
-            append_to_context=True,
+            append_to_context=append_to_context,
             persist_to_logs=True,
-            mute_user=True,
+            mute_user=mute_user,
             greeting=False,
         )
-        return None
+        self._call_disclosure_speech = speech
+        return None, speech
+
+    def _add_disclosure_to_context(
+        self, speech: SpeechPlayback, opening_context: LLMContext | None = None
+    ) -> None:
+        """Commit a queued disclosure to context ahead of a generation."""
+        if not speech.text or speech.outcome in (
+            PlaybackOutcome.FAILED,
+            PlaybackOutcome.SKIPPED,
+            PlaybackOutcome.CLOSED,
+        ):
+            return
+        contexts = [self.context]
+        if opening_context is not None and opening_context is not self.context:
+            contexts.append(opening_context)
+        for context in contexts:
+            if context is not None:
+                context.add_message({"role": "assistant", "content": speech.text})
+
+    async def disclose_to_released_party(self, *, new_party: bool) -> None:
+        """Make sure whoever the answer supervisor released the call to heard it.
+
+        A provisional opening discloses to whoever answered first. After call
+        screening that was a screener or a machine (*new_party*), not the
+        person now on the line; and while the supervisor was still listening
+        the disclosure was left interruptible, so it may have been cut off.
+        In either case it is played once more, with the caller muted, before
+        the conversation carries on, and never a third time.
+        """
+        heard = self._call_disclosure_speech
+        if heard is None or self._call_disclosure_replayed:
+            return
+        if not new_party and heard.outcome in (None, PlaybackOutcome.PLAYED):
+            return
+        self._call_disclosure_replayed = True
+        logger.info("Playing the call disclosure to the party now on the line")
+        realtime_text, speech = await self._play_call_disclosure(
+            self._call_disclosure, mute_user=True, append_to_context=False
+        )
+        if speech is not None:
+            # The conversation's next generation is requested right away.
+            self._add_disclosure_to_context(speech)
+            return
+        if realtime_text is None or self.active_agent.llm is None:
+            return
+        # A realtime session has spent its opening turn, so the model is
+        # prompted to say it before answering the new party.
+        try:
+            speech = self.speech_playback.expect_response(
+                source=self.active_agent.llm, mute_user=True
+            )
+        except RuntimeError:
+            # Another tracked response is still pending; prompt untracked.
+            speech = None
+        self._call_disclosure_speech = speech
+        try:
+            await self.active_agent.llm.queue_frame(
+                LLMMessagesAppendFrame(
+                    [
+                        {
+                            "role": "user",
+                            "content": format_disclosure_for_new_party_prompt(
+                                realtime_text
+                            ),
+                        }
+                    ],
+                    run_llm=True,
+                )
+            )
+        except BaseException:
+            if speech is not None:
+                speech.finish(PlaybackOutcome.FAILED)
+            raise
+        if speech is not None:
+            await self._wait_for_spoken_disclosure(speech)
+
+    async def _wait_for_spoken_disclosure(self, speech: SpeechPlayback) -> None:
+        """Wait, bounded, for a speech-to-speech model to say the disclosure.
+
+        A model that never responds would otherwise hold the opening for the
+        response's whole playback deadline.
+        """
+        try:
+            async with asyncio.timeout(CALL_DISCLOSURE_REALTIME_WAIT_SECONDS):
+                await speech.wait()
+        except TimeoutError:
+            logger.warning(
+                "The model did not finish the call disclosure within "
+                f"{CALL_DISCLOSURE_REALTIME_WAIT_SECONDS:.0f}s; continuing"
+            )
+            speech.finish(PlaybackOutcome.TIMED_OUT)
 
     async def _speak_realtime_opening(
         self, agent: AgentRuntime, text: str, *, mute_user: bool
@@ -1309,7 +1566,7 @@ class PipecatEngine:
         return speech
 
     async def _open_realtime_after_recorded_greeting(
-        self, transcript: str | None
+        self, transcript: str | None, *, after_spoken_opening: bool = False
     ) -> None:
         """Hand the opening turn to a realtime service after a recording.
 
@@ -1326,15 +1583,22 @@ class PipecatEngine:
         leave the caller unheard for the length of the greeting, and an
         interruptible node does not mute them.
 
+        When the model has already spoken (the call disclosure, ahead of the
+        recording), the session is open and its opening turn spent, so the
+        transcript is added to it as a late, silent addition instead.
+
         A no-op for text LLMs, which hold no session and re-read the context
         on every generation.
         """
-        handle_prerecorded_greeting = getattr(
-            self.active_agent.llm, "handle_prerecorded_greeting", None
+        method = (
+            "seed_spoken_turn"
+            if after_spoken_opening
+            else "handle_prerecorded_greeting"
         )
-        if handle_prerecorded_greeting is None:
+        open_after_recording = getattr(self.active_agent.llm, method, None)
+        if open_after_recording is None:
             return
-        await handle_prerecorded_greeting(self.context, transcript)
+        await open_after_recording(self.context, transcript)
 
     async def _handle_end_node(self, node: Node) -> None:
         """Handle end node execution."""

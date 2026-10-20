@@ -43,7 +43,7 @@ def test_resolve_tolerates_missing_settings():
 def test_voice_disclosure_has_a_default_and_can_be_overridden():
     """The notice shown before the microphone opens is on for every widget."""
     assert WidgetTexts().model_dump(by_alias=True)["voiceDisclosureText"] == (
-        "You'll talk to an AI assistant. The call is recorded and uses your microphone."
+        "You'll talk to an AI assistant. The call may be recorded and uses your microphone."
     )
 
     resolved = WidgetTexts.resolve(
@@ -53,3 +53,18 @@ def test_voice_disclosure_has_a_default_and_can_be_overridden():
 
     # A cleared override never removes the notice.
     assert WidgetTexts.resolve({"voiceDisclosureText": "  "}).voice_disclosure_text
+
+    # An override past the limit falls back to the default rather than
+    # failing the embed config.
+    assert (
+        WidgetTexts.resolve({"voiceDisclosureText": "x" * 251}).voice_disclosure_text
+        == WidgetTexts().voice_disclosure_text
+    )
+    assert (
+        len(
+            WidgetTexts.resolve(
+                {"voiceDisclosureText": "x" * 250}
+            ).voice_disclosure_text
+        )
+        == 250
+    )

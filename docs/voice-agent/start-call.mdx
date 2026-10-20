@@ -34,10 +34,17 @@ Before the greeting, every call opens with a short notice that the caller is tal
 
 Change it in **Advanced settings → Call behaviour → Tell callers they're talking to an AI and may be recorded**:
 
-- **Text**: what the agent says, spoken in the agent's voice. Defaults to "This call is with an AI assistant and may be recorded." Supports `{{template_variables}}`.
-- **Play it as**: the agent's voice, or a [pre-recorded audio](./pre-recorded-audio) file. If the recording can't be played, the agent says the text instead.
+- **Text**: what the agent says, spoken in the agent's voice. Up to 250 characters. Defaults to "This call is with an AI assistant and may be recorded." Supports `{{template_variables}}`. If it is empty, or renders empty because a variable is missing, the agent says the default instead.
+- **Play it as**: the agent's voice, or a [pre-recorded audio](./pre-recorded-audio) file. With a recording the text is optional. If the recording can't be played, and in text chat, the agent says the text instead (the default when the text is empty).
 
-The disclosure plays once per call (never again after an agent transfer), before the Start Call greeting (or before the agent's first generated line when there is no greeting). The caller can't talk over it, it is part of the call recording, and it appears in the transcript. With voicemail detection on, it plays when a person answers, together with the greeting. Speech-to-speech (realtime) models say it as the start of their opening line. In text chat, it is the start of the agent's first message.
+The disclosure plays before the Start Call greeting, or before the agent's first generated line when there is no greeting, and never again after an agent transfer. The caller can't talk over it, it is part of the call recording, and it appears in the transcript once.
+
+With voicemail detection on, the person who ends up talking to the agent always hears it before the conversation:
+
+- While the call is still being classified, the disclosure leads the opening but the caller is not muted, so a voicemail greeting or call screener speaking over it is still detected. A voicemail or IVR never gets the conversation, and a voicemail message is left only as you configured it.
+- If the opening was played to a call screener (or a person interrupted the disclosure), the person who then picks up hears the disclosure again, without being able to talk over it, before the agent answers them. It is never played a third time.
+
+Speech-to-speech (realtime) models say it as the start of their opening line. With a recorded greeting, the model says the disclosure and the recording follows; without a greeting, the model says the disclosure and then opens the conversation itself. In text chat, it is the start of the agent's first message.
 
 Turn it off only if you tell callers another way.
 

@@ -124,7 +124,8 @@ class AmbientNoiseConfigurationDefaults(BaseModel):
 
 
 DEFAULT_CALL_DISCLOSURE_TEXT = "This call is with an AI assistant and may be recorded."
-MAX_CALL_DISCLOSURE_TEXT_LENGTH = 500
+# Short enough to be said in well under the greeting's playback budget.
+MAX_CALL_DISCLOSURE_TEXT_LENGTH = 250
 
 
 class CallDisclosureConfiguration(BaseModel):
@@ -161,7 +162,9 @@ class CallDisclosureConfiguration(BaseModel):
         description=(
             "What the agent says. Supports {{variable}} templating. Also the "
             "fallback when the recording cannot be played, and the text used in "
-            "text chat and by speech-to-speech models."
+            "text chat and by speech-to-speech models. Optional with a "
+            "recording: whenever it is blank (also once rendered) the default "
+            "notice is said instead."
         ),
     )
     recording_id: str | None = Field(

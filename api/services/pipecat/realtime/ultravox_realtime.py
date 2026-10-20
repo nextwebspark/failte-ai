@@ -134,6 +134,10 @@ class DograhUltravoxRealtimeLLMService(
         """
         await self._connect_call(greeting_text=None, agent_speaks_first=False)
 
+    async def _seed_spoken_turn(self, transcript: str):
+        """A one-shot call has no history channel; the recording goes unseeded."""
+        logger.debug(f"{self}: cannot seed a recording into a one-shot call")
+
     async def _handle_context(self, context: LLMContext):
         self._handled_initial_context = True
         self._context = context
