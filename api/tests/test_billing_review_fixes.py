@@ -91,13 +91,52 @@ def _event(event_type: str, obj: dict) -> stripe.Event:
 def test_billing_provider_is_normalized(value, expected):
     result = subprocess.run(
         [sys.executable, "-c", "import api.constants as c; print(c.BILLING_PROVIDER)"],
-        env={**os.environ, "BILLING_PROVIDER": value},
+        env={
+            **os.environ,
+            "BILLING_PROVIDER": value,
+            "MPS_API_URL": "https://mps.example.test",
+        },
         capture_output=True,
         text=True,
         cwd=REPO_ROOT,
     )
     assert result.returncode == 0, result.stderr
     assert result.stdout.strip() == expected
+
+
+def test_mps_billing_without_an_mps_fails_at_startup():
+    env = {**os.environ, "BILLING_PROVIDER": "mps"}
+    env.pop("MPS_API_URL", None)
+    result = subprocess.run(
+        [sys.executable, "-c", "import api.constants"],
+        env=env,
+        capture_output=True,
+        text=True,
+        cwd=REPO_ROOT,
+    )
+    assert result.returncode != 0
+    assert "BILLING_PROVIDER=mps requires MPS_API_URL" in result.stderr
+
+
+def test_hosted_billing_defaults_to_none_without_an_mps():
+    env = {**os.environ, "DEPLOYMENT_MODE": "saas"}
+    env.pop("BILLING_PROVIDER", None)
+    env.pop("MPS_API_URL", None)
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            "import api.constants as c; "
+            "print(c.BILLING_PROVIDER, c.MPS_ENABLED, "
+            "c.MANAGED_SIP_PROVISIONING_ENABLED)",
+        ],
+        env=env,
+        capture_output=True,
+        text=True,
+        cwd=REPO_ROOT,
+    )
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip() == "none False False"
 
 
 def test_unknown_billing_provider_fails_at_startup():

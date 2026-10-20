@@ -32,6 +32,22 @@ from api.services.workflow.dto import (
 )
 from api.services.workflow.workflow_graph import WorkflowGraph
 
+# Stand-in MPS for tests that exercise the MPS integration. Nothing listens on
+# it: those tests mock the HTTP layer or the client methods.
+TEST_MPS_API_URL = "https://mps.example.test"
+
+
+@pytest.fixture
+def mps_configured(monkeypatch):
+    """Configure an MPS for the test. By default none is (MPS_API_URL unset)."""
+    from api.services import mps_service_key_client as mps_client_module
+
+    monkeypatch.setattr(mps_client_module, "MPS_API_URL", TEST_MPS_API_URL)
+    monkeypatch.setattr(
+        mps_client_module.mps_service_key_client, "base_url", TEST_MPS_API_URL
+    )
+    return TEST_MPS_API_URL
+
 
 @pytest.fixture(autouse=True)
 def _stub_users_act_as_org_admins(request, monkeypatch):

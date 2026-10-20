@@ -30,6 +30,8 @@ from api.services.pipecat.service_factory import (
     create_realtime_llm_service,
 )
 
+pytestmark = pytest.mark.usefixtures("mps_configured")
+
 PROVIDERS = list(REGISTRY[ServiceType.LLM])
 
 

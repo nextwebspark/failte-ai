@@ -6,6 +6,8 @@ import pytest
 from api.db.organization_configuration_client import LEASE_COMPLETED, LEASE_PENDING
 from api.services import organization_bootstrap as bootstrap
 
+pytestmark = pytest.mark.usefixtures("mps_configured")
+
 ORG_ID = 42
 CREATED_BY = "provider-user"
 MINTED_KEY = "minted-svc-key"
@@ -354,3 +356,24 @@ async def test_stored_configuration_is_never_reprovisioned(
 
     mps.assert_not_awaited()
     upsert.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_new_org_without_mps_mints_nothing(
+    monkeypatch, config, lease, mps, upsert, sip
+):
+    """No MPS configured: no key is minted and nothing is sent anywhere."""
+    monkeypatch.setattr(bootstrap.mps_service_key_client, "base_url", "")
+    monkeypatch.setattr(bootstrap.constants, "MANAGED_SIP_PROVISIONING_ENABLED", False)
+
+    assert await bootstrap.ensure_organization_bootstrapped(
+        ORG_ID, created_by=CREATED_BY
+    )
+
+    mps.assert_not_awaited()
+    bootstrap.ensure_hosted_mps_billing_account_v2.assert_not_awaited()
+    upsert.assert_not_awaited()
+    sip.assert_not_awaited()
+    lease.complete.assert_awaited_once_with(
+        ORG_ID, bootstrap._BOOTSTRAP_KEY, LEASE_OWNER_TOKEN
+    )

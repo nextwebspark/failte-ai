@@ -823,7 +823,7 @@ class ARIConnection:
         the POST and avoid racing against the StasisStart event.
         """
         # v() appends URI query params to the websocket_client.conf URL
-        # e.g. wss://api.dograh.com/ws/ari?workflow_id=1&organization_id=2&workflow_run_id=3
+        # e.g. wss://api.example.com/ws/ari?workflow_id=1&organization_id=2&workflow_run_id=3
         vparams = (
             f"workflow_id={workflow_id},"
             f"organization_id={self.organization_id},"

@@ -11,6 +11,8 @@ from unittest.mock import AsyncMock, patch
 import aiofiles
 import pytest
 
+pytestmark = pytest.mark.usefixtures("mps_configured")
+
 ORIGINAL_TEXT = "Price: $10\n"
 ORIGINAL_HASH = hashlib.sha256(ORIGINAL_TEXT.encode()).hexdigest()
 EDITED_TEXT = "Price: $12\n"

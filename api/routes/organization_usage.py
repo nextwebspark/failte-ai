@@ -27,6 +27,8 @@ from api.utils.recording_artifacts import has_recording_track
 
 router = APIRouter(prefix="/organizations")
 
+MPS_CREDITS_UNAVAILABLE = "Model service credits aren't available on this server."
+
 
 class OrganizationConcurrentCallsResponse(BaseModel):
     organization_id: int
@@ -261,6 +263,8 @@ async def get_billing_credits(
     ] = "UTC",
 ):
     """Return per-key MPS credits (OSS) or the org's paginated billing ledger."""
+    if not mps_service_key_client.is_configured:
+        raise HTTPException(status_code=404, detail=MPS_CREDITS_UNAVAILABLE)
     try:
         if DEPLOYMENT_MODE == "oss":
             return await _oss_mps_credits_response(user)
@@ -408,6 +412,8 @@ async def create_mps_credit_purchase_url(
     user: UserModel = Depends(get_user_with_selected_organization),
 ):
     """Create a checkout URL for purchasing organization credits."""
+    if not mps_service_key_client.is_configured:
+        raise HTTPException(status_code=404, detail=MPS_CREDITS_UNAVAILABLE)
     if DEPLOYMENT_MODE == "oss":
         raise HTTPException(
             status_code=404,

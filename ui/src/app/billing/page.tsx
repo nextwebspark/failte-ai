@@ -462,11 +462,38 @@ function MpsBillingPage() {
     );
 }
 
+function BillingUnavailable() {
+    return (
+        <div className="page-body space-y-6">
+            <div className="flex gap-3 rounded-lg border border-border bg-muted/40 p-4">
+                <Info className="mt-0.5 h-4 w-4 flex-shrink-0 text-muted-foreground" />
+                <div className="text-sm text-muted-foreground">
+                    <p className="font-medium text-foreground">Billing isn&apos;t enabled on this server</p>
+                    <p className="mt-1">
+                        There are no credits to manage here.{" "}
+                        <a
+                            href={SUPPORT_MAILTO}
+                            className="font-medium underline underline-offset-2"
+                        >
+                            Contact us
+                        </a>{" "}
+                        about a managed plan.
+                    </p>
+                </div>
+            </div>
+        </div>
+    );
+}
+
 export default function BillingPage() {
     const { config } = useAppConfig();
     // Under Stripe billing, credits live in this app's own EUR ledger.
     if (config?.billingProvider === "stripe") {
         return <StripeBilling />;
+    }
+    // MPS credits need an MPS; without one there is nothing to show.
+    if (config && !config.mpsEnabled) {
+        return <BillingUnavailable />;
     }
     return <MpsBillingPage />;
 }

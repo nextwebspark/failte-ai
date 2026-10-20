@@ -93,7 +93,12 @@ GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET") or None
 STACK_AUTH_PROJECT_ID = os.getenv("STACK_AUTH_PROJECT_ID")
 STACK_PUBLISHABLE_CLIENT_KEY = os.getenv("STACK_PUBLISHABLE_CLIENT_KEY")
 DOGRAH_MPS_SECRET_KEY = os.getenv("DOGRAH_MPS_SECRET_KEY", None)
-MPS_API_URL = os.getenv("MPS_API_URL", "https://services.dograh.com")
+# Upstream Dograh's hosted Model Proxy Service (service keys, managed models,
+# credits, document processing, voice catalogs). Unset by default so nothing
+# is sent to a third-party service: every MPS feature is then disabled. Only
+# point this at an MPS you operate or have a data processing agreement with.
+MPS_API_URL = (os.getenv("MPS_API_URL") or "").strip().rstrip("/")
+MPS_ENABLED = bool(MPS_API_URL)
 DOGRAH_DEVOPS_SECRET = os.getenv("DOGRAH_DEVOPS_SECRET") or None
 # Fallcha tools service (tools/): hosts catalog providers as MCP servers. The
 # integrations API is disabled (503) until TOOLS_INTERNAL_SECRET is set.
@@ -119,14 +124,17 @@ TRUSTED_TOOL_HOSTS: tuple[str, ...] = tuple(
 )
 # Who owns credit balances and charging: "stripe" (local ledger, paid through
 # Stripe), "mps" (the managed model service, MPS) or "none" (no billing). Defaults
-# keep the pre-existing behavior: no billing in OSS mode, MPS when hosted.
+# to MPS only when hosted with MPS_API_URL set; otherwise (OSS mode, or no MPS
+# configured, the default) to none.
 BILLING_PROVIDER = (os.getenv("BILLING_PROVIDER") or "").strip().lower() or (
-    "none" if DEPLOYMENT_MODE == "oss" else "mps"
+    "mps" if DEPLOYMENT_MODE != "oss" and MPS_ENABLED else "none"
 )
 if BILLING_PROVIDER not in ("stripe", "mps", "none"):
     raise ValueError(
         f"BILLING_PROVIDER must be stripe, mps or none, not {BILLING_PROVIDER!r}"
     )
+if BILLING_PROVIDER == "mps" and not MPS_ENABLED:
+    raise ValueError("BILLING_PROVIDER=mps requires MPS_API_URL")
 # Platform-managed models: every org runs on the operator's own Vertex AI
 # project, so customers pick models and voices but never hold keys. Each service
 # gets its own location because Google serves them from different places:
@@ -155,11 +163,18 @@ if PLATFORM_MODELS_ENABLED and not PLATFORM_VERTEX_PROJECT_ID:
         "PLATFORM_VERTEX_PROJECT_ID is required when PLATFORM_MODELS_ENABLED is true"
     )
 # Dograh-managed Cloudonix SIP is provisioned through MPS. A platform-models
-# deployment brings its own telephony, so it is off there unless set explicitly.
+# deployment brings its own telephony, so it is off there unless set explicitly,
+# and it is always off without an MPS to provision it.
 MANAGED_SIP_PROVISIONING_ENABLED = (
-    os.getenv("MANAGED_SIP_PROVISIONING_ENABLED")
-    or ("false" if PLATFORM_MODELS_ENABLED else "true")
-).strip().lower() == "true"
+    MPS_ENABLED
+    and (
+        os.getenv("MANAGED_SIP_PROVISIONING_ENABLED")
+        or ("false" if PLATFORM_MODELS_ENABLED else "true")
+    )
+    .strip()
+    .lower()
+    == "true"
+)
 if PLATFORM_MODELS_ENABLED and BILLING_PROVIDER == "mps":
     # MPS bills through per-org MPS accounts, which platform orgs never get.
     raise ValueError(

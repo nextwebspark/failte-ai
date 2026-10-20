@@ -103,6 +103,9 @@ class HealthResponse(BaseModel):
     billing_provider: str = "none"
     # Customers pick from the platform model catalog instead of entering keys.
     platform_models_enabled: bool = False
+    # An MPS (MPS_API_URL) is configured. Without one, MPS-only features
+    # (service keys, managed models, MPS credits, document processing) are off.
+    mps_enabled: bool = False
     turn_enabled: bool
     force_turn_relay: bool
     signup_enabled: bool
@@ -128,6 +131,7 @@ async def health() -> HealthResponse:
         ENABLE_COTURN,
         ENABLE_SIGNUP,
         FORCE_TURN_RELAY,
+        MPS_ENABLED,
         PLATFORM_MODELS_ENABLED,
         REQUIRE_EMAIL_VERIFICATION,
         STACK_AUTH_PROJECT_ID,
@@ -158,6 +162,7 @@ async def health() -> HealthResponse:
         auth_provider=AUTH_PROVIDER,
         billing_provider=BILLING_PROVIDER,
         platform_models_enabled=PLATFORM_MODELS_ENABLED,
+        mps_enabled=MPS_ENABLED,
         turn_enabled=ENABLE_COTURN,
         force_turn_relay=FORCE_TURN_RELAY,
         signup_enabled=ENABLE_SIGNUP,

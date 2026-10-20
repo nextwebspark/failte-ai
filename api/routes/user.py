@@ -49,7 +49,11 @@ from api.services.configuration.masking import (
     secrets_hidden_for,
 )
 from api.services.configuration.merge import merge_user_configurations
-from api.services.configuration.registry import REGISTRY, ServiceType
+from api.services.configuration.registry import (
+    REGISTRY,
+    ServiceProviders,
+    ServiceType,
+)
 from api.services.mps_service_key_client import mps_service_key_client
 from api.services.organization_preferences import (
     get_organization_preferences,
@@ -110,6 +114,10 @@ async def get_default_configurations(
         return {
             provider: model_cls.model_json_schema()
             for provider, model_cls in REGISTRY[service_type].items()
+            # The managed "dograh" provider runs in MPS; offer it only when
+            # one is configured.
+            if provider != ServiceProviders.DOGRAH.value
+            or mps_service_key_client.is_configured
         }
 
     configurations = {
@@ -568,6 +576,11 @@ async def get_voices(
             raise HTTPException(
                 status_code=502, detail="Failed to fetch Google voices"
             ) from e
+
+    if not mps_service_key_client.is_configured:
+        # Other providers' catalogs come through MPS. Without one, return no
+        # voices; the voice pickers accept a typed voice id instead.
+        return VoicesResponse(provider=provider, voices=[])
 
     try:
         result = await mps_service_key_client.get_voices(

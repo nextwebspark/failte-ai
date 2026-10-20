@@ -10,6 +10,7 @@ from typing import Any
 import httpx
 from loguru import logger
 
+from api import constants
 from api.constants import BILLING_PROVIDER, BRAND_APP_URL, BRAND_NAME, DEPLOYMENT_MODE
 from api.db import db_client
 from api.db.models import UserModel
@@ -191,6 +192,18 @@ def _managed_v2_authorization_failed_result() -> QuotaCheckResult:
     )
 
 
+def _managed_models_unavailable_result() -> QuotaCheckResult:
+    """The configuration uses managed (MPS) models but no MPS is configured."""
+    return QuotaCheckResult(
+        has_quota=False,
+        error_code="managed_models_unavailable",
+        error_message=(
+            f"{BRAND_NAME} managed models aren't available on this server. "
+            "Choose another provider in Model Configurations."
+        ),
+    )
+
+
 def _required_correlation_id(authorization: dict[str, Any]) -> str | None:
     correlation_id = authorization.get("correlation_id")
     if not isinstance(correlation_id, str):
@@ -217,10 +230,46 @@ def _oss_run_authorization_denied_result(
 
 
 def _service_uses_dograh(service: Any) -> bool:
-    provider = getattr(service, "provider", None)
+    return _is_dograh_provider(getattr(service, "provider", None))
+
+
+def _is_dograh_provider(provider: Any) -> bool:
     return (
         provider == ServiceProviders.DOGRAH or provider == ServiceProviders.DOGRAH.value
     )
+
+
+def _own_llms_use_dograh(
+    workflow_configurations: dict | None, workflow_json: dict | None
+) -> bool:
+    """Whether voicemail detection or a QA node runs on its own managed LLM.
+
+    Both ignore their own provider when they reuse the agent's LLM or when the
+    server runs platform models, exactly as the runtime does.
+    """
+    if constants.PLATFORM_MODELS_ENABLED:
+        return False
+    if not isinstance(workflow_configurations, dict):
+        workflow_configurations = {}
+    if not isinstance(workflow_json, dict):
+        workflow_json = {}
+    voicemail = workflow_configurations.get("voicemail_detection") or {}
+    if (
+        voicemail.get("enabled", False)
+        and not voicemail.get("use_workflow_llm", True)
+        and _is_dograh_provider(voicemail.get("provider"))
+    ):
+        return True
+    for node in workflow_json.get("nodes") or []:
+        data = node.get("data") or {}
+        if (
+            node.get("type") == "qa"
+            and data.get("qa_enabled", True)
+            and not data.get("qa_use_workflow_llm", True)
+            and _is_dograh_provider(data.get("qa_provider"))
+        ):
+            return True
+    return False
 
 
 def _dograh_api_keys(user_config: Any) -> set[str]:
@@ -784,6 +833,8 @@ async def authorize_workflow_run_start(
         # draft on every save, which can carry a different service key than
         # the definition the run will actually use.
         workflow_configurations = workflow.workflow_configurations
+        # The graph the run executes, for QA nodes with their own LLM.
+        workflow_json = getattr(workflow, "workflow_definition", None)
         if workflow_run_id is not None:
             # As with the owner lookup, a DB read failure falls through to the
             # outer fail-closed handler; only a genuinely missing/mismatched run
@@ -807,6 +858,7 @@ async def authorize_workflow_run_start(
                 workflow_configurations = (
                     workflow_run.definition.workflow_configurations
                 )
+                workflow_json = getattr(workflow_run.definition, "workflow_json", None)
         elif definition_id is not None:
             definition = await db_client.get_workflow_definition(
                 workflow.id, definition_id, organization_id
@@ -818,6 +870,7 @@ async def authorize_workflow_run_start(
                     error_message="Published or archived agent version not found",
                 )
             workflow_configurations = definition.workflow_configurations
+            workflow_json = getattr(definition, "workflow_json", None)
 
         if BILLING_PROVIDER == "stripe":
             billing_result = await _authorize_stripe_billing_run_start(
@@ -835,6 +888,17 @@ async def authorize_workflow_run_start(
             organization_id=organization_id,
             workflow_configurations=workflow_configurations,
         )
+
+        if not mps_service_key_client.is_configured and (
+            any(
+                _service_uses_dograh(getattr(user_config, section_name, None))
+                for section_name in ("llm", "stt", "tts", "embeddings")
+            )
+            or _own_llms_use_dograh(workflow_configurations, workflow_json)
+        ):
+            # Fail before the run starts instead of mid-call: managed models
+            # need MPS, and with none configured nothing may be sent to it.
+            return _managed_models_unavailable_result()
 
         if DEPLOYMENT_MODE != "oss" and BILLING_PROVIDER == "mps":
             return await _authorize_hosted_workflow_run_start(
