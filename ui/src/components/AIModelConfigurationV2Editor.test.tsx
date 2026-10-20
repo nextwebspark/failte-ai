@@ -84,5 +84,19 @@ describe("Without managed models (no MPS on the server)", () => {
         render(<AIModelConfigurationV2Editor defaults={legacy!} configuration={configuration} onSave={vi.fn()} />);
         expect(screen.queryByRole("tab", { name: "Managed models" })).toBeNull();
         expect(screen.getByRole("tab", { name: "BYOK" }).getAttribute("aria-selected")).toBe("true");
+        expect(screen.getByText(/Your managed model configuration isn.t available on this server/)).toBeTruthy();
+    });
+
+    it("shows no notice for a configuration that does not use managed models", () => {
+        const legacy = { ...defaults, managedAvailable: false };
+        render(<AIModelConfigurationV2Editor defaults={legacy} onSave={vi.fn()} configuration={{
+            version: 2, mode: "byok", byok: { mode: "pipeline" },
+        }} />);
+        expect(screen.queryByText(/managed model configuration isn.t available/)).toBeNull();
+    });
+
+    it("shows no notice when managed models are offered", () => {
+        render(<AIModelConfigurationV2Editor defaults={defaults} configuration={configuration} onSave={vi.fn()} />);
+        expect(screen.queryByText(/managed model configuration isn.t available/)).toBeNull();
     });
 });

@@ -5,9 +5,11 @@ request, hosted-SaaS features answer 404 or empty, knowledge base processing
 fails closed and recordings transcribe on the platform's own Speech-to-Text.
 """
 
+import io
 import os
 import subprocess
 import sys
+import wave
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
@@ -17,6 +19,7 @@ import pytest
 from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
 
+from api import constants
 from api.errors.mps import MPSNotConfiguredError
 from api.routes import knowledge_base as knowledge_base_routes
 from api.routes import organization_usage, service_keys
@@ -292,8 +295,119 @@ def test_transcription_uses_platform_speech(monkeypatch):
 
     assert response.status_code == 200
     assert response.json() == {"transcript": "hello there"}
-    platform.assert_awaited_once_with(b"RIFF", "de-DE")
+    platform.assert_awaited_once_with(b"RIFF", "de-DE", USER.selected_organization_id)
     transcribe_audio.assert_not_awaited()
+
+
+def _wav(seconds: float, rate: int = 8000) -> bytes:
+    buffer = io.BytesIO()
+    with wave.open(buffer, "wb") as wav:
+        wav.setnchannels(1)
+        wav.setsampwidth(2)
+        wav.setframerate(rate)
+        wav.writeframes(b"\x00\x00" * int(seconds * rate))
+    return buffer.getvalue()
+
+
+def test_wav_duration():
+    assert recording_transcription._wav_duration_seconds(_wav(2)) == 2
+    assert recording_transcription._wav_duration_seconds(b"not a wav") is None
+
+
+def test_long_wav_recording_is_not_sent_to_google(monkeypatch):
+    monkeypatch.setattr(
+        recording_transcription.constants, "PLATFORM_MODELS_ENABLED", True
+    )
+    platform = AsyncMock(return_value={"transcript": "never"})
+    monkeypatch.setattr(
+        recording_transcription, "_transcribe_with_platform_speech", platform
+    )
+
+    response = _transcription_app().post(
+        "/workflow-recordings/transcribe",
+        files={"file": ("a.wav", _wav(56), "audio/wav")},
+        data={"language": "en"},
+    )
+
+    # The same failure the dialog already handles: it asks for a typed transcript.
+    assert response.status_code == 500
+    assert response.json() == {"detail": "Failed to transcribe audio"}
+    platform.assert_not_awaited()
+
+
+def test_short_wav_recording_is_transcribed(monkeypatch):
+    monkeypatch.setattr(
+        recording_transcription.constants, "PLATFORM_MODELS_ENABLED", True
+    )
+    platform = AsyncMock(return_value={"transcript": "hi"})
+    monkeypatch.setattr(
+        recording_transcription, "_transcribe_with_platform_speech", platform
+    )
+
+    response = _transcription_app().post(
+        "/workflow-recordings/transcribe",
+        files={"file": ("a.wav", _wav(10), "audio/wav")},
+        data={"language": "en"},
+    )
+
+    assert response.status_code == 200
+    platform.assert_awaited_once()
+
+
+class _FakeSpeechClient:
+    instances: list["_FakeSpeechClient"] = []
+
+    def __init__(self, *, credentials, client_options):
+        self.client_options = client_options
+        self.request = None
+        self.closed = False
+        _FakeSpeechClient.instances.append(self)
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *_exc):
+        self.closed = True
+
+    async def recognize(self, *, request):
+        self.request = request
+        return SimpleNamespace(
+            results=[
+                SimpleNamespace(alternatives=[SimpleNamespace(transcript=" hello ")])
+            ]
+        )
+
+
+@pytest.mark.asyncio
+async def test_platform_speech_uses_the_organization_policy(monkeypatch):
+    import google.cloud.speech_v2
+
+    from api.services.configuration.platform import policy
+
+    monkeypatch.setattr(constants, "PLATFORM_VERTEX_PROJECT_ID", "server-project")
+    monkeypatch.setattr(constants, "PLATFORM_GOOGLE_SPEECH_LOCATION", "eu")
+    monkeypatch.setattr(constants, "PLATFORM_GOOGLE_CREDENTIALS_JSON", None)
+    get_configuration = AsyncMock(
+        return_value=SimpleNamespace(
+            value={"project_id": "customer-project", "speech_location": "us"}
+        )
+    )
+    monkeypatch.setattr(policy.db_client, "get_configuration", get_configuration)
+    _FakeSpeechClient.instances = []
+    monkeypatch.setattr(google.cloud.speech_v2, "SpeechAsyncClient", _FakeSpeechClient)
+
+    result = await recording_transcription._transcribe_with_platform_speech(
+        b"audio", "de-DE", 42
+    )
+
+    assert result == {"transcript": "hello"}
+    assert get_configuration.await_args.args[0] == 42
+    (client,) = _FakeSpeechClient.instances
+    assert client.client_options.api_endpoint == "us-speech.googleapis.com"
+    assert client.request.recognizer == (
+        "projects/customer-project/locations/us/recognizers/_"
+    )
+    assert client.closed
 
 
 @pytest.mark.parametrize(
@@ -355,3 +469,33 @@ async def test_knowledge_base_task_fails_closed(monkeypatch, no_network):
     )
     download.assert_not_awaited()
     process_document.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_knowledge_base_search_with_managed_embeddings_is_not_a_500(
+    monkeypatch, no_network
+):
+    from api.schemas.knowledge_base import ChunkSearchRequestSchema
+    from api.services.configuration import ai_model_configuration
+
+    resolved = SimpleNamespace(
+        effective=SimpleNamespace(
+            embeddings=SimpleNamespace(
+                provider=ServiceProviders.DOGRAH.value,
+                api_key="mps_sk_1",
+                model="default",
+                base_url=None,
+            )
+        )
+    )
+    monkeypatch.setattr(
+        ai_model_configuration,
+        "get_resolved_ai_model_configuration",
+        AsyncMock(return_value=resolved),
+    )
+
+    # The app-level handler turns this into the clear 404.
+    with pytest.raises(MPSNotConfiguredError):
+        await knowledge_base_routes.search_chunks(
+            request=ChunkSearchRequestSchema(query="hours"), user=USER
+        )

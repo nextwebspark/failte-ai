@@ -8,12 +8,14 @@ available and the caller asks the user to type the transcript.
 
 from __future__ import annotations
 
+import io
 import json
+import wave
 
 from api import constants
 from api.services.configuration.platform.languages import CHIRP_3_LANGUAGES
-from api.services.configuration.platform.settings import (
-    load_platform_vertex_settings,
+from api.services.configuration.platform.policy import (
+    platform_settings_for_organization,
 )
 from api.services.mps_service_key_client import mps_service_key_client
 
@@ -21,10 +23,16 @@ PLATFORM_TRANSCRIPTION_MODEL = "chirp_3"
 # Chirp 3 detects the spoken language itself when asked for "auto".
 _AUTO_LANGUAGE = "auto"
 _CHIRP_3_LANGUAGES = frozenset(CHIRP_3_LANGUAGES)
+# Synchronous recognize accepts about a minute of audio; stay under it.
+MAX_PLATFORM_TRANSCRIPTION_SECONDS = 55
 
 
 class TranscriptionUnavailableError(Exception):
     """No speech-to-text service is configured on this server."""
+
+
+class RecordingTooLongError(Exception):
+    """The recording is longer than synchronous recognition accepts."""
 
 
 def transcription_available() -> bool:
@@ -43,13 +51,25 @@ def _platform_language_code(language: str | None) -> str:
     return _AUTO_LANGUAGE
 
 
-async def _transcribe_with_platform_speech(audio_data: bytes, language: str) -> dict:
+def _wav_duration_seconds(audio_data: bytes) -> float | None:
+    """The duration of a WAV recording, or None when it is not a readable WAV."""
+    try:
+        with wave.open(io.BytesIO(audio_data)) as wav:
+            rate = wav.getframerate()
+            return wav.getnframes() / rate if rate else None
+    except (wave.Error, EOFError):
+        return None
+
+
+async def _transcribe_with_platform_speech(
+    audio_data: bytes, language: str, organization_id: int | None
+) -> dict:
     from google.api_core.client_options import ClientOptions
     from google.cloud.speech_v2 import SpeechAsyncClient
     from google.cloud.speech_v2.types import cloud_speech
     from google.oauth2 import service_account
 
-    settings = load_platform_vertex_settings()
+    settings = await platform_settings_for_organization(organization_id)
     location = settings.speech_location
     credentials = (
         service_account.Credentials.from_service_account_info(
@@ -58,30 +78,30 @@ async def _transcribe_with_platform_speech(audio_data: bytes, language: str) -> 
         if settings.credentials_json
         else None  # Application Default Credentials
     )
-    client = SpeechAsyncClient(
+    async with SpeechAsyncClient(
         credentials=credentials,
         client_options=(
             ClientOptions(api_endpoint=f"{location}-speech.googleapis.com")
             if location != "global"
             else None
         ),
-    )
-    response = await client.recognize(
-        request=cloud_speech.RecognizeRequest(
-            recognizer=(
-                f"projects/{settings.project_id}/locations/{location}/recognizers/_"
-            ),
-            config=cloud_speech.RecognitionConfig(
-                auto_decoding_config=cloud_speech.AutoDetectDecodingConfig(),
-                model=PLATFORM_TRANSCRIPTION_MODEL,
-                language_codes=[_platform_language_code(language)],
-                features=cloud_speech.RecognitionFeatures(
-                    enable_automatic_punctuation=True,
+    ) as client:
+        response = await client.recognize(
+            request=cloud_speech.RecognizeRequest(
+                recognizer=(
+                    f"projects/{settings.project_id}/locations/{location}/recognizers/_"
                 ),
-            ),
-            content=audio_data,
+                config=cloud_speech.RecognitionConfig(
+                    auto_decoding_config=cloud_speech.AutoDetectDecodingConfig(),
+                    model=PLATFORM_TRANSCRIPTION_MODEL,
+                    language_codes=[_platform_language_code(language)],
+                    features=cloud_speech.RecognitionFeatures(
+                        enable_automatic_punctuation=True,
+                    ),
+                ),
+                content=audio_data,
+            )
         )
-    )
     transcript = " ".join(
         result.alternatives[0].transcript.strip()
         for result in response.results
@@ -101,10 +121,20 @@ async def transcribe_recording(
 ) -> dict:
     """Return ``{"transcript": ...}`` for an uploaded recording.
 
-    Raises TranscriptionUnavailableError when no speech-to-text is configured.
+    Raises TranscriptionUnavailableError when no speech-to-text is configured,
+    and RecordingTooLongError when a WAV recording is too long for the
+    platform's synchronous recognition (Google is not called).
     """
     if constants.PLATFORM_MODELS_ENABLED:
-        return await _transcribe_with_platform_speech(audio_data, language)
+        duration = _wav_duration_seconds(audio_data)
+        if duration is not None and duration > MAX_PLATFORM_TRANSCRIPTION_SECONDS:
+            raise RecordingTooLongError(
+                f"Recording is {duration:.0f}s; platform transcription accepts "
+                f"up to {MAX_PLATFORM_TRANSCRIPTION_SECONDS}s"
+            )
+        return await _transcribe_with_platform_speech(
+            audio_data, language, organization_id
+        )
     if not mps_service_key_client.is_configured:
         raise TranscriptionUnavailableError()
     if constants.DEPLOYMENT_MODE == "oss":

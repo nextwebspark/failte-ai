@@ -9,6 +9,7 @@ from loguru import logger
 from api.db import db_client
 from api.db.models import KnowledgeBaseDocumentModel
 from api.enums import PostHogEvent
+from api.errors.mps import MPSNotConfiguredError
 from api.schemas.knowledge_base import (
     ChunkSearchRequestSchema,
     ChunkSearchResponseSchema,
@@ -600,6 +601,10 @@ async def search_chunks(
             total_results=len(chunks),
         )
 
+    except MPSNotConfiguredError:
+        # The org's embeddings use the managed provider, which this server
+        # does not offer; the app-level handler answers with a clear 404.
+        raise
     except Exception as exc:
         logger.error(f"Error searching chunks: {exc}")
         raise HTTPException(status_code=500, detail="Failed to search chunks") from exc

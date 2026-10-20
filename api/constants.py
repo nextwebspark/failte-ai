@@ -124,7 +124,8 @@ TRUSTED_TOOL_HOSTS: tuple[str, ...] = tuple(
 )
 # Who owns credit balances and charging: "stripe" (local ledger, paid through
 # Stripe), "mps" (the managed model service, MPS) or "none" (no billing). Defaults
-# keep the pre-existing behavior: no billing in OSS mode, MPS when hosted.
+# to MPS only when hosted with MPS_API_URL set; otherwise (OSS mode, or no MPS
+# configured, the default) to none.
 BILLING_PROVIDER = (os.getenv("BILLING_PROVIDER") or "").strip().lower() or (
     "mps" if DEPLOYMENT_MODE != "oss" and MPS_ENABLED else "none"
 )

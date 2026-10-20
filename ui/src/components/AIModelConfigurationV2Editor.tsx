@@ -407,6 +407,13 @@ export function AIModelConfigurationV2Editor({
     const [pipelineInitialConfig, setPipelineInitialConfig] = useState<Record<string, unknown> | null>(null);
     const [isSavingDograh, setIsSavingDograh] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    // The saved configuration uses managed models, which this server (no MPS)
+    // does not offer: the editor falls back to BYOK and says why.
+    const managedConfigurationUnavailable = useMemo(
+        () => !managedAvailable
+            && preferredMode(asRecord(configuration), asRecord(effectiveConfiguration)) === "dograh",
+        [configuration, effectiveConfiguration, managedAvailable],
+    );
 
     const allowCustomVoice = defaults.dograh.allow_custom_input ?? false;
     const dograhSpeedRange = defaults.dograh.speed_range ?? { min: 0.5, max: 2.0, step: 0.1 };
@@ -497,6 +504,15 @@ export function AIModelConfigurationV2Editor({
             {error && (
                 <div className="rounded-md border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive">
                     {error}
+                </div>
+            )}
+
+            {managedConfigurationUnavailable && (
+                <div role="status" className="flex gap-3 rounded-lg border border-border bg-muted/40 p-4">
+                    <Info className="mt-0.5 h-4 w-4 flex-shrink-0 text-muted-foreground" />
+                    <p className="text-sm text-muted-foreground">
+                        Your managed model configuration isn&apos;t available on this server. Choose a provider below.
+                    </p>
                 </div>
             )}
 

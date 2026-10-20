@@ -1324,3 +1324,102 @@ async def test_authorize_workflow_run_refuses_managed_models_without_mps(
     assert result.has_quota is False
     assert result.error_code == "managed_models_unavailable"
     check_usage.assert_not_awaited()
+
+
+_MANAGED_VOICEMAIL = {
+    "voicemail_detection": {
+        "enabled": True,
+        "use_workflow_llm": False,
+        "provider": ServiceProviders.DOGRAH.value,
+        "model": "default",
+    }
+}
+_MANAGED_QA_GRAPH = {
+    "nodes": [
+        {
+            "id": "qa-1",
+            "type": "qa",
+            "data": {
+                "name": "QA",
+                "qa_use_workflow_llm": False,
+                "qa_provider": ServiceProviders.DOGRAH.value,
+                "qa_api_key": "mps_sk_12345678",
+            },
+        }
+    ]
+}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("workflow_configurations", "workflow_json"),
+    [(_MANAGED_VOICEMAIL, None), ({"model_overrides": {}}, _MANAGED_QA_GRAPH)],
+    ids=["voicemail", "qa"],
+)
+async def test_authorize_workflow_run_refuses_managed_own_llms_without_mps(
+    monkeypatch, workflow_configurations, workflow_json
+):
+    """Voicemail detection or QA on its own managed LLM also needs MPS."""
+    monkeypatch.setattr(quota_service.mps_service_key_client, "base_url", "")
+    monkeypatch.setattr(quota_service.constants, "PLATFORM_MODELS_ENABLED", False)
+    monkeypatch.setattr(quota_service, "DEPLOYMENT_MODE", "oss")
+    run = _pinned_run(workflow_configurations=workflow_configurations)
+    run.definition.workflow_json = workflow_json
+    _patch_workflow_context(monkeypatch)
+    monkeypatch.setattr(
+        quota_service.db_client, "get_workflow_run", AsyncMock(return_value=run)
+    )
+    monkeypatch.setattr(
+        quota_service,
+        "get_effective_ai_model_configuration_for_workflow",
+        AsyncMock(return_value=_byok_config()),
+    )
+
+    result = await quota_service.authorize_workflow_run_start(
+        workflow_id=7,
+        organization_id=42,
+        workflow_run_id=88,
+    )
+
+    assert result.has_quota is False
+    assert result.error_code == "managed_models_unavailable"
+
+
+@pytest.mark.parametrize(
+    ("workflow_configurations", "workflow_json", "platform_models"),
+    [
+        # Reusing the agent's LLM ignores the stored provider.
+        (
+            {
+                "voicemail_detection": {
+                    **_MANAGED_VOICEMAIL["voicemail_detection"],
+                    "use_workflow_llm": True,
+                }
+            },
+            None,
+            False,
+        ),
+        # Disabled voicemail detection never runs.
+        (
+            {
+                "voicemail_detection": {
+                    **_MANAGED_VOICEMAIL["voicemail_detection"],
+                    "enabled": False,
+                }
+            },
+            None,
+            False,
+        ),
+        # Platform-models servers always classify and review with the agent's LLM.
+        (_MANAGED_VOICEMAIL, _MANAGED_QA_GRAPH, True),
+    ],
+)
+def test_own_llms_ignored_when_the_runtime_ignores_them(
+    monkeypatch, workflow_configurations, workflow_json, platform_models
+):
+    monkeypatch.setattr(
+        quota_service.constants, "PLATFORM_MODELS_ENABLED", platform_models
+    )
+    assert not quota_service._own_llms_use_dograh(
+        workflow_configurations, workflow_json
+    )
