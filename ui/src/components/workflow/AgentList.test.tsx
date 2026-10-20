@@ -19,6 +19,23 @@ vi.mock('@/components/workflow/WorkflowTable', () => ({
         <ul>{workflows.map((w) => <li key={w.id}>{w.name}</li>)}</ul>
     ),
 }));
+// The onboarding store, held in memory so a dismissal outlives a remount.
+const seenTooltips = new Set<string>();
+vi.mock('@/context/OnboardingContext', async () => {
+    const { useState } = await import('react');
+    return {
+        useOnboarding: () => {
+            const [, rerender] = useState(0);
+            return {
+                hasSeenTooltip: (key: string) => seenTooltips.has(key),
+                markTooltipSeen: (key: string) => {
+                    seenTooltips.add(key);
+                    rerender((n) => n + 1);
+                },
+            };
+        },
+    };
+});
 vi.mock('@/components/workflow/folders/AgentFolderView', () => ({
     AgentFolderView: ({ workflows }: { workflows: WorkflowListResponse[] }) => (
         <ul>{workflows.map((w) => <li key={w.id}>{w.name}</li>)}</ul>
@@ -47,7 +64,7 @@ function renderList(active: WorkflowListResponse[]) {
 }
 
 beforeEach(() => {
-    localStorage.clear();
+    seenTooltips.clear();
 });
 
 describe('AgentList for a new workspace', () => {

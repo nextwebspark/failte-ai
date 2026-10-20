@@ -127,7 +127,10 @@ export function setupProgress(agents: WorkflowListResponse[]): SetupProgress {
     return {
         tested: agents.some((agent) => (agent.total_runs ?? 0) > 0),
         connected: agents.some((agent) => (agent.channels?.length ?? 0) > 0),
-        agent: sortAgents(agents, 'newest')[0] ?? null,
+        agent: agents.reduce<WorkflowListResponse | null>(
+            (newest, agent) => (newest && time(newest.created_at) >= time(agent.created_at) ? newest : agent),
+            null,
+        ),
     };
 }
 

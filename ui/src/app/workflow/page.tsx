@@ -7,7 +7,6 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { AgentList } from '@/components/workflow/AgentList';
 import { CreateWorkflowButton } from "@/components/workflow/CreateWorkflowButton";
-import { CreateFolderButton } from '@/components/workflow/folders/CreateFolderButton';
 import { UploadWorkflowButton } from '@/components/workflow/UploadWorkflowButton';
 import { getServerAccessToken, getServerAuthProvider } from '@/lib/auth/server';
 import logger from '@/lib/logger';
@@ -15,6 +14,22 @@ import logger from '@/lib/logger';
 import WorkflowLayout from "./WorkflowLayout";
 
 export const dynamic = 'force-dynamic';
+
+// The list couldn't load: keep Create / Import in the header so the page still
+// works (and the /workflow/create redirect's ?create= still opens the dialog).
+function WorkflowListError() {
+    return (
+        <>
+            <PageActions>
+                <UploadWorkflowButton />
+                <CreateWorkflowButton openFromUrl size="toolbar" />
+            </PageActions>
+            <div className="font-mono text-sm text-danger">
+                Couldn&apos;t load your agents. Please try again later.
+            </div>
+        </>
+    );
+}
 
 // Server component for workflow list
 async function WorkflowList() {
@@ -46,6 +61,12 @@ async function WorkflowList() {
                 status: 'active,archived'
             }
         });
+        // The client resolves 4xx/5xx instead of throwing. Without this check a
+        // failed fetch reads as "no agents" and shows the first-run welcome page.
+        if (response.error) {
+            logger.error(`Error fetching workflows: ${JSON.stringify(response.error)}`);
+            return <WorkflowListError />;
+        }
 
         const allWorkflowData = response.data ? (Array.isArray(response.data) ? response.data : [response.data]) : [];
 
@@ -67,33 +88,18 @@ async function WorkflowList() {
             logger.error(`Error fetching folders: ${folderErr}`);
         }
 
-        // Before the first agent, the empty state holds the only create and
-        // import buttons; "New folder" means nothing with no agents to file.
-        const hasAgents = activeWorkflows.length > 0 || folders.length > 0;
-
+        // AgentList also owns the header actions, so the empty-state check
+        // that hides them lives in one place.
         return (
-            <>
-                {hasAgents && (
-                    <PageActions>
-                        <UploadWorkflowButton />
-                        <CreateFolderButton />
-                        <CreateWorkflowButton openFromUrl size="toolbar" />
-                    </PageActions>
-                )}
-                <AgentList
-                    activeWorkflows={activeWorkflows}
-                    archivedWorkflows={archivedWorkflows}
-                    folders={folders}
-                />
-            </>
+            <AgentList
+                activeWorkflows={activeWorkflows}
+                archivedWorkflows={archivedWorkflows}
+                folders={folders}
+            />
         );
     } catch (err) {
         logger.error(`Error fetching workflows: ${err}`);
-        return (
-            <div className="font-mono text-sm text-danger">
-                Couldn&apos;t load your agents. Please try again later.
-            </div>
-        );
+        return <WorkflowListError />;
     }
 }
 
@@ -105,7 +111,7 @@ async function PageContent() {
         <div className="page-body">
             {/* The screen name lives in the app header (AppTopBar); the canvas
                 does not repeat it here, so the body opens straight on content
-                and the actions ride the header (see WorkflowList). */}
+                and the actions ride the header (see AgentList). */}
             {workflowList}
         </div>
     );

@@ -116,7 +116,7 @@ export function AgentSetupChecklist({ agent, tested, connected, onHide }: AgentS
                                           : 'border border-line text-ink-3',
                                 )}
                             >
-                                {step.done ? <Check className="size-3.5" aria-label="Done" /> : index + 1}
+                                {step.done ? <Check className="size-3.5" role="img" aria-label="Done" /> : index + 1}
                             </span>
                             <div className="min-w-0">
                                 <p className={cn('text-[14px] font-medium', step.done ? 'text-ink-2' : 'text-ink')}>

@@ -1,9 +1,10 @@
 'use client';
 
 import { Search, X } from 'lucide-react';
-import { type ReactNode, useEffect, useMemo, useState } from 'react';
+import { type ReactNode, useMemo, useState } from 'react';
 
 import type { FolderResponse, WorkflowListResponse } from '@/client/types.gen';
+import { PageActions } from '@/components/layout/PageActionsSlot';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -15,9 +16,13 @@ import {
 } from '@/components/ui/select';
 import { AgentsEmptyState } from '@/components/workflow/AgentsEmptyState';
 import { AgentSetupChecklist } from '@/components/workflow/AgentSetupChecklist';
+import { CreateWorkflowButton } from '@/components/workflow/CreateWorkflowButton';
 import { AgentFolderView } from '@/components/workflow/folders/AgentFolderView';
+import { CreateFolderButton } from '@/components/workflow/folders/CreateFolderButton';
 import { FolderSection } from '@/components/workflow/folders/FolderSection';
+import { UploadWorkflowButton } from '@/components/workflow/UploadWorkflowButton';
 import { WorkflowTable } from '@/components/workflow/WorkflowTable';
+import { useOnboarding } from '@/context/OnboardingContext';
 import {
     type AgentSort,
     agentStats,
@@ -42,8 +47,6 @@ const SORT_LABEL: Record<AgentSort, string> = {
     name: 'Name',
     newest: 'Newest',
 };
-
-const SETUP_HIDDEN_KEY = 'lightmove.agents.setupHidden';
 
 function Stat({ label, children }: { label: string; children: ReactNode }) {
     return (
@@ -78,24 +81,12 @@ export function AgentList({ activeWorkflows, archivedWorkflows, folders }: Agent
 
     const stats = useMemo(() => agentStats(activeWorkflows), [activeWorkflows]);
     const setup = useMemo(() => setupProgress(activeWorkflows), [activeWorkflows]);
-    // Hiding the checklist is a per-browser preference; read it after mount so
-    // the server render and the first client render agree.
-    const [setupHidden, setSetupHidden] = useState(false);
-    useEffect(() => {
-        try {
-            setSetupHidden(localStorage.getItem(SETUP_HIDDEN_KEY) === '1');
-        } catch {
-            // Storage blocked: the checklist just stays visible.
-        }
-    }, []);
-    const hideSetup = () => {
-        setSetupHidden(true);
-        try {
-            localStorage.setItem(SETUP_HIDDEN_KEY, '1');
-        } catch {
-            // Hidden for this visit only.
-        }
-    };
+    // Hiding the checklist is stored with the user's onboarding state, so it
+    // holds across browsers; it reads as hidden until that state has loaded,
+    // so a user who hid it never sees it flash back.
+    const { hasSeenTooltip, markTooltipSeen } = useOnboarding();
+    const setupHidden = hasSeenTooltip('agent_setup_checklist');
+    const hideSetup = () => markTooltipSeen('agent_setup_checklist');
     const showSetup = !setupHidden && setup.agent !== null && !(setup.tested && setup.connected);
     // Until a call has happened the stats are all zero, so the checklist stands in for them.
     const showStats = setup.tested || !showSetup;
@@ -119,10 +110,12 @@ export function AgentList({ activeWorkflows, archivedWorkflows, folders }: Agent
         setStatus('all');
     };
 
+    // Before the first agent, the empty state holds the only create and import
+    // buttons; "New folder" means nothing with no agents to file.
     if (activeWorkflows.length === 0 && folders.length === 0) {
         return (
             <>
-                <AgentsEmptyState />
+                <AgentsEmptyState fill={archivedWorkflows.length === 0} />
                 {archivedWorkflows.length > 0 && (
                     <div className="mt-8">
                         <FolderSection
@@ -143,6 +136,11 @@ export function AgentList({ activeWorkflows, archivedWorkflows, folders }: Agent
 
     return (
         <div className="space-y-5">
+            <PageActions>
+                <UploadWorkflowButton />
+                <CreateFolderButton />
+                <CreateWorkflowButton openFromUrl size="toolbar" />
+            </PageActions>
             {showSetup && setup.agent && (
                 <AgentSetupChecklist
                     agent={setup.agent}

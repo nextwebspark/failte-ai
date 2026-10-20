@@ -4,6 +4,7 @@ import { Bot, ClipboardList, PhoneCall, Sparkles } from 'lucide-react';
 
 import { CreateWorkflowButton } from '@/components/workflow/CreateWorkflowButton';
 import { UploadWorkflowButton } from '@/components/workflow/UploadWorkflowButton';
+import { cn } from '@/lib/utils';
 
 const STEPS = [
     {
@@ -27,11 +28,15 @@ const STEPS = [
  * Voice agents before the first agent exists: one clear action, and the three
  * steps from here to taking calls, so a new user knows what they're starting.
  */
-export function AgentsEmptyState() {
+export function AgentsEmptyState({ fill = true }: { fill?: boolean }) {
     return (
         <section
             aria-labelledby="agents-empty-title"
-            className="flex min-h-[calc(100dvh-10rem)] flex-col items-center justify-center px-2 py-10 text-center"
+            className={cn(
+                'flex flex-col items-center justify-center px-2 py-10 text-center',
+                // Centred in the page, unless archived agents follow and must stay in view.
+                fill && 'min-h-[calc(100dvh-10rem)]',
+            )}
         >
             <span className="mb-5 flex size-14 items-center justify-center rounded-lg bg-brand-dim text-brand">
                 <Bot className="size-7" aria-hidden />
