@@ -127,7 +127,7 @@ services:
       - "--min-port=49152"
       - "--max-port=49200"
       - "--external-ip=${TURN_HOST}"
-      - "--realm=dograh.com"
+      - "--realm=lightmove.ai"
       - --use-auth-secret
       - "--static-auth-secret=${TURN_SECRET}"
       - --fingerprint

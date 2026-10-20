@@ -8,7 +8,6 @@ from fastapi import HTTPException
 from google.genai.types import HttpOptions, HttpRetryOptions
 from loguru import logger
 
-from api.constants import MPS_API_URL
 from api.errors.failure import (
     ErrorSource,
     annotate_failure_metadata,
@@ -28,6 +27,7 @@ from api.services.configuration.registry import (
     ServiceType,
 )
 from api.services.configuration.temperature import resolve_temperature
+from api.services.mps_service_key_client import mps_base_url
 from api.services.pipecat.gemini_json_schema_adapter import (
     DograhGeminiJSONSchemaAdapter,
 )
@@ -487,7 +487,9 @@ def create_stt_service(
             sample_rate=audio_config.transport_in_sample_rate,
         )
     elif user_config.stt.provider == ServiceProviders.DOGRAH.value:
-        base_url = MPS_API_URL.replace("http://", "ws://").replace("https://", "wss://")
+        base_url = (
+            mps_base_url().replace("http://", "ws://").replace("https://", "wss://")
+        )
         language = getattr(user_config.stt, "language", None) or "multi"
 
         if dograh_stt_uses_flux_language(language):
@@ -878,7 +880,9 @@ def create_tts_service(
         )
     elif user_config.tts.provider == ServiceProviders.DOGRAH.value:
         # Convert HTTP URL to WebSocket URL for TTS
-        base_url = MPS_API_URL.replace("http://", "ws://").replace("https://", "wss://")
+        base_url = (
+            mps_base_url().replace("http://", "ws://").replace("https://", "wss://")
+        )
         return DograhTTSService(
             base_url=base_url,
             api_key=user_config.tts.api_key,
@@ -1315,7 +1319,7 @@ def create_llm_service_from_provider(
         )
     elif provider == ServiceProviders.DOGRAH.value:
         return DograhLLMService(
-            base_url=f"{MPS_API_URL}/api/v1/llm",
+            base_url=f"{mps_base_url()}/api/v1/llm",
             api_key=api_key,
             correlation_id=correlation_id,
             usage_context=usage_context,

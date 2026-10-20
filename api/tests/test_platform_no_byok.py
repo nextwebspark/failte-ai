@@ -378,7 +378,9 @@ def test_voicemail_classifier_key_is_dropped_from_customer_responses():
 
 
 @pytest.mark.asyncio
-async def test_chunked_documents_are_refused_on_platform_models(make_client):
+async def test_chunked_documents_are_refused_on_platform_models(
+    make_client, mps_configured
+):
     async with make_client(PLATFORM) as (client, _workflow):
         response = await client.post(
             "/api/v1/knowledge-base/process-document",

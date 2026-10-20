@@ -1,8 +1,12 @@
 from types import SimpleNamespace
 from unittest.mock import patch
 
+import pytest
+
 from api.services.configuration.registry import ServiceProviders
 from api.services.pipecat.service_factory import create_llm_service
+
+pytestmark = pytest.mark.usefixtures("mps_configured")
 
 
 def test_create_dograh_llm_service_passes_variable_extraction_usage_context():

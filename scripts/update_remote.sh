@@ -81,7 +81,7 @@ if [[ -f docker-compose.override.yaml ]]; then
     echo -e "  ${BLUE}git submodule update --init --recursive${NC}"
     echo -e "  ${BLUE}./remote_up.sh --build${NC}"
     echo ""
-    echo -e "${YELLOW}See https://docs.dograh.com/deployment/update#updating-a-source-build${NC}"
+    echo -e "${YELLOW}See https://lightmove.ai/docs${NC}"
     exit 1
 fi
 

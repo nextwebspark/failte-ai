@@ -13,6 +13,8 @@ from api.services.pipecat.service_factory import (
     stt_uses_external_turns,
 )
 
+pytestmark = pytest.mark.usefixtures("mps_configured")
+
 
 def _audio_config() -> AudioConfig:
     return AudioConfig(

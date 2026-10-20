@@ -616,6 +616,7 @@ async def test_workflow_model_configuration_migration_delegates_db_access(
 @pytest.mark.asyncio
 async def test_migrate_model_configuration_v2_initializes_hosted_mps_billing(
     monkeypatch,
+    mps_configured,
 ):
     from api.routes import organization as organization_routes
 

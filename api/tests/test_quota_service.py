@@ -9,6 +9,8 @@ from api.services.configuration.registry import ServiceProviders
 from api.services.managed_model_services import MPS_CORRELATION_ID_CONTEXT_KEY
 from api.services.quota_service import QuotaCheckResult
 
+pytestmark = pytest.mark.usefixtures("mps_configured")
+
 
 @pytest.fixture(autouse=True)
 def _mps_billing(monkeypatch):
@@ -569,7 +571,7 @@ async def test_oss_run_authorization_falls_back_for_older_mps(monkeypatch):
     api_key = "mps_sk_12345678"
     request = httpx.Request(
         "POST",
-        "https://services.dograh.com/api/v1/service-keys/run-authorization/self",
+        "https://mps.example.test/api/v1/service-keys/run-authorization/self",
     )
     response = httpx.Response(404, request=request)
     combined_authorize = AsyncMock(
@@ -1049,7 +1051,7 @@ async def test_authorize_workflow_run_opens_when_hosted_mps_is_unreachable(
 ):
     request = httpx.Request(
         "POST",
-        "https://services.dograh.com/api/v1/billing/accounts/42/run-authorization",
+        "https://mps.example.test/api/v1/billing/accounts/42/run-authorization",
     )
 
     monkeypatch.setattr(quota_service, "DEPLOYMENT_MODE", "saas")
@@ -1081,7 +1083,7 @@ async def test_authorize_workflow_run_fails_closed_on_hosted_mps_http_error(
 ):
     request = httpx.Request(
         "POST",
-        "https://services.dograh.com/api/v1/billing/accounts/42/run-authorization",
+        "https://mps.example.test/api/v1/billing/accounts/42/run-authorization",
     )
     response = httpx.Response(503, request=request)
 
@@ -1115,7 +1117,7 @@ async def test_authorize_workflow_run_fails_closed_on_hosted_mps_http_error(
 
 @pytest.mark.asyncio
 async def test_authorize_workflow_run_fails_closed_on_invalid_mps_url(monkeypatch):
-    request = httpx.Request("POST", "ftp://services.dograh.com/run-authorization")
+    request = httpx.Request("POST", "ftp://mps.example.test/run-authorization")
 
     monkeypatch.setattr(quota_service, "DEPLOYMENT_MODE", "saas")
     _patch_workflow_context(monkeypatch)
@@ -1150,7 +1152,7 @@ async def test_authorize_workflow_run_opens_when_oss_quota_mps_is_unreachable(
 ):
     request = httpx.Request(
         "GET",
-        "https://services.dograh.com/api/v1/service-keys/usage/self",
+        "https://mps.example.test/api/v1/service-keys/usage/self",
     )
 
     monkeypatch.setattr(quota_service, "DEPLOYMENT_MODE", "oss")
@@ -1180,7 +1182,7 @@ async def test_authorize_workflow_run_fails_closed_on_oss_quota_mps_http_error(
 ):
     request = httpx.Request(
         "GET",
-        "https://services.dograh.com/api/v1/service-keys/usage/self",
+        "https://mps.example.test/api/v1/service-keys/usage/self",
     )
     response = httpx.Response(503, request=request)
 
@@ -1218,7 +1220,7 @@ async def test_authorize_workflow_run_denies_when_oss_run_authorization_is_unrea
 ):
     request = httpx.Request(
         "POST",
-        "https://services.dograh.com/api/v1/service-keys/run-authorization/self",
+        "https://mps.example.test/api/v1/service-keys/run-authorization/self",
     )
 
     monkeypatch.setattr(quota_service, "DEPLOYMENT_MODE", "oss")
@@ -1292,3 +1294,132 @@ async def test_authorize_workflow_run_fails_closed_when_storing_oss_correlation(
 
     assert result.has_quota is False
     assert result.error_code == "quota_check_failed"
+
+
+@pytest.mark.asyncio
+async def test_authorize_workflow_run_refuses_managed_models_without_mps(
+    monkeypatch,
+):
+    """Managed (MPS) models with no MPS configured: refuse before any call."""
+    monkeypatch.setattr(quota_service.mps_service_key_client, "base_url", "")
+    check_usage = AsyncMock()
+    monkeypatch.setattr(quota_service, "DEPLOYMENT_MODE", "oss")
+    _patch_workflow_context(monkeypatch)
+    monkeypatch.setattr(
+        quota_service,
+        "get_effective_ai_model_configuration_for_workflow",
+        AsyncMock(return_value=_dograh_config("mps_sk_12345678")),
+    )
+    monkeypatch.setattr(
+        quota_service.mps_service_key_client,
+        "check_service_key_usage",
+        check_usage,
+    )
+
+    result = await quota_service.authorize_workflow_run_start(
+        workflow_id=7,
+        organization_id=42,
+    )
+
+    assert result.has_quota is False
+    assert result.error_code == "managed_models_unavailable"
+    check_usage.assert_not_awaited()
+
+
+_MANAGED_VOICEMAIL = {
+    "voicemail_detection": {
+        "enabled": True,
+        "use_workflow_llm": False,
+        "provider": ServiceProviders.DOGRAH.value,
+        "model": "default",
+    }
+}
+_MANAGED_QA_GRAPH = {
+    "nodes": [
+        {
+            "id": "qa-1",
+            "type": "qa",
+            "data": {
+                "name": "QA",
+                "qa_use_workflow_llm": False,
+                "qa_provider": ServiceProviders.DOGRAH.value,
+                "qa_api_key": "mps_sk_12345678",
+            },
+        }
+    ]
+}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("workflow_configurations", "workflow_json"),
+    [(_MANAGED_VOICEMAIL, None), ({"model_overrides": {}}, _MANAGED_QA_GRAPH)],
+    ids=["voicemail", "qa"],
+)
+async def test_authorize_workflow_run_refuses_managed_own_llms_without_mps(
+    monkeypatch, workflow_configurations, workflow_json
+):
+    """Voicemail detection or QA on its own managed LLM also needs MPS."""
+    monkeypatch.setattr(quota_service.mps_service_key_client, "base_url", "")
+    monkeypatch.setattr(quota_service.constants, "PLATFORM_MODELS_ENABLED", False)
+    monkeypatch.setattr(quota_service, "DEPLOYMENT_MODE", "oss")
+    run = _pinned_run(workflow_configurations=workflow_configurations)
+    run.definition.workflow_json = workflow_json
+    _patch_workflow_context(monkeypatch)
+    monkeypatch.setattr(
+        quota_service.db_client, "get_workflow_run", AsyncMock(return_value=run)
+    )
+    monkeypatch.setattr(
+        quota_service,
+        "get_effective_ai_model_configuration_for_workflow",
+        AsyncMock(return_value=_byok_config()),
+    )
+
+    result = await quota_service.authorize_workflow_run_start(
+        workflow_id=7,
+        organization_id=42,
+        workflow_run_id=88,
+    )
+
+    assert result.has_quota is False
+    assert result.error_code == "managed_models_unavailable"
+
+
+@pytest.mark.parametrize(
+    ("workflow_configurations", "workflow_json", "platform_models"),
+    [
+        # Reusing the agent's LLM ignores the stored provider.
+        (
+            {
+                "voicemail_detection": {
+                    **_MANAGED_VOICEMAIL["voicemail_detection"],
+                    "use_workflow_llm": True,
+                }
+            },
+            None,
+            False,
+        ),
+        # Disabled voicemail detection never runs.
+        (
+            {
+                "voicemail_detection": {
+                    **_MANAGED_VOICEMAIL["voicemail_detection"],
+                    "enabled": False,
+                }
+            },
+            None,
+            False,
+        ),
+        # Platform-models servers always classify and review with the agent's LLM.
+        (_MANAGED_VOICEMAIL, _MANAGED_QA_GRAPH, True),
+    ],
+)
+def test_own_llms_ignored_when_the_runtime_ignores_them(
+    monkeypatch, workflow_configurations, workflow_json, platform_models
+):
+    monkeypatch.setattr(
+        quota_service.constants, "PLATFORM_MODELS_ENABLED", platform_models
+    )
+    assert not quota_service._own_llms_use_dograh(
+        workflow_configurations, workflow_json
+    )

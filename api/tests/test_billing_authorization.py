@@ -168,7 +168,7 @@ async def test_other_providers_skip_the_ledger(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_dograh_keys_are_still_checked_after_the_balance(
-    stripe_billing, monkeypatch
+    stripe_billing, monkeypatch, mps_configured
 ):
     _set_account(monkeypatch, _account("20"))
     monkeypatch.setattr(

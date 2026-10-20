@@ -427,23 +427,10 @@ async def get_model_configuration_v2_defaults(
     }
     return ModelConfigurationV2Defaults(
         platform=catalog,
-        dograh={
-            "voices": [DOGRAH_DEFAULT_VOICE],
-            "allow_custom_input": _dograh_allows_custom_voice(),
-            "speeds": list(DOGRAH_SPEED_OPTIONS),
-            "speed_range": {
-                "min": DOGRAH_SPEED_MIN,
-                "max": DOGRAH_SPEED_MAX,
-                "step": DOGRAH_SPEED_STEP,
-            },
-            "languages": DOGRAH_STT_LANGUAGES,
-            "multilingual_languages": DOGRAH_MULTILINGUAL_AUTODETECT_LANGUAGES,
-            "defaults": {
-                "voice": DOGRAH_DEFAULT_VOICE,
-                "speed": 1.0,
-                "language": DOGRAH_DEFAULT_LANGUAGE,
-            },
-        },
+        # The managed (MPS) mode is offered only when an MPS is configured.
+        dograh=_dograh_managed_defaults()
+        if mps_service_key_client.is_configured
+        else None,
         byok={
             "pipeline": {
                 "llm": _byok_provider_schemas(ServiceType.LLM),
@@ -460,6 +447,26 @@ async def get_model_configuration_v2_defaults(
             },
         },
     )
+
+
+def _dograh_managed_defaults() -> dict:
+    return {
+        "voices": [DOGRAH_DEFAULT_VOICE],
+        "allow_custom_input": _dograh_allows_custom_voice(),
+        "speeds": list(DOGRAH_SPEED_OPTIONS),
+        "speed_range": {
+            "min": DOGRAH_SPEED_MIN,
+            "max": DOGRAH_SPEED_MAX,
+            "step": DOGRAH_SPEED_STEP,
+        },
+        "languages": DOGRAH_STT_LANGUAGES,
+        "multilingual_languages": DOGRAH_MULTILINGUAL_AUTODETECT_LANGUAGES,
+        "defaults": {
+            "voice": DOGRAH_DEFAULT_VOICE,
+            "speed": 1.0,
+            "language": DOGRAH_DEFAULT_LANGUAGE,
+        },
+    }
 
 
 @router.get(
@@ -482,7 +489,7 @@ async def get_model_configuration_pricing(
     user: UserModel = Depends(get_user_with_selected_organization),
 ) -> ModelConfigurationPricingResponse:
     """Return the hosted organization prices shown in Model Configurations."""
-    if DEPLOYMENT_MODE == "oss":
+    if DEPLOYMENT_MODE == "oss" or not mps_service_key_client.is_configured:
         return ModelConfigurationPricingResponse()
 
     try:
@@ -616,7 +623,7 @@ async def migrate_model_configuration_v2(
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=exc.args[0])
 
-    if DEPLOYMENT_MODE != "oss":
+    if DEPLOYMENT_MODE != "oss" and mps_service_key_client.is_configured:
         try:
             await ensure_hosted_mps_billing_account_v2(
                 organization_id,

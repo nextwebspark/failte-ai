@@ -8,6 +8,8 @@ import pytest
 from api.services.gen_ai.embedding.dograh_service import DograhEmbeddingService
 from api.services.gen_ai.embedding.factory import resolve_embedding_correlation_id
 
+pytestmark = pytest.mark.usefixtures("mps_configured")
+
 
 def _service_with_fake_client(correlation_id):
     service = DograhEmbeddingService(
@@ -55,6 +57,7 @@ async def test_dograh_embedding_sends_plain_without_correlation():
 
 def _fake_mps_client(*, minted="minted"):
     return SimpleNamespace(
+        is_configured=True,
         create_correlation_id=AsyncMock(return_value={"correlation_id": minted}),
     )
 
@@ -88,6 +91,7 @@ async def test_resolve_correlation_no_service_key_returns_none(monkeypatch):
 @pytest.mark.asyncio
 async def test_resolve_correlation_swallows_errors(monkeypatch):
     fake = SimpleNamespace(
+        is_configured=True,
         create_correlation_id=AsyncMock(side_effect=RuntimeError("mps down")),
     )
     monkeypatch.setattr(

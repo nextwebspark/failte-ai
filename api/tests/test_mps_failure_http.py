@@ -7,6 +7,8 @@ import pytest
 from api.errors.mps import MPS_UNAVAILABLE_PUBLIC_MESSAGE, MPSUnavailableError
 from api.routes import user as user_routes
 
+pytestmark = pytest.mark.usefixtures("mps_configured")
+
 
 @pytest.mark.asyncio
 async def test_voice_catalog_does_not_duplicate_mps_failure(monkeypatch):

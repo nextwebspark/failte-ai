@@ -19,3 +19,18 @@ class MPSUnavailableError(ConnectionError):
         if status_code is not None:
             detail = f"{detail} (HTTP {status_code})"
         super().__init__(detail)
+
+
+MPS_NOT_CONFIGURED_PUBLIC_MESSAGE = "This feature isn't available on this server."
+
+
+class MPSNotConfiguredError(MPSUnavailableError):
+    """No MPS is configured (``MPS_API_URL`` is unset), so no call was made.
+
+    Raised before any request is built, so nothing leaves the server. Callers
+    gate MPS-only features on ``mps_service_key_client.is_configured``; this is
+    the fail-closed backstop for any path that does not.
+    """
+
+    def __init__(self) -> None:
+        super().__init__("an operation: MPS_API_URL is not configured")
