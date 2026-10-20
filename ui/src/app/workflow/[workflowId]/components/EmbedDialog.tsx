@@ -112,10 +112,22 @@ const VOICE_STATUS_TEXT_FIELDS: WidgetTextField[] = [
     { key: "voiceConnectionLostSubtext", label: "Connection Lost Subtext" },
 ];
 
+// The AI and recording notice shown next to the start control before the
+// microphone opens. Every voice mode shows it (headless hands it to the host
+// page through getDisclosureText), so the owner can translate it in each.
+const VOICE_DISCLOSURE_TEXT_FIELDS: WidgetTextField[] = [
+    {
+        key: "voiceDisclosureText",
+        label: "AI and Recording Notice",
+        hint: "shown before the microphone opens",
+    },
+];
+
 const WIDGET_TEXT_KEYS: WidgetTextKey[] = [
     ...CHAT_TEXT_FIELDS,
     ...VOICE_BUTTON_TEXT_FIELDS,
     ...VOICE_STATUS_TEXT_FIELDS,
+    ...VOICE_DISCLOSURE_TEXT_FIELDS,
 ].map((field) => field.key);
 
 /**
@@ -740,7 +752,8 @@ export function EmbedDialog({
                                     )}
 
                                     {/* Visitor-facing copy, so the widget can match the site's language.
-                                        Headless renders no UI of ours, so it has nothing to translate. */}
+                                        Headless renders no UI of ours, so only the voice notice it hands
+                                        to the host page is translatable there. */}
                                     {embedMode !== "headless" && widgetType === "chat" && (
                                         <WidgetTextSection
                                             title="Chat Panel Text"
@@ -752,21 +765,29 @@ export function EmbedDialog({
                                         />
                                     )}
 
-                                    {embedMode !== "headless" && widgetType === "voice" && (
+                                    {widgetType === "voice" && (
                                         <WidgetTextSection
                                             title="Voice Call Text"
                                             description={
                                                 embedMode === "inline"
                                                     ? "Wording visitors see on the call panel across the call lifecycle."
-                                                    : "Wording the call button cycles through while a call connects and runs."
+                                                    : embedMode === "headless"
+                                                        ? "Your page renders the call UI. Show this notice next to your start control; the widget returns it from getDisclosureText()."
+                                                        : "Wording the call button cycles through while a call connects and runs."
                                             }
                                             groups={
                                                 embedMode === "inline"
                                                     ? [
                                                         { heading: "Button labels", fields: VOICE_BUTTON_TEXT_FIELDS },
                                                         { heading: "Status messages", fields: VOICE_STATUS_TEXT_FIELDS },
+                                                        { heading: "Notice", fields: VOICE_DISCLOSURE_TEXT_FIELDS },
                                                     ]
-                                                    : [{ fields: VOICE_BUTTON_TEXT_FIELDS }]
+                                                    : embedMode === "headless"
+                                                        ? [{ heading: "Notice", fields: VOICE_DISCLOSURE_TEXT_FIELDS }]
+                                                        : [
+                                                            { fields: VOICE_BUTTON_TEXT_FIELDS },
+                                                            { heading: "Notice", fields: VOICE_DISCLOSURE_TEXT_FIELDS },
+                                                        ]
                                             }
                                             values={widgetTexts}
                                             defaults={widgetTextDefaults}

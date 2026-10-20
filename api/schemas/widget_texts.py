@@ -50,6 +50,12 @@ class WidgetTexts(BaseModel):
     voice_connection_lost_title: str = "Connection lost"
     voice_connection_lost_subtext: str = "The call has been disconnected"
 
+    # Voice call — notice shown next to the start control before the
+    # microphone opens (EU AI Act Art. 50 and call-recording notice).
+    voice_disclosure_text: str = (
+        "You'll talk to an AI assistant. The call is recorded and uses your microphone."
+    )
+
     @classmethod
     def resolve(cls, settings: dict | None) -> "WidgetTexts":
         """Apply the agent owner's overrides from embed token settings.

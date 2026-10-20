@@ -18,7 +18,8 @@ type WidgetWindow = Window & {
         start: () => Promise<void>;
         startChat: () => Promise<void>;
         endChat: () => Promise<unknown[] | null>;
-        getState: () => { chat: { status: string } };
+        getState: () => { chat: { status: string }; disclosureText: string | null };
+        getDisclosureText: () => string | null;
         getContext: () => Record<string, unknown>;
     };
     FallchaWidget?: unknown;
@@ -280,6 +281,114 @@ describe('public embed widget chat lifecycle', () => {
         expect(countInitCalls(fetchMock)).toBe(1);
         expect(getUserMedia).not.toHaveBeenCalled();
         expect(document.querySelector('.lightmove-chat-panel--inline')).not.toBeNull();
+    });
+});
+
+// EU AI Act Art. 50 and call-recording notice: every voice widget tells the
+// visitor before the microphone opens, without a blocking dialog.
+describe('public embed widget voice disclosure', () => {
+    const DISCLOSURE = "You'll talk to an AI assistant. The call is recorded and uses your microphone.";
+    const VOICE_TEXTS = {
+        voiceConnectingText: 'Connecting…',
+        voiceEndCallText: 'End Call',
+        voiceRetryText: 'Retry',
+        voiceReadyTitle: 'Ready to Connect',
+        voiceConnectingSubtext: 'Please wait',
+        voiceConnectedTitle: 'Connected',
+        voiceConnectedSubtext: 'Your voice call is now active',
+        voiceConnectionFailedTitle: 'Connection failed',
+        voiceConnectionFailedSubtext: 'Please check your microphone and try again',
+        voiceDisclosureText: DISCLOSURE,
+    };
+
+    beforeEach(() => {
+        vi.useFakeTimers();
+        document.head.innerHTML = '';
+        document.body.innerHTML = `
+            <script src="http://widget.test/embed/lightmove-widget.js?token=emb_TEST"></script>
+            <div id="lightmove-inline-container"></div>
+        `;
+    });
+
+    afterEach(() => {
+        delete (window as WidgetWindow).LightMoveWidget;
+        delete (window as WidgetWindow).FallchaWidget;
+        delete (window as WidgetWindow).FailteWidget;
+        delete (window as WidgetWindow).DograhWidget;
+        vi.useRealTimers();
+        vi.unstubAllGlobals();
+        vi.restoreAllMocks();
+        document.head.innerHTML = '';
+        document.body.innerHTML = '';
+    });
+
+    function voiceFetch(embedMode: string, autoStart = false) {
+        return vi.fn(async (input: RequestInfo | URL) => {
+            const url = String(input);
+            if (url.includes('/api/v1/public/embed/config/')) {
+                return {
+                    ok: true,
+                    status: 200,
+                    json: async () => ({
+                        workflow_id: 7,
+                        settings: {
+                            widgetType: 'voice',
+                            embedMode,
+                            containerId: 'lightmove-inline-container',
+                        },
+                        texts: VOICE_TEXTS,
+                        auto_start: autoStart,
+                    }),
+                } as Response;
+            }
+            // Session start never resolves: the test inspects the page
+            // while the call is still connecting.
+            return new Promise<Response>(() => {});
+        });
+    }
+
+    it('inline mode shows the notice under the start button', async () => {
+        await loadWidget(voiceFetch('inline'));
+
+        const notice = document.getElementById('lightmove-inline-disclosure');
+        expect(notice?.textContent).toBe(DISCLOSURE);
+        expect(
+            document.getElementById('lightmove-inline-start-btn')?.getAttribute('aria-describedby'),
+        ).toBe('lightmove-inline-disclosure');
+    });
+
+    it('inline auto-start renders the notice before and while it connects', async () => {
+        const fetchMock = voiceFetch('inline', true);
+        await loadWidget(fetchMock);
+
+        expect(document.getElementById('lightmove-inline-disclosure')?.textContent).toBe(DISCLOSURE);
+        expect(countInitCalls(fetchMock)).toBe(0);
+
+        await vi.advanceTimersByTimeAsync(1000);
+        await flushMicrotasks();
+
+        expect(countInitCalls(fetchMock)).toBe(1);
+        expect(document.getElementById('lightmove-inline-disclosure')?.textContent).toBe(DISCLOSURE);
+    });
+
+    it('floating mode captions the call button before the first call', async () => {
+        await loadWidget(voiceFetch('floating'));
+
+        const caption = document.getElementById('lightmove-widget-disclosure');
+        expect(caption?.textContent).toBe(DISCLOSURE);
+        expect(
+            document.getElementById('lightmove-widget-cta')?.getAttribute('aria-describedby'),
+        ).toBe('lightmove-widget-disclosure');
+        // Informs, never blocks: there is no consent dialog to get past.
+        expect(document.querySelector('[role="dialog"]')).toBeNull();
+    });
+
+    it('headless mode hands the notice to the host page', async () => {
+        const widget = await loadWidget(voiceFetch('headless'));
+
+        expect(widget.getDisclosureText()).toBe(DISCLOSURE);
+        expect(widget.getState().disclosureText).toBe(DISCLOSURE);
+        expect(document.getElementById('lightmove-widget-disclosure')).toBeNull();
     });
 });
 
