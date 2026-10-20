@@ -273,7 +273,7 @@ async def test_reencrypt_seals_plaintext_and_rotates_envelopes(
         text("SELECT id FROM external_credentials WHERE credential_uuid = :u"),
         {"u": stranger_uuid},
     )
-    assert stranger_id in report.failed_ids
+    assert ("external_credentials", stranger_id) in report.failed
     assert await _raw_data(async_session, stranger_uuid) == stranger_raw
 
     plain_raw = await _raw_data(async_session, plain.credential_uuid)
@@ -474,18 +474,44 @@ def test_startup_refuses_envelopes_without_keys(key):
     for mode in ("oss", "saas"):
         with pytest.raises(CredentialEncryptionStartupError, match="not set"):
             check_credential_encryption(
-                cipher=None, deployment_mode=mode, sample_envelope=envelope
+                cipher=None,
+                deployment_mode=mode,
+                environment="local",
+                sample_envelope=envelope,
             )
 
 
 def test_startup_requires_keys_outside_oss():
     with pytest.raises(CredentialEncryptionStartupError, match="saas"):
         check_credential_encryption(
-            cipher=None, deployment_mode="saas", sample_envelope=None
+            cipher=None,
+            deployment_mode="saas",
+            environment="local",
+            sample_envelope=None,
         )
-    # OSS keeps plaintext storage (with a warning).
+    # OSS development and tests keep plaintext storage (with a warning).
+    for environment in ("local", "test"):
+        check_credential_encryption(
+            cipher=None,
+            deployment_mode="oss",
+            environment=environment,
+            sample_envelope=None,
+        )
+
+
+def test_startup_requires_keys_in_production_even_in_oss():
+    with pytest.raises(CredentialEncryptionStartupError, match="production"):
+        check_credential_encryption(
+            cipher=None,
+            deployment_mode="oss",
+            environment="production",
+            sample_envelope=None,
+        )
     check_credential_encryption(
-        cipher=None, deployment_mode="oss", sample_envelope=None
+        cipher=CredentialCipher([generate_key()]),
+        deployment_mode="oss",
+        environment="production",
+        sample_envelope=None,
     )
 
 
@@ -494,15 +520,20 @@ def test_startup_canary_must_decrypt(key):
     check_credential_encryption(
         cipher=CredentialCipher([generate_key(), key]),
         deployment_mode="saas",
+        environment="production",
         sample_envelope=envelope,
     )
     check_credential_encryption(
-        cipher=CredentialCipher([key]), deployment_mode="saas", sample_envelope=None
+        cipher=CredentialCipher([key]),
+        deployment_mode="saas",
+        environment="production",
+        sample_envelope=None,
     )
     with pytest.raises(CredentialEncryptionStartupError, match="cannot decrypt") as e:
         check_credential_encryption(
             cipher=CredentialCipher([generate_key()]),
             deployment_mode="oss",
+            environment="local",
             sample_envelope=envelope,
         )
     assert SECRET not in str(e.value)
@@ -527,6 +558,7 @@ async def test_startup_check_reads_a_real_envelope(
         credential_encryption, "CredentialEncryptionClient", lambda _engine: client
     )
     monkeypatch.setattr(credential_encryption, "DEPLOYMENT_MODE", "oss")
+    monkeypatch.setattr(credential_encryption, "ENVIRONMENT", "local")
     monkeypatch.setattr(credential_crypto, "_cipher", None)
     with pytest.raises(CredentialEncryptionStartupError):
         await credential_encryption.verify_credential_encryption()

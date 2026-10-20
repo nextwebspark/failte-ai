@@ -15,12 +15,10 @@
 # `pytest` binary; anything whose sys.path[0] is venv/bin rather than the cwd)
 # would import the MAIN worktree's api/ while you edit this one.
 #
-# Why (3) is needed: with DEPLOYMENT_MODE="saas" (the usual local setting for
-# this repo's maintainers) api/app.py enforces CORS_ALLOWED_ORIGINS with
-# credentials, and UI_APP_URL backs embed URLs + billing return URLs. Both
-# hard-code a UI origin, so they have to follow this worktree's UI port. Under
-# DEPLOYMENT_MODE="oss" the API forces allow_origins=["*"] and ignores
-# CORS_ALLOWED_ORIGINS entirely, so writing it is harmless there.
+# Why (3) is needed: whenever CORS_ALLOWED_ORIGINS is set, api/app.py enforces
+# it with credentials in every DEPLOYMENT_MODE (see api/utils/cors.py), and
+# UI_APP_URL backs embed URLs + billing return URLs. Both hard-code a UI
+# origin, so they have to follow this worktree's UI port.
 #
 # Port scheme (same algorithm for both ports):
 #   - The MAIN worktree is left untouched: backend 8000, UI 3000.

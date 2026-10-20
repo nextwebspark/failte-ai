@@ -312,7 +312,11 @@ class OrganizationConfigurationModel(Base):
         Integer, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False
     )
     key = Column(String, nullable=False)
-    value = Column(JSON, nullable=False, default=dict)
+    # Encrypted at rest: several keys hold provider API keys and other secrets
+    # (MODEL_CONFIGURATION_V2, LANGFUSE_CREDENTIALS, TELEPHONY_CONFIGURATION,
+    # ...). SQL cannot look inside it; filter by organization_id/key and read
+    # the decrypted dict in Python.
+    value = Column(EncryptedJSON, nullable=False, default=dict)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
     updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
     last_validated_at = Column(DateTime(timezone=True), nullable=True)
@@ -336,7 +340,8 @@ class TelephonyConfigurationModel(Base):
     )
     name = Column(String(64), nullable=False)
     provider = Column(String(32), nullable=False)
-    credentials = Column(JSON, nullable=False, default=dict)
+    # Encrypted at rest; SQL cannot filter on its contents (see EncryptedJSON).
+    credentials = Column(EncryptedJSON, nullable=False, default=dict)
     is_default_outbound = Column(
         Boolean, nullable=False, default=False, server_default=text("false")
     )
@@ -538,7 +543,8 @@ class IntegrationModel(Base):
     created_by = Column(Integer, ForeignKey("users.id"))
     is_active = Column(Boolean, default=True, nullable=False)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
-    connection_details = Column(JSON, nullable=False, default=dict)
+    # Encrypted at rest (OAuth tokens and the like); see EncryptedJSON.
+    connection_details = Column(EncryptedJSON, nullable=False, default=dict)
     action = Column(String, nullable=False, default=IntegrationAction.ALL_CALLS.value)
 
     # Relationships

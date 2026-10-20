@@ -8,7 +8,7 @@ Each row represents one provider account that an organization has connected
 from datetime import UTC, datetime
 from typing import Any, Dict, List, Optional
 
-from sqlalchemy import func, update
+from sqlalchemy import update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.future import select
 
@@ -118,49 +118,31 @@ class TelephonyConfigurationClient(BaseDBClient):
         Used by the org-warnings endpoint to surface a UI nudge until customers
         paste their portal-issued public key.
         """
-        async with self.async_session() as session:
-            result = await session.execute(
-                select(func.count(TelephonyConfigurationModel.id)).where(
-                    TelephonyConfigurationModel.organization_id == organization_id,
-                    TelephonyConfigurationModel.provider == "telnyx",
-                    (
-                        TelephonyConfigurationModel.credentials.op("->>")(
-                            "webhook_public_key"
-                        ).is_(None)
-                    )
-                    | (
-                        TelephonyConfigurationModel.credentials.op("->>")(
-                            "webhook_public_key"
-                        )
-                        == ""
-                    ),
-                )
-            )
-            return int(result.scalar() or 0)
+        return await self._count_configs_missing_credential(
+            organization_id, "telnyx", "webhook_public_key"
+        )
 
     async def count_vonage_configs_missing_signature_secret(
         self, organization_id: int
     ) -> int:
         """Count Vonage configs in this org with no signature_secret."""
-        async with self.async_session() as session:
-            result = await session.execute(
-                select(func.count(TelephonyConfigurationModel.id)).where(
-                    TelephonyConfigurationModel.organization_id == organization_id,
-                    TelephonyConfigurationModel.provider == "vonage",
-                    (
-                        TelephonyConfigurationModel.credentials.op("->>")(
-                            "signature_secret"
-                        ).is_(None)
-                    )
-                    | (
-                        TelephonyConfigurationModel.credentials.op("->>")(
-                            "signature_secret"
-                        )
-                        == ""
-                    ),
-                )
-            )
-            return int(result.scalar() or 0)
+        return await self._count_configs_missing_credential(
+            organization_id, "vonage", "signature_secret"
+        )
+
+    async def _count_configs_missing_credential(
+        self, organization_id: int, provider: str, field: str
+    ) -> int:
+        # ``credentials`` is encrypted at rest, so the field is checked on the
+        # decrypted dicts in Python (an org has a handful of configs at most).
+        configs = await self.list_telephony_configurations_by_provider(
+            organization_id, provider, active_only=False
+        )
+        return sum(
+            1
+            for config in configs
+            if (config.credentials or {}).get(field) in (None, "")
+        )
 
     async def list_active_telephony_configurations_by_provider(
         self, provider: str

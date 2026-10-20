@@ -23,7 +23,7 @@ pre-launch schedule is active. Full breakdown in the plan document.
 
 | File | Purpose |
 |---|---|
-| `bootstrap.sh` | Idempotent `gcloud` setup: project, APIs, IPs, firewall, bucket, Cloud SQL, registry, GitHub Actions identity (`ci`) |
+| `bootstrap.sh` | Idempotent `gcloud` setup: project, APIs, log retention (`logging`), IPs, firewall, bucket, Cloud SQL, registry, GitHub Actions identity (`ci`) |
 | `docker-compose.override.yaml` | App-VM overlay — drops the Postgres container, points `fallcha-tools` at Cloud SQL, pins api/ui/fallcha-tools to `LIGHTMOVE_VERSION` (the retired sidecars stay commented out for rollback) |
 | `configure-env.sh` | Writes `.env` (and `secrets/tools.env`) from Secret Manager |
 | `cloudbuild.yaml` | Builds the release images `dograh-api`, `dograh-ui` and `fallcha-tools` for linux/amd64, tagged `X.Y.Z` |
@@ -197,6 +197,18 @@ cutover and for rollback (see [Tools service cutover](#tools-service-cutover)).
 Every step checks before it creates, so re-running converges drift safely. Run a
 single step with `./bootstrap.sh apply firewall`.
 
+**Log retention.** The `logging` step sets the project's `_Default` Cloud Logging
+bucket to keep entries for 30 days (`DOGRAH_LOG_RETENTION_DAYS` overrides), and
+puts it back if someone changes it in the console. App logs can carry phone
+numbers and call metadata, so they are kept no longer than that. Run it alone
+with `./deploy/gcp/bootstrap.sh apply logging`; the identity running it needs
+`logging.buckets.update` (`roles/logging.configWriter`, or Owner/Editor). Check it:
+
+```bash
+gcloud logging buckets describe _Default --location=global --project=dograh-eu \
+  --format='value(retentionDays)'
+```
+
 Capture the **HMAC key secret** when it prints — it is shown once and is not
 retrievable afterwards.
 
@@ -245,12 +257,13 @@ campaigns, queued rows, widget sessions and webhook deliveries a pass would
 purge, counts only). An organisation whose stored retention setting is invalid
 is skipped and logged at ERROR.
 
-**Production ships in dry-run mode:** `configure-env.sh` sets
-`RETENTION_PURGE_DRY_RUN=true`. Switch to real deletion only once customers
-have been warned, by setting `RETENTION_PURGE_DRY_RUN=false` (re-run
-`DOGRAH_RETENTION_PURGE_DRY_RUN=false ./deploy/gcp/configure-env.sh`, then
-redeploy so the containers pick it up). Read the dry-run lines with
-`docker compose logs api | grep "Retention purge dry run"`.
+**Production deletes for real from the first deploy:** `configure-env.sh` sets
+`RETENTION_PURGE_DRY_RUN=false`. A dry run is still available, for example to
+preview the effect of a shorter retention setting: re-run
+`DOGRAH_RETENTION_PURGE_DRY_RUN=true ./deploy/gcp/configure-env.sh`, then
+redeploy so the containers pick it up, and read the lines with
+`docker compose logs api | grep "Retention purge dry run"`. Re-run without the
+variable (or with `false`) to switch deletion back on.
 
 Database backups: automated backups 7 days, PITR 7 days, pre-deploy backups
 pruned after 30 days (`deploy.yml` deletes on-demand backups older than 30 days
@@ -336,7 +349,23 @@ OSS_JWT_SECRET=<openssl rand -hex 32>
 TURN_SECRET=<openssl rand -hex 32>
 DOGRAH_DEVOPS_SECRET=<openssl rand -hex 32>
 TELEPHONY_WS_TOKEN_SECRET=<openssl rand -hex 32>
+TELEPHONY_WS_TOKEN_ENFORCE=true
+CREDENTIALS_ENCRYPTION_KEYS=<Fernet key; see "Encryption at rest">
+CORS_ALLOWED_ORIGINS=<PUBLIC_BASE_URL, e.g. https://app.lightmove.ai>
+RETENTION_PURGE_DRY_RUN=false
 ```
+
+`configure-env.sh` writes all of these. Production (`ENVIRONMENT=production`)
+refuses to start without `CREDENTIALS_ENCRYPTION_KEYS`, and never answers CORS
+with `*`: it uses `CORS_ALLOWED_ORIGINS` (the script defaults it to
+`PUBLIC_BASE_URL`; add origins with `DOGRAH_CORS_ALLOWED_ORIGINS=a,b`), or the
+origin of `PUBLIC_BASE_URL` when the list is unset. The embed widget on customer
+sites is unaffected: `/api/v1/public/embed/*` answers CORS itself, per embed
+token's allowed domains. `TELEPHONY_WS_TOKEN_ENFORCE=true` makes the telephony
+media WebSocket refuse URLs without a token minted with
+`TELEPHONY_WS_TOKEN_SECRET` (Secret Manager `dograh-telephony-ws-token-secret`,
+else the `.env` value, else a generated one; rotating it only drops calls in
+flight).
 
 Three things that will bite otherwise:
 
@@ -392,10 +421,12 @@ replaces the `calendar-shim` and `chmarine-product-service` sidecars. It sits on
 
 ### Secrets
 
-All three are **required**: the overlay runs `fallcha-tools`, and
-`configure-env.sh` stops with an error if `dograh-tools-internal-secret` or
-`dograh-tools-encryption-keys` is missing. Create them once (values are never
-printed back):
+Create all three once (values are never printed back). The overlay runs
+`fallcha-tools`, so `configure-env.sh` stops with an error if
+`dograh-tools-internal-secret` or `dograh-tools-encryption-keys` is missing.
+`dograh-credentials-encryption-keys` always ends up set too (see
+[Encryption at rest](#encryption-at-rest)), but create it here so the key lives
+in Secret Manager rather than only in `.env`:
 
 ```bash
 P=dograh-eu
@@ -437,19 +468,66 @@ keeps only about 100 live refresh tokens per Google account per client, and
 every connect re-consents, so one account connecting very many workspaces
 loses its oldest connections (they show as `grant_revoked`).
 
-**Encrypting existing credentials.** The api's migration seals plaintext rows
-only when it first runs with the key set. Once the key is set on an install
-whose database already passed that migration, run the re-encryption once.
-GCP's Cloud SQL is such an install. The script is idempotent and safe to repeat:
+### Encryption at rest
 
-```bash
-docker compose up -d api        # restart with CREDENTIALS_ENCRYPTION_KEYS
-docker compose exec api python -m scripts.reencrypt_credentials --dry-run
-docker compose exec api python -m scripts.reencrypt_credentials
-```
+`CREDENTIALS_ENCRYPTION_KEYS` (comma-separated Fernet keys, the first one
+encrypts) seals every stored secret in the database: workspace credentials
+(`external_credentials.credential_data`), telephony provider credentials
+(`telephony_configurations.credentials`), integration connection details
+(`integrations.connection_details`) and organization configuration values
+(`organization_configurations.value`, which holds model API keys, Langfuse keys
+and legacy telephony settings). Each value is stored as a
+`{"_enc": "v1", "ct": "<Fernet token>"}` envelope; the app decrypts on read.
 
-Never drop a key while rows encrypted with it exist. Rotation is in
-`docs/developer/environment-variables.mdx`.
+- **Startup.** With `ENVIRONMENT=production` the api and worker refuse to start
+  without keys, and every start checks that the keys open an existing envelope,
+  so a wrong or dropped key fails the deploy (and its health check) instead of
+  breaking calls later.
+- **Where the key comes from.** `configure-env.sh` uses the Secret Manager secret
+  `dograh-credentials-encryption-keys`; if this VM cannot read it, the value
+  already in `.env`; otherwise it generates one and stores it in Secret Manager
+  when it may create secrets, or warns loudly that the key exists only in `.env`.
+  In that last case copy it up at once:
+
+  ```bash
+  sudo grep '^CREDENTIALS_ENCRYPTION_KEYS=' /opt/lightmove/dograh/.env | cut -d= -f2- \
+    | gcloud secrets create dograh-credentials-encryption-keys --data-file=- \
+        --replication-policy=user-managed --locations=europe-west1 --project=dograh-eu
+  gcloud secrets add-iam-policy-binding dograh-credentials-encryption-keys --project=dograh-eu \
+    --member=serviceAccount:dograh-app-sa@dograh-eu.iam.gserviceaccount.com \
+    --role=roles/secretmanager.secretAccessor
+  ```
+
+- **Existing rows.** Migration `00cb7a7a62b1` (the api runs `alembic upgrade
+  head` on start) encrypts existing plaintext telephony, integration and organization
+  configuration rows in place when the key is set; `6b0c8484ba5a` did the same for
+  workspace credentials. Rows written before the key existed, or on a database
+  that passed those migrations without a key, are sealed by the re-encryption
+  script, which is idempotent and safe to repeat:
+
+  ```bash
+  docker compose exec api python -m scripts.reencrypt_credentials --dry-run
+  docker compose exec api python -m scripts.reencrypt_credentials
+  ```
+
+- **Rotation.** Supported without downtime:
+  1. Generate a new key and set the secret to `<new>,<old>` (new first):
+     `printf '%s,%s' "$NEW" "$OLD" | gcloud secrets versions add dograh-credentials-encryption-keys --data-file=- --project=dograh-eu`.
+  2. Re-run `configure-env.sh` and `docker compose up -d api` (every api and
+     worker must hold both keys).
+  3. `docker compose exec api python -m scripts.reencrypt_credentials` re-seals
+     every row of all four columns under the new key; it exits non-zero and lists
+     `table#id` for any row it cannot open.
+  4. Set the secret to `<new>` only, re-run `configure-env.sh`, restart.
+     Keep the old key with the backups taken before step 3: restoring one of them
+     needs it.
+- **Never drop a key while rows encrypted with it exist**, and back the key up
+  with the database backups: a restored database is unreadable without it.
+- **Rolling back past the release that added `00cb7a7a62b1`.** Older images
+  cannot read the encrypted telephony, integration and organization
+  configuration rows, and `deploy.sh` never reverses migrations. Decrypt first,
+  with the keys still set, then deploy the older tag:
+  `docker compose exec api alembic -c api/alembic.ini downgrade b7c3e9a41d20`.
 
 The nginx config is rendered by `dograh-init` from
 `deploy/templates/nginx.remote.conf.template`, so pulling this repo and
