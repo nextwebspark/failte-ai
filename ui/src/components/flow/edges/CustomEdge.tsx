@@ -1,4 +1,4 @@
-import { BaseEdge, type Edge, EdgeLabelRenderer, type EdgeProps, getSmoothStepPath, useReactFlow } from '@xyflow/react';
+import { BaseEdge, EdgeLabelRenderer, type EdgeProps, getSmoothStepPath, useReactFlow } from '@xyflow/react';
 import { AlertCircle, Pencil, Trash2 } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 
@@ -13,7 +13,6 @@ import { Textarea } from '@/components/ui/textarea';
 import { cn } from "@/lib/utils";
 
 import { FlowEdge, FlowEdgeData, FlowNode } from '../types';
-type CustomEdge = Edge<{ value: number }, 'custom'>;
 
 
 interface EdgeDetailsDialogProps {
@@ -154,6 +153,7 @@ export default function CustomEdge(props: CustomEdgeProps) {
 
     const { getEdges, setNodes } = useReactFlow<FlowNode, FlowEdge>();
     const { saveWorkflow } = useWorkflow();
+    const readOnly = useWorkflowOptional()?.readOnly ?? false;
     const updateEdge = useWorkflowStore((state) => state.updateEdge);
     const deleteEdge = useWorkflowStore((state) => state.deleteEdge);
     const [open, setOpen] = useState(false);
@@ -275,10 +275,11 @@ export default function CustomEdge(props: CustomEdgeProps) {
                         ...style,
                         // Brand marks selection and hover, as on the steps; idle
                         // connections are a calm solid ink line (Conversation.dc.html),
-                        // even on edges saved as `animated`.
-                        stroke: selected || isHovered
-                            ? 'var(--brand)'
-                            : data?.invalid ? 'var(--danger)' : 'var(--ink-3)',
+                        // even on edges saved as `animated`. An invalid connection
+                        // stays danger-red; width alone shows hover and selection.
+                        stroke: data?.invalid
+                            ? 'var(--danger)'
+                            : selected || isHovered ? 'var(--brand)' : 'var(--ink-3)',
                         strokeWidth: selected ? 2.5 : isHovered ? 2 : 1.5,
                         strokeDasharray: 'none',
                         animation: 'none',
@@ -329,15 +330,17 @@ export default function CustomEdge(props: CustomEdgeProps) {
                                     >
                                         <Pencil className="size-3.5" />
                                     </Button>
-                                    <Button
-                                        variant="ghost"
-                                        size="icon"
-                                        aria-label="Delete connection"
-                                        className="size-7 text-ink-3 hover:bg-danger-dim hover:text-danger"
-                                        onClick={handleDeleteEdge}
-                                    >
-                                        <Trash2 className="size-3.5" />
-                                    </Button>
+                                    {!readOnly && (
+                                        <Button
+                                            variant="ghost"
+                                            size="icon"
+                                            aria-label="Delete connection"
+                                            className="size-7 text-ink-3 hover:bg-danger-dim hover:text-danger"
+                                            onClick={handleDeleteEdge}
+                                        >
+                                            <Trash2 className="size-3.5" />
+                                        </Button>
+                                    )}
                                 </div>
                             </div>
                             <div className="px-3 py-2.5">
@@ -346,9 +349,10 @@ export default function CustomEdge(props: CustomEdgeProps) {
                                 )}
                                 <p className={cn(
                                     "break-words text-[13px]",
-                                    data?.condition || data?.label ? "text-ink" : "text-ink-3 italic",
+                                    data?.condition ? "text-ink" : "text-ink-3 italic",
                                 )}>
-                                    {data?.condition || data?.label || "Double-click to say when the agent moves on"}
+                                    {data?.condition
+                                        || (readOnly ? "No condition set" : "Double-click to say when the agent moves on")}
                                 </p>
                             </div>
                         </div>
