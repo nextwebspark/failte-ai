@@ -2,7 +2,7 @@
 
 import { ArrowRight, Loader2, Phone, PhoneOff, Plus } from "lucide-react";
 import Link from "next/link";
-import { type ReactNode, useCallback, useEffect, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import {
@@ -64,6 +64,8 @@ function NumberLine({ item, note }: { item: WorkspaceNumber; note?: string }) {
 interface AgentPhoneNumbersProps {
     agentId: number;
     agentName: string;
+    /** Called once the section has finished loading (or can't load). */
+    onSettled?: () => void;
 }
 
 /**
@@ -71,13 +73,16 @@ interface AgentPhoneNumbersProps {
  * point another workspace number at it. Numbers themselves are added under
  * Telephony, where the provider account lives.
  */
-export function AgentPhoneNumbers({ agentId, agentName }: AgentPhoneNumbersProps) {
+export function AgentPhoneNumbers({ agentId, agentName, onSettled }: AgentPhoneNumbersProps) {
     const { user, loading: authLoading, getAccessToken } = useAuth();
-    const { can, orgContext } = useOrgConfig();
-    // `can` is false for everything until the organization has loaded.
-    const permissionsLoaded = orgContext !== null;
-    const canRead = can("telephony:read");
-    const canWrite = can("telephony:write");
+    const { can, orgContext, loading: orgLoading } = useOrgConfig();
+    // `can` is false for everything until the organization has loaded. If
+    // that load fails, try anyway: the API still enforces the permissions
+    // and a refusal shows as an error with "Try again".
+    const permissionsLoaded = orgContext !== null || !orgLoading;
+    const permissionsKnown = orgContext !== null;
+    const canRead = !permissionsKnown || can("telephony:read");
+    const canWrite = !permissionsKnown || can("telephony:write");
 
     const [providers, setProviders] = useState<TelephonyConfigurationListItem[] | null>(null);
     const [numbers, setNumbers] = useState<WorkspaceNumber[]>([]);
@@ -88,18 +93,18 @@ export function AgentPhoneNumbers({ agentId, agentName }: AgentPhoneNumbersProps
 
     const load = useCallback(async () => {
         setLoadError(null);
-        const headers = { Authorization: `Bearer ${await getAccessToken()}` };
-        const list = await listTelephonyConfigurationsApiV1OrganizationsTelephonyConfigsGet({ headers });
-        if (list.error) {
-            setLoadError(detailFromError(list.error, "Couldn’t load your phone numbers"));
-            return;
-        }
-        const configs = list.data?.configurations ?? [];
-        // Only providers that hold numbers need a second request.
-        const perProvider = await Promise.all(
-            configs
-                .filter((config) => (config.phone_number_count ?? 0) > 0)
-                .map(async (config) => {
+        try {
+            const headers = { Authorization: `Bearer ${await getAccessToken()}` };
+            const list = await listTelephonyConfigurationsApiV1OrganizationsTelephonyConfigsGet({ headers });
+            if (list.error) {
+                setLoadError(detailFromError(list.error, "Couldn’t load your phone numbers"));
+                return;
+            }
+            const configs = list.data?.configurations ?? [];
+            // Every provider is asked: `phone_number_count` only counts active
+            // numbers, and a turned-off number can still be pointed at this agent.
+            const perProvider = await Promise.all(
+                configs.map(async (config) => {
                     const res = await listPhoneNumbersApiV1OrganizationsTelephonyConfigsConfigIdPhoneNumbersGet({
                         headers,
                         path: { config_id: config.id },
@@ -107,19 +112,27 @@ export function AgentPhoneNumbers({ agentId, agentName }: AgentPhoneNumbersProps
                     if (res.error) throw new Error(detailFromError(res.error, "Couldn’t load your phone numbers"));
                     return (res.data?.phone_numbers ?? []).map((number) => ({ number, provider: config }));
                 }),
-        ).catch((error: unknown) => {
+            );
+            setProviders(configs);
+            setNumbers(perProvider.flat());
+        } catch (error) {
             setLoadError(error instanceof Error ? error.message : "Couldn’t load your phone numbers");
-            return null;
-        });
-        if (!perProvider) return;
-        setProviders(configs);
-        setNumbers(perProvider.flat());
+        }
     }, [getAccessToken]);
 
+    const hasFetched = useRef(false);
     useEffect(() => {
-        if (authLoading || !user || !canRead) return;
+        if (authLoading || !user || !canRead || hasFetched.current) return;
+        hasFetched.current = true;
         void load();
     }, [authLoading, user, canRead, load]);
+
+    // Tell the page once this section has its final height, so a #website
+    // link below it can be scrolled to without landing short.
+    const settled = permissionsLoaded && (!canRead || loadError !== null || providers !== null);
+    useEffect(() => {
+        if (settled) onSettled?.();
+    }, [settled, onSettled]);
 
     const route = async (item: WorkspaceNumber, inboundAgentId: number | null) => {
         setSavingId(item.number.id);

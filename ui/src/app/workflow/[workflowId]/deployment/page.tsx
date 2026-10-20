@@ -1,7 +1,7 @@
 "use client";
 
 import { AppWindow } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 
@@ -10,24 +10,30 @@ import { EmbedDialog } from "../components/EmbedDialog";
 import { AgentPhoneNumbers } from "./AgentPhoneNumbers";
 
 /**
+ * The sections render once the agent has loaded, after the browser has
+ * already tried to follow a #phone / #website link, so scroll to it then —
+ * waiting until the Phone section above has its final height.
+ */
+function ScrollToHash({ ready }: { ready: boolean }) {
+    const scrolled = useRef(false);
+    useEffect(() => {
+        if (!ready || scrolled.current) return;
+        scrolled.current = true;
+        const id = window.location.hash.slice(1);
+        if (id) document.getElementById(id)?.scrollIntoView({ block: "start" });
+    }, [ready]);
+    return null;
+}
+
+/**
  * "Deployment" — the canvas's Connect section: how callers reach this agent
  * (app-doc/claude-design/Failte AI v2.dc.html). A phone number first, since
  * most agents answer the phone, then the website widget.
  */
-/**
- * The sections render once the agent has loaded, after the browser has
- * already tried to follow a #phone / #website link, so scroll to it then.
- */
-function ScrollToHash() {
-    useEffect(() => {
-        const id = window.location.hash.slice(1);
-        if (id) document.getElementById(id)?.scrollIntoView({ block: "start" });
-    }, []);
-    return null;
-}
-
 export default function AgentDeploymentPage() {
     const [isEmbedDialogOpen, setIsEmbedDialogOpen] = useState(false);
+    const [phoneSettled, setPhoneSettled] = useState(false);
+    const markPhoneSettled = useCallback(() => setPhoneSettled(true), []);
 
     return (
         <AgentSectionShell>
@@ -40,7 +46,11 @@ export default function AgentDeploymentPage() {
                 saveWorkflowConfigurations,
             }) => (
                 <div className="page-body max-w-4xl space-y-6">
-                    <AgentPhoneNumbers agentId={workflowId} agentName={workflowName} />
+                    <AgentPhoneNumbers
+                        agentId={workflowId}
+                        agentName={workflowName}
+                        onSettled={markPhoneSettled}
+                    />
 
                     <section
                         id="website"
@@ -64,7 +74,7 @@ export default function AgentDeploymentPage() {
                         </div>
                     </section>
 
-                    <ScrollToHash />
+                    <ScrollToHash ready={phoneSettled} />
                     <EmbedDialog
                         open={isEmbedDialogOpen}
                         onOpenChange={setIsEmbedDialogOpen}
