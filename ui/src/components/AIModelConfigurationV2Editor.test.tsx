@@ -1,7 +1,11 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
-import { AIModelConfigurationV2Editor, type ModelConfigurationDefaultsV2 } from "./AIModelConfigurationV2Editor";
+import {
+    AIModelConfigurationV2Editor,
+    legacyModelConfigurationDefaults,
+    type ModelConfigurationDefaultsV2,
+} from "./AIModelConfigurationV2Editor";
 
 vi.mock("@/components/ServiceConfigurationForm", () => ({ ServiceConfigurationForm: () => null }));
 vi.mock("@/components/VoiceSelectorModal", () => ({ VoiceSelectorModal: () => null }));
@@ -65,5 +69,20 @@ describe("Managed model temperature", () => {
         fireEvent.click(screen.getByRole("button", { name: "Save Configuration" }));
         await waitFor(() => expect(onSave).toHaveBeenCalledOnce());
         expect(onSave.mock.calls[0][0].dograh.temperature).toBeNull();
+    });
+});
+
+describe("Without managed models (no MPS on the server)", () => {
+    it("keeps BYOK and drops the managed tab", () => {
+        const legacy = legacyModelConfigurationDefaults({
+            platform: {} as never,
+            dograh: null,
+            byok: defaults.byok as never,
+        });
+        expect(legacy?.managedAvailable).toBe(false);
+
+        render(<AIModelConfigurationV2Editor defaults={legacy!} configuration={configuration} onSave={vi.fn()} />);
+        expect(screen.queryByRole("tab", { name: "Managed models" })).toBeNull();
+        expect(screen.getByRole("tab", { name: "BYOK" }).getAttribute("aria-selected")).toBe("true");
     });
 });

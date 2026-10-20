@@ -514,6 +514,7 @@ def test_route_generates_locally_when_platform_models_enabled(
 
 def test_route_uses_mps_when_platform_models_disabled(
     monkeypatch: pytest.MonkeyPatch,
+    mps_configured,
 ) -> None:
     monkeypatch.setattr(workflow_routes.constants, "PLATFORM_MODELS_ENABLED", False)
     generator = FakeGenerator()

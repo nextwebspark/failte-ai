@@ -6,7 +6,7 @@ import { useAppConfig } from '@/context/AppConfigContext';
 
 export default function ExternalProcessingNotice() {
   const { config } = useAppConfig();
-  if (config?.deploymentMode !== 'oss') return null;
+  if (config?.deploymentMode !== 'oss' || !config.mpsEnabled) return null;
 
   return (
     <div className="flex gap-3 rounded-lg border border-amber/30 bg-amber-dim p-3">

@@ -458,7 +458,7 @@ coturn:
   # upgrade --set coturn.externalIp=<IP>).
   externalIp: ""
 
-  realm: dograh.com
+  realm: lightmove.ai
 
   # Coturn uses TURN REST API authentication (HMAC-SHA1). The secret here
   # MUST match secrets.turnSecret — the chart will warn at install time if

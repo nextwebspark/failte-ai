@@ -52,6 +52,9 @@ interface DograhDefaults {
 
 export interface ModelConfigurationDefaultsV2 {
     dograh: DograhDefaults;
+    // False when the server offers no managed (MPS) models: the "Managed
+    // models" tab is hidden and `dograh` only holds placeholder values.
+    managedAvailable?: boolean;
     byok: {
         pipeline: ServiceConfigurationDefaults;
         realtime: {
@@ -63,18 +66,29 @@ export interface ModelConfigurationDefaultsV2 {
     };
 }
 
+// Stands in for the managed-model defaults when the server has no MPS.
+const UNAVAILABLE_DOGRAH_DEFAULTS: DograhDefaults = {
+    voices: [],
+    speeds: [1],
+    languages: [],
+    defaults: { voice: "", speed: 1, language: MULTILINGUAL_LANGUAGE_CODE },
+};
+
 /**
  * The provider schemas this editor needs, or null when the server omits them
- * (platform-models servers do for customers).
+ * (platform-models servers do for customers). The managed-model section is
+ * absent when the server has no MPS configured; BYOK still works then.
  */
 export function legacyModelConfigurationDefaults(
     defaults: ModelConfigurationV2Defaults | undefined,
 ): ModelConfigurationDefaultsV2 | null {
-    if (!defaults?.dograh || !defaults.byok) return null;
+    if (!defaults?.byok) return null;
     // The API types these sections as open dicts (they are generated JSON
     // schemas); this editor has always read them through its own types.
     return {
-        dograh: defaults.dograh as unknown as DograhDefaults,
+        dograh: (defaults.dograh as unknown as DograhDefaults | null | undefined)
+            ?? UNAVAILABLE_DOGRAH_DEFAULTS,
+        managedAvailable: Boolean(defaults.dograh),
         byok: defaults.byok as unknown as ModelConfigurationDefaultsV2["byok"],
     };
 }
@@ -380,7 +394,8 @@ export function AIModelConfigurationV2Editor({
     submitLabel = "Save Configuration",
 }: AIModelConfigurationV2EditorProps) {
     const defaultsForByok = useMemo(() => byokDefaults(defaults), [defaults]);
-    const [mode, setMode] = useState<ModelMode>("dograh");
+    const managedAvailable = defaults.managedAvailable ?? true;
+    const [mode, setMode] = useState<ModelMode>(managedAvailable ? "dograh" : "byok");
     const [dograh, setDograh] = useState<DograhFormState>(() => ({
         api_key: "",
         temperature: null,
@@ -404,12 +419,13 @@ export function AIModelConfigurationV2Editor({
     useEffect(() => {
         const rawConfiguration = asRecord(configuration);
         const rawEffectiveConfiguration = asRecord(effectiveConfiguration);
-        setMode(preferredMode(rawConfiguration, rawEffectiveConfiguration));
+        const nextMode = preferredMode(rawConfiguration, rawEffectiveConfiguration);
+        setMode(nextMode === "dograh" && !managedAvailable ? "byok" : nextMode);
         const nextDograh = buildDograhState(defaults, rawConfiguration, rawEffectiveConfiguration);
         setDograh(nextDograh);
         setRealtimeInitialConfig(getByokInitialConfig(rawConfiguration, rawEffectiveConfiguration, true));
         setPipelineInitialConfig(getByokInitialConfig(rawConfiguration, rawEffectiveConfiguration, false));
-    }, [configuration, defaults, effectiveConfiguration, allowCustomVoice]);
+    }, [configuration, defaults, effectiveConfiguration, allowCustomVoice, managedAvailable]);
 
     const saveDograhConfiguration = async () => {
         setIsSavingDograh(true);
@@ -485,11 +501,11 @@ export function AIModelConfigurationV2Editor({
             )}
 
             <Tabs value={mode} onValueChange={(value) => setMode(value as ModelMode)} className="space-y-6">
-                <TabsList className="grid w-full grid-cols-3">
+                <TabsList className={`grid w-full ${managedAvailable ? "grid-cols-3" : "grid-cols-2"}`}>
                     <TabsTrigger value="realtime">Speech to Speech</TabsTrigger>
                     {/* The `value` is a wire value the backend matches on — do not
                         rename it. Only the visible label changes. */}
-                    <TabsTrigger value="dograh">Managed models</TabsTrigger>
+                    {managedAvailable && <TabsTrigger value="dograh">Managed models</TabsTrigger>}
                     <TabsTrigger value="byok">BYOK</TabsTrigger>
                 </TabsList>
 

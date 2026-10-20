@@ -31,8 +31,13 @@ export default withSentryConfig(nextConfig, {
   // For all available options, see:
   // https://www.npmjs.com/package/@sentry/webpack-plugin#options
 
-  org: "dograh",
-  project: "javascript-nextjs",
+  // Source maps upload to the Sentry org/project named here, and only when
+  // SENTRY_ORG is set (plus SENTRY_AUTH_TOKEN at build time).
+  org: process.env.SENTRY_ORG,
+  project: process.env.SENTRY_PROJECT || "javascript-nextjs",
+  sourcemaps: {
+    disable: !process.env.SENTRY_ORG,
+  },
 
   // Only print logs for uploading source maps in CI
   silent: !process.env.CI,

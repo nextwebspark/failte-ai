@@ -634,6 +634,16 @@ async def create_workflow_from_template(
                 agent_spec_generator,
             )
             workflow_data = generated.as_workflow_data()
+        elif not mps_service_key_client.is_configured:
+            # Without platform models the builder runs in MPS; with no MPS
+            # configured there is nothing to generate the agent.
+            raise HTTPException(
+                status_code=404,
+                detail=(
+                    "The Agent Builder isn't available on this server. "
+                    "Build the agent manually instead."
+                ),
+            )
         elif DEPLOYMENT_MODE == "oss":
             workflow_data = await mps_service_key_client.call_workflow_api(
                 call_type=request.call_type.upper(),

@@ -16,6 +16,10 @@ interface AppConfig {
     billingProvider: string;
     // Customers pick models from the platform catalog; no providers or keys.
     platformModelsEnabled: boolean;
+    // An MPS (upstream model proxy service) is configured on the backend.
+    // Without one, MPS-only features (service keys, managed models, MPS
+    // credits, knowledge base document processing) are hidden.
+    mpsEnabled: boolean;
     turnEnabled: boolean;
     forceTurnRelay: boolean;
     // Public URL when the deployment is reached through a Cloudflare tunnel
@@ -44,6 +48,7 @@ const defaultConfig: AppConfig = {
     authProvider: 'local',
     billingProvider: 'none',
     platformModelsEnabled: false,
+    mpsEnabled: false,
     turnEnabled: false,
     forceTurnRelay: false,
     tunnelUrl: null,
@@ -98,6 +103,7 @@ export function AppConfigProvider({ children }: { children: ReactNode }) {
                 authProvider: data.authProvider || 'local',
                 billingProvider: data.billingProvider || 'none',
                 platformModelsEnabled: Boolean(data.platformModelsEnabled),
+                mpsEnabled: Boolean(data.mpsEnabled),
                 turnEnabled: Boolean(data.turnEnabled),
                 forceTurnRelay: Boolean(data.forceTurnRelay),
                 tunnelUrl: typeof data.tunnelUrl === 'string' ? data.tunnelUrl : null,

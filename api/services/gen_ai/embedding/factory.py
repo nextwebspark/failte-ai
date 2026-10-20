@@ -39,6 +39,9 @@ async def resolve_embedding_correlation_id(
     # layers (matches the inline-import convention used elsewhere in the app).
     from api.services.mps_service_key_client import mps_service_key_client
 
+    if not mps_service_key_client.is_configured:
+        return None
+
     try:
         minted = await mps_service_key_client.create_correlation_id(
             service_key=service_key

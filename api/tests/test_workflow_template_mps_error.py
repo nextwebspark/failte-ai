@@ -4,11 +4,14 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 import httpx
+import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from api.routes.workflow import router
 from api.services.auth.depends import get_user
+
+pytestmark = pytest.mark.usefixtures("mps_configured")
 
 
 def _make_test_app() -> FastAPI:

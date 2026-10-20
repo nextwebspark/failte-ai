@@ -191,6 +191,18 @@ def _managed_v2_authorization_failed_result() -> QuotaCheckResult:
     )
 
 
+def _managed_models_unavailable_result() -> QuotaCheckResult:
+    """The configuration uses managed (MPS) models but no MPS is configured."""
+    return QuotaCheckResult(
+        has_quota=False,
+        error_code="managed_models_unavailable",
+        error_message=(
+            f"{BRAND_NAME} managed models aren't available on this server. "
+            "Choose another provider in Model Configurations."
+        ),
+    )
+
+
 def _required_correlation_id(authorization: dict[str, Any]) -> str | None:
     correlation_id = authorization.get("correlation_id")
     if not isinstance(correlation_id, str):
@@ -835,6 +847,14 @@ async def authorize_workflow_run_start(
             organization_id=organization_id,
             workflow_configurations=workflow_configurations,
         )
+
+        if not mps_service_key_client.is_configured and any(
+            _service_uses_dograh(getattr(user_config, section_name, None))
+            for section_name in ("llm", "stt", "tts", "embeddings")
+        ):
+            # Fail before the run starts instead of mid-call: managed models
+            # need MPS, and with none configured nothing may be sent to it.
+            return _managed_models_unavailable_result()
 
         if DEPLOYMENT_MODE != "oss" and BILLING_PROVIDER == "mps":
             return await _authorize_hosted_workflow_run_start(

@@ -8,6 +8,8 @@ from fastapi.testclient import TestClient
 
 from api.routes import organization_usage
 
+pytestmark = pytest.mark.usefixtures("mps_configured")
+
 
 @pytest.mark.asyncio
 async def test_get_billing_credits_oss_aggregates_by_created_by(monkeypatch):

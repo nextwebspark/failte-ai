@@ -1,6 +1,6 @@
 "use client";
 
-import { Upload } from "lucide-react";
+import { Info, Upload } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { PageActions } from "@/components/layout/PageActionsSlot";
@@ -14,6 +14,7 @@ import {
     DialogTitle,
 } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useAppConfig } from "@/context/AppConfigContext";
 import { useAuth } from "@/lib/auth";
 
 import DocumentList from "./DocumentList";
@@ -23,6 +24,10 @@ export default function FilesPage() {
     const { user, redirectToLogin, loading } = useAuth();
     const [refreshKey, setRefreshKey] = useState(0);
     const [isUploadOpen, setIsUploadOpen] = useState(false);
+    // Documents are converted and chunked by the model proxy service (MPS);
+    // without one configured, uploads are off.
+    const { config } = useAppConfig();
+    const processingAvailable = Boolean(config?.mpsEnabled);
 
     // Redirect if not authenticated
     useEffect(() => {
@@ -51,12 +56,24 @@ export default function FilesPage() {
         <div className="page-body">
             {/* Screen name, strapline and primary action are rendered by the
                 app header (AppTopBar) — see PageActions. */}
-            <PageActions>
-                <Button size="toolbar" onClick={() => setIsUploadOpen(true)}>
-                    <Upload className="w-4 h-4" />
-                    Upload document
-                </Button>
-            </PageActions>
+            {processingAvailable && (
+                <PageActions>
+                    <Button size="toolbar" onClick={() => setIsUploadOpen(true)}>
+                        <Upload className="w-4 h-4" />
+                        Upload document
+                    </Button>
+                </PageActions>
+            )}
+
+            {config && !processingAvailable && (
+                <div className="mb-6 flex gap-3 rounded-lg border border-border bg-muted/40 p-4">
+                    <Info className="mt-0.5 h-4 w-4 flex-shrink-0 text-muted-foreground" />
+                    <p className="text-sm text-muted-foreground">
+                        Document processing isn&apos;t available yet, so new documents
+                        can&apos;t be uploaded.
+                    </p>
+                </div>
+            )}
 
             <Card>
                 <CardHeader>
@@ -70,7 +87,7 @@ export default function FilesPage() {
                 </CardContent>
             </Card>
 
-            <Dialog open={isUploadOpen} onOpenChange={setIsUploadOpen}>
+            <Dialog open={processingAvailable && isUploadOpen} onOpenChange={setIsUploadOpen}>
                 <DialogContent>
                     <DialogHeader>
                         <DialogTitle>Upload Document</DialogTitle>

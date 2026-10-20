@@ -6,6 +6,8 @@ import pytest
 from api.errors.mps import MPSUnavailableError
 from api.routes import organization as organization_routes
 
+pytestmark = pytest.mark.usefixtures("mps_configured")
+
 
 @pytest.mark.asyncio
 async def test_model_configuration_pricing_returns_empty_in_oss(monkeypatch):

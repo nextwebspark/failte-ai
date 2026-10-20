@@ -7,7 +7,7 @@ const mocks = vi.hoisted(() => ({
     getCredits: vi.fn(), push: vi.fn(), error: vi.fn(),
     params: new URLSearchParams(),
     auth: { isAuthenticated: true, loading: false },
-    config: { deploymentMode: "saas" },
+    config: { deploymentMode: "saas", mpsEnabled: true },
 }));
 vi.mock("next/navigation", () => ({
     useRouter: () => ({ push: mocks.push }), useSearchParams: () => mocks.params,
@@ -39,6 +39,7 @@ beforeEach(() => {
     mocks.params = new URLSearchParams();
     mocks.auth.loading = false;
     mocks.config.deploymentMode = "saas";
+    mocks.config.mpsEnabled = true;
     mocks.getCredits.mockResolvedValue(response);
 });
 
@@ -120,5 +121,13 @@ describe("billing ledger filters", () => {
         await screen.findByText("Credits remaining");
         expect(mocks.getCredits.mock.calls[0][0].query).toEqual({ page: 1, limit: 50 });
         expect(screen.queryByLabelText("Activity")).toBeNull();
+    });
+
+    it("fetches nothing when no MPS is configured", async () => {
+        mocks.config.deploymentMode = "oss";
+        mocks.config.mpsEnabled = false;
+        render(<BillingPage />);
+        await screen.findByText("Billing isn't enabled on this server");
+        expect(mocks.getCredits).not.toHaveBeenCalled();
     });
 });

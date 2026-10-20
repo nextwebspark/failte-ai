@@ -16,6 +16,14 @@ from api.services.mps_service_key_client import mps_service_key_client
 
 router = APIRouter()
 
+SERVICE_KEYS_UNAVAILABLE = "Service keys aren't available on this server."
+
+
+def _require_mps() -> None:
+    """Service keys live in MPS; without one there is nothing to manage."""
+    if not mps_service_key_client.is_configured:
+        raise HTTPException(status_code=404, detail=SERVICE_KEYS_UNAVAILABLE)
+
 
 @router.get(
     "/user/service-keys",
@@ -27,6 +35,8 @@ async def get_service_keys(
     user: UserModel = Depends(get_user),
 ):
     """Get all service keys for the user's organization."""
+    if not mps_service_key_client.is_configured:
+        return []
     try:
         # For OSS mode, use provider_id as created_by
         # For authenticated mode, use organization_id
@@ -60,6 +70,7 @@ async def create_service_key(
     user: UserModel = Depends(get_user),
 ):
     """Create a new service key for the user's organization."""
+    _require_mps()
     try:
         # For OSS mode, don't pass organization_id
         # For authenticated mode, pass organization_id
@@ -101,6 +112,7 @@ async def archive_service_key(
     user: UserModel = Depends(get_user),
 ):
     """Archive a service key."""
+    _require_mps()
     try:
         # For OSS mode, use provider_id as created_by for validation
         # For authenticated mode, use organization_id for validation

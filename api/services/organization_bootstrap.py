@@ -2,8 +2,9 @@
 
 Bootstrapping writes the organization's v2 model configuration and provisions
 owner-scoped managed SIP connectivity. With platform models enabled the
-configuration is the platform default and nothing is minted; otherwise it holds
-a freshly minted MPS service key.
+configuration is the platform default and nothing is minted; with an MPS
+configured it holds a freshly minted MPS service key; with neither, no
+configuration is written and the organization brings its own provider keys.
 Service-key minting is not idempotent upstream — ``create_service_key`` is a
 plain POST — so concurrent callers must not both run it.
 
@@ -162,6 +163,14 @@ async def _bootstrap_organization(
             OrganizationAIModelConfigurationV2(
                 mode="platform", platform=default_platform_configuration()
             ),
+        )
+    elif not has_configuration and not mps_service_key_client.is_configured:
+        # No MPS to mint a managed service key from: the organization starts
+        # without a model configuration and brings its own provider keys.
+        logger.info(
+            "Organization {} has no model configuration and no MPS is "
+            "configured; skipping managed model provisioning",
+            organization_id,
         )
     elif not has_configuration:
         # Billing is best effort: it is recoverable out of band, and failing the
