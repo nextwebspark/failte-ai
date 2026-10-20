@@ -63,11 +63,12 @@ const initPostHog = () => {
     // Use client-side environment variables
     posthog.init(process.env.NEXT_PUBLIC_POSTHOG_KEY!, {
       api_host: process.env.NEXT_PUBLIC_POSTHOG_HOST || '/ingest',
-      ui_host: process.env.NEXT_PUBLIC_POSTHOG_UI_HOST || 'https://us.posthog.com',
+      ui_host: process.env.NEXT_PUBLIC_POSTHOG_UI_HOST || 'https://eu.posthog.com',
       capture_pageview: 'history_change',
       capture_pageleave: true,
       capture_exceptions: true,
-      cross_subdomain_cookie: true,
+      // Cookieless: no cookie or localStorage, so no consent banner needed.
+      persistence: 'memory',
       debug: process.env.NEXT_PUBLIC_NODE_ENV === 'development',
     });
     console.log('PostHog initialized from NEXT_PUBLIC config');
@@ -83,7 +84,8 @@ const initPostHog = () => {
             capture_pageview: 'history_change',
             capture_pageleave: true,
             capture_exceptions: true,
-            cross_subdomain_cookie: true,
+            // Cookieless: no cookie or localStorage, so no consent banner needed.
+            persistence: 'memory',
             debug: process.env.NEXT_PUBLIC_NODE_ENV === 'development',
           });
           console.log('PostHog initialized from API config');

@@ -304,8 +304,10 @@ Three things that will bite otherwise:
 - **Langfuse is all-or-nothing.** `api/constants.py:24-31` raises at *import* if the
   host and keys are set but `LANGFUSE_PROJECT_ID` is not, taking down the API and
   the ARQ worker together. Leave the whole block unset unless all four are present.
-- **The PostHog key is hardcoded** in `docker-compose.yaml` and points at the
-  upstream Dograh project. Set `ENABLE_TELEMETRY=false` or supply your own.
+- **PostHog is off unless you supply a key.** `POSTHOG_API_KEY` / `POSTHOG_KEY`
+  are empty by default and `ENABLE_TELEMETRY=false` disables both the API and the
+  UI clients. If you want analytics, use your own EU project (`eu.i.posthog.com`)
+  and list PostHog as a sub-processor.
 
 Store the finished `.env` in Secret Manager — it is the only copy of these secrets.
 

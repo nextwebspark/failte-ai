@@ -1,6 +1,6 @@
 import asyncio
 import io
-import json
+from datetime import timedelta
 from typing import Any, Dict, Optional
 
 from loguru import logger
@@ -54,37 +54,26 @@ class MinioFileSystem(BaseFileSystem):
             endpoint, access_key=access_key, secret_key=secret_key, secure=secure
         )
 
-        # Ensure bucket exists and configure anonymous access (using internal client)
+        # Signs browser-facing URLs. Presigning is computed locally, but the
+        # signature covers the Host header, so it must use the public host.
+        # The region is fixed so the SDK never makes a network call to look it up.
+        public_secure = self.public_endpoint.startswith("https://")
+        public_host = self.public_endpoint.split("://", 1)[1].split("/", 1)[0]
+        self.public_client = Minio(
+            public_host,
+            access_key=access_key,
+            secret_key=secret_key,
+            secure=public_secure,
+            region="us-east-1",
+        )
+
+        # Ensure the bucket exists and is private. Older versions set an
+        # anonymous read/write/list policy; remove it so recordings and
+        # transcripts are only reachable through presigned URLs.
         try:
             if not self.client.bucket_exists(self.bucket_name):
                 self.client.make_bucket(self.bucket_name)
-
-            # Set public read/write policy for local development
-            # This allows:
-            # 1. Anonymous downloads (s3:GetObject)
-            # 2. Anonymous uploads (s3:PutObject) - bypasses presigned URL signature issues
-            # 3. List bucket contents (s3:ListBucket) for debugging
-            # Note: This is set on every initialization to ensure policy is correct
-            # WARNING: Only use in local development, not production!
-            policy = {
-                "Version": "2012-10-17",
-                "Statement": [
-                    {
-                        "Effect": "Allow",
-                        "Principal": {"AWS": "*"},
-                        "Action": ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"],
-                        "Resource": [f"arn:aws:s3:::{self.bucket_name}/*"],
-                    },
-                    {
-                        "Effect": "Allow",
-                        "Principal": {"AWS": "*"},
-                        "Action": ["s3:ListBucket"],
-                        "Resource": [f"arn:aws:s3:::{self.bucket_name}"],
-                    },
-                ],
-            }
-
-            self.client.set_bucket_policy(self.bucket_name, json.dumps(policy))
+            self.client.delete_bucket_policy(self.bucket_name)
         except Exception as e:
             # Bucket might already exist or we might be in a restricted environment
             logger.debug(f"Bucket setup note: {e}")
@@ -127,12 +116,17 @@ class MinioFileSystem(BaseFileSystem):
         use_internal_endpoint: bool = False,
     ) -> Optional[str]:
         try:
-            if use_internal_endpoint:
-                protocol = "https" if self.secure else "http"
-                base = f"{protocol}://{self.endpoint}"
-            else:
-                base = self.public_endpoint
-            return f"{base}/{self.bucket_name}/{file_path}"
+            client = self.client if use_internal_endpoint else self.public_client
+            response_headers = (
+                {"response-content-disposition": "inline"} if force_inline else None
+            )
+            return await asyncio.to_thread(
+                client.presigned_get_object,
+                self.bucket_name,
+                file_path,
+                expires=timedelta(seconds=expiration),
+                response_headers=response_headers,
+            )
         except Exception as e:
             logger.error(f"Error generating MinIO URL: {e}")
             return None
@@ -163,19 +157,18 @@ class MinioFileSystem(BaseFileSystem):
         content_type: str = "text/csv",
         max_size: int = 10_485_760,
     ) -> Optional[str]:
-        """Generate an unsigned URL for direct file upload.
+        """Generate a presigned PUT URL for direct file upload.
 
-        For local MinIO development with anonymous upload enabled, we return
-        a simple unsigned URL instead of a presigned URL. This avoids signature
-        mismatch issues when the internal endpoint (minio:9000) differs from
-        the public endpoint (localhost:9000).
-
-        The bucket policy allows anonymous s3:PutObject, so no signature is needed.
+        Signed against the public host, so it works when the internal endpoint
+        (minio:9000) differs from the public one.
         """
         try:
-            url = f"{self.public_endpoint}/{self.bucket_name}/{file_path}"
-            logger.debug(f"Generated unsigned upload URL: {url}")
-            return url
+            return await asyncio.to_thread(
+                self.public_client.presigned_put_object,
+                self.bucket_name,
+                file_path,
+                expires=timedelta(seconds=expiration),
+            )
         except Exception as e:
             logger.error(f"Error generating MinIO upload URL: {e}")
             return None

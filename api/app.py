@@ -21,7 +21,7 @@ if SENTRY_DSN and (
 
     sentry_sdk.init(
         dsn=SENTRY_DSN,
-        send_default_pii=True,
+        send_default_pii=False,
         # The OAuth browser nonce travels in a request body (integrations
         # activate); keep it out of error reports.
         event_scrubber=EventScrubber(denylist=DEFAULT_DENYLIST + ["browser_nonce"]),

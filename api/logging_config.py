@@ -1,5 +1,6 @@
 import logging
 import os
+import re
 import sys
 
 import loguru
@@ -48,8 +49,23 @@ class InterceptHandler(logging.Handler):
         ).log(level, record.getMessage())
 
 
+# Caller numbers (E.164, also URL-encoded as %2B) and email addresses are
+# personal data; logs keep only the last three digits / the domain.
+_PHONE_RE = re.compile(r"(?:\+|%2B)(\d{5,12})(\d{3})\b")
+_EMAIL_RE = re.compile(r"\b[\w.+-]+@([\w-]+(?:\.[\w-]+)+)\b")
+
+
+def redact_personal_data(text: str) -> str:
+    """Mask phone numbers and email addresses in a log line."""
+    text = _PHONE_RE.sub(lambda m: "+" + "*" * len(m.group(1)) + m.group(2), text)
+    return _EMAIL_RE.sub(r"***@\1", text)
+
+
 def enrich_log_record(record):
-    """Inject run context and conservatively classify every ERROR record."""
+    """Redact personal data, inject run context and classify ERROR records."""
+
+    if record.get("message"):
+        record["message"] = redact_personal_data(record["message"])
 
     extra = record["extra"]
     extra["run_id"] = run_id_var.get()

@@ -71,3 +71,19 @@ def test_warning_only_gets_run_context():
     enrich_log_record(record)
 
     assert record["extra"] == {"run_id": None}
+
+
+def test_phone_numbers_and_emails_are_redacted():
+    from api.logging_config import redact_personal_data
+
+    line = "From +353871234567 to %2B14155550123, user jane.doe@example.ie"
+    assert redact_personal_data(line) == (
+        "From +*********567 to +********123, user ***@example.ie"
+    )
+
+
+def test_redaction_leaves_ids_and_timestamps_alone():
+    from api.logging_config import redact_personal_data
+
+    line = "run 1234567890 at 2026-10-20T10:00:00+01:00 port 9000"
+    assert redact_personal_data(line) == line

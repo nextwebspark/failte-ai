@@ -113,7 +113,7 @@ config:
   enableAwsS3: false
   enableTelemetry: true
   posthogHost: https://us.i.posthog.com
-  posthogApiKey: phc_ItizB1dP6yv7ZYobbcqrpxTdbomDA8hJFSEmAMdYvIr
+  posthogApiKey: ""
   forceTurnRelay: false
   turnHost: ""  # public hostname/IP of coturn (the LoadBalancer address)
   fastapiWorkers: 1  # informational only; web tier scales by pod, not in-pod workers

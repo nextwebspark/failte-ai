@@ -40,6 +40,9 @@ class PresignedUploadUrlResponse(BaseModel):
 
 router = APIRouter(prefix="/s3", tags=["s3"])
 
+# Upper bound for any signed download link, in seconds.
+MAX_SIGNED_URL_EXPIRES_IN = 3600
+
 
 ORG_SCOPED_STORAGE_PREFIXES = ("campaigns", "knowledge_base")
 
@@ -191,6 +194,10 @@ async def get_signed_url(
       are authorized via the workflow run they belong to.
     * Superusers can request any key.
     """
+
+    # Recordings and transcripts are personal data: never hand out a link that
+    # outlives the default lifetime, whatever the caller asks for.
+    expires_in = max(1, min(expires_in, MAX_SIGNED_URL_EXPIRES_IN))
 
     # ------------------------------------------------------------------
     # 1. Authorize
