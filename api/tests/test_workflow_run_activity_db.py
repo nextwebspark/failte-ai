@@ -8,7 +8,10 @@ from sqlalchemy import delete
 
 from api.db import db_client
 from api.db.models import (
+    EmbedTokenModel,
     OrganizationModel,
+    TelephonyConfigurationModel,
+    TelephonyPhoneNumberModel,
     UserModel,
     WorkflowDefinitionModel,
     WorkflowModel,
@@ -40,22 +43,35 @@ async def workflows(sessions):
         session.add_all([busy, quiet])
         await session.flush()
 
-        def run(hours_ago: float) -> WorkflowRunModel:
+        def run(hours_ago: float, **fields) -> WorkflowRunModel:
             return WorkflowRunModel(
                 name="run",
                 workflow_id=busy.id,
-                mode="webrtc",
+                mode=fields.pop("mode", "webrtc"),
                 created_at=NOW - timedelta(hours=hours_ago),
+                **fields,
             )
 
         session.add_all(
             [
-                run(1),  # today
-                run(23),  # still inside today's rolling 24 hours
-                run(25),  # yesterday
-                run(24 * 6 + 1),  # oldest day in the window
-                run(24 * 9),  # outside the window, still counted in the total
-                run(-2),  # clock skew: a run "from the future" counts as today
+                # today, and a call still connected
+                run(0.1, state="running", usage_info={"call_duration_seconds": 90.4}),
+                # still inside today's rolling 24 hours
+                run(
+                    23,
+                    state="completed",
+                    is_completed=True,
+                    usage_info={"call_duration_seconds": 30},
+                ),
+                # yesterday: its call time isn't today's
+                run(25, usage_info={"call_duration_seconds": 600}),
+                # oldest day in the window; left "running" by a crash, so not live
+                run(24 * 6 + 1, state="running"),
+                # outside the window, still counted in the total
+                run(24 * 9),
+                # clock skew: a run "from the future" counts as today. A text
+                # chat is never a live call.
+                run(-2, mode="textchat", state="running"),
             ]
         )
         session.add(
@@ -98,10 +114,14 @@ async def test_run_activity_buckets_runs_into_rolling_days(workflows):
     assert activity[busy.id].last_run_at == NOW + timedelta(hours=2)
     # Oldest first: six days ago ... today.
     assert activity[busy.id].daily_runs == [1, 0, 0, 0, 0, 1, 3]
+    assert activity[busy.id].talk_seconds_24h == 120
+    assert activity[busy.id].live_calls == 1
 
     assert activity[quiet.id].total_runs == 0
     assert activity[quiet.id].last_run_at is None
     assert activity[quiet.id].daily_runs == [0] * 7
+    assert activity[quiet.id].talk_seconds_24h == 0
+    assert activity[quiet.id].live_calls == 0
 
 
 async def test_run_activity_with_no_ids_skips_the_database():
@@ -115,3 +135,63 @@ async def test_workflow_ids_with_draft_returns_only_drafted_workflows(workflows)
         quiet.id
     }
     assert await db_client.get_workflow_ids_with_draft([]) == set()
+
+
+async def test_workflow_channels_reports_phone_numbers_and_widgets(workflows, sessions):
+    busy, quiet = workflows
+    async with sessions() as session:
+        config = TelephonyConfigurationModel(
+            organization_id=busy.organization_id, name="twilio", provider="twilio"
+        )
+        session.add(config)
+        await session.flush()
+
+        def number(address: str, workflow_id: int, active: bool = True):
+            return TelephonyPhoneNumberModel(
+                organization_id=busy.organization_id,
+                telephony_configuration_id=config.id,
+                address=address,
+                address_normalized=address,
+                address_type="pstn",
+                inbound_workflow_id=workflow_id,
+                is_active=active,
+            )
+
+        def widget(workflow_id: int, **fields):
+            return EmbedTokenModel(
+                token=uuid.uuid4().hex,
+                workflow_id=workflow_id,
+                organization_id=busy.organization_id,
+                created_by=busy.user_id,
+                **fields,
+            )
+
+        session.add_all(
+            [
+                number("+35310000001", busy.id),
+                number("+35310000002", busy.id),
+                number("+35310000003", quiet.id, active=False),
+                widget(busy.id),
+                widget(quiet.id, is_active=False),
+                widget(quiet.id, expires_at=NOW - timedelta(days=1)),
+            ]
+        )
+        await session.commit()
+
+    try:
+        channels = await db_client.get_workflow_channels([busy.id, quiet.id], now=NOW)
+        assert channels == {busy.id: {"phone", "web"}, quiet.id: set()}
+        assert await db_client.get_workflow_channels([]) == {}
+    finally:
+        async with sessions() as session:
+            await session.execute(
+                delete(EmbedTokenModel).where(
+                    EmbedTokenModel.workflow_id.in_([busy.id, quiet.id])
+                )
+            )
+            await session.execute(
+                delete(TelephonyConfigurationModel).where(
+                    TelephonyConfigurationModel.id == config.id
+                )
+            )
+            await session.commit()

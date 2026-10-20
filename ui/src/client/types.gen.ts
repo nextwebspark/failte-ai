@@ -10296,6 +10296,18 @@ export type WorkflowListResponse = {
      * Has Draft
      */
     has_draft?: boolean | null;
+    /**
+     * Talk Seconds 24H
+     */
+    talk_seconds_24h?: number | null;
+    /**
+     * Live Calls
+     */
+    live_calls?: number | null;
+    /**
+     * Channels
+     */
+    channels?: Array<'phone' | 'web'> | null;
 };
 
 /**

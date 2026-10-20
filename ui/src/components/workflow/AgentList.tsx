@@ -17,14 +17,13 @@ import { CreateWorkflowButton } from '@/components/workflow/CreateWorkflowButton
 import { AgentFolderView } from '@/components/workflow/folders/AgentFolderView';
 import { FolderSection } from '@/components/workflow/folders/FolderSection';
 import { WorkflowTable } from '@/components/workflow/WorkflowTable';
-import { useOrganizationTimezone } from '@/hooks/useOrganizationTimezone';
 import {
     type AgentSort,
     agentStats,
     type AgentStatusFilter,
     DRAFT_EDITS_LABEL,
     filterAgents,
-    formatLastCall,
+    formatTalkTime,
     percentChange,
     sortAgents,
 } from '@/lib/agentList';
@@ -69,7 +68,6 @@ function StatNote({ children, className }: { children: ReactNode; className?: st
  * to one flat list of matches so nothing hides inside a collapsed folder.
  */
 export function AgentList({ activeWorkflows, archivedWorkflows, folders }: AgentListProps) {
-    const timezone = useOrganizationTimezone();
     const [query, setQuery] = useState('');
     const [status, setStatus] = useState<AgentStatusFilter>('all');
     const [sort, setSort] = useState<AgentSort>('last_call');
@@ -145,10 +143,13 @@ export function AgentList({ activeWorkflows, archivedWorkflows, folders }: Agent
                         </StatNote>
                     )}
                 </Stat>
-                <Stat label="Calls · 7 days">{stats.callsWeek.toLocaleString()}</Stat>
-                <Stat label="Last call">
-                    <span className="text-[20px]" suppressHydrationWarning>
-                        {formatLastCall(stats.lastCallAt, timezone)}
+                <Stat label="Talk time · 24 h">{formatTalkTime(stats.talkSeconds)}</Stat>
+                <Stat label="Live now">
+                    <span className="inline-flex items-center gap-2">
+                        {stats.liveNow > 0 && (
+                            <span aria-hidden className="size-2 animate-pulse rounded-full bg-live" />
+                        )}
+                        {stats.liveNow}
                     </span>
                 </Stat>
             </div>

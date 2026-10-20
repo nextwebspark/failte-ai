@@ -85,8 +85,10 @@ export interface AgentStats {
     withDraft: number;
     callsToday: number;
     callsYesterday: number;
-    callsWeek: number;
-    lastCallAt: string | null;
+    /** Seconds of call time in the last 24 hours. */
+    talkSeconds: number;
+    /** Calls connected right now. */
+    liveNow: number;
 }
 
 /** Totals for the stat strip, over active agents only. */
@@ -96,20 +98,28 @@ export function agentStats(agents: WorkflowListResponse[]): AgentStats {
         withDraft: 0,
         callsToday: 0,
         callsYesterday: 0,
-        callsWeek: 0,
-        lastCallAt: null,
+        talkSeconds: 0,
+        liveNow: 0,
     };
     for (const agent of agents) {
         if (hasDraftEdits(agent)) stats.withDraft += 1;
         const days = agent.runs_7d ?? [];
         stats.callsToday += days[days.length - 1] ?? 0;
         stats.callsYesterday += days[days.length - 2] ?? 0;
-        stats.callsWeek += weeklyRuns(agent);
-        if (agent.last_run_at && time(agent.last_run_at) > time(stats.lastCallAt)) {
-            stats.lastCallAt = agent.last_run_at;
-        }
+        stats.talkSeconds += agent.talk_seconds_24h ?? 0;
+        stats.liveNow += agent.live_calls ?? 0;
     }
     return stats;
+}
+
+/** Call time as the stat strip shows it: "6 h 12 m", "45 m", "< 1 m". */
+export function formatTalkTime(seconds: number): string {
+    if (seconds <= 0) return '0 m';
+    const minutes = Math.floor(seconds / 60);
+    if (minutes === 0) return '< 1 m';
+    const hours = Math.floor(minutes / 60);
+    if (hours === 0) return `${minutes} m`;
+    return minutes % 60 === 0 ? `${hours} h` : `${hours} h ${minutes % 60} m`;
 }
 
 /** Whole-percent change from `before` to `after`, or null when there's no base. */
