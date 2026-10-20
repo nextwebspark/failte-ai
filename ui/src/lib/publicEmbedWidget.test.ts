@@ -16,6 +16,7 @@ type WidgetWindow = Window & {
     LightMoveWidget?: {
         init: () => Promise<void>;
         start: () => Promise<void>;
+        stop: (options?: { status?: string }) => void;
         startChat: () => Promise<void>;
         endChat: () => Promise<unknown[] | null>;
         getState: () => { chat: { status: string }; disclosureText: string | null };
@@ -287,7 +288,7 @@ describe('public embed widget chat lifecycle', () => {
 // EU AI Act Art. 50 and call-recording notice: every voice widget tells the
 // visitor before the microphone opens, without a blocking dialog.
 describe('public embed widget voice disclosure', () => {
-    const DISCLOSURE = "You'll talk to an AI assistant. The call is recorded and uses your microphone.";
+    const DISCLOSURE = "You'll talk to an AI assistant. The call may be recorded and uses your microphone.";
     const VOICE_TEXTS = {
         voiceConnectingText: 'Connecting…',
         voiceEndCallText: 'End Call',
@@ -381,6 +382,18 @@ describe('public embed widget voice disclosure', () => {
         ).toBe('lightmove-widget-disclosure');
         // Informs, never blocks: there is no consent dialog to get past.
         expect(document.querySelector('[role="dialog"]')).toBeNull();
+    });
+
+    it('floating mode captions the call button whenever no call is up', async () => {
+        const widget = await loadWidget(voiceFetch('floating'));
+        const caption = () => document.getElementById('lightmove-widget-disclosure');
+
+        // Render as a connected call, then as the idle widget once it ends:
+        // the next call is announced just like the first.
+        widget.stop({ status: 'connected' });
+        expect(caption()).toBeNull();
+        widget.stop();
+        expect(caption()?.textContent).toBe(DISCLOSURE);
     });
 
     it('headless mode hands the notice to the host page', async () => {

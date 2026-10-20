@@ -51,13 +51,13 @@ How chat conversations behave:
 
 ## AI and recording notice
 
-Voice widgets show a short notice next to the start control before the microphone opens: "You'll talk to an AI assistant. The call is recorded and uses your microphone." It is on for every voice widget. It informs visitors without asking them to dismiss anything.
+Voice widgets show a short notice next to the start control before the microphone opens: "You'll talk to an AI assistant. The call may be recorded and uses your microphone." It is on for every voice widget. It informs visitors without asking them to dismiss anything.
 
-- **Inline Component**: under the start button, until the call connects.
-- **Floating Widget**: in a caption next to the call button, until the first call connects.
-- **Headless**: your page renders it next to your own start control. Read it with `window.LightMoveWidget.getDisclosureText()` (also `getState().disclosureText`).
+- **Inline Component**: under the start button whenever no call is connected.
+- **Floating Widget**: in a caption next to the call button whenever no call is connected.
+- **Headless**: the widget shows nothing, so **your page must display it** next to your own start control, before you call `start()`. Read it with `window.LightMoveWidget.getDisclosureText()` (also `getState().disclosureText`). With auto start on, a headless call starts without any click: your page has to show the notice from the moment it loads.
 
-To translate it, set **AI and Recording Notice** under **Voice Call Text** in the Configure Widget dialog. The call itself also opens with a spoken disclosure; see [Start Call](./start-call#ai-and-recording-disclosure).
+To translate it, set **AI and Recording Notice** under **Voice Call Text** in the Configure Widget dialog (up to 250 characters). The call itself also opens with a spoken disclosure; see [Start Call](./start-call#ai-and-recording-disclosure).
 
 ## Prerequisites
 
@@ -234,7 +234,7 @@ In Headless mode the widget injects no UI of its own. You render whatever button
 | `window.LightMoveWidget.onStatusChange(cb)`       | Fires on every status change. Callback receives `(status, text, subtext)`. Status values: `idle`, `connecting`, `connected`, `failed`.                       |
 | `window.LightMoveWidget.onError(cb)`              | Fires on errors (mic permission denied, server error, etc.). Callback receives an `Error` object.                                                            |
 | `window.LightMoveWidget.setContext(vars)`         | Merge visitor context for the next call — see [Pass context to the agent](#pass-context-to-the-agent). Works in every embed mode, not just headless.         |
-| `window.LightMoveWidget.getDisclosureText()`      | The AI and recording notice to show next to your start control, before the visitor starts a call. See [AI and recording notice](#ai-and-recording-notice). |
+| `window.LightMoveWidget.getDisclosureText()`      | The AI and recording notice your page must show next to your start control before calling `start()`. See [AI and recording notice](#ai-and-recording-notice). |
 
 All `on*` setters are single-listener — calling the same one again replaces the previous handler.
 

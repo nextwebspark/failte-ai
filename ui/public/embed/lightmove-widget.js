@@ -34,7 +34,6 @@
     // AI and recording notice shown before the microphone opens (voice only).
     // Resolved server-side like every other label; null until config loads.
     disclosureText: null,
-    hasConnectedCall: false, // Hides the floating caption once a call has run
     gracefulDisconnect: false,
     // Chat widget state (widgetType === 'chat'). The server transcript is the
     // source of truth: every successful response full-replaces turns/revision.
@@ -389,8 +388,8 @@
         align-items: flex-start;
       }
 
-      /* AI and recording notice, shown before the first call. Plain caption,
-         not a dialog: it informs without blocking the start button. */
+      /* AI and recording notice, shown whenever no call is up. Plain
+         caption, not a dialog: it informs without blocking the start button. */
       .lightmove-widget-disclosure {
         margin: 0;
         max-width: min(260px, calc(100vw - 40px));
@@ -512,9 +511,10 @@
     button.querySelector('span').textContent = ctaLabelForStatus(status);
     button.onclick = toggleCall;
 
-    // The notice stays up until a call has connected, so a visitor (or an
-    // autoStart) sees it while the microphone permission is being asked for.
-    if (state.disclosureText && !state.hasConnectedCall) {
+    // The notice is up whenever no call is: before every call (a second
+    // one included) and while it connects, so a visitor (or an autoStart)
+    // sees it while the microphone permission is being asked for.
+    if (state.disclosureText && status !== 'connected') {
       const caption = document.createElement('p');
       caption.id = 'lightmove-widget-disclosure';
       caption.className = 'lightmove-widget-disclosure';
@@ -830,9 +830,6 @@
    */
   function updateStatus(status, text, subtext) {
     state.connectionStatus = status;
-    if (status === 'connected') {
-      state.hasConnectedCall = true;
-    }
 
     // Use appropriate update function based on mode
     if (state.config.embedMode === 'inline') {

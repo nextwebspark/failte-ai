@@ -117,7 +117,7 @@ export function CallDisclosureFields({
                             }
                         />
                         <p className="text-xs text-muted-foreground">
-                            If the recording can&apos;t be played, and in text chat, the agent says the text above instead.
+                            If the recording can&apos;t be played, and in text chat, the agent says the text above instead (or, when it is empty, the default notice).
                         </p>
                     </>
                 )}

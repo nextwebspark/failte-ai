@@ -76,6 +76,8 @@ interface WidgetTextField {
     key: WidgetTextKey;
     label: string;
     hint?: string;
+    /** Longest override the backend accepts; labels default to 80. */
+    maxLength?: number;
 }
 
 const CHAT_TEXT_FIELDS: WidgetTextField[] = [
@@ -120,6 +122,7 @@ const VOICE_DISCLOSURE_TEXT_FIELDS: WidgetTextField[] = [
         key: "voiceDisclosureText",
         label: "AI and Recording Notice",
         hint: "shown before the microphone opens",
+        maxLength: 250,
     },
 ];
 
@@ -171,7 +174,7 @@ function WidgetTextSection({
                             </div>
                         )}
                         <div className="grid grid-cols-2 gap-4">
-                            {group.fields.map(({ key, label, hint }) => (
+                            {group.fields.map(({ key, label, hint, maxLength = 80 }) => (
                                 <div key={key} className="space-y-2">
                                     <Label htmlFor={`widget-text-${key}`} className="text-sm">
                                         {label}
@@ -188,7 +191,7 @@ function WidgetTextSection({
                                         value={values[key] ?? defaults?.[key] ?? ""}
                                         onChange={(e) => onChange(key, e.target.value)}
                                         placeholder={defaults?.[key] ?? ""}
-                                        maxLength={80}
+                                        maxLength={maxLength}
                                     />
                                 </div>
                             ))}

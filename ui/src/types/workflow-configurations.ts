@@ -108,7 +108,7 @@ export type CallDisclosureConfiguration = Omit<
 };
 
 export const DEFAULT_CALL_DISCLOSURE_TEXT = "This call is with an AI assistant and may be recorded.";
-export const MAX_CALL_DISCLOSURE_TEXT_LENGTH = 500;
+export const MAX_CALL_DISCLOSURE_TEXT_LENGTH = 250;
 
 export const DEFAULT_CALL_DISCLOSURE: CallDisclosureConfiguration = {
     enabled: true,

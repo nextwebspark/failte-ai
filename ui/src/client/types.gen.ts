@@ -1102,7 +1102,7 @@ export type CallDisclosureConfiguration = {
     /**
      * Text
      *
-     * What the agent says. Supports {{variable}} templating. Also the fallback when the recording cannot be played, and the text used in text chat and by speech-to-speech models.
+     * What the agent says. Supports {{variable}} templating. Also the fallback when the recording cannot be played, and the text used in text chat and by speech-to-speech models. Optional with a recording: whenever it is blank (also once rendered) the default notice is said instead.
      */
     text?: string;
     /**
