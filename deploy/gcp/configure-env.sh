@@ -86,10 +86,8 @@ set_key AWS_SECRET_ACCESS_KEY "$HMAC_SECRET"
 set_key OSS_JWT_SECRET "$(sm dograh-oss-jwt-secret)"
 set_key TURN_SECRET "$(sm dograh-turn-secret)"
 set_key DOGRAH_DEVOPS_SECRET "$(sm dograh-devops-secret)"
-set_key TELEPHONY_WS_TOKEN_SECRET "$(sm dograh-telephony-ws-token-secret)"
-
-# Enforcement stays off until the carrier leg is proven end to end.
-set_key TELEPHONY_WS_TOKEN_ENFORCE false
+# TELEPHONY_WS_TOKEN_SECRET and its enforcement are set further down, once
+# sm_optional and env_value exist.
 
 # Billing, email and Google are opt-in: each is configured only when its secret
 # exists in Secret Manager, so an install without them keeps working unchanged.
@@ -202,14 +200,55 @@ else
   unset_key GOOGLE_CLIENT_SECRET
 fi
 
-# Workspace credentials at rest (api). Opt-in like billing: once set, never
-# remove a key that encrypted stored rows (see docs/developer/environment-variables.mdx).
-#   python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())" \
-#     | gcloud secrets create dograh-credentials-encryption-keys --data-file=-
-CRED_KEYS="$(sm_optional dograh-credentials-encryption-keys)"
-if [[ -n "$CRED_KEYS" ]]; then
-  set_key CREDENTIALS_ENCRYPTION_KEYS "$CRED_KEYS"
+# Telephony media WebSocket tokens (api/services/telephony/ws_auth.py). The
+# socket only accepts URLs carrying a token minted with this secret, so a
+# guessed workflow/org/run id triple can no longer open a live call's socket.
+# The secret: Secret Manager's dograh-telephony-ws-token-secret, else the
+# value already in .env, else a new random one (rotating it only invalidates
+# calls in flight, so a generated value needs no backup).
+WS_SECRET="$(sm_optional dograh-telephony-ws-token-secret)"
+WS_SECRET="${WS_SECRET:-$(env_value TELEPHONY_WS_TOKEN_SECRET)}"
+if [[ -z "$WS_SECRET" ]]; then
+  WS_SECRET="$(openssl rand -hex 32)"
+  echo "  generated TELEPHONY_WS_TOKEN_SECRET (no Secret Manager value)" >&2
 fi
+set_key TELEPHONY_WS_TOKEN_SECRET "$WS_SECRET"
+set_key TELEPHONY_WS_TOKEN_ENFORCE true
+
+# Secrets at rest (api): external credentials, telephony credentials,
+# integration connection details and organization configuration values are
+# Fernet-encrypted with CREDENTIALS_ENCRYPTION_KEYS, and with
+# ENVIRONMENT=production the api refuses to start without it. So this always
+# ends with the key set:
+#   1. the Secret Manager secret dograh-credentials-encryption-keys, if readable;
+#   2. else the value already in .env (kept, with a warning to back it up);
+#   3. else a freshly generated key, stored in Secret Manager when this
+#      identity may create the secret, otherwise only in .env (warned loudly).
+# Never remove a key while rows encrypted with it exist: back it up with the
+# database backups. Rotation: README.md "Encryption at rest".
+CRED_KEYS="$(sm_optional dograh-credentials-encryption-keys)"
+if [[ -z "$CRED_KEYS" ]]; then
+  CRED_KEYS="$(env_value CREDENTIALS_ENCRYPTION_KEYS)"
+  if [[ -n "$CRED_KEYS" ]]; then
+    echo "  dograh-credentials-encryption-keys not readable: keeping" \
+      "CREDENTIALS_ENCRYPTION_KEYS from .env. Store it in Secret Manager so" \
+      "it survives the VM (README.md \"Encryption at rest\")." >&2
+  else
+    CRED_KEYS="$(python3 -c 'import base64, os; print(base64.urlsafe_b64encode(os.urandom(32)).decode())')"
+    if printf '%s' "$CRED_KEYS" | gcloud secrets create dograh-credentials-encryption-keys \
+        --data-file=- --project="$PROJECT" --replication-policy=user-managed \
+        --locations="$REGION" >/dev/null 2>&1; then
+      echo "  generated CREDENTIALS_ENCRYPTION_KEYS and stored it in Secret Manager" \
+        "(dograh-credentials-encryption-keys)"
+    else
+      echo "  WARNING: generated CREDENTIALS_ENCRYPTION_KEYS, but could not create" \
+        "the dograh-credentials-encryption-keys secret: the key exists ONLY in" \
+        "$ENV_FILE. Copy it into Secret Manager now (README.md \"Encryption at" \
+        "rest\"); losing it makes every stored secret unreadable." >&2
+    fi
+  fi
+fi
+set_key CREDENTIALS_ENCRYPTION_KEYS "$CRED_KEYS"
 
 # fallcha-tools (integrations). REQUIRED: the overlay runs fallcha-tools and
 # fails without these, so a missing secret stops this script (sm, not
@@ -248,14 +287,24 @@ mkdir -p "$TOOLS_DIR"
 chmod 600 "$TOOLS_ENV"
 echo "  wrote $TOOLS_ENV"
 
+# CORS: an explicit allowlist, never "*". The UI is served from
+# PUBLIC_BASE_URL, so that origin is the default; add more (comma-separated)
+# with DOGRAH_CORS_ALLOWED_ORIGINS. The embed widget on customer sites is not
+# affected: its public endpoints answer CORS per embed token's allowed domains.
+CORS_ORIGINS="${DOGRAH_CORS_ALLOWED_ORIGINS:-${PUBLIC_URL%/}}"
+[[ -n "$CORS_ORIGINS" ]] || {
+  echo "PUBLIC_BASE_URL is not set in $ENV_FILE; set it (or DOGRAH_CORS_ALLOWED_ORIGINS)" >&2
+  exit 1
+}
+set_key CORS_ALLOWED_ORIGINS "$CORS_ORIGINS"
+
 set_key ENABLE_SIGNUP true
 set_key FASTAPI_WORKERS 2
 
-# The retention purge ships in dry-run mode: it only logs, per organisation,
-# what it would delete. Switch to real deletion (RETENTION_PURGE_DRY_RUN=false)
-# only once customers have been warned, by re-running this script with
-# DOGRAH_RETENTION_PURGE_DRY_RUN=false. See README.md "Data retention".
-set_key RETENTION_PURGE_DRY_RUN "${DOGRAH_RETENTION_PURGE_DRY_RUN:-true}"
+# The retention purge deletes for real from the first deploy. For a dry run
+# (logs, per organisation, what it would delete; deletes nothing) re-run this
+# script with DOGRAH_RETENTION_PURGE_DRY_RUN=true. See README.md "Data retention".
+set_key RETENTION_PURGE_DRY_RUN "${DOGRAH_RETENTION_PURGE_DRY_RUN:-false}"
 
 # Platform-managed models: every org runs on this project's Vertex AI, Speech
 # and TTS (locations default to eu / europe-west1, see api/constants.py), with

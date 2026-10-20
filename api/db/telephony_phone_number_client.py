@@ -5,6 +5,7 @@ owned by a telephony configuration. They power both outbound caller-ID
 selection and inbound call routing.
 """
 
+import json
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from loguru import logger
@@ -19,6 +20,19 @@ from api.db.models import (
     WorkflowModel,
 )
 from api.utils.telephony_address import normalize_telephony_address
+
+
+def _matches_account(
+    config: TelephonyConfigurationModel, account_id_field: str, account_id: str
+) -> bool:
+    """``credentials[account_id_field] == account_id``, compared as text the way
+    Postgres ``->>`` did before the column was encrypted."""
+    value = (config.credentials or {}).get(account_id_field)
+    if value is None:
+        return False
+    if isinstance(value, str):
+        return value == account_id
+    return json.dumps(value) == account_id
 
 
 class TelephonyPhoneNumberConflictError(Exception):
@@ -166,8 +180,6 @@ class TelephonyPhoneNumberClient(BaseDBClient):
                 )
                 .where(
                     TelephonyConfigurationModel.provider == provider,
-                    TelephonyConfigurationModel.credentials.op("->>")(account_id_field)
-                    == account_id,
                     TelephonyPhoneNumberModel.address_normalized
                     == normalized.canonical,
                     TelephonyPhoneNumberModel.is_active.is_(True),
@@ -179,7 +191,14 @@ class TelephonyPhoneNumberClient(BaseDBClient):
                     TelephonyConfigurationModel.organization_id == organization_id
                 )
             result = await session.execute(stmt)
-            rows = result.all()
+            # ``credentials`` is encrypted at rest, so the account id is matched
+            # on the decrypted rows; the indexed number lookup above keeps the
+            # candidate set to the configs that hold this number.
+            rows = [
+                row
+                for row in result.all()
+                if _matches_account(row[0], account_id_field, account_id)
+            ]
 
             if not rows:
                 logger.info(
@@ -298,8 +317,6 @@ class TelephonyPhoneNumberClient(BaseDBClient):
                 )
                 .where(
                     TelephonyConfigurationModel.provider == provider,
-                    TelephonyConfigurationModel.credentials.op("->>")(account_id_field)
-                    == account_id,
                     TelephonyPhoneNumberModel.address_normalized.in_(
                         list(addresses_normalized)
                     ),
@@ -310,7 +327,12 @@ class TelephonyPhoneNumberClient(BaseDBClient):
                     TelephonyConfigurationModel.id != exclude_configuration_id
                 )
             result = await session.execute(stmt)
-            return [(row[0], row[1]) for row in result.all()]
+            # Account match in Python: ``credentials`` is encrypted at rest.
+            return [
+                (row[0], row[1])
+                for row in result.all()
+                if _matches_account(row[0], account_id_field, account_id)
+            ]
 
     async def create_phone_number(
         self,

@@ -259,9 +259,11 @@ services:
 
       OSS_JWT_SECRET: "${OSS_JWT_SECRET:?OSS_JWT_SECRET must be set to a strong secret}"
 
-      # Comma-separated Fernet keys (first one encrypts) for workspace
-      # credentials at rest. Unset stores them in plaintext (with a warning);
-      # outside DEPLOYMENT_MODE=oss the API refuses to start without them.
+      # Comma-separated Fernet keys (first one encrypts) for secrets at rest
+      # (workspace and telephony credentials, integration connection details,
+      # organization configuration). Unset stores them in plaintext (with a
+      # warning); with ENVIRONMENT=production or outside DEPLOYMENT_MODE=oss the
+      # API refuses to start without them.
       # Generate: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
       CREDENTIALS_ENCRYPTION_KEYS: "${CREDENTIALS_ENCRYPTION_KEYS:-}"
 

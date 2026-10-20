@@ -1,4 +1,9 @@
-"""Encryption at rest for ``external_credentials.credential_data``.
+"""Encryption at rest for every ``EncryptedJSON`` column.
+
+Covered: ``external_credentials.credential_data``,
+``telephony_configurations.credentials``, ``integrations.connection_details``
+and ``organization_configurations.value`` (the list lives in
+``api/db/credential_encryption_client.py``).
 
 A credential's secret fields are stored as a versioned envelope inside the
 existing JSON column::
@@ -8,9 +13,9 @@ existing JSON column::
 Keys come from ``CREDENTIALS_ENCRYPTION_KEYS`` (comma-separated Fernet keys).
 The first key encrypts; every listed key decrypts, so rotation is: prepend a
 new key, run ``python -m scripts.reencrypt_credentials``, then drop the old
-key. Without keys, values are written as plaintext (backwards compatible with
-OSS installs); envelopes found in that mode cannot be read and raise
-:class:`CredentialDecryptionError`. :func:`check_credential_encryption` is the
+key. Without keys, values are written as plaintext (local development and
+tests only: production refuses to start); envelopes found in that mode cannot
+be read and raise :class:`CredentialDecryptionError`. :func:`check_credential_encryption` is the
 startup policy run by the API and worker (see
 ``api/services/credential_encryption.py``).
 
@@ -31,6 +36,7 @@ from loguru import logger
 from pydantic import JsonValue
 
 from api.constants import CREDENTIALS_ENCRYPTION_KEYS
+from api.enums import Environment
 
 ENVELOPE_MARKER = "_enc"
 ENVELOPE_VERSION = "v1"
@@ -138,22 +144,30 @@ def check_credential_encryption(
     *,
     cipher: CredentialCipher | None,
     deployment_mode: str,
+    environment: str,
     sample_envelope: Mapping[str, object] | None,
 ) -> None:
     """Startup policy for credential encryption.
 
     - Encrypted rows exist but no keys are configured: refuse (every mode),
-      since those credentials could not be read.
-    - No keys outside OSS mode: refuse; OSS keeps plaintext with a warning.
+      since those secrets could not be read.
+    - No keys in production (``ENVIRONMENT=production``) or outside OSS mode:
+      refuse. Local development and tests keep plaintext with a warning.
     - Keys configured: one existing envelope (``sample_envelope``) must
       decrypt, catching a wrong or dropped key before any call needs it.
     """
     if cipher is None:
         if sample_envelope is not None:
             raise CredentialEncryptionStartupError(
-                "external_credentials holds encrypted rows but "
+                "the database holds encrypted secrets but "
                 "CREDENTIALS_ENCRYPTION_KEYS is not set; configure the keys "
                 "that encrypted them."
+            )
+        if environment == Environment.PRODUCTION.value:
+            raise CredentialEncryptionStartupError(
+                "CREDENTIALS_ENCRYPTION_KEYS must be set when ENVIRONMENT is "
+                "'production'; credentials, telephony and integration secrets "
+                "would otherwise be stored in plaintext."
             )
         if deployment_mode != "oss":
             raise CredentialEncryptionStartupError(
@@ -162,9 +176,10 @@ def check_credential_encryption(
                 "be stored in plaintext."
             )
         logger.warning(
-            "CREDENTIALS_ENCRYPTION_KEYS is not set: external credential secrets "
-            "are stored in plaintext. Set it to one or more Fernet keys to "
-            "encrypt them at rest."
+            "CREDENTIALS_ENCRYPTION_KEYS is not set: credential, telephony, "
+            "integration and organization configuration secrets are stored in "
+            "plaintext. Set it to one or more Fernet keys to encrypt them at rest "
+            "(required in production)."
         )
         return
     if sample_envelope is not None:
@@ -173,7 +188,7 @@ def check_credential_encryption(
         except CredentialDecryptionError as exc:
             raise CredentialEncryptionStartupError(
                 "CREDENTIALS_ENCRYPTION_KEYS cannot decrypt an existing "
-                "credential; a key that encrypted stored rows is missing "
+                "secret; a key that encrypted stored rows is missing "
                 "(re-add it, run `python -m scripts.reencrypt_credentials`, "
                 "then remove it)."
             ) from exc

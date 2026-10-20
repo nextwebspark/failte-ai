@@ -11,7 +11,7 @@
 #   ./bootstrap.sh apply      # actually create resources (BILLABLE)
 #   ./bootstrap.sh apply net  # run a single step
 #
-# Steps: project apis ips firewall storage sql registry schedule ci
+# Steps: project apis logging ips firewall storage sql registry schedule ci
 #
 # See README.md for the full runbook and what each resource is for.
 
@@ -28,6 +28,9 @@ SQL_INSTANCE="${DOGRAH_SQL_INSTANCE:-dograh-pg}"
 SQL_TIER="${DOGRAH_SQL_TIER:-db-g1-small}"
 SQL_VERSION="${DOGRAH_SQL_VERSION:-POSTGRES_17}"
 AR_REPO="${DOGRAH_AR_REPO:-dograh}"
+# Cloud Logging _Default bucket retention. Container logs on the VM can carry
+# phone numbers and call metadata, so keep them no longer than needed.
+LOG_RETENTION_DAYS="${DOGRAH_LOG_RETENTION_DAYS:-30}"
 
 STORAGE_SA="dograh-storage"
 
@@ -134,6 +137,7 @@ if want apis; then
     sts.googleapis.com                 # Workload Identity Federation token exchange
     sqladmin.googleapis.com
     servicenetworking.googleapis.com   # required for Cloud SQL private IP
+    logging.googleapis.com             # logging step (_Default bucket retention)
   )
   ENABLED="$(gcloud services list --enabled --project="$PROJECT_ID" --format='value(config.name)' 2>/dev/null || true)"
   TO_ENABLE=()
@@ -143,6 +147,25 @@ if want apis; then
   if (( ${#TO_ENABLE[@]} )); then
     run gcloud services enable "${TO_ENABLE[@]}" --project="$PROJECT_ID"
     ok "${TO_ENABLE[*]}"
+  fi
+fi
+
+# --- logging -----------------------------------------------------------------
+# Personal data minimisation (GDPR Art. 5(1)(e)/32): the project's _Default log
+# bucket keeps entries for LOG_RETENTION_DAYS (Google's default is 30, but a
+# console edit can raise it silently; this converges it back). The identity
+# running this needs logging.buckets.update (roles/logging.configWriter, or
+# Owner/Editor).
+if want logging; then
+  step "logging"
+  CURRENT_RETENTION="$(gcloud logging buckets describe _Default --location=global \
+    --project="$PROJECT_ID" --format='value(retentionDays)' 2>/dev/null || true)"
+  if [[ "$CURRENT_RETENTION" == "$LOG_RETENTION_DAYS" ]]; then
+    skip "_Default log bucket retention ${LOG_RETENTION_DAYS}d"
+  else
+    run gcloud logging buckets update _Default --location=global \
+      --retention-days="$LOG_RETENTION_DAYS" --project="$PROJECT_ID"
+    ok "_Default log bucket retention ${CURRENT_RETENTION:-?}d -> ${LOG_RETENTION_DAYS}d"
   fi
 fi
 
