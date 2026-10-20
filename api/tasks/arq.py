@@ -63,6 +63,7 @@ from api.tasks.campaign_tasks import (
     sync_campaign_source,
 )
 from api.tasks.knowledge_base_processing import process_knowledge_base_document
+from api.tasks.retention_purge import purge_expired_data_daily
 from api.tasks.run_integrations import run_integrations_post_workflow_run
 from api.tasks.text_chat_inactivity import (
     complete_inactive_text_chat_session,
@@ -113,6 +114,17 @@ class WorkerSettings:
             sweep_uncharged_workflow_runs,
             minute=set(range(2, 60, 10)),
             second=0,
+        ),
+        # GDPR storage limitation: delete call recordings, transcripts and call
+        # content past each organization's retention period, plus widget
+        # visitor data and webhook payloads after 30 days. Off-peak, once a
+        # day; the first pass on a large backlog may need the long timeout.
+        cron(
+            purge_expired_data_daily,
+            hour=3,
+            minute=17,
+            second=0,
+            timeout=3 * 60 * 60,
         ),
     ]
     redis_settings = REDIS_SETTINGS

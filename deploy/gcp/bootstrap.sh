@@ -239,6 +239,29 @@ if want storage; then
     warn "creating an HMAC key — the secret is shown once, save it now"
     run gcloud storage hmac create "$SA_EMAIL" --project="$PROJECT_ID"
   fi
+
+  # Retention backstop. The app's daily purge (api/services/retention) deletes
+  # call content after each organization's period (max 365 days); this rule
+  # catches anything it missed. Only transcripts/: recordings/ also holds
+  # agent prompt audio (recordings/{org_id}/{recording_id}/{file}), which a
+  # prefix rule cannot tell apart from call recordings and must never expire.
+  # Setting the lifecycle replaces the bucket's whole config, so re-running
+  # converges to exactly this rule.
+  LIFECYCLE_FILE="$(mktemp)"
+  trap 'rm -f "$LIFECYCLE_FILE"' EXIT
+  cat > "$LIFECYCLE_FILE" <<'JSON'
+{
+  "rule": [
+    {
+      "action": {"type": "Delete"},
+      "condition": {"age": 365, "matchesPrefix": ["transcripts/"]}
+    }
+  ]
+}
+JSON
+  run gcloud storage buckets update "gs://$BUCKET" \
+    --project="$PROJECT_ID" --lifecycle-file="$LIFECYCLE_FILE"
+  ok "lifecycle on gs://$BUCKET: delete transcripts/ after 365 days (idempotent)"
 fi
 
 # --- sql ---------------------------------------------------------------------

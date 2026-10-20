@@ -20,10 +20,25 @@ import { useUserConfig } from "@/context/UserConfigContext";
 import { detailFromError } from "@/lib/apiError";
 import { useAuth } from "@/lib/auth";
 
+// Mirrors api/schemas/organization_preferences.py.
+const DEFAULT_RETENTION_DAYS = 90;
+const MIN_RETENTION_DAYS = 1;
+const MAX_RETENTION_DAYS = 365;
+
+function parseRetentionDays(value: string): number | null {
+  const days = Number(value);
+  return Number.isInteger(days) &&
+    days >= MIN_RETENTION_DAYS &&
+    days <= MAX_RETENTION_DAYS
+    ? days
+    : null;
+}
+
 const emptyPreferences: OrganizationPreferences = {
   test_phone_number: "",
   timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
   external_pbx_integrations_enabled: false,
+  call_data_retention_days: DEFAULT_RETENTION_DAYS,
   disposition_mapping_enabled: false,
   disposition_mapping: {},
 };
@@ -37,6 +52,8 @@ function toFormPreferences(
     timezone: preferences.timezone || emptyPreferences.timezone,
     external_pbx_integrations_enabled:
       preferences.external_pbx_integrations_enabled ?? false,
+    call_data_retention_days:
+      preferences.call_data_retention_days ?? DEFAULT_RETENTION_DAYS,
     disposition_mapping_enabled: preferences.disposition_mapping_enabled ?? false,
     disposition_mapping: preferences.disposition_mapping ?? {},
   };
@@ -119,6 +136,9 @@ export function OrganizationPreferencesSection() {
   const [timezone, setTimezone] = useState<ITimezoneOption | string>(
     emptyPreferences.timezone || "UTC",
   );
+  const [retentionDays, setRetentionDays] = useState(
+    String(DEFAULT_RETENTION_DAYS),
+  );
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [mappingDialogOpen, setMappingDialogOpen] = useState(false);
@@ -148,7 +168,9 @@ export function OrganizationPreferencesSection() {
       }
 
       const nextPreferences = result.data || emptyPreferences;
-      setPreferences(toFormPreferences(nextPreferences));
+      const formPreferences = toFormPreferences(nextPreferences);
+      setPreferences(formPreferences);
+      setRetentionDays(String(formPreferences.call_data_retention_days));
       setTimezone(
         nextPreferences.timezone || emptyPreferences.timezone || "UTC",
       );
@@ -163,6 +185,13 @@ export function OrganizationPreferencesSection() {
     nextPreferences: OrganizationPreferences,
     successMessage: string,
   ): Promise<boolean> {
+    const callDataRetentionDays = parseRetentionDays(retentionDays);
+    if (callDataRetentionDays === null) {
+      toast.error(
+        `Call data retention must be a whole number of days from ${MIN_RETENTION_DAYS} to ${MAX_RETENTION_DAYS}`,
+      );
+      return false;
+    }
     setSaving(true);
     try {
       const result =
@@ -173,6 +202,7 @@ export function OrganizationPreferencesSection() {
               timezone: getTimezoneValue(timezone),
               external_pbx_integrations_enabled:
                 nextPreferences.external_pbx_integrations_enabled ?? false,
+              call_data_retention_days: callDataRetentionDays,
               disposition_mapping_enabled:
                 nextPreferences.disposition_mapping_enabled ?? false,
               // Sent even when the toggle is off: turning the mapping off
@@ -192,7 +222,9 @@ export function OrganizationPreferencesSection() {
         return false;
       }
 
-      setPreferences(toFormPreferences(result.data));
+      const savedPreferences = toFormPreferences(result.data);
+      setPreferences(savedPreferences);
+      setRetentionDays(String(savedPreferences.call_data_retention_days));
       setTimezone(result.data.timezone || emptyPreferences.timezone || "UTC");
       await refreshConfig();
       toast.success(successMessage);
@@ -254,6 +286,30 @@ export function OrganizationPreferencesSection() {
             styles={timezoneSelectStyles}
           />
         </div>
+      </div>
+      <div className="space-y-2">
+        <Label htmlFor="settings-call-data-retention">
+          Call data retention (days)
+        </Label>
+        <Input
+          id="settings-call-data-retention"
+          type="number"
+          inputMode="numeric"
+          min={MIN_RETENTION_DAYS}
+          max={MAX_RETENTION_DAYS}
+          step={1}
+          className="sm:max-w-[12rem]"
+          value={retentionDays}
+          onChange={(event) => setRetentionDays(event.target.value)}
+          aria-describedby="settings-call-data-retention-help"
+        />
+        <p
+          id="settings-call-data-retention-help"
+          className="text-xs text-muted-foreground"
+        >
+          Recordings, transcripts and call details are permanently deleted
+          after this many days ({MIN_RETENTION_DAYS}–{MAX_RETENTION_DAYS}).
+        </p>
       </div>
       <div className="flex items-start justify-between gap-4 rounded-lg border p-4">
         <div className="space-y-1">

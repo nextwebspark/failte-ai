@@ -139,3 +139,37 @@ class BaseFileSystem(ABC):
             bool: True if file was copied successfully, False otherwise
         """
         pass
+
+    @abstractmethod
+    async def adelete_file(self, file_path: str) -> bool:
+        """Delete a file from storage.
+
+        Idempotent: deleting an object that does not exist counts as success.
+
+        Args:
+            file_path: Path to the file in storage
+
+        Returns:
+            bool: True if the object is gone afterwards, False on a storage error
+        """
+        pass
+
+    @abstractmethod
+    async def adelete_prefix(self, prefix: str) -> int:
+        """Delete every object whose key starts with ``prefix``.
+
+        Callers must pass a prefix that ends with ``/`` and names exactly the
+        objects they own: object keys are not hierarchical, so ``recordings/1``
+        would also match ``recordings/12.wav``.
+
+        Args:
+            prefix: Key prefix to delete
+
+        Returns:
+            int: Number of objects deleted
+
+        Raises:
+            Exception: when listing or deleting fails, so the caller can retry
+            later instead of treating a partial delete as done.
+        """
+        pass

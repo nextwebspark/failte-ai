@@ -104,6 +104,7 @@ describe("OrganizationPreferencesSection disposition mapping", () => {
         test_phone_number: null,
         timezone: "UTC",
         external_pbx_integrations_enabled: false,
+        call_data_retention_days: 90,
         disposition_mapping_enabled: true,
         disposition_mapping: { do_not_call: "DNC" },
       },
@@ -135,5 +136,49 @@ describe("OrganizationPreferencesSection disposition mapping", () => {
       await screen.findByRole("button", { name: "Save mapping" }),
     ).toBeTruthy();
     expect(toast.error).toHaveBeenCalled();
+  });
+});
+
+describe("OrganizationPreferencesSection call data retention", () => {
+  beforeEach(() => {
+    mocks.getPreferences.mockReset();
+    mocks.getPreferences.mockResolvedValue({
+      data: { ...preferences, call_data_retention_days: 90 },
+    });
+    mocks.savePreferences.mockReset();
+    mocks.savePreferences.mockImplementation(async ({ body }) => ({
+      data: body,
+    }));
+    mocks.refreshConfig.mockReset();
+    mocks.refreshConfig.mockResolvedValue(undefined);
+    vi.mocked(toast.success).mockClear();
+    vi.mocked(toast.error).mockClear();
+  });
+
+  it("saves the retention period", async () => {
+    render(<OrganizationPreferencesSection />);
+
+    const input = await screen.findByLabelText("Call data retention (days)");
+    expect((input as HTMLInputElement).value).toBe("90");
+    fireEvent.change(input, { target: { value: "30" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() => expect(mocks.savePreferences).toHaveBeenCalledOnce());
+    expect(
+      mocks.savePreferences.mock.calls[0][0].body.call_data_retention_days,
+    ).toBe(30);
+  });
+
+  it("rejects a period outside 1 to 365 days without saving", async () => {
+    render(<OrganizationPreferencesSection />);
+
+    const input = await screen.findByLabelText("Call data retention (days)");
+    fireEvent.change(input, { target: { value: "366" } });
+    // Submit the form directly: the browser's own min/max check would
+    // otherwise stop the click before the component's validation runs.
+    fireEvent.submit(input.closest("form")!);
+
+    await waitFor(() => expect(toast.error).toHaveBeenCalled());
+    expect(mocks.savePreferences).not.toHaveBeenCalled();
   });
 });

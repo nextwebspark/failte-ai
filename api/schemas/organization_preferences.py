@@ -8,6 +8,15 @@ from api.schemas.call_events import CallEventsSettings
 MAX_DISPOSITION_MAPPING_ENTRIES = 200
 MAX_DISPOSITION_CODE_LENGTH = 64
 
+# How long call recordings, transcripts and other call content are kept before
+# the daily retention purge deletes them (GDPR storage limitation). The privacy
+# policy promises the default; each organization may pick its own period in
+# this range. The GCS lifecycle backstop in deploy/gcp/bootstrap.sh is set to
+# the maximum, so raising it means raising that rule too.
+DEFAULT_CALL_DATA_RETENTION_DAYS = 90
+MIN_CALL_DATA_RETENTION_DAYS = 1
+MAX_CALL_DATA_RETENTION_DAYS = 365
+
 
 class OrganizationPreferences(BaseModel):
     call_events: CallEventsSettings | None = Field(
@@ -17,6 +26,16 @@ class OrganizationPreferences(BaseModel):
     test_phone_number: str | None = None
     timezone: str | None = None
     external_pbx_integrations_enabled: bool = False
+    call_data_retention_days: int = Field(
+        default=DEFAULT_CALL_DATA_RETENTION_DAYS,
+        ge=MIN_CALL_DATA_RETENTION_DAYS,
+        le=MAX_CALL_DATA_RETENTION_DAYS,
+        description=(
+            "Days to keep call recordings, transcripts and call content before "
+            "they are permanently deleted. Billing metadata (duration, cost, "
+            "status) is kept."
+        ),
+    )
     disposition_mapping_enabled: bool = False
     disposition_mapping: dict[str, str] = Field(
         default_factory=dict,

@@ -229,6 +229,26 @@ backend** — `api/services/filesystem/minio.py` applies an anonymous bucket pol
 granting `PutObject`/`DeleteObject` to `*` and returns unsigned URLs, and nginx
 proxies `/voice-audio/` publicly.
 
+### Data retention
+
+The app enforces retention itself: a daily ARQ cron at 03:17 UTC
+(`api/services/retention/purge.py`) deletes call recordings, transcripts and
+call content once a run is older than its organisation's
+**Call data retention (days)** setting (default 90, 1–365), clears widget
+visitor IP/user agent after 30 days and webhook payloads after 30 days.
+
+`bootstrap.sh apply storage` adds a bucket lifecycle rule as a backstop:
+objects under `transcripts/` are deleted after 365 days (the maximum setting).
+`recordings/` has **no** lifecycle rule on purpose: it also holds agent prompt
+audio (`recordings/{org_id}/{recording_id}/{file}`) that agents play on every
+call, and a prefix rule cannot tell those apart from call recordings. Call
+recordings rely on the app purge. The script sets the bucket's whole lifecycle
+config, so add any other rule there rather than in the console. Check it with:
+
+```bash
+gcloud storage buckets describe gs://dograh-voice-audio-eu --format='value(lifecycle_config)'
+```
+
 ## 3. Build images
 
 `pipecat/` is a submodule and part of the API build context:
