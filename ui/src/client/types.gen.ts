@@ -1078,6 +1078,43 @@ export type CalculatorToolDefinition = {
 };
 
 /**
+ * CallDisclosureConfiguration
+ *
+ * Notice played at the very start of every call.
+ *
+ * The EU AI Act (Art. 50) requires telling people they are talking to an AI,
+ * and Irish law requires notice that a call is recorded. On by default, so an
+ * agent that never saved this setting still discloses.
+ */
+export type CallDisclosureConfiguration = {
+    /**
+     * Enabled
+     *
+     * Play the disclosure before the start node's greeting. Turn off only if callers are told another way.
+     */
+    enabled?: boolean;
+    /**
+     * Type
+     *
+     * Speak `text` with the agent's voice, or play `recording_id`.
+     */
+    type?: 'text' | 'audio';
+    /**
+     * Text
+     *
+     * What the agent says. Supports {{variable}} templating. Also the fallback when the recording cannot be played, and the text used in text chat and by speech-to-speech models.
+     */
+    text?: string;
+    /**
+     * Recording Id
+     *
+     * Recording ID (not primary key) played when `type` is audio.
+     */
+    recording_id?: string | null;
+    [key: string]: unknown;
+};
+
+/**
  * CallDispositionCodes
  */
 export type CallDispositionCodes = {
@@ -10155,6 +10192,10 @@ export type WidgetTexts = {
      * Voiceconnectionlostsubtext
      */
     voiceConnectionLostSubtext?: string;
+    /**
+     * Voicedisclosuretext
+     */
+    voiceDisclosureText?: string;
 };
 
 /**
@@ -10162,6 +10203,10 @@ export type WidgetTexts = {
  */
 export type WorkflowConfigurationDefaults = {
     ambient_noise_configuration?: AmbientNoiseConfigurationDefaults;
+    /**
+     * AI and recording notice played at the start of every call. On by default, including for agents saved before this setting existed.
+     */
+    call_disclosure?: CallDisclosureConfiguration;
     /**
      * Max Call Duration
      */

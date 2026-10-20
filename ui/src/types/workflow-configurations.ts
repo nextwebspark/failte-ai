@@ -1,5 +1,6 @@
 import type {
     AmbientNoiseConfigurationDefaults,
+    CallDisclosureConfiguration as GeneratedCallDisclosureConfiguration,
     CallDispositionOption as GeneratedCallDispositionOption,
     OrganizationAiModelConfigurationV2,
     WorkflowConfigurationDefaults as GeneratedWorkflowConfigurationDefaults,
@@ -93,6 +94,45 @@ export interface ExternalPBXFieldMapping {
 
 export type CallDispositionOption = GeneratedCallDispositionOption;
 
+// AI and recording notice played at the start of every call (EU AI Act Art. 50
+// and Irish call-recording notice). On by default, including for agents saved
+// before the setting existed: the backend treats a missing key the same way.
+export type CallDisclosureConfiguration = Omit<
+    GeneratedCallDisclosureConfiguration,
+    "enabled" | "type" | "text" | "recording_id"
+> & {
+    enabled: boolean;
+    type: "text" | "audio";
+    text: string;
+    recording_id: string | null;
+};
+
+export const DEFAULT_CALL_DISCLOSURE_TEXT = "This call is with an AI assistant and may be recorded.";
+export const MAX_CALL_DISCLOSURE_TEXT_LENGTH = 500;
+
+export const DEFAULT_CALL_DISCLOSURE: CallDisclosureConfiguration = {
+    enabled: true,
+    type: "text",
+    text: DEFAULT_CALL_DISCLOSURE_TEXT,
+    recording_id: null,
+};
+
+function resolveCallDisclosure(
+    ...layers: Array<Partial<GeneratedCallDisclosureConfiguration> | null | undefined>
+): CallDisclosureConfiguration {
+    const resolved: CallDisclosureConfiguration = { ...DEFAULT_CALL_DISCLOSURE };
+    for (const layer of layers) {
+        if (!layer) continue;
+        // Stored nulls mean "never configured", exactly as the backend reads them.
+        for (const [key, value] of Object.entries(layer)) {
+            if (value !== null && value !== undefined) {
+                (resolved as Record<string, unknown>)[key] = value;
+            }
+        }
+    }
+    return resolved;
+}
+
 export const DEFAULT_TRANSCRIPT_CONFIGURATION: TranscriptConfiguration = {
     include_end_timestamps: false,
 };
@@ -130,6 +170,7 @@ export interface ModelOverrides {
 type WorkflowConfigurationBase = Omit<
     GeneratedWorkflowConfigurationDefaults,
     | "ambient_noise_configuration"
+    | "call_disclosure"
     | "max_call_duration"
     | "max_user_idle_timeout"
     | "smart_turn_stop_secs"
@@ -148,6 +189,7 @@ type WorkflowConfigurationBase = Omit<
 
 export type WorkflowConfigurations = WorkflowConfigurationBase & {
     ambient_noise_configuration: AmbientNoiseConfiguration;
+    call_disclosure: CallDisclosureConfiguration;  // AI and recording notice at call start
     max_call_duration: number;  // Maximum call duration in seconds
     max_user_idle_timeout: number;  // Maximum user idle time in seconds
     smart_turn_stop_secs: number;  // Timeout in seconds for incomplete turn detection
@@ -174,6 +216,7 @@ const FALLBACK_WORKFLOW_CONFIGURATIONS: WorkflowConfigurations = {
         enabled: false,
         volume: 0.3
     },
+    call_disclosure: DEFAULT_CALL_DISCLOSURE,
     max_call_duration: 300,
     max_user_idle_timeout: 10,  // 10 seconds
     smart_turn_stop_secs: 2,  // 2 seconds
@@ -203,6 +246,10 @@ export function resolveWorkflowConfigurations(
             ...defaults?.ambient_noise_configuration,
             ...configurations?.ambient_noise_configuration,
         },
+        call_disclosure: resolveCallDisclosure(
+            defaults?.call_disclosure,
+            configurations?.call_disclosure,
+        ),
         max_call_duration:
             configurations?.max_call_duration
             ?? defaults?.max_call_duration

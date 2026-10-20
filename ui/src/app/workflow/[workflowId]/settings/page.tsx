@@ -29,6 +29,7 @@ import logger from "@/lib/logger";
 import { cn } from "@/lib/utils";
 import {
     type AmbientNoiseConfiguration,
+    type CallDisclosureConfiguration,
     type CallDispositionOption,
     DEFAULT_TURN_START_MIN_WORDS,
     DEFAULT_VOICEMAIL_DETECTION_CONFIGURATION,
@@ -42,6 +43,7 @@ import {
 
 import { type AgentSectionContext, AgentSectionShell } from "../components/AgentSectionShell";
 import { AnswerSupervisorFields, isVoicemailMessageMissing, readAnswerSupervisorSettings } from "../components/AnswerSupervisorFields";
+import { CallDisclosureFields, callDisclosureProblem } from "./components/CallDisclosureFields";
 import {
     CallDispositionEditor,
     type CallDispositionRow,
@@ -241,6 +243,9 @@ function GeneralSection({
     const [ambientNoiseConfig, setAmbientNoiseConfig] = useState<AmbientNoiseConfiguration>(
         workflowConfigurations.ambient_noise_configuration,
     );
+    const [callDisclosure, setCallDisclosure] = useState<CallDisclosureConfiguration>(
+        workflowConfigurations.call_disclosure,
+    );
     const [maxCallDuration, setMaxCallDuration] = useState(workflowConfigurations.max_call_duration);
     const [maxUserIdleTimeout, setMaxUserIdleTimeout] = useState(workflowConfigurations.max_user_idle_timeout);
     const [smartTurnStopSecs, setSmartTurnStopSecs] = useState(workflowConfigurations.smart_turn_stop_secs);
@@ -309,6 +314,7 @@ function GeneralSection({
         maxCallDuration !== workflowConfigurations.max_call_duration ||
         maxUserIdleTimeout !== workflowConfigurations.max_user_idle_timeout;
     const behaviourDirty =
+        JSON.stringify(callDisclosure) !== JSON.stringify(workflowConfigurations.call_disclosure) ||
         smartTurnStopSecs !== workflowConfigurations.smart_turn_stop_secs ||
         turnStartStrategy !== workflowConfigurations.turn_start_strategy ||
         turnStartMinWords !== workflowConfigurations.turn_start_min_words ||
@@ -329,11 +335,12 @@ function GeneralSection({
         ? "Add an agent name"
         : isUploadingAudio
             ? "Wait for the audio upload to finish"
-            : !callDispositionsValid
+            : callDisclosureProblem(callDisclosure)
+                ?? (!callDispositionsValid
                 ? "Fix the call outcomes"
                 : externalPbxIntegrationsEnabled && !externalPbxSettingsValid
                     ? "Fix the PBX fields"
-                    : null;
+                    : null);
 
     // The rows the last save sent, so a save doesn't rewrite rows edited meanwhile.
     const savedDispositionRows = useRef<CallDispositionRow[] | null>(null);
@@ -348,6 +355,9 @@ function GeneralSection({
                 workflowName: name.trim(),
                 configurations: {
                     ambient_noise_configuration: ambientNoiseConfig,
+                    // Always sent: a save replaces the stored document, and a
+                    // missing key would silently fall back to the default.
+                    call_disclosure: { ...callDisclosure, text: callDisclosure.text.trim() },
                     max_call_duration: maxCallDuration,
                     max_user_idle_timeout: maxUserIdleTimeout,
                     smart_turn_stop_secs: smartTurnStopSecs,
@@ -597,6 +607,23 @@ function GeneralSection({
             </SettingsSection>
 
             <SettingsSection id="call" icon={PhoneCall} tone="sky" title="Call behaviour" description="How the agent listens, when it can be interrupted, and what it records.">
+                <SettingRow
+                    compact
+                    label="Tell callers they're talking to an AI and may be recorded"
+                    htmlFor="call-disclosure-enabled"
+                    hint="Required by the EU AI Act and Irish recording law. Turn off only if you disclose this another way."
+                >
+                    <Switch
+                        id="call-disclosure-enabled"
+                        checked={callDisclosure.enabled}
+                        onCheckedChange={(enabled) => setCallDisclosure((prev) => ({ ...prev, enabled }))}
+                    />
+                </SettingRow>
+                {callDisclosure.enabled && (
+                    <SettingBlock>
+                        <CallDisclosureFields value={callDisclosure} onChange={setCallDisclosure} />
+                    </SettingBlock>
+                )}
                 <SettingRow
                     label="Turn detection"
                     htmlFor="turn_stop_strategy"
