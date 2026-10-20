@@ -6,9 +6,8 @@
  * same sites we already `posthog.capture(...)`.
  *
  * Every helper is a no-op unless the Pixel is actually loaded (i.e. `window.fbq`
- * exists). The Pixel only loads on Cloud, where NEXT_PUBLIC_META_PIXEL_ID is set
- * at build time (see components/MetaPixel.tsx + app/layout.tsx). OSS self-hosters
- * and local dev leave the var blank, so `fbq` never loads and nothing is sent.
+ * exists). Nothing in this app loads it (the upstream loader component was
+ * removed), so these calls send nothing.
  */
 
 declare global {

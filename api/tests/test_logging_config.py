@@ -87,3 +87,35 @@ def test_redaction_leaves_ids_and_timestamps_alone():
 
     line = "run 1234567890 at 2026-10-20T10:00:00+01:00 port 9000"
     assert redact_personal_data(line) == line
+
+
+def test_bare_phone_numbers_are_masked_at_the_call_site():
+    from api.logging_config import mask_phone
+
+    assert mask_phone("353871234567") == "*********567"
+    assert mask_phone("+14155550123") == "+********123"
+    assert mask_phone("12") == "12"
+    assert mask_phone(None) is None
+
+
+def test_webhook_payload_phone_fields_are_masked():
+    from api.logging_config import mask_phone_fields
+
+    payload = {
+        "From": "353871234567",
+        "To": "14155550123",
+        "CallUUID": "abc-123",
+        "Duration": "42",
+        "data": {"payload": {"from": "+353871234567", "call_id": "x"}},
+        "legs": [{"CallFrom": "09876543210"}],
+    }
+
+    assert mask_phone_fields(payload) == {
+        "From": "*********567",
+        "To": "********123",
+        "CallUUID": "abc-123",
+        "Duration": "42",
+        "data": {"payload": {"from": "+*********567", "call_id": "x"}},
+        "legs": [{"CallFrom": "********210"}],
+    }
+    assert payload["From"] == "353871234567"  # the original is untouched

@@ -1,12 +1,16 @@
+import urllib3
 from loguru import logger
+from minio import Minio
 
 from api.constants import (
     ENABLE_AWS_S3,
     ENVIRONMENT,
     MINIO_ACCESS_KEY,
     MINIO_BUCKET,
+    MINIO_CONFIGURED,
     MINIO_ENDPOINT,
     MINIO_PUBLIC_ENDPOINT,
+    MINIO_REGION,
     MINIO_SECRET_KEY,
     MINIO_SECURE,
     S3_ADDRESSING_STYLE,
@@ -18,6 +22,7 @@ from api.constants import (
 from api.enums import Environment, StorageBackend
 
 from .filesystem import BaseFileSystem, MinioFileSystem, NullFileSystem, S3FileSystem
+from .filesystem.minio import make_bucket_private
 
 
 def get_storage_for_backend(backend: str) -> BaseFileSystem:
@@ -47,6 +52,7 @@ def get_storage_for_backend(backend: str) -> BaseFileSystem:
             bucket_name=MINIO_BUCKET,
             secure=MINIO_SECURE,
             public_endpoint=MINIO_PUBLIC_ENDPOINT,
+            region=MINIO_REGION,
         )
 
     # Code 1: AWS S3 implementation (cloud deployments)
@@ -104,3 +110,30 @@ def get_storage() -> BaseFileSystem:
     Deprecated: Use 'from api.services.storage import storage_fs' instead.
     """
     return storage_fs
+
+
+def secure_legacy_minio_bucket() -> None:
+    """Remove the anonymous policy older versions put on the MinIO bucket.
+
+    MinioFileSystem does this when it is constructed, but when S3/GCS is the
+    primary backend it is only constructed for legacy rows, while the MinIO
+    server (and nginx's /voice-audio/ proxy to it) keeps running. Called at API
+    startup; best effort, never raises, and uses short timeouts so an
+    unreachable MinIO cannot stall startup.
+    """
+    if not MINIO_CONFIGURED or isinstance(
+        storage_fs, (MinioFileSystem, NullFileSystem)
+    ):
+        return
+    client = Minio(
+        MINIO_ENDPOINT,
+        access_key=MINIO_ACCESS_KEY,
+        secret_key=MINIO_SECRET_KEY,
+        secure=MINIO_SECURE,
+        region=MINIO_REGION,
+        http_client=urllib3.PoolManager(
+            timeout=urllib3.Timeout(connect=3, read=5),
+            retries=urllib3.Retry(total=1, backoff_factor=0.2),
+        ),
+    )
+    make_bucket_private(client, MINIO_BUCKET)

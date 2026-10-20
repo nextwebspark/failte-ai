@@ -1,5 +1,7 @@
 """Set up logging before importing anything else"""
 
+import asyncio
+
 import sentry_sdk
 
 from api.constants import (
@@ -49,6 +51,7 @@ from api.services.pipecat.tracing_config import (
 )
 from api.services.pipecat.tts_cache.runtime import close_speech_cache
 from api.services.skills import sync_seed_library_on_startup
+from api.services.storage import secure_legacy_minio_bucket
 from api.services.tool_integrations.client import close_shared_http_client
 from api.services.worker_sync.manager import (
     WorkerSyncManager,
@@ -69,6 +72,8 @@ async def lifespan(app: FastAPI):
     await verify_credential_encryption()
     # Fallcha: sync seed skills (api/skills_library) into the library.
     await sync_seed_library_on_startup()
+    # Close the old public MinIO bucket even when S3/GCS is the primary backend.
+    await asyncio.to_thread(secure_legacy_minio_bucket)
 
     async with mcp_app.lifespan(app):
         # warmup arq pool

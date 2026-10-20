@@ -77,9 +77,10 @@ services:
       MINIO_ROOT_PASSWORD: "${MINIO_ROOT_PASSWORD:-minioadmin}"
       MINIO_API_CORS_ALLOW_ORIGIN: "*"
     # No host ports. Browsers fetch audio via Traefik at
-    # https://${PUBLIC_HOST}/voice-audio/... (objects are public-read,
-    # unsigned URLs — no presign/host-signature to break). For console
-    # admin, port-forward 9001 over SSH instead of publishing it.
+    # https://${PUBLIC_HOST}/voice-audio/... The bucket is private: links are
+    # presigned against PUBLIC_HOST, so Traefik must keep passing the Host
+    # header through (its default). For console admin, port-forward 9001 over
+    # SSH instead of publishing it.
     volumes:
       - minio-data:/data
     healthcheck:
@@ -96,6 +97,11 @@ services:
       - "traefik.http.routers.dograh-audio.tls=true"
       - "traefik.http.routers.dograh-audio.tls.certresolver=${TRAEFIK_CERTRESOLVER:-letsencrypt}"
       - "traefik.http.routers.dograh-audio.priority=20"
+      # Objects are user uploads served from the app's origin: never let a
+      # browser sniff or run them as active content (e.g. an uploaded HTML file).
+      - "traefik.http.routers.dograh-audio.middlewares=dograh-audio-headers"
+      - "traefik.http.middlewares.dograh-audio-headers.headers.contentTypeNosniff=true"
+      - "traefik.http.middlewares.dograh-audio-headers.headers.contentSecurityPolicy=sandbox"
       - "traefik.http.services.dograh-audio.loadbalancer.server.port=9000"
     networks:
       - app-network
@@ -191,7 +197,7 @@ services:
 
       ENABLE_TELEMETRY: "${ENABLE_TELEMETRY:-true}"
       POSTHOG_API_KEY: "${POSTHOG_API_KEY:-}"
-      POSTHOG_HOST: "https://us.i.posthog.com"
+      POSTHOG_HOST: "https://eu.i.posthog.com"
     depends_on:
       postgres:
         condition: service_healthy
@@ -235,7 +241,7 @@ services:
       NODE_ENV: "oss"
       ENABLE_TELEMETRY: "${ENABLE_TELEMETRY:-true}"
       POSTHOG_KEY: "${POSTHOG_KEY:-}"
-      POSTHOG_HOST: "https://us.posthog.com"
+      POSTHOG_HOST: "https://eu.i.posthog.com"
     depends_on:
       api:
         condition: service_healthy

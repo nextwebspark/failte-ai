@@ -171,11 +171,12 @@ LightMove.ai uses **MinIO by default**, which is bundled with the self-hosted de
 | Variable | Default | Description |
 |---|---|---|
 | `MINIO_ENDPOINT` | `localhost:9000` | MinIO server host and port |
-| `MINIO_PUBLIC_ENDPOINT` | `PUBLIC_BASE_URL`, else `http://localhost:9000` | Publicly accessible MinIO URL for download links. Derives from `PUBLIC_BASE_URL`; set explicitly only for a separate object-storage origin |
+| `MINIO_PUBLIC_ENDPOINT` | `PUBLIC_BASE_URL`, else `http://localhost:9000` | Origin (scheme + host, no path) browsers use to reach MinIO; presigned download and upload URLs are signed for it. Derives from `PUBLIC_BASE_URL`; set explicitly only for a separate object-storage origin |
 | `MINIO_ACCESS_KEY` | N/A | **Required for OSS deployments.** MinIO access key. Must be set to a secure value in production |
 | `MINIO_SECRET_KEY` | N/A | **Required for OSS deployments.** MinIO secret key. Must be set to a secure value in production |
 | `MINIO_BUCKET` | `voice-audio` | Bucket name for audio files |
 | `MINIO_SECURE` | `false` | Use HTTPS for MinIO connections |
+| `MINIO_REGION` | `us-east-1` | Region MinIO signs requests (and presigned URLs) for. Must match the MinIO server's `MINIO_REGION`; MinIO's default is `us-east-1` |
 
 ### AWS S3 (alternative)
 
@@ -192,7 +193,7 @@ Credentials come from the standard `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY`
 
 #### S3-compatible servers (MinIO, rustfs, Ceph, ...)
 
-The S3 backend can target any S3-compatible server, not just AWS. Prefer it over the MinIO backend when you need **presigned URLs against a private bucket**: the MinIO backend returns plain unsigned object URLs and relies on the bucket being anonymously public-readable, whereas the S3 backend issues real presigned URLs so the bucket can stay private.
+The S3 backend can target any S3-compatible server, not just AWS. Both backends keep the bucket private and hand browsers presigned URLs; the S3 backend adds custom endpoints, signature versions and addressing styles.
 
 To use it, set `ENABLE_AWS_S3=true` and point it at your server with the `S3_*` overrides above. For example, against [rustfs](https://github.com/rustfs/rustfs):
 

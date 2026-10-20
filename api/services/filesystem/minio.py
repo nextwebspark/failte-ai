@@ -2,12 +2,32 @@ import asyncio
 import io
 from datetime import timedelta
 from typing import Any, Dict, Optional
+from urllib.parse import urlsplit
 
 from loguru import logger
 from minio import Minio
 from minio.error import S3Error
 
 from .base import AsyncReadable, BaseFileSystem
+
+
+def make_bucket_private(client: Minio, bucket_name: str, create: bool = False) -> None:
+    """Remove any anonymous bucket policy, optionally creating the bucket first.
+
+    Older versions set an anonymous read/write/list policy; removing it leaves
+    recordings and transcripts reachable only through presigned URLs. Best
+    effort: failures are logged, never raised.
+    """
+    try:
+        if not client.bucket_exists(bucket_name):
+            if not create:
+                return
+            client.make_bucket(bucket_name)
+        client.delete_bucket_policy(bucket_name)
+    except Exception as e:
+        logger.warning(
+            f"Bucket setup note: could not make MinIO bucket {bucket_name!r} private: {e}"
+        )
 
 
 class MinioFileSystem(BaseFileSystem):
@@ -28,6 +48,7 @@ class MinioFileSystem(BaseFileSystem):
         bucket_name: str = "voice-audio",
         secure: bool = False,
         public_endpoint: Optional[str] = None,
+        region: str = "us-east-1",
     ):
         if not public_endpoint:
             raise ValueError(
@@ -41,6 +62,11 @@ class MinioFileSystem(BaseFileSystem):
             raise ValueError(
                 f"MINIO_PUBLIC_ENDPOINT must include a scheme (http:// or https://), got: {public_endpoint!r}"
             )
+        if urlsplit(public_endpoint).path not in ("", "/"):
+            raise ValueError(
+                "MINIO_PUBLIC_ENDPOINT must not contain a path (presigned URLs are "
+                f"signed for the bucket at the host root), got: {public_endpoint!r}"
+            )
 
         self.bucket_name = bucket_name
         self.endpoint = endpoint
@@ -51,33 +77,27 @@ class MinioFileSystem(BaseFileSystem):
 
         # Client for internal operations (uploads, etc.)
         self.client = Minio(
-            endpoint, access_key=access_key, secret_key=secret_key, secure=secure
+            endpoint,
+            access_key=access_key,
+            secret_key=secret_key,
+            secure=secure,
+            region=region,
         )
 
         # Signs browser-facing URLs. Presigning is computed locally, but the
         # signature covers the Host header, so it must use the public host.
-        # The region is fixed so the SDK never makes a network call to look it up.
+        # Passing the region means the SDK never makes a network call to look it up.
         public_secure = self.public_endpoint.startswith("https://")
-        public_host = self.public_endpoint.split("://", 1)[1].split("/", 1)[0]
+        public_host = urlsplit(self.public_endpoint).netloc
         self.public_client = Minio(
             public_host,
             access_key=access_key,
             secret_key=secret_key,
             secure=public_secure,
-            region="us-east-1",
+            region=region,
         )
 
-        # Ensure the bucket exists and is private. Older versions set an
-        # anonymous read/write/list policy; remove it so recordings and
-        # transcripts are only reachable through presigned URLs.
-        try:
-            if not self.client.bucket_exists(self.bucket_name):
-                self.client.make_bucket(self.bucket_name)
-            self.client.delete_bucket_policy(self.bucket_name)
-        except Exception as e:
-            # Bucket might already exist or we might be in a restricted environment
-            logger.debug(f"Bucket setup note: {e}")
-            pass
+        make_bucket_private(self.client, self.bucket_name, create=True)
 
     async def acreate_file(self, file_path: str, content: AsyncReadable) -> bool:
         try:

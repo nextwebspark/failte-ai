@@ -112,7 +112,7 @@ config:
   minioSecure: false
   enableAwsS3: false
   enableTelemetry: true
-  posthogHost: https://us.i.posthog.com
+  posthogHost: https://eu.i.posthog.com
   posthogApiKey: ""
   forceTurnRelay: false
   turnHost: ""  # public hostname/IP of coturn (the LoadBalancer address)
