@@ -280,8 +280,7 @@ export function PhoneNumberDialog({
               </SelectContent>
             </Select>
             <p className="text-xs text-muted-foreground">
-              Used when per-number inbound routing is enabled. Today, inbound calls still
-              route by the workflow_id in the webhook URL.
+              Calls to this number are answered by this agent.
             </p>
           </div>
 

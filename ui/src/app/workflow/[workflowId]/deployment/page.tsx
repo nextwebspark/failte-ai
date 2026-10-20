@@ -1,22 +1,39 @@
 "use client";
 
-import { ExternalLink, Rocket } from "lucide-react";
-import Link from "next/link";
-import { useState } from "react";
+import { AppWindow } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 
 import { AgentSectionShell } from "../components/AgentSectionShell";
 import { EmbedDialog } from "../components/EmbedDialog";
+import { AgentPhoneNumbers } from "./AgentPhoneNumbers";
 
 /**
- * "Deployment" — the canvas's Connect section: where this agent goes live
- * (app-doc/claude-design/Failte AI v2.dc.html). Today that is the website
- * widget; telephony numbers are still attached at the workspace level.
+ * The sections render once the agent has loaded, after the browser has
+ * already tried to follow a #phone / #website link, so scroll to it then —
+ * waiting until the Phone section above has its final height.
+ */
+function ScrollToHash({ ready }: { ready: boolean }) {
+    const scrolled = useRef(false);
+    useEffect(() => {
+        if (!ready || scrolled.current) return;
+        scrolled.current = true;
+        const id = window.location.hash.slice(1);
+        if (id) document.getElementById(id)?.scrollIntoView({ block: "start" });
+    }, [ready]);
+    return null;
+}
+
+/**
+ * "Deployment" — the canvas's Connect section: how callers reach this agent
+ * (app-doc/claude-design/Failte AI v2.dc.html). A phone number first, since
+ * most agents answer the phone, then the website widget.
  */
 export default function AgentDeploymentPage() {
     const [isEmbedDialogOpen, setIsEmbedDialogOpen] = useState(false);
+    const [phoneSettled, setPhoneSettled] = useState(false);
+    const markPhoneSettled = useCallback(() => setPhoneSettled(true), []);
 
     return (
         <AgentSectionShell>
@@ -29,42 +46,35 @@ export default function AgentDeploymentPage() {
                 saveWorkflowConfigurations,
             }) => (
                 <div className="page-body max-w-4xl space-y-6">
-                    <Card id="deployment">
-                        <CardHeader>
-                            <CardTitle className="flex items-center gap-2 text-base">
-                                <Rocket className="h-4 w-4" />
-                                Add to website
-                            </CardTitle>
-                            <CardDescription>
-                                Configure a widget that puts this voice agent on your website. Publish
+                    <AgentPhoneNumbers
+                        agentId={workflowId}
+                        agentName={workflowName}
+                        onSettled={markPhoneSettled}
+                    />
+
+                    <section
+                        id="website"
+                        aria-labelledby="website-title"
+                        className="scroll-mt-6 rounded-lg border border-line bg-card"
+                    >
+                        <header className="border-b border-line-soft px-5 py-4">
+                            <h2 id="website-title" className="flex items-center gap-2 text-[15px] font-semibold text-ink">
+                                <AppWindow className="size-4 text-ink-3" aria-hidden />
+                                Website
+                            </h2>
+                            <p className="mt-1 text-[13px] text-ink-2">
+                                A call button on your website that connects visitors to {workflowName}. Publish
                                 the agent after any change so callers get the new version.
-                            </CardDescription>
-                        </CardHeader>
-                        <CardFooter className="border-t pt-6">
-                            <Button variant="outline" onClick={() => setIsEmbedDialogOpen(true)}>
-                                Configure widget
+                            </p>
+                        </header>
+                        <div className="px-5 py-4">
+                            <Button variant="outline" size="sm" onClick={() => setIsEmbedDialogOpen(true)}>
+                                Set up the website widget
                             </Button>
-                        </CardFooter>
-                    </Card>
+                        </div>
+                    </section>
 
-                    <Card>
-                        <CardHeader>
-                            <CardTitle className="text-base">Phone numbers</CardTitle>
-                            <CardDescription>
-                                Inbound numbers and SIP trunks are shared across the workspace and
-                                pointed at an agent from the telephony screen.
-                            </CardDescription>
-                        </CardHeader>
-                        <CardContent>
-                            <Button variant="outline" asChild>
-                                <Link href="/telephony-configurations">
-                                    Go to telephony
-                                    <ExternalLink className="ml-2 h-4 w-4" />
-                                </Link>
-                            </Button>
-                        </CardContent>
-                    </Card>
-
+                    <ScrollToHash ready={phoneSettled} />
                     <EmbedDialog
                         open={isEmbedDialogOpen}
                         onOpenChange={setIsEmbedDialogOpen}

@@ -54,13 +54,13 @@ export function AgentSetupChecklist({ agent, tested, connected, onHide }: AgentS
             actions: (
                 <>
                     <Button asChild size="sm" variant="outline">
-                        <Link href="/telephony-configurations">
+                        <Link href={`/workflow/${agent.id}/deployment#phone`}>
                             <Phone />
                             Add a phone number
                         </Link>
                     </Button>
                     <Button asChild size="sm" variant="outline">
-                        <Link href={`/workflow/${agent.id}/deployment`}>
+                        <Link href={`/workflow/${agent.id}/deployment#website`}>
                             <AppWindow />
                             Add to your website
                         </Link>
