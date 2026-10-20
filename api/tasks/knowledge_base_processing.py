@@ -2,7 +2,8 @@
 
 Document conversion and chunking live in the Model Proxy Service (MPS);
 this task downloads the file from S3, calls MPS, then handles the embedding
-and DB writes locally.
+and DB writes locally. Without an MPS configured (MPS_API_URL unset) the
+document is marked failed and is never sent anywhere.
 """
 
 import os
@@ -17,6 +18,20 @@ from api.services.mps_service_key_client import mps_service_key_client
 from api.services.storage import storage_fs
 
 MAX_FILE_SIZE_BYTES = 5 * 1024 * 1024
+# Shown on the document and returned by the upload routes when no document
+# processor is configured (MPS_API_URL unset).
+DOCUMENT_PROCESSING_UNAVAILABLE_MESSAGE = "Document processing isn't available yet."
+
+
+def document_processing_available() -> bool:
+    """Whether uploaded documents can be converted and chunked on this server.
+
+    Conversion and chunking currently happen in MPS only; without one the
+    document is never sent anywhere.
+    """
+    return mps_service_key_client.is_configured
+
+
 EMBEDDING_BATCH_SIZE = 64
 
 
@@ -62,6 +77,18 @@ async def process_knowledge_base_document(
     )
 
     temp_file_path = None
+
+    if not document_processing_available():
+        logger.warning(
+            f"Document {document_id}: not processed, no document processor "
+            "is configured (MPS_API_URL unset)"
+        )
+        await db_client.update_document_status(
+            document_id,
+            "failed",
+            error_message=DOCUMENT_PROCESSING_UNAVAILABLE_MESSAGE,
+        )
+        return
 
     try:
         await db_client.update_document_status(document_id, "processing")

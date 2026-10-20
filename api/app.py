@@ -39,7 +39,12 @@ from loguru import logger
 
 from api.constants import BRAND_APP_URL, BRAND_NAME, REDIS_URL
 from api.errors.domain import DomainError
-from api.errors.mps import MPS_UNAVAILABLE_PUBLIC_MESSAGE, MPSUnavailableError
+from api.errors.mps import (
+    MPS_NOT_CONFIGURED_PUBLIC_MESSAGE,
+    MPS_UNAVAILABLE_PUBLIC_MESSAGE,
+    MPSNotConfiguredError,
+    MPSUnavailableError,
+)
 from api.mcp_server import mcp
 from api.routes.main import router as main_router
 from api.services.credential_encryption import verify_credential_encryption
@@ -128,6 +133,19 @@ app = FastAPI(
         {"url": "http://localhost:8000", "description": "Local development"},
     ],
 )
+
+
+@app.exception_handler(MPSNotConfiguredError)
+async def handle_mps_not_configured_error(
+    _request: Request,
+    _exc: MPSNotConfiguredError,
+) -> JSONResponse:
+    """An MPS-only feature was used on a server without an MPS configured."""
+
+    return JSONResponse(
+        status_code=404,
+        content={"detail": MPS_NOT_CONFIGURED_PUBLIC_MESSAGE},
+    )
 
 
 @app.exception_handler(MPSUnavailableError)

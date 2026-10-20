@@ -10,7 +10,7 @@
 #
 # Running `docker compose up` against a fresh checkout will fail or come up
 # misconfigured (e.g. OSS_JWT_SECRET is required). Full guide:
-# https://docs.dograh.com/deployment/docker
+# https://lightmove.ai/docs
 
 services:
   postgres:

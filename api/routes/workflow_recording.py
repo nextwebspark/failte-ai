@@ -5,7 +5,6 @@ from typing import Annotated, Optional
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from loguru import logger
 
-from api.constants import DEPLOYMENT_MODE
 from api.db import db_client
 from api.db.workflow_recording_client import generate_short_id
 from api.enums import StorageBackend
@@ -22,7 +21,10 @@ from api.schemas.workflow_recording import (
 from api.sdk_expose import sdk_expose
 from api.services.auth.depends import get_user, requires
 from api.services.auth.permissions import Permission
-from api.services.mps_service_key_client import mps_service_key_client
+from api.services.recording_transcription import (
+    transcribe_recording,
+    transcription_available,
+)
 from api.services.storage import storage_fs
 
 router = APIRouter(prefix="/workflow-recordings", tags=["workflow-recordings"])
@@ -325,28 +327,26 @@ async def transcribe_audio(
     language: str = Form("en"),
     user=Depends(get_user),
 ):
-    """Transcribe an uploaded audio file using MPS STT."""
+    """Transcribe an uploaded audio file.
+
+    Uses the platform's Google Speech-to-Text when platform models are
+    enabled, otherwise the configured MPS; 404 when neither is available.
+    """
+    if not transcription_available():
+        raise HTTPException(
+            status_code=404,
+            detail="Transcription isn't available on this server.",
+        )
     try:
         audio_data = await file.read()
-
-        if DEPLOYMENT_MODE == "oss":
-            result = await mps_service_key_client.transcribe_audio(
-                audio_data=audio_data,
-                filename=file.filename or "audio.wav",
-                content_type=file.content_type or "audio/wav",
-                language=language,
-                created_by=str(user.provider_id),
-            )
-        else:
-            result = await mps_service_key_client.transcribe_audio(
-                audio_data=audio_data,
-                filename=file.filename or "audio.wav",
-                content_type=file.content_type or "audio/wav",
-                language=language,
-                organization_id=user.selected_organization_id,
-            )
-
-        return result
+        return await transcribe_recording(
+            audio_data=audio_data,
+            filename=file.filename or "audio.wav",
+            content_type=file.content_type or "audio/wav",
+            language=language,
+            organization_id=user.selected_organization_id,
+            created_by=str(user.provider_id),
+        )
 
     except Exception as exc:
         logger.error(f"Error transcribing audio: {exc}")

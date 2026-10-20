@@ -3769,6 +3769,10 @@ export type HealthResponse = {
      */
     platform_models_enabled?: boolean;
     /**
+     * Mps Enabled
+     */
+    mps_enabled?: boolean;
+    /**
      * Turn Enabled
      */
     turn_enabled: boolean;

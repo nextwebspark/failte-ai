@@ -1,0 +1,60 @@
+import { render, screen } from "@testing-library/react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+import DocumentList from "./DocumentList";
+
+const mocks = vi.hoisted(() => ({
+    list: vi.fn(),
+    config: { mpsEnabled: true },
+}));
+vi.mock("@/client/sdk.gen", () => ({
+    listDocumentsApiV1KnowledgeBaseDocumentsGet: mocks.list,
+    deleteDocumentApiV1KnowledgeBaseDocumentsDocumentUuidDelete: vi.fn(),
+}));
+vi.mock("@/context/AppConfigContext", () => ({
+    useAppConfig: () => ({ config: mocks.config, loading: false }),
+}));
+vi.mock("@/hooks/useOrganizationTimezone", () => ({
+    useOrganizationTimezone: () => "UTC",
+}));
+vi.mock("./DocumentEditor", () => ({
+    default: () => null,
+    isEditableDocument: (filename: string) => filename.endsWith(".md"),
+}));
+
+const document = {
+    id: 1,
+    document_uuid: "doc-1",
+    filename: "faq.md",
+    file_size_bytes: 120,
+    file_hash: "h",
+    mime_type: "text/markdown",
+    processing_status: "completed",
+    retrieval_mode: "chunked",
+    total_chunks: 2,
+    created_at: "2026-10-01T00:00:00Z",
+    has_live_content: true,
+};
+
+beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.config.mpsEnabled = true;
+    mocks.list.mockResolvedValue({ data: { documents: [document] } });
+});
+
+describe("document editing", () => {
+    it("offers Edit when documents can be re-processed", async () => {
+        render(<DocumentList refreshTrigger={0} />);
+        await screen.findByText("faq.md");
+        expect(screen.getByTitle("Edit")).toBeTruthy();
+        expect(screen.getByRole("button", { name: "Edit faq.md" })).toBeTruthy();
+    });
+
+    it("hides Edit when document processing isn't available", async () => {
+        mocks.config.mpsEnabled = false;
+        render(<DocumentList refreshTrigger={0} />);
+        await screen.findByText("faq.md");
+        expect(screen.queryByTitle("Edit")).toBeNull();
+        expect(screen.queryByRole("button", { name: "Edit faq.md" })).toBeNull();
+    });
+});

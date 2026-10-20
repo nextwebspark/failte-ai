@@ -9,6 +9,7 @@ from loguru import logger
 from api.db import db_client
 from api.db.models import KnowledgeBaseDocumentModel
 from api.enums import PostHogEvent
+from api.errors.mps import MPSNotConfiguredError
 from api.schemas.knowledge_base import (
     ChunkSearchRequestSchema,
     ChunkSearchResponseSchema,
@@ -33,8 +34,20 @@ from api.services.knowledge_base_content import (
 )
 from api.services.posthog_client import capture_event
 from api.services.storage import storage_fs
+from api.tasks.knowledge_base_processing import (
+    DOCUMENT_PROCESSING_UNAVAILABLE_MESSAGE,
+    document_processing_available,
+)
 
 router = APIRouter(prefix="/knowledge-base", tags=["knowledge-base"])
+
+
+def _require_document_processing() -> None:
+    """Refuse uploads that could not be processed, before anything is stored."""
+    if not document_processing_available():
+        raise HTTPException(
+            status_code=503, detail=DOCUMENT_PROCESSING_UNAVAILABLE_MESSAGE
+        )
 
 
 def _has_live_content(document: KnowledgeBaseDocumentModel) -> bool:
@@ -95,6 +108,7 @@ async def get_upload_url(
     Access Control:
     * All authenticated users can upload documents scoped to their organization.
     """
+    _require_document_processing()
 
     try:
         # Generate unique document UUID for S3 organization
@@ -159,6 +173,7 @@ async def process_document(
     Access Control:
     * Users can only process documents in their organization.
     """
+    _require_document_processing()
 
     if request.retrieval_mode == "chunked":
         from api.services.configuration.ai_model_configuration import (
@@ -397,6 +412,7 @@ async def save_document_content(
     Access Control:
     * Users can only edit documents from their organization.
     """
+    _require_document_processing()
 
     document = await db_client.get_document_by_uuid(
         document_uuid=document_uuid,
@@ -585,6 +601,10 @@ async def search_chunks(
             total_results=len(chunks),
         )
 
+    except MPSNotConfiguredError:
+        # The org's embeddings use the managed provider, which this server
+        # does not offer; the app-level handler answers with a clear 404.
+        raise
     except Exception as exc:
         logger.error(f"Error searching chunks: {exc}")
         raise HTTPException(status_code=500, detail="Failed to search chunks") from exc

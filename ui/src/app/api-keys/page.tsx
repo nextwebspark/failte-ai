@@ -33,6 +33,9 @@ export default function APIKeysPage() {
     const { user, getAccessToken, redirectToLogin, loading } = useAuth();
     const { config } = useAppConfig();
     const platformModels = Boolean(config?.platformModelsEnabled);
+    // Service keys live in the upstream model proxy service (MPS): shown only
+    // when one is configured and models don't all run on the platform.
+    const showServiceKeys = Boolean(config?.mpsEnabled) && !platformModels;
     const organizationTimezone = useOrganizationTimezone();
     const isOSS = config?.deploymentMode === 'oss';
 
@@ -154,9 +157,10 @@ export default function APIKeysPage() {
     }, [fetchApiKeys]);
 
     useEffect(() => {
+        if (!showServiceKeys) return;
         logger.debug('[APIKeysPage] useEffect for fetchServiceKeys triggered');
         fetchServiceKeys();
-    }, [fetchServiceKeys]);
+    }, [fetchServiceKeys, showServiceKeys]);
 
     const handleCreateKey = async () => {
         if (!newKeyName.trim()) {
@@ -442,8 +446,9 @@ export default function APIKeysPage() {
                     </Card>
 
                     {/* Dograh Service Keys Section: upstream managed-service keys,
-                        meaningless where every model runs on the platform. */}
-                    {!platformModels && (
+                        meaningless without an MPS or where every model runs on
+                        the platform. */}
+                    {showServiceKeys && (
                         <Card className="mb-6">
                             <CardHeader>
                                 <div className="flex justify-between items-center">

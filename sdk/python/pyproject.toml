@@ -32,7 +32,7 @@ dev = [
 
 [project.urls]
 Homepage = "https://dograh.com"
-Documentation = "https://docs.dograh.com"
+Documentation = "https://lightmove.ai/docs"
 Repository = "https://github.com/dograh-hq/dograh"
 
 [project.scripts]

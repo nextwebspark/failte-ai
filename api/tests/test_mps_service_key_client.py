@@ -8,6 +8,8 @@ from api.errors.mps import MPSUnavailableError
 from api.services import mps_service_key_client as mps_client_module
 from api.services.mps_service_key_client import MPSServiceKeyClient
 
+pytestmark = pytest.mark.usefixtures("mps_configured")
+
 
 class _Response:
     def __init__(self, status_code: int, payload: dict | None = None, text: str = ""):
@@ -262,7 +264,7 @@ def test_validate_service_key_classifies_mps_connection_failure(monkeypatch):
     emitted = []
     request_error = httpx.ConnectError(
         "All connection attempts failed",
-        request=httpx.Request("GET", "https://services.dograh.com"),
+        request=httpx.Request("GET", "https://mps.example.test"),
     )
 
     class FakeClient:
