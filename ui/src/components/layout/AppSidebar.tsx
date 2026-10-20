@@ -20,6 +20,7 @@ import {
   SidebarRail,
   useSidebar,
 } from "@/components/ui/sidebar";
+import { StatusPill, statusTone } from "@/components/ui/status-pill";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useAgentShellOptional } from "@/context/AgentShellContext";
 import { useOrgConfig } from "@/context/OrgConfigContext";
@@ -224,17 +225,13 @@ export function AppSidebar({ docked = true }: { docked?: boolean }) {
               {agentShell.agent?.name ?? "…"}
             </p>
             {agentShell.agent?.versionStatus && (
-              <span
-                className={cn(
-                  "mt-1.5 inline-flex items-center gap-1.5 rounded-md px-2 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-[0.05em]",
-                  agentShell.agent.versionStatus === "published"
-                    ? "bg-ok-dim text-ok"
-                    : "bg-amber-dim text-amber"
-                )}
+              <StatusPill
+                tone={statusTone(agentShell.agent.versionStatus)}
+                dot
+                className="mt-1.5 px-2 py-0.5 text-[10px]"
               >
-                <span className="h-1.5 w-1.5 rounded-full bg-current" />
                 {agentShell.agent.versionStatus}
-              </span>
+              </StatusPill>
             )}
           </div>
         </>

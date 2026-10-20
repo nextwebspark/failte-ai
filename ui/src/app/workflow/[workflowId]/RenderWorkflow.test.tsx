@@ -59,6 +59,7 @@ vi.mock('@xyflow/react', () => ({
     ReactFlow: ({ nodesDraggable, children }: { nodesDraggable: boolean; children: ReactNode }) => <div data-testid="canvas" data-editable={nodesDraggable}>{children}</div>,
 }));
 vi.mock('./components/CanvasToolbar', () => ({ CanvasToolbar: () => null }));
+vi.mock('./components/CanvasLegend', () => ({ CanvasLegend: () => null }));
 vi.mock('./components/WorkflowEditorHeader', () => ({
     WorkflowEditorHeader: ({ activeVersionLabel, onHistoryClick, onBackToDraft, saveWorkflow }: {
         activeVersionLabel: string;

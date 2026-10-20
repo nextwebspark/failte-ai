@@ -86,10 +86,8 @@ Status is kept here so the next session knows where to pick up.
 
 - `.page-actions` in `globals.css` still sizes the buttons other screens send to
   the top bar (Voice agents, Campaigns, Tools, …). The editor no longer uses it.
-- The agent nav's version status still uses its own inline pill rather than
-  `StatusPill`.
 - The Voice agents board shows a Channels column (phone, web widget) and Talk
   time / Live now stats. They need phone-number, embed and call-duration data on
   the list endpoint and were left out of step 3.
-- The editor design's node restyle (coloured step icons, tool/skill chips) and
-  the canvas legend were not part of step 5.
+- The editor's node restyle (coloured step icons, kind labels, tool/skill
+  chips) and the canvas legend are done. Edge labels keep their old style.

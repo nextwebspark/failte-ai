@@ -53,6 +53,19 @@ interface WorkflowEditorHeaderProps {
  * you are on, unsaved and error pills, then Phone call / Save / Publish / more.
  * The agent's identity and section nav stay in the shell's agent panel.
  */
+type StepLookup = Pick<ReactFlowInstance<FlowNode, FlowEdge>, "getNode" | "getEdge">;
+
+/**
+ * Where a validation error is, by step name: the canvas no longer shows ids,
+ * so "Step: 7" or "Connection: 3-5" would point at nothing the user can see.
+ */
+export function describeErrorTarget(error: WorkflowError & { id: string }, flow: StepLookup | null): string {
+    const stepName = (id: string) => flow?.getNode(id)?.data?.name || id;
+    if (error.kind === "node") return `Step: ${stepName(error.id)}`;
+    const edge = flow?.getEdge(error.id);
+    return edge ? `Connection: ${stepName(edge.source)} → ${stepName(edge.target)}` : `Connection: ${error.id}`;
+}
+
 export const WorkflowEditorHeader = ({
     workflowName,
     isDirty,
@@ -341,7 +354,7 @@ export const WorkflowEditorHeader = ({
                                             <div className="min-w-0 flex-1">
                                                 {(error.kind === "node" || error.kind === "edge") && error.id && (
                                                     <p className="mb-1 text-xs text-ink-3">
-                                                        {error.kind === "node" ? "Step" : "Connection"}: {error.id}
+                                                        {describeErrorTarget({ ...error, id: error.id }, rfInstance.current)}
                                                         {error.field && <span className="text-ink-3"> • {error.field}</span>}
                                                     </p>
                                                 )}
