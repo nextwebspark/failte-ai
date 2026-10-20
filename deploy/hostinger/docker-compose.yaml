@@ -22,7 +22,7 @@
 #
 # Required .env keys — see .env.example. At minimum:
 #   PUBLIC_HOST, TURN_HOST, TURN_SECRET, OSS_JWT_SECRET,
-#   TRAEFIK_NETWORK, TRAEFIK_CERTRESOLVER, TRAEFIK_ENTRYPOINT
+#   CREDENTIALS_ENCRYPTION_KEYS, TRAEFIK_NETWORK, TRAEFIK_CERTRESOLVER, TRAEFIK_ENTRYPOINT
 # =================================================================
 
 services:
@@ -194,6 +194,14 @@ services:
       FORCE_TURN_RELAY: "${FORCE_TURN_RELAY:-false}"
 
       OSS_JWT_SECRET: "${OSS_JWT_SECRET:?OSS_JWT_SECRET must be set to a strong secret}"
+
+      # ENVIRONMENT=production refuses to start without these. Secrets at rest
+      # (credentials, telephony, integrations, org settings) are encrypted with
+      # CREDENTIALS_ENCRYPTION_KEYS: no default, and never change or drop a key
+      # while rows encrypted with it exist. CORS answers only the public origin.
+      CREDENTIALS_ENCRYPTION_KEYS: "${CREDENTIALS_ENCRYPTION_KEYS:?CREDENTIALS_ENCRYPTION_KEYS must be set (see .env.example)}"
+      PUBLIC_BASE_URL: "https://${PUBLIC_HOST}"
+      CORS_ALLOWED_ORIGINS: "${CORS_ALLOWED_ORIGINS:-https://${PUBLIC_HOST}}"
 
       ENABLE_TELEMETRY: "${ENABLE_TELEMETRY:-true}"
       POSTHOG_API_KEY: "${POSTHOG_API_KEY:-}"

@@ -146,7 +146,9 @@ JSON
 
    Then `sudo env ENV_FILE=/opt/lightmove/dograh/.env DOGRAH_SQL_IP=10.70.0.3
    ./deploy/gcp/configure-env.sh` (after creating the three secrets, each
-   readable by `dograh-app-sa`). Root's docker already has the Artifact
+   readable by `dograh-app-sa`; it refuses to invent a
+   `CREDENTIALS_ENCRYPTION_KEYS` unless `DOGRAH_GENERATE_CREDENTIALS_KEY=1`, see
+   "Encryption at rest"). Root's docker already has the Artifact
    Registry credential helper; deploys run as root with `HOME=/root`.
 4. **Domain** (done 2026-10-16). `app.lightmove.ai` is a Cloudflare DNS-only A
    record to the app VM. The certificate was issued by webroot against the
@@ -424,9 +426,11 @@ replaces the `calendar-shim` and `chmarine-product-service` sidecars. It sits on
 Create all three once (values are never printed back). The overlay runs
 `fallcha-tools`, so `configure-env.sh` stops with an error if
 `dograh-tools-internal-secret` or `dograh-tools-encryption-keys` is missing.
-`dograh-credentials-encryption-keys` always ends up set too (see
-[Encryption at rest](#encryption-at-rest)), but create it here so the key lives
-in Secret Manager rather than only in `.env`:
+Create `dograh-credentials-encryption-keys` here too, so the key lives in
+Secret Manager rather than only in `.env`: without it (and with no key in
+`.env`) `configure-env.sh` stops unless you pass
+`DOGRAH_GENERATE_CREDENTIALS_KEY=1` (see
+[Encryption at rest](#encryption-at-rest)):
 
 ```bash
 P=dograh-eu
@@ -483,11 +487,25 @@ and legacy telephony settings). Each value is stored as a
   without keys, and every start checks that the keys open an existing envelope,
   so a wrong or dropped key fails the deploy (and its health check) instead of
   breaking calls later.
-- **Where the key comes from.** `configure-env.sh` uses the Secret Manager secret
-  `dograh-credentials-encryption-keys`; if this VM cannot read it, the value
-  already in `.env`; otherwise it generates one and stores it in Secret Manager
-  when it may create secrets, or warns loudly that the key exists only in `.env`.
-  In that last case copy it up at once:
+- **Where the key comes from.** `configure-env.sh` decides before it writes
+  anything (and every run first copies `.env` to a root-only
+  `.env.bak.<UTC timestamp>`):
+  - the Secret Manager secret `dograh-credentials-encryption-keys` and `.env`
+    agree, or only one of them has a value: that value (a `.env`-only key gets a
+    warning to store it in Secret Manager);
+  - **both have values and they differ: it stops** and changes nothing. Re-run
+    with `DOGRAH_CREDENTIALS_KEYS_OVERRIDE=sm` to take Secret Manager's value
+    (the normal case after adding a key there for rotation) or `=env` to keep
+    `.env`'s (then update the secret to match). Unsure which key encrypted the
+    data? Set the secret to both, comma-separated, and use `=sm`: every listed
+    key decrypts;
+  - **neither has one: it stops**, because on a rebuilt VM the database may
+    already hold data encrypted with a key that is only unreadable for now
+    (grant access to the secret or restore it from the backup). Only on a
+    **first install with an empty database** re-run with
+    `DOGRAH_GENERATE_CREDENTIALS_KEY=1`: it generates a key and stores it in
+    Secret Manager when it may create secrets, or warns loudly that the key
+    exists only in `.env`. In that last case copy it up at once:
 
   ```bash
   sudo grep '^CREDENTIALS_ENCRYPTION_KEYS=' /opt/lightmove/dograh/.env | cut -d= -f2- \
@@ -513,12 +531,14 @@ and legacy telephony settings). Each value is stored as a
 - **Rotation.** Supported without downtime:
   1. Generate a new key and set the secret to `<new>,<old>` (new first):
      `printf '%s,%s' "$NEW" "$OLD" | gcloud secrets versions add dograh-credentials-encryption-keys --data-file=- --project=dograh-eu`.
-  2. Re-run `configure-env.sh` and `docker compose up -d api` (every api and
-     worker must hold both keys).
+  2. Re-run `configure-env.sh` with `DOGRAH_CREDENTIALS_KEYS_OVERRIDE=sm` (the
+     secret now differs from `.env` on purpose) and `docker compose up -d api`
+     (every api and worker must hold both keys).
   3. `docker compose exec api python -m scripts.reencrypt_credentials` re-seals
      every row of all four columns under the new key; it exits non-zero and lists
      `table#id` for any row it cannot open.
-  4. Set the secret to `<new>` only, re-run `configure-env.sh`, restart.
+  4. Set the secret to `<new>` only, re-run `configure-env.sh` with
+     `DOGRAH_CREDENTIALS_KEYS_OVERRIDE=sm`, restart.
      Keep the old key with the backups taken before step 3: restoring one of them
      needs it.
 - **Never drop a key while rows encrypted with it exist**, and back the key up

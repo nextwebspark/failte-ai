@@ -19,6 +19,10 @@ from api.db.models import (
     TelephonyPhoneNumberModel,
     WorkflowModel,
 )
+from api.db.telephony_configuration_client import (
+    decrypt_config_rows,
+    select_configs_decrypting_per_row,
+)
 from api.utils.telephony_address import normalize_telephony_address
 
 
@@ -172,7 +176,7 @@ class TelephonyPhoneNumberClient(BaseDBClient):
 
         async with self.async_session() as session:
             stmt = (
-                select(TelephonyConfigurationModel, TelephonyPhoneNumberModel)
+                select_configs_decrypting_per_row(TelephonyPhoneNumberModel)
                 .join(
                     TelephonyPhoneNumberModel,
                     TelephonyPhoneNumberModel.telephony_configuration_id
@@ -193,10 +197,11 @@ class TelephonyPhoneNumberClient(BaseDBClient):
             result = await session.execute(stmt)
             # ``credentials`` is encrypted at rest, so the account id is matched
             # on the decrypted rows; the indexed number lookup above keeps the
-            # candidate set to the configs that hold this number.
+            # candidate set to the configs that hold this number. Rows no key
+            # can decrypt are skipped so they cannot fail other orgs' calls.
             rows = [
                 row
-                for row in result.all()
+                for row in decrypt_config_rows(result.all())
                 if _matches_account(row[0], account_id_field, account_id)
             ]
 
@@ -309,7 +314,7 @@ class TelephonyPhoneNumberClient(BaseDBClient):
 
         async with self.async_session() as session:
             stmt = (
-                select(TelephonyConfigurationModel, TelephonyPhoneNumberModel)
+                select_configs_decrypting_per_row(TelephonyPhoneNumberModel)
                 .join(
                     TelephonyPhoneNumberModel,
                     TelephonyPhoneNumberModel.telephony_configuration_id
@@ -329,8 +334,8 @@ class TelephonyPhoneNumberClient(BaseDBClient):
             result = await session.execute(stmt)
             # Account match in Python: ``credentials`` is encrypted at rest.
             return [
-                (row[0], row[1])
-                for row in result.all()
+                row
+                for row in decrypt_config_rows(result.all())
                 if _matches_account(row[0], account_id_field, account_id)
             ]
 
