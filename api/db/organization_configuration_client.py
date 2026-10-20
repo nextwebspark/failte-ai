@@ -159,7 +159,8 @@ class OrganizationConfigurationClient(BaseDBClient):
             lease = await self._lock_lease(session, organization_id, key)
             if (
                 lease is None
-                or (lease.value or {}).get("status") != LEASE_PENDING
+                or not isinstance(lease.value, dict)
+                or lease.value.get("status") != LEASE_PENDING
                 or lease.updated_at is None
                 or lease.updated_at >= now - stale_after
             ):
@@ -289,14 +290,17 @@ class OrganizationConfigurationClient(BaseDBClient):
                     "value": config.value,
                 }
                 for config in configs
-                if config.value and config.value.get("provider") == provider
+                if isinstance(config.value, dict)
+                and config.value.get("provider") == provider
             ]
 
 
 def _holds_lease(
     lease: OrganizationConfigurationModel | None, owner_token: str
 ) -> bool:
-    value = (lease.value or {}) if lease is not None else {}
+    value = lease.value if lease is not None else None
+    if not isinstance(value, dict):
+        value = {}
     return (
         value.get("status") == LEASE_PENDING and value.get("owner_token") == owner_token
     )

@@ -211,6 +211,75 @@ async def test_telephony_lookups_on_encrypted_credentials(
     )
 
 
+async def test_inbound_lookups_skip_undecryptable_candidates(
+    db_session, async_session, encryption_on
+):
+    """One config whose credentials no configured key opens (e.g. sealed
+    under a dropped key) must not take inbound routing down for the other
+    orgs that share the number."""
+    good_org, _ = await _org_and_user(async_session)
+    bad_org, _ = await _org_and_user(async_session)
+    account_sid = "AC" + uuid.uuid4().hex
+    number = f"+353 1 {uuid.uuid4().int % 10_000_000:07d}"
+    good = await db_session.create_telephony_configuration(
+        organization_id=good_org.id,
+        name="good",
+        provider="twilio",
+        credentials={"account_sid": account_sid, "auth_token": SECRET},
+    )
+    bad = await db_session.create_telephony_configuration(
+        organization_id=bad_org.id,
+        name="bad",
+        provider="twilio",
+        credentials={"account_sid": account_sid, "auth_token": SECRET},
+    )
+    good_phone = await db_session.create_phone_number(
+        organization_id=good_org.id,
+        telephony_configuration_id=good.id,
+        address=number,
+    )
+    await db_session.create_phone_number(
+        organization_id=bad_org.id,
+        telephony_configuration_id=bad.id,
+        address=number,
+    )
+    foreign = CredentialCipher([generate_key()]).seal({"account_sid": account_sid})
+    await async_session.execute(
+        text("UPDATE telephony_configurations SET credentials = :v WHERE id = :id"),
+        {"v": json.dumps(foreign), "id": bad.id},
+    )
+    async_session.expunge_all()
+
+    route = await db_session.find_inbound_route_by_account(
+        provider="twilio",
+        account_id_field="account_sid",
+        account_id=account_sid,
+        to_number=number,
+    )
+    assert route is not None
+    assert (route[0].id, route[1].id) == (good.id, good_phone.id)
+    assert route[0].credentials["auth_token"] == SECRET
+
+    conflicts = await db_session.find_inbound_routing_conflicts(
+        provider="twilio",
+        account_id_field="account_sid",
+        account_id=account_sid,
+        addresses_normalized=[good_phone.address_normalized],
+    )
+    assert [(c.id, p.id) for c, p in conflicts] == [(good.id, good_phone.id)]
+    assert conflicts[0][0].credentials["auth_token"] == SECRET
+
+    # The cross-org listing behind long-lived provider connections (ARI) too.
+    active = {
+        c.id: c
+        for c in await db_session.list_active_telephony_configurations_by_provider(
+            "twilio"
+        )
+    }
+    assert good.id in active and bad.id not in active
+    assert active[good.id].credentials["auth_token"] == SECRET
+
+
 async def test_missing_secret_counts_on_encrypted_credentials(
     db_session, async_session, encryption_on
 ):
@@ -306,6 +375,39 @@ async def test_org_config_secret_round_trip(db_session, async_session, encryptio
         "organization_id": org.id,
         "value": {"provider": "twilio", "auth_token": SECRET},
     } in matches
+
+
+async def test_org_config_non_object_value_does_not_break_queries(
+    db_session, async_session, encryption_on
+):
+    """The backfill migration leaves non-dict JSON in plaintext; reading such a
+    row returns it as stored instead of failing every query over the table."""
+    org, _ = await _org_and_user(async_session)
+    key = OrganizationConfigurationKey.LANGFUSE_CREDENTIALS.value
+    secret_value = {"secret_key": SECRET}
+    await db_session.upsert_configuration(org.id, key, secret_value)
+    odd_key = f"legacy-list-{uuid.uuid4().hex}"
+    await async_session.execute(
+        text(
+            "INSERT INTO organization_configurations "
+            "(organization_id, key, value, created_at, updated_at) "
+            "VALUES (:org, :key, CAST(:value AS json), now(), now())"
+        ),
+        {"org": org.id, "key": odd_key, "value": json.dumps(["a", 1])},
+    )
+    async_session.expunge_all()
+
+    rows = {r.key: r.value for r in await db_session.get_all_configurations(org.id)}
+    assert rows == {key: secret_value, odd_key: ["a", 1]}
+    assert await db_session.get_all_configurations_by_key(odd_key) == [
+        {"organization_id": org.id, "value": ["a", 1]}
+    ]
+    assert await db_session.get_configurations_by_provider(odd_key, "twilio") == []
+    assert (
+        await db_session.claim_configuration_lease(org.id, odd_key, timedelta(0))
+        is None
+    )
+    assert EncryptedJSON().process_result_value("plain", None) == "plain"
 
 
 async def test_org_config_lease_works_encrypted(
@@ -596,6 +698,27 @@ def test_cors_refuses_wildcard_and_missing_production_origin():
             allowed_origins=[],
             public_base_url="https://app.lightmove.ai",
         )
+
+
+def test_cors_allowlist_entries_are_normalised_like_public_base_url():
+    settings = resolve_cors_settings(
+        deployment_mode="oss",
+        environment="production",
+        allowed_origins=["HTTPS://App.LightMove.ai/", " https://admin.example:8443 "],
+        public_base_url=None,
+    )
+    assert settings.allow_origins == [
+        "https://app.lightmove.ai",
+        "https://admin.example:8443",
+    ]
+    for bad in ["https://app.lightmove.ai/app", "app.lightmove.ai", "https://x?y=1"]:
+        with pytest.raises(CorsConfigurationError, match="not an origin"):
+            resolve_cors_settings(
+                deployment_mode="oss",
+                environment="production",
+                allowed_origins=[bad],
+                public_base_url=None,
+            )
 
 
 def test_cors_local_oss_stays_open_without_credentials():
