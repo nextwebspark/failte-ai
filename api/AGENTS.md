@@ -55,6 +55,8 @@ Put reusable or multi-step orchestration, business rules, external calls, and su
 ./scripts/migrate.sh                     # Run migrations
 ```
 
+**Encrypted columns:** `external_credentials.credential_data`, `telephony_configurations.credentials`, `integrations.connection_details` and `organization_configurations.value` are `EncryptedJSON` (Fernet envelopes at rest); never query inside them in SQL or migrations — filter on other columns and inspect the decrypted dict in Python.
+
 ## Cross-Worker State Sync
 
 When an API endpoint updates in-memory state (e.g. cached credentials, config objects), that change only affects the worker process that handled the request. With multiple FastAPI workers, **use `WorkerSyncManager`** (`services/worker_sync/`) to propagate changes to all workers via Redis pub/sub instead of updating local state directly.

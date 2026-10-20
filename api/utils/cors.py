@@ -32,6 +32,20 @@ def origin_of(url: str) -> str | None:
     return f"{parts.scheme}://{parts.netloc}".lower()
 
 
+def normalize_allowed_origin(entry: str) -> str:
+    """``entry`` as the origin browsers send (``scheme://host[:port]``,
+    lowercase, no trailing slash). Refuses entries that are not an origin,
+    e.g. ones with a path, query or fragment, which would never match."""
+    parts = urlsplit(entry.strip())
+    origin = origin_of(entry)
+    if origin is None or parts.path not in ("", "/") or parts.query or parts.fragment:
+        raise CorsConfigurationError(
+            f"CORS_ALLOWED_ORIGINS entry {entry!r} is not an origin; use "
+            "scheme://host[:port] with no path"
+        )
+    return origin
+
+
 def resolve_cors_settings(
     *,
     deployment_mode: str,
@@ -42,7 +56,8 @@ def resolve_cors_settings(
     """Pick the global CORS policy.
 
     - ``CORS_ALLOWED_ORIGINS`` set: that explicit allowlist, with credentials,
-      in every mode. ``*`` is refused.
+      in every mode. ``*`` and entries that are not an origin are refused;
+      entries are normalised like the ``PUBLIC_BASE_URL`` origin.
     - Production (``ENVIRONMENT=production``) without it: the origin of
       ``PUBLIC_BASE_URL``; neither set refuses to start. Production never
       answers ``*``.
@@ -56,7 +71,7 @@ def resolve_cors_settings(
         )
     if allowed_origins:
         return CorsSettings(
-            allow_origins=[o.rstrip("/") for o in allowed_origins],
+            allow_origins=[normalize_allowed_origin(o) for o in allowed_origins],
             allow_credentials=True,
         )
     if environment == Environment.PRODUCTION.value:
