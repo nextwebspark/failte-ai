@@ -52,7 +52,7 @@ export default function FilesPage() {
             {/* Screen name, strapline and primary action are rendered by the
                 app header (AppTopBar) — see PageActions. */}
             <PageActions>
-                <Button onClick={() => setIsUploadOpen(true)}>
+                <Button size="toolbar" onClick={() => setIsUploadOpen(true)}>
                     <Upload className="w-4 h-4" />
                     Upload document
                 </Button>

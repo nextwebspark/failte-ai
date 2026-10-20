@@ -85,11 +85,8 @@ export function UploadWorkflowButton() {
 
     return (
         <>
-            <Button
-                onClick={() => setIsOpen(true)}
-                variant="outline"
-            >
-                <Upload className="w-4 h-4 mr-2" />
+            <Button onClick={() => setIsOpen(true)} variant="outline" size="toolbar">
+                <Upload className="w-4 h-4" />
                 Import agent
             </Button>
 

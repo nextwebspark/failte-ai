@@ -184,7 +184,7 @@ export default function TelephonyConfigurationsPage() {
         {/* Screen name, strapline and primary action are rendered by the app
             header (AppTopBar) — see PageActions. */}
         <PageActions>
-          <Button onClick={() => setCreateOpen(true)}>
+          <Button size="toolbar" onClick={() => setCreateOpen(true)}>
             <Plus className="h-4 w-4" /> Add provider
           </Button>
         </PageActions>

@@ -2,7 +2,7 @@
 
 import { PlusIcon } from 'lucide-react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { type ComponentProps, useEffect, useState } from 'react';
 
 import { Button } from "@/components/ui/button";
 import { CreateAgentDialog, type CreateMode } from '@/components/workflow/CreateAgentDialog';
@@ -17,9 +17,11 @@ interface CreateWorkflowButtonProps {
      * set this.
      */
     openFromUrl?: boolean;
+    /** `toolbar` in the app header's actions; the default size elsewhere. */
+    size?: ComponentProps<typeof Button>["size"];
 }
 
-export function CreateWorkflowButton({ openFromUrl = false }: CreateWorkflowButtonProps) {
+export function CreateWorkflowButton({ openFromUrl = false, size }: CreateWorkflowButtonProps) {
     const router = useRouter();
     const pathname = usePathname();
     const searchParams = useSearchParams();
@@ -41,6 +43,7 @@ export function CreateWorkflowButton({ openFromUrl = false }: CreateWorkflowButt
     return (
         <>
             <Button
+                size={size}
                 onClick={() => {
                     setInitialMode('template');
                     setOpen(true);

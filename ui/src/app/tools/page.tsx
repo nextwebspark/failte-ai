@@ -359,7 +359,7 @@ export default function ToolsPage() {
                 {/* Screen name, strapline and primary action are rendered by the
                     app header (AppTopBar) — see PageActions. */}
                 <PageActions>
-                    <Button onClick={() => setIsCreateDialogOpen(true)}>
+                    <Button size="toolbar" onClick={() => setIsCreateDialogOpen(true)}>
                         <Plus className="w-4 h-4" />
                         New tool
                     </Button>

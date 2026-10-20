@@ -28,6 +28,9 @@ const buttonVariants = cva(
         default: "h-9 px-4 py-2 has-[>svg]:px-3",
         sm: "h-8 rounded-md gap-1.5 px-3 has-[>svg]:px-2.5",
         lg: "h-10 rounded-md px-6 has-[>svg]:px-4",
+        // The app header's actions (PageActions): 32px, 12.5px type, 13px icons.
+        // `[&_svg]` outranks an icon's own h-4/w-4, so screens needn't resize them.
+        toolbar: "h-8 rounded-md gap-1.5 px-3 text-[12.5px] [&_svg]:size-3.25",
         icon: "size-9",
       },
     },
