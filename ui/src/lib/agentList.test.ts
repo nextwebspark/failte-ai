@@ -6,8 +6,10 @@ import {
     agentStatus,
     filterAgents,
     formatLastCall,
+    formatTalkTime,
     hasDraftEdits,
     percentChange,
+    setupProgress,
     sortAgents,
     sparklinePoints,
 } from '@/lib/agentList';
@@ -32,6 +34,8 @@ const reception = agent({
     created_at: '2026-09-01T09:00:00Z',
     runs_7d: [1, 2, 0, 3, 4, 5, 6],
     last_run_at: '2026-10-17T11:58:00Z',
+    talk_seconds_24h: 1500,
+    live_calls: 1,
 });
 const reminders = agent({
     id: 8,
@@ -40,6 +44,7 @@ const reminders = agent({
     runs_7d: [0, 0, 0, 0, 0, 2, 0],
     last_run_at: '2026-10-16T08:00:00Z',
     has_draft: true,
+    talk_seconds_24h: 120,
 });
 const fresh = agent({ id: 9, name: 'After-hours triage', created_at: '2026-10-15T09:00:00Z' });
 
@@ -77,9 +82,26 @@ describe('agentList', () => {
             withDraft: 1,
             callsToday: 6,
             callsYesterday: 7,
-            callsWeek: 23,
-            lastCallAt: '2026-10-17T11:58:00Z',
+            talkSeconds: 1620,
+            liveNow: 1,
         });
+    });
+
+    it('tracks setup: tried once any agent has a run, connected once one has a channel', () => {
+        expect(setupProgress([])).toEqual({ tested: false, connected: false, agent: null });
+        const untried = setupProgress([agent({ id: 1 }), agent({ id: 2, created_at: '2026-10-02T09:00:00Z' })]);
+        expect(untried).toMatchObject({ tested: false, connected: false });
+        expect(untried.agent?.id).toBe(2);
+        const live = setupProgress([agent({ total_runs: 3, channels: ['web'] })]);
+        expect(live).toMatchObject({ tested: true, connected: true });
+    });
+
+    it('words talk time in hours and minutes', () => {
+        expect(formatTalkTime(0)).toBe('0 m');
+        expect(formatTalkTime(40)).toBe('< 1 m');
+        expect(formatTalkTime(45 * 60 + 20)).toBe('45 m');
+        expect(formatTalkTime(2 * 3600)).toBe('2 h');
+        expect(formatTalkTime(6 * 3600 + 12 * 60 + 5)).toBe('6 h 12 m');
     });
 
     it('reports percent change only when there is a base', () => {
@@ -91,7 +113,7 @@ describe('agentList', () => {
     it('words the last call relative to now in the org timezone', () => {
         const now = new Date('2026-10-17T12:00:00Z');
         const tz = 'Europe/Dublin';
-        expect(formatLastCall(null, tz, now)).toBe('Never');
+        expect(formatLastCall(null, tz, now)).toBe('No calls yet');
         expect(formatLastCall('2026-10-17T11:59:40Z', tz, now)).toBe('Just now');
         expect(formatLastCall('2026-10-17T11:48:00Z', tz, now)).toBe('12 min ago');
         expect(formatLastCall('2026-10-17T06:40:00Z', tz, now)).toBe('Today, 07:40');

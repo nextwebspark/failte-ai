@@ -93,7 +93,7 @@ export type PageMeta = {
  */
 const PAGE_META: Record<string, PageMeta> = {
   "/overview": { title: "Overview", subtitle: "Everything running today" },
-  "/workflow": { title: "Voice agents", subtitle: "Build and manage call flows" },
+  "/workflow": { title: "Voice agents", subtitle: "The agents that answer your calls" },
   "/workflow/create": { title: "New voice agent", subtitle: "Pick a ready-made agent" },
   "/campaigns": { title: "Campaigns", subtitle: "Bulk runs across contact lists" },
   "/campaigns/new": { title: "New campaign", subtitle: "Pick an agent and a contact list" },

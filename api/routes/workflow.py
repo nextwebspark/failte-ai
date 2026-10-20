@@ -340,6 +340,11 @@ class WorkflowListResponse(BaseModel):
     last_run_at: datetime | None = None
     # True when the agent has edits that aren't published yet.
     has_draft: bool | None = None
+    # Seconds of call time in the last 24 hours, and calls connected now.
+    talk_seconds_24h: int | None = None
+    live_calls: int | None = None
+    # How callers reach the agent: a phone number and/or the website widget.
+    channels: list[Literal["phone", "web"]] | None = None
 
 
 class MoveWorkflowToFolderRequest(BaseModel):
@@ -831,9 +836,12 @@ async def get_workflows(
 
     # Run totals, recent activity and drafts for all workflows, fetched together
     workflow_ids = [workflow.id for workflow in workflows]
-    activity, with_draft = await asyncio.gather(
+    activity, with_draft, channels = await asyncio.gather(
         db_client.get_workflow_run_activity(workflow_ids),
         db_client.get_workflow_ids_with_draft(workflow_ids),
+        db_client.get_workflow_channels(
+            workflow_ids, organization_id=user.selected_organization_id
+        ),
     )
 
     responses = []
@@ -851,6 +859,9 @@ async def get_workflows(
                 runs_7d=runs.daily_runs,
                 last_run_at=runs.last_run_at,
                 has_draft=workflow.id in with_draft,
+                talk_seconds_24h=runs.talk_seconds_24h,
+                live_calls=runs.live_calls,
+                channels=sorted(channels[workflow.id]),
             )
         )
     return responses

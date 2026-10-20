@@ -1,6 +1,7 @@
 'use client';
 
 import {
+    AppWindow,
     Archive,
     Check,
     Folder as FolderIcon,
@@ -8,6 +9,7 @@ import {
     Inbox,
     MoreHorizontal,
     Pencil,
+    Phone,
     RotateCcw,
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
@@ -54,10 +56,38 @@ interface WorkflowTableProps {
     folders?: FolderResponse[];
 }
 
-// Agent · Status · Calls (7 days) · Last call · menu. Narrow screens keep the
-// agent and the menu; the status drops under the name.
+// Agent · Status · Channels · Calls (7 days) · Last call · menu. Narrow screens
+// keep the agent and the menu; the status drops under the name.
 const ROW_GRID =
-    'grid grid-cols-[minmax(0,1fr)_40px] items-center gap-3 px-4 md:grid-cols-[minmax(0,1fr)_200px_150px_130px_40px]';
+    'grid grid-cols-[minmax(0,1fr)_40px] items-center gap-3 px-4 md:grid-cols-[minmax(0,1fr)_200px_100px_150px_130px_40px]';
+
+const CHANNELS = [
+    { key: 'phone', label: 'Phone', Icon: Phone },
+    { key: 'web', label: 'Website widget', Icon: AppWindow },
+] as const;
+
+/** How callers reach the agent: a phone number and/or the website widget. */
+export function Channels({ channels }: { channels: WorkflowListResponse['channels'] }) {
+    const connected = CHANNELS.filter(({ key }) => channels?.includes(key));
+    if (connected.length === 0) {
+        return <span className="text-[12px] text-ink-3">Not connected</span>;
+    }
+    return (
+        <span className="flex items-center gap-1.5">
+            {connected.map(({ key, label, Icon }) => (
+                <span
+                    key={key}
+                    role="img"
+                    aria-label={label}
+                    title={label}
+                    className="flex size-6 items-center justify-center rounded-sm border border-line bg-panel-2 text-ink-2"
+                >
+                    <Icon className="size-3.25" aria-hidden />
+                </span>
+            ))}
+        </span>
+    );
+}
 
 function Sparkline({ values }: { values: number[] }) {
     const active = values.some((v) => v > 0);
@@ -156,6 +186,7 @@ export function WorkflowTable({ workflows, showArchived, folders }: WorkflowTabl
             >
                 <span>Agent</span>
                 <span>Status</span>
+                <span>Channels</span>
                 <span>Calls · 7 days</span>
                 <span>Last call</span>
                 <span />
@@ -233,6 +264,10 @@ export function WorkflowTable({ workflows, showArchived, folders }: WorkflowTabl
                             </div>
 
                             <div className="hidden md:block">{pill}</div>
+
+                            <div className="hidden md:block">
+                                <Channels channels={workflow.channels} />
+                            </div>
 
                             <div className="hidden items-center gap-2.5 md:flex">
                                 <span className="min-w-[2.5ch] text-right font-mono text-[13px] font-medium text-ink">

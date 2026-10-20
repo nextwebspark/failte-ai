@@ -9,7 +9,7 @@ import {
 import type { OnboardingStateUpdate } from '@/client/types.gen';
 import { useAuth } from '@/lib/auth';
 
-export type TooltipKey = 'web_call' | 'customize_workflow';
+export type TooltipKey = 'web_call' | 'customize_workflow' | 'agent_setup_checklist';
 export type OnboardingActionKey = 'web_call_started';
 
 // Server-backed onboarding state (GET/PUT /user/onboarding-state), stored

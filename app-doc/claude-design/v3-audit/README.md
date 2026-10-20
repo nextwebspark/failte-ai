@@ -84,10 +84,23 @@ Status is kept here so the next session knows where to pick up.
 
 ## Known leftovers
 
-- `.page-actions` in `globals.css` still sizes the buttons other screens send to
-  the top bar (Voice agents, Campaigns, Tools, …). The editor no longer uses it.
-- The Voice agents board shows a Channels column (phone, web widget) and Talk
-  time / Live now stats. They need phone-number, embed and call-duration data on
-  the list endpoint and were left out of step 3.
+- Edge labels on the editor canvas keep their old style.
+
+Done since the steps above:
+
 - The editor's node restyle (coloured step icons, kind labels, tool/skill
-  chips) and the canvas legend are done. Edge labels keep their old style.
+  chips), the canvas legend and `StatusPill` for the agent nav's version.
+- The header actions use a `toolbar` button size instead of the `.page-actions`
+  CSS override.
+- The Voice agents board shows a Channels column (phone number, website widget)
+  and Talk time · 24 h / Live now stats. The list endpoint returns `channels`,
+  `talk_seconds_24h` and `live_calls` per agent (`get_workflow_channels` and
+  `get_workflow_run_activity` in `api/db/workflow_client.py`). A call counts as
+  live while its run is `running` and younger than the longest allowed call.
+- A new workspace: with no agents, Voice agents is a welcome page with one
+  Create agent button, an Import link and the three steps to a live agent
+  (`AgentsEmptyState`), and the header actions are hidden. Once an agent
+  exists, a setup checklist (`AgentSetupChecklist`: create, test in the
+  browser, connect a number or the website) stands in for the all-zero stats
+  until the first call, and stays until an agent is reachable or it is hidden.
+  Search, filter and sort appear from the second agent.

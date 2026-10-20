@@ -255,12 +255,12 @@ function MpsBillingPage() {
             {/* Screen name, strapline and primary actions are rendered by the
                 app header (AppTopBar) — see PageActions. */}
             <PageActions>
-                <Button variant="outline" onClick={handleRefresh} disabled={loading}>
+                <Button size="toolbar" variant="outline" onClick={handleRefresh} disabled={loading}>
                     <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
                     Refresh
                 </Button>
                 {canPurchaseCredits && (
-                    <Button onClick={handlePurchaseCredits} disabled={purchasing}>
+                    <Button size="toolbar" onClick={handlePurchaseCredits} disabled={purchasing}>
                         <CreditCard className="h-4 w-4" />
                         {purchasing ? "Opening..." : "Add credits"}
                     </Button>

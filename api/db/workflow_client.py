@@ -3,12 +3,21 @@ from datetime import UTC, datetime, timedelta
 from typing import Optional
 
 from loguru import logger
-from sqlalchemy import DateTime, Integer, case, cast, func, literal, update
+from sqlalchemy import DateTime, Integer, case, cast, func, literal, or_, update
 from sqlalchemy.future import select
 from sqlalchemy.orm import load_only, selectinload
 
 from api.db.base_client import BaseDBClient
-from api.db.models import WorkflowDefinitionModel, WorkflowModel, WorkflowRunModel
+from api.db.models import (
+    EmbedTokenModel,
+    TelephonyConfigurationModel,
+    TelephonyPhoneNumberModel,
+    WorkflowDefinitionModel,
+    WorkflowModel,
+    WorkflowRunModel,
+)
+from api.enums import WorkflowRunMode, WorkflowRunState
+from api.schemas.workflow_configurations import MAX_CALL_DURATION_SECONDS
 
 
 @dataclass
@@ -18,6 +27,10 @@ class WorkflowRunActivity:
     total_runs: int = 0
     last_run_at: datetime | None = None
     daily_runs: list[int] = field(default_factory=list)
+    # Call time in the last 24 hours, from each run's usage_info.
+    talk_seconds_24h: int = 0
+    # Voice calls connected right now.
+    live_calls: int = 0
 
 
 class WorkflowClient(BaseDBClient):
@@ -942,6 +955,29 @@ class WorkflowClient(BaseDBClient):
             else_=days,
         ).label("bucket")
 
+        # Voice call time in today's bucket only, so older runs' usage_info is
+        # never parsed. A text chat's "duration" is how long the chat stayed
+        # open, not talk time.
+        talk_seconds = func.coalesce(
+            func.sum(
+                WorkflowRunModel.usage_info["call_duration_seconds"].as_float()
+            ).filter(
+                WorkflowRunModel.created_at > now - timedelta(days=1),
+                WorkflowRunModel.mode != WorkflowRunMode.TEXTCHAT.value,
+            ),
+            0,
+        )
+        # A voice call that connected and hasn't finished. A run left "running"
+        # by a crash would count forever, so only runs young enough to still
+        # be inside the longest allowed call (plus a margin) are live.
+        live_since = now - timedelta(seconds=MAX_CALL_DURATION_SECONDS + 300)
+        live = func.count(WorkflowRunModel.id).filter(
+            WorkflowRunModel.state == WorkflowRunState.RUNNING.value,
+            WorkflowRunModel.is_completed.is_not(True),
+            WorkflowRunModel.mode != WorkflowRunMode.TEXTCHAT.value,
+            WorkflowRunModel.created_at > live_since,
+        )
+
         async with self.async_session() as session:
             rows = await session.execute(
                 select(
@@ -949,6 +985,8 @@ class WorkflowClient(BaseDBClient):
                     bucket,
                     func.count(WorkflowRunModel.id),
                     func.max(WorkflowRunModel.created_at),
+                    talk_seconds,
+                    live,
                 )
                 .where(WorkflowRunModel.workflow_id.in_(workflow_ids))
                 .group_by(WorkflowRunModel.workflow_id, bucket)
@@ -958,15 +996,82 @@ class WorkflowClient(BaseDBClient):
                 workflow_id: WorkflowRunActivity(daily_runs=[0] * days)
                 for workflow_id in workflow_ids
             }
-            for workflow_id, days_ago, count, last_run_at in rows.all():
+            for (
+                workflow_id,
+                days_ago,
+                count,
+                last_run_at,
+                seconds,
+                live_count,
+            ) in rows.all():
                 runs = activity[workflow_id]
                 runs.total_runs += count
                 if runs.last_run_at is None or last_run_at > runs.last_run_at:
                     runs.last_run_at = last_run_at
                 if days_ago < days:
                     runs.daily_runs[days - 1 - days_ago] += count
+                runs.talk_seconds_24h += round(seconds)
+                runs.live_calls += live_count
 
             return activity
+
+    async def get_workflow_channels(
+        self,
+        workflow_ids: list[int],
+        organization_id: int,
+        now: datetime | None = None,
+    ) -> dict[int, set[str]]:
+        """How callers reach each workflow: ``"phone"`` when an active number on
+        an active telephony configuration routes inbound calls to it, ``"web"``
+        when it has a usable embed token (active, unexpired, uses left).
+        """
+        channels: dict[int, set[str]] = {
+            workflow_id: set() for workflow_id in workflow_ids
+        }
+        if not workflow_ids:
+            return channels
+
+        now = now or datetime.now(UTC)
+        async with self.async_session() as session:
+            phones = await session.execute(
+                select(TelephonyPhoneNumberModel.inbound_workflow_id)
+                .join(
+                    TelephonyConfigurationModel,
+                    TelephonyConfigurationModel.id
+                    == TelephonyPhoneNumberModel.telephony_configuration_id,
+                )
+                .where(
+                    TelephonyPhoneNumberModel.organization_id == organization_id,
+                    TelephonyPhoneNumberModel.inbound_workflow_id.in_(workflow_ids),
+                    TelephonyPhoneNumberModel.is_active.is_(True),
+                    TelephonyConfigurationModel.inactive.is_(False),
+                )
+                .distinct()
+            )
+            for (workflow_id,) in phones.all():
+                channels[workflow_id].add("phone")
+
+            widgets = await session.execute(
+                select(EmbedTokenModel.workflow_id)
+                .where(
+                    EmbedTokenModel.organization_id == organization_id,
+                    EmbedTokenModel.workflow_id.in_(workflow_ids),
+                    EmbedTokenModel.is_active.is_(True),
+                    or_(
+                        EmbedTokenModel.expires_at.is_(None),
+                        EmbedTokenModel.expires_at > now,
+                    ),
+                    or_(
+                        EmbedTokenModel.usage_limit.is_(None),
+                        EmbedTokenModel.usage_count < EmbedTokenModel.usage_limit,
+                    ),
+                )
+                .distinct()
+            )
+            for (workflow_id,) in widgets.all():
+                channels[workflow_id].add("web")
+
+        return channels
 
     async def get_workflow_ids_with_draft(self, workflow_ids: list[int]) -> set[int]:
         """The subset of ``workflow_ids`` that have an unpublished draft version.

@@ -98,7 +98,7 @@ export default function CampaignsPage() {
             {/* Screen name, strapline and primary action are rendered by the
                 app header (AppTopBar) — see PageActions. */}
             <PageActions>
-                <Button onClick={handleCreateCampaign}>
+                <Button size="toolbar" onClick={handleCreateCampaign}>
                     <Plus className="h-4 w-4" />
                     New campaign
                 </Button>
