@@ -13,6 +13,7 @@ from api.db.organization_client import OrganizationClient
 from api.db.organization_configuration_client import OrganizationConfigurationClient
 from api.db.organization_usage_client import OrganizationUsageClient
 from api.db.reports_client import ReportsClient
+from api.db.retention_client import RetentionClient
 from api.db.skill_client import SkillClient
 from api.db.telephony_configuration_client import TelephonyConfigurationClient
 from api.db.telephony_phone_number_client import TelephonyPhoneNumberClient
@@ -44,6 +45,7 @@ class DBClient(
     WorkflowTemplateClient,
     CampaignClient,
     ReportsClient,
+    RetentionClient,
     APIKeyClient,
     EmbedTokenClient,
     AgentTriggerClient,
@@ -76,6 +78,7 @@ class DBClient(
     - WorkflowTemplateClient: handles workflow template operations
     - CampaignClient: handles campaign operations
     - ReportsClient: handles reports and analytics operations
+    - RetentionClient: finds and scrubs data past its retention period
     - APIKeyClient: handles API key operations
     - EmbedTokenClient: handles embed token and session operations
     - AgentTriggerClient: handles agent trigger operations for API-based call triggering

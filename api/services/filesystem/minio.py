@@ -221,3 +221,45 @@ class MinioFileSystem(BaseFileSystem):
             return True
         except S3Error:
             return False
+
+    async def adelete_file(self, file_path: str) -> bool:
+        """Delete an object from MinIO. A missing object counts as deleted."""
+        try:
+
+            def _remove():
+                # S3 DELETE is idempotent: MinIO answers 204 for a missing key.
+                self.client.remove_object(self.bucket_name, file_path)
+
+            await asyncio.to_thread(_remove)
+            return True
+        except S3Error as e:
+            if e.code in ("NoSuchKey", "NoSuchObject"):
+                return True
+            logger.error(f"Error deleting MinIO object: {e.code}")
+            return False
+
+    async def adelete_prefix(self, prefix: str) -> int:
+        """Delete every object under ``prefix`` from MinIO."""
+        from minio.deleteobjects import DeleteObject
+
+        def _remove_all() -> int:
+            keys = [
+                obj.object_name
+                for obj in self.client.list_objects(
+                    self.bucket_name, prefix=prefix, recursive=True
+                )
+            ]
+            if not keys:
+                return 0
+            errors = list(
+                self.client.remove_objects(
+                    self.bucket_name, (DeleteObject(key) for key in keys)
+                )
+            )
+            if errors:
+                raise RuntimeError(
+                    f"MinIO failed to delete {len(errors)} of {len(keys)} objects"
+                )
+            return len(keys)
+
+        return await asyncio.to_thread(_remove_all)

@@ -300,6 +300,17 @@ Controls concurrency for [Campaigns](/core-concepts/campaigns), LightMove.ai's b
 
 ---
 
+## Data retention
+
+A daily background job (03:17 UTC) deletes call recordings, transcripts and call content older than each organization's **Call data retention (days)** setting, and clears widget visitor data and webhook payloads after 30 days.
+
+| Variable | Default | Description |
+|---|---|---|
+| `RETENTION_PURGE_ENABLED` | `true` | Set to `false` to turn the daily retention purge off. The job then only logs that it is disabled |
+| `RETENTION_PURGE_DRY_RUN` | `false` | Set to `true` to log one line per organization with the counts of runs, campaigns, queued rows, widget sessions and webhook deliveries the purge would clear, without deleting or changing anything |
+
+---
+
 ## Further Customisation
 
 The variables documented here cover the standard configuration surface. For advanced customisation — such as integrating additional services or tuning internal behaviour — consult the relevant module alongside `api/constants.py` to understand how each variable is consumed.

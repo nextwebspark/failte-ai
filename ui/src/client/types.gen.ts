@@ -5831,6 +5831,12 @@ export type OrganizationPreferences = {
      */
     external_pbx_integrations_enabled?: boolean;
     /**
+     * Call Data Retention Days
+     *
+     * Days to keep call recordings, transcripts and call content before they are permanently deleted. Billing metadata (duration, cost, status) is kept.
+     */
+    call_data_retention_days?: number;
+    /**
      * Disposition Mapping Enabled
      */
     disposition_mapping_enabled?: boolean;
@@ -5861,6 +5867,12 @@ export type OrganizationPreferencesResponse = {
      * External Pbx Integrations Enabled
      */
     external_pbx_integrations_enabled?: boolean;
+    /**
+     * Call Data Retention Days
+     *
+     * Days to keep call recordings, transcripts and call content before they are permanently deleted. Billing metadata (duration, cost, status) is kept.
+     */
+    call_data_retention_days?: number;
     /**
      * Disposition Mapping Enabled
      */

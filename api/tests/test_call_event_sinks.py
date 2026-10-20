@@ -322,7 +322,11 @@ async def test_partial_preferences_updates_preserve_legacy_settings_and_sink(
 
     response = await client.put(url, json={"timezone": "UTC"})
     assert response.status_code == 200
-    assert rows[(7, prefs_key)] == {**original, "timezone": "UTC"}
+    assert rows[(7, prefs_key)] == {
+        **original,
+        "timezone": "UTC",
+        "call_data_retention_days": 90,
+    }
     assert rows[(7, configuration.CONFIG_KEY)] is stored_sink
     response = await client.put(url, json={"test_phone_number": None})
     assert response.json()["test_phone_number"] is None

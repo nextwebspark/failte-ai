@@ -3,7 +3,9 @@
 # Idempotent GCP bootstrap for a Dograh deployment in europe-west1.
 #
 # Every step checks before it creates, so re-running is safe and is the intended
-# way to converge drift. Nothing here is destructive.
+# way to converge drift. Nothing here deletes resources, but the storage step
+# sets a bucket lifecycle rule that deletes old transcript objects, and the ci
+# step lets deploys prune old on-demand SQL backups.
 #
 #   ./bootstrap.sh            # show what would run, change nothing
 #   ./bootstrap.sh apply      # actually create resources (BILLABLE)
@@ -239,6 +241,29 @@ if want storage; then
     warn "creating an HMAC key — the secret is shown once, save it now"
     run gcloud storage hmac create "$SA_EMAIL" --project="$PROJECT_ID"
   fi
+
+  # Retention backstop. The app's daily purge (api/services/retention) deletes
+  # call content after each organization's period (max 365 days); this rule
+  # catches anything it missed. Only transcripts/: recordings/ also holds
+  # agent prompt audio (recordings/{org_id}/{recording_id}/{file}), which a
+  # prefix rule cannot tell apart from call recordings and must never expire.
+  # Setting the lifecycle replaces the bucket's whole config, so re-running
+  # converges to exactly this rule.
+  LIFECYCLE_FILE="$(mktemp)"
+  trap 'rm -f "$LIFECYCLE_FILE"' EXIT
+  cat > "$LIFECYCLE_FILE" <<'JSON'
+{
+  "rule": [
+    {
+      "action": {"type": "Delete"},
+      "condition": {"age": 365, "matchesPrefix": ["transcripts/"]}
+    }
+  ]
+}
+JSON
+  run gcloud storage buckets update "gs://$BUCKET" \
+    --project="$PROJECT_ID" --lifecycle-file="$LIFECYCLE_FILE"
+  ok "lifecycle on gs://$BUCKET: delete transcripts/ after 365 days (idempotent)"
 fi
 
 # --- sql ---------------------------------------------------------------------
@@ -356,13 +381,18 @@ if want ci; then
     --member="principalSet://iam.googleapis.com/projects/${PROJECT_NUMBER}/locations/global/workloadIdentityPools/${WIF_POOL}/attribute.repository_id/${GITHUB_REPO_ID}"
   ok "GitHub repo $GITHUB_REPO may impersonate $DEPLOY_SA (idempotent)"
 
-  # Least privilege for backups: create one, follow its operation.
+  # Least privilege for backups: create one, follow its operation, and prune
+  # pre-deploy backups older than 30 days (deploy.yml). Updating an existing
+  # role converges its permissions to exactly this list.
+  SQL_BACKUP_PERMISSIONS="cloudsql.backupRuns.create,cloudsql.backupRuns.delete,cloudsql.backupRuns.get,cloudsql.backupRuns.list,cloudsql.instances.get"
   if exists gcloud iam roles describe lightmoveSqlBackup --project="$PROJECT_ID"; then
-    skip "custom role lightmoveSqlBackup"
+    run gcloud iam roles update lightmoveSqlBackup --project="$PROJECT_ID" --format=none \
+      --quiet --permissions="$SQL_BACKUP_PERMISSIONS"
+    ok "custom role lightmoveSqlBackup (permissions converged)"
   else
     run gcloud iam roles create lightmoveSqlBackup --project="$PROJECT_ID" --format=none \
       --title="LightMove pre-deploy SQL backup" \
-      --permissions=cloudsql.backupRuns.create,cloudsql.backupRuns.get,cloudsql.backupRuns.list,cloudsql.instances.get
+      --permissions="$SQL_BACKUP_PERMISSIONS"
     ok "custom role lightmoveSqlBackup"
   fi
 

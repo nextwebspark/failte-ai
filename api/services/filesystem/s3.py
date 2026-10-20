@@ -190,3 +190,39 @@ class S3FileSystem(BaseFileSystem):
             return True
         except ClientError:
             return False
+
+    async def adelete_file(self, file_path: str) -> bool:
+        """Delete an object from S3. A missing object counts as deleted.
+
+        S3 (and GCS through its S3-compatible XML API) answers 204 for a
+        missing key, so the only failures are real errors (auth, network).
+        """
+        try:
+            async with self.session.client("s3", **self._client_kwargs()) as s3_client:
+                await s3_client.delete_object(Bucket=self.bucket_name, Key=file_path)
+            return True
+        except ClientError as e:
+            code = e.response.get("Error", {}).get("Code")
+            if code in ("NoSuchKey", "404", "NotFound"):
+                return True
+            return False
+
+    async def adelete_prefix(self, prefix: str) -> int:
+        """Delete every object under ``prefix`` from S3.
+
+        Deletes one key at a time rather than with ``DeleteObjects``: GCS's
+        XML API does not implement the multi-object delete call, and the
+        prefixes this is used for hold a handful of objects.
+        """
+        deleted = 0
+        async with self.session.client("s3", **self._client_kwargs()) as s3_client:
+            paginator = s3_client.get_paginator("list_objects_v2")
+            async for page in paginator.paginate(
+                Bucket=self.bucket_name, Prefix=prefix
+            ):
+                for obj in page.get("Contents", []) or []:
+                    await s3_client.delete_object(
+                        Bucket=self.bucket_name, Key=obj["Key"]
+                    )
+                    deleted += 1
+        return deleted
