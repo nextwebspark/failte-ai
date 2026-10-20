@@ -38,9 +38,11 @@ services:
   #      enum; until every row is flipped to 's3' and verified, MinIO must still
   #      be able to serve historical recordings.
   #
-  # It is inert once ENABLE_AWS_S3=true: api/services/storage.py only constructs
-  # MinioFileSystem for rows whose backend is 'minio', so the anonymous bucket
-  # policy in api/services/filesystem/minio.py is never applied.
+  # It holds no new data once ENABLE_AWS_S3=true: api/services/storage.py only
+  # constructs MinioFileSystem for rows whose backend is 'minio'. Older versions
+  # left an anonymous read/write/list policy on the bucket; the API removes it
+  # at every startup (secure_legacy_minio_bucket in api/services/storage.py), so
+  # /voice-audio/ only serves presigned URLs. Verify once: see deploy/gcp/README.md.
   #
   # Once the GCS cutover is verified and stable, remove MinIO *and* the
   # /voice-audio/ location from the nginx template together — not separately.

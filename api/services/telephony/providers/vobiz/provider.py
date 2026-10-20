@@ -14,6 +14,7 @@ from fastapi import HTTPException
 from loguru import logger
 
 from api.enums import TelephonyCallStatus, WorkflowRunMode
+from api.logging_config import mask_phone
 from api.services.telephony import ws_auth
 from api.services.telephony.base import (
     CallInitiationResult,
@@ -85,7 +86,9 @@ class VobizProvider(TelephonyProvider):
         endpoint = f"{self.base_url}/v1/Account/{self.auth_id}/Call/"
 
         from_number = self.select_from_number(from_number)
-        logger.info(f"Selected Vobiz phone number {from_number} for outbound call")
+        logger.info(
+            f"Selected Vobiz phone number {mask_phone(from_number)} for outbound call"
+        )
 
         # Remove + prefix if present (Vobiz expects E.164 without +)
         to_number_clean = to_number.lstrip("+")

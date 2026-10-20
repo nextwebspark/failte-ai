@@ -304,8 +304,10 @@ Three things that will bite otherwise:
 - **Langfuse is all-or-nothing.** `api/constants.py:24-31` raises at *import* if the
   host and keys are set but `LANGFUSE_PROJECT_ID` is not, taking down the API and
   the ARQ worker together. Leave the whole block unset unless all four are present.
-- **The PostHog key is hardcoded** in `docker-compose.yaml` and points at the
-  upstream Dograh project. Set `ENABLE_TELEMETRY=false` or supply your own.
+- **PostHog is off unless you supply a key.** `POSTHOG_API_KEY` / `POSTHOG_KEY`
+  are empty by default and `ENABLE_TELEMETRY=false` disables both the API and the
+  UI clients. If you want analytics, use your own EU project (`eu.i.posthog.com`)
+  and list PostHog as a sub-processor.
 
 Store the finished `.env` in Secret Manager — it is the only copy of these secrets.
 
@@ -319,8 +321,23 @@ The overlay keeps the MinIO container even though storage is GCS. Two reasons:
 2. It is the rollback path during the storage migration, since
    `storage_backend` is a per-row enum and historical rows still say `minio`.
 
-It is inert once `ENABLE_AWS_S3=true` — `MinioFileSystem` is only constructed for
-rows whose backend is `minio`, so the anonymous bucket policy is never applied.
+It takes no new data once `ENABLE_AWS_S3=true` — `MinioFileSystem` is only
+constructed for rows whose backend is `minio`. Older versions left an anonymous
+read/write/list policy on the `voice-audio` bucket, and nginx still proxies
+`/voice-audio/` to it, so the API removes that policy at every startup
+(`secure_legacy_minio_bucket` in `api/services/storage.py`; a failure is logged as
+a `Bucket setup note` warning). Verify it once after the first deploy:
+
+```bash
+# Anonymous listing must be refused: prints 403 (200 means the bucket is still public).
+curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:9000/voice-audio/
+
+# Or ask MinIO directly, if the image ships the mc client. Prints
+# "Access permission for `local/voice-audio` is `private`" (older mc: "none").
+docker compose exec minio sh -c \
+  'mc alias set local http://localhost:9000 "$MINIO_ROOT_USER" "$MINIO_ROOT_PASSWORD" >/dev/null && mc anonymous get local/voice-audio'
+```
+
 Remove it **together with** the nginx `/voice-audio/` location, never separately.
 
 ## 5. Tools service (`fallcha-tools`)

@@ -32,6 +32,16 @@ spec:
         - path:
             type: PathPrefix
             value: /voice-audio/
+      # Objects are user uploads served from the app's origin: never let a
+      # browser sniff or run them as active content (e.g. an uploaded HTML file).
+      filters:
+        - type: ResponseHeaderModifier
+          responseHeaderModifier:
+            set:
+              - name: X-Content-Type-Options
+                value: nosniff
+              - name: Content-Security-Policy
+                value: sandbox
       backendRefs:
         {{- if eq .Values.storage.mode "internalMinio" }}
         - name: {{ include "dograh.minioHost" . }}

@@ -12,6 +12,7 @@ from loguru import logger
 from pipecat.utils.run_context import set_current_run_id
 
 from api.db import db_client
+from api.logging_config import mask_phone_fields
 from api.services.telephony.factory import get_telephony_provider_for_run
 from api.services.telephony.status_processor import (
     StatusCallbackRequest,
@@ -42,7 +43,7 @@ async def handle_exotel_status_callback(workflow_run_id: int, request: Request):
         return {"status": "ignored", "reason": "malformed_body"}
 
     logger.info(
-        f"[run {workflow_run_id}] Exotel status callback: {json.dumps(callback_data)}"
+        f"[run {workflow_run_id}] Exotel status callback: {json.dumps(mask_phone_fields(callback_data))}"
     )
 
     workflow_run = await db_client.get_workflow_run_by_id(workflow_run_id)

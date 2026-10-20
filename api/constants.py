@@ -205,6 +205,14 @@ MINIO_ACCESS_KEY = os.getenv("MINIO_ACCESS_KEY", "minioadmin")
 MINIO_SECRET_KEY = os.getenv("MINIO_SECRET_KEY", "minioadmin")
 MINIO_BUCKET = os.getenv("MINIO_BUCKET", "voice-audio")
 MINIO_SECURE = os.getenv("MINIO_SECURE", "false").lower() == "true"
+# Region MinIO signs requests for. Must match the server's MINIO_REGION
+# (MinIO's default is us-east-1).
+MINIO_REGION = os.getenv("MINIO_REGION", "us-east-1")
+# True when a MinIO server is deployed, even if it isn't the primary storage
+# backend (e.g. kept for legacy rows after moving to S3/GCS).
+MINIO_CONFIGURED = bool(
+    os.getenv("MINIO_ENDPOINT") or os.getenv("MINIO_PUBLIC_ENDPOINT")
+)
 
 # AWS S3 Configuration
 S3_BUCKET = os.environ.get("S3_BUCKET")
@@ -226,7 +234,7 @@ SENTRY_DSN = os.getenv("SENTRY_DSN")
 
 # PostHog configuration
 POSTHOG_API_KEY = os.getenv("POSTHOG_API_KEY")
-POSTHOG_HOST = os.getenv("POSTHOG_HOST", "https://us.i.posthog.com")
+POSTHOG_HOST = os.getenv("POSTHOG_HOST", "https://eu.i.posthog.com")
 
 
 ENABLE_ARI_STASIS = os.getenv("ENABLE_ARI_STASIS", "false").lower() == "true"
@@ -260,7 +268,7 @@ TELEPHONY_WS_TOKEN_ENFORCE = (
 
 # Logging configuration
 LOG_FILE_PATH = os.getenv("LOG_FILE_PATH", None)
-LOG_LEVEL = os.getenv("LOG_LEVEL", "DEBUG").upper()
+LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
 
 # Log rotation configuration
 LOG_ROTATION_SIZE = os.getenv("LOG_ROTATION_SIZE", "100 MB")

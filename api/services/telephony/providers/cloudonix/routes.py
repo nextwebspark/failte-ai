@@ -11,6 +11,7 @@ from loguru import logger
 from pipecat.utils.run_context import set_current_run_id
 
 from api.db import db_client
+from api.logging_config import mask_phone_fields
 from api.services.telephony.call_transfer_manager import get_call_transfer_manager
 from api.services.telephony.factory import get_telephony_provider_for_run
 from api.services.telephony.providers.cloudonix.provider import CloudonixProvider
@@ -134,7 +135,7 @@ async def handle_cloudonix_status_callback(
         callback_data = dict(form_data)
 
     logger.info(
-        f"[run {workflow_run_id}] Received Cloudonix status callback: {json.dumps(callback_data)}"
+        f"[run {workflow_run_id}] Received Cloudonix status callback: {json.dumps(mask_phone_fields(callback_data))}"
     )
 
     # Get workflow run to find organization

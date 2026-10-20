@@ -1076,7 +1076,7 @@ async def handle_inbound_telephony(
 
     try:
         webhook_data, raw_body = await parse_webhook_request(request)
-        logger.info(f"Inbound call data: {dict(webhook_data)}")
+        logger.debug(f"Inbound call webhook keys: {sorted(webhook_data.keys())}")
         headers = dict(request.headers)
 
         # Detect provider and normalize data

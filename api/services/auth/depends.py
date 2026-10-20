@@ -231,8 +231,6 @@ def _associate_user_with_posthog_organization(
         }
         if organization_ids is not None:
             person_properties["organization_ids"] = organization_ids
-        if user.email:
-            person_properties["email"] = user.email
         set_person_properties(user_distinct_id, person_properties)
         event_properties = {
             "user_id": user.id,
