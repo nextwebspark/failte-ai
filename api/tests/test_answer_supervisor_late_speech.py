@@ -36,6 +36,10 @@ from pipecat.turns.user_stop import (
 from pipecat.turns.user_turn_strategies import UserTurnStrategies
 
 from api.schemas.answer_supervisor import AnswerSupervisorConfig
+from api.schemas.workflow_configurations import (
+    DEFAULT_CALL_DISCLOSURE_TEXT,
+    CallDisclosureConfiguration,
+)
 from api.services.pipecat.agent_bridge import AgentBridgeProcessor
 from api.services.pipecat.answer_classification import MachineSubtype
 from api.services.pipecat.in_memory_buffers import InMemoryLogsBuffer
@@ -103,6 +107,7 @@ async def late_call(
     turn_stop_timeout=5,
     recording_fetch=None,
     wait_for_output=True,
+    call_disclosure=None,
     **config,
 ):
     node = workflow.nodes[workflow.start_node_id]
@@ -137,6 +142,7 @@ async def late_call(
         context=context,
         call_context_vars={},
         workflow_run_id=1,
+        call_disclosure=call_disclosure,
     )
     engine.active_agent.current_node = node
     engine.active_agent.is_child = True
@@ -1521,3 +1527,87 @@ async def test_interrupted_greeting_text_is_logged_but_excluded_from_inference(
         assert [
             e["payload"]["text"] for e in events if e["type"] == "rtf-bot-text"
         ].count("Welcome.") == 1
+
+
+# ─── Call disclosure ────────────────────────────────────────────
+
+
+def _bot_texts(events):
+    return [e["payload"]["text"] for e in events if e["type"] == "rtf-bot-text"]
+
+
+@pytest.mark.asyncio
+async def test_machine_greeting_over_the_disclosure_is_still_classified(
+    simple_workflow,
+):
+    """The disclosure leaves the caller unmuted while the supervisor listens:
+    muting would drop the very frames a voicemail greeting is detected by."""
+    async with late_call(
+        simple_workflow,
+        call_disclosure=CallDisclosureConfiguration(),
+        voicemail_action="leave_message",
+        voicemail_message={"text": "Please call us back."},
+    ) as c:
+        assert c.speech.text == DEFAULT_CALL_DISCLOSURE_TEXT
+        assert not c.engine.speech_playback.mutes_user
+        await c.say("Please leave a message after the tone.")
+        await asyncio.wait_for(c.action, 3)
+        assert c.speech.outcome == PlaybackOutcome.INTERRUPTED
+        c.engine.end_call_with_reason.assert_awaited_once_with(
+            "voicemail_detected", abort_immediately=True
+        )
+
+
+@pytest.mark.asyncio
+async def test_pickup_after_screening_hears_the_disclosure_before_the_answer(
+    simple_workflow,
+):
+    """The provisional opening disclosed to the screener. The person who
+    picks up afterwards hears it, muted, before the agent answers them."""
+    async with late_call(
+        simple_workflow,
+        call_disclosure=CallDisclosureConfiguration(),
+        screening_message={"text": "Alex calling."},
+    ) as c:
+        await c.say("Tell me your name and reason for calling.")
+        await until(lambda: c.supervisor._screening)
+        assert c.speech.outcome == PlaybackOutcome.INTERRUPTED
+        assert await c.engine.drain_call_pipeline()
+        await c.say("Hello, this is Alex.")
+        await asyncio.wait_for(c.action, 3)
+        await until(lambda: c.llm.get_current_step() == 1)
+        assert await c.engine.drain_call_pipeline()
+        assert not c.engine.speech_playback.pending
+        # The model answers knowing the disclosure was just said.
+        assert [
+            (m["role"], m["content"])
+            for m in c.generation_messages[-1]
+            if m.get("role") in {"user", "assistant"}
+        ][-2:] == [
+            ("user", "Hello, this is Alex."),
+            ("assistant", DEFAULT_CALL_DISCLOSURE_TEXT),
+        ]
+        await c.worker.queue_frame(CancelFrame())
+        await asyncio.wait_for(c.worker.wait(), 3)
+        bot = _bot_texts(await c.persisted())
+        assert bot[-2:] == [DEFAULT_CALL_DISCLOSURE_TEXT, "How can I help?"], bot
+        assert bot.count(DEFAULT_CALL_DISCLOSURE_TEXT) == 1 + bot[:-2].count(
+            DEFAULT_CALL_DISCLOSURE_TEXT
+        )
+
+
+@pytest.mark.asyncio
+async def test_human_who_cuts_off_the_disclosure_hears_it_in_full(simple_workflow):
+    async with late_call(
+        simple_workflow, call_disclosure=CallDisclosureConfiguration()
+    ) as c:
+        await c.say("Hello, who is this?")
+        await asyncio.wait_for(c.action, 3)
+        assert c.speech.outcome == PlaybackOutcome.INTERRUPTED
+        await until(lambda: c.llm.get_current_step() == 1)
+        assert await c.engine.drain_call_pipeline()
+        assert not c.engine.speech_playback.pending
+        await c.worker.queue_frame(CancelFrame())
+        await asyncio.wait_for(c.worker.wait(), 3)
+        bot = _bot_texts(await c.persisted())
+        assert bot[-2:] == [DEFAULT_CALL_DISCLOSURE_TEXT, "How can I help?"], bot

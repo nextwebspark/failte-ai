@@ -152,4 +152,44 @@ describe("Advanced settings", () => {
         expect(screen.getByText("Variables: Give the new variable a name")).toBeTruthy();
         expect(screen.getByRole("button", { name: "Save changes" })).toHaveProperty("disabled", true);
     });
+
+    it("tells callers they're talking to an AI by default, and always saves the setting", async () => {
+        renderPage();
+        const toggle = screen.getByRole("switch", { name: /Tell callers they're talking to an AI/ });
+        expect(toggle.getAttribute("aria-checked")).toBe("true");
+        expect((screen.getByLabelText("What the agent says first") as HTMLTextAreaElement).value)
+            .toBe("This call is with an AI assistant and may be recorded.");
+
+        // An unrelated change still carries the disclosure, since a save
+        // replaces the whole stored configuration.
+        fireEvent.change(screen.getByLabelText("Agent name"), { target: { value: "Reception" } });
+        fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+
+        await waitFor(() => expect(mocks.saveConfigurations).toHaveBeenCalledTimes(1));
+        expect(mocks.saveConfigurations.mock.calls[0][0].call_disclosure).toEqual({
+            enabled: true,
+            type: "text",
+            text: "This call is with an AI assistant and may be recorded.",
+            recording_id: null,
+        });
+    });
+
+    it("saves the disclosure turned off", async () => {
+        renderPage();
+        fireEvent.click(screen.getByRole("switch", { name: /Tell callers they're talking to an AI/ }));
+
+        expect(screen.queryByLabelText("What the agent says first")).toBeNull();
+        fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+
+        await waitFor(() => expect(mocks.saveConfigurations).toHaveBeenCalledTimes(1));
+        expect(mocks.saveConfigurations.mock.calls[0][0].call_disclosure.enabled).toBe(false);
+    });
+
+    it("won't save an empty disclosure while it is on", () => {
+        renderPage();
+        fireEvent.change(screen.getByLabelText("What the agent says first"), { target: { value: "  " } });
+
+        expect(screen.getByText("Call behaviour: Add the AI disclosure text")).toBeTruthy();
+        expect(screen.getByRole("button", { name: "Save changes" })).toHaveProperty("disabled", true);
+    });
 });

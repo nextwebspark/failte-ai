@@ -565,3 +565,120 @@ async def test_recorded_greeting_opens_the_session_without_speaking(realtime_ser
         isinstance(call.args[0], TTSSpeakFrame)
         for call in service.push_frame.await_args_list
     )
+
+
+def spoken_turn_probe(service):
+    """Wire each provider as an open session whose opening turn is spent.
+
+    Returns a check that the recording reached the session as history only,
+    with nothing asking the model to speak.
+    """
+    if isinstance(service, DograhGeminiLiveLLMService):
+        service._session = SimpleNamespace(
+            send_client_content=AsyncMock(), send_realtime_input=AsyncMock()
+        )
+
+        def check():
+            send = service._session.send_client_content
+            send.assert_awaited_once()
+            assert send.await_args.kwargs["turn_complete"] is False
+            assert [
+                (turn.role, [part.text for part in turn.parts])
+                for turn in send.await_args.kwargs["turns"]
+            ] == [("model", [GREETING])]
+            service._session.send_realtime_input.assert_not_awaited()
+
+        return check
+
+    if isinstance(service, DograhUltravoxRealtimeLLMService):
+        service._connect_call = AsyncMock()
+        service._send = AsyncMock()
+
+        def check():
+            # No history channel on a one-shot call; above all, no reconnect.
+            service._connect_call.assert_not_awaited()
+            service._send.assert_not_awaited()
+
+        return check
+
+    if isinstance(service, DograhAWSNovaSonicLLMService):
+        service._audio_input_started = True
+        service._stream = SimpleNamespace()
+        service._prompt_name = "bench"
+        sent = []
+        service.send_text = AsyncMock(
+            side_effect=lambda text, role, prompt, stream, interactive: sent.append(
+                (role, text, interactive)
+            )
+        )
+
+        def check():
+            assert len(sent) == 1, sent
+            role, text, interactive = sent[0]
+            # History alternates and the model's own line was the last
+            # assistant turn, so the recording goes in as a silent note.
+            assert role == Role.USER.value
+            assert GREETING in text
+            assert interactive is False
+
+        return check
+
+    if isinstance(service, DograhOpenAILiveLLMService):
+        service._session_started = True
+
+        def check():
+            names = [
+                type(call.args[0]).__name__
+                for call in service.send_client_event.await_args_list
+            ]
+            assert names == ["SessionThinkingAppendEvent"], names
+            assert GREETING in service.send_client_event.await_args.args[0].content
+
+        return check
+
+    service._api_session_ready = True
+    service._llm_needs_conversation_setup = False
+
+    def check():
+        sent = [call.args[0] for call in service.send_client_event.await_args_list]
+        assert [event.type for event in sent] == ["conversation.item.create"]
+        assert (sent[0].item.role, sent[0].item.content[0].text) == (
+            "assistant",
+            GREETING,
+        )
+
+    return check
+
+
+@pytest.mark.asyncio
+async def test_recording_after_the_models_opening_line_reaches_the_session(
+    realtime_service,
+):
+    """The call disclosure can be the model's opening line, ahead of a
+    recorded greeting. The recording still has to reach the open session so
+    the model does not greet the caller a second time."""
+    service = realtime_service
+    context = LLMContext()
+    service._context = context
+    service._handled_initial_context = True
+    check = spoken_turn_probe(service)
+
+    await service.seed_spoken_turn(context, GREETING)
+
+    check()
+    assert context.get_messages() == []
+
+
+@pytest.mark.asyncio
+async def test_seeding_a_recording_before_any_opening_opens_the_session(
+    realtime_service,
+):
+    service = realtime_service
+    context = LLMContext()
+    service._context = context
+    check = prerecorded_greeting_probe(service)
+
+    await service.seed_spoken_turn(context, GREETING)
+
+    assert service._handled_initial_context
+    check()

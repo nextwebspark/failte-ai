@@ -14,6 +14,12 @@ from api.services.pipecat.speech_playback import PlaybackOutcome, SpeechPlayback
 if TYPE_CHECKING:
     from api.services.workflow.pipecat_engine import PipecatEngine
 
+# The supervised opening's own bound. A call disclosure ahead of the greeting
+# extends it by the disclosure's playback deadline, so the notice cannot eat
+# into the greeting's share.
+OPENING_TIMEOUT_SECONDS = 45
+CALL_DISCLOSURE_PLAYBACK_TIMEOUT_SECONDS = 35
+
 ANSWER_TERMINAL_REASONS = (
     "machine_timeout",
     "voicemail_no_message",
@@ -99,8 +105,11 @@ async def _play_opening(
     engine, supervisor, *, provisional: bool, context=None
 ) -> SpeechPlayback | None:
     result = None
+    timeout = OPENING_TIMEOUT_SECONDS
+    if engine.call_disclosure_pending():
+        timeout += CALL_DISCLOSURE_PLAYBACK_TIMEOUT_SECONDS
     try:
-        async with asyncio.timeout(45):
+        async with asyncio.timeout(timeout):
             result = await engine.queue_node_opening(
                 node_id=engine.active_agent.workflow.start_node_id,
                 previous_node_id=None,
@@ -168,6 +177,11 @@ async def _handle_answer(engine: "PipecatEngine", supervisor) -> AnswerAction | 
                     return
                 supervisor.release()
                 engine.call_monitor.activate(waiting_for_user=True)
+                # A provisional opening before screening disclosed to the
+                # screener or machine, not to whoever picked up after it.
+                await engine.disclose_to_released_party(
+                    new_party=screening and opening is not None
+                )
                 # A pickup after screening is a new human turn. If an opening
                 # already ran, answer that turn instead of waiting for another.
                 if interrupted or (screening and opening is not None):

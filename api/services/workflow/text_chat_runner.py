@@ -37,7 +37,10 @@ from pipecat.utils.run_context import set_current_org_id
 
 from api.db import db_client
 from api.enums import WorkflowRunMode, WorkflowRunState
-from api.schemas.workflow_configurations import WorkflowConfigurationDefaults
+from api.schemas.workflow_configurations import (
+    WorkflowConfigurationDefaults,
+    resolve_call_disclosure,
+)
 from api.services.configuration.registry import ServiceProviders
 from api.services.pipecat.audio_config import create_audio_config
 from api.services.pipecat.pipeline_builder import create_pipeline_task
@@ -678,6 +681,11 @@ async def execute_text_chat_pending_turn(
         context_compaction_enabled=context_compaction_enabled,
         call_dispositions=call_dispositions,
         skill_set=skill_set,
+        # Text chat has no audio, so a recorded disclosure is sent as its text
+        # (the default notice when a recording-only disclosure has none).
+        call_disclosure=resolve_call_disclosure(run_configs).model_copy(
+            update={"type": "text"}
+        ),
         # Each text turn owns a short-lived pipeline. Complete extraction before
         # leaving a node so teardown cannot discard the result before checkpointing.
         run_transition_variable_extraction_in_background=False,

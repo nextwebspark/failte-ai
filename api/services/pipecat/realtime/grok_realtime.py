@@ -155,9 +155,19 @@ class DograhGrokRealtimeLLMService(RealtimeConversationMixin, GrokRealtimeLLMSer
 
         self._pending_prerecorded_greeting = None
         await self._ensure_conversation_setup()
-        if not transcript:
-            return
+        if transcript:
+            await self._send_spoken_assistant_item(transcript)
 
+    async def _seed_spoken_turn(self, transcript: str):
+        """Add a recording played after the model's opening line; no response."""
+        if self._disconnecting:
+            return
+        if not self._api_session_ready:
+            logger.warning(f"{self}: session not ready; recording transcript dropped")
+            return
+        await self._send_spoken_assistant_item(transcript)
+
+    async def _send_spoken_assistant_item(self, transcript: str):
         evt = events.ConversationItemCreateEvent(
             item=events.ConversationItem(
                 type="message",

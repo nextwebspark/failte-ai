@@ -157,6 +157,25 @@ class RealtimeConversationMixin:
         """Seed the spoken greeting, accept caller audio, and stay silent."""
         raise NotImplementedError
 
+    async def seed_spoken_turn(self, context, transcript: str | None) -> None:
+        """Tell the session what a recording just said, without asking for a turn.
+
+        The call disclosure can be spoken by the model ahead of a recorded
+        greeting. That spends the opening turn, so ``handle_prerecorded_greeting``
+        no longer applies and the recording has to reach the already open
+        session as a late addition instead. Before the opening turn this is
+        the ordinary prerecorded-greeting open.
+        """
+        if not self._handled_initial_context:
+            await self.handle_prerecorded_greeting(context, transcript)
+            return
+        if transcript:
+            await self._seed_spoken_turn(transcript)
+
+    async def _seed_spoken_turn(self, transcript: str) -> None:
+        """Add an already spoken line to the open session; generate nothing."""
+        raise NotImplementedError
+
     async def _send_user_audio(self, frame: InputAudioRawFrame):
         await super()._send_user_audio(await self._prepare_user_audio(frame))
 

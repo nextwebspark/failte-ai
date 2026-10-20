@@ -82,6 +82,7 @@ class SpeechPlayback:
         self._result: asyncio.Future[PlaybackOutcome] = (
             asyncio.get_running_loop().create_future()
         )
+        self._timeout = timeout
         self._deadline = asyncio.get_running_loop().call_later(
             timeout, self.finish, PlaybackOutcome.TIMED_OUT
         )
@@ -97,6 +98,26 @@ class SpeechPlayback:
     async def wait(self) -> bool:
         """Return whether speech played; cancelling a waiter leaves playback owned."""
         return await asyncio.shield(self._result) is PlaybackOutcome.PLAYED
+
+    def defer_deadline_until(self, previous: "SpeechPlayback") -> None:
+        """Start this speech's deadline once *previous*, queued ahead of it, ends.
+
+        Speech queued behind another (the greeting behind the call
+        disclosure) cannot start playing before it, so its own time budget
+        should not run while it waits. *previous* is bounded by its own
+        deadline, so this one still always resolves.
+        """
+        if self.done or previous.done:
+            return
+        self._deadline.cancel()
+
+        def restart(_result) -> None:
+            if not self.done:
+                self._deadline = asyncio.get_running_loop().call_later(
+                    self._timeout, self.finish, PlaybackOutcome.TIMED_OUT
+                )
+
+        previous._result.add_done_callback(restart)
 
     def finish(self, outcome: PlaybackOutcome) -> None:
         if self.done:

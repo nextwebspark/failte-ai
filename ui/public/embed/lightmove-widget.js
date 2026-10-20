@@ -31,6 +31,9 @@
     audioElement: null,
     turnCredentials: null, // TURN server credentials
     callStartedAt: null, // Timestamp when call connected (for duration tracking)
+    // AI and recording notice shown before the microphone opens (voice only).
+    // Resolved server-side like every other label; null until config loads.
+    disclosureText: null,
     gracefulDisconnect: false,
     // Chat widget state (widgetType === 'chat'). The server transcript is the
     // source of truth: every successful response full-replaces turns/revision.
@@ -220,6 +223,7 @@
     }
 
     state.isInitialized = true;
+    state.disclosureText = isChatWidget() ? null : widgetText('voiceDisclosureText');
 
     // Create widget UI based on widget type and mode
     if (isChatWidget()) {
@@ -352,6 +356,10 @@
       .lightmove-widget-container {
         position: fixed;
         z-index: 999999;
+        display: flex;
+        flex-direction: column;
+        align-items: flex-end;
+        gap: 8px;
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
       }
 
@@ -363,16 +371,35 @@
       .lightmove-widget-container.bottom-left {
         bottom: 20px;
         left: 20px;
+        align-items: flex-start;
       }
 
+      /* Top corners put the caption under the pill, next to the page edge. */
       .lightmove-widget-container.top-right {
         top: 20px;
         right: 20px;
+        flex-direction: column-reverse;
       }
 
       .lightmove-widget-container.top-left {
         top: 20px;
         left: 20px;
+        flex-direction: column-reverse;
+        align-items: flex-start;
+      }
+
+      /* AI and recording notice, shown whenever no call is up. Plain
+         caption, not a dialog: it informs without blocking the start button. */
+      .lightmove-widget-disclosure {
+        margin: 0;
+        max-width: min(260px, calc(100vw - 40px));
+        padding: 8px 12px;
+        border-radius: 10px;
+        background: #ffffff;
+        color: #374151;
+        font-size: 12px;
+        line-height: 1.4;
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.15);
       }
 
       .lightmove-widget-cta {
@@ -483,6 +510,18 @@
     `;
     button.querySelector('span').textContent = ctaLabelForStatus(status);
     button.onclick = toggleCall;
+
+    // The notice is up whenever no call is: before every call (a second
+    // one included) and while it connects, so a visitor (or an autoStart)
+    // sees it while the microphone permission is being asked for.
+    if (state.disclosureText && status !== 'connected') {
+      const caption = document.createElement('p');
+      caption.id = 'lightmove-widget-disclosure';
+      caption.className = 'lightmove-widget-disclosure';
+      caption.textContent = state.disclosureText;
+      container.appendChild(caption);
+      button.setAttribute('aria-describedby', caption.id);
+    }
 
     container.appendChild(button);
   }
@@ -616,6 +655,14 @@
         background: #ef4444;
       }
 
+      .lightmove-inline-disclosure {
+        max-width: 320px;
+        margin: 12px auto 0;
+        font-size: 12px;
+        line-height: 1.4;
+        color: #6b7280;
+      }
+
       .lightmove-inline-btn-end:hover {
         background: #dc2626;
       }
@@ -705,6 +752,16 @@
     container.querySelector('.lightmove-inline-status-text').textContent = displayText;
     container.querySelector('.lightmove-inline-status-subtext').textContent = displaySubtext;
 
+    // AI and recording notice, under the start button until the call is up
+    // (connecting included: that is when the microphone permission is asked).
+    if (state.disclosureText && status !== 'connected') {
+      const notice = document.createElement('p');
+      notice.id = 'lightmove-inline-disclosure';
+      notice.className = 'lightmove-inline-disclosure';
+      notice.textContent = state.disclosureText;
+      container.querySelector('.lightmove-inline-status').appendChild(notice);
+    }
+
     // Re-append audio element
     if (audioElement) {
       container.appendChild(audioElement);
@@ -716,6 +773,9 @@
       startBtn.textContent = status === 'failed' ? widgetText('voiceRetryText') : state.config.buttonText;
       startBtn.style.background = state.config.buttonColor;
       startBtn.onclick = startCall;
+      if (state.disclosureText) {
+        startBtn.setAttribute('aria-describedby', 'lightmove-inline-disclosure');
+      }
     }
 
     const endBtn = document.getElementById('lightmove-inline-end-btn');
@@ -2361,6 +2421,10 @@
     isChatMode: () => isChatWidget(),
     onMessage: (callback) => { state.callbacks.onMessage = callback; },
     onChatStateChange: (callback) => { state.callbacks.onChatStateChange = callback; },
+
+    // AI and recording notice for voice widgets. Headless pages render it next
+    // to their own start control; null for chat widgets or before init.
+    getDisclosureText: () => state.disclosureText,
 
     // State and callbacks
     getState: () => state,
