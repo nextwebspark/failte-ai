@@ -112,6 +112,25 @@ export function agentStats(agents: WorkflowListResponse[]): AgentStats {
     return stats;
 }
 
+/**
+ * How far a new workspace is from taking real calls, for the setup checklist:
+ * has any agent been tried (a test call counts), and can callers reach one.
+ * `agent` is the newest agent, the one the checklist's links open.
+ */
+export interface SetupProgress {
+    tested: boolean;
+    connected: boolean;
+    agent: WorkflowListResponse | null;
+}
+
+export function setupProgress(agents: WorkflowListResponse[]): SetupProgress {
+    return {
+        tested: agents.some((agent) => (agent.total_runs ?? 0) > 0),
+        connected: agents.some((agent) => (agent.channels?.length ?? 0) > 0),
+        agent: sortAgents(agents, 'newest')[0] ?? null,
+    };
+}
+
 /** Call time as the stat strip shows it: "6 h 12 m", "45 m", "< 1 m". */
 export function formatTalkTime(seconds: number): string {
     if (seconds <= 0) return '0 m';
@@ -141,7 +160,7 @@ export function formatLastCall(
     timezone: string,
     now: Date = new Date(),
 ): string {
-    if (!value) return 'Never';
+    if (!value) return 'No calls yet';
     const at = new Date(value);
     const minutes = Math.floor((now.getTime() - at.getTime()) / 60_000);
     if (minutes < 1) return 'Just now';

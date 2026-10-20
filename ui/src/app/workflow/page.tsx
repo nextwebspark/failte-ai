@@ -67,12 +67,25 @@ async function WorkflowList() {
             logger.error(`Error fetching folders: ${folderErr}`);
         }
 
+        // Before the first agent, the empty state holds the only create and
+        // import buttons; "New folder" means nothing with no agents to file.
+        const hasAgents = activeWorkflows.length > 0 || folders.length > 0;
+
         return (
-            <AgentList
-                activeWorkflows={activeWorkflows}
-                archivedWorkflows={archivedWorkflows}
-                folders={folders}
-            />
+            <>
+                {hasAgents && (
+                    <PageActions>
+                        <UploadWorkflowButton />
+                        <CreateFolderButton />
+                        <CreateWorkflowButton openFromUrl size="toolbar" />
+                    </PageActions>
+                )}
+                <AgentList
+                    activeWorkflows={activeWorkflows}
+                    archivedWorkflows={archivedWorkflows}
+                    folders={folders}
+                />
+            </>
         );
     } catch (err) {
         logger.error(`Error fetching workflows: ${err}`);
@@ -92,12 +105,7 @@ async function PageContent() {
         <div className="page-body">
             {/* The screen name lives in the app header (AppTopBar); the canvas
                 does not repeat it here, so the body opens straight on content
-                and the actions ride the header. */}
-            <PageActions>
-                <UploadWorkflowButton />
-                <CreateFolderButton />
-                <CreateWorkflowButton openFromUrl size="toolbar" />
-            </PageActions>
+                and the actions ride the header (see WorkflowList). */}
             {workflowList}
         </div>
     );

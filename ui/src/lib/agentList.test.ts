@@ -9,6 +9,7 @@ import {
     formatTalkTime,
     hasDraftEdits,
     percentChange,
+    setupProgress,
     sortAgents,
     sparklinePoints,
 } from '@/lib/agentList';
@@ -86,6 +87,15 @@ describe('agentList', () => {
         });
     });
 
+    it('tracks setup: tried once any agent has a run, connected once one has a channel', () => {
+        expect(setupProgress([])).toEqual({ tested: false, connected: false, agent: null });
+        const untried = setupProgress([agent({ id: 1 }), agent({ id: 2, created_at: '2026-10-02T09:00:00Z' })]);
+        expect(untried).toMatchObject({ tested: false, connected: false });
+        expect(untried.agent?.id).toBe(2);
+        const live = setupProgress([agent({ total_runs: 3, channels: ['web'] })]);
+        expect(live).toMatchObject({ tested: true, connected: true });
+    });
+
     it('words talk time in hours and minutes', () => {
         expect(formatTalkTime(0)).toBe('0 m');
         expect(formatTalkTime(40)).toBe('< 1 m');
@@ -103,7 +113,7 @@ describe('agentList', () => {
     it('words the last call relative to now in the org timezone', () => {
         const now = new Date('2026-10-17T12:00:00Z');
         const tz = 'Europe/Dublin';
-        expect(formatLastCall(null, tz, now)).toBe('Never');
+        expect(formatLastCall(null, tz, now)).toBe('No calls yet');
         expect(formatLastCall('2026-10-17T11:59:40Z', tz, now)).toBe('Just now');
         expect(formatLastCall('2026-10-17T11:48:00Z', tz, now)).toBe('12 min ago');
         expect(formatLastCall('2026-10-17T06:40:00Z', tz, now)).toBe('Today, 07:40');

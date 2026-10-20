@@ -2,7 +2,7 @@
 
 import { Upload } from 'lucide-react';
 import { useRouter } from 'next/navigation';
-import { useCallback, useState } from 'react';
+import { type ComponentProps, useCallback, useState } from 'react';
 
 import { createWorkflowApiV1WorkflowCreateDefinitionPost } from '@/client/sdk.gen';
 import { Button } from "@/components/ui/button";
@@ -13,7 +13,17 @@ import { getRandomId } from '@/lib/utils';
 
 import { WorkflowData } from '../flow/types';
 
-export function UploadWorkflowButton() {
+interface UploadWorkflowButtonProps {
+    size?: ComponentProps<typeof Button>['size'];
+    variant?: ComponentProps<typeof Button>['variant'];
+    label?: string;
+}
+
+export function UploadWorkflowButton({
+    size = 'toolbar',
+    variant = 'outline',
+    label = 'Import agent',
+}: UploadWorkflowButtonProps = {}) {
     const router = useRouter();
     const [isOpen, setIsOpen] = useState(false);
     const [isDragging, setIsDragging] = useState(false);
@@ -85,9 +95,9 @@ export function UploadWorkflowButton() {
 
     return (
         <>
-            <Button onClick={() => setIsOpen(true)} variant="outline" size="toolbar">
+            <Button onClick={() => setIsOpen(true)} variant={variant} size={size}>
                 <Upload className="w-4 h-4" />
-                Import agent
+                {label}
             </Button>
 
             <Dialog open={isOpen} onOpenChange={setIsOpen}>
