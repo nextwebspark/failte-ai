@@ -251,6 +251,12 @@ echo "  wrote $TOOLS_ENV"
 set_key ENABLE_SIGNUP true
 set_key FASTAPI_WORKERS 2
 
+# The retention purge ships in dry-run mode: it only logs, per organisation,
+# what it would delete. Switch to real deletion (RETENTION_PURGE_DRY_RUN=false)
+# only once customers have been warned, by re-running this script with
+# DOGRAH_RETENTION_PURGE_DRY_RUN=false. See README.md "Data retention".
+set_key RETENTION_PURGE_DRY_RUN "${DOGRAH_RETENTION_PURGE_DRY_RUN:-true}"
+
 # Platform-managed models: every org runs on this project's Vertex AI, Speech
 # and TTS (locations default to eu / europe-west1, see api/constants.py), with
 # the VM service account's credentials, so customers pick models without

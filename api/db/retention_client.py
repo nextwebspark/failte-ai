@@ -9,14 +9,16 @@ adding up after the call content is gone.
 
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Optional
+from enum import Enum
+from typing import Any, Awaitable, Callable, Optional
 
-from sqlalchemy import Text, cast, func, or_, select, update
+from sqlalchemy import Text, cast, exists, func, or_, select, update
 
 from api.db.base_client import BaseDBClient
 from api.db.models import (
     CampaignModel,
     EmbedSessionModel,
+    EmbedTokenModel,
     OrganizationModel,
     QueuedRunModel,
     WebhookDeliveryModel,
@@ -60,6 +62,14 @@ class ExpiredWorkflowRun:
     extra: dict[str, Any]
 
 
+class CampaignScrubOutcome(Enum):
+    PURGED = "purged"
+    # Not in this organization, purged already, or active again.
+    SKIPPED = "skipped"
+    # The campaign's source (CSV) could not be deleted; nothing was changed.
+    DEFERRED = "deferred"
+
+
 @dataclass(frozen=True)
 class ExpiredCampaign:
     id: int
@@ -89,6 +99,67 @@ def _campaign_last_activity():
     )
 
 
+def _workflow_run_finished(active_since: datetime):
+    """A completed run, or an unfinished one nobody has touched since the cutoff.
+
+    A text chat stays open (``is_completed`` false) until it is ended, so an old
+    run with a recently updated text session is a conversation still going on.
+    An unfinished run with no recent activity is abandoned (a voice call never
+    outlives the minimum retention period) and is purged like a finished one.
+    """
+    return or_(
+        WorkflowRunModel.is_completed.is_(True),
+        ~exists().where(
+            WorkflowRunTextSessionModel.workflow_run_id == WorkflowRunModel.id,
+            WorkflowRunTextSessionModel.updated_at >= active_since,
+        ),
+    )
+
+
+def _expired_queued_runs(organization_id: int, inactive_before: datetime):
+    """Dialled queued runs of finished campaigns idle since ``inactive_before``.
+
+    Rows of a syncing, running or paused campaign are never selected: the
+    dispatcher and its retries still read their ``context_variables``. A
+    finished campaign keeps them until its last activity passes the cutoff, so
+    a redial within the retention period still has its contacts.
+    """
+    return (
+        select(QueuedRunModel.id)
+        .join(CampaignModel, QueuedRunModel.campaign_id == CampaignModel.id)
+        .where(
+            CampaignModel.organization_id == organization_id,
+            CampaignModel.state.in_(TERMINAL_CAMPAIGN_STATES),
+            _campaign_last_activity() < inactive_before,
+            QueuedRunModel.state.in_(TERMINAL_QUEUED_RUN_STATES),
+            cast(QueuedRunModel.context_variables, Text) != "{}",
+        )
+    )
+
+
+def _expired_embed_sessions(created_before: datetime):
+    """Widget sessions before the cutoff that still hold visitor IP or user agent."""
+    return select(EmbedSessionModel.id).where(
+        EmbedSessionModel.created_at < created_before,
+        or_(
+            EmbedSessionModel.client_ip.is_not(None),
+            EmbedSessionModel.user_agent.is_not(None),
+        ),
+    )
+
+
+def _expired_webhook_deliveries(created_before: datetime):
+    """Finished deliveries before the cutoff that still hold payload or error."""
+    return select(WebhookDeliveryModel.id).where(
+        WebhookDeliveryModel.status.in_(TERMINAL_WEBHOOK_DELIVERY_STATES),
+        WebhookDeliveryModel.created_at < created_before,
+        or_(
+            cast(WebhookDeliveryModel.payload, Text) != "{}",
+            WebhookDeliveryModel.last_error.is_not(None),
+        ),
+    )
+
+
 class RetentionClient(BaseDBClient):
     """Finds and scrubs rows that are past their retention period."""
 
@@ -114,7 +185,7 @@ class RetentionClient(BaseDBClient):
         after_id: int = 0,
         limit: int = 100,
     ) -> list[ExpiredWorkflowRun]:
-        """Unpurged runs of one organization created before ``created_before``.
+        """Unpurged, finished runs of one organization created before ``created_before``.
 
         Keyset-paged by id: a run whose objects could not be deleted stays
         unpurged, so paging by ``after_id`` is what keeps one pass from
@@ -135,6 +206,7 @@ class RetentionClient(BaseDBClient):
                     WorkflowRunModel.created_at < created_before,
                     WorkflowRunModel.id > after_id,
                     _workflow_run_not_purged(),
+                    _workflow_run_finished(active_since=created_before),
                 )
                 .order_by(WorkflowRunModel.id)
                 .limit(limit)
@@ -297,12 +369,16 @@ class RetentionClient(BaseDBClient):
         organization_id: int,
         campaign_id: int,
         purged_at: datetime,
-    ) -> bool:
+        delete_source: Optional[Callable[[], Awaitable[bool]]] = None,
+    ) -> CampaignScrubOutcome:
         """Clear every queued run's contact row and mark the campaign purged.
 
         A campaign still idle in created/paused is failed first: without its
-        contact list it can never run. Returns False when the campaign is not
-        in this organization, was purged already, or became active meanwhile.
+        contact list it can never run. ``delete_source`` (deleting the CSV) is
+        called only once the campaign's eligibility is confirmed under its row
+        lock; if it returns False nothing is changed and the outcome is
+        DEFERRED. SKIPPED means the campaign is not in this organization, was
+        purged already, or became active meanwhile.
         """
         async with self.async_session() as session:
             result = await session.execute(
@@ -319,7 +395,10 @@ class RetentionClient(BaseDBClient):
             )
             campaign = result.scalars().first()
             if campaign is None:
-                return False
+                return CampaignScrubOutcome.SKIPPED
+            if delete_source is not None and not await delete_source():
+                # Nothing was written; closing the session releases the lock.
+                return CampaignScrubOutcome.DEFERRED
 
             await session.execute(
                 update(QueuedRunModel)
@@ -354,32 +433,25 @@ class RetentionClient(BaseDBClient):
             except Exception:
                 await session.rollback()
                 raise
-            return True
+            return CampaignScrubOutcome.PURGED
 
     async def scrub_finished_queued_runs_context(
         self,
         *,
         organization_id: int,
-        created_before: datetime,
+        inactive_before: datetime,
         limit: int = 500,
     ) -> int:
-        """Clear the contact row of finished queued runs older than the cutoff.
+        """Clear the contact row of dialled queued runs of long-finished campaigns.
 
-        Covers long-running campaigns, whose rows from months ago would
-        otherwise wait for the whole campaign to finish. Queued (not yet
-        dialled) rows are left alone. Returns the number of rows cleared;
-        call again until it returns less than ``limit``.
+        Backstop for finished campaigns whose campaign-level purge was deferred
+        (their CSV could not be deleted yet); see ``_expired_queued_runs`` for
+        which rows qualify. Returns the number of rows cleared; call again
+        until it returns less than ``limit``.
         """
         async with self.async_session() as session:
             batch = (
-                select(QueuedRunModel.id)
-                .join(CampaignModel, QueuedRunModel.campaign_id == CampaignModel.id)
-                .where(
-                    CampaignModel.organization_id == organization_id,
-                    QueuedRunModel.state.in_(TERMINAL_QUEUED_RUN_STATES),
-                    QueuedRunModel.created_at < created_before,
-                    cast(QueuedRunModel.context_variables, Text) != "{}",
-                )
+                _expired_queued_runs(organization_id, inactive_before)
                 .order_by(QueuedRunModel.id)
                 .limit(limit)
                 .scalar_subquery()
@@ -397,6 +469,12 @@ class RetentionClient(BaseDBClient):
                 raise
             return result.rowcount or 0
 
+    async def count_finished_queued_runs_context(
+        self, *, organization_id: int, inactive_before: datetime
+    ) -> int:
+        """How many rows ``scrub_finished_queued_runs_context`` would clear."""
+        return await self._count(_expired_queued_runs(organization_id, inactive_before))
+
     # --- embed sessions & webhook deliveries --------------------------------
 
     async def scrub_embed_session_visitor_data(
@@ -409,14 +487,7 @@ class RetentionClient(BaseDBClient):
         """
         async with self.async_session() as session:
             batch = (
-                select(EmbedSessionModel.id)
-                .where(
-                    EmbedSessionModel.created_at < created_before,
-                    or_(
-                        EmbedSessionModel.client_ip.is_not(None),
-                        EmbedSessionModel.user_agent.is_not(None),
-                    ),
-                )
+                _expired_embed_sessions(created_before)
                 .order_by(EmbedSessionModel.id)
                 .limit(limit)
                 .scalar_subquery()
@@ -447,15 +518,7 @@ class RetentionClient(BaseDBClient):
         """
         async with self.async_session() as session:
             batch = (
-                select(WebhookDeliveryModel.id)
-                .where(
-                    WebhookDeliveryModel.status.in_(TERMINAL_WEBHOOK_DELIVERY_STATES),
-                    WebhookDeliveryModel.created_at < created_before,
-                    or_(
-                        cast(WebhookDeliveryModel.payload, Text) != "{}",
-                        WebhookDeliveryModel.last_error.is_not(None),
-                    ),
-                )
+                _expired_webhook_deliveries(created_before)
                 .order_by(WebhookDeliveryModel.id)
                 .limit(limit)
                 .scalar_subquery()
@@ -472,3 +535,32 @@ class RetentionClient(BaseDBClient):
                 await session.rollback()
                 raise
             return result.rowcount or 0
+
+    async def count_embed_session_visitor_data(
+        self, *, organization_id: int, created_before: datetime
+    ) -> int:
+        """How many of this organization's widget sessions the scrub would clear."""
+        query = (
+            _expired_embed_sessions(created_before)
+            .join(
+                EmbedTokenModel, EmbedSessionModel.embed_token_id == EmbedTokenModel.id
+            )
+            .where(EmbedTokenModel.organization_id == organization_id)
+        )
+        return await self._count(query)
+
+    async def count_finished_webhook_delivery_payloads(
+        self, *, organization_id: int, created_before: datetime
+    ) -> int:
+        """How many of this organization's webhook deliveries the scrub would clear."""
+        query = _expired_webhook_deliveries(created_before).where(
+            WebhookDeliveryModel.organization_id == organization_id
+        )
+        return await self._count(query)
+
+    async def _count(self, query) -> int:
+        async with self.async_session() as session:
+            result = await session.execute(
+                select(func.count()).select_from(query.subquery())
+            )
+            return result.scalar_one()

@@ -104,7 +104,6 @@ describe("OrganizationPreferencesSection disposition mapping", () => {
         test_phone_number: null,
         timezone: "UTC",
         external_pbx_integrations_enabled: false,
-        call_data_retention_days: 90,
         disposition_mapping_enabled: true,
         disposition_mapping: { do_not_call: "DNC" },
       },
@@ -155,18 +154,101 @@ describe("OrganizationPreferencesSection call data retention", () => {
     vi.mocked(toast.error).mockClear();
   });
 
-  it("saves the retention period", async () => {
+  it("saves a longer retention period without asking", async () => {
     render(<OrganizationPreferencesSection />);
 
     const input = await screen.findByLabelText("Call data retention (days)");
     expect((input as HTMLInputElement).value).toBe("90");
-    fireEvent.change(input, { target: { value: "30" } });
+    fireEvent.change(input, { target: { value: "180" } });
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
 
     await waitFor(() => expect(mocks.savePreferences).toHaveBeenCalledOnce());
     expect(
       mocks.savePreferences.mock.calls[0][0].body.call_data_retention_days,
+    ).toBe(180);
+    expect(screen.queryByRole("alertdialog")).toBeNull();
+  });
+
+  it("asks for confirmation before shortening the period", async () => {
+    render(<OrganizationPreferencesSection />);
+
+    const input = await screen.findByLabelText("Call data retention (days)");
+    fireEvent.change(input, { target: { value: "30" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    const dialog = await screen.findByRole("alertdialog");
+    expect(dialog.textContent).toContain("older than 30 days");
+    expect(dialog.textContent).toContain("next daily cleanup run");
+    expect(mocks.savePreferences).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "Shorten and save" }));
+
+    await waitFor(() => expect(mocks.savePreferences).toHaveBeenCalledOnce());
+    expect(
+      mocks.savePreferences.mock.calls[0][0].body.call_data_retention_days,
     ).toBe(30);
+  });
+
+  it("does not save a shorter period when the confirmation is cancelled", async () => {
+    render(<OrganizationPreferencesSection />);
+
+    const input = await screen.findByLabelText("Call data retention (days)");
+    fireEvent.change(input, { target: { value: "30" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Cancel" }));
+
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
+    expect(mocks.savePreferences).not.toHaveBeenCalled();
+  });
+
+  it("leaves the stored period alone when it was not changed", async () => {
+    render(<OrganizationPreferencesSection />);
+
+    await screen.findByLabelText("Call data retention (days)");
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() => expect(mocks.savePreferences).toHaveBeenCalledOnce());
+    expect(mocks.savePreferences.mock.calls[0][0].body).not.toHaveProperty(
+      "call_data_retention_days",
+    );
+  });
+
+  it("does not persist an unsaved period with the disposition mapping", async () => {
+    render(<OrganizationPreferencesSection />);
+
+    fireEvent.change(
+      await screen.findByLabelText("Call data retention (days)"),
+      { target: { value: "7" } },
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Configure mapping" }));
+    fireEvent.change(screen.getByLabelText("Code for do_not_call"), {
+      target: { value: "DNC" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save mapping" }));
+
+    await waitFor(() => expect(mocks.savePreferences).toHaveBeenCalledOnce());
+    expect(mocks.savePreferences.mock.calls[0][0].body).not.toHaveProperty(
+      "call_data_retention_days",
+    );
+    // The edit is still in the form, unsaved.
+    expect(
+      (screen.getByLabelText("Call data retention (days)") as HTMLInputElement)
+        .value,
+    ).toBe("7");
+  });
+
+  it("disables saving when the preferences failed to load", async () => {
+    mocks.getPreferences.mockResolvedValue({
+      error: { detail: "Server error" },
+    });
+    render(<OrganizationPreferencesSection />);
+
+    expect(await screen.findByRole("alert")).toBeTruthy();
+    const save = screen.getByRole("button", { name: "Save" });
+    expect((save as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.submit(save.closest("form")!);
+    await waitFor(() => expect(toast.error).toHaveBeenCalledTimes(2));
+    expect(mocks.savePreferences).not.toHaveBeenCalled();
   });
 
   it("rejects a period outside 1 to 365 days without saving", async () => {

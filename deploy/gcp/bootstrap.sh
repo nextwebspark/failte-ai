@@ -3,7 +3,9 @@
 # Idempotent GCP bootstrap for a Dograh deployment in europe-west1.
 #
 # Every step checks before it creates, so re-running is safe and is the intended
-# way to converge drift. Nothing here is destructive.
+# way to converge drift. Nothing here deletes resources, but the storage step
+# sets a bucket lifecycle rule that deletes old transcript objects, and the ci
+# step lets deploys prune old on-demand SQL backups.
 #
 #   ./bootstrap.sh            # show what would run, change nothing
 #   ./bootstrap.sh apply      # actually create resources (BILLABLE)
@@ -379,13 +381,18 @@ if want ci; then
     --member="principalSet://iam.googleapis.com/projects/${PROJECT_NUMBER}/locations/global/workloadIdentityPools/${WIF_POOL}/attribute.repository_id/${GITHUB_REPO_ID}"
   ok "GitHub repo $GITHUB_REPO may impersonate $DEPLOY_SA (idempotent)"
 
-  # Least privilege for backups: create one, follow its operation.
+  # Least privilege for backups: create one, follow its operation, and prune
+  # pre-deploy backups older than 30 days (deploy.yml). Updating an existing
+  # role converges its permissions to exactly this list.
+  SQL_BACKUP_PERMISSIONS="cloudsql.backupRuns.create,cloudsql.backupRuns.delete,cloudsql.backupRuns.get,cloudsql.backupRuns.list,cloudsql.instances.get"
   if exists gcloud iam roles describe lightmoveSqlBackup --project="$PROJECT_ID"; then
-    skip "custom role lightmoveSqlBackup"
+    run gcloud iam roles update lightmoveSqlBackup --project="$PROJECT_ID" --format=none \
+      --quiet --permissions="$SQL_BACKUP_PERMISSIONS"
+    ok "custom role lightmoveSqlBackup (permissions converged)"
   else
     run gcloud iam roles create lightmoveSqlBackup --project="$PROJECT_ID" --format=none \
       --title="LightMove pre-deploy SQL backup" \
-      --permissions=cloudsql.backupRuns.create,cloudsql.backupRuns.get,cloudsql.backupRuns.list,cloudsql.instances.get
+      --permissions="$SQL_BACKUP_PERMISSIONS"
     ok "custom role lightmoveSqlBackup"
   fi
 

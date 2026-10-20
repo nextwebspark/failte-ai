@@ -214,6 +214,16 @@ POSTHOG_API_KEY = os.getenv("POSTHOG_API_KEY")
 POSTHOG_HOST = os.getenv("POSTHOG_HOST", "https://us.i.posthog.com")
 
 
+# Daily data-retention purge (api/services/retention). ENABLED=false turns the
+# cron into a no-op; DRY_RUN=true logs per-organization counts of what a pass
+# would purge without deleting or scrubbing anything.
+RETENTION_PURGE_ENABLED = (
+    os.getenv("RETENTION_PURGE_ENABLED", "true").strip().lower() == "true"
+)
+RETENTION_PURGE_DRY_RUN = (
+    os.getenv("RETENTION_PURGE_DRY_RUN", "false").strip().lower() == "true"
+)
+
 ENABLE_ARI_STASIS = os.getenv("ENABLE_ARI_STASIS", "false").lower() == "true"
 SERIALIZE_LOG_OUTPUT = os.getenv("SERIALIZE_LOG_OUTPUT", "false").lower() == "true"
 

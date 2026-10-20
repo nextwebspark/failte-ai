@@ -44,7 +44,7 @@ or copied to the VM by hand.
 | Workflow | Run it when | What it does |
 |---|---|---|
 | **Release** (`release.yml`) | main has what you want to ship | Full CI on main's head → next version → Cloud Build images tagged `X.Y.Z` → tag `vX.Y.Z` + GitHub Release with notes |
-| **Deploy** (`deploy.yml`) | you approve a release for production | Checks images and both VMs → Cloud SQL backup → IAP SSH → that release's `deploy.sh` → public health check |
+| **Deploy** (`deploy.yml`) | you approve a release for production | Checks images and both VMs → Cloud SQL backup (prunes pre-deploy backups older than 30 days) → IAP SSH → that release's `deploy.sh` → public health check |
 
 **Versions.** Semver tags `vX.Y.Z`, starting at `v0.1.0`. When you run
 Release you pick the bump: `patch` (fixes), `minor` (features), `major`
@@ -236,6 +236,26 @@ The app enforces retention itself: a daily ARQ cron at 03:17 UTC
 call content once a run is older than its organisation's
 **Call data retention (days)** setting (default 90, 1–365), clears widget
 visitor IP/user agent after 30 days and webhook payloads after 30 days.
+
+Two env vars in the app VM's `.env` control rollout: `RETENTION_PURGE_ENABLED`
+(app default `true`; `false` makes the cron log that it is disabled and do
+nothing) and `RETENTION_PURGE_DRY_RUN` (app default `false`; `true` deletes
+nothing and logs one line per organisation: its id, then the counts of runs,
+campaigns, queued rows, widget sessions and webhook deliveries a pass would
+purge, counts only). An organisation whose stored retention setting is invalid
+is skipped and logged at ERROR.
+
+**Production ships in dry-run mode:** `configure-env.sh` sets
+`RETENTION_PURGE_DRY_RUN=true`. Switch to real deletion only once customers
+have been warned, by setting `RETENTION_PURGE_DRY_RUN=false` (re-run
+`DOGRAH_RETENTION_PURGE_DRY_RUN=false ./deploy/gcp/configure-env.sh`, then
+redeploy so the containers pick it up). Read the dry-run lines with
+`docker compose logs api | grep "Retention purge dry run"`.
+
+Database backups: automated backups 7 days, PITR 7 days, pre-deploy backups
+pruned after 30 days (`deploy.yml` deletes on-demand backups older than 30 days
+after taking a new one; re-run `bootstrap.sh apply ci` once so the deploy
+service account has `cloudsql.backupRuns.delete`).
 
 `bootstrap.sh apply storage` adds a bucket lifecycle rule as a backstop:
 objects under `transcripts/` are deleted after 365 days (the maximum setting).

@@ -1,12 +1,16 @@
 from inspect import isawaitable
+from typing import Annotated
 
 from loguru import logger
-from pydantic import ValidationError
+from pydantic import Field, TypeAdapter, ValidationError
 
 from api.db import db_client
 from api.enums import OrganizationConfigurationKey
 from api.schemas.call_events import CallEventsSettings
 from api.schemas.organization_preferences import (
+    DEFAULT_CALL_DATA_RETENTION_DAYS,
+    MAX_CALL_DATA_RETENTION_DAYS,
+    MIN_CALL_DATA_RETENTION_DAYS,
     OrganizationPreferences,
     OrganizationPreferencesResponse,
 )
@@ -17,6 +21,18 @@ from api.services.observability.call_events.configuration import (
     resolve_settings,
 )
 
+# Strict: a stored ``true`` must not read as a one-day retention period.
+_CALL_DATA_RETENTION_DAYS = TypeAdapter(
+    Annotated[
+        int,
+        Field(
+            strict=True,
+            ge=MIN_CALL_DATA_RETENTION_DAYS,
+            le=MAX_CALL_DATA_RETENTION_DAYS,
+        ),
+    ]
+)
+
 
 async def get_organization_preferences(
     organization_id: int | None,
@@ -25,19 +41,33 @@ async def get_organization_preferences(
     if organization_id is None:
         return OrganizationPreferences()
 
-    db = db or db_client
-    row = await _get_configuration(
-        db,
-        organization_id,
-        OrganizationConfigurationKey.ORGANIZATION_PREFERENCES.value,
-    )
-    if row is None:
-        row = await _get_configuration(
-            db,
-            organization_id,
-            OrganizationConfigurationKey.MODEL_CONFIGURATION_PREFERENCES.value,
-        )
+    row = await _get_preferences_row(db or db_client, organization_id)
     return _parse_preferences(row.value if row is not None else None, organization_id)
+
+
+async def get_call_data_retention_days(organization_id: int, db=None) -> int | None:
+    """The retention period the organization stored, read strictly for deletion.
+
+    Unlike ``get_organization_preferences``, an invalid row never falls back to
+    the default: an organization that chose 365 days must not lose data at 90
+    because some unrelated preference no longer validates. Only this one field
+    is validated. Returns the default when nothing was stored, and None when a
+    stored value cannot be trusted (the caller should skip the organization).
+    """
+    row = await _get_preferences_row(db or db_client, organization_id)
+    value = row.value if row is not None else None
+    if not value:
+        return DEFAULT_CALL_DATA_RETENTION_DAYS
+    if not isinstance(value, dict):
+        return None
+    if "call_data_retention_days" not in value:
+        return DEFAULT_CALL_DATA_RETENTION_DAYS
+    try:
+        return _CALL_DATA_RETENTION_DAYS.validate_python(
+            value["call_data_retention_days"]
+        )
+    except ValidationError:
+        return None
 
 
 async def upsert_organization_preferences(
@@ -60,6 +90,21 @@ async def external_pbx_integrations_enabled(
 
     preferences = await get_organization_preferences(organization_id, db=db)
     return preferences.external_pbx_integrations_enabled
+
+
+async def _get_preferences_row(db, organization_id: int):
+    row = await _get_configuration(
+        db,
+        organization_id,
+        OrganizationConfigurationKey.ORGANIZATION_PREFERENCES.value,
+    )
+    if row is None:
+        row = await _get_configuration(
+            db,
+            organization_id,
+            OrganizationConfigurationKey.MODEL_CONFIGURATION_PREFERENCES.value,
+        )
+    return row
 
 
 async def _get_configuration(db, organization_id: int, key: str):

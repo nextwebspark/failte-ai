@@ -14,7 +14,9 @@ What the privacy policy promises, and what this enforces:
   ``WEBHOOK_PAYLOAD_RETENTION``.
 
 Rows are scrubbed, not deleted, so billing and usage history stays intact.
-Logs carry counts and ids only, never the content being deleted.
+Logs carry counts and ids only, never the content being deleted. A dry run
+(``RETENTION_PURGE_DRY_RUN``) logs per-organization counts of what would be
+purged and changes nothing.
 """
 
 import re
@@ -25,9 +27,13 @@ from typing import Callable, Optional
 from loguru import logger
 
 from api.db import db_client
-from api.db.retention_client import ExpiredCampaign, ExpiredWorkflowRun
+from api.db.retention_client import (
+    CampaignScrubOutcome,
+    ExpiredCampaign,
+    ExpiredWorkflowRun,
+)
 from api.services.filesystem import BaseFileSystem
-from api.services.organization_preferences import get_organization_preferences
+from api.services.organization_preferences import get_call_data_retention_days
 
 VISITOR_DATA_RETENTION = timedelta(days=30)
 WEBHOOK_PAYLOAD_RETENTION = timedelta(days=30)
@@ -43,6 +49,7 @@ StorageResolver = Callable[[str], BaseFileSystem]
 @dataclass
 class RetentionPurgeResult:
     organizations: int = 0
+    organizations_skipped: int = 0
     runs_purged: int = 0
     runs_deferred: int = 0
     objects_deleted: int = 0
@@ -149,6 +156,66 @@ async def _delete_run_objects(
     return deleted
 
 
+async def _count_organization_runs(organization_id: int, cutoff: datetime) -> int:
+    count = 0
+    after_id = 0
+    while True:
+        runs = await db_client.get_workflow_runs_past_retention(
+            organization_id=organization_id,
+            created_before=cutoff,
+            after_id=after_id,
+            limit=RUN_BATCH_SIZE,
+        )
+        count += len(runs)
+        if len(runs) < RUN_BATCH_SIZE:
+            return count
+        after_id = runs[-1].id
+
+
+async def _count_organization_campaigns(organization_id: int, cutoff: datetime) -> int:
+    count = 0
+    after_id = 0
+    while True:
+        campaigns = await db_client.get_campaigns_past_retention(
+            organization_id=organization_id,
+            inactive_before=cutoff,
+            after_id=after_id,
+            limit=CAMPAIGN_BATCH_SIZE,
+        )
+        count += len(campaigns)
+        if len(campaigns) < CAMPAIGN_BATCH_SIZE:
+            return count
+        after_id = campaigns[-1].id
+
+
+async def _log_organization_dry_run(
+    organization_id: int, cutoff: datetime, now: datetime
+) -> None:
+    """One line per organization: what a real pass would purge, counts only."""
+    runs = await _count_organization_runs(organization_id, cutoff)
+    campaigns = await _count_organization_campaigns(organization_id, cutoff)
+    queued_rows = await db_client.count_finished_queued_runs_context(
+        organization_id=organization_id, inactive_before=cutoff
+    )
+    widget_sessions = await db_client.count_embed_session_visitor_data(
+        organization_id=organization_id, created_before=now - VISITOR_DATA_RETENTION
+    )
+    webhook_deliveries = await db_client.count_finished_webhook_delivery_payloads(
+        organization_id=organization_id,
+        created_before=now - WEBHOOK_PAYLOAD_RETENTION,
+    )
+    logger.info(
+        "Retention purge dry run: organization={} runs={} campaigns={} "
+        "queued_rows={} widget_sessions={} webhook_deliveries={}",
+        organization_id,
+        runs,
+        campaigns,
+        queued_rows,
+        widget_sessions,
+        webhook_deliveries,
+    )
+
+
 async def _purge_organization_runs(
     organization_id: int,
     cutoff: datetime,
@@ -220,31 +287,40 @@ async def _purge_organization_campaigns(
                 campaign_id=campaign.id,
             ):
                 csv_key = None
-            if csv_key:
+
+            async def delete_csv(key: Optional[str] = csv_key) -> bool:
+                # Called by the scrub once the campaign is confirmed eligible
+                # under its row lock, so an active campaign keeps its list.
+                if key is None:
+                    return True
                 try:
                     deleted = await resolve_storage(_current_backend()).adelete_file(
-                        csv_key
+                        key
                     )
                 except Exception:
                     deleted = False
-                if not deleted:
-                    result.campaigns_deferred += 1
-                    continue
-                result.objects_deleted += 1
-            if await db_client.scrub_campaign_contact_data(
+                if deleted:
+                    result.objects_deleted += 1
+                return deleted
+
+            outcome = await db_client.scrub_campaign_contact_data(
                 organization_id=organization_id,
                 campaign_id=campaign.id,
                 purged_at=now,
-            ):
+                delete_source=delete_csv,
+            )
+            if outcome is CampaignScrubOutcome.PURGED:
                 result.campaigns_purged += 1
+            elif outcome is CampaignScrubOutcome.DEFERRED:
+                result.campaigns_deferred += 1
         if len(campaigns) < CAMPAIGN_BATCH_SIZE:
             break
 
-    # Rows dialled long ago in a campaign that is still running.
+    # Contact rows of long-finished campaigns whose purge above was deferred.
     while True:
         cleared = await db_client.scrub_finished_queued_runs_context(
             organization_id=organization_id,
-            created_before=cutoff,
+            inactive_before=cutoff,
             limit=ROW_BATCH_SIZE,
         )
         result.queued_runs_cleared += cleared
@@ -261,14 +337,57 @@ async def _scrub_in_batches(scrub, created_before: datetime) -> int:
             return total
 
 
+async def _purge_organization(
+    organization_id: int,
+    now: datetime,
+    resolve_storage: Optional[StorageResolver],
+    dry_run: bool,
+    result: RetentionPurgeResult,
+) -> None:
+    retention_days = await get_call_data_retention_days(organization_id)
+    if retention_days is None:
+        # Deleting at the default could destroy data the organization chose
+        # to keep longer, so an unreadable setting keeps everything.
+        result.organizations_skipped += 1
+        logger.error(
+            f"Retention purge skipped organization {organization_id}: its stored "
+            "call_data_retention_days is invalid"
+        )
+        return
+    cutoff = now - timedelta(days=retention_days)
+    if dry_run:
+        await _log_organization_dry_run(organization_id, cutoff, now)
+        return
+
+    deferred_before = result.runs_deferred
+    await _purge_organization_runs(
+        organization_id, cutoff, now, resolve_storage, result
+    )
+    runs_deferred = result.runs_deferred - deferred_before
+    if runs_deferred:
+        logger.error(
+            f"Retention purge deferred {runs_deferred} runs of organization "
+            f"{organization_id}: their stored objects could not be deleted"
+        )
+    await _purge_organization_campaigns(
+        organization_id, cutoff, now, resolve_storage, result
+    )
+
+
 async def purge_expired_data(
     *,
     now: Optional[datetime] = None,
     resolve_storage: Optional[StorageResolver] = None,
+    dry_run: bool = False,
 ) -> RetentionPurgeResult:
-    """Run one retention pass over every organization. Safe to re-run."""
+    """Run one retention pass over every organization. Safe to re-run.
+
+    With ``dry_run`` nothing is deleted or scrubbed; each organization's counts
+    of what would be purged are logged instead.
+    """
     now = now or datetime.now(UTC)
-    resolve_storage = resolve_storage or _default_storage_resolver()
+    if not dry_run:
+        resolve_storage = resolve_storage or _default_storage_resolver()
     result = RetentionPurgeResult()
 
     after_id = 0
@@ -282,13 +401,8 @@ async def purge_expired_data(
         for organization_id in organization_ids:
             result.organizations += 1
             try:
-                preferences = await get_organization_preferences(organization_id)
-                cutoff = now - timedelta(days=preferences.call_data_retention_days)
-                await _purge_organization_runs(
-                    organization_id, cutoff, now, resolve_storage, result
-                )
-                await _purge_organization_campaigns(
-                    organization_id, cutoff, now, resolve_storage, result
+                await _purge_organization(
+                    organization_id, now, resolve_storage, dry_run, result
                 )
             except Exception as exc:
                 # One organization's failure must not keep the others' data.
@@ -299,6 +413,15 @@ async def purge_expired_data(
         if len(organization_ids) < ORGANIZATION_PAGE_SIZE:
             break
 
+    if dry_run:
+        logger.info(
+            "Retention purge dry run finished: {} organizations checked "
+            "({} skipped), nothing deleted",
+            result.organizations,
+            result.organizations_skipped,
+        )
+        return result
+
     result.embed_sessions_cleared = await _scrub_in_batches(
         db_client.scrub_embed_session_visitor_data, now - VISITOR_DATA_RETENTION
     )
@@ -308,10 +431,12 @@ async def purge_expired_data(
     )
 
     logger.info(
-        "Retention purge: {} organizations, {} runs purged ({} deferred), "
+        "Retention purge: {} organizations ({} skipped), "
+        "{} runs purged ({} deferred), "
         "{} objects deleted, {} campaigns purged ({} deferred), "
         "{} queued runs, {} embed sessions, {} webhook deliveries cleared",
         result.organizations,
+        result.organizations_skipped,
         result.runs_purged,
         result.runs_deferred,
         result.objects_deleted,
