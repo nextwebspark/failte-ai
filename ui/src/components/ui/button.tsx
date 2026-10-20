@@ -29,8 +29,10 @@ const buttonVariants = cva(
         sm: "h-8 rounded-md gap-1.5 px-3 has-[>svg]:px-2.5",
         lg: "h-10 rounded-md px-6 has-[>svg]:px-4",
         // The app header's actions (PageActions): 32px, 12.5px type, 13px icons.
-        // `[&_svg]` outranks an icon's own h-4/w-4, so screens needn't resize them.
-        toolbar: "h-8 rounded-md gap-1.5 px-3 text-[12.5px] [&_svg]:size-3.25",
+        // Same selector as the base's default icon size, so tailwind-merge drops
+        // the base `size-4` and this outranks an icon's own h-4/w-4. A bare
+        // `[&_svg]` would lose to the base's `:not([class*='size-'])` rule.
+        toolbar: "h-8 rounded-md gap-1.5 px-3 text-[12.5px] [&_svg:not([class*='size-'])]:size-3.25",
         icon: "size-9",
       },
     },

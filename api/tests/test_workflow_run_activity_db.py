@@ -70,8 +70,13 @@ async def workflows(sessions):
                 # outside the window, still counted in the total
                 run(24 * 9),
                 # clock skew: a run "from the future" counts as today. A text
-                # chat is never a live call.
-                run(-2, mode="textchat", state="running"),
+                # chat is never a live call, and its open time isn't talk time.
+                run(
+                    -2,
+                    mode="textchat",
+                    state="running",
+                    usage_info={"call_duration_seconds": 500},
+                ),
             ]
         )
         session.add(
@@ -143,13 +148,20 @@ async def test_workflow_channels_reports_phone_numbers_and_widgets(workflows, se
         config = TelephonyConfigurationModel(
             organization_id=busy.organization_id, name="twilio", provider="twilio"
         )
-        session.add(config)
+        # Deactivated: its numbers no longer route calls.
+        parked = TelephonyConfigurationModel(
+            organization_id=busy.organization_id,
+            name="parked",
+            provider="twilio",
+            inactive=True,
+        )
+        session.add_all([config, parked])
         await session.flush()
 
-        def number(address: str, workflow_id: int, active: bool = True):
+        def number(address: str, workflow_id: int, active: bool = True, cfg=config):
             return TelephonyPhoneNumberModel(
                 organization_id=busy.organization_id,
-                telephony_configuration_id=config.id,
+                telephony_configuration_id=cfg.id,
                 address=address,
                 address_normalized=address,
                 address_type="pstn",
@@ -171,17 +183,26 @@ async def test_workflow_channels_reports_phone_numbers_and_widgets(workflows, se
                 number("+35310000001", busy.id),
                 number("+35310000002", busy.id),
                 number("+35310000003", quiet.id, active=False),
+                number("+35310000004", quiet.id, cfg=parked),
                 widget(busy.id),
                 widget(quiet.id, is_active=False),
                 widget(quiet.id, expires_at=NOW - timedelta(days=1)),
+                widget(quiet.id, usage_limit=5, usage_count=5),
             ]
         )
         await session.commit()
 
     try:
-        channels = await db_client.get_workflow_channels([busy.id, quiet.id], now=NOW)
+        channels = await db_client.get_workflow_channels(
+            [busy.id, quiet.id], organization_id=busy.organization_id, now=NOW
+        )
         assert channels == {busy.id: {"phone", "web"}, quiet.id: set()}
-        assert await db_client.get_workflow_channels([]) == {}
+        assert (
+            await db_client.get_workflow_channels(
+                [], organization_id=busy.organization_id
+            )
+            == {}
+        )
     finally:
         async with sessions() as session:
             await session.execute(
@@ -191,7 +212,7 @@ async def test_workflow_channels_reports_phone_numbers_and_widgets(workflows, se
             )
             await session.execute(
                 delete(TelephonyConfigurationModel).where(
-                    TelephonyConfigurationModel.id == config.id
+                    TelephonyConfigurationModel.id.in_([config.id, parked.id])
                 )
             )
             await session.commit()

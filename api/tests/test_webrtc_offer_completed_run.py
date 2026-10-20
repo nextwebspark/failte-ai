@@ -32,6 +32,7 @@ async def _offer(
     concurrency=None,
 ) -> MagicMock:
     """Drive _handle_offer with the surrounding I/O stubbed, return the pc class."""
+    update_run = AsyncMock()
     with (
         patch(
             "api.routes.webrtc_signaling.call_concurrency",
@@ -45,6 +46,7 @@ async def _offer(
             "api.routes.webrtc_signaling.db_client.get_workflow_run",
             AsyncMock(return_value=run),
         ),
+        patch("api.routes.webrtc_signaling.db_client.update_workflow_run", update_run),
         patch(
             "api.routes.webrtc_signaling.get_ice_servers", MagicMock(return_value=[])
         ),
@@ -73,6 +75,7 @@ async def _offer(
             connection_key="10124:630140:8267:1",
             enforce_call_concurrency=enforce_call_concurrency,
         )
+    pc_cls.update_run = update_run
     return pc_cls
 
 
@@ -105,6 +108,8 @@ async def test_live_run_still_starts_its_pipeline():
         pc_cls.assert_called_once()
         assert len(manager._pipeline_tasks) == 1
         assert [m["type"] for m in _sent(ws)] == ["answer"]
+        # Marked running, so the Voice agents list counts the call as live.
+        pc_cls.update_run.assert_awaited_once_with(run_id=630140, state="running")
     finally:
         for task in list(manager._pipeline_tasks):
             task.cancel()
@@ -139,6 +144,7 @@ async def test_missing_run_is_left_to_the_pipeline():
     pc_cls = await _offer(manager, ws, None)
 
     try:
+        pc_cls.update_run.assert_not_called()
         pc_cls.assert_called_once()
         assert [m["type"] for m in _sent(ws)] == ["answer"]
     finally:

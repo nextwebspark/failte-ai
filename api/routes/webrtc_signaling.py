@@ -32,7 +32,7 @@ from starlette.websockets import WebSocketState
 from api.constants import ENABLE_COTURN, ENVIRONMENT, FORCE_TURN_RELAY, SERVER_IP
 from api.db import db_client
 from api.db.models import UserModel
-from api.enums import Environment, WorkflowRunMode
+from api.enums import Environment, WorkflowRunMode, WorkflowRunState
 from api.errors.failure import (
     ErrorSource,
     classify_exception,
@@ -703,6 +703,14 @@ class SignalingManager:
                             webrtc_connection.pc_id,
                             reason="peer_connection_closed",
                         )
+
+                # Mark the run live, as the telephony and agent-stream routes
+                # do; the Voice agents list counts running runs as live calls.
+                # A missing run is still the pipeline's to refuse.
+                if workflow_run is not None:
+                    await db_client.update_workflow_run(
+                        run_id=workflow_run_id, state=WorkflowRunState.RUNNING.value
+                    )
 
                 # Start pipeline in background
                 pipeline_task = asyncio.create_task(

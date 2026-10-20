@@ -3,13 +3,14 @@ from datetime import UTC, datetime, timedelta
 from typing import Optional
 
 from loguru import logger
-from sqlalchemy import DateTime, Integer, case, cast, func, literal, update
+from sqlalchemy import DateTime, Integer, case, cast, func, literal, or_, update
 from sqlalchemy.future import select
 from sqlalchemy.orm import load_only, selectinload
 
 from api.db.base_client import BaseDBClient
 from api.db.models import (
     EmbedTokenModel,
+    TelephonyConfigurationModel,
     TelephonyPhoneNumberModel,
     WorkflowDefinitionModel,
     WorkflowModel,
@@ -954,8 +955,16 @@ class WorkflowClient(BaseDBClient):
             else_=days,
         ).label("bucket")
 
+        # Voice call time in today's bucket only, so older runs' usage_info is
+        # never parsed. A text chat's "duration" is how long the chat stayed
+        # open, not talk time.
         talk_seconds = func.coalesce(
-            func.sum(WorkflowRunModel.usage_info["call_duration_seconds"].as_float()),
+            func.sum(
+                WorkflowRunModel.usage_info["call_duration_seconds"].as_float()
+            ).filter(
+                WorkflowRunModel.created_at > now - timedelta(days=1),
+                WorkflowRunModel.mode != WorkflowRunMode.TEXTCHAT.value,
+            ),
             0,
         )
         # A voice call that connected and hasn't finished. A run left "running"
@@ -1001,19 +1010,20 @@ class WorkflowClient(BaseDBClient):
                     runs.last_run_at = last_run_at
                 if days_ago < days:
                     runs.daily_runs[days - 1 - days_ago] += count
-                if days_ago == 0:
-                    runs.talk_seconds_24h += round(seconds)
+                runs.talk_seconds_24h += round(seconds)
                 runs.live_calls += live_count
 
             return activity
 
     async def get_workflow_channels(
-        self, workflow_ids: list[int], now: datetime | None = None
+        self,
+        workflow_ids: list[int],
+        organization_id: int,
+        now: datetime | None = None,
     ) -> dict[int, set[str]]:
-        """How callers reach each workflow: ``"phone"`` when an active number
-        routes inbound calls to it, ``"web"`` when it has a usable embed token.
-
-        Callers must pass ids already scoped to the caller's organization.
+        """How callers reach each workflow: ``"phone"`` when an active number on
+        an active telephony configuration routes inbound calls to it, ``"web"``
+        when it has a usable embed token (active, unexpired, uses left).
         """
         channels: dict[int, set[str]] = {
             workflow_id: set() for workflow_id in workflow_ids
@@ -1025,9 +1035,16 @@ class WorkflowClient(BaseDBClient):
         async with self.async_session() as session:
             phones = await session.execute(
                 select(TelephonyPhoneNumberModel.inbound_workflow_id)
+                .join(
+                    TelephonyConfigurationModel,
+                    TelephonyConfigurationModel.id
+                    == TelephonyPhoneNumberModel.telephony_configuration_id,
+                )
                 .where(
+                    TelephonyPhoneNumberModel.organization_id == organization_id,
                     TelephonyPhoneNumberModel.inbound_workflow_id.in_(workflow_ids),
                     TelephonyPhoneNumberModel.is_active.is_(True),
+                    TelephonyConfigurationModel.inactive.is_(False),
                 )
                 .distinct()
             )
@@ -1037,10 +1054,17 @@ class WorkflowClient(BaseDBClient):
             widgets = await session.execute(
                 select(EmbedTokenModel.workflow_id)
                 .where(
+                    EmbedTokenModel.organization_id == organization_id,
                     EmbedTokenModel.workflow_id.in_(workflow_ids),
                     EmbedTokenModel.is_active.is_(True),
-                    (EmbedTokenModel.expires_at.is_(None))
-                    | (EmbedTokenModel.expires_at > now),
+                    or_(
+                        EmbedTokenModel.expires_at.is_(None),
+                        EmbedTokenModel.expires_at > now,
+                    ),
+                    or_(
+                        EmbedTokenModel.usage_limit.is_(None),
+                        EmbedTokenModel.usage_count < EmbedTokenModel.usage_limit,
+                    ),
                 )
                 .distinct()
             )

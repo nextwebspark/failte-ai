@@ -839,7 +839,9 @@ async def get_workflows(
     activity, with_draft, channels = await asyncio.gather(
         db_client.get_workflow_run_activity(workflow_ids),
         db_client.get_workflow_ids_with_draft(workflow_ids),
-        db_client.get_workflow_channels(workflow_ids),
+        db_client.get_workflow_channels(
+            workflow_ids, organization_id=user.selected_organization_id
+        ),
     )
 
     responses = []
