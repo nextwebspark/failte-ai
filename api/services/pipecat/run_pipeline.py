@@ -16,6 +16,7 @@ from api.schemas.workflow_configurations import (
     DEFAULT_TURN_START_MIN_WORDS,
     DEFAULT_TURN_START_STRATEGY,
     WorkflowConfigurationDefaults,
+    resolve_call_disclosure,
 )
 from api.services.billing.guard import affordable_call_seconds, capped_call_duration
 from api.services.call_concurrency import call_concurrency
@@ -973,6 +974,7 @@ async def _run_pipeline_impl(
         context_compaction_enabled=context_compaction_enabled,
         call_dispositions=call_dispositions,
         skill_set=skill_set,
+        call_disclosure=resolve_call_disclosure(run_configs),
     )
 
     # Create pipeline components

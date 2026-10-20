@@ -28,6 +28,19 @@ Start Call executes before any Agent Node. No other node can precede it in the c
 
 After Start Call completes, the conversation moves to the next node - typically your first Agent Node. If the caller hangs up immediately or reaches a wrong-number condition, Start Call can route directly to End Call instead.
 
+## AI and recording disclosure
+
+Before the greeting, every call opens with a short notice that the caller is talking to an AI and that the call may be recorded. It is **on by default** for every agent, including agents created before the setting existed. The EU AI Act (Article 50) requires telling people they are interacting with an AI, and Irish law requires notice that a call is recorded.
+
+Change it in **Advanced settings → Call behaviour → Tell callers they're talking to an AI and may be recorded**:
+
+- **Text**: what the agent says, spoken in the agent's voice. Defaults to "This call is with an AI assistant and may be recorded." Supports `{{template_variables}}`.
+- **Play it as**: the agent's voice, or a [pre-recorded audio](./pre-recorded-audio) file. If the recording can't be played, the agent says the text instead.
+
+The disclosure plays once per call (never again after an agent transfer), before the Start Call greeting (or before the agent's first generated line when there is no greeting). The caller can't talk over it, it is part of the call recording, and it appears in the transcript. With voicemail detection on, it plays when a person answers, together with the greeting. Speech-to-speech (realtime) models say it as the start of their opening line. In text chat, it is the start of the agent's first message.
+
+Turn it off only if you tell callers another way.
+
 ## Fields
 
 **Name**

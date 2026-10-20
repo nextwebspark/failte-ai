@@ -1,10 +1,12 @@
 from typing import Annotated, Literal
 
+from loguru import logger
 from pydantic import (
     BaseModel,
     ConfigDict,
     Field,
     StringConstraints,
+    ValidationError,
     field_validator,
     model_validator,
 )
@@ -121,6 +123,78 @@ class AmbientNoiseConfigurationDefaults(BaseModel):
     volume: float = 0.3
 
 
+DEFAULT_CALL_DISCLOSURE_TEXT = "This call is with an AI assistant and may be recorded."
+MAX_CALL_DISCLOSURE_TEXT_LENGTH = 500
+
+
+class CallDisclosureConfiguration(BaseModel):
+    """Notice played at the very start of every call.
+
+    The EU AI Act (Art. 50) requires telling people they are talking to an AI,
+    and Irish law requires notice that a call is recorded. On by default, so an
+    agent that never saved this setting still discloses.
+    """
+
+    model_config = ConfigDict(extra="allow")
+
+    @model_validator(mode="before")
+    @classmethod
+    def _treat_null_as_unset(cls, data):
+        if isinstance(data, dict):
+            return {k: v for k, v in data.items() if v is not None}
+        return data
+
+    enabled: bool = Field(
+        default=True,
+        description=(
+            "Play the disclosure before the start node's greeting. Turn off only "
+            "if callers are told another way."
+        ),
+    )
+    type: Literal["text", "audio"] = Field(
+        default="text",
+        description="Speak `text` with the agent's voice, or play `recording_id`.",
+    )
+    text: str = Field(
+        default=DEFAULT_CALL_DISCLOSURE_TEXT,
+        max_length=MAX_CALL_DISCLOSURE_TEXT_LENGTH,
+        description=(
+            "What the agent says. Supports {{variable}} templating. Also the "
+            "fallback when the recording cannot be played, and the text used in "
+            "text chat and by speech-to-speech models."
+        ),
+    )
+    recording_id: str | None = Field(
+        default=None,
+        max_length=255,
+        description="Recording ID (not primary key) played when `type` is audio.",
+    )
+
+    @field_validator("text", mode="before")
+    @classmethod
+    def _strip_text(cls, value: object) -> object:
+        return value.strip() if isinstance(value, str) else value
+
+    @field_validator("recording_id", mode="before")
+    @classmethod
+    def _blank_recording_is_none(cls, value: object) -> object:
+        if isinstance(value, str):
+            return value.strip() or None
+        return value
+
+    @model_validator(mode="after")
+    def _require_something_to_play(self):
+        if (
+            self.enabled
+            and not self.text
+            and not (self.type == "audio" and self.recording_id)
+        ):
+            raise ValueError(
+                "call disclosure needs text (or a recording) while it is enabled"
+            )
+        return self
+
+
 class WorkflowConfigurationDefaults(BaseModel):
     model_config = ConfigDict(extra="allow")
 
@@ -136,6 +210,13 @@ class WorkflowConfigurationDefaults(BaseModel):
 
     ambient_noise_configuration: AmbientNoiseConfigurationDefaults = Field(
         default_factory=AmbientNoiseConfigurationDefaults
+    )
+    call_disclosure: CallDisclosureConfiguration = Field(
+        default_factory=CallDisclosureConfiguration,
+        description=(
+            "AI and recording notice played at the start of every call. On by "
+            "default, including for agents saved before this setting existed."
+        ),
     )
     max_call_duration: int = Field(
         default=DEFAULT_MAX_CALL_DURATION_SECONDS,
@@ -236,6 +317,25 @@ class TextChatInactivityTimeoutConstraints(BaseModel):
     default_seconds: int = TEXT_CHAT_INACTIVITY_TIMEOUT_SECONDS
     minimum_seconds: int = MIN_TEXT_CHAT_INACTIVITY_TIMEOUT_SECONDS
     maximum_seconds: int = MAX_TEXT_CHAT_INACTIVITY_TIMEOUT_SECONDS
+
+
+def resolve_call_disclosure(
+    workflow_configurations: dict | None,
+) -> CallDisclosureConfiguration:
+    """Read the call disclosure from a stored configuration document.
+
+    A missing key means the defaults, so the disclosure is on. A stored value
+    that no longer validates also falls back to the defaults rather than
+    failing the call or silently skipping the legally required notice.
+    """
+    raw = (workflow_configurations or {}).get("call_disclosure")
+    if raw is None:
+        return CallDisclosureConfiguration()
+    try:
+        return CallDisclosureConfiguration.model_validate(raw)
+    except ValidationError:
+        logger.warning("Invalid call_disclosure configuration; using the default")
+        return CallDisclosureConfiguration()
 
 
 def get_default_workflow_configurations() -> WorkflowConfigurationDefaults:

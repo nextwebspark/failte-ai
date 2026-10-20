@@ -11,6 +11,7 @@ from pipecat.utils.enums import EndTaskReason
 from api.db.models import OrganizationModel, UserModel, organization_users_association
 from api.enums import OrganizationConfigurationKey
 from api.schemas.ai_model_configuration import EffectiveAIModelConfiguration
+from api.schemas.workflow_configurations import DEFAULT_CALL_DISCLOSURE_TEXT
 from api.services.configuration.ai_model_configuration import (
     convert_legacy_ai_model_configuration_to_v2,
 )
@@ -28,6 +29,10 @@ from api.services.workflow.text_chat_session_service import (
 from api.tasks.function_names import FunctionNames
 from api.tests.integrations._run_pipeline_helpers import USER_CONFIGURATION
 from pipecat.tests import MockLLMService
+
+# Every conversation opens with the AI and recording disclosure, which is on by
+# default; text chat delivers it as the start of the first assistant message.
+DISCLOSURE_PREFIX = f"{DEFAULT_CALL_DISCLOSURE_TEXT}\n\n"
 
 
 def _log_texts(logs: dict | None, event_type: str) -> list[str]:
@@ -324,7 +329,10 @@ async def test_text_chat_session_creation_executes_initial_assistant_turn(
     assert len(turns) == 1
     assert turns[0]["status"] == "completed"
     assert turns[0]["user_message"] is None
-    assert turns[0]["assistant_message"]["text"] == "Hello from the workflow tester."
+    assert (
+        turns[0]["assistant_message"]["text"]
+        == f"{DISCLOSURE_PREFIX}Hello from the workflow tester."
+    )
     assert turns[0]["checkpoint_after_turn"]["current_node_id"] == "start"
     assert created["checkpoint"]["current_node_id"] == "start"
     assert created["state"] == "running"
@@ -343,7 +351,7 @@ async def test_text_chat_session_creation_executes_initial_assistant_turn(
     }
     assert "call_duration_seconds" in workflow_run.usage_info
     assert _log_texts(run_payload["logs"], "rtf-bot-text") == [
-        "Hello from the workflow tester."
+        f"{DISCLOSURE_PREFIX}Hello from the workflow tester."
     ]
 
 
@@ -465,7 +473,7 @@ async def test_text_chat_pre_call_fetch_hydrates_initial_context_once(
 
     assert (
         created["session_data"]["turns"][0]["assistant_message"]["text"]
-        == "Welcome Fetched (gold)."
+        == f"{DISCLOSURE_PREFIX}Welcome Fetched (gold)."
     )
     assert (
         message_response.json()["session_data"]["turns"][1]["assistant_message"]["text"]
@@ -606,7 +614,10 @@ async def test_text_chat_message_executes_assistant_turn(
     assert payload["session_data"]["status"] == "idle"
     assert len(turns) == 2
     assert turns[0]["user_message"] is None
-    assert turns[0]["assistant_message"]["text"] == "Welcome to the workflow tester."
+    assert (
+        turns[0]["assistant_message"]["text"]
+        == f"{DISCLOSURE_PREFIX}Welcome to the workflow tester."
+    )
     assert turns[1]["status"] == "completed"
     assert turns[1]["user_message"]["text"] == "Hi there"
     assert turns[1]["assistant_message"]["text"] == "Hello from the workflow tester."
@@ -619,7 +630,7 @@ async def test_text_chat_message_executes_assistant_turn(
     assert "call_duration_seconds" in workflow_run.usage_info
     assert _log_texts(run_payload["logs"], "rtf-user-transcription") == ["Hi there"]
     assert _log_texts(run_payload["logs"], "rtf-bot-text") == [
-        "Welcome to the workflow tester.",
+        f"{DISCLOSURE_PREFIX}Welcome to the workflow tester.",
         "Hello from the workflow tester.",
     ]
 
@@ -1969,11 +1980,105 @@ async def test_text_chat_greeting_only_plays_on_fresh_node_entry(
         "assistant_message"
     ]["text"]
 
-    assert opening_text == "Welcome to the workflow tester."
+    assert opening_text == f"{DISCLOSURE_PREFIX}Welcome to the workflow tester."
     assert "Welcome to the workflow tester." not in first_text
+    # The disclosure opens the conversation once, never again on later turns.
+    assert DEFAULT_CALL_DISCLOSURE_TEXT not in first_text
+    assert DEFAULT_CALL_DISCLOSURE_TEXT not in second_text
     assert "First answer." in first_text
     assert "Welcome to the workflow tester." not in second_text
     assert "Second answer." in second_text
+
+
+@pytest.mark.asyncio
+async def test_text_chat_sends_a_recorded_disclosure_as_its_text(
+    db_session,
+    async_session,
+    test_client_factory,
+):
+    """Text chat has no audio: an audio disclosure is sent as its (templated)
+    text, ahead of the greeting, and a disabled one is not sent at all."""
+    workflow_definition = {
+        "nodes": [
+            {
+                "id": "start",
+                "type": "startCall",
+                "position": {"x": 0, "y": 0},
+                "data": {
+                    "name": "Start",
+                    "prompt": "You are a helpful assistant.",
+                    "is_start": True,
+                    "allow_interrupt": False,
+                    "add_global_prompt": False,
+                    "greeting_type": "text",
+                    "greeting": "Welcome to the disclosure test.",
+                },
+            },
+            {
+                "id": "end",
+                "type": "endCall",
+                "position": {"x": 0, "y": 200},
+                "data": {
+                    "name": "End",
+                    "prompt": "Wrap up the conversation.",
+                    "is_end": True,
+                    "allow_interrupt": False,
+                    "add_global_prompt": False,
+                },
+            },
+        ],
+        "edges": [
+            {
+                "id": "start-end",
+                "source": "start",
+                "target": "end",
+                "data": {"label": "End Call", "condition": "When the task is done."},
+            }
+        ],
+    }
+
+    user, workflow = await _create_user_and_workflow(
+        db_session,
+        async_session,
+        workflow_definition=workflow_definition,
+        suffix="disclosure-audio",
+    )
+
+    async def opening_text(call_disclosure: dict) -> str:
+        await db_session.save_workflow_draft(
+            workflow_id=workflow.id,
+            workflow_definition=workflow_definition,
+            workflow_configurations={"call_disclosure": call_disclosure},
+            template_context_variables={"business": "Bloom Dental"},
+        )
+        async with test_client_factory(user) as client:
+            with (
+                patch(
+                    "api.services.workflow.text_chat_runner.create_llm_service",
+                    return_value=MockLLMService(mock_steps=[], chunk_delay=0.001),
+                ),
+                patch(
+                    "api.services.workflow.text_chat_runner.db_client.has_active_recordings",
+                    new=AsyncMock(return_value=False),
+                ),
+            ):
+                response = await client.post(
+                    f"/api/v1/workflow/{workflow.id}/text-chat/sessions",
+                    json={},
+                )
+        assert response.status_code == 200
+        return response.json()["session_data"]["turns"][0]["assistant_message"]["text"]
+
+    assert await opening_text(
+        {
+            "type": "audio",
+            "recording_id": "ai_notice",
+            "text": "{{business}} uses an AI assistant on this chat.",
+        }
+    ) == (
+        "Bloom Dental uses an AI assistant on this chat.\n\nWelcome to the disclosure test."
+    )
+    assert await opening_text({"enabled": False}) == "Welcome to the disclosure test."
 
 
 @pytest.mark.asyncio
@@ -2192,7 +2297,7 @@ async def test_text_chat_rewind_reuses_checkpoint_snapshot(
         "Third turn after rewind",
     ]
     assert _log_texts(final_run_payload["logs"], "rtf-bot-text") == [
-        "Welcome to the rewind test.",
+        f"{DISCLOSURE_PREFIX}Welcome to the rewind test.",
         "Agent one here.",
         "Back in agent one.",
     ]
