@@ -78,7 +78,7 @@ export const AGENT_NAV_SECTIONS: AgentNavSection[] = [
         title: "Deployment",
         segment: "/deployment",
         icon: Zap,
-        subtitle: "Put this agent on your website",
+        subtitle: "Put this agent on a phone number or your website",
       },
     ],
   },

@@ -104,3 +104,7 @@ Done since the steps above:
   browser, connect a number or the website) stands in for the all-zero stats
   until the first call, and stays until an agent is reachable or it is hidden.
   Search, filter and sort appear from the second agent.
+- An agent's Deployment page is how callers reach it: a Phone section
+  (`deployment/AgentPhoneNumbers.tsx`) lists the numbers that ring it and
+  connects any workspace number in one step, then the Website widget. The
+  setup checklist and "Your agent is ready" link to it (`#phone`, `#website`).

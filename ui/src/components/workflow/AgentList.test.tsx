@@ -81,7 +81,8 @@ describe('AgentList for a new workspace', () => {
         expect(screen.getByRole('heading', { name: 'Get your agent ready for calls' })).toBeTruthy();
         expect(screen.getByText('1 of 3 done')).toBeTruthy();
         expect(screen.getByRole('link', { name: 'Talk to your agent' }).getAttribute('href')).toBe('/workflow/7');
-        expect(screen.getByRole('link', { name: 'Add to your website' }).getAttribute('href')).toBe('/workflow/7/deployment');
+        expect(screen.getByRole('link', { name: 'Add a phone number' }).getAttribute('href')).toBe('/workflow/7/deployment#phone');
+        expect(screen.getByRole('link', { name: 'Add to your website' }).getAttribute('href')).toBe('/workflow/7/deployment#website');
         expect(screen.queryByText('Live now')).toBeNull();
         // One agent: nothing to search or sort yet.
         expect(screen.queryByLabelText('Search agents')).toBeNull();

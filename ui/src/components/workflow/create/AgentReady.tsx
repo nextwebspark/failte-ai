@@ -63,7 +63,7 @@ export function AgentReady({ agentId, items, onTalk }: AgentReadyProps) {
                     Talk to your agent
                 </Button>
                 <div className="flex items-center gap-5 text-[13.5px]">
-                    <Link href="/telephony-configurations" className="font-semibold text-brand hover:underline">
+                    <Link href={`/workflow/${agentId}/deployment#phone`} className="font-semibold text-brand hover:underline">
                         Give it a phone number
                     </Link>
                     <span aria-hidden className="text-line">
