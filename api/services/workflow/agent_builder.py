@@ -549,7 +549,6 @@ def _edge(source: str, target: str, *, label: str, condition: str) -> dict[str, 
         "source": source,
         "target": target,
         "type": "custom",
-        "animated": True,
         "data": {"label": label, "condition": condition},
     }
 

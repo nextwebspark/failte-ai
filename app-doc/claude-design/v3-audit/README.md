@@ -84,10 +84,11 @@ Status is kept here so the next session knows where to pick up.
 
 ## Known leftovers
 
-- Edge labels on the editor canvas keep their old style.
+None. Done since the steps above:
 
-Done since the steps above:
-
+- Editor connections: solid ink lines (no marching dashes), brand on hover
+  and select like the steps, labels as small mono tags, and a "Move on when"
+  card with the full condition, Edit and Delete on hover (`CustomEdge.tsx`).
 - The editor's node restyle (coloured step icons, kind labels, tool/skill
   chips), the canvas legend and `StatusPill` for the agent nav's version.
 - The header actions use a `toolbar` button size instead of the `.page-actions`

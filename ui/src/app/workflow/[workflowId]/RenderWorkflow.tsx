@@ -495,7 +495,6 @@ function RenderWorkflow({
 
     // Memoize defaultEdgeOptions to prevent unnecessary re-renders
     const defaultEdgeOptions = useMemo(() => ({
-        animated: true,
         type: "custom"
     }), []);
 
