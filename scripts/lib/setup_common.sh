@@ -258,6 +258,16 @@ dograh_sync_remote_env_file() {
     # so sync it here for installs whose .env predates the key.
     dograh_set_env_key "$env_file" ENABLE_COTURN true
 
+    # ENVIRONMENT=production refuses to start without CREDENTIALS_ENCRYPTION_KEYS,
+    # which installs older than secrets-at-rest encryption lack. Generate it once;
+    # an existing value is never replaced (rows encrypted with it would become
+    # unreadable). Back it up with the database.
+    if ! grep -qE '^CREDENTIALS_ENCRYPTION_KEYS=.+' "$env_file"; then
+        dograh_set_env_key "$env_file" CREDENTIALS_ENCRYPTION_KEYS \
+            "$(openssl rand -base64 32 | tr '+/' '-_')"
+        dograh_warn "Generated CREDENTIALS_ENCRYPTION_KEYS in $env_file: back it up with your database; losing it makes stored secrets unreadable."
+    fi
+
     # BACKEND_API_ENDPOINT / MINIO_PUBLIC_ENDPOINT / TURN_HOST are derived in-app
     # from PUBLIC_BASE_URL / PUBLIC_HOST (see api/constants.py), so sync neither
     # writes nor removes them: new installs simply omit them, and any value an

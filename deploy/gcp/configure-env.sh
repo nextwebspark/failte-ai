@@ -9,7 +9,10 @@
 #
 #   sudo DOGRAH_SQL_IP=10.70.0.3 ./deploy/gcp/configure-env.sh
 #
-# Idempotent — re-run any time to re-sync from Secret Manager.
+# Idempotent — re-run any time to re-sync from Secret Manager. Each run first
+# copies .env to .env.bak.<UTC timestamp>. First install on an empty database
+# without dograh-credentials-encryption-keys: add DOGRAH_GENERATE_CREDENTIALS_KEY=1
+# (see "Secrets at rest" below).
 
 set -euo pipefail
 
@@ -57,50 +60,6 @@ PY
   echo "  removed $key"
 }
 
-echo "reading secrets from Secret Manager (project $PROJECT)..."
-DB_PW="$(sm dograh-db-password)"
-HMAC_ID="$(sm dograh-s3-hmac-access-id)"
-HMAC_SECRET="$(sm dograh-s3-hmac-secret)"
-
-echo "writing $ENV_FILE ..."
-set_key ENVIRONMENT production
-set_key REGISTRY "${REGION}-docker.pkg.dev/${PROJECT}/${REPO}"
-
-# NOTE: docker-compose.yaml hardcodes DATABASE_URL to the postgres container.
-# This value only takes effect through deploy/gcp/docker-compose.override.yaml,
-# which overrides that key. Without the overlay the app still talks to a local
-# container and this line is silently ignored.
-set_key DATABASE_URL "postgresql+asyncpg://dograh:${DB_PW}@${SQL_IP}:5432/dograh"
-
-# Object storage: GCS through its S3-compatible XML API. No code change needed —
-# api/services/filesystem/s3.py already honours these.
-set_key ENABLE_AWS_S3 true
-set_key S3_BUCKET "$BUCKET"
-set_key S3_REGION "$REGION"
-set_key S3_ENDPOINT_URL https://storage.googleapis.com
-set_key S3_SIGNATURE_VERSION s3v4
-set_key S3_ADDRESSING_STYLE virtual
-set_key AWS_ACCESS_KEY_ID "$HMAC_ID"
-set_key AWS_SECRET_ACCESS_KEY "$HMAC_SECRET"
-
-set_key OSS_JWT_SECRET "$(sm dograh-oss-jwt-secret)"
-set_key TURN_SECRET "$(sm dograh-turn-secret)"
-set_key DOGRAH_DEVOPS_SECRET "$(sm dograh-devops-secret)"
-# TELEPHONY_WS_TOKEN_SECRET and its enforcement are set further down, once
-# sm_optional and env_value exist.
-
-# Billing, email and Google are opt-in: each is configured only when its secret
-# exists in Secret Manager, so an install without them keeps working unchanged.
-# Create each secret, then let the VM's service account read it (it has no
-# project-wide Secret Manager access):
-#   read -rs V && printf %s "$V" | gcloud secrets create <name> --data-file=- --project=dograh-eu
-#   gcloud secrets add-iam-policy-binding <name> --project=dograh-eu \
-#     --member=serviceAccount:dograh-app-sa@dograh-eu.iam.gserviceaccount.com \
-#     --role=roles/secretmanager.secretAccessor
-# Names: dograh-stripe-secret-key (sk_test_/sk_live_), dograh-stripe-webhook-secret
-# (whsec_ of the dashboard endpoint), dograh-resend-api-key (re_...),
-# dograh-google-oauth-client-id / dograh-google-oauth-client-secret.
-#
 # sm_read NAME VAR: reads secret NAME into variable VAR (empty unless read).
 # Returns 0 when read, 3 when absent (NOT_FOUND), 4 when not readable: without
 # project-wide access a missing secret answers PERMISSION_DENIED ("or it may
@@ -137,6 +96,142 @@ sm_optional() {
 }
 
 env_value() { grep -E "^$1=" "$ENV_FILE" | tail -1 | cut -d= -f2- || true; }
+
+# Every run rewrites .env in place: keep a timestamped, root-only copy first so
+# any value this run replaces (a key above all) can be recovered.
+ENV_BACKUP="$ENV_FILE.bak.$(date -u +%Y%m%dT%H%M%SZ)"
+install -m 600 "$ENV_FILE" "$ENV_BACKUP"
+echo "backed up $ENV_FILE to $ENV_BACKUP"
+
+# Secrets at rest (api): external credentials, telephony credentials,
+# integration connection details and organization configuration values are
+# Fernet-encrypted with CREDENTIALS_ENCRYPTION_KEYS, and with
+# ENVIRONMENT=production the api refuses to start without it. Decided before
+# anything is written, so a refusal leaves .env untouched. Losing or silently
+# replacing the key makes every stored secret unreadable, so this never guesses:
+#   - Secret Manager (dograh-credentials-encryption-keys) and .env agree, or
+#     only one has a value: that value.
+#   - Both have values and they differ: refuse, unless
+#     DOGRAH_CREDENTIALS_KEYS_OVERRIDE=sm (take Secret Manager's, e.g. after
+#     adding a key there for rotation) or =env (keep .env's).
+#   - Neither: refuse, unless DOGRAH_GENERATE_CREDENTIALS_KEY=1 (first install
+#     on an empty database only). The new key goes to Secret Manager when this
+#     identity may create the secret, otherwise only to .env (warned loudly).
+# README.md "Encryption at rest" has the recovery and rotation steps.
+SM_CRED_KEYS="$(sm_optional dograh-credentials-encryption-keys)"
+ENV_CRED_KEYS="$(env_value CREDENTIALS_ENCRYPTION_KEYS)"
+CRED_KEYS=""
+if [[ -n "$SM_CRED_KEYS" && -n "$ENV_CRED_KEYS" && "$SM_CRED_KEYS" != "$ENV_CRED_KEYS" ]]; then
+  case "${DOGRAH_CREDENTIALS_KEYS_OVERRIDE:-}" in
+    sm)
+      CRED_KEYS="$SM_CRED_KEYS"
+      echo "  CREDENTIALS_ENCRYPTION_KEYS: taking Secret Manager's value" \
+        "(DOGRAH_CREDENTIALS_KEYS_OVERRIDE=sm); the previous .env value is in" \
+        "$ENV_BACKUP" >&2
+      ;;
+    env)
+      CRED_KEYS="$ENV_CRED_KEYS"
+      echo "  WARNING: CREDENTIALS_ENCRYPTION_KEYS: keeping the .env value" \
+        "(DOGRAH_CREDENTIALS_KEYS_OVERRIDE=env), but dograh-credentials-encryption-keys" \
+        "in Secret Manager still differs. Update the secret to match (README.md" \
+        "\"Encryption at rest\")." >&2
+      ;;
+    *)
+      cat >&2 <<MSG
+ERROR: CREDENTIALS_ENCRYPTION_KEYS in $ENV_FILE differs from the Secret Manager
+secret dograh-credentials-encryption-keys. Nothing was changed. Replacing the
+key the database was encrypted with makes every stored secret unreadable, so
+decide which one is right and re-run with:
+  DOGRAH_CREDENTIALS_KEYS_OVERRIDE=sm   use Secret Manager's value (e.g. you
+                                        added a key there for rotation)
+  DOGRAH_CREDENTIALS_KEYS_OVERRIDE=env  keep the .env value (then update the
+                                        secret to match)
+Unsure which encrypted the data? Put both in the secret, comma-separated, the
+one to encrypt with first: every listed key decrypts. Then use =sm.
+See README.md "Encryption at rest".
+MSG
+      exit 1
+      ;;
+  esac
+elif [[ -n "$SM_CRED_KEYS" ]]; then
+  CRED_KEYS="$SM_CRED_KEYS"
+elif [[ -n "$ENV_CRED_KEYS" ]]; then
+  CRED_KEYS="$ENV_CRED_KEYS"
+  echo "  dograh-credentials-encryption-keys not readable: keeping" \
+    "CREDENTIALS_ENCRYPTION_KEYS from .env. Store it in Secret Manager so" \
+    "it survives the VM (README.md \"Encryption at rest\")." >&2
+elif [[ "${DOGRAH_GENERATE_CREDENTIALS_KEY:-}" == 1 ]]; then
+  CRED_KEYS="$(python3 -c 'import base64, os; print(base64.urlsafe_b64encode(os.urandom(32)).decode())')"
+  if printf '%s' "$CRED_KEYS" | gcloud secrets create dograh-credentials-encryption-keys \
+      --data-file=- --project="$PROJECT" --replication-policy=user-managed \
+      --locations="$REGION" >/dev/null 2>&1; then
+    echo "  generated CREDENTIALS_ENCRYPTION_KEYS and stored it in Secret Manager" \
+      "(dograh-credentials-encryption-keys)"
+  else
+    echo "  WARNING: generated CREDENTIALS_ENCRYPTION_KEYS, but could not create" \
+      "the dograh-credentials-encryption-keys secret: the key exists ONLY in" \
+      "$ENV_FILE. Copy it into Secret Manager now (README.md \"Encryption at" \
+      "rest\"); losing it makes every stored secret unreadable." >&2
+  fi
+else
+  cat >&2 <<MSG
+ERROR: no CREDENTIALS_ENCRYPTION_KEYS: the Secret Manager secret
+dograh-credentials-encryption-keys is absent or not readable by this VM, and
+$ENV_FILE has none. Nothing was changed.
+  - Existing database (e.g. a rebuilt VM): restore the key the data was
+    encrypted with: grant this VM's service account read access to the secret,
+    or recreate the secret from your key backup. A new key cannot read the
+    secrets already stored.
+  - First install on an empty database: re-run with
+    DOGRAH_GENERATE_CREDENTIALS_KEY=1 to generate one.
+See README.md "Encryption at rest".
+MSG
+  exit 1
+fi
+
+echo "reading secrets from Secret Manager (project $PROJECT)..."
+DB_PW="$(sm dograh-db-password)"
+HMAC_ID="$(sm dograh-s3-hmac-access-id)"
+HMAC_SECRET="$(sm dograh-s3-hmac-secret)"
+
+echo "writing $ENV_FILE ..."
+set_key ENVIRONMENT production
+set_key REGISTRY "${REGION}-docker.pkg.dev/${PROJECT}/${REPO}"
+
+# NOTE: docker-compose.yaml hardcodes DATABASE_URL to the postgres container.
+# This value only takes effect through deploy/gcp/docker-compose.override.yaml,
+# which overrides that key. Without the overlay the app still talks to a local
+# container and this line is silently ignored.
+set_key DATABASE_URL "postgresql+asyncpg://dograh:${DB_PW}@${SQL_IP}:5432/dograh"
+
+# Object storage: GCS through its S3-compatible XML API. No code change needed —
+# api/services/filesystem/s3.py already honours these.
+set_key ENABLE_AWS_S3 true
+set_key S3_BUCKET "$BUCKET"
+set_key S3_REGION "$REGION"
+set_key S3_ENDPOINT_URL https://storage.googleapis.com
+set_key S3_SIGNATURE_VERSION s3v4
+set_key S3_ADDRESSING_STYLE virtual
+set_key AWS_ACCESS_KEY_ID "$HMAC_ID"
+set_key AWS_SECRET_ACCESS_KEY "$HMAC_SECRET"
+
+set_key OSS_JWT_SECRET "$(sm dograh-oss-jwt-secret)"
+set_key TURN_SECRET "$(sm dograh-turn-secret)"
+set_key DOGRAH_DEVOPS_SECRET "$(sm dograh-devops-secret)"
+# TELEPHONY_WS_TOKEN_SECRET and its enforcement are set further down.
+
+# Billing, email and Google are opt-in: each is configured only when its secret
+# exists in Secret Manager, so an install without them keeps working unchanged.
+# Create each secret, then let the VM's service account read it (it has no
+# project-wide Secret Manager access):
+#   read -rs V && printf %s "$V" | gcloud secrets create <name> --data-file=- --project=dograh-eu
+#   gcloud secrets add-iam-policy-binding <name> --project=dograh-eu \
+#     --member=serviceAccount:dograh-app-sa@dograh-eu.iam.gserviceaccount.com \
+#     --role=roles/secretmanager.secretAccessor
+# Names: dograh-stripe-secret-key (sk_test_/sk_live_), dograh-stripe-webhook-secret
+# (whsec_ of the dashboard endpoint), dograh-resend-api-key (re_...),
+# dograh-google-oauth-client-id / dograh-google-oauth-client-secret.
+#
 
 STRIPE_KEY="$(sm_optional dograh-stripe-secret-key)"
 if [[ -n "$STRIPE_KEY" ]]; then
@@ -215,39 +310,7 @@ fi
 set_key TELEPHONY_WS_TOKEN_SECRET "$WS_SECRET"
 set_key TELEPHONY_WS_TOKEN_ENFORCE true
 
-# Secrets at rest (api): external credentials, telephony credentials,
-# integration connection details and organization configuration values are
-# Fernet-encrypted with CREDENTIALS_ENCRYPTION_KEYS, and with
-# ENVIRONMENT=production the api refuses to start without it. So this always
-# ends with the key set:
-#   1. the Secret Manager secret dograh-credentials-encryption-keys, if readable;
-#   2. else the value already in .env (kept, with a warning to back it up);
-#   3. else a freshly generated key, stored in Secret Manager when this
-#      identity may create the secret, otherwise only in .env (warned loudly).
-# Never remove a key while rows encrypted with it exist: back it up with the
-# database backups. Rotation: README.md "Encryption at rest".
-CRED_KEYS="$(sm_optional dograh-credentials-encryption-keys)"
-if [[ -z "$CRED_KEYS" ]]; then
-  CRED_KEYS="$(env_value CREDENTIALS_ENCRYPTION_KEYS)"
-  if [[ -n "$CRED_KEYS" ]]; then
-    echo "  dograh-credentials-encryption-keys not readable: keeping" \
-      "CREDENTIALS_ENCRYPTION_KEYS from .env. Store it in Secret Manager so" \
-      "it survives the VM (README.md \"Encryption at rest\")." >&2
-  else
-    CRED_KEYS="$(python3 -c 'import base64, os; print(base64.urlsafe_b64encode(os.urandom(32)).decode())')"
-    if printf '%s' "$CRED_KEYS" | gcloud secrets create dograh-credentials-encryption-keys \
-        --data-file=- --project="$PROJECT" --replication-policy=user-managed \
-        --locations="$REGION" >/dev/null 2>&1; then
-      echo "  generated CREDENTIALS_ENCRYPTION_KEYS and stored it in Secret Manager" \
-        "(dograh-credentials-encryption-keys)"
-    else
-      echo "  WARNING: generated CREDENTIALS_ENCRYPTION_KEYS, but could not create" \
-        "the dograh-credentials-encryption-keys secret: the key exists ONLY in" \
-        "$ENV_FILE. Copy it into Secret Manager now (README.md \"Encryption at" \
-        "rest\"); losing it makes every stored secret unreadable." >&2
-    fi
-  fi
-fi
+# CREDENTIALS_ENCRYPTION_KEYS was decided at the top, before .env changed.
 set_key CREDENTIALS_ENCRYPTION_KEYS "$CRED_KEYS"
 
 # fallcha-tools (integrations). REQUIRED: the overlay runs fallcha-tools and
