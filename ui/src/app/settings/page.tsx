@@ -4,6 +4,8 @@
 import { CallEventsSection } from "@/components/CallEventsSection";
 import { MCPSection } from "@/components/MCPSection";
 import { OrganizationPreferencesSection } from "@/components/OrganizationPreferencesSection";
+import { DangerZoneCard } from "@/components/privacy/DangerZoneCard";
+import { YourAccountCard } from "@/components/privacy/YourAccountCard";
 import { TelemetrySection } from "@/components/TelemetrySection";
 import {
   Card,
@@ -17,8 +19,21 @@ import { useOrgConfig } from "@/context/OrgConfigContext";
 
 export default function SettingsPage() {
   // Organization-wide defaults are admin-only; the rest are integrations.
-  const { can } = useOrgConfig();
+  const { can, orgContext } = useOrgConfig();
   const canManageOrg = can("org:manage");
+  // A pending deletion closes everything but the account and danger zone.
+  const pendingDeletion = Boolean(orgContext?.deletion?.pending);
+
+  if (pendingDeletion) {
+    return (
+      <div className="page-body">
+        <div className="w-full max-w-2xl space-y-6">
+          {canManageOrg && <DangerZoneCard />}
+          <YourAccountCard />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="page-body">
@@ -72,6 +87,9 @@ export default function SettingsPage() {
             <CallEventsSection />
           </CardContent>
         </Card>
+
+        <YourAccountCard />
+        {canManageOrg && <DangerZoneCard />}
       </div>
     </div>
   );

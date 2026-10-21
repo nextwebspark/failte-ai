@@ -6,7 +6,7 @@ import { client } from '@/client/client.gen';
 import { getCurrentOrganizationContextApiV1OrganizationsContextGet, getPreferencesApiV1OrganizationsPreferencesGet, getUserConfigurationsApiV1UserConfigurationsUserGet } from '@/client/sdk.gen';
 import type { OrganizationContextResponse, OrganizationPreferencesResponse, UserConfigurationRequestResponseSchema } from '@/client/types.gen';
 import { setupAuthInterceptor } from '@/lib/apiClient';
-import { detailFromError } from '@/lib/apiError';
+import { detailFromError, errorCodeFromError } from '@/lib/apiError';
 import type { AuthUser } from '@/lib/auth';
 import { useAuth } from '@/lib/auth';
 import type { OrgRole, Permission } from '@/lib/auth/roles';
@@ -84,10 +84,6 @@ export function OrgConfigProvider({ children }: { children: ReactNode }) {
                 getPreferencesApiV1OrganizationsPreferencesGet(),
             ]);
 
-            if (preferencesResponse.error) {
-                throw new Error(detailFromError(preferencesResponse.error, 'Failed to load organization preferences'));
-            }
-
             if (orgContextResponse.data) {
                 setOrgContext(orgContextResponse.data);
             }
@@ -95,6 +91,15 @@ export function OrgConfigProvider({ children }: { children: ReactNode }) {
             if (userConfigResponse.data) {
                 setUserConfig(userConfigResponse.data);
                 setOrganizationPricing(pricingFromUserConfig(userConfigResponse.data));
+            }
+
+            // An organization pending deletion refuses its preferences (423);
+            // the context above carries the deletion state the app shows.
+            if (
+                preferencesResponse.error &&
+                errorCodeFromError(preferencesResponse.error) !== 'organization_pending_deletion'
+            ) {
+                throw new Error(detailFromError(preferencesResponse.error, 'Failed to load organization preferences'));
             }
 
             if (preferencesResponse.data) {
