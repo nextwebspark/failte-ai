@@ -102,6 +102,7 @@ def parse_document(
         else:
             parsed = _parse_plain_text(text, fallback_title)
 
+    parsed.title = _shorten(parsed.title.replace("\n", " ")) or fallback_title
     parsed.sections = [s for s in parsed.sections if s.blocks]
     if not parsed.sections or not parsed.full_text.strip():
         raise DocumentParseError(
@@ -131,6 +132,20 @@ def _extension_for(filename: str, content_type: str | None) -> str:
 def _title_from_filename(filename: str) -> str:
     stem = os.path.splitext(os.path.basename(filename))[0]
     return re.sub(r"[_]+", " ", stem).strip() or "Document"
+
+
+# Titles and headings travel with every chunk; a "heading" longer than this is
+# a formatting accident, not a heading.
+MAX_HEADING_CHARS = 200
+
+
+def _shorten(text: str, limit: int = MAX_HEADING_CHARS) -> str:
+    text = text.strip()
+    if len(text) <= limit:
+        return text
+    cut = text[: limit - 1]
+    space = cut.rfind(" ")
+    return (cut[:space] if space > limit // 2 else cut).rstrip() + "…"
 
 
 def _decode(data: bytes) -> str:
@@ -164,7 +179,7 @@ class _SectionBuilder:
         self.sections: list[Section] = [Section(headings=())]
 
     def heading(self, level: int, text: str) -> None:
-        text = _clean(text).replace("\n", " ")
+        text = _shorten(_clean(text).replace("\n", " "))
         if not text:
             return
         while self._stack and self._stack[-1][0] >= level:

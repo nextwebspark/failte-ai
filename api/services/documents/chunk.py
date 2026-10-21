@@ -1,9 +1,12 @@
 """Split parsed documents into overlapping, heading-aware chunks for search.
 
-Chunks never cross a heading, never split a word and prefer to end at a
-paragraph, line or sentence break. Sizes are estimated from words and
+Chunks never cross a heading and prefer to end at a paragraph, line or
+sentence break. Words are kept whole unless a single "word" is too long to be
+one (a URL, a base64 blob, or Chinese/Japanese text written without spaces);
+those are cut into character windows. Sizes are estimated from words and
 characters rather than with a tokenizer, so this needs no model files: about
-4/3 tokens per word, or one per 4 characters for long words such as URLs.
+4/3 tokens per word, one per 4 characters for long words, and one per CJK
+character.
 """
 
 from __future__ import annotations
@@ -19,7 +22,17 @@ DEFAULT_TARGET_TOKENS = 400
 DEFAULT_OVERLAP_TOKENS = 50
 
 _WORD = re.compile(r"\S+")
-_SENTENCE_END = re.compile(r"[.!?:;][\"')\]]*$")
+_SENTENCE_END = re.compile(r"[.!?:;。！？；][\"')\]」』）]*$")
+# Hiragana, katakana, CJK ideographs, Hangul and full-width forms: about one
+# token per character.
+_CJK = re.compile(
+    r"[\u3000-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uac00-\ud7af\uf900-\ufaff\uff00-\uffef]"
+)
+_SENTENCE_CHARS = frozenset(".!?;。！？；")
+# A "word" estimated above this is cut into character windows of this size.
+_MAX_PIECE_TOKENS = 32
+# The "title > heading > heading" prefix embedded with every chunk.
+_MAX_PREFIX_CHARS = 300
 # A chunk may end early, at a better break, once it holds this share of its budget.
 _MIN_FILL_BEFORE_BREAK = 0.6
 
@@ -34,13 +47,52 @@ class _Word:
     break_score: int
 
 
+def _char_cost(char: str) -> float:
+    return 1.0 if _CJK.match(char) else 0.25
+
+
 def _word_cost(word: str) -> float:
-    return max(4 / 3, len(word) / 4)
+    cjk = len(_CJK.findall(word))
+    return max(4 / 3, cjk + (len(word) - cjk) / 4)
 
 
 def estimate_tokens(text: str) -> int:
     """Rough token count of *text* (no tokenizer)."""
     return math.ceil(sum(_word_cost(word) for word in _WORD.findall(text)))
+
+
+def _pieces(word: str, start: int) -> list[tuple[int, int, float]]:
+    """(start, end, cost) of *word*, cut into windows if it's too long.
+
+    A window ends after the last sentence end in its second half when there
+    is one, so text written without spaces still splits between sentences.
+    """
+    cost = _word_cost(word)
+    if cost <= _MAX_PIECE_TOKENS:
+        return [(start, start + len(word), cost)]
+    costs = [_char_cost(char) for char in word]
+    pieces: list[tuple[int, int, float]] = []
+    piece_start = 0
+    while piece_start < len(word):
+        end, total, last_sentence_end = piece_start, 0.0, None
+        while end < len(word) and (
+            end == piece_start or total + costs[end] <= _MAX_PIECE_TOKENS
+        ):
+            total += costs[end]
+            end += 1
+            if word[end - 1] in _SENTENCE_CHARS:
+                last_sentence_end = end
+        if (
+            end < len(word)
+            and last_sentence_end is not None
+            and last_sentence_end - piece_start > (end - piece_start) // 2
+        ):
+            end = last_sentence_end
+        pieces.append(
+            (start + piece_start, start + end, max(sum(costs[piece_start:end]), 1.0))
+        )
+        piece_start = end
+    return pieces
 
 
 def chunk_document(
@@ -56,16 +108,19 @@ def chunk_document(
 
     chunks: list[dict] = []
     for section in parsed.sections:
-        for text, pages in _split_section(section, max_tokens, overlap_tokens):
+        prefix = _context_prefix(parsed.title, section.headings)
+        # The prefix is embedded with every chunk, so it counts against the
+        # budget (never below half of it: the prefix itself is capped).
+        budget = max(max_tokens // 2, max_tokens - estimate_tokens(prefix))
+        overlap = min(overlap_tokens, budget // 2)
+        for text, pages in _split_section(section, budget, overlap):
             metadata: dict = {"headings": list(section.headings)}
             if pages:
                 metadata["page_numbers"] = pages
             chunks.append(
                 {
                     "chunk_text": text,
-                    "contextualized_text": _contextualize(
-                        parsed.title, section.headings, text
-                    ),
+                    "contextualized_text": f"{prefix}\n\n{text}" if prefix else text,
                     "chunk_index": len(chunks),
                     "chunk_metadata": metadata,
                     "token_count": estimate_tokens(text),
@@ -74,12 +129,16 @@ def chunk_document(
     return chunks
 
 
-def _contextualize(title: str, headings: tuple[str, ...], text: str) -> str:
+def _context_prefix(title: str, headings: tuple[str, ...]) -> str:
     path = list(headings)
     if path and path[0].casefold() == title.casefold():
         path = path[1:]
-    prefix = " > ".join([title, *path]) if title else " > ".join(path)
-    return f"{prefix}\n\n{text}" if prefix else text
+    prefix = " > ".join(part for part in [title, *path] if part)
+    if len(prefix) <= _MAX_PREFIX_CHARS:
+        return prefix
+    # Keep the start (title) and the end (the nearest heading), drop the middle.
+    keep = (_MAX_PREFIX_CHARS - 5) // 2
+    return f"{prefix[:keep].rstrip()} … {prefix[-keep:].lstrip()}"
 
 
 def _split_section(
@@ -126,15 +185,22 @@ def _words(section: Section) -> tuple[str, list[_Word]]:
                 score = 0
         else:
             score = 3
-        words.append(
-            _Word(
-                start=match.start(),
-                end=match.end(),
-                cost=_word_cost(match.group()),
-                page=block.page,
-                break_score=score,
+        pieces = _pieces(match.group(), match.start())
+        for number, (start, end, cost) in enumerate(pieces):
+            if number + 1 < len(pieces):
+                # Inside an over-long word: a sentence end is the best break.
+                piece_score = 1 if _SENTENCE_END.search(text[start:end]) else 0
+            else:
+                piece_score = score
+            words.append(
+                _Word(
+                    start=start,
+                    end=end,
+                    cost=cost,
+                    page=block.page,
+                    break_score=piece_score,
+                )
             )
-        )
     return text, words
 
 

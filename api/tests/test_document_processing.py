@@ -281,13 +281,86 @@ def test_chunks_record_pdf_pages():
     assert pages[-1] == [2]
 
 
-def test_a_huge_word_is_kept_whole():
-    blob = "x" * 4000
+def _covered(chunks) -> str:
+    """The section text the chunks cover, with the overlaps removed."""
+    text = ""
+    for chunk in chunks:
+        piece = chunk["chunk_text"]
+        overlap = next(
+            (
+                n
+                for n in range(min(len(text), len(piece)), 0, -1)
+                if text.endswith(piece[:n])
+            ),
+            0,
+        )
+        text += piece[overlap:]
+    return text
+
+
+def test_text_without_spaces_is_cut_into_bounded_chunks():
+    blob = "x" * 1_000_000
+    parsed = _doc(Section((), [Block(blob)]))
+
+    chunks = chunk_document(parsed, max_tokens=400, overlap_tokens=50)
+
+    assert len(chunks) > 600
+    assert max(c["token_count"] for c in chunks) <= 400
+    assert max(len(c["chunk_text"]) for c in chunks) <= 1600
+    assert sum(len(c["chunk_text"]) for c in chunks) >= len(blob)
+
+
+def test_long_words_beside_normal_text():
+    blob = "y" * 4000
     parsed = _doc(Section((), [Block(f"start {blob} end")]))
 
     chunks = chunk_document(parsed, max_tokens=400, overlap_tokens=50)
 
-    assert [c["chunk_text"] for c in chunks] == ["start", blob, "end"]
+    assert chunks[0]["chunk_text"].startswith("start y")
+    assert chunks[-1]["chunk_text"].endswith("y end")
+    assert all(c["token_count"] <= 400 for c in chunks)
+
+
+def test_chinese_without_spaces_is_estimated_per_character_and_split_at_sentences():
+    sentence = "这是一个关于退货政策的句子。"
+    # Numbered so the text isn't periodic and the coverage check is exact.
+    text = "".join(f"第{i}条{sentence}" for i in range(400))
+    parsed = _doc(Section((), [Block(text)]))
+
+    chunks = chunk_document(parsed, max_tokens=400, overlap_tokens=50)
+
+    assert estimate_tokens(sentence) == len(sentence)
+    assert len(chunks) > 10
+    for chunk in chunks:
+        assert estimate_tokens(chunk["chunk_text"]) <= 400
+        assert len(chunk["chunk_text"]) <= 450
+    # Chunks end between sentences, not mid-sentence.
+    assert all(c["chunk_text"].endswith("。") for c in chunks)
+    assert _covered(chunks) == text
+
+
+def test_huge_headings_are_capped_and_counted_in_the_budget():
+    heading = "Heading " * 20_000
+    parsed = _doc(
+        Section(("A", heading), [Block(_words(2000))]), title="Title " * 10_000
+    )
+
+    chunks = chunk_document(parsed, max_tokens=400, overlap_tokens=50)
+
+    for chunk in chunks:
+        prefix = chunk["contextualized_text"].split("\n\n", 1)[0]
+        assert len(prefix) <= 300
+        assert estimate_tokens(chunk["contextualized_text"]) <= 400 + 2
+
+
+def test_parser_caps_headings_and_titles(tmp_path):
+    path = _write(tmp_path, "long.md", "# " + "word " * 1000 + "\n\nBody text.")
+
+    parsed = parse_document(path, "long.md")
+
+    assert len(parsed.title) <= 200
+    assert parsed.title.endswith("…")
+    assert len(parsed.sections[0].headings[0]) <= 200
 
 
 # Processor -----------------------------------------------------------------------
