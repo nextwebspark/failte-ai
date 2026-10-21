@@ -14,6 +14,7 @@ from api.db.models import (
     WorkflowModel,
     WorkflowRunModel,
 )
+from api.db.retention_client import is_purged_run
 from api.enums import CallType, StorageBackend, WorkflowRunMode
 from api.schemas.workflow import WorkflowRunResponseSchema
 from api.services.workflow.run_usage_response import format_public_cost_info
@@ -480,14 +481,21 @@ class WorkflowRunClient(BaseDBClient):
             workflow_run_id: The ID of the workflow run
 
         Returns:
-            The public access token string, or None if workflow run not found
+            The public access token string, or None if the workflow run is not
+            found or its content was erased
         """
         async with self.async_session() as session:
+            # Locked, so an erasure scrubbing this row waits for us (or we for it).
             result = await session.execute(
-                select(WorkflowRunModel).where(WorkflowRunModel.id == workflow_run_id)
+                select(WorkflowRunModel)
+                .where(WorkflowRunModel.id == workflow_run_id)
+                .with_for_update()
             )
             run = result.scalars().first()
             if not run:
+                return None
+            if is_purged_run(run):
+                # An erased call has nothing left to share.
                 return None
 
             # Return existing token if present

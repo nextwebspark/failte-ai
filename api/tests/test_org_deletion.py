@@ -797,14 +797,15 @@ def test_prompt_recording_key_guard(recording_id, key, ok):
     ("given", "stored"),
     [
         ("greeting.wav", "greeting.wav"),
-        ("../../etc/passwd", "passwd"),
-        ("dir\\take 1.wav", "take 1.wav"),
+        # Kept, so the upload route refuses it (400) rather than renaming it.
+        ("a/../b.wav", "a/../b.wav"),
+        ("dir\\take 1.wav", "dir_take 1.wav"),
         ("héllo.mp3", "h_llo.mp3"),
         ("..", "recording"),
         (".hidden.wav", "hidden.wav"),
     ],
 )
-def test_recording_upload_filenames_are_one_safe_segment(given, stored):
+def test_recording_upload_filenames_are_sanitised(given, stored):
     from api.schemas.workflow_recording import FileDescriptor
 
     assert FileDescriptor(filename=given, file_size=10).filename == stored

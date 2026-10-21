@@ -14,6 +14,7 @@ from api.db.org_erasure_client import OrgErasureClient
 from api.db.organization_client import OrganizationClient
 from api.db.organization_configuration_client import OrganizationConfigurationClient
 from api.db.organization_usage_client import OrganizationUsageClient
+from api.db.privacy_client import PrivacyClient
 from api.db.reports_client import ReportsClient
 from api.db.retention_client import RetentionClient
 from api.db.skill_client import SkillClient
@@ -50,6 +51,7 @@ class DBClient(
     RetentionClient,
     OrgErasureClient,
     DataExportClient,
+    PrivacyClient,
     APIKeyClient,
     EmbedTokenClient,
     AgentTriggerClient,
@@ -85,6 +87,7 @@ class DBClient(
     - RetentionClient: finds and scrubs data past its retention period
     - OrgErasureClient: schedules, cancels and carries out organisation deletion
     - DataExportClient: reads account and organisation data for exports
+    - PrivacyClient: finds and erases one data subject's calls (GDPR requests)
     - APIKeyClient: handles API key operations
     - EmbedTokenClient: handles embed token and session operations
     - AgentTriggerClient: handles agent trigger operations for API-based call triggering

@@ -32,12 +32,14 @@ from api.db import db_client
 from api.db.org_erasure_client import PromptRecordingObject
 from api.errors.domain import DomainError
 from api.services.auth.stack_auth import StackAuthDeletionError, stackauth
-
-# TODO(PR B): these helpers become public in api.services.retention.purge.
+from api.services.privacy.stored_files import (
+    is_safe_storage_key,
+    is_workflow_recording_key,
+)
 from api.services.retention.purge import (
     StorageResolver,
-    _default_storage_resolver,
-    _delete_run_objects,
+    default_storage_resolver,
+    delete_run_objects,
 )
 from api.services.tool_integrations.client import ToolsServiceClient
 
@@ -81,15 +83,14 @@ def is_prompt_recording_key(
     key = recording.storage_key or ""
     if (
         not recording_id
+        or not is_safe_storage_key(recording_id)
         or "/" in recording_id
-        or recording_id in (".", "..")
         or recording_id in _RUN_ARTIFACT_SEGMENTS
     ):
         return False
-    prefix = f"recordings/{organization_id}/{recording_id}/"
-    if not key.startswith(prefix) or len(key) == len(prefix):
-        return False
-    return all(segment not in ("", ".", "..") for segment in key.split("/"))
+    return is_workflow_recording_key(organization_id, key) and key.startswith(
+        f"recordings/{organization_id}/{recording_id}/"
+    )
 
 
 @dataclass
@@ -115,7 +116,7 @@ async def _erase_runs(
             return
         cleared: list[int] = []
         for run in runs:
-            deleted = await _delete_run_objects(run, resolve_storage)
+            deleted = await delete_run_objects(run, resolve_storage)
             if deleted is None:
                 # Delete the rows whose objects are gone, then stop: the rest
                 # are retried on the next pass.
@@ -263,7 +264,7 @@ async def erase_deleted_organizations(
     only defers that organisation to the next pass.
     """
     now = now or datetime.now(UTC)
-    resolve_storage = resolve_storage or _default_storage_resolver()
+    resolve_storage = resolve_storage or default_storage_resolver()
     result = OrgErasureResult()
 
     after_id = 0

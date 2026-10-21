@@ -6,15 +6,16 @@ from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field, field_validator
 
-_UNSAFE_FILENAME_CHARS = re.compile(r"[^A-Za-z0-9._ -]+")
+_UNSAFE_FILENAME_CHARS = re.compile(r"[^A-Za-z0-9._ /-]+")
 MAX_RECORDING_FILENAME_LENGTH = 200
 
 
 def safe_recording_filename(filename: str) -> str:
-    """One path segment fit for a storage key: no directories, no ``..``,
-    no characters outside letters, digits, ``. _ -`` and space."""
-    name = re.split(r"[/\\]", filename)[-1]
-    name = _UNSAFE_FILENAME_CHARS.sub("_", name).strip().lstrip(".")
+    """A filename fit for the last segment of a storage key: characters other
+    than letters, digits, ``. _ -`` and space are replaced, and leading dots
+    dropped. ``/`` is kept so the upload route can refuse a name that tries
+    to leave its folder (it never becomes a key)."""
+    name = _UNSAFE_FILENAME_CHARS.sub("_", filename).strip().lstrip(".")
     return name[:MAX_RECORDING_FILENAME_LENGTH] or "recording"
 
 
@@ -33,8 +34,8 @@ class FileDescriptor(BaseModel):
         ...,
         description=(
             "Original filename of the audio file. It becomes the last segment "
-            "of the storage key, so anything but letters, digits, '.', '_', "
-            "'-' and spaces is replaced."
+            "of the storage key: anything but letters, digits, '.', '_', '-' "
+            "and spaces is replaced, and a name with folders is refused."
         ),
     )
     mime_type: str = Field(

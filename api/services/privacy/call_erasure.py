@@ -1,0 +1,566 @@
+"""Answering callers' data requests: export and erase their calls.
+
+An organization using LightMove is the controller of its callers' data and we
+are its processor (GDPR Art. 28(3)(e)), so it must be able to act on a
+caller's request for access (Art. 15) or erasure (Art. 17):
+
+* ``erase_workflow_run`` erases one call.
+* ``export_subject_data`` gathers everything stored about one phone number.
+* ``erase_subject_data`` erases it.
+
+Erasure scrubs, it does not delete. A run keeps its date, duration, status,
+disposition and cost, because the billing ledger points at it and must be
+kept for six years; recordings, transcripts, call context, logs and the phone
+numbers go. Stored objects are deleted first and a run is only scrubbed once
+all of its objects are gone (the retention purge's rule), so a storage outage
+never leaves a scrubbed row with a recording nobody can find any more.
+
+A number matches a run when the other party of the call is that number: the
+``caller_number`` of an inbound call, the ``called_number`` or
+``phone_number`` of an outbound one (``phone_matching`` compares numbers in
+any format). Stored values are not normalized, so SQL only narrows the rows
+down and Python compares. A request for one of the organization's own numbers
+is refused.
+"""
+
+import csv
+import io
+import os
+import tempfile
+from dataclasses import dataclass, field
+from datetime import UTC, datetime, timedelta
+from typing import Any, Iterable, Optional
+
+from loguru import logger
+
+from api.db import db_client
+from api.db.privacy_client import (
+    QUEUED_RUN_IN_FLIGHT_STATE,
+    ErasableWorkflowRun,
+    SubjectQueuedRun,
+    SubjectWorkflowRun,
+    counterpart_keys,
+)
+from api.db.retention_client import WORKFLOW_RUN_POST_CALL_DONE_KEY
+from api.schemas.privacy import (
+    SUBJECT_NUMBER_MAX_LENGTH,
+    SubjectCallData,
+    SubjectDataResponse,
+    SubjectErasureResponse,
+    SubjectQueuedCall,
+    SubjectRecordingUrls,
+    SubjectTranscriptLine,
+)
+from api.services.filesystem import BaseFileSystem
+from api.services.privacy.phone_matching import (
+    SubjectNumber,
+    home_calling_codes,
+    parse_subject_number,
+)
+from api.services.retention.purge import (
+    StorageResolver,
+    campaign_csv_key,
+    current_storage_backend,
+    default_storage_resolver,
+    delete_run_objects,
+)
+from api.utils.recording_artifacts import (
+    RecordingTrack,
+    get_recording_storage_backend,
+    get_recording_storage_key,
+)
+
+# A run is treated as in progress until post-call processing has marked it
+# done (``WORKFLOW_RUN_POST_CALL_DONE_KEY``), so nothing written after hangup
+# (transcript, recordings, QA results, webhook payloads) lands after erasure.
+# Without the marker, a run with activity this recent may still be a live call
+# or still being processed; an older one is abandoned.
+RUN_ACTIVE_WINDOW = timedelta(hours=6)
+# After the marker, a little longer for the last in-flight write (the final
+# variable extraction on an abrupt hangup) to land.
+POST_CALL_GRACE = timedelta(minutes=2)
+# Signed links in an export: the most any link to call content may live.
+SIGNED_URL_EXPIRES_IN = 3600
+# Calls one export returns. Erasure has no limit.
+EXPORT_CALL_LIMIT = 1000
+CANDIDATE_PAGE_SIZE = 500
+RUN_BATCH_SIZE = 100
+
+
+class CallErasureError(Exception):
+    """Base for the reasons a call cannot be erased."""
+
+
+class WorkflowRunNotFoundError(CallErasureError):
+    pass
+
+
+class WorkflowRunInProgressError(CallErasureError):
+    pass
+
+
+class StoredObjectsNotDeletedError(CallErasureError):
+    """Some stored object of the run could not be deleted; nothing was scrubbed."""
+
+
+class OrganizationNumberError(ValueError):
+    """The number is one of the organization's own numbers."""
+
+
+# --- numbers -----------------------------------------------------------------
+
+
+def run_names_subject(
+    call_type: Optional[str], context: Any, subject: SubjectNumber
+) -> bool:
+    """Whether the other party of the call is the subject.
+
+    Only the counterpart's side is compared: the caller of an inbound call,
+    the number called on an outbound one. The other keys hold the
+    organization's own number.
+    """
+    if not isinstance(context, dict):
+        return False
+    return any(subject.matches(context.get(key)) for key in counterpart_keys(call_type))
+
+
+async def resolve_subject_number(organization_id: int, raw: str) -> SubjectNumber:
+    """The number a request is about, refusing the organization's own numbers.
+
+    National-format input and stored numbers are read in the countries of the
+    organization's own numbers.
+    """
+    own = await db_client.get_organization_phone_addresses(organization_id)
+    home = home_calling_codes(
+        (normalized or address, country) for address, normalized, country in own
+    )
+    subject = parse_subject_number(raw, home, max_length=SUBJECT_NUMBER_MAX_LENGTH)
+    for address, normalized, _country in own:
+        if subject.matches(address) or subject.matches(normalized):
+            raise OrganizationNumberError(
+                "That is one of your organization's own numbers. Enter the "
+                "caller's number."
+            )
+    return subject
+
+
+async def find_subject_run_ids(
+    organization_id: int, subject: SubjectNumber
+) -> list[int]:
+    run_ids = []
+    after_id = 0
+    while True:
+        candidates = await db_client.find_workflow_run_number_candidates(
+            organization_id=organization_id,
+            prefilter=subject.prefilter,
+            after_id=after_id,
+            limit=CANDIDATE_PAGE_SIZE,
+        )
+        run_ids.extend(
+            run_id
+            for run_id, call_type, context in candidates
+            if run_names_subject(call_type, context, subject)
+        )
+        if len(candidates) < CANDIDATE_PAGE_SIZE:
+            return run_ids
+        after_id = candidates[-1][0]
+
+
+async def find_subject_queued_runs(
+    organization_id: int, subject: SubjectNumber
+) -> list[SubjectQueuedRun]:
+    rows = []
+    after_id = 0
+    while True:
+        candidates = await db_client.find_queued_run_number_candidates(
+            organization_id=organization_id,
+            prefilter=subject.prefilter,
+            after_id=after_id,
+            limit=CANDIDATE_PAGE_SIZE,
+        )
+        rows.extend(
+            row
+            for row in candidates
+            if subject.matches(row.context_variables.get("phone_number"))
+        )
+        if len(candidates) < CANDIDATE_PAGE_SIZE:
+            return rows
+        after_id = candidates[-1].id
+
+
+# --- one call ----------------------------------------------------------------
+
+
+def _post_call_done_at(extra: dict[str, Any]) -> Optional[datetime]:
+    value = extra.get(WORKFLOW_RUN_POST_CALL_DONE_KEY)
+    if not isinstance(value, str):
+        return None
+    try:
+        moment = datetime.fromisoformat(value)
+    except ValueError:
+        return None
+    return moment if moment.tzinfo else moment.replace(tzinfo=UTC)
+
+
+def is_run_in_progress(
+    run: ErasableWorkflowRun | SubjectWorkflowRun, now: datetime
+) -> bool:
+    """Whether the call may still be live, or post-call work still writing to it."""
+    extra = run.objects.extra if isinstance(run, ErasableWorkflowRun) else run.extra
+    done_at = _post_call_done_at(extra)
+    if done_at is not None and done_at <= now - POST_CALL_GRACE:
+        return False
+    activity = [
+        moment
+        for moment in (run.created_at, run.chat_updated_at, done_at)
+        if moment is not None
+    ]
+    return bool(activity) and max(activity) >= now - RUN_ACTIVE_WINDOW
+
+
+async def _erase_runs(
+    organization_id: int,
+    runs: Iterable[ErasableWorkflowRun],
+    now: datetime,
+    resolve_storage: StorageResolver,
+) -> tuple[list[int], list[int], list[int], int]:
+    """Erase finished runs. Returns ``(erased, in progress, failed, objects)``."""
+    erased, in_progress, failed = [], [], []
+    objects = 0
+    for run in runs:
+        if is_run_in_progress(run, now):
+            in_progress.append(run.id)
+            continue
+        deleted = await delete_run_objects(run.objects, resolve_storage)
+        if deleted is None:
+            failed.append(run.id)
+            continue
+        objects += deleted
+        erased.append(run.id)
+    if erased:
+        # Runs erased before are scrubbed again, with their side data, so
+        # anything written after an earlier pass goes too.
+        await db_client.scrub_workflow_runs_call_content(
+            organization_id=organization_id,
+            run_ids=erased,
+            purged_at=now,
+            include_purged=True,
+        )
+        await db_client.scrub_workflow_run_side_data(
+            organization_id=organization_id, run_ids=erased
+        )
+    return erased, in_progress, failed, objects
+
+
+async def erase_workflow_run(
+    *,
+    organization_id: int,
+    workflow_id: int,
+    run_id: int,
+    now: Optional[datetime] = None,
+    resolve_storage: Optional[StorageResolver] = None,
+) -> int:
+    """Erase one call's content. Returns the number of stored objects deleted.
+
+    Raises ``WorkflowRunNotFoundError`` when the organization has no such run
+    under ``workflow_id``, ``WorkflowRunInProgressError`` while it may still be
+    running, and ``StoredObjectsNotDeletedError`` (with nothing scrubbed) when
+    storage fails.
+    """
+    now = now or datetime.now(UTC)
+    runs = await db_client.get_erasable_workflow_runs(
+        organization_id=organization_id, run_ids=[run_id], workflow_id=workflow_id
+    )
+    if not runs:
+        raise WorkflowRunNotFoundError()
+    _, in_progress, failed, objects = await _erase_runs(
+        organization_id, runs, now, resolve_storage or default_storage_resolver()
+    )
+    if in_progress:
+        raise WorkflowRunInProgressError()
+    if failed:
+        raise StoredObjectsNotDeletedError()
+    logger.info(
+        f"Erased call content of workflow run {run_id} "
+        f"(organization {organization_id}, {objects} objects)"
+    )
+    return objects
+
+
+# --- export ------------------------------------------------------------------
+
+
+async def _signed_url(
+    resolve_storage: StorageResolver, backend: str, key: Optional[str]
+) -> Optional[str]:
+    if not key:
+        return None
+    try:
+        return await resolve_storage(backend).aget_signed_url(
+            key, expiration=SIGNED_URL_EXPIRES_IN
+        )
+    except Exception as exc:
+        logger.warning(f"Could not sign a call data link: {type(exc).__name__}")
+        return None
+
+
+async def _run_files(
+    run: SubjectWorkflowRun, resolve_storage: StorageResolver
+) -> SubjectRecordingUrls:
+    async def track(name: RecordingTrack, fallback: Optional[str] = None):
+        key = get_recording_storage_key(run.extra, name) or fallback
+        backend = get_recording_storage_backend(run.extra, name) or run.storage_backend
+        return await _signed_url(resolve_storage, backend, key)
+
+    return SubjectRecordingUrls(
+        recording=await track("mixed", run.recording_url),
+        user_recording=await track("user"),
+        bot_recording=await track("bot"),
+        transcript=await _signed_url(
+            resolve_storage, run.storage_backend, run.transcript_url
+        ),
+    )
+
+
+def _transcript(logs: dict[str, Any]) -> list[SubjectTranscriptLine]:
+    from api.services.workflow.qa.conversation import build_conversation_structure
+
+    events = logs.get("realtime_feedback_events")
+    if not isinstance(events, list) or not events:
+        return []
+    try:
+        return [
+            SubjectTranscriptLine(**line)
+            for line in build_conversation_structure(events)
+        ]
+    except Exception as exc:
+        # A malformed event means no readable transcript, not a failed export.
+        logger.warning(f"Could not build a transcript: {type(exc).__name__}")
+        return []
+
+
+def _duration_seconds(usage_info: dict[str, Any]) -> Optional[float]:
+    value = usage_info.get("call_duration_seconds")
+    return float(value) if isinstance(value, (int, float)) else None
+
+
+async def export_subject_data(
+    *,
+    organization_id: int,
+    number: str,
+    now: Optional[datetime] = None,
+    resolve_storage: Optional[StorageResolver] = None,
+) -> SubjectDataResponse:
+    """Everything the organization stores about calls with ``number``."""
+    now = now or datetime.now(UTC)
+    resolve_storage = resolve_storage or default_storage_resolver()
+    subject = await resolve_subject_number(organization_id, number)
+
+    run_ids = await find_subject_run_ids(organization_id, subject)
+    truncated = len(run_ids) > EXPORT_CALL_LIMIT
+    runs = await db_client.get_subject_workflow_runs(
+        organization_id=organization_id, run_ids=run_ids[:EXPORT_CALL_LIMIT]
+    )
+    calls = []
+    for run in runs:
+        gathered = run.gathered_context
+        chat = run.chat_session_data or {}
+        calls.append(
+            SubjectCallData(
+                id=run.id,
+                workflow_id=run.workflow_id,
+                workflow_name=run.workflow_name,
+                name=run.name,
+                created_at=run.created_at,
+                direction=run.call_type,
+                status=run.state,
+                disposition=gathered.get("mapped_call_disposition")
+                or gathered.get("call_disposition"),
+                duration_seconds=_duration_seconds(run.usage_info),
+                in_progress=is_run_in_progress(run, now),
+                already_erased="purged_at" in run.extra,
+                initial_context=run.initial_context,
+                gathered_context=gathered,
+                annotations=run.annotations,
+                transcript=_transcript(run.logs),
+                chat_turns=list(chat.get("turns") or [])
+                if isinstance(chat.get("turns"), list)
+                else [],
+                files=await _run_files(run, resolve_storage),
+            )
+        )
+
+    queued_calls = [
+        SubjectQueuedCall(
+            id=row.id,
+            campaign_id=row.campaign_id,
+            campaign_name=row.campaign_name,
+            state=row.state,
+            created_at=row.created_at,
+            scheduled_for=row.scheduled_for,
+            context_variables=row.context_variables,
+        )
+        for row in await find_subject_queued_runs(organization_id, subject)
+    ]
+    logger.info(
+        f"Exported data for a caller of organization {organization_id}: "
+        f"{len(calls)} calls, {len(queued_calls)} campaign contacts"
+    )
+    return SubjectDataResponse(
+        number=subject.canonical,
+        generated_at=now,
+        signed_urls_expire_in=SIGNED_URL_EXPIRES_IN,
+        calls=calls,
+        queued_calls=queued_calls,
+        truncated=truncated,
+    )
+
+
+# --- erase ---------------------------------------------------------------------
+
+
+@dataclass
+class _CsvOutcome:
+    rewritten: int = 0
+    rows_removed: int = 0
+    failed: list[int] = field(default_factory=list)
+
+
+def remove_subject_rows(content: bytes, subject: SubjectNumber) -> tuple[bytes, int]:
+    """The CSV without the subject's rows, and how many rows were removed.
+
+    A removed row is emptied rather than dropped: rows are numbered by
+    position when a campaign syncs (``csv_{hash}_row_{n}``), and redials find
+    a contact by that id, so the other rows must keep their place. A row with
+    no phone number is skipped by the sync.
+    """
+    has_bom = content.startswith(b"\xef\xbb\xbf")
+    text = content.decode("utf-8-sig")
+    rows = list(csv.reader(io.StringIO(text, newline="")))
+    if len(rows) < 2:
+        return content, 0
+    headers = [header.strip().lower() for header in rows[0]]
+    if "phone_number" not in headers:
+        return content, 0
+    phone_index = headers.index("phone_number")
+
+    removed = 0
+    for index, row in enumerate(rows[1:], start=1):
+        if len(row) > phone_index and subject.matches(row[phone_index]):
+            rows[index] = [""] * len(row)
+            removed += 1
+    if not removed:
+        return content, 0
+
+    output = io.StringIO(newline="")
+    line_terminator = "\r\n" if "\r\n" in text else "\n"
+    csv.writer(output, lineterminator=line_terminator).writerows(rows)
+    data = output.getvalue().encode("utf-8")
+    return (b"\xef\xbb\xbf" + data if has_bom else data), removed
+
+
+async def _rewrite_csv(
+    storage: BaseFileSystem, key: str, subject: SubjectNumber
+) -> Optional[int]:
+    """Rows removed from the stored CSV, or None if it could not be rewritten."""
+    try:
+        with tempfile.TemporaryDirectory() as directory:
+            path = os.path.join(directory, "contacts.csv")
+            if not await storage.adownload_file(key, path):
+                return None
+            with open(path, "rb") as handle:
+                content = handle.read()
+        rewritten, removed = remove_subject_rows(content, subject)
+        if removed and not await storage.acreate_file_from_bytes(key, rewritten):
+            return None
+        return removed
+    except Exception as exc:
+        logger.warning(
+            f"Could not rewrite a campaign contact list: {type(exc).__name__}"
+        )
+        return None
+
+
+async def _erase_from_campaign_lists(
+    organization_id: int, subject: SubjectNumber, resolve_storage: StorageResolver
+) -> _CsvOutcome:
+    outcome = _CsvOutcome()
+    done: dict[str, Optional[int]] = {}
+    storage = resolve_storage(current_storage_backend())
+    for campaign in await db_client.get_campaign_csv_sources(organization_id):
+        key = campaign_csv_key(organization_id, campaign)
+        if key is None:
+            continue
+        if key not in done:
+            # Redial campaigns share their parent's list: rewrite it once.
+            done[key] = await _rewrite_csv(storage, key, subject)
+            if done[key]:
+                outcome.rewritten += 1
+                outcome.rows_removed += done[key]
+        if done[key] is None:
+            outcome.failed.append(campaign.id)
+    return outcome
+
+
+async def erase_subject_data(
+    *,
+    organization_id: int,
+    number: str,
+    now: Optional[datetime] = None,
+    resolve_storage: Optional[StorageResolver] = None,
+) -> SubjectErasureResponse:
+    """Erase every call and campaign contact of ``number`` in the organization.
+
+    Calls still in progress, and calls whose files could not be deleted, are
+    left untouched and reported, so the request can simply be repeated.
+    """
+    now = now or datetime.now(UTC)
+    resolve_storage = resolve_storage or default_storage_resolver()
+    subject = await resolve_subject_number(organization_id, number)
+
+    erased, in_progress, failed, objects = [], [], [], 0
+    run_ids = await find_subject_run_ids(organization_id, subject)
+    for start in range(0, len(run_ids), RUN_BATCH_SIZE):
+        runs = await db_client.get_erasable_workflow_runs(
+            organization_id=organization_id,
+            run_ids=run_ids[start : start + RUN_BATCH_SIZE],
+        )
+        batch = await _erase_runs(organization_id, runs, now, resolve_storage)
+        erased += batch[0]
+        in_progress += batch[1]
+        failed += batch[2]
+        objects += batch[3]
+
+    queued = await find_subject_queued_runs(organization_id, subject)
+    queued_in_flight = [
+        row for row in queued if row.state == QUEUED_RUN_IN_FLIGHT_STATE
+    ]
+    queued_deleted, queued_cleared = await db_client.erase_queued_runs(
+        organization_id=organization_id,
+        queued_run_ids=[
+            row.id for row in queued if row.state != QUEUED_RUN_IN_FLIGHT_STATE
+        ],
+    )
+
+    lists = await _erase_from_campaign_lists(organization_id, subject, resolve_storage)
+
+    logger.info(
+        f"Erased data for a caller of organization {organization_id}: "
+        f"{len(erased)} calls ({len(in_progress)} in progress, {len(failed)} "
+        f"failed), {objects} objects, {queued_deleted} queued contacts deleted, "
+        f"{queued_cleared} cleared, {lists.rows_removed} rows from "
+        f"{lists.rewritten} contact lists ({len(lists.failed)} failed)"
+    )
+    return SubjectErasureResponse(
+        number=subject.canonical,
+        calls_erased=len(erased),
+        calls_in_progress=in_progress,
+        calls_failed=failed,
+        objects_deleted=objects,
+        queued_calls_deleted=queued_deleted,
+        queued_calls_cleared=queued_cleared,
+        queued_calls_in_progress=len(queued_in_flight),
+        campaign_lists_rewritten=lists.rewritten,
+        campaign_list_rows_removed=lists.rows_removed,
+        campaign_lists_failed=lists.failed,
+    )
