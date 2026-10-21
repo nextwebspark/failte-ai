@@ -1,5 +1,6 @@
 """Data access for organization memberships (``organization_users``)."""
 
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
@@ -250,16 +251,24 @@ class MembershipClient(BaseDBClient):
             if blocker is not None:
                 raise blocker
 
-    async def delete_user_account(self, user_id: int) -> bool:
+    async def delete_user_account(
+        self,
+        user_id: int,
+        *,
+        before_commit: Callable[[], Awaitable[None]] | None = None,
+    ) -> bool:
         """Delete a user and their memberships; keep what they created.
 
         Refuses, raising a ``PrivacyError``, when the user is the only admin of
-        an organisation that has other members, or the only member of one.
-        Organisations already scheduled for deletion never block. The user's
-        API keys are archived; their configurations, tokens and memberships go
-        with the user row, and everything they created stays with its
-        organisation with the creator cleared. Returns False if there was no
-        such user.
+        an organisation that has other members, or the only member of one that
+        is not already scheduled for deletion. The user's API keys are
+        archived; their configurations, tokens and memberships go with the
+        user row, and everything they created stays with its organisation with
+        the creator cleared. Returns False if there was no such user.
+
+        ``before_commit`` runs after the check and the deletes, under the
+        organization locks, before the commit (e.g. deleting the user at the
+        identity provider): if it raises, nothing is deleted.
         """
         async with self.async_session() as session:
             organization_ids = (
@@ -281,20 +290,30 @@ class MembershipClient(BaseDBClient):
             if blocker is not None:
                 raise blocker
 
-            await session.execute(
-                update(APIKeyModel)
-                .where(
-                    APIKeyModel.created_by == user_id,
-                    APIKeyModel.archived_at.is_(None),
+            # A savepoint, so a failing ``before_commit`` undoes the deletes
+            # while the organization locks are still held.
+            savepoint = await session.begin_nested()
+            try:
+                await session.execute(
+                    update(APIKeyModel)
+                    .where(
+                        APIKeyModel.created_by == user_id,
+                        APIKeyModel.archived_at.is_(None),
+                    )
+                    .values(is_active=False, archived_at=datetime.now(UTC))
                 )
-                .values(is_active=False, archived_at=datetime.now(UTC))
-            )
-            await session.execute(
-                _members.delete().where(_members.c.user_id == user_id)
-            )
-            result = await session.execute(
-                delete(UserModel).where(UserModel.id == user_id)
-            )
+                await session.execute(
+                    _members.delete().where(_members.c.user_id == user_id)
+                )
+                result = await session.execute(
+                    delete(UserModel).where(UserModel.id == user_id)
+                )
+                if before_commit is not None:
+                    await before_commit()
+            except BaseException:
+                await savepoint.rollback()
+                raise
+            await savepoint.commit()
             await session.commit()
             return bool(result.rowcount)
 
@@ -307,17 +326,18 @@ class MembershipClient(BaseDBClient):
                 OrganizationModel.id,
                 OrganizationModel.name,
                 _members.c.role,
+                OrganizationModel.deletion_requested_at.is_not(None).label(
+                    "pending_deletion"
+                ),
             )
             .join(_members, _members.c.organization_id == OrganizationModel.id)
             .where(
                 _members.c.user_id == user_id,
-                # An organisation on its way out never keeps a user.
-                OrganizationModel.deletion_requested_at.is_(None),
                 OrganizationModel.erased_at.is_(None),
             )
             .order_by(OrganizationModel.id)
         )
-        for organization_id, name, role in memberships.all():
+        for organization_id, name, role, pending_deletion in memberships.all():
             others = await session.execute(
                 select(_members.c.role).where(
                     _members.c.organization_id == organization_id,
@@ -326,6 +346,9 @@ class MembershipClient(BaseDBClient):
             )
             other_roles = list(others.scalars().all())
             if not other_roles:
+                # Its own deletion is already scheduled: nothing is orphaned.
+                if pending_deletion:
+                    continue
                 return SoleMemberOfOrganizationError(organization_id, name)
             if role == OrgRole.ADMIN.value and OrgRole.ADMIN.value not in other_roles:
                 return LastAdminWithMembersError(organization_id, name)

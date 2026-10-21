@@ -2,7 +2,7 @@
 
 An admin's request closes the organisation without losing anything: it
 records when erasure is due and switches off what keeps working without a
-signed-in user (API keys, widget tokens, agent triggers, running campaigns),
+signed-in user (API keys, widget tokens, agent triggers, active campaigns),
 remembering exactly which ones so a cancel restores only those. Once the grace
 period has passed the erasure service (``api/services/privacy``) deletes the
 stored objects and then calls :meth:`OrgErasureClient.erase_organization_rows`,
@@ -15,7 +15,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Optional
 
-from sqlalchemy import delete, exists, select, update
+from sqlalchemy import delete, exists, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.db.base_client import BaseDBClient
@@ -54,9 +54,11 @@ SUSPENDED_API_KEYS = "api_key_ids"
 SUSPENDED_EMBED_TOKENS = "embed_token_ids"
 SUSPENDED_AGENT_TRIGGERS = "agent_trigger_ids"
 SUSPENDED_CAMPAIGNS = "campaign_ids"
+SUSPENDED_SYNCING_CAMPAIGNS = "syncing_campaign_ids"
 
-# A campaign in this state is dialling; the request pauses it.
-RUNNING_CAMPAIGN_STATE = "running"
+# Campaigns that are dialling or about to (a syncing campaign turns running
+# when its source sync finishes); the request pauses them.
+ACTIVE_CAMPAIGN_STATES = ("syncing", "running")
 PAUSED_CAMPAIGN_STATE = "paused"
 
 
@@ -220,18 +222,26 @@ class OrgErasureClient(BaseDBClient):
                 )
             ).scalars()
             trigger_ids = sorted(trigger_ids.all())
-            campaign_ids = (
+            active = (
                 await session.execute(
-                    update(CampaignModel)
+                    select(CampaignModel.id, CampaignModel.state)
                     .where(
                         CampaignModel.organization_id == organization_id,
-                        CampaignModel.state == RUNNING_CAMPAIGN_STATE,
+                        CampaignModel.state.in_(ACTIVE_CAMPAIGN_STATES),
                     )
-                    .values(state=PAUSED_CAMPAIGN_STATE)
-                    .returning(CampaignModel.id)
+                    .with_for_update()
                 )
-            ).scalars()
-            campaign_ids = sorted(campaign_ids.all())
+            ).all()
+            campaign_ids = sorted(row.id for row in active if row.state == "running")
+            syncing_campaign_ids = sorted(
+                row.id for row in active if row.state == "syncing"
+            )
+            if active:
+                await session.execute(
+                    update(CampaignModel)
+                    .where(CampaignModel.id.in_([row.id for row in active]))
+                    .values(state=PAUSED_CAMPAIGN_STATE, updated_at=requested_at)
+                )
 
             org.deletion_requested_at = requested_at
             org.deletion_scheduled_for = scheduled_for
@@ -240,6 +250,7 @@ class OrgErasureClient(BaseDBClient):
                 SUSPENDED_EMBED_TOKENS: embed_token_ids,
                 SUSPENDED_AGENT_TRIGGERS: trigger_ids,
                 SUSPENDED_CAMPAIGNS: campaign_ids,
+                SUSPENDED_SYNCING_CAMPAIGNS: syncing_campaign_ids,
             }
             state = _state(org)
             await session.commit()
@@ -301,8 +312,25 @@ class OrgErasureClient(BaseDBClient):
                         CampaignModel.id.in_(campaign_ids),
                         CampaignModel.state == PAUSED_CAMPAIGN_STATE,
                     )
-                    .values(state=RUNNING_CAMPAIGN_STATE)
+                    .values(state="running", updated_at=cancelled_at)
                 )
+            syncing_ids = _ids(suspended, SUSPENDED_SYNCING_CAMPAIGNS)
+            if syncing_ids:
+                # A sync that finished meanwhile left the campaign paused (see
+                # complete_campaign_source_sync): start it; one still under way
+                # starts it itself when it finishes.
+                for synced, state in ((True, "running"), (False, "syncing")):
+                    sync_done = CampaignModel.source_sync_status == "completed"
+                    await session.execute(
+                        update(CampaignModel)
+                        .where(
+                            CampaignModel.organization_id == organization_id,
+                            CampaignModel.id.in_(syncing_ids),
+                            CampaignModel.state == PAUSED_CAMPAIGN_STATE,
+                            sync_done if synced else ~sync_done,
+                        )
+                        .values(state=state, updated_at=cancelled_at)
+                    )
 
             org.deletion_requested_at = None
             org.deletion_scheduled_for = None
@@ -438,10 +466,21 @@ class OrgErasureClient(BaseDBClient):
 
             members = organization_users_association
             workflow_ids = _organization_workflow_ids(organization_id)
+            # Members with another organization move to (the oldest of) it;
+            # the rest are left without one.
+            other_membership = (
+                select(func.min(members.c.organization_id))
+                .where(
+                    members.c.user_id == UserModel.id,
+                    members.c.organization_id != organization_id,
+                )
+                .scalar_subquery()
+            )
             statements = [
                 update(UserModel)
                 .where(UserModel.selected_organization_id == organization_id)
-                .values(selected_organization_id=None),
+                .values(selected_organization_id=other_membership)
+                .execution_options(synchronize_session=False),
                 members.delete().where(members.c.organization_id == organization_id),
                 delete(OrganizationInvitationModel).where(
                     OrganizationInvitationModel.organization_id == organization_id

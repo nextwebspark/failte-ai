@@ -8,8 +8,10 @@ next pass resumes where this one stopped:
 2. each prompt recording's audio, by the key on its row;
 3. the organisation's own storage prefixes (campaign contact lists, knowledge
    base files, custom ambient noise);
-4. under Stack Auth, the organisation's Stack team;
-5. every remaining organisation-scoped row, in one transaction, leaving the
+4. its data in the tools service (integration connections, OAuth grants,
+   imported catalogues), when one is configured;
+5. under Stack Auth, the organisation's Stack team;
+6. every remaining organisation-scoped row, in one transaction, leaving the
    organisation row as a tombstone.
 
 Stored objects always go before the rows that name them, so an interrupted
@@ -19,7 +21,6 @@ usage cycles are kept as accounting records. Members keep their user accounts
 ``ORG_ERASURE_ENABLED=false`` turns the cron into a no-op.
 """
 
-import re
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Optional
@@ -29,15 +30,16 @@ from loguru import logger
 from api import constants
 from api.db import db_client
 from api.db.org_erasure_client import PromptRecordingObject
+from api.errors.domain import DomainError
 from api.services.auth.stack_auth import StackAuthDeletionError, stackauth
 
 # TODO(PR B): these helpers become public in api.services.retention.purge.
 from api.services.retention.purge import (
     StorageResolver,
-    _current_backend,
     _default_storage_resolver,
     _delete_run_objects,
 )
+from api.services.tool_integrations.client import ToolsServiceClient
 
 ORGANIZATION_PAGE_SIZE = 100
 RUN_BATCH_SIZE = 100
@@ -57,23 +59,35 @@ def organization_storage_prefixes(organization_id: int) -> tuple[str, ...]:
     )
 
 
+# Names a run's own objects use directly under ``recordings/{run_id}/``; run
+# ids and organization ids are both integers, so a recording id equal to one
+# of these could point into a run's audio.
+_RUN_ARTIFACT_SEGMENTS = frozenset({"noveum", "user.wav", "bot.wav"})
+
+
 def is_prompt_recording_key(
     organization_id: int, recording: PromptRecordingObject
 ) -> bool:
-    """Whether the row's key is where this organisation's upload put it:
-    ``recordings/{organization_id}/{recording_id}/{filename}``.
+    """Whether the row's key is under where this organisation's upload put it:
+    ``recordings/{organization_id}/{recording_id}/...``.
 
     The key on the row comes from the client, so anything else (another
-    organisation's object, a run's audio) is never deleted on its say-so.
+    organisation's object, a run's audio, a ``..`` path) is never deleted on
+    its say-so.
     """
-    if not recording.recording_id or "/" in recording.recording_id:
+    recording_id = recording.recording_id
+    key = recording.storage_key or ""
+    if (
+        not recording_id
+        or "/" in recording_id
+        or recording_id in (".", "..")
+        or recording_id in _RUN_ARTIFACT_SEGMENTS
+    ):
         return False
-    return bool(
-        re.fullmatch(
-            rf"recordings/{organization_id}/{re.escape(recording.recording_id)}/[^/]+",
-            recording.storage_key or "",
-        )
-    )
+    prefix = f"recordings/{organization_id}/{recording_id}/"
+    if not key.startswith(prefix) or len(key) == len(prefix):
+        return False
+    return all(segment not in ("", ".", "..") for segment in key.split("/"))
 
 
 @dataclass
@@ -140,15 +154,43 @@ async def _erase_prompt_recordings(
         result.objects_deleted += 1
 
 
+def configured_storage_backends() -> list[str]:
+    from api.services.storage import configured_storage_backends as configured
+
+    return configured()
+
+
 async def _erase_prefixes(
     organization_id: int, resolve_storage: StorageResolver, result: OrgErasureResult
 ) -> None:
-    storage = resolve_storage(_current_backend())
-    for prefix in organization_storage_prefixes(organization_id):
-        try:
-            result.objects_deleted += await storage.adelete_prefix(prefix)
-        except Exception as exc:
-            raise ErasureDeferred(f"objects under {prefix}") from exc
+    # Every configured backend, not just the current one: objects written
+    # before a backend switch stay where they were written.
+    for backend in configured_storage_backends():
+        for prefix in organization_storage_prefixes(organization_id):
+            try:
+                storage = resolve_storage(backend)
+                result.objects_deleted += await storage.adelete_prefix(prefix)
+            except Exception as exc:
+                raise ErasureDeferred(f"objects under {prefix} ({backend})") from exc
+
+
+async def _erase_tool_integrations(organization_id: int) -> None:
+    """The tools service (``tools/``) keeps the organization's integration
+    connections (OAuth grants, secrets, imported catalogues) keyed by its id."""
+    secret = constants.TOOLS_INTERNAL_SECRET
+    base_url = constants.TOOLS_SERVICE_URL
+    if not secret or not base_url:
+        logger.info(
+            f"Organisation erasure of {organization_id}: no tools service "
+            "configured, nothing to erase there"
+        )
+        return
+    client = ToolsServiceClient(base_url=base_url, internal_secret=secret)
+    try:
+        removed = await client.erase_organization(organization_id)
+    except DomainError as exc:
+        raise ErasureDeferred("its tools-service integrations") from exc
+    logger.info(f"Organisation {organization_id} tools-service data erased: {removed}")
 
 
 async def _delete_identity_provider_team(organization_id: int) -> None:
@@ -181,6 +223,7 @@ async def erase_organization(
     await _erase_runs(organization_id, resolve_storage, result)
     await _erase_prompt_recordings(organization_id, resolve_storage, result)
     await _erase_prefixes(organization_id, resolve_storage, result)
+    await _erase_tool_integrations(organization_id)
     await _delete_identity_provider_team(organization_id)
     erased = await db_client.erase_organization_rows(organization_id, erased_at=now)
     if not erased:

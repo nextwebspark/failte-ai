@@ -84,6 +84,21 @@ def get_storage_for_backend(backend: str) -> BaseFileSystem:
         raise ValueError(f"Unknown storage backend: {backend}")
 
 
+def configured_storage_backends() -> list[str]:
+    """Every storage backend this deployment has settings for, the current one
+    first. Objects written before a backend switch stay on the old one."""
+    current = get_current_storage_backend().value
+    configured = {
+        StorageBackend.S3.value: bool(S3_BUCKET),
+        StorageBackend.MINIO.value: MINIO_CONFIGURED,
+    }
+    return [current] + [
+        backend
+        for backend, is_configured in configured.items()
+        if is_configured and backend != current
+    ]
+
+
 def get_current_storage_backend() -> StorageBackend:
     """Get the current storage backend enum."""
     return StorageBackend.get_current_backend()

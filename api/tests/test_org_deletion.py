@@ -435,10 +435,12 @@ async def test_erasure_deletes_everything_but_billing_and_leaves_a_tombstone(
     assert org.erased_provider_id == original_provider_id
     assert org.erased_at == NOW
 
-    # Members keep their accounts; nobody has the erased organisation selected.
-    for user in (data.admin, data.developer):
-        await async_session.refresh(user)
-        assert user.selected_organization_id is None
+    # Members keep their accounts: one with another organisation moves to
+    # it, one without is left with none.
+    await async_session.refresh(data.admin)
+    assert data.admin.selected_organization_id == other.org.id
+    await async_session.refresh(data.developer)
+    assert data.developer.selected_organization_id is None
     assert await count(async_session, UserModel, id=data.admin.id) == 1
 
     # The other organisation is untouched.
@@ -571,3 +573,238 @@ def test_erasure_runs_daily_after_the_retention_purge():
         if job.coroutine is org_erasure_task.erase_deleted_organizations_daily
     ]
     assert (job.hour, job.minute, job.second) == (3, 47, 0)
+
+
+# --- review follow-ups ------------------------------------------------------
+
+
+async def test_syncing_campaigns_are_paused_and_their_sync_does_not_start_them(
+    db_session, async_session, storage
+):
+    data = await seeded(async_session, storage)
+    synced_meanwhile = CampaignModel(
+        name="Syncing, finishes while pending",
+        organization_id=data.org.id,
+        workflow_id=data.workflow.id,
+        source_type="csv",
+        source_id=f"campaigns/{data.org.id}/a.csv",
+        state="syncing",
+        source_sync_status="in_progress",
+    )
+    still_syncing = CampaignModel(
+        name="Syncing, still syncing at cancel",
+        organization_id=data.org.id,
+        workflow_id=data.workflow.id,
+        source_type="csv",
+        source_id=f"campaigns/{data.org.id}/b.csv",
+        state="syncing",
+        source_sync_status="in_progress",
+    )
+    async_session.add_all([synced_meanwhile, still_syncing])
+    await async_session.commit()
+
+    await org_deletion.request_organization_deletion(
+        data.org.id, confirm_name="Acme Ltd", now=NOW
+    )
+    for campaign in (synced_meanwhile, still_syncing, data.campaign):
+        await async_session.refresh(campaign)
+        assert campaign.state == "paused"
+
+    # The sync job finishing while paused records the sync, not a start.
+    started = await db_session.complete_campaign_source_sync(
+        synced_meanwhile.id, synced_at=NOW
+    )
+    assert started is False
+    await async_session.refresh(synced_meanwhile)
+    assert synced_meanwhile.state == "paused"
+    assert synced_meanwhile.source_sync_status == "completed"
+
+    await org_deletion.cancel_organization_deletion(
+        data.org.id, now=NOW + timedelta(days=1)
+    )
+    for campaign in (synced_meanwhile, still_syncing, data.campaign):
+        await async_session.refresh(campaign)
+    assert synced_meanwhile.state == "running"
+    assert still_syncing.state == "syncing"
+    assert data.campaign.state == "running"
+
+
+async def test_completed_sync_starts_an_unpaused_campaign(
+    db_session, async_session, storage
+):
+    data = await seeded(async_session, storage)
+    data.campaign.state = "syncing"
+    await async_session.commit()
+    assert await db_session.complete_campaign_source_sync(
+        data.campaign.id, synced_at=NOW
+    )
+    await async_session.refresh(data.campaign)
+    assert data.campaign.state == "running"
+
+
+async def test_dispatcher_claims_no_contacts_for_a_pending_organization(
+    db_session, async_session, storage, monkeypatch
+):
+    from api.services.campaign.campaign_call_dispatcher import (
+        campaign_call_dispatcher,
+    )
+
+    data = await seeded(async_session, storage)
+    await schedule(db_session, data.org.id, days_ago=1)
+    # Even a campaign that is (somehow) running dials nobody.
+    data.campaign.state = "running"
+    await async_session.commit()
+    claim = AsyncMock(return_value=[])
+    monkeypatch.setattr(db_session, "claim_queued_runs_for_processing", claim)
+
+    assert await campaign_call_dispatcher.process_batch(data.campaign.id) == 0
+    claim.assert_not_awaited()
+
+
+async def test_agent_stream_refuses_a_pending_organization_before_creating_a_run():
+    from api.routes.agent_stream import agent_stream_websocket
+
+    websocket = SimpleNamespace(query_params={}, accept=AsyncMock(), close=AsyncMock())
+    workflow = SimpleNamespace(id=1, user_id=None, organization_id=5)
+    with (
+        patch("api.routes.agent_stream.telephony_registry") as registry,
+        patch("api.routes.agent_stream.db_client") as db,
+        patch(
+            "api.routes.agent_stream.organization_accepts_calls",
+            new=AsyncMock(return_value=False),
+        ),
+    ):
+        registry.get_optional.return_value = SimpleNamespace()
+        db.get_workflow_by_uuid_unscoped = AsyncMock(return_value=workflow)
+        db.create_workflow_run = AsyncMock()
+        await agent_stream_websocket(websocket, "cloudonix", "agent-uuid")
+
+    db.create_workflow_run.assert_not_awaited()
+    websocket.close.assert_awaited_once()
+
+
+async def test_erasure_erases_the_tools_service_data(
+    db_session, async_session, storage, monkeypatch
+):
+    from api.services.tool_integrations.client import ToolsServiceClient
+
+    data = await seeded(async_session, storage)
+    await schedule(db_session, data.org.id)
+    monkeypatch.setattr(constants, "TOOLS_INTERNAL_SECRET", "s" * 20)
+    erase_tools = AsyncMock(return_value={"connections": 2})
+    monkeypatch.setattr(ToolsServiceClient, "erase_organization", erase_tools)
+
+    result = await erase(storage)
+
+    assert result.organizations_erased == 1
+    erase_tools.assert_awaited_once_with(data.org.id)
+
+
+async def test_tools_service_failure_defers_erasure(
+    db_session, async_session, storage, monkeypatch
+):
+    from api.errors.integrations import ToolsServiceUnavailableError
+    from api.services.tool_integrations.client import ToolsServiceClient
+
+    data = await seeded(async_session, storage)
+    await schedule(db_session, data.org.id)
+    monkeypatch.setattr(constants, "TOOLS_INTERNAL_SECRET", "s" * 20)
+    monkeypatch.setattr(
+        ToolsServiceClient,
+        "erase_organization",
+        AsyncMock(side_effect=ToolsServiceUnavailableError()),
+    )
+
+    result = await erase(storage)
+
+    assert result.organizations_deferred == 1
+    await async_session.refresh(data.org)
+    assert data.org.erased_at is None
+    assert await count(async_session, ToolModel, organization_id=data.org.id) == 1
+
+
+async def test_tools_service_client_sends_no_user_for_erasure():
+    import httpx
+
+    from api.services.tool_integrations.client import ToolsServiceClient
+
+    seen = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.update(request.headers)
+        seen["method"], seen["path"] = request.method, request.url.path
+        return httpx.Response(200, json={"connections": 1, "note": "x"})
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http:
+        client = ToolsServiceClient(
+            base_url="http://tools.test", internal_secret="secret", http=http
+        )
+        assert await client.erase_organization(7) == {"connections": 1}
+    assert (seen["method"], seen["path"]) == ("DELETE", "/internal/org")
+    assert seen["x-org-id"] == "7"
+    assert "x-user-id" not in seen
+
+
+async def test_organization_prefixes_are_deleted_on_every_configured_backend(
+    db_session, async_session, storage, monkeypatch
+):
+    data = await seeded(async_session, storage)
+    old_backend = FakeStorage()
+    old_backend.add(f"knowledge_base/{data.org.id}/old/doc.pdf")
+    await schedule(db_session, data.org.id)
+    monkeypatch.setattr(
+        org_erasure, "configured_storage_backends", lambda: ["minio", "s3"]
+    )
+
+    await erase_deleted_organizations(
+        now=NOW,
+        resolve_storage=lambda backend: old_backend if backend == "s3" else storage,
+    )
+
+    assert old_backend.objects == set()
+    assert set(old_backend.deleted_prefixes) == {
+        f"campaigns/{data.org.id}/",
+        f"knowledge_base/{data.org.id}/",
+        f"ambient-noise/{data.org.id}/",
+    }
+
+
+@pytest.mark.parametrize(
+    ("recording_id", "key", "ok"),
+    [
+        ("Greet0001", "recordings/7/Greet0001/greeting.wav", True),
+        ("Greet0001", "recordings/7/Greet0001/nested/take 2.wav", True),
+        ("Greet0001", "recordings/7/Greet0001/", False),
+        ("Greet0001", "recordings/7/Greet0001/../../12.wav", False),
+        ("Greet0001", "recordings/8/Greet0001/greeting.wav", False),
+        ("Greet0001", "knowledge_base/7/Greet0001/x.pdf", False),
+        ("noveum", "recordings/7/noveum/user/seg.wav", False),
+        ("..", "recordings/7/../12.wav", False),
+        ("a/b", "recordings/7/a/b/c.wav", False),
+    ],
+)
+def test_prompt_recording_key_guard(recording_id, key, ok):
+    from api.db.org_erasure_client import PromptRecordingObject
+    from api.services.privacy.org_erasure import is_prompt_recording_key
+
+    recording = PromptRecordingObject(
+        id=1, recording_id=recording_id, storage_key=key, storage_backend="minio"
+    )
+    assert is_prompt_recording_key(7, recording) is ok
+
+
+@pytest.mark.parametrize(
+    ("given", "stored"),
+    [
+        ("greeting.wav", "greeting.wav"),
+        ("../../etc/passwd", "passwd"),
+        ("dir\\take 1.wav", "take 1.wav"),
+        ("héllo.mp3", "h_llo.mp3"),
+        ("..", "recording"),
+        (".hidden.wav", "hidden.wav"),
+    ],
+)
+def test_recording_upload_filenames_are_one_safe_segment(given, stored):
+    from api.schemas.workflow_recording import FileDescriptor
+
+    assert FileDescriptor(filename=given, file_size=10).filename == stored

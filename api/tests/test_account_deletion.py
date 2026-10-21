@@ -1,6 +1,7 @@
 """Deleting your own account, and the account and organisation exports."""
 
 import json
+from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
@@ -195,24 +196,28 @@ async def test_stack_user_is_deleted_first_and_a_failure_deletes_nothing(
     db_session, async_session, storage, monkeypatch
 ):
     data = await seeded(async_session, storage)
+    # The failed attempt rolls back, which expires the loaded rows.
+    developer = SimpleNamespace(
+        id=data.developer.id,
+        email=data.developer.email,
+        provider_id=data.developer.provider_id,
+    )
     monkeypatch.setattr(constants, "AUTH_PROVIDER", "stack")
     failing = AsyncMock(side_effect=StackAuthDeletionError("boom"))
     monkeypatch.setattr(account_deletion.stackauth, "delete_user", failing)
 
     with pytest.raises(Exception) as exc:
         await account_deletion.delete_user_account(
-            data.developer, confirm_email=data.developer.email
+            developer, confirm_email=developer.email
         )
     assert getattr(exc.value, "code", None) == "identity_provider_error"
-    assert await user_exists(async_session, data.developer.id)
+    assert await user_exists(async_session, developer.id)
 
     deleted = AsyncMock()
     monkeypatch.setattr(account_deletion.stackauth, "delete_user", deleted)
-    await account_deletion.delete_user_account(
-        data.developer, confirm_email=data.developer.email
-    )
-    deleted.assert_awaited_once_with(data.developer.provider_id)
-    assert not await user_exists(async_session, data.developer.id)
+    await account_deletion.delete_user_account(developer, confirm_email=developer.email)
+    deleted.assert_awaited_once_with(developer.provider_id)
+    assert not await user_exists(async_session, developer.id)
 
 
 # --- exports --------------------------------------------------------------------
@@ -287,3 +292,44 @@ def test_redaction_covers_nested_secret_keys():
         "auth": [{"api_key": "[redacted]", "password": "[redacted]", "user": "u"}],
         "client_secret": "",
     }
+
+
+async def test_stack_user_is_not_deleted_when_the_locked_check_refuses(
+    db_session, async_session, storage, monkeypatch
+):
+    """The unlocked pre-check passed, but by the time the locks are held the
+    user is the last admin: Stack must never be asked to delete them."""
+    data = await seeded(async_session, storage)
+    monkeypatch.setattr(constants, "AUTH_PROVIDER", "stack")
+    delete_stack_user = AsyncMock()
+    monkeypatch.setattr(account_deletion.stackauth, "delete_user", delete_stack_user)
+    # Simulate the race: the pre-check saw a second admin who has gone since.
+    monkeypatch.setattr(
+        account_deletion.db_client, "check_user_account_deletable", AsyncMock()
+    )
+
+    with pytest.raises(Exception) as exc:
+        await account_deletion.delete_user_account(
+            data.admin, confirm_email=data.admin.email
+        )
+
+    assert getattr(exc.value, "code", None) == "last_admin_of_organization"
+    delete_stack_user.assert_not_awaited()
+    assert await user_exists(async_session, data.admin.id)
+
+
+async def test_last_admin_of_a_pending_organization_with_members_is_refused(
+    db_session, async_session, storage, test_client_factory
+):
+    """Someone must stay able to export or cancel until erasure."""
+    data = await seeded(async_session, storage)
+    await db_session.request_organization_deletion(
+        data.org.id,
+        requested_at=data.org.created_at,
+        scheduled_for=data.org.created_at,
+    )
+    async with test_client_factory(data.admin) as client:
+        response = await delete_me(client, data.admin.email)
+    assert response.status_code == 409
+    assert response.json()["code"] == "last_admin_of_organization"
+    assert await user_exists(async_session, data.admin.id)

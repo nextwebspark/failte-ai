@@ -202,7 +202,7 @@ class OrganizationModel(Base):
     deletion_scheduled_for = Column(DateTime(timezone=True), nullable=True, index=True)
     # Ids of what the request switched off, restored on cancel:
     # {"api_key_ids": [...], "embed_token_ids": [...], "agent_trigger_ids": [...],
-    #  "campaign_ids": [...]}.
+    #  "campaign_ids": [...], "syncing_campaign_ids": [...]}.
     deletion_suspended = Column(JSON, nullable=True)
     erased_at = Column(DateTime(timezone=True), nullable=True)
     # The provider id before erasure, so auth never re-creates the organisation

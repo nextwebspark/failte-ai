@@ -1,9 +1,21 @@
 """Pydantic schemas for workflow recording operations."""
 
+import re
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+
+_UNSAFE_FILENAME_CHARS = re.compile(r"[^A-Za-z0-9._ -]+")
+MAX_RECORDING_FILENAME_LENGTH = 200
+
+
+def safe_recording_filename(filename: str) -> str:
+    """One path segment fit for a storage key: no directories, no ``..``,
+    no characters outside letters, digits, ``. _ -`` and space."""
+    name = re.split(r"[/\\]", filename)[-1]
+    name = _UNSAFE_FILENAME_CHARS.sub("_", name).strip().lstrip(".")
+    return name[:MAX_RECORDING_FILENAME_LENGTH] or "recording"
 
 
 class RecordingUploadResponseSchema(BaseModel):
@@ -17,7 +29,14 @@ class RecordingUploadResponseSchema(BaseModel):
 class FileDescriptor(BaseModel):
     """Descriptor for a single file in a batch upload request."""
 
-    filename: str = Field(..., description="Original filename of the audio file")
+    filename: str = Field(
+        ...,
+        description=(
+            "Original filename of the audio file. It becomes the last segment "
+            "of the storage key, so anything but letters, digits, '.', '_', "
+            "'-' and spaces is replaced."
+        ),
+    )
     mime_type: str = Field(
         default="audio/wav", description="MIME type of the audio file"
     )
@@ -27,6 +46,11 @@ class FileDescriptor(BaseModel):
         le=5_242_880,
         description="File size in bytes (max 5MB)",
     )
+
+    @field_validator("filename")
+    @classmethod
+    def _safe_filename(cls, value: str) -> str:
+        return safe_recording_filename(value)
 
 
 class BatchRecordingUploadRequestSchema(BaseModel):
