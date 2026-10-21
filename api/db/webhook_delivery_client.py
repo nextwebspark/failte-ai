@@ -53,6 +53,10 @@ class WebhookDeliveryClient(BaseDBClient):
                 )
                 .join(WorkflowModel, WorkflowRunModel.workflow_id == WorkflowModel.id)
                 .where(WorkflowRunModel.id == workflow_run_id)
+                # Shared lock until commit: an erasure's FOR UPDATE scrub of
+                # this run waits for the delivery to exist (and then
+                # dead-letters it), or this sees the run already purged.
+                .with_for_update(of=WorkflowRunModel, read=True)
             )
             run_scope = run_scope_result.one_or_none()
             if run_scope is None:

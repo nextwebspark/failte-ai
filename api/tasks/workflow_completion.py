@@ -35,8 +35,10 @@ async def process_workflow_completion(
     logger.info(f"Processing workflow completion for run {workflow_run_id}")
 
     # Erasure waits for this marker: nothing here writes to the run after it.
-    # A cancelled job (worker shutdown) is re-run and writes again, so it
-    # does not mark the run done.
+    # A cancelled job is not marked done: after a worker shutdown it is re-run
+    # and writes again; after an ARQ job timeout it is not retried, and
+    # erasure then waits out the 6-hour activity window instead (the safe
+    # direction).
     try:
         await _process_workflow_completion(_ctx, workflow_run_id)
     except asyncio.CancelledError:

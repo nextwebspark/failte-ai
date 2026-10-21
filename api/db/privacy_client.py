@@ -238,6 +238,14 @@ class PrivacyClient(BaseDBClient):
                 for row in result.all()
             ]
 
+    async def is_workflow_run_purged(self, run_id: int) -> bool:
+        """Whether the run's call content was erased (or purged by retention)."""
+        async with self.async_session() as session:
+            result = await session.execute(
+                select(_run_purged()).where(WorkflowRunModel.id == run_id)
+            )
+            return bool(result.scalar())
+
     async def find_workflow_run_number_candidates(
         self,
         *,

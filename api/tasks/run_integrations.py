@@ -204,8 +204,10 @@ async def run_integrations_post_workflow_run(
     try:
         await _run_integrations_post_workflow_run(_ctx, workflow_run_id)
     except asyncio.CancelledError:
-        # A cancelled job (worker shutdown) is re-run later and will write
-        # again, so the run is not done yet.
+        # Cancelled: a worker shutdown (the job is re-run and writes again)
+        # or an ARQ job timeout (not retried). Either way the run is left
+        # unmarked, so erasure waits out the 6-hour activity window instead:
+        # the safe direction.
         raise
     except Exception:
         if mark_done:

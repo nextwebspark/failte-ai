@@ -1583,3 +1583,95 @@ async def test_upload_urls_refuse_file_names_that_leave_the_folder(
 
     assert document.status_code == 400
     assert recording.status_code == 400
+
+
+# --- third review -----------------------------------------------------------------------
+
+
+async def test_a_late_upload_after_erasure_stores_nothing(
+    db_session, async_session, storage, monkeypatch
+):
+    from api.services import workflow_run_artifacts
+
+    data = await make_org(async_session)
+    run = await make_run(
+        async_session, storage, data.workflow, context={"caller_number": SUBJECT}
+    )
+    await async_session.commit()
+    await erase_one(data, run)
+    monkeypatch.setattr(workflow_run_artifacts, "storage_fs", storage)
+
+    await workflow_run_artifacts.upload_workflow_run_artifacts(
+        run.id,
+        mixed_audio_wav=b"audio",
+        user_audio_wav=b"audio",
+        transcript_text="This is Aoife",
+    )
+
+    assert storage.objects.keys().isdisjoint(run_keys(run.id))
+    await async_session.refresh(run)
+    assert run.recording_url is None and run.transcript_url is None
+
+
+async def test_an_upload_racing_an_erasure_is_deleted_again(
+    db_session, async_session, storage, monkeypatch
+):
+    from api.services import workflow_run_artifacts
+
+    data = await make_org(async_session)
+    run = await make_run(async_session, storage, data.workflow, context={})
+    await async_session.commit()
+    monkeypatch.setattr(workflow_run_artifacts, "storage_fs", storage)
+    # Not purged when the upload starts, purged once it has landed.
+    monkeypatch.setattr(
+        db_client, "is_workflow_run_purged", AsyncMock(side_effect=[False, True])
+    )
+
+    await workflow_run_artifacts.upload_workflow_run_artifacts(
+        run.id, transcript_text="This is Aoife"
+    )
+
+    assert f"transcripts/{run.id}.txt" not in storage.objects
+
+
+async def test_an_erased_call_gets_no_public_link(db_session, async_session, storage):
+    data = await make_org(async_session)
+    run = await make_run(async_session, storage, data.workflow, context={})
+    run.public_access_token = None
+    await async_session.commit()
+    await erase_one(data, run)
+
+    assert await db_client.ensure_public_access_token(run.id) is None
+    await async_session.refresh(run)
+    assert run.public_access_token is None
+
+
+async def test_webhook_purge_check_locks_the_run(db_session, async_session, storage):
+    """The delivery's purge check holds a shared lock on the run row, so an
+    erasure's FOR UPDATE scrub serialises with it."""
+    from sqlalchemy.dialects import postgresql
+
+    statements = []
+    original = async_session.execute
+
+    async def spy(statement, *args, **kwargs):
+        statements.append(statement)
+        return await original(statement, *args, **kwargs)
+
+    data = await make_org(async_session)
+    run = await make_run(async_session, storage, data.workflow, context={})
+    await async_session.commit()
+    async_session.execute = spy
+    try:
+        await db_client.create_webhook_delivery(
+            workflow_run_id=run.id,
+            organization_id=data.org.id,
+            endpoint_url="https://crm.example.com/hook",
+            payload={"ok": True},
+            max_attempts=5,
+            webhook_node_id="n1",
+        )
+    finally:
+        del async_session.execute
+    sql = str(statements[0].compile(dialect=postgresql.dialect()))
+    assert "FOR SHARE OF workflow_runs" in sql
