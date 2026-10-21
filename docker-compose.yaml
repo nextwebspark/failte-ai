@@ -155,6 +155,8 @@ services:
       # Daily data-retention purge (ARQ cron). DRY_RUN=true only logs counts.
       RETENTION_PURGE_ENABLED: "${RETENTION_PURGE_ENABLED:-true}"
       RETENTION_PURGE_DRY_RUN: "${RETENTION_PURGE_DRY_RUN:-false}"
+      # Daily erasure of organisations whose deletion grace period has ended.
+      ORG_ERASURE_ENABLED: "${ORG_ERASURE_ENABLED:-true}"
 
       # Public origin for this deployment. The API derives BACKEND_API_ENDPOINT,
       # MINIO_PUBLIC_ENDPOINT and TURN_HOST from PUBLIC_BASE_URL / PUBLIC_HOST when

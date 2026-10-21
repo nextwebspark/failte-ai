@@ -3,12 +3,14 @@ from api.db.agent_trigger_client import AgentTriggerClient
 from api.db.api_key_client import APIKeyClient
 from api.db.billing_client import BillingClient
 from api.db.campaign_client import CampaignClient
+from api.db.data_export_client import DataExportClient
 from api.db.embed_token_client import EmbedTokenClient
 from api.db.folder_client import FolderClient
 from api.db.integration_client import IntegrationClient
 from api.db.invitation_client import InvitationClient
 from api.db.knowledge_base_client import KnowledgeBaseClient
 from api.db.membership_client import MembershipClient
+from api.db.org_erasure_client import OrgErasureClient
 from api.db.organization_client import OrganizationClient
 from api.db.organization_configuration_client import OrganizationConfigurationClient
 from api.db.organization_usage_client import OrganizationUsageClient
@@ -46,6 +48,8 @@ class DBClient(
     CampaignClient,
     ReportsClient,
     RetentionClient,
+    OrgErasureClient,
+    DataExportClient,
     APIKeyClient,
     EmbedTokenClient,
     AgentTriggerClient,
@@ -79,6 +83,8 @@ class DBClient(
     - CampaignClient: handles campaign operations
     - ReportsClient: handles reports and analytics operations
     - RetentionClient: finds and scrubs data past its retention period
+    - OrgErasureClient: schedules, cancels and carries out organisation deletion
+    - DataExportClient: reads account and organisation data for exports
     - APIKeyClient: handles API key operations
     - EmbedTokenClient: handles embed token and session operations
     - AgentTriggerClient: handles agent trigger operations for API-based call triggering

@@ -61,6 +61,7 @@ from api.schemas.telephony_phone_number import (
     ProviderSyncStatus,
 )
 from api.services.auth.depends import (
+    get_org_membership,
     get_user,
     get_user_with_selected_organization,
     requires,
@@ -333,6 +334,8 @@ async def get_telephony_providers_metadata(user: UserModel = Depends(get_user)):
 @router.get(
     "/telephony-config-warnings",
     response_model=TelephonyConfigWarningsResponse,
+    # Any member; also closes it while the organization is pending deletion.
+    dependencies=[Depends(get_org_membership)],
 )
 async def get_telephony_config_warnings(user: UserModel = Depends(get_user)):
     """Return aggregated warning counts for the current org's telephony configs.

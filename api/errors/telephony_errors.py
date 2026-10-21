@@ -19,6 +19,8 @@ class TelephonyError(Enum):
     CONCURRENT_CALL_LIMIT = "CONCURRENT_CALL_LIMIT"
     QUOTA_EXCEEDED = "QUOTA_EXCEEDED"
     GENERAL_AUTH_FAILED = "GENERAL_AUTH_FAILED"
+    # The organization is scheduled for deletion (or erased) and takes no calls.
+    ORGANIZATION_UNAVAILABLE = "ORGANIZATION_UNAVAILABLE"
     VALID = "VALID"
 
 
@@ -32,6 +34,7 @@ TELEPHONY_ERROR_MESSAGES = {
     TelephonyError.CONCURRENT_CALL_LIMIT: "Service temporarily unavailable: Your account has reached its concurrent call limit. Please try again later.",
     TelephonyError.QUOTA_EXCEEDED: "Service temporarily unavailable: Your account has exceeded usage limits. Please contact your administrator or upgrade your plan to continue receiving calls.",
     TelephonyError.GENERAL_AUTH_FAILED: "Authentication failed: Please check your webhook URL configuration and ensure your telephony provider settings match your dashboard configuration.",
+    TelephonyError.ORGANIZATION_UNAVAILABLE: "This number is not in service. Goodbye.",
 }
 
 

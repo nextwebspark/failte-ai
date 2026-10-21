@@ -247,6 +247,13 @@ RETENTION_PURGE_DRY_RUN = (
     os.getenv("RETENTION_PURGE_DRY_RUN", "false").strip().lower() == "true"
 )
 
+# Organisation deletion (api/services/privacy). A request takes effect after
+# ORG_DELETION_GRACE_DAYS; until then an admin can cancel it. The daily erasure
+# cron is a no-op with ORG_ERASURE_ENABLED=false (requests are still accepted
+# and kept pending).
+ORG_DELETION_GRACE_DAYS = 30
+ORG_ERASURE_ENABLED = os.getenv("ORG_ERASURE_ENABLED", "true").strip().lower() == "true"
+
 ENABLE_ARI_STASIS = os.getenv("ENABLE_ARI_STASIS", "false").lower() == "true"
 SERIALIZE_LOG_OUTPUT = os.getenv("SERIALIZE_LOG_OUTPUT", "false").lower() == "true"
 

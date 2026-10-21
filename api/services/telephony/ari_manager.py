@@ -41,6 +41,7 @@ from api.services.call_concurrency import (
     call_concurrency,
 )
 from api.services.organization_preferences import external_pbx_integrations_enabled
+from api.services.privacy.org_deletion import organization_accepts_calls
 from api.services.quota_service import authorize_workflow_run_start
 from api.services.telephony import ws_auth
 from api.services.telephony.call_transfer_manager import get_call_transfer_manager
@@ -918,6 +919,14 @@ class ARIConnection:
                     f"{called_number} on channel {channel_id} — no matching phone "
                     f"number registered for config {self.telephony_configuration_id}, "
                     f"hanging up"
+                )
+                await self._delete_channel(channel_id)
+                return
+
+            if not await organization_accepts_calls(self.organization_id):
+                logger.info(
+                    f"[ARI org={self.organization_id}] Organization is scheduled "
+                    f"for deletion; hanging up inbound channel {channel_id}"
                 )
                 await self._delete_channel(channel_id)
                 return

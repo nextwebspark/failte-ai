@@ -13,6 +13,7 @@ from api.db.models import (
     organization_users_association,
 )
 from api.enums import OrgRole
+from api.errors.privacy import OrganizationErasedError
 from api.utils.api_key import generate_api_key
 
 
@@ -51,6 +52,9 @@ class OrganizationClient(BaseDBClient):
         Returns:
             A tuple of (organization, was_created) where was_created is True if the organization
             was created in this call, False if it already existed.
+
+        Raises:
+            OrganizationErasedError: an erased organization had this provider id.
         """
         async with self.async_session() as session:
             # First try to get existing organization
@@ -62,6 +66,19 @@ class OrganizationClient(BaseDBClient):
             organization = result.scalars().first()
 
             if organization is None:
+                # An erased organization keeps its tombstone under a new
+                # provider id; its old (e.g. Stack team) id must never bring
+                # it back as a fresh organization.
+                erased = await session.execute(
+                    select(
+                        exists().where(
+                            OrganizationModel.erased_provider_id == org_provider_id
+                        )
+                    )
+                )
+                if erased.scalar():
+                    raise OrganizationErasedError()
+
                 # Use PostgreSQL's INSERT ... ON CONFLICT DO NOTHING
                 # This is atomic and handles race conditions at the database level
 

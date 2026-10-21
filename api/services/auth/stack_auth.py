@@ -1,5 +1,6 @@
 import os
 from typing import Any
+from urllib.parse import quote
 
 import aiohttp
 
@@ -10,6 +11,10 @@ class StackAuthUserSearchError(Exception):
 
 class StackAuthSessionError(Exception):
     """Raised when Stack Auth cannot create an impersonation session."""
+
+
+class StackAuthDeletionError(Exception):
+    """Raised when Stack Auth does not confirm a user or team deletion."""
 
 
 class StackAuth:
@@ -115,6 +120,41 @@ class StackAuth:
     def _stack_user_has_email(self, user: dict[str, Any], email: str) -> bool:
         primary_email = user.get("primary_email")
         return isinstance(primary_email, str) and primary_email.lower() == email
+
+    # ------------------------------------------------------------------
+    # Deletion (GDPR Art. 17)
+    # ------------------------------------------------------------------
+
+    def _server_headers(self) -> dict[str, str]:
+        return {
+            "x-stack-access-type": "server",
+            "x-stack-project-id": self.project_id,
+            "x-stack-secret-server-key": self.secret_server_key,
+        }
+
+    async def _delete(self, path: str) -> None:
+        """DELETE a Stack resource; a resource that is already gone counts."""
+        url = os.environ.get("STACK_AUTH_API_URL") + path
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.delete(
+                    url, headers=self._server_headers()
+                ) as response:
+                    if response.status == 404 or response.status < 300:
+                        return
+                    raise StackAuthDeletionError(
+                        f"Stack Auth deletion failed with status {response.status}"
+                    )
+        except aiohttp.ClientError as exc:
+            raise StackAuthDeletionError("Stack Auth deletion failed") from exc
+
+    async def delete_user(self, stack_user_id: str) -> None:
+        """Delete a Stack user, ending every session they have."""
+        await self._delete(f"/api/v1/users/{quote(stack_user_id, safe='')}")
+
+    async def delete_team(self, stack_team_id: str) -> None:
+        """Delete a Stack team, so no member can select it again."""
+        await self._delete(f"/api/v1/teams/{quote(stack_team_id, safe='')}")
 
     # ------------------------------------------------------------------
     # Team & user management helpers
