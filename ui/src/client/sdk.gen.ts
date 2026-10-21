@@ -482,6 +482,37 @@ export const updateWorkflowApiV1WorkflowWorkflowIdPut = <ThrowOnError extends bo
 });
 
 /**
+ * Get Workflow Templates
+ *
+ * Get all available workflow templates.
+ *
+ * Returns:
+ * List of workflow templates
+ */
+export const getWorkflowTemplatesApiV1WorkflowTemplatesGet = <ThrowOnError extends boolean = false>(options?: Options<GetWorkflowTemplatesApiV1WorkflowTemplatesGetData, ThrowOnError>): RequestResult<GetWorkflowTemplatesApiV1WorkflowTemplatesGetResponses, GetWorkflowTemplatesApiV1WorkflowTemplatesGetErrors, ThrowOnError> => (options?.client ?? client).get<GetWorkflowTemplatesApiV1WorkflowTemplatesGetResponses, GetWorkflowTemplatesApiV1WorkflowTemplatesGetErrors, ThrowOnError>({ url: '/api/v1/workflow/templates', ...options });
+
+/**
+ * Duplicate Workflow Template
+ *
+ * Duplicate a workflow template to create a new workflow for the user.
+ *
+ * Args:
+ * request: The duplicate template request
+ * user: The authenticated user
+ *
+ * Returns:
+ * The newly created workflow
+ */
+export const duplicateWorkflowTemplateApiV1WorkflowTemplatesDuplicatePost = <ThrowOnError extends boolean = false>(options: Options<DuplicateWorkflowTemplateApiV1WorkflowTemplatesDuplicatePostData, ThrowOnError>): RequestResult<DuplicateWorkflowTemplateApiV1WorkflowTemplatesDuplicatePostResponses, DuplicateWorkflowTemplateApiV1WorkflowTemplatesDuplicatePostErrors, ThrowOnError> => (options.client ?? client).post<DuplicateWorkflowTemplateApiV1WorkflowTemplatesDuplicatePostResponses, DuplicateWorkflowTemplateApiV1WorkflowTemplatesDuplicatePostErrors, ThrowOnError>({
+    url: '/api/v1/workflow/templates/duplicate',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
  * Duplicate Workflow Endpoint
  *
  * Duplicate a workflow including its definition, configuration, recordings, and triggers.
@@ -528,37 +559,6 @@ export const getWorkflowRunApiV1WorkflowWorkflowIdRunsRunIdGet = <ThrowOnError e
  * Download a CSV report of completed runs for a workflow.
  */
 export const downloadWorkflowReportApiV1WorkflowWorkflowIdReportGet = <ThrowOnError extends boolean = false>(options: Options<DownloadWorkflowReportApiV1WorkflowWorkflowIdReportGetData, ThrowOnError>): RequestResult<DownloadWorkflowReportApiV1WorkflowWorkflowIdReportGetResponses, DownloadWorkflowReportApiV1WorkflowWorkflowIdReportGetErrors, ThrowOnError> => (options.client ?? client).get<DownloadWorkflowReportApiV1WorkflowWorkflowIdReportGetResponses, DownloadWorkflowReportApiV1WorkflowWorkflowIdReportGetErrors, ThrowOnError>({ url: '/api/v1/workflow/{workflow_id}/report', ...options });
-
-/**
- * Get Workflow Templates
- *
- * Get all available workflow templates.
- *
- * Returns:
- * List of workflow templates
- */
-export const getWorkflowTemplatesApiV1WorkflowTemplatesGet = <ThrowOnError extends boolean = false>(options?: Options<GetWorkflowTemplatesApiV1WorkflowTemplatesGetData, ThrowOnError>): RequestResult<GetWorkflowTemplatesApiV1WorkflowTemplatesGetResponses, GetWorkflowTemplatesApiV1WorkflowTemplatesGetErrors, ThrowOnError> => (options?.client ?? client).get<GetWorkflowTemplatesApiV1WorkflowTemplatesGetResponses, GetWorkflowTemplatesApiV1WorkflowTemplatesGetErrors, ThrowOnError>({ url: '/api/v1/workflow/templates', ...options });
-
-/**
- * Duplicate Workflow Template
- *
- * Duplicate a workflow template to create a new workflow for the user.
- *
- * Args:
- * request: The duplicate template request
- * user: The authenticated user
- *
- * Returns:
- * The newly created workflow
- */
-export const duplicateWorkflowTemplateApiV1WorkflowTemplatesDuplicatePost = <ThrowOnError extends boolean = false>(options: Options<DuplicateWorkflowTemplateApiV1WorkflowTemplatesDuplicatePostData, ThrowOnError>): RequestResult<DuplicateWorkflowTemplateApiV1WorkflowTemplatesDuplicatePostResponses, DuplicateWorkflowTemplateApiV1WorkflowTemplatesDuplicatePostErrors, ThrowOnError> => (options.client ?? client).post<DuplicateWorkflowTemplateApiV1WorkflowTemplatesDuplicatePostResponses, DuplicateWorkflowTemplateApiV1WorkflowTemplatesDuplicatePostErrors, ThrowOnError>({
-    url: '/api/v1/workflow/templates/duplicate',
-    ...options,
-    headers: {
-        'Content-Type': 'application/json',
-        ...options.headers
-    }
-});
 
 /**
  * Get a presigned URL to upload a custom ambient noise audio file
@@ -1173,7 +1173,7 @@ export const startOauthApiV1IntegrationsOauthStartPost = <ThrowOnError extends b
 /**
  * Get Current Organization Context
  *
- * Return organization-scoped configuration signals owned by Fallcha.ai.
+ * Return organization-scoped configuration signals owned by LightMove.ai.
  */
 export const getCurrentOrganizationContextApiV1OrganizationsContextGet = <ThrowOnError extends boolean = false>(options?: Options<GetCurrentOrganizationContextApiV1OrganizationsContextGetData, ThrowOnError>): RequestResult<GetCurrentOrganizationContextApiV1OrganizationsContextGetResponses, GetCurrentOrganizationContextApiV1OrganizationsContextGetErrors, ThrowOnError> => (options?.client ?? client).get<GetCurrentOrganizationContextApiV1OrganizationsContextGetResponses, GetCurrentOrganizationContextApiV1OrganizationsContextGetErrors, ThrowOnError>({ url: '/api/v1/organizations/context', ...options });
 
@@ -2017,8 +2017,10 @@ export const getUploadUrlApiV1KnowledgeBaseUploadUrlPost = <ThrowOnError extends
  *
  * The document status will be updated from 'pending' -> 'processing' -> 'completed' or 'failed'.
  *
- * Embedding:
- * Uses OpenAI text-embedding-3-small (1536-dimensional embeddings, requires API key configured in Model Configurations).
+ * Processing:
+ * The document is parsed and chunked on this server; it is not sent to any
+ * other service. In chunked mode the chunks are embedded with the embedding
+ * model configured in Model Configurations (1536-dimensional embeddings).
  *
  * Access Control:
  * * Users can only process documents in their organization.
@@ -2172,7 +2174,10 @@ export const updateRecordingApiV1WorkflowRecordingsIdPatch = <ThrowOnError exten
 /**
  * Transcribe an audio file
  *
- * Transcribe an uploaded audio file using MPS STT.
+ * Transcribe an uploaded audio file.
+ *
+ * Uses the platform's Google Speech-to-Text when platform models are
+ * enabled, otherwise the configured MPS; 404 when neither is available.
  */
 export const transcribeAudioApiV1WorkflowRecordingsTranscribePost = <ThrowOnError extends boolean = false>(options: Options<TranscribeAudioApiV1WorkflowRecordingsTranscribePostData, ThrowOnError>): RequestResult<TranscribeAudioApiV1WorkflowRecordingsTranscribePostResponses, TranscribeAudioApiV1WorkflowRecordingsTranscribePostErrors, ThrowOnError> => (options.client ?? client).post<TranscribeAudioApiV1WorkflowRecordingsTranscribePostResponses, TranscribeAudioApiV1WorkflowRecordingsTranscribePostErrors, ThrowOnError>({
     ...formDataBodySerializer,

@@ -31,10 +31,10 @@ export default function DocumentList({ refreshTrigger }: DocumentListProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [editingDoc, setEditingDoc] = useState<DocumentResponseSchema | null>(null);
-  // Saving an edit re-indexes the document through the model proxy service
-  // (MPS); without one configured, editing is off like uploads.
+  // Saving an edit re-processes the document; when the server can't process
+  // documents, editing is off like uploads.
   const { config } = useAppConfig();
-  const editingAvailable = Boolean(config?.mpsEnabled);
+  const editingAvailable = Boolean(config?.documentProcessingEnabled);
 
   const fetchDocuments = useCallback(async () => {
     try {

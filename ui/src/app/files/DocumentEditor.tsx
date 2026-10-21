@@ -22,7 +22,6 @@ import { Textarea } from '@/components/ui/textarea';
 import { detailFromError } from '@/lib/apiError';
 import logger from '@/lib/logger';
 
-import ExternalProcessingNotice from './ExternalProcessingNotice';
 
 const EDITABLE_EXTENSIONS = ['.txt', '.md'];
 
@@ -134,8 +133,6 @@ export default function DocumentEditor({ doc, onClose, onSaved }: DocumentEditor
               : 'Agents keep using the current version until the saved text finishes processing, usually a few seconds.'}
           </DialogDescription>
         </DialogHeader>
-
-        <ExternalProcessingNotice />
 
         {isLoading ? (
           <div

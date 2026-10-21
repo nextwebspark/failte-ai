@@ -5,7 +5,7 @@ import DocumentList from "./DocumentList";
 
 const mocks = vi.hoisted(() => ({
     list: vi.fn(),
-    config: { mpsEnabled: true },
+    config: { documentProcessingEnabled: true, mpsEnabled: false },
 }));
 vi.mock("@/client/sdk.gen", () => ({
     listDocumentsApiV1KnowledgeBaseDocumentsGet: mocks.list,
@@ -38,12 +38,13 @@ const document = {
 
 beforeEach(() => {
     vi.clearAllMocks();
-    mocks.config.mpsEnabled = true;
+    mocks.config.documentProcessingEnabled = true;
+    mocks.config.mpsEnabled = false;
     mocks.list.mockResolvedValue({ data: { documents: [document] } });
 });
 
 describe("document editing", () => {
-    it("offers Edit when documents can be re-processed", async () => {
+    it("offers Edit when documents can be re-processed, with or without an MPS", async () => {
         render(<DocumentList refreshTrigger={0} />);
         await screen.findByText("faq.md");
         expect(screen.getByTitle("Edit")).toBeTruthy();
@@ -51,7 +52,7 @@ describe("document editing", () => {
     });
 
     it("hides Edit when document processing isn't available", async () => {
-        mocks.config.mpsEnabled = false;
+        mocks.config.documentProcessingEnabled = false;
         render(<DocumentList refreshTrigger={0} />);
         await screen.findByText("faq.md");
         expect(screen.queryByTitle("Edit")).toBeNull();
