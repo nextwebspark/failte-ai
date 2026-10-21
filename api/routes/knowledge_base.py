@@ -34,20 +34,8 @@ from api.services.knowledge_base_content import (
 )
 from api.services.posthog_client import capture_event
 from api.services.storage import storage_fs
-from api.tasks.knowledge_base_processing import (
-    DOCUMENT_PROCESSING_UNAVAILABLE_MESSAGE,
-    document_processing_available,
-)
 
 router = APIRouter(prefix="/knowledge-base", tags=["knowledge-base"])
-
-
-def _require_document_processing() -> None:
-    """Refuse uploads that could not be processed, before anything is stored."""
-    if not document_processing_available():
-        raise HTTPException(
-            status_code=503, detail=DOCUMENT_PROCESSING_UNAVAILABLE_MESSAGE
-        )
 
 
 def _has_live_content(document: KnowledgeBaseDocumentModel) -> bool:
@@ -108,8 +96,6 @@ async def get_upload_url(
     Access Control:
     * All authenticated users can upload documents scoped to their organization.
     """
-    _require_document_processing()
-
     try:
         # Generate unique document UUID for S3 organization
         document_uuid = str(uuid.uuid4())
@@ -167,14 +153,14 @@ async def process_document(
 
     The document status will be updated from 'pending' -> 'processing' -> 'completed' or 'failed'.
 
-    Embedding:
-    Uses OpenAI text-embedding-3-small (1536-dimensional embeddings, requires API key configured in Model Configurations).
+    Processing:
+    The document is parsed and chunked on this server; it is not sent to any
+    other service. In chunked mode the chunks are embedded with the embedding
+    model configured in Model Configurations (1536-dimensional embeddings).
 
     Access Control:
     * Users can only process documents in their organization.
     """
-    _require_document_processing()
-
     if request.retrieval_mode == "chunked":
         from api.services.configuration.ai_model_configuration import (
             get_resolved_ai_model_configuration,
@@ -187,8 +173,9 @@ async def process_document(
             resolved.effective.platform_managed
             and resolved.effective.embeddings is None
         ):
-            # Platform models offer no embedding model yet; fail before the
-            # document is stored rather than in the background task.
+            # Platform models without an embedding model (the server has no
+            # platform settings); fail before the document is stored rather
+            # than in the background task.
             raise HTTPException(
                 status_code=422,
                 detail=(
@@ -224,8 +211,8 @@ async def process_document(
         )
 
         logger.info(
-            f"Created document {request.document_uuid} (id={document.id}) and enqueued processing "
-            f"with OpenAI embeddings, org {user.selected_organization_id}"
+            f"Created document {request.document_uuid} (id={document.id}) and enqueued "
+            f"processing, org {user.selected_organization_id}"
         )
 
         capture_event(
@@ -412,8 +399,6 @@ async def save_document_content(
     Access Control:
     * Users can only edit documents from their organization.
     """
-    _require_document_processing()
-
     document = await db_client.get_document_by_uuid(
         document_uuid=document_uuid,
         organization_id=user.selected_organization_id,
@@ -522,46 +507,22 @@ async def search_chunks(
     try:
         # Import here to avoid circular dependency
         from api.services.configuration.ai_model_configuration import (
-            apply_managed_embeddings_base_url,
             get_resolved_ai_model_configuration,
         )
-        from api.services.gen_ai import build_embedding_service
+        from api.services.gen_ai import EmbeddingSettings, build_embedding_service
 
         # Try to get the organization's embeddings configuration
         resolved_config = await get_resolved_ai_model_configuration(
             organization_id=user.selected_organization_id,
         )
-        effective_config = resolved_config.effective
-        embeddings_api_key = None
-        embeddings_model = None
-        embeddings_provider = None
-        embeddings_base_url = None
-        embeddings_endpoint = None
-        embeddings_api_version = None
-
-        if effective_config.embeddings:
-            embeddings_api_key = effective_config.embeddings.api_key
-            embeddings_model = effective_config.embeddings.model
-            embeddings_provider = getattr(effective_config.embeddings, "provider", None)
-            embeddings_endpoint = getattr(effective_config.embeddings, "endpoint", None)
-            embeddings_base_url = apply_managed_embeddings_base_url(
-                provider=embeddings_provider,
-                base_url=getattr(effective_config.embeddings, "base_url", None),
-            )
-            embeddings_api_version = getattr(
-                effective_config.embeddings, "api_version", None
-            )
 
         # Manual search runs outside any workflow run, so resolve the MPS
         # correlation id here.
         embedding_service = await build_embedding_service(
             db_client=db_client,
-            provider=embeddings_provider,
-            api_key=embeddings_api_key,
-            model=embeddings_model,
-            base_url=embeddings_base_url,
-            endpoint=embeddings_endpoint,
-            api_version=embeddings_api_version,
+            settings=EmbeddingSettings.from_config(
+                resolved_config.effective.embeddings
+            ),
             resolve_correlation=True,
         )
 
