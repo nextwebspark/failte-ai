@@ -43,6 +43,11 @@ WORKFLOW_RUN_GATHERED_CONTEXT_KEPT_KEYS = frozenset(
     {"call_status", "call_disposition", "mapped_call_disposition"}
 )
 
+# Call-context keys holding the caller's or callee's address.
+CALL_CONTEXT_NUMBER_KEYS = ("caller_number", "called_number", "phone_number")
+# Older ARI inbound runs were named after the caller's number.
+_LEGACY_NUMBER_NAME_PREFIXES = ("ARI Inbound ",)
+
 TERMINAL_CAMPAIGN_STATES = ("completed", "failed")
 # A campaign idle in one of these states past the retention period cannot be
 # resumed once its contact list is deleted, so the purge fails it first.
@@ -76,6 +81,25 @@ class ExpiredCampaign:
     state: str
     source_type: str
     source_id: str
+
+
+def scrub_run_name(name: Optional[str], initial_context: Any) -> Optional[str]:
+    """``name`` without the caller's or callee's number.
+
+    The run name survives a scrub (it shows in usage history), so any number
+    from the call context that a name was built from is cut out of it.
+    """
+    if not name:
+        return name
+    for prefix in _LEGACY_NUMBER_NAME_PREFIXES:
+        if name.startswith(prefix):
+            return prefix.rstrip()
+    context = initial_context if isinstance(initial_context, dict) else {}
+    for key in CALL_CONTEXT_NUMBER_KEYS:
+        value = context.get(key)
+        if isinstance(value, str) and len(value.strip()) >= 3:
+            name = name.replace(value.strip(), "[removed]")
+    return name
 
 
 def _workflow_run_not_purged():
@@ -233,7 +257,8 @@ class RetentionClient(BaseDBClient):
 
         Clears recording/transcript keys, live transcript logs, call context
         (caller and called numbers, extracted variables), annotations, the
-        public share token and the text-chat transcript. Keeps status,
+        public share token and the text-chat transcript, and cuts any number
+        out of the run name (``scrub_run_name``). Keeps status,
         timestamps, usage and cost, plus the keys in
         ``WORKFLOW_RUN_EXTRA_KEPT_KEYS`` / ``WORKFLOW_RUN_GATHERED_CONTEXT_KEPT_KEYS``.
         Only runs that belong to ``organization_id`` are touched.
@@ -261,6 +286,7 @@ class RetentionClient(BaseDBClient):
                     if isinstance(run.gathered_context, dict)
                     else {}
                 )
+                run.name = scrub_run_name(run.name, run.initial_context)
                 run.recording_url = None
                 run.transcript_url = None
                 run.logs = {}

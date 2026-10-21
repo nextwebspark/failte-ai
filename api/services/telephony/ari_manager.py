@@ -980,7 +980,8 @@ class ARIConnection:
                 channel_id, channel.get("name", ""), lead_fields
             )
             workflow_run = await db_client.create_workflow_run(
-                name=f"ARI Inbound {caller_number}",
+                # No caller number in the name: it outlives the call content.
+                name="ARI Inbound",
                 workflow_id=inbound_workflow_id,
                 mode=WorkflowRunMode.ARI.value,
                 user_id=user_id,

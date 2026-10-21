@@ -60,7 +60,7 @@ class RetentionPurgeResult:
     webhook_deliveries_cleared: int = 0
 
 
-def _default_storage_resolver() -> StorageResolver:
+def default_storage_resolver() -> StorageResolver:
     """Storage per backend code, reusing the process-wide instance when it fits."""
     from api.services.storage import (
         get_current_storage_backend,
@@ -78,7 +78,7 @@ def _default_storage_resolver() -> StorageResolver:
     return resolve
 
 
-def _current_backend() -> str:
+def current_storage_backend() -> str:
     from api.services.storage import get_current_storage_backend
 
     return get_current_storage_backend().value
@@ -100,7 +100,7 @@ def _is_run_artifact_key(run_id: int, key: str) -> bool:
     )
 
 
-def _run_object_keys(run: ExpiredWorkflowRun) -> dict[str, str]:
+def run_object_keys(run: ExpiredWorkflowRun) -> dict[str, str]:
     """Every object key the run references, mapped to its storage backend."""
     keys: dict[str, str] = {}
     for key in (run.recording_url, run.transcript_url):
@@ -133,13 +133,13 @@ def _run_object_keys(run: ExpiredWorkflowRun) -> dict[str, str]:
     }
 
 
-async def _delete_run_objects(
+async def delete_run_objects(
     run: ExpiredWorkflowRun, resolve_storage: StorageResolver
 ) -> Optional[int]:
     """Delete every stored object of ``run``; None if any deletion failed."""
     deleted = 0
     try:
-        for key, backend in _run_object_keys(run).items():
+        for key, backend in run_object_keys(run).items():
             if not await resolve_storage(backend).adelete_file(key):
                 return None
             deleted += 1
@@ -149,7 +149,7 @@ async def _delete_run_objects(
         )
     except Exception as exc:
         logger.warning(
-            f"Retention purge could not delete objects of workflow run {run.id}: "
+            f"Could not delete the stored objects of workflow run {run.id}: "
             f"{type(exc).__name__}"
         )
         return None
@@ -237,7 +237,7 @@ async def _purge_organization_runs(
 
         cleared: list[int] = []
         for run in runs:
-            deleted = await _delete_run_objects(run, resolve_storage)
+            deleted = await delete_run_objects(run, resolve_storage)
             if deleted is None:
                 result.runs_deferred += 1
                 continue
@@ -251,7 +251,7 @@ async def _purge_organization_runs(
             return
 
 
-def _campaign_csv_key(organization_id: int, campaign: ExpiredCampaign) -> Optional[str]:
+def campaign_csv_key(organization_id: int, campaign: ExpiredCampaign) -> Optional[str]:
     """The uploaded CSV of a campaign, if it is one this organization owns."""
     if campaign.source_type != "csv" or not campaign.source_id:
         return None
@@ -280,7 +280,7 @@ async def _purge_organization_campaigns(
         after_id = campaigns[-1].id
 
         for campaign in campaigns:
-            csv_key = _campaign_csv_key(organization_id, campaign)
+            csv_key = campaign_csv_key(organization_id, campaign)
             if csv_key and await db_client.is_campaign_source_shared(
                 organization_id=organization_id,
                 source_id=csv_key,
@@ -294,9 +294,8 @@ async def _purge_organization_campaigns(
                 if key is None:
                     return True
                 try:
-                    deleted = await resolve_storage(_current_backend()).adelete_file(
-                        key
-                    )
+                    storage = resolve_storage(current_storage_backend())
+                    deleted = await storage.adelete_file(key)
                 except Exception:
                     deleted = False
                 if deleted:
@@ -387,7 +386,7 @@ async def purge_expired_data(
     """
     now = now or datetime.now(UTC)
     if not dry_run:
-        resolve_storage = resolve_storage or _default_storage_resolver()
+        resolve_storage = resolve_storage or default_storage_resolver()
     result = RetentionPurgeResult()
 
     after_id = 0
