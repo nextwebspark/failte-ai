@@ -4,12 +4,19 @@ Calls the regional Vertex AI ``predict`` endpoint directly, so requests stay
 in the configured location (``europe-west1`` unless set otherwise). The model
 returns one embedding per request, so batches are sent concurrently with a
 bounded number of requests in flight.
+
+Credentials and the HTTP client are shared per process (keyed by the
+service-account JSON, or ADC), so a live call's knowledge base lookup doesn't
+mint a new OAuth token or open a new TLS connection every time.
 """
 
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import math
+import random
+import weakref
 from typing import Any, Dict, List, Optional
 
 import httpx
@@ -26,8 +33,11 @@ DEFAULT_VERTEX_EMBEDDING_LOCATION = "europe-west1"
 VERTEX_EMBEDDING_DIMENSION = 1536
 MAX_CONCURRENT_REQUESTS = 8
 _RETRY_STATUSES = {429, 500, 502, 503, 504}
-_MAX_ATTEMPTS = 3
+# Ingestion can wait out a rate limit; a live call's query can't wait long.
+DOCUMENT_MAX_ATTEMPTS = 6
+QUERY_MAX_ATTEMPTS = 3
 RETRY_BASE_DELAY_SECONDS = 1.0
+_MAX_RETRY_DELAY_SECONDS = 30.0
 _REQUEST_TIMEOUT_SECONDS = 30.0
 
 TASK_TYPE_DOCUMENT = "RETRIEVAL_DOCUMENT"
@@ -78,6 +88,42 @@ class _BearerToken:
             return self._credentials.token
 
 
+_TOKENS: dict[str, _BearerToken] = {}
+_CLIENTS: "weakref.WeakKeyDictionary[asyncio.AbstractEventLoop, httpx.AsyncClient]" = (
+    weakref.WeakKeyDictionary()
+)
+
+
+def shared_token(credentials_json: Optional[str]) -> _BearerToken:
+    """One token source per service account (or ADC) for the whole process."""
+    key = hashlib.sha256((credentials_json or "").encode()).hexdigest()
+    token = _TOKENS.get(key)
+    if token is None:
+        token = _TOKENS[key] = _BearerToken(credentials_json)
+    return token
+
+
+def shared_http_client() -> httpx.AsyncClient:
+    """A pooled client for the running event loop (clients are loop-bound)."""
+    loop = asyncio.get_running_loop()
+    client = _CLIENTS.get(loop)
+    if client is None or client.is_closed:
+        client = _CLIENTS[loop] = httpx.AsyncClient(
+            timeout=httpx.Timeout(_REQUEST_TIMEOUT_SECONDS)
+        )
+    return client
+
+
+def _retry_delay(attempt: int, response: Optional[httpx.Response] = None) -> float:
+    """Exponential backoff with jitter, or the server's Retry-After."""
+    if response is not None:
+        retry_after = response.headers.get("Retry-After", "")
+        if retry_after.isdigit():
+            return min(float(retry_after), _MAX_RETRY_DELAY_SECONDS)
+    delay = min(RETRY_BASE_DELAY_SECONDS * 2 ** (attempt - 1), _MAX_RETRY_DELAY_SECONDS)
+    return delay * random.uniform(0.5, 1.0)
+
+
 class VertexEmbeddingService(BaseEmbeddingService):
     """Embedding service for Vertex AI text embedding models."""
 
@@ -101,7 +147,7 @@ class VertexEmbeddingService(BaseEmbeddingService):
         self.model_id = model_id or DEFAULT_VERTEX_EMBEDDING_MODEL
         self._max_concurrency = max(1, max_concurrency)
         self._http_client = http_client
-        self._token = token_provider or _BearerToken(credentials).get
+        self._token = token_provider or shared_token(credentials).get
         self._url = vertex_predict_url(self.project_id, self.location, self.model_id)
         logger.info(
             f"Vertex AI embedding service initialized: model={self.model_id}, "
@@ -115,10 +161,10 @@ class VertexEmbeddingService(BaseEmbeddingService):
         return VERTEX_EMBEDDING_DIMENSION
 
     async def embed_texts(self, texts: List[str]) -> List[List[float]]:
-        return await self._embed_many(texts, TASK_TYPE_DOCUMENT)
+        return await self._embed_many(texts, TASK_TYPE_DOCUMENT, DOCUMENT_MAX_ATTEMPTS)
 
     async def embed_query(self, query: str) -> List[float]:
-        return (await self._embed_many([query], TASK_TYPE_QUERY))[0]
+        return (await self._embed_many([query], TASK_TYPE_QUERY, QUERY_MAX_ATTEMPTS))[0]
 
     async def search_similar_chunks(
         self,
@@ -136,32 +182,38 @@ class VertexEmbeddingService(BaseEmbeddingService):
             embedding_model=self.model_id,
         )
 
-    async def _embed_many(self, texts: List[str], task_type: str) -> List[List[float]]:
+    async def _embed_many(
+        self, texts: List[str], task_type: str, max_attempts: int
+    ) -> List[List[float]]:
         if not texts:
             return []
+        client = self._http_client or shared_http_client()
         semaphore = asyncio.Semaphore(self._max_concurrency)
-        if self._http_client is not None:
-            return await self._gather(self._http_client, semaphore, texts, task_type)
-        async with httpx.AsyncClient(
-            timeout=httpx.Timeout(_REQUEST_TIMEOUT_SECONDS)
-        ) as client:
-            return await self._gather(client, semaphore, texts, task_type)
 
-    async def _gather(self, client, semaphore, texts, task_type):
         async def one(text: str) -> List[float]:
             async with semaphore:
-                return await self._embed_one(client, text, task_type)
+                return await self._embed_one(client, text, task_type, max_attempts)
 
-        return list(await asyncio.gather(*(one(text) for text in texts)))
+        try:
+            # A failure cancels the requests still queued or in flight.
+            async with asyncio.TaskGroup() as group:
+                tasks = [group.create_task(one(text)) for text in texts]
+        except BaseExceptionGroup as failures:  # noqa: F821 (Python 3.11+)
+            raise failures.exceptions[0] from None
+        return [task.result() for task in tasks]
 
     async def _embed_one(
-        self, client: httpx.AsyncClient, text: str, task_type: str
+        self,
+        client: httpx.AsyncClient,
+        text: str,
+        task_type: str,
+        max_attempts: int,
     ) -> List[float]:
         body = {
             "instances": [{"content": text, "task_type": task_type}],
             "parameters": {"outputDimensionality": VERTEX_EMBEDDING_DIMENSION},
         }
-        for attempt in range(1, _MAX_ATTEMPTS + 1):
+        for attempt in range(1, max_attempts + 1):
             token = await self._token()
             try:
                 response = await client.post(
@@ -170,14 +222,14 @@ class VertexEmbeddingService(BaseEmbeddingService):
                     headers={"Authorization": f"Bearer {token}"},
                 )
             except httpx.RequestError as exc:
-                if attempt == _MAX_ATTEMPTS:
+                if attempt == max_attempts:
                     raise VertexEmbeddingError(
                         "Could not reach Vertex AI for embeddings."
                     ) from exc
-                await asyncio.sleep(RETRY_BASE_DELAY_SECONDS * 2 ** (attempt - 1))
+                await asyncio.sleep(_retry_delay(attempt))
                 continue
-            if response.status_code in _RETRY_STATUSES and attempt < _MAX_ATTEMPTS:
-                await asyncio.sleep(RETRY_BASE_DELAY_SECONDS * 2 ** (attempt - 1))
+            if response.status_code in _RETRY_STATUSES and attempt < max_attempts:
+                await asyncio.sleep(_retry_delay(attempt, response))
                 continue
             if response.status_code != 200:
                 raise VertexEmbeddingError(

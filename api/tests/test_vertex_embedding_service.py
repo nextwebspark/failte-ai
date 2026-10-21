@@ -249,3 +249,116 @@ def test_settings_without_credentials_are_not_configured():
     assert EmbeddingSettings.from_config(None) is None
     assert not EmbeddingSettings(provider="openai").is_configured
     assert not EmbeddingSettings(provider="google_vertex").is_configured
+
+
+# Sharing and retries --------------------------------------------------------------
+
+
+async def test_services_share_credentials_and_the_http_client(monkeypatch):
+    from api.services.pipecat import vertex_llm
+
+    calls = []
+
+    def fake_credentials(credentials_json):
+        calls.append(credentials_json)
+        return SimpleNamespace(valid=True, token="shared-token")
+
+    monkeypatch.setattr(vertex_llm, "service_account_credentials", fake_credentials)
+    monkeypatch.setattr(vertex_service, "_TOKENS", {})
+    sent = []
+
+    async def handler(request):
+        sent.append(request.headers["Authorization"])
+        return httpx.Response(200, json=_prediction([1.0] * 1536))
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    monkeypatch.setattr(vertex_service, "shared_http_client", lambda: client)
+
+    for _ in range(3):  # three live-call lookups
+        service = VertexEmbeddingService(
+            db_client=None, project_id="eu-project", credentials='{"sa": 1}'
+        )
+        await service.embed_query("hours?")
+    other = VertexEmbeddingService(
+        db_client=None, project_id="eu-project", credentials='{"sa": 2}'
+    )
+    await other.embed_query("hours?")
+
+    assert calls == ['{"sa": 1}', '{"sa": 2}']
+    assert sent == ["Bearer shared-token"] * 4
+    assert vertex_service.shared_token(None) is vertex_service.shared_token(None)
+
+
+async def test_shared_http_client_is_reused_per_event_loop():
+    first = vertex_service.shared_http_client()
+    assert vertex_service.shared_http_client() is first
+    await first.aclose()
+    assert vertex_service.shared_http_client() is not first
+
+
+async def test_rate_limits_honour_retry_after(monkeypatch):
+    waits = []
+
+    async def record_sleep(seconds):
+        waits.append(seconds)
+
+    monkeypatch.setattr(vertex_service.asyncio, "sleep", record_sleep)
+    vertex = _Vertex(
+        responses=[
+            httpx.Response(429, headers={"Retry-After": "7"}),
+            httpx.Response(200, json=_prediction([1.0] * 1536)),
+        ]
+    )
+    service = vertex.service()
+
+    await service.embed_texts(["hello"])
+
+    # (0.01 is the fake endpoint's own delay.)
+    assert [w for w in waits if w != 0.01] == [7.0]
+
+
+@pytest.mark.parametrize(
+    ("method", "attempts"),
+    [("embed_texts", 6), ("embed_query", 3)],
+)
+async def test_documents_wait_out_rate_limits_longer_than_queries(method, attempts):
+    vertex = _Vertex(responses=[httpx.Response(429)] * 10)
+    service = vertex.service()
+
+    with pytest.raises(VertexEmbeddingError, match="HTTP 429"):
+        argument = ["hello"] if method == "embed_texts" else "hello"
+        await getattr(service, method)(argument)
+
+    assert len(vertex.requests) == attempts
+
+
+async def test_a_failure_cancels_the_other_requests():
+    started = []
+
+    async def handler(request):
+        content = json.loads(request.content)["instances"][0]["content"]
+        started.append(content)
+        if content == "bad":
+            return httpx.Response(400, json={"error": {"message": "Bad input"}})
+        await asyncio.sleep(10)
+        return httpx.Response(200, json=_prediction([1.0] * 1536))
+
+    async def token():
+        return "t"
+
+    service = VertexEmbeddingService(
+        db_client=None,
+        project_id="eu-project",
+        http_client=httpx.AsyncClient(transport=httpx.MockTransport(handler)),
+        token_provider=token,
+        max_concurrency=2,
+    )
+
+    with pytest.raises(VertexEmbeddingError, match="Bad input"):
+        await asyncio.wait_for(
+            service.embed_texts(["bad", "slow", "never-1", "never-2"]), timeout=5
+        )
+
+    # The queue stops once a request fails (the freed slot may already have
+    # gone to the next text).
+    assert "never-2" not in started
