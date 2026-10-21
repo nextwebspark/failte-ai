@@ -516,10 +516,10 @@ and legacy telephony settings). Each value is stored as a
     --role=roles/secretmanager.secretAccessor
   ```
 
-- **Existing rows.** Migration `00cb7a7a62b1` (the api runs `alembic upgrade
-  head` on start) encrypts existing plaintext telephony, integration and organization
-  configuration rows in place when the key is set; `6b0c8484ba5a` did the same for
-  workspace credentials. Rows written before the key existed, or on a database
+- **Existing rows.** Migrations `00cb7a7a62b1` and `17450c2f9b60` (the api runs
+  `alembic upgrade head` on start) encrypt existing plaintext telephony,
+  integration, organization configuration and user configuration rows in place
+  when the key is set; `6b0c8484ba5a` did the same for workspace credentials. Rows written before the key existed, or on a database
   that passed those migrations without a key, are sealed by the re-encryption
   script, which is idempotent and safe to repeat:
 
@@ -535,7 +535,7 @@ and legacy telephony settings). Each value is stored as a
      secret now differs from `.env` on purpose) and `docker compose up -d api`
      (every api and worker must hold both keys).
   3. `docker compose exec api python -m scripts.reencrypt_credentials` re-seals
-     every row of all four columns under the new key; it exits non-zero and lists
+     every row of all five columns under the new key; it exits non-zero and lists
      `table#id` for any row it cannot open.
   4. Set the secret to `<new>` only, re-run `configure-env.sh` with
      `DOGRAH_CREDENTIALS_KEYS_OVERRIDE=sm`, restart.
@@ -548,6 +548,9 @@ and legacy telephony settings). Each value is stored as a
   configuration rows, and `deploy.sh` never reverses migrations. Decrypt first,
   with the keys still set, then deploy the older tag:
   `docker compose exec api alembic -c api/alembic.ini downgrade b7c3e9a41d20`.
+  Rolling back only past the release that added `17450c2f9b60` (user
+  configurations) decrypts just that table:
+  `docker compose exec api alembic -c api/alembic.ini downgrade 00cb7a7a62b1`.
 
 The nginx config is rendered by `dograh-init` from
 `deploy/templates/nginx.remote.conf.template`, so pulling this repo and

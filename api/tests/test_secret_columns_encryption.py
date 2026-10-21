@@ -1,5 +1,6 @@
 """Encryption at rest of telephony credentials, integration connection
-details and organization configuration values (GDPR Art. 32).
+details, organization configuration values and user configurations (GDPR
+Art. 32).
 
 Same envelope and keys as ``external_credentials.credential_data`` (see
 test_credential_encryption.py). Every database test runs inside the conftest's
@@ -25,7 +26,7 @@ from api.db.credential_encryption_client import (
 )
 from api.db.encrypted_json import EncryptedJSON
 from api.db.models import Base, OrganizationModel, UserModel
-from api.enums import OrganizationConfigurationKey
+from api.enums import OrganizationConfigurationKey, UserConfigurationKey
 from api.utils import credential_crypto
 from api.utils.cors import CorsConfigurationError, resolve_cors_settings
 from api.utils.credential_crypto import CredentialCipher, generate_key, is_envelope
@@ -44,6 +45,16 @@ _spec = importlib.util.spec_from_file_location(
 assert _spec and _spec.loader
 migration = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(migration)
+
+_USER_MIGRATION_PATH = _MIGRATION_PATH.with_name(
+    "17450c2f9b60_encrypt_user_configurations.py"
+)
+_user_spec = importlib.util.spec_from_file_location(
+    "encrypt_user_configurations", _USER_MIGRATION_PATH
+)
+assert _user_spec and _user_spec.loader
+user_migration = importlib.util.module_from_spec(_user_spec)
+_user_spec.loader.exec_module(user_migration)
 
 
 @pytest.fixture
@@ -93,7 +104,7 @@ def test_encrypted_columns_list_matches_the_models():
         if isinstance(column.type, EncryptedJSON)
     }
     assert declared == set(ENCRYPTED_COLUMNS)
-    assert set(migration.COLUMNS) == declared - {
+    assert set(migration.COLUMNS) | set(user_migration.COLUMNS) == declared - {
         ("external_credentials", "credential_data")
     }
 
@@ -479,17 +490,28 @@ async def test_reencrypt_and_canary_cover_every_column(
     setting = await db_session.upsert_configuration(
         org.id, "TEST_SECRET", {"api_key": SECRET}
     )
+    await db_session.upsert_user_configuration_value(
+        user.id, "TEST_SECRET", {"api_key": SECRET}
+    )
+    user_setting_id = await async_session.scalar(
+        text(
+            "SELECT id FROM user_configurations WHERE user_id = :user "
+            "AND key = 'TEST_SECRET'"
+        ),
+        {"user": user.id},
+    )
     targets = [
         ("telephony_configurations", "credentials", config.id),
         ("integrations", "connection_details", integration.id),
         ("organization_configurations", "value", setting.id),
+        ("user_configurations", "configuration", user_setting_id),
     ]
     for table, column, row_id in targets:
         assert SECRET in json.dumps(await _raw(async_session, table, column, row_id))
 
     client = CredentialEncryptionClient(db_connection)
     report = await client.reencrypt_all(CredentialCipher([key]), batch_size=1)
-    assert report.encrypted >= 3
+    assert report.encrypted >= 4
     for table, column, row_id in targets:
         assert SECRET in json.dumps(
             _sealed(await _raw(async_session, table, column, row_id), key)
@@ -500,16 +522,98 @@ async def test_reencrypt_and_canary_cover_every_column(
     assert sample is not None and is_envelope(sample)
 
 
+# -- user_configurations.configuration -------------------------------------------
+
+
+async def _user_config_id(async_session, user_id: int, key: str) -> int:
+    return await async_session.scalar(
+        text("SELECT id FROM user_configurations WHERE user_id = :u AND key = :k"),
+        {"u": user_id, "k": key},
+    )
+
+
+async def test_user_configuration_round_trip(db_session, async_session, encryption_on):
+    _, user = await _org_and_user(async_session)
+    model_key = UserConfigurationKey.MODEL_CONFIGURATION.value
+    value = {"llm": {"provider": "openai", "model": "m", "api_key": SECRET}}
+
+    # The upsert is a Core INSERT ... ON CONFLICT ... RETURNING: both the bind
+    # and the result go through EncryptedJSON.
+    assert (
+        await db_session.upsert_user_configuration_value(user.id, model_key, value)
+        == value
+    )
+    row_id = await _user_config_id(async_session, user.id, model_key)
+    raw = await _raw(async_session, "user_configurations", "configuration", row_id)
+    assert _sealed(raw, encryption_on) == value
+
+    updated = {"llm": {**value["llm"], "model": "m2"}}
+    assert (
+        await db_session.upsert_user_configuration_value(user.id, model_key, updated)
+        == updated
+    )
+    raw = await _raw(async_session, "user_configurations", "configuration", row_id)
+    assert _sealed(raw, encryption_on) == updated
+
+    async_session.expunge_all()
+    assert await db_session.get_user_configuration_value(user.id, model_key) == updated
+
+
+async def test_user_configuration_migration_upgrade_and_downgrade(
+    db_session, async_session, db_connection, monkeypatch, key
+):
+    _, user = await _org_and_user(async_session)
+    model_key = UserConfigurationKey.MODEL_CONFIGURATION.value
+    row_id = await async_session.scalar(
+        text(
+            "INSERT INTO user_configurations (user_id, key, configuration) "
+            "VALUES (:user, :key, CAST(:data AS json)) RETURNING id"
+        ),
+        {
+            "user": user.id,
+            "key": model_key,
+            "data": json.dumps({"llm": {"api_key": SECRET}}),
+        },
+    )
+    await async_session.flush()
+    row = ("user_configurations", "configuration", row_id)
+    plain = await _raw(async_session, *row)
+    ambient = os.environ.get("CREDENTIALS_ENCRYPTION_KEYS", "")
+
+    monkeypatch.delenv("CREDENTIALS_ENCRYPTION_KEYS", raising=False)
+    await _run_migration(db_connection, monkeypatch, "upgrade", user_migration)
+    assert await _raw(async_session, *row) == plain
+
+    monkeypatch.setenv(
+        "CREDENTIALS_ENCRYPTION_KEYS", ",".join(filter(None, [key, ambient]))
+    )
+    await _run_migration(db_connection, monkeypatch, "upgrade", user_migration)
+    sealed = await _raw(async_session, *row)
+    assert _sealed(sealed, key) == plain
+
+    monkeypatch.setattr(credential_crypto, "_cipher", CredentialCipher([key]))
+    async_session.expunge_all()
+    assert await db_session.get_user_configuration_value(user.id, model_key) == plain
+
+    await _run_migration(db_connection, monkeypatch, "upgrade", user_migration)
+    assert await _raw(async_session, *row) == sealed
+
+    await _run_migration(db_connection, monkeypatch, "downgrade", user_migration)
+    assert await _raw(async_session, *row) == plain
+
+
 # -- migration -------------------------------------------------------------------
 
 
-async def _run_migration(db_connection, monkeypatch, step: str) -> None:
+async def _run_migration(
+    db_connection, monkeypatch, step: str, module=migration
+) -> None:
     def _run(sync_connection):
         monkeypatch.setattr(
-            migration, "op", SimpleNamespace(get_bind=lambda: sync_connection)
+            module, "op", SimpleNamespace(get_bind=lambda: sync_connection)
         )
-        monkeypatch.setattr(migration, "_offline", lambda: False)
-        getattr(migration, step)()
+        monkeypatch.setattr(module, "_offline", lambda: False)
+        getattr(module, step)()
 
     await db_connection.run_sync(_run)
 
@@ -632,15 +736,16 @@ async def test_migration_downgrade_refuses_undecryptable_rows(
     )
 
 
+@pytest.mark.parametrize("module", [migration, user_migration])
 @pytest.mark.parametrize("step", ["upgrade", "downgrade"])
-def test_migration_offline_mode(monkeypatch, key, step):
-    monkeypatch.setattr(migration, "_offline", lambda: True)
-    monkeypatch.setattr(migration, "op", None)  # must not touch the database
+def test_migration_offline_mode(monkeypatch, key, step, module):
+    monkeypatch.setattr(module, "_offline", lambda: True)
+    monkeypatch.setattr(module, "op", None)  # must not touch the database
     monkeypatch.delenv("CREDENTIALS_ENCRYPTION_KEYS", raising=False)
-    getattr(migration, step)()
+    getattr(module, step)()
     monkeypatch.setenv("CREDENTIALS_ENCRYPTION_KEYS", key)
     with pytest.raises(RuntimeError, match="reencrypt_credentials"):
-        getattr(migration, step)()
+        getattr(module, step)()
 
 
 # -- CORS ------------------------------------------------------------------------

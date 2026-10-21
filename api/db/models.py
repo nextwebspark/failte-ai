@@ -129,7 +129,8 @@ class UserConfigurationModel(Base):
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     key = Column(String, nullable=False)
-    configuration = Column(JSON, nullable=False, default=dict)
+    # The legacy v1 model configuration holds provider API keys.
+    configuration = Column(EncryptedJSON, nullable=False, default=dict)
     last_validated_at = Column(DateTime(timezone=True), nullable=True)
 
     __table_args__ = (

@@ -30,6 +30,7 @@ import { getPageMeta } from '@/components/layout/navConfig';
 import { RETURN_TO_PARAM, safeReturnTo } from '@/components/layout/shellContext';
 import { MediaPreviewButton, MediaPreviewDialog } from '@/components/MediaPreviewDialog';
 import { OnboardingTooltip } from '@/components/onboarding/OnboardingTooltip';
+import { DeleteCallDataButton } from '@/components/privacy/DeleteCallDataButton';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -37,6 +38,7 @@ import { ConversationRailFrame, RealtimeFeedback, WorkflowRunLogs } from '@/comp
 import { conversationItemsFromRealtimeFeedbackEvents } from '@/components/workflow/conversation/adapters/fromRealtimeFeedback';
 import { PostHogEvent } from '@/constants/posthog-events';
 import { WORKFLOW_RUN_MODES } from '@/constants/workflowRunModes';
+import { useOrgConfig } from '@/context/OrgConfigContext';
 import { useOrganizationTimezone } from '@/hooks/useOrganizationTimezone';
 import { useAuth } from '@/lib/auth';
 import { copyTextToClipboard } from '@/lib/clipboard';
@@ -621,6 +623,9 @@ export default function WorkflowRunPage() {
     const [workflowName, setWorkflowName] = useState<string | null>(null);
     const searchParams = useSearchParams();
     const agentLinkRef = useRef<HTMLAnchorElement | null>(null);
+    const { can } = useOrgConfig();
+    // Bumped after the call's data is deleted, to show the run as it is now.
+    const [reloadKey, setReloadKey] = useState(0);
 
     // Redirect if not authenticated
     useEffect(() => {
@@ -685,7 +690,7 @@ export default function WorkflowRunPage() {
             }
         };
         fetchWorkflowRun();
-    }, [params.workflowId, params.runId, auth]);
+    }, [params.workflowId, params.runId, auth, reloadKey]);
 
     let returnValue = null;
     const isTextChatRun = workflowRun?.mode === WORKFLOW_RUN_MODES.TEXTCHAT;
@@ -824,6 +829,15 @@ export default function WorkflowRunPage() {
                         <div className="flex flex-wrap items-center gap-2">
                             <CopyDebugIdButton label="Agent ID" value={workflowId} />
                             <CopyDebugIdButton label="Run ID" value={runId} />
+                            {can('org:manage') && (
+                                <div className="ml-auto">
+                                    <DeleteCallDataButton
+                                        workflowId={Number(params.workflowId)}
+                                        runId={Number(params.runId)}
+                                        onDeleted={() => setReloadKey((key) => key + 1)}
+                                    />
+                                </div>
+                            )}
                         </div>
                     </div>
 

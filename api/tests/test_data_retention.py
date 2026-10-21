@@ -774,7 +774,8 @@ async def test_dry_run_changes_nothing_and_logs_counts(
     [line] = [m for m in messages if f"organization={data.org.id} " in m]
     assert line.rstrip().endswith(
         f"Retention purge dry run: organization={data.org.id} runs=1 "
-        "campaigns=1 queued_rows=1 widget_sessions=1 webhook_deliveries=1"
+        "campaigns=1 queued_rows=1 widget_sessions=1 webhook_deliveries=1 "
+        "archived_documents=0 archived_recordings=0"
     )
     # Counts only: nothing personal reaches the log.
     assert "+353" not in line and "198.51.100.7" not in line

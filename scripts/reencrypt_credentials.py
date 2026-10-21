@@ -2,8 +2,8 @@
 
 Covers every EncryptedJSON column (api/db/credential_encryption_client.py
 ENCRYPTED_COLUMNS): external_credentials.credential_data,
-telephony_configurations.credentials, integrations.connection_details and
-organization_configurations.value.
+telephony_configurations.credentials, integrations.connection_details,
+organization_configurations.value and user_configurations.configuration.
 
 Run from the repo root with the api environment (CREDENTIALS_ENCRYPTION_KEYS
 set to the new key list, primary first):

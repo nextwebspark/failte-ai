@@ -2544,6 +2544,22 @@ export type DefaultConfigurationsResponse = {
 };
 
 /**
+ * DeleteWorkflowRunDataResponse
+ */
+export type DeleteWorkflowRunDataResponse = {
+    /**
+     * Run Id
+     */
+    run_id: number;
+    /**
+     * Objects Deleted
+     *
+     * Stored recordings and transcripts deleted for the call.
+     */
+    objects_deleted: number;
+};
+
+/**
  * DisplayOptions
  *
  * Conditional visibility rules.
@@ -8161,6 +8177,283 @@ export type StartOAuthResponse = {
 };
 
 /**
+ * SubjectCallData
+ */
+export type SubjectCallData = {
+    /**
+     * Id
+     */
+    id: number;
+    /**
+     * Workflow Id
+     */
+    workflow_id: number;
+    /**
+     * Workflow Name
+     */
+    workflow_name: string;
+    /**
+     * Name
+     */
+    name: string;
+    /**
+     * Created At
+     */
+    created_at?: string | null;
+    /**
+     * Direction
+     */
+    direction: string;
+    /**
+     * Status
+     */
+    status: string;
+    /**
+     * Disposition
+     */
+    disposition?: string | null;
+    /**
+     * Duration Seconds
+     */
+    duration_seconds?: number | null;
+    /**
+     * In Progress
+     */
+    in_progress: boolean;
+    /**
+     * Already Erased
+     */
+    already_erased: boolean;
+    /**
+     * Initial Context
+     */
+    initial_context: {
+        [key: string]: unknown;
+    };
+    /**
+     * Gathered Context
+     */
+    gathered_context: {
+        [key: string]: unknown;
+    };
+    /**
+     * Annotations
+     */
+    annotations: {
+        [key: string]: unknown;
+    };
+    /**
+     * Transcript
+     */
+    transcript: Array<SubjectTranscriptLine>;
+    /**
+     * Chat Turns
+     */
+    chat_turns?: Array<unknown>;
+    files: SubjectRecordingUrls;
+};
+
+/**
+ * SubjectDataResponse
+ */
+export type SubjectDataResponse = {
+    /**
+     * Number
+     *
+     * The number searched for, normalized.
+     */
+    number: string;
+    /**
+     * Generated At
+     */
+    generated_at: string;
+    /**
+     * Signed Urls Expire In
+     *
+     * Seconds the links in `files` stay valid.
+     */
+    signed_urls_expire_in: number;
+    /**
+     * Calls
+     */
+    calls: Array<SubjectCallData>;
+    /**
+     * Queued Calls
+     */
+    queued_calls: Array<SubjectQueuedCall>;
+    /**
+     * Truncated
+     *
+     * More calls matched than one export returns; the oldest are listed.
+     */
+    truncated: boolean;
+};
+
+/**
+ * SubjectErasureResponse
+ */
+export type SubjectErasureResponse = {
+    /**
+     * Number
+     *
+     * The number erased, normalized.
+     */
+    number: string;
+    /**
+     * Calls Erased
+     */
+    calls_erased: number;
+    /**
+     * Calls In Progress
+     *
+     * Calls still running, left untouched. Erase again once they end.
+     */
+    calls_in_progress: Array<number>;
+    /**
+     * Calls Failed
+     *
+     * Calls whose stored files could not be deleted, left untouched.
+     */
+    calls_failed: Array<number>;
+    /**
+     * Objects Deleted
+     */
+    objects_deleted: number;
+    /**
+     * Queued Calls Deleted
+     *
+     * Campaign contacts not yet called, removed so they are never called.
+     */
+    queued_calls_deleted: number;
+    /**
+     * Queued Calls Cleared
+     *
+     * Campaign contact rows of calls already made, cleared.
+     */
+    queued_calls_cleared: number;
+    /**
+     * Queued Calls In Progress
+     *
+     * Campaign contacts being dialled right now, left untouched.
+     */
+    queued_calls_in_progress: number;
+    /**
+     * Campaign Lists Rewritten
+     */
+    campaign_lists_rewritten: number;
+    /**
+     * Campaign List Rows Removed
+     */
+    campaign_list_rows_removed: number;
+    /**
+     * Campaign Lists Failed
+     *
+     * Campaigns whose uploaded contact list could not be rewritten.
+     */
+    campaign_lists_failed: Array<number>;
+};
+
+/**
+ * SubjectNumberRequest
+ */
+export type SubjectNumberRequest = {
+    /**
+     * Number
+     *
+     * The caller's phone number: international format, or national format when all your numbers are in one country.
+     */
+    number: string;
+};
+
+/**
+ * SubjectQueuedCall
+ *
+ * A campaign contact row for the number: a call made or still to come.
+ */
+export type SubjectQueuedCall = {
+    /**
+     * Id
+     */
+    id: number;
+    /**
+     * Campaign Id
+     */
+    campaign_id: number;
+    /**
+     * Campaign Name
+     */
+    campaign_name: string;
+    /**
+     * State
+     */
+    state: string;
+    /**
+     * Created At
+     */
+    created_at?: string | null;
+    /**
+     * Scheduled For
+     */
+    scheduled_for?: string | null;
+    /**
+     * Context Variables
+     */
+    context_variables: {
+        [key: string]: unknown;
+    };
+};
+
+/**
+ * SubjectRecordingUrls
+ *
+ * Signed links to a call's stored files, valid for one hour.
+ */
+export type SubjectRecordingUrls = {
+    /**
+     * Recording
+     */
+    recording?: string | null;
+    /**
+     * User Recording
+     */
+    user_recording?: string | null;
+    /**
+     * Bot Recording
+     */
+    bot_recording?: string | null;
+    /**
+     * Transcript
+     */
+    transcript?: string | null;
+};
+
+/**
+ * SubjectTranscriptLine
+ */
+export type SubjectTranscriptLine = {
+    /**
+     * Time From Start Seconds
+     */
+    time_from_start_seconds: number;
+    /**
+     * Speaker
+     */
+    speaker: string;
+    /**
+     * Text
+     */
+    text: string;
+    /**
+     * Node Name
+     */
+    node_name?: string;
+    /**
+     * Turn
+     */
+    turn?: number;
+};
+
+/**
  * SuperuserWorkflowRunResponse
  */
 export type SuperuserWorkflowRunResponse = {
@@ -12629,6 +12922,62 @@ export type CreateWorkflowRunApiV1WorkflowWorkflowIdRunsPostResponses = {
 };
 
 export type CreateWorkflowRunApiV1WorkflowWorkflowIdRunsPostResponse = CreateWorkflowRunApiV1WorkflowWorkflowIdRunsPostResponses[keyof CreateWorkflowRunApiV1WorkflowWorkflowIdRunsPostResponses];
+
+export type DeleteWorkflowRunDataApiV1WorkflowWorkflowIdRunsRunIdDeleteData = {
+    body?: never;
+    headers?: {
+        /**
+         * Authorization
+         */
+        authorization?: string | null;
+        /**
+         * X-Api-Key
+         */
+        'X-API-Key'?: string | null;
+    };
+    path: {
+        /**
+         * Workflow Id
+         */
+        workflow_id: number;
+        /**
+         * Run Id
+         */
+        run_id: number;
+    };
+    query?: never;
+    url: '/api/v1/workflow/{workflow_id}/runs/{run_id}';
+};
+
+export type DeleteWorkflowRunDataApiV1WorkflowWorkflowIdRunsRunIdDeleteErrors = {
+    /**
+     * No such call in your organization
+     */
+    404: unknown;
+    /**
+     * The call is still in progress
+     */
+    409: unknown;
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+    /**
+     * Stored files could not be deleted; nothing changed
+     */
+    502: unknown;
+};
+
+export type DeleteWorkflowRunDataApiV1WorkflowWorkflowIdRunsRunIdDeleteError = DeleteWorkflowRunDataApiV1WorkflowWorkflowIdRunsRunIdDeleteErrors[keyof DeleteWorkflowRunDataApiV1WorkflowWorkflowIdRunsRunIdDeleteErrors];
+
+export type DeleteWorkflowRunDataApiV1WorkflowWorkflowIdRunsRunIdDeleteResponses = {
+    /**
+     * Successful Response
+     */
+    200: DeleteWorkflowRunDataResponse;
+};
+
+export type DeleteWorkflowRunDataApiV1WorkflowWorkflowIdRunsRunIdDeleteResponse = DeleteWorkflowRunDataApiV1WorkflowWorkflowIdRunsRunIdDeleteResponses[keyof DeleteWorkflowRunDataApiV1WorkflowWorkflowIdRunsRunIdDeleteResponses];
 
 export type GetWorkflowRunApiV1WorkflowWorkflowIdRunsRunIdGetData = {
     body?: never;
@@ -17932,6 +18281,92 @@ export type DownloadUsageRunsReportApiV1OrganizationsUsageRunsReportGetResponses
      */
     200: unknown;
 };
+
+export type ExportCallerDataApiV1OrganizationsUsageSubjectDataExportPostData = {
+    body: SubjectNumberRequest;
+    headers?: {
+        /**
+         * Authorization
+         */
+        authorization?: string | null;
+        /**
+         * X-Api-Key
+         */
+        'X-API-Key'?: string | null;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/v1/organizations/usage/subject-data/export';
+};
+
+export type ExportCallerDataApiV1OrganizationsUsageSubjectDataExportPostErrors = {
+    /**
+     * Not a caller's number
+     */
+    400: unknown;
+    /**
+     * Not found
+     */
+    404: unknown;
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ExportCallerDataApiV1OrganizationsUsageSubjectDataExportPostError = ExportCallerDataApiV1OrganizationsUsageSubjectDataExportPostErrors[keyof ExportCallerDataApiV1OrganizationsUsageSubjectDataExportPostErrors];
+
+export type ExportCallerDataApiV1OrganizationsUsageSubjectDataExportPostResponses = {
+    /**
+     * Successful Response
+     */
+    200: SubjectDataResponse;
+};
+
+export type ExportCallerDataApiV1OrganizationsUsageSubjectDataExportPostResponse = ExportCallerDataApiV1OrganizationsUsageSubjectDataExportPostResponses[keyof ExportCallerDataApiV1OrganizationsUsageSubjectDataExportPostResponses];
+
+export type EraseCallerDataApiV1OrganizationsUsageSubjectDataErasePostData = {
+    body: SubjectNumberRequest;
+    headers?: {
+        /**
+         * Authorization
+         */
+        authorization?: string | null;
+        /**
+         * X-Api-Key
+         */
+        'X-API-Key'?: string | null;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/v1/organizations/usage/subject-data/erase';
+};
+
+export type EraseCallerDataApiV1OrganizationsUsageSubjectDataErasePostErrors = {
+    /**
+     * Not a caller's number
+     */
+    400: unknown;
+    /**
+     * Not found
+     */
+    404: unknown;
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type EraseCallerDataApiV1OrganizationsUsageSubjectDataErasePostError = EraseCallerDataApiV1OrganizationsUsageSubjectDataErasePostErrors[keyof EraseCallerDataApiV1OrganizationsUsageSubjectDataErasePostErrors];
+
+export type EraseCallerDataApiV1OrganizationsUsageSubjectDataErasePostResponses = {
+    /**
+     * Successful Response
+     */
+    200: SubjectErasureResponse;
+};
+
+export type EraseCallerDataApiV1OrganizationsUsageSubjectDataErasePostResponse = EraseCallerDataApiV1OrganizationsUsageSubjectDataErasePostResponses[keyof EraseCallerDataApiV1OrganizationsUsageSubjectDataErasePostResponses];
 
 export type GetDailyUsageBreakdownApiV1OrganizationsUsageDailyBreakdownGetData = {
     body?: never;
