@@ -125,7 +125,12 @@ async def authorize_embed_workflow_run_start(
     *, embed_token: EmbedTokenModel, workflow_run_id: int
 ) -> QuotaCheckResult:
     """Authorize an embed run using the token creator as the scoped actor."""
-    actor_user = await db_client.get_user_by_id(embed_token.created_by)
+    # No actor when the token's creator has deleted their account.
+    actor_user = (
+        await db_client.get_user_by_id(embed_token.created_by)
+        if embed_token.created_by is not None
+        else None
+    )
     return await authorize_workflow_run_start(
         workflow_id=embed_token.workflow_id,
         organization_id=embed_token.organization_id,

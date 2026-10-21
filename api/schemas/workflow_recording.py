@@ -79,7 +79,7 @@ class RecordingResponseSchema(BaseModel):
     storage_key: str
     storage_backend: str
     metadata: Dict[str, Any]
-    created_by: int
+    created_by: int | None = None
     created_at: datetime
     is_active: bool
 
