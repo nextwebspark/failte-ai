@@ -32,6 +32,7 @@ from fallcha_tools.providers.google_common.scopes import (
     GOOGLE_AUTHORIZE_PARAMS,
     GOOGLE_AUTHORIZE_URL,
     GOOGLE_IDENTITY_SCOPES,
+    GOOGLE_REVOKE_URL,
     GOOGLE_USERINFO_URL,
 )
 from fallcha_tools.providers.google_common.service_account import ServiceAccountKey
@@ -53,6 +54,7 @@ def google_oauth_spec(
         authorize_url=GOOGLE_AUTHORIZE_URL,
         token_url=GOOGLE_TOKEN_URL,
         userinfo_url=GOOGLE_USERINFO_URL,
+        revocation_url=GOOGLE_REVOKE_URL,
         scopes=scopes,
         optional_scopes=optional_scopes,
         identity_scopes=GOOGLE_IDENTITY_SCOPES,

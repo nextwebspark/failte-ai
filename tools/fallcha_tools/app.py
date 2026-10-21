@@ -156,6 +156,7 @@ def create_app(
         return {"status": "ok"}
 
     app.include_router(internal.router)
+    app.include_router(internal.org_router)
     app.include_router(oauth.internal_router)
     app.include_router(oauth.public_router)
     for provider in registry:

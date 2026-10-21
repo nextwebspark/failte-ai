@@ -69,6 +69,27 @@ def require_internal_caller(
 
 InternalCallerDep = Annotated[InternalCaller, Depends(require_internal_caller)]
 
+
+def require_internal_org(
+    services: ServicesDep,
+    x_internal_secret: Annotated[str | None, Header()] = None,
+    x_org_id: Annotated[str | None, Header()] = None,
+) -> int:
+    """For calls the Fallcha API makes on an org's behalf with no acting
+    user (the GDPR erasure job): the shared secret and ``X-Org-Id`` only."""
+    expected = services.settings.internal_secret.get_secret_value()
+    if not secrets_match(x_internal_secret, expected):
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "invalid internal secret")
+    org_id = _positive_int(x_org_id)
+    if org_id is None:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST, "X-Org-Id header must be a positive integer"
+        )
+    return org_id
+
+
+InternalOrgDep = Annotated[int, Depends(require_internal_org)]
+
 KeyLookup = Callable[[str], Awaitable[KeyPrincipal | None]]
 
 CLAIM_ORG_ID = "org_id"

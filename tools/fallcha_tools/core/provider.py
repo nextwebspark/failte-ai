@@ -51,6 +51,9 @@ class OAuthSpec:
     optional_scopes: tuple[str, ...] = ()
     identity_scopes: tuple[str, ...] = ()
     userinfo_url: str | None = None
+    # Where a refresh token is revoked when its workspace is erased (RFC 7009
+    # style: POST ``token=<refresh token>``). None: the provider has none.
+    revocation_url: str | None = None
     authorize_params: Mapping[str, str] = field(default_factory=dict)
     default_config: Mapping[str, JsonValue] = field(default_factory=dict)
 
