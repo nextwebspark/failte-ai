@@ -106,6 +106,10 @@ class CampaignCallDispatcher:
 
         async def process_one(queued_run):
             async with semaphore:
+                # Deletion may be requested mid-batch: leave the contact
+                # unclaimed (returned below), never dialled nor failed.
+                if not await organization_accepts_calls(campaign.organization_id):
+                    return
                 try:
                     slot = await self.acquire_concurrent_slot(
                         campaign.organization_id,

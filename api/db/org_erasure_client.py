@@ -15,7 +15,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Optional
 
-from sqlalchemy import delete, exists, func, select, update
+from sqlalchemy import delete, exists, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.db.base_client import BaseDBClient
@@ -466,14 +466,23 @@ class OrgErasureClient(BaseDBClient):
 
             members = organization_users_association
             workflow_ids = _organization_workflow_ids(organization_id)
-            # Members with another organization move to (the oldest of) it;
-            # the rest are left without one.
+            # Members with another organization move to one, preferring the
+            # oldest that is not itself pending deletion (never an erased
+            # one); the rest are left without one.
+            other = OrganizationModel.__table__.alias("other_organization")
             other_membership = (
-                select(func.min(members.c.organization_id))
+                select(members.c.organization_id)
+                .join(other, other.c.id == members.c.organization_id)
                 .where(
                     members.c.user_id == UserModel.id,
                     members.c.organization_id != organization_id,
+                    other.c.erased_at.is_(None),
                 )
+                .order_by(
+                    other.c.deletion_requested_at.is_not(None),
+                    members.c.organization_id,
+                )
+                .limit(1)
                 .scalar_subquery()
             )
             statements = [

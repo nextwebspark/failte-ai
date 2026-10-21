@@ -333,3 +333,27 @@ async def test_last_admin_of_a_pending_organization_with_members_is_refused(
     assert response.status_code == 409
     assert response.json()["code"] == "last_admin_of_organization"
     assert await user_exists(async_session, data.admin.id)
+
+
+async def test_stack_timeout_is_an_identity_provider_error(monkeypatch):
+    import asyncio
+
+    from api.services.auth import stack_auth
+
+    class SlowSession:
+        def __init__(self, **kwargs):
+            assert kwargs["timeout"].total == 10
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *exc):
+            return False
+
+        def delete(self, *args, **kwargs):
+            raise asyncio.TimeoutError()
+
+    monkeypatch.setenv("STACK_AUTH_API_URL", "https://stack.example.test")
+    monkeypatch.setattr(stack_auth.aiohttp, "ClientSession", SlowSession)
+    with pytest.raises(StackAuthDeletionError):
+        await stack_auth.StackAuth().delete_user("user-1")

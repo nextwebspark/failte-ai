@@ -370,11 +370,17 @@ class MembershipClient(BaseDBClient):
         Every role change and removal takes this lock first, so concurrent
         changes never acquire membership row locks in opposite orders
         (deadlock) and the last-admin check sees a stable set of admins.
+
+        FOR NO KEY UPDATE: it conflicts with itself (and with FOR UPDATE), so
+        membership changes still serialize, but not with the FOR KEY SHARE
+        that inserting rows referencing the organization takes, so new
+        workflow runs and the like never wait on a membership change (an
+        account deletion holds it across a call to the identity provider).
         """
         await session.execute(
             select(OrganizationModel.id)
             .where(OrganizationModel.id == organization_id)
-            .with_for_update()
+            .with_for_update(key_share=True)
         )
 
     @staticmethod

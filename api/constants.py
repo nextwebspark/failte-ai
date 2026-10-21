@@ -214,6 +214,14 @@ MINIO_CONFIGURED = bool(
     os.getenv("MINIO_ENDPOINT") or os.getenv("MINIO_PUBLIC_ENDPOINT")
 )
 
+# Storage backends the deployment used before its current one (comma list of
+# "s3" / "minio"); organisation erasure also deletes there. Empty by default.
+LEGACY_STORAGE_BACKENDS: tuple[str, ...] = tuple(
+    b.strip().lower()
+    for b in os.getenv("LEGACY_STORAGE_BACKENDS", "").split(",")
+    if b.strip()
+)
+
 # AWS S3 Configuration
 S3_BUCKET = os.environ.get("S3_BUCKET")
 S3_REGION = os.environ.get("S3_REGION", "us-east-1")

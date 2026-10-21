@@ -37,6 +37,8 @@ from api.schemas.integrations import (
 DEFAULT_TIMEOUT = httpx.Timeout(10.0, connect=3.0)
 # Connection tests call the provider (e.g. Google), so allow a little longer.
 TEST_TIMEOUT = httpx.Timeout(20.0, connect=3.0)
+# Erasing an org revokes its OAuth grants at the provider first.
+ERASE_TIMEOUT = httpx.Timeout(60.0, connect=3.0)
 _MAX_DETAIL_CHARS = 300
 
 _Model = TypeVar("_Model", bound=BaseModel)
@@ -295,7 +297,10 @@ class ToolsServiceClient:
         imported data) and stop its syncs. Idempotent. Sent without an acting
         user: the erasure job acts for nobody."""
         response = await self._request(
-            "DELETE", "/internal/org", Caller(org_id=organization_id, user_id=0)
+            "DELETE",
+            "/internal/org",
+            Caller(org_id=organization_id, user_id=0),
+            timeout=ERASE_TIMEOUT,
         )
         body = response.json()
         return {k: v for k, v in body.items() if isinstance(v, int)}

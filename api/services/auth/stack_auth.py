@@ -1,3 +1,4 @@
+import asyncio
 import os
 from typing import Any
 from urllib.parse import quote
@@ -15,6 +16,9 @@ class StackAuthSessionError(Exception):
 
 class StackAuthDeletionError(Exception):
     """Raised when Stack Auth does not confirm a user or team deletion."""
+
+
+DELETE_TIMEOUT = aiohttp.ClientTimeout(total=10)
 
 
 class StackAuth:
@@ -136,7 +140,8 @@ class StackAuth:
         """DELETE a Stack resource; a resource that is already gone counts."""
         url = os.environ.get("STACK_AUTH_API_URL") + path
         try:
-            async with aiohttp.ClientSession() as session:
+            # Short: account deletion calls this while holding locks.
+            async with aiohttp.ClientSession(timeout=DELETE_TIMEOUT) as session:
                 async with session.delete(
                     url, headers=self._server_headers()
                 ) as response:
@@ -145,8 +150,10 @@ class StackAuth:
                     raise StackAuthDeletionError(
                         f"Stack Auth deletion failed with status {response.status}"
                     )
-        except aiohttp.ClientError as exc:
-            raise StackAuthDeletionError("Stack Auth deletion failed") from exc
+        except (aiohttp.ClientError, asyncio.TimeoutError) as exc:
+            raise StackAuthDeletionError(
+                f"Stack Auth deletion failed: {type(exc).__name__}"
+            ) from exc
 
     async def delete_user(self, stack_user_id: str) -> None:
         """Delete a Stack user, ending every session they have."""

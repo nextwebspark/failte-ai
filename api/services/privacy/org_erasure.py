@@ -22,7 +22,7 @@ usage cycles are kept as accounting records. Members keep their user accounts
 """
 
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Optional
 
 from loguru import logger
@@ -42,6 +42,8 @@ from api.services.retention.purge import (
 from api.services.tool_integrations.client import ToolsServiceClient
 
 ORGANIZATION_PAGE_SIZE = 100
+# Erasure still deferred this long after its date is logged as an ERROR.
+ERASURE_OVERDUE_AFTER = timedelta(days=3)
 RUN_BATCH_SIZE = 100
 
 
@@ -155,9 +157,9 @@ async def _erase_prompt_recordings(
 
 
 def configured_storage_backends() -> list[str]:
-    from api.services.storage import configured_storage_backends as configured
+    from api.services.storage import erasure_storage_backends
 
-    return configured()
+    return erasure_storage_backends()
 
 
 async def _erase_prefixes(
@@ -203,6 +205,24 @@ async def _delete_identity_provider_team(organization_id: int) -> None:
         await stackauth.delete_team(organization.provider_id)
     except StackAuthDeletionError as exc:
         raise ErasureDeferred("the Stack Auth team") from exc
+
+
+async def _log_deferral(organization_id: int, now: datetime, reason: str) -> None:
+    """A deferral is routine (a storage blip; the next pass retries), so it is a
+    warning; an erasure still not done ``ERASURE_OVERDUE_AFTER`` past its
+    date is an ERROR, which reaches Sentry, for someone to look at."""
+    try:
+        state = await db_client.get_organization_deletion_state(organization_id)
+    except Exception:
+        state = None
+    due = state.scheduled_for if state is not None else None
+    if due is not None and now - due > ERASURE_OVERDUE_AFTER:
+        logger.error(
+            f"Organisation erasure of {organization_id} is overdue (due "
+            f"{due:%Y-%m-%d}, still deferred): {reason}"
+        )
+    else:
+        logger.warning(f"Organisation erasure deferred for {organization_id}: {reason}")
 
 
 async def erase_organization(
@@ -266,17 +286,11 @@ async def erase_deleted_organizations(
                     logger.info(f"Organisation {organization_id} erased")
             except ErasureDeferred as exc:
                 result.organizations_deferred += 1
-                logger.error(
-                    f"Organisation erasure deferred for {organization_id}: could "
-                    f"not delete {exc}"
-                )
+                await _log_deferral(organization_id, now, f"could not delete {exc}")
             except Exception as exc:
                 # One organisation's failure must not hold up the others.
                 result.organizations_deferred += 1
-                logger.error(
-                    f"Organisation erasure failed for {organization_id}: "
-                    f"{type(exc).__name__}"
-                )
+                await _log_deferral(organization_id, now, type(exc).__name__)
         if len(organization_ids) < ORGANIZATION_PAGE_SIZE:
             break
 

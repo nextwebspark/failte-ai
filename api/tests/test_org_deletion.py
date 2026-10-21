@@ -808,3 +808,64 @@ def test_recording_upload_filenames_are_one_safe_segment(given, stored):
     from api.schemas.workflow_recording import FileDescriptor
 
     assert FileDescriptor(filename=given, file_size=10).filename == stored
+
+
+async def test_erased_members_move_to_an_open_organization_first(
+    db_session, async_session, storage
+):
+    data = await seeded(async_session, storage)
+    # Lower ids first: one also pending deletion, then an open one.
+    pending = OrganizationModel(provider_id=f"org_p_{data.org.id}", name="Pending")
+    async_session.add(pending)
+    await async_session.flush()
+    open_org = OrganizationModel(provider_id=f"org_o_{data.org.id}", name="Open")
+    async_session.add(open_org)
+    await async_session.flush()
+    await add_member(async_session, data.admin, pending, OrgRole.ADMIN)
+    await add_member(async_session, data.admin, open_org, OrgRole.VIEWER)
+    await async_session.commit()
+    await schedule(db_session, pending.id, days_ago=1)
+    await schedule(db_session, data.org.id)
+
+    await erase(storage)
+
+    await async_session.refresh(data.admin)
+    assert data.admin.selected_organization_id == open_org.id
+
+
+@pytest.mark.parametrize(
+    ("current_s3", "legacy", "expected"),
+    [
+        (False, (), ["minio"]),
+        (True, (), ["s3"]),
+        (True, ("minio",), ["s3", "minio"]),
+        (False, ("minio", "s3", "gcs"), ["minio", "s3"]),
+    ],
+)
+def test_erasure_backends_are_the_current_one_plus_explicit_legacy_ones(
+    monkeypatch, current_s3, legacy, expected
+):
+    from api.services import storage as storage_module
+
+    monkeypatch.setattr(constants, "ENABLE_AWS_S3", current_s3)
+    monkeypatch.setattr(storage_module, "LEGACY_STORAGE_BACKENDS", legacy)
+    assert storage_module.erasure_storage_backends() == expected
+
+
+async def test_overdue_erasure_is_logged_as_an_error(
+    db_session, async_session, storage
+):
+    from loguru import logger
+
+    data = await seeded(async_session, storage)
+    await schedule(db_session, data.org.id, days_ago=35)  # due 5 days ago
+    storage.failing.add(f"recordings/{data.org.id}/Greet0001/greeting.wav")
+    records = []
+    sink = logger.add(lambda m: records.append(m.record), level="WARNING")
+    try:
+        await erase(storage)
+    finally:
+        logger.remove(sink)
+
+    overdue = [r for r in records if "overdue" in r["message"]]
+    assert overdue and overdue[0]["level"].name == "ERROR"
