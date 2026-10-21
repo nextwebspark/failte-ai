@@ -650,7 +650,7 @@ async def download_usage_runs_report(
     responses={400: {"description": "Not a caller's number"}},
     dependencies=requires(Permission.ORG_MANAGE),
 )
-async def get_subject_data(
+async def get_caller_data(
     number: Annotated[
         str,
         Query(
@@ -683,7 +683,7 @@ async def get_subject_data(
     responses={400: {"description": "Not a caller's number"}},
     dependencies=requires(Permission.ORG_MANAGE),
 )
-async def erase_subject_data_route(
+async def erase_caller_data(
     request: SubjectErasureRequest,
     user: UserModel = Depends(get_user_with_selected_organization),
 ) -> SubjectErasureResponse:

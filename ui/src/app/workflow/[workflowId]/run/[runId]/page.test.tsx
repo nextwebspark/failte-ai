@@ -8,6 +8,7 @@ import WorkflowRunPage from './page';
 
 const mocks = vi.hoisted(() => ({
     auth: { isAuthenticated: true, loading: false },
+    canManageOrg: false,
     toolResults: [] as unknown[],
     events: [] as RealtimeFeedbackEvent[],
 }));
@@ -18,6 +19,9 @@ vi.mock('next/navigation', () => ({
     useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
 }));
 vi.mock('@/lib/auth', () => ({ useAuth: () => mocks.auth }));
+vi.mock('@/context/OrgConfigContext', () => ({
+    useOrgConfig: () => ({ can: () => mocks.canManageOrg }),
+}));
 vi.mock('posthog-js', () => ({ default: { capture: vi.fn() } }));
 vi.mock('@/hooks/useOrganizationTimezone', () => ({ useOrganizationTimezone: () => 'UTC' }));
 vi.mock('@/app/workflow/WorkflowLayout', () => ({
@@ -50,6 +54,7 @@ vi.mock('@/client/sdk.gen', () => ({
 }));
 
 beforeEach(() => {
+    mocks.canManageOrg = false;
     mocks.toolResults = [];
     mocks.events = [];
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ arrayBuffer: async () => new ArrayBuffer(0) }));
@@ -83,6 +88,17 @@ it('shows the recorded timeout for call 2796 instead of leaving the tool running
     expect(screen.getByText('Tool Calls').parentElement?.textContent).toBe('Tool Calls1');
     fireEvent.click(screen.getByRole('button', { name: 'Details' }));
     expect(screen.getAllByText(/Tool execution timed out/).length).toBeGreaterThan(0);
+});
+
+it('offers to delete the call data only to organization admins', async () => {
+    render(<WorkflowRunPage />);
+    await screen.findByText('Run 34');
+    expect(screen.queryByRole('button', { name: 'Delete call data' })).toBeNull();
+    cleanup();
+
+    mocks.canManageOrg = true;
+    render(<WorkflowRunPage />);
+    expect(await screen.findByRole('button', { name: 'Delete call data' })).toBeTruthy();
 });
 
 afterEach(() => {
