@@ -8234,16 +8234,6 @@ export type SubjectDataResponse = {
 };
 
 /**
- * SubjectErasureRequest
- */
-export type SubjectErasureRequest = {
-    /**
-     * Number
-     */
-    number: string;
-};
-
-/**
  * SubjectErasureResponse
  */
 export type SubjectErasureResponse = {
@@ -8305,6 +8295,18 @@ export type SubjectErasureResponse = {
      * Campaigns whose uploaded contact list could not be rewritten.
      */
     campaign_lists_failed: Array<number>;
+};
+
+/**
+ * SubjectNumberRequest
+ */
+export type SubjectNumberRequest = {
+    /**
+     * Number
+     *
+     * The caller's phone number: international format, or national format when all your numbers are in one country.
+     */
+    number: string;
 };
 
 /**
@@ -18224,8 +18226,8 @@ export type DownloadUsageRunsReportApiV1OrganizationsUsageRunsReportGetResponses
     200: unknown;
 };
 
-export type GetCallerDataApiV1OrganizationsUsageSubjectDataGetData = {
-    body?: never;
+export type ExportCallerDataApiV1OrganizationsUsageSubjectDataExportPostData = {
+    body: SubjectNumberRequest;
     headers?: {
         /**
          * Authorization
@@ -18237,18 +18239,11 @@ export type GetCallerDataApiV1OrganizationsUsageSubjectDataGetData = {
         'X-API-Key'?: string | null;
     };
     path?: never;
-    query: {
-        /**
-         * Number
-         *
-         * The caller's phone number, in any format.
-         */
-        number: string;
-    };
-    url: '/api/v1/organizations/usage/subject-data';
+    query?: never;
+    url: '/api/v1/organizations/usage/subject-data/export';
 };
 
-export type GetCallerDataApiV1OrganizationsUsageSubjectDataGetErrors = {
+export type ExportCallerDataApiV1OrganizationsUsageSubjectDataExportPostErrors = {
     /**
      * Not a caller's number
      */
@@ -18263,19 +18258,19 @@ export type GetCallerDataApiV1OrganizationsUsageSubjectDataGetErrors = {
     422: HttpValidationError;
 };
 
-export type GetCallerDataApiV1OrganizationsUsageSubjectDataGetError = GetCallerDataApiV1OrganizationsUsageSubjectDataGetErrors[keyof GetCallerDataApiV1OrganizationsUsageSubjectDataGetErrors];
+export type ExportCallerDataApiV1OrganizationsUsageSubjectDataExportPostError = ExportCallerDataApiV1OrganizationsUsageSubjectDataExportPostErrors[keyof ExportCallerDataApiV1OrganizationsUsageSubjectDataExportPostErrors];
 
-export type GetCallerDataApiV1OrganizationsUsageSubjectDataGetResponses = {
+export type ExportCallerDataApiV1OrganizationsUsageSubjectDataExportPostResponses = {
     /**
      * Successful Response
      */
     200: SubjectDataResponse;
 };
 
-export type GetCallerDataApiV1OrganizationsUsageSubjectDataGetResponse = GetCallerDataApiV1OrganizationsUsageSubjectDataGetResponses[keyof GetCallerDataApiV1OrganizationsUsageSubjectDataGetResponses];
+export type ExportCallerDataApiV1OrganizationsUsageSubjectDataExportPostResponse = ExportCallerDataApiV1OrganizationsUsageSubjectDataExportPostResponses[keyof ExportCallerDataApiV1OrganizationsUsageSubjectDataExportPostResponses];
 
 export type EraseCallerDataApiV1OrganizationsUsageSubjectDataErasePostData = {
-    body: SubjectErasureRequest;
+    body: SubjectNumberRequest;
     headers?: {
         /**
          * Authorization

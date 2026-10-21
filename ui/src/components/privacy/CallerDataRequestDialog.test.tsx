@@ -3,10 +3,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { CallerDataRequestDialog } from './CallerDataRequestDialog';
 
-const mocks = vi.hoisted(() => ({ getCallerData: vi.fn(), eraseCallerData: vi.fn() }));
+const mocks = vi.hoisted(() => ({ exportCallerData: vi.fn(), eraseCallerData: vi.fn() }));
 
 vi.mock('@/client/sdk.gen', () => ({
-    getCallerDataApiV1OrganizationsUsageSubjectDataGet: mocks.getCallerData,
+    exportCallerDataApiV1OrganizationsUsageSubjectDataExportPost: mocks.exportCallerData,
     eraseCallerDataApiV1OrganizationsUsageSubjectDataErasePost: mocks.eraseCallerData,
 }));
 
@@ -38,7 +38,7 @@ describe('CallerDataRequestDialog', () => {
     });
 
     it('downloads the caller data as JSON', async () => {
-        mocks.getCallerData.mockResolvedValue({
+        mocks.exportCallerData.mockResolvedValue({
             data: {
                 number: '+353871234567',
                 generated_at: '2026-10-21T08:00:00Z',
@@ -54,12 +54,12 @@ describe('CallerDataRequestDialog', () => {
         fireEvent.click(screen.getByRole('button', { name: 'Download data (JSON)' }));
 
         expect(await screen.findByText(/Downloaded 2 calls and 1 campaign contact for \+353871234567/)).toBeTruthy();
-        expect(mocks.getCallerData).toHaveBeenCalledWith({ query: { number: '+353 87 123 4567' } });
+        expect(mocks.exportCallerData).toHaveBeenCalledWith({ body: { number: '+353 87 123 4567' } });
         expect(click).toHaveBeenCalled();
     });
 
     it("shows why a number can't be used", async () => {
-        mocks.getCallerData.mockResolvedValue({
+        mocks.exportCallerData.mockResolvedValue({
             error: { detail: "That is one of your organization's own numbers. Enter the caller's number." },
         });
         openWithNumber('+35315550000');

@@ -5,7 +5,7 @@ import { useState } from 'react';
 
 import {
     eraseCallerDataApiV1OrganizationsUsageSubjectDataErasePost,
-    getCallerDataApiV1OrganizationsUsageSubjectDataGet,
+    exportCallerDataApiV1OrganizationsUsageSubjectDataExportPost,
 } from '@/client/sdk.gen';
 import type { SubjectErasureResponse } from '@/client/types.gen';
 import {
@@ -109,8 +109,8 @@ export function CallerDataRequestDialog() {
         reset();
         setBusy('download');
         try {
-            const response = await getCallerDataApiV1OrganizationsUsageSubjectDataGet({
-                query: { number: trimmed },
+            const response = await exportCallerDataApiV1OrganizationsUsageSubjectDataExportPost({
+                body: { number: trimmed },
             });
             if (response.error || !response.data) {
                 setError(detailFromError(response.error, 'Could not export the caller data'));
@@ -174,8 +174,9 @@ export function CallerDataRequestDialog() {
                     <DialogTitle>Caller data request</DialogTitle>
                     <DialogDescription>
                         When a caller asks for a copy of their data or for it to be deleted, enter
-                        their phone number. This covers calls from and to that number and its
-                        campaign contacts, across all your agents.
+                        their phone number, ideally in international format (+ and country code).
+                        This covers calls from and to that number and its campaign contacts,
+                        across all your agents.
                     </DialogDescription>
                 </DialogHeader>
 
