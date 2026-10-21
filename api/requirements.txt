@@ -18,6 +18,9 @@ sentry-sdk[fastapi]==2.38.0
 sqlalchemy[asyncio]==2.0.43
 msgpack==1.1.2
 pgvector==0.4.2
+# Knowledge base document parsing, done on this server (api/services/documents).
+pypdf==6.19.0
+python-docx==1.2.0
 bcrypt==5.0.0
 # Fernet encryption of external credentials at rest (api/utils/credential_crypto.py);
 # already present transitively, declared because we import it directly.

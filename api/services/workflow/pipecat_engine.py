@@ -58,6 +58,8 @@ if TYPE_CHECKING:
     from pipecat.services.openai.llm import OpenAILLMService
     from pipecat.utils.tracing.tracing_context import TracingContext
 
+    from api.services.gen_ai import EmbeddingSettings
+
     LLMService = Union[OpenAILLMService, AnthropicLLMService, GoogleLLMService]
 
 import asyncio
@@ -165,12 +167,7 @@ class PipecatEngine:
         node_transition_callback: Optional[
             Callable[[str, str, Optional[str], Optional[str], bool], Awaitable[None]]
         ] = None,
-        embeddings_api_key: Optional[str] = None,
-        embeddings_model: Optional[str] = None,
-        embeddings_base_url: Optional[str] = None,
-        embeddings_provider: Optional[str] = None,
-        embeddings_endpoint: Optional[str] = None,
-        embeddings_api_version: Optional[str] = None,
+        embedding_settings: Optional["EmbeddingSettings"] = None,
         has_recordings: bool = False,
         is_realtime: bool = False,
         context_compaction_enabled: bool = False,
@@ -305,12 +302,7 @@ class PipecatEngine:
         self._disposition_mapping: dict[str, str] = {}
 
         # Embeddings configuration (passed from run_pipeline.py)
-        self._embeddings_api_key: Optional[str] = embeddings_api_key
-        self._embeddings_model: Optional[str] = embeddings_model
-        self._embeddings_base_url: Optional[str] = embeddings_base_url
-        self._embeddings_provider: Optional[str] = embeddings_provider
-        self._embeddings_endpoint: Optional[str] = embeddings_endpoint
-        self._embeddings_api_version: Optional[str] = embeddings_api_version
+        self._embedding_settings: Optional["EmbeddingSettings"] = embedding_settings
 
         # Audio configuration (set via set_audio_config from _run_pipeline)
         self._audio_config = None
@@ -613,12 +605,7 @@ class PipecatEngine:
                     organization_id=organization_id,
                     document_uuids=document_uuids,
                     limit=3,  # Return top 3 most relevant chunks
-                    embeddings_api_key=self._embeddings_api_key,
-                    embeddings_model=self._embeddings_model,
-                    embeddings_base_url=self._embeddings_base_url,
-                    embeddings_provider=self._embeddings_provider,
-                    embeddings_endpoint=self._embeddings_endpoint,
-                    embeddings_api_version=self._embeddings_api_version,
+                    embedding_settings=self._embedding_settings,
                     correlation_id=self._call_context_vars.get(
                         MPS_CORRELATION_ID_CONTEXT_KEY
                     ),

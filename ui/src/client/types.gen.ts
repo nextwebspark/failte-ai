@@ -788,7 +788,9 @@ export type ByokPipelineAiModelConfiguration = {
         provider: 'azure';
     } & AzureOpenAiEmbeddingsConfiguration) | ({
         provider: 'dograh';
-    } & DograhEmbeddingsConfiguration) | null;
+    } & DograhEmbeddingsConfiguration) | ({
+        provider: 'google_vertex';
+    } & GoogleVertexEmbeddingsConfiguration) | null;
 };
 
 /**
@@ -856,7 +858,9 @@ export type ByokRealtimeAiModelConfiguration = {
         provider: 'azure';
     } & AzureOpenAiEmbeddingsConfiguration) | ({
         provider: 'dograh';
-    } & DograhEmbeddingsConfiguration) | null;
+    } & DograhEmbeddingsConfiguration) | ({
+        provider: 'google_vertex';
+    } & GoogleVertexEmbeddingsConfiguration) | null;
 };
 
 /**
@@ -2794,6 +2798,12 @@ export type DocumentResponseSchema = {
      */
     is_active: boolean;
     /**
+     * Needs Reindex
+     *
+     * Whether this chunked document was embedded with a different embedding model than the one now configured. Search only matches chunks embedded with the current model, so the document can't be found until it is processed again (deleted and uploaded again).
+     */
+    needs_reindex?: boolean;
+    /**
      * Has Live Content
      *
      * Whether agents can currently retrieve this document's content. Stays true while an edited document is re-indexed or after its re-index fails, because the previous version keeps serving until a new one succeeds.
@@ -3618,6 +3628,48 @@ export type GoogleTtsConfiguration = {
 };
 
 /**
+ * Google Vertex AI (EU)
+ *
+ * Embeddings from your own Google Cloud project, processed in the EU region you choose.
+ */
+export type GoogleVertexEmbeddingsConfiguration = {
+    /**
+     * Provider
+     */
+    provider?: 'google_vertex';
+    /**
+     * Api Key
+     *
+     * Not used for Vertex AI — authentication is via the service account in `credentials` (or ADC). Leave blank.
+     */
+    api_key?: string | Array<string> | null;
+    /**
+     * Model
+     *
+     * Vertex AI embedding model. Embeddings are requested at 1536 dimensions.
+     */
+    model?: string;
+    /**
+     * Project Id
+     *
+     * Google Cloud project ID for Vertex AI.
+     */
+    project_id: string;
+    /**
+     * Location
+     *
+     * Vertex AI region where embeddings are computed. Keep an EU region such as 'europe-west1' to keep document text in the EU.
+     */
+    location?: string;
+    /**
+     * Credentials
+     *
+     * Paste the entire service-account JSON file contents. If omitted, falls back to Application Default Credentials (ADC).
+     */
+    credentials?: string | null;
+};
+
+/**
  * Google Vertex
  */
 export type GoogleVertexLlmConfiguration = {
@@ -3849,6 +3901,10 @@ export type HealthResponse = {
      * Mps Enabled
      */
     mps_enabled?: boolean;
+    /**
+     * Document Processing Enabled
+     */
+    document_processing_enabled?: boolean;
     /**
      * Turn Enabled
      */

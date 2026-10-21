@@ -79,6 +79,9 @@ def platform_settings_for(policy: PlatformModelPolicy) -> PlatformVertexSettings
         llm_location=policy.llm_location or settings.llm_location,
         realtime_location=policy.realtime_location or settings.realtime_location,
         speech_location=policy.speech_location or settings.speech_location,
+        embeddings_location=(
+            policy.embeddings_location or settings.embeddings_location
+        ),
     )
 
 

@@ -1221,9 +1221,6 @@ async def test_upload_keys_with_dot_segments_are_refused(
         )
     assert response.status_code == 400
 
-    monkeypatch.setattr(
-        knowledge_base_routes, "_require_document_processing", lambda: None
-    )
     document_uuid = str(uuid.uuid4())
     with pytest.raises(HTTPException) as exc:
         await knowledge_base_routes.process_document(
@@ -1565,9 +1562,6 @@ async def test_upload_urls_refuse_file_names_that_leave_the_folder(
 ):
     data = await make_org(async_session)
     await async_session.commit()
-    monkeypatch.setattr(
-        knowledge_base_routes, "_require_document_processing", lambda: None
-    )
 
     async with await client_for(
         data.user, knowledge_base_routes.router, recording_routes.router
