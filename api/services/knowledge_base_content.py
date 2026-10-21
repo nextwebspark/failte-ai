@@ -13,6 +13,7 @@ import aiofiles
 
 from api.db import db_client
 from api.db.models import KnowledgeBaseDocumentModel
+from api.services.documents import DEFAULT_TARGET_TOKENS
 from api.services.storage import storage_fs
 from api.tasks.arq import enqueue_job
 from api.tasks.function_names import FunctionNames
@@ -20,8 +21,8 @@ from api.tasks.knowledge_base_processing import MAX_FILE_SIZE_BYTES
 
 EDITABLE_EXTENSIONS = (".txt", ".md")
 
-# Max tokens per chunk passed to document processing.
-DEFAULT_CHUNK_MAX_TOKENS = 128
+# Target tokens per chunk passed to document processing.
+DEFAULT_CHUNK_MAX_TOKENS = DEFAULT_TARGET_TOKENS
 
 _STALE_MESSAGE = "This document changed since you opened it. Reload it and try again."
 

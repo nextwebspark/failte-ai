@@ -1,9 +1,9 @@
 """ARQ background task for processing knowledge base documents.
 
-Document conversion and chunking live in the Model Proxy Service (MPS);
-this task downloads the file from S3, calls MPS, then handles the embedding
-and DB writes locally. Without an MPS configured (MPS_API_URL unset) the
-document is marked failed and is never sent anywhere.
+Downloads the file from storage, parses and chunks it on this server
+(api.services.documents), embeds the chunks with the organization's embeddings
+provider and stores the result. The document itself is never sent to another
+service; in chunked mode only its chunk text goes to the embeddings provider.
 """
 
 import os
@@ -13,23 +13,29 @@ from loguru import logger
 
 from api.db import db_client
 from api.db.models import KnowledgeBaseChunkModel
-from api.services.gen_ai import build_embedding_service
-from api.services.mps_service_key_client import mps_service_key_client
+from api.services.documents import (
+    DEFAULT_OVERLAP_TOKENS,
+    DEFAULT_TARGET_TOKENS,
+    DocumentParseError,
+    process_document,
+)
+from api.services.gen_ai import EmbeddingSettings, build_embedding_service
 from api.services.storage import storage_fs
 
 MAX_FILE_SIZE_BYTES = 5 * 1024 * 1024
-# Shown on the document and returned by the upload routes when no document
-# processor is configured (MPS_API_URL unset).
-DOCUMENT_PROCESSING_UNAVAILABLE_MESSAGE = "Document processing isn't available yet."
+EMBEDDINGS_NOT_CONFIGURED_MESSAGE = (
+    "No embedding model is configured. Set one in Model Configurations > "
+    "Embedding to use chunked search."
+)
 
 
 def document_processing_available() -> bool:
     """Whether uploaded documents can be converted and chunked on this server.
 
-    Conversion and chunking currently happen in MPS only; without one the
-    document is never sent anywhere.
+    Always true: documents are parsed and chunked in-process. Kept as the one
+    place to turn uploads off should processing ever depend on configuration.
     """
-    return mps_service_key_client.is_configured
+    return True
 
 
 EMBEDDING_BATCH_SIZE = 64
@@ -40,7 +46,7 @@ async def _embed_texts_in_batches(
     texts: list[str],
     batch_size: int = EMBEDDING_BATCH_SIZE,
 ) -> list[list[float]]:
-    """Generate embeddings in bounded batches for provider/MPS stability."""
+    """Generate embeddings in bounded batches for provider stability."""
     embeddings: list[list[float]] = []
     for start in range(0, len(texts), batch_size):
         batch = texts[start : start + batch_size]
@@ -57,18 +63,18 @@ async def process_knowledge_base_document(
     s3_key: str,
     organization_id: int,
     created_by_provider_id: str,
-    max_tokens: int = 128,
+    max_tokens: int = DEFAULT_TARGET_TOKENS,
     retrieval_mode: str = "chunked",
 ):
-    """Process a knowledge base document via MPS: download, call MPS, embed, store.
+    """Process a knowledge base document: download, parse, chunk, embed, store.
 
     Args:
         ctx: ARQ context
         document_id: Database ID of the document
         s3_key: S3 key where the file is stored
         organization_id: Organization ID
-        created_by_provider_id: Uploading user's provider ID (for OSS-mode auth to MPS)
-        max_tokens: Maximum number of tokens per chunk (default: 128)
+        created_by_provider_id: Uploading user's provider ID
+        max_tokens: Target tokens per chunk (estimated, default 400)
         retrieval_mode: "chunked" for vector search or "full_document" for full text
     """
     logger.info(
@@ -77,18 +83,6 @@ async def process_knowledge_base_document(
     )
 
     temp_file_path = None
-
-    if not document_processing_available():
-        logger.warning(
-            f"Document {document_id}: not processed, no document processor "
-            "is configured (MPS_API_URL unset)"
-        )
-        await db_client.update_document_status(
-            document_id,
-            "failed",
-            error_message=DOCUMENT_PROCESSING_UNAVAILABLE_MESSAGE,
-        )
-        return
 
     try:
         await db_client.update_document_status(document_id, "processing")
@@ -163,58 +157,45 @@ async def process_knowledge_base_document(
             mime_type=mime_type,
         )
 
-        embeddings_provider = None
-        embeddings_api_key = None
-        embeddings_model = None
-        embeddings_base_url = None
-        embeddings_endpoint = None
-        embeddings_api_version = None
+        embedding_settings = None
         if retrieval_mode == "chunked":
             from api.services.configuration.ai_model_configuration import (
-                apply_managed_embeddings_base_url,
                 get_resolved_ai_model_configuration,
             )
 
             resolved_config = await get_resolved_ai_model_configuration(
                 organization_id=document.organization_id,
             )
-            effective_config = resolved_config.effective
-            if effective_config.embeddings:
-                embeddings_provider = getattr(
-                    effective_config.embeddings, "provider", None
-                )
-                embeddings_api_key = effective_config.embeddings.api_key
-                embeddings_model = effective_config.embeddings.model
-                embeddings_base_url = apply_managed_embeddings_base_url(
-                    provider=embeddings_provider,
-                    base_url=getattr(effective_config.embeddings, "base_url", None),
-                )
-                embeddings_endpoint = getattr(
-                    effective_config.embeddings, "endpoint", None
-                )
-                embeddings_api_version = getattr(
-                    effective_config.embeddings, "api_version", None
-                )
+            embedding_settings = EmbeddingSettings.from_config(
+                resolved_config.effective.embeddings
+            )
+            if embedding_settings is not None:
                 logger.info(
-                    f"Using user embeddings config: provider={embeddings_provider}, "
-                    f"model={embeddings_model}"
+                    f"Using embeddings config: provider={embedding_settings.provider}, "
+                    f"model={embedding_settings.model}"
                 )
 
-        logger.info(f"Delegating document processing to MPS (mode={retrieval_mode})")
-        mps_response = await mps_service_key_client.process_document(
-            file_path=temp_file_path,
-            filename=filename,
-            content_type=mime_type or "application/octet-stream",
-            retrieval_mode=retrieval_mode,
-            max_tokens=max_tokens,
-            organization_id=organization_id,
-            created_by=created_by_provider_id,
-        )
+        logger.info(f"Parsing document on this server (mode={retrieval_mode})")
+        try:
+            result = await process_document(
+                temp_file_path,
+                filename,
+                mime_type,
+                retrieval_mode,
+                max_tokens=max_tokens,
+                overlap_tokens=min(DEFAULT_OVERLAP_TOKENS, max_tokens // 4),
+            )
+        except DocumentParseError as exc:
+            logger.warning(f"Document {document_id}: {exc}")
+            await db_client.update_document_status(
+                document_id, "failed", error_message=str(exc)
+            )
+            return
 
-        docling_metadata = mps_response.get("docling_metadata", {})
+        docling_metadata = result.get("docling_metadata", {})
 
         if retrieval_mode == "full_document":
-            full_text = mps_response.get("full_text") or ""
+            full_text = result.get("full_text") or ""
             await db_client.update_document_full_text(document_id, full_text)
             await db_client.update_document_status(
                 document_id,
@@ -228,37 +209,28 @@ async def process_knowledge_base_document(
             )
             return
 
-        if not embeddings_api_key:
-            error_message = (
-                "API key not configured. Please set your API key in "
-                "Model Configurations > Embedding to process documents."
+        if embedding_settings is None or not embedding_settings.is_configured:
+            logger.warning(
+                f"Document {document_id}: {EMBEDDINGS_NOT_CONFIGURED_MESSAGE}"
             )
-            logger.warning(f"Document {document_id}: {error_message}")
             await db_client.update_document_status(
-                document_id, "failed", error_message=error_message
+                document_id, "failed", error_message=EMBEDDINGS_NOT_CONFIGURED_MESSAGE
             )
             return
 
         # Ingestion runs outside any workflow run, so resolve the MPS correlation
-        # id here.
+        # id here (LightMove.ai-managed embeddings only).
         embedding_service = await build_embedding_service(
             db_client=db_client,
-            provider=embeddings_provider,
-            api_key=embeddings_api_key,
-            model=embeddings_model,
-            base_url=embeddings_base_url,
-            endpoint=embeddings_endpoint,
-            api_version=embeddings_api_version,
+            settings=embedding_settings,
             resolve_correlation=True,
         )
 
-        mps_chunks = mps_response.get("chunks", [])
-        if not mps_chunks:
-            logger.warning(f"Document {document_id}: MPS returned zero chunks")
+        chunks = result.get("chunks", [])
 
         chunk_records = []
         chunk_texts = []
-        for chunk in mps_chunks:
+        for chunk in chunks:
             contextualized = chunk.get("contextualized_text") or chunk["chunk_text"]
             chunk_records.append(
                 KnowledgeBaseChunkModel(

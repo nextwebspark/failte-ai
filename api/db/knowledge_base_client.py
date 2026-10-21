@@ -645,6 +645,8 @@ class KnowledgeBaseClient(BaseDBClient):
             ".txt": "text/plain",
             ".json": "application/json",
             ".html": "text/html",
+            ".htm": "text/html",
+            ".csv": "text/csv",
             ".md": "text/markdown",
         }
         return mime_types.get(extension, "application/octet-stream")
