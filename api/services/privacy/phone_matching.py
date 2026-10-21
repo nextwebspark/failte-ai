@@ -11,7 +11,12 @@ country code and national number instead.
 A national-format value carries no country. It is read in the organization's
 "home" countries (the countries of its own phone numbers, or the subject's
 own country when it has none), so a national number from one country never
-matches a subject from another.
+matches a subject from another. A digits-only stored value is ambiguous
+(``2025550143`` is a US national number or an Egyptian one without "+"): it
+is read as national in the home countries, and as international only when it
+starts with a home country code. Typed numbers must be international (``+``
+or ``00``), or national with a trunk ``0`` when the organization has a single
+home country.
 """
 
 import re
@@ -194,7 +199,16 @@ class SubjectNumber:
         if stored.pstn is None or self.national is None:
             return False
         reading, digits = stored.pstn
-        if reading in ("international", "bare") and digits == self.international:
+        if reading == "international" and digits == self.international:
+            return True
+        if (
+            reading == "bare"
+            and digits == self.international
+            and any(digits.startswith(code) for code in self.home_calling_codes)
+        ):
+            # Digits only: international without "+" (as some providers send
+            # it) is trusted for the organization's own countries only;
+            # elsewhere the same digits are as likely a national number.
             return True
         if (
             reading in ("national", "bare")
@@ -242,8 +256,14 @@ def _phone_subject(
                 "and the country code."
             )
         return next(iter(home)), digits[1:]
-    if kind == "bare" and not 8 <= len(digits) <= 15:
-        return None  # an extension, not a phone number
+    if kind == "bare":
+        if len(digits) < 8:
+            return None  # an extension, not a phone number
+        # "2025550143" could be national (US) or international (+20...).
+        raise InvalidSubjectNumberError(
+            "Enter the number in international format, starting with + and "
+            "the country code."
+        )
     if not 8 <= len(digits) <= 15:
         raise InvalidSubjectNumberError("That is not a valid phone number.")
     code = calling_code_of(digits)

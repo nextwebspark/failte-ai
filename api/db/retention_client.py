@@ -12,7 +12,8 @@ from datetime import datetime
 from enum import Enum
 from typing import Any, Awaitable, Callable, Optional
 
-from sqlalchemy import Text, cast, exists, func, or_, select, update
+from sqlalchemy import Text, cast, event, exists, func, or_, select, update
+from sqlalchemy.orm import Session
 
 from api.db.base_client import BaseDBClient
 from api.db.models import (
@@ -108,6 +109,57 @@ def scrub_run_name(name: Optional[str], initial_context: Any) -> Optional[str]:
         if isinstance(value, str) and len(value.strip()) >= 3:
             name = name.replace(value.strip(), "[removed]")
     return name
+
+
+def is_purged_run(run: WorkflowRunModel) -> bool:
+    extra = run.extra if isinstance(run.extra, dict) else {}
+    return bool(extra.get(WORKFLOW_RUN_PURGED_AT_KEY))
+
+
+def apply_purged_shape(run: WorkflowRunModel, purged_at: Optional[str] = None) -> None:
+    """Reduce a run to what survives a purge (see ``WORKFLOW_RUN_*_KEPT_KEYS``).
+
+    Used by the scrub itself and, through ``_keep_purged_runs_scrubbed``, on
+    every later write to a purged run. Idempotent.
+    """
+    extra = run.extra if isinstance(run.extra, dict) else {}
+    gathered = run.gathered_context if isinstance(run.gathered_context, dict) else {}
+    purged_at = purged_at or extra.get(WORKFLOW_RUN_PURGED_AT_KEY)
+    run.name = scrub_run_name(run.name, run.initial_context)
+    run.recording_url = None
+    run.transcript_url = None
+    run.logs = {}
+    run.initial_context = {}
+    run.annotations = {}
+    run.public_access_token = None
+    run.gathered_context = {
+        key: value
+        for key, value in gathered.items()
+        if key in WORKFLOW_RUN_GATHERED_CONTEXT_KEPT_KEYS
+    }
+    run.extra = {
+        **{
+            key: value
+            for key, value in extra.items()
+            if key in WORKFLOW_RUN_EXTRA_KEPT_KEYS
+        },
+        WORKFLOW_RUN_PURGED_AT_KEY: purged_at,
+    }
+
+
+@event.listens_for(Session, "before_flush")
+def _keep_purged_runs_scrubbed(session, _flush_context, _instances) -> None:
+    """Drop call content written to a run after its content was purged.
+
+    Post-call writers (status callbacks, QA, uploads, the final variable
+    extraction, a re-run job) can land after an erasure or a retention purge.
+    Every ORM write to a run passes through here, so whatever such a writer
+    stores is cleared before it reaches the database; only what a purge keeps
+    (status, timestamps, usage, cost, outcome labels) can still change.
+    """
+    for obj in (*session.new, *session.dirty):
+        if isinstance(obj, WorkflowRunModel) and is_purged_run(obj):
+            apply_purged_shape(obj)
 
 
 def _workflow_run_not_purged():
@@ -291,32 +343,7 @@ class RetentionClient(BaseDBClient):
             )
             runs = list(result.scalars().all())
             for run in runs:
-                extra = run.extra if isinstance(run.extra, dict) else {}
-                gathered = (
-                    run.gathered_context
-                    if isinstance(run.gathered_context, dict)
-                    else {}
-                )
-                run.name = scrub_run_name(run.name, run.initial_context)
-                run.recording_url = None
-                run.transcript_url = None
-                run.logs = {}
-                run.initial_context = {}
-                run.annotations = {}
-                run.public_access_token = None
-                run.gathered_context = {
-                    key: value
-                    for key, value in gathered.items()
-                    if key in WORKFLOW_RUN_GATHERED_CONTEXT_KEPT_KEYS
-                }
-                run.extra = {
-                    **{
-                        key: value
-                        for key, value in extra.items()
-                        if key in WORKFLOW_RUN_EXTRA_KEPT_KEYS
-                    },
-                    WORKFLOW_RUN_PURGED_AT_KEY: purged_at.isoformat(),
-                }
+                apply_purged_shape(run, purged_at.isoformat())
 
             scrubbed_ids = [run.id for run in runs]
             if scrubbed_ids:

@@ -579,21 +579,24 @@ class KnowledgeBaseClient(BaseDBClient):
         self,
         document_uuid: str,
         organization_id: int,
+        is_active: Optional[bool] = None,
     ) -> Optional[KnowledgeBaseDocumentModel]:
-        """A document of the organization, archived or not, for deletion."""
+        """A document of the organization for deletion (archived or not by default)."""
+        query = select(KnowledgeBaseDocumentModel).where(
+            KnowledgeBaseDocumentModel.document_uuid == document_uuid,
+            KnowledgeBaseDocumentModel.organization_id == organization_id,
+        )
+        if is_active is not None:
+            query = query.where(KnowledgeBaseDocumentModel.is_active.is_(is_active))
         async with self.async_session() as session:
-            result = await session.execute(
-                select(KnowledgeBaseDocumentModel).where(
-                    KnowledgeBaseDocumentModel.document_uuid == document_uuid,
-                    KnowledgeBaseDocumentModel.organization_id == organization_id,
-                )
-            )
-            return result.scalar_one_or_none()
+            result = await session.execute(query.limit(1))
+            return result.scalars().first()
 
     async def delete_document(
         self,
         document_uuid: str,
         organization_id: int,
+        is_active: Optional[bool] = None,
     ) -> bool:
         """Permanently delete a document row and all of its chunks.
 
@@ -608,14 +611,13 @@ class KnowledgeBaseClient(BaseDBClient):
             True if document was deleted, False if not found
         """
         async with self.async_session() as session:
-            document_id = (
-                await session.execute(
-                    select(KnowledgeBaseDocumentModel.id).where(
-                        KnowledgeBaseDocumentModel.document_uuid == document_uuid,
-                        KnowledgeBaseDocumentModel.organization_id == organization_id,
-                    )
-                )
-            ).scalar_one_or_none()
+            query = select(KnowledgeBaseDocumentModel.id).where(
+                KnowledgeBaseDocumentModel.document_uuid == document_uuid,
+                KnowledgeBaseDocumentModel.organization_id == organization_id,
+            )
+            if is_active is not None:
+                query = query.where(KnowledgeBaseDocumentModel.is_active.is_(is_active))
+            document_id = (await session.execute(query.limit(1))).scalar()
             if document_id is None:
                 return False
 
@@ -628,6 +630,11 @@ class KnowledgeBaseClient(BaseDBClient):
                 delete(KnowledgeBaseDocumentModel).where(
                     KnowledgeBaseDocumentModel.id == document_id,
                     KnowledgeBaseDocumentModel.organization_id == organization_id,
+                    *(
+                        ()
+                        if is_active is None
+                        else (KnowledgeBaseDocumentModel.is_active.is_(is_active),)
+                    ),
                 )
             )
             await session.commit()

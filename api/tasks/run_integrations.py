@@ -1,5 +1,6 @@
 """Execute integrations (QA analysis, webhooks) after workflow run completion."""
 
+import asyncio
 import random
 from datetime import UTC, datetime
 from typing import Any, Dict, Optional
@@ -202,9 +203,16 @@ async def run_integrations_post_workflow_run(
     """
     try:
         await _run_integrations_post_workflow_run(_ctx, workflow_run_id)
-    finally:
+    except asyncio.CancelledError:
+        # A cancelled job (worker shutdown) is re-run later and will write
+        # again, so the run is not done yet.
+        raise
+    except Exception:
         if mark_done:
             await mark_post_call_done(workflow_run_id)
+        raise
+    if mark_done:
+        await mark_post_call_done(workflow_run_id)
 
 
 async def _run_integrations_post_workflow_run(_ctx, workflow_run_id: int):

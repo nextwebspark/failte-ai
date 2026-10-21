@@ -93,6 +93,7 @@ class SubjectWorkflowRun:
     storage_backend: str
     extra: dict[str, Any]
     chat_session_data: Optional[dict[str, Any]]
+    chat_updated_at: Optional[datetime] = None
 
 
 @dataclass(frozen=True)
@@ -285,6 +286,7 @@ class PrivacyClient(BaseDBClient):
                     WorkflowRunModel,
                     WorkflowModel.name.label("workflow_name"),
                     WorkflowRunTextSessionModel.session_data.label("chat_session_data"),
+                    WorkflowRunTextSessionModel.updated_at.label("chat_updated_at"),
                 )
                 .join(WorkflowModel, WorkflowRunModel.workflow_id == WorkflowModel.id)
                 .outerjoin(
@@ -298,7 +300,7 @@ class PrivacyClient(BaseDBClient):
                 .order_by(WorkflowRunModel.created_at, WorkflowRunModel.id)
             )
             runs = []
-            for run, workflow_name, chat_session_data in result.all():
+            for run, workflow_name, chat_session_data, chat_updated_at in result.all():
                 runs.append(
                     SubjectWorkflowRun(
                         id=run.id,
@@ -323,6 +325,7 @@ class PrivacyClient(BaseDBClient):
                             if isinstance(chat_session_data, dict)
                             else None
                         ),
+                        chat_updated_at=chat_updated_at,
                     )
                 )
             return runs

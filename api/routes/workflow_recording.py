@@ -89,6 +89,15 @@ async def get_upload_urls(
                 f"/{recording_id}"
                 f"/{fd.filename}"
             )
+            if "/" in fd.filename or not is_workflow_recording_key(
+                user.selected_organization_id, storage_key
+            ):
+                # The key must stay inside the recording's folder: deleting
+                # the recording deletes that key and nothing else.
+                raise HTTPException(
+                    status_code=400,
+                    detail="The file name must not contain folders or '..'.",
+                )
 
             upload_url = await storage_fs.aget_presigned_put_url(
                 file_path=storage_key,

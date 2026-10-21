@@ -202,9 +202,12 @@ def _post_call_done_at(extra: dict[str, Any]) -> Optional[datetime]:
     return moment if moment.tzinfo else moment.replace(tzinfo=UTC)
 
 
-def is_run_in_progress(run: ErasableWorkflowRun, now: datetime) -> bool:
+def is_run_in_progress(
+    run: ErasableWorkflowRun | SubjectWorkflowRun, now: datetime
+) -> bool:
     """Whether the call may still be live, or post-call work still writing to it."""
-    done_at = _post_call_done_at(run.objects.extra)
+    extra = run.objects.extra if isinstance(run, ErasableWorkflowRun) else run.extra
+    done_at = _post_call_done_at(extra)
     if done_at is not None and done_at <= now - POST_CALL_GRACE:
         return False
     activity = [
@@ -374,9 +377,7 @@ async def export_subject_data(
                 disposition=gathered.get("mapped_call_disposition")
                 or gathered.get("call_disposition"),
                 duration_seconds=_duration_seconds(run.usage_info),
-                in_progress=not run.is_completed
-                and run.created_at is not None
-                and run.created_at >= now - RUN_ACTIVE_WINDOW,
+                in_progress=is_run_in_progress(run, now),
                 already_erased="purged_at" in run.extra,
                 initial_context=run.initial_context,
                 gathered_context=gathered,

@@ -121,6 +121,15 @@ async def get_upload_url(
 
         # Generate S3 key: knowledge_base/{org_id}/{document_uuid}/{filename}
         s3_key = f"knowledge_base/{user.selected_organization_id}/{document_uuid}/{request.filename}"
+        if "/" in request.filename or not is_knowledge_base_document_key(
+            user.selected_organization_id, document_uuid, s3_key
+        ):
+            # The key must stay inside the document's folder: deleting the
+            # document deletes that folder and nothing else.
+            raise HTTPException(
+                status_code=400,
+                detail="The file name must not contain folders or '..'.",
+            )
 
         # Generate presigned PUT URL (valid for 30 minutes)
         upload_url = await storage_fs.aget_presigned_put_url(
@@ -146,6 +155,8 @@ async def get_upload_url(
             s3_key=s3_key,
         )
 
+    except HTTPException:
+        raise
     except Exception as exc:
         logger.error(f"Error generating upload URL: {exc}")
         raise HTTPException(

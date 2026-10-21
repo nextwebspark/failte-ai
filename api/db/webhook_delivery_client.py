@@ -15,6 +15,7 @@ from sqlalchemy.exc import IntegrityError
 
 from api.db.base_client import BaseDBClient
 from api.db.models import WebhookDeliveryModel, WorkflowModel, WorkflowRunModel
+from api.db.retention_client import WORKFLOW_RUN_PURGED_AT_KEY
 
 
 class WebhookDeliveryClient(BaseDBClient):
@@ -43,7 +44,13 @@ class WebhookDeliveryClient(BaseDBClient):
         """
         async with self.async_session() as session:
             run_scope_result = await session.execute(
-                select(WorkflowRunModel.id, WorkflowModel.organization_id)
+                select(
+                    WorkflowRunModel.id,
+                    WorkflowModel.organization_id,
+                    WorkflowRunModel.extra[WORKFLOW_RUN_PURGED_AT_KEY]
+                    .as_string()
+                    .is_not(None),
+                )
                 .join(WorkflowModel, WorkflowRunModel.workflow_id == WorkflowModel.id)
                 .where(WorkflowRunModel.id == workflow_run_id)
             )
@@ -51,7 +58,7 @@ class WebhookDeliveryClient(BaseDBClient):
             if run_scope is None:
                 raise ValueError(f"Workflow run {workflow_run_id} not found")
 
-            _, run_organization_id = run_scope
+            _, run_organization_id, run_purged = run_scope
             if run_organization_id is None:
                 raise ValueError(
                     f"Workflow run {workflow_run_id} is not associated with an organization"
@@ -62,6 +69,11 @@ class WebhookDeliveryClient(BaseDBClient):
                     f"{run_organization_id}, not {organization_id}"
                 )
 
+            if run_purged:
+                # The run's content was erased: nothing about the call may be
+                # sent any more. The row still claims the run+node key so a
+                # re-run cannot send it either.
+                payload = {}
             delivery = WebhookDeliveryModel(
                 workflow_run_id=workflow_run_id,
                 organization_id=organization_id,
@@ -73,9 +85,12 @@ class WebhookDeliveryClient(BaseDBClient):
                 custom_headers=custom_headers,
                 credential_uuid=credential_uuid,
                 max_attempts=max_attempts,
-                status="pending",
+                status="dead_letter" if run_purged else "pending",
                 attempt_count=0,
-                scheduled_for=scheduled_for or datetime.now(UTC),
+                scheduled_for=None
+                if run_purged
+                else scheduled_for or datetime.now(UTC),
+                last_error="Call data erased" if run_purged else None,
             )
             session.add(delivery)
             try:
@@ -94,7 +109,7 @@ class WebhookDeliveryClient(BaseDBClient):
                 # The violation was not the run+node uniqueness -- re-raise.
                 raise
             await session.refresh(delivery)
-            return delivery, True
+            return delivery, not run_purged
 
     async def get_webhook_delivery(
         self, delivery_id: int
@@ -177,7 +192,12 @@ class WebhookDeliveryClient(BaseDBClient):
         async with self.async_session() as session:
             await session.execute(
                 update(WebhookDeliveryModel)
-                .where(WebhookDeliveryModel.id == delivery_id)
+                .where(
+                    WebhookDeliveryModel.id == delivery_id,
+                    # Erasure dead-letters a pending delivery while its send
+                    # may be in flight; a failed send must not revive it.
+                    WebhookDeliveryModel.status != "dead_letter",
+                )
                 .values(
                     status="pending",
                     attempt_count=attempt_count,

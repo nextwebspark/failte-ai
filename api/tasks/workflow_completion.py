@@ -1,3 +1,5 @@
+import asyncio
+
 from loguru import logger
 from pipecat.utils.run_context import set_current_run_id
 
@@ -32,11 +34,17 @@ async def process_workflow_completion(
 
     logger.info(f"Processing workflow completion for run {workflow_run_id}")
 
+    # Erasure waits for this marker: nothing here writes to the run after it.
+    # A cancelled job (worker shutdown) is re-run and writes again, so it
+    # does not mark the run done.
     try:
         await _process_workflow_completion(_ctx, workflow_run_id)
-    finally:
-        # Erasure waits for this marker: nothing below writes to the run after it.
+    except asyncio.CancelledError:
+        raise
+    except Exception:
         await mark_post_call_done(workflow_run_id)
+        raise
+    await mark_post_call_done(workflow_run_id)
 
 
 async def _process_workflow_completion(_ctx, workflow_run_id: int) -> None:

@@ -73,14 +73,18 @@ async def delete_knowledge_base_document(
     organization_id: int,
     document_uuid: str,
     resolve_storage: Optional[StorageResolver] = None,
+    archived_only: bool = False,
 ) -> bool:
     """Delete a document's stored file, then its row and chunks.
 
-    Returns False when the organization has no such document. Raises
-    ``StoredFileDeleteError`` (and keeps the row) when the file cannot be
-    deleted.
+    Returns False when the organization has no such document (no archived
+    one, with ``archived_only``). Raises ``StoredFileDeleteError`` (and keeps
+    the row) when the file cannot be deleted.
     """
-    document = await db_client.get_document_for_deletion(document_uuid, organization_id)
+    is_active = False if archived_only else None
+    document = await db_client.get_document_for_deletion(
+        document_uuid, organization_id, is_active=is_active
+    )
     if document is None:
         return False
 
@@ -107,7 +111,9 @@ async def delete_knowledge_base_document(
     except Exception as exc:
         raise StoredFileDeleteError(type(exc).__name__) from exc
 
-    return await db_client.delete_document(document_uuid, organization_id)
+    return await db_client.delete_document(
+        document_uuid, organization_id, is_active=is_active
+    )
 
 
 async def delete_workflow_recording(
@@ -116,15 +122,37 @@ async def delete_workflow_recording(
     recording_id: str,
     resolve_storage: Optional[StorageResolver] = None,
 ) -> bool:
-    """Delete a prompt recording's audio, then its row.
+    """Delete an active prompt recording's audio, then its row.
 
-    Returns False when the organization has no such recording. Raises
+    Returns False when the organization has no such active recording. Raises
     ``StoredFileDeleteError`` (and keeps the row) when the audio cannot be
     deleted.
     """
     recording = await db_client.get_recording_for_deletion(
-        recording_id, organization_id
+        organization_id, recording_id=recording_id, is_active=True
     )
+    return await _delete_recording(organization_id, recording, True, resolve_storage)
+
+
+async def delete_archived_workflow_recording(
+    *,
+    organization_id: int,
+    recording_pk: int,
+    resolve_storage: Optional[StorageResolver] = None,
+) -> bool:
+    """Delete an archived (soft-deleted) recording's audio, then its row."""
+    recording = await db_client.get_recording_for_deletion(
+        organization_id, recording_pk=recording_pk, is_active=False
+    )
+    return await _delete_recording(organization_id, recording, False, resolve_storage)
+
+
+async def _delete_recording(
+    organization_id: int,
+    recording,
+    is_active: bool,
+    resolve_storage: Optional[StorageResolver],
+) -> bool:
     if recording is None:
         return False
 
@@ -139,8 +167,10 @@ async def delete_workflow_recording(
             raise StoredFileDeleteError(f"Could not delete {key}")
     elif key:
         logger.warning(
-            f"Recording {recording_id} of organization {organization_id} names a "
+            f"Recording {recording.id} of organization {organization_id} names a "
             "file outside its organization's folder; leaving that file alone"
         )
 
-    return await db_client.delete_recording(recording_id, organization_id)
+    return await db_client.delete_recording(
+        organization_id, recording.id, is_active=is_active
+    )

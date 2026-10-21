@@ -351,11 +351,18 @@ async def _archived_uploads(organization_id: int):
                 after_id=after_id,
                 limit=ROW_BATCH_SIZE,
             )
-            out.extend(public_id for _id, public_id in page)
+            out.extend(page)
             if len(page) < ROW_BATCH_SIZE:
                 break
             after_id = page[-1][0]
     return documents, recordings
+
+
+def _log_archived_upload_failure(organization_id: int, exc: Exception) -> None:
+    logger.warning(
+        f"Retention purge deferred an archived upload of organization "
+        f"{organization_id}: {type(exc).__name__}"
+    )
 
 
 async def _purge_organization_archived_uploads(
@@ -365,31 +372,37 @@ async def _purge_organization_archived_uploads(
 ) -> None:
     """Hard-delete uploads that were only archived: stored file first, then row."""
     from api.services.privacy.stored_files import (
-        StoredFileDeleteError,
+        delete_archived_workflow_recording,
         delete_knowledge_base_document,
-        delete_workflow_recording,
     )
 
     documents, recordings = await _archived_uploads(organization_id)
-    for document_uuid in documents:
+    for _document_pk, document_uuid in documents:
         try:
             if await delete_knowledge_base_document(
                 organization_id=organization_id,
                 document_uuid=document_uuid,
                 resolve_storage=resolve_storage,
+                archived_only=True,
             ):
                 result.archived_documents_deleted += 1
-        except StoredFileDeleteError:
+        except Exception as exc:
+            # A storage failure (StoredFileDeleteError) or a bad row defers
+            # this upload only; the rest of the organization still goes.
+            _log_archived_upload_failure(organization_id, exc)
             result.archived_files_deferred += 1
-    for recording_id in recordings:
+    for recording_pk, _recording_id in recordings:
         try:
-            if await delete_workflow_recording(
+            if await delete_archived_workflow_recording(
                 organization_id=organization_id,
-                recording_id=recording_id,
+                recording_pk=recording_pk,
                 resolve_storage=resolve_storage,
             ):
                 result.archived_recordings_deleted += 1
-        except StoredFileDeleteError:
+        except Exception as exc:
+            # A storage failure (StoredFileDeleteError) or a bad row defers
+            # this upload only; the rest of the organization still goes.
+            _log_archived_upload_failure(organization_id, exc)
             result.archived_files_deferred += 1
 
 

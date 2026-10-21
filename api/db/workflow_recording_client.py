@@ -199,13 +199,18 @@ class WorkflowRecordingClient(BaseDBClient):
             True if exists, False otherwise
         """
         async with self.async_session() as session:
-            query = select(WorkflowRecordingModel.id).where(
-                WorkflowRecordingModel.recording_id == recording_id,
-                WorkflowRecordingModel.organization_id == organization_id,
-                WorkflowRecordingModel.is_active == True,
+            # Archived rows count too: (recording_id, organization_id) is
+            # unique across active and archived rows alike.
+            query = (
+                select(WorkflowRecordingModel.id)
+                .where(
+                    WorkflowRecordingModel.recording_id == recording_id,
+                    WorkflowRecordingModel.organization_id == organization_id,
+                )
+                .limit(1)
             )
             result = await session.execute(query)
-            return result.scalar_one_or_none() is not None
+            return result.first() is not None
 
     async def update_recording_id(
         self,
@@ -322,48 +327,60 @@ class WorkflowRecordingClient(BaseDBClient):
 
     async def get_recording_for_deletion(
         self,
-        recording_id: str,
         organization_id: int,
+        *,
+        recording_id: Optional[str] = None,
+        recording_pk: Optional[int] = None,
+        is_active: Optional[bool] = None,
     ) -> Optional[WorkflowRecordingModel]:
-        """A recording of the organization, archived or not, for deletion."""
+        """A recording of the organization, by short ID or primary key."""
+        if recording_id is None and recording_pk is None:
+            raise ValueError("Pass recording_id or recording_pk")
+        query = select(WorkflowRecordingModel).where(
+            WorkflowRecordingModel.organization_id == organization_id
+        )
+        if recording_id is not None:
+            query = query.where(WorkflowRecordingModel.recording_id == recording_id)
+        if recording_pk is not None:
+            query = query.where(WorkflowRecordingModel.id == recording_pk)
+        if is_active is not None:
+            query = query.where(WorkflowRecordingModel.is_active.is_(is_active))
         async with self.async_session() as session:
             result = await session.execute(
-                select(WorkflowRecordingModel).where(
-                    WorkflowRecordingModel.recording_id == recording_id,
-                    WorkflowRecordingModel.organization_id == organization_id,
-                )
+                query.order_by(WorkflowRecordingModel.id).limit(1)
             )
-            return result.scalar_one_or_none()
+            return result.scalars().first()
 
     async def delete_recording(
         self,
-        recording_id: str,
         organization_id: int,
+        recording_pk: int,
+        *,
+        is_active: Optional[bool] = None,
     ) -> bool:
-        """Permanently delete a recording row.
+        """Permanently delete one recording row, by primary key.
 
         The stored audio is not touched: delete it first (see
-        ``api.services.privacy.stored_files``).
-
-        Args:
-            recording_id: The short recording ID
-            organization_id: ID of the organization
+        ``api.services.privacy.stored_files``). ``is_active`` restricts the
+        delete to an active or an archived row, so a purge of archived rows
+        can never remove a live one.
 
         Returns:
             True if deleted, False if not found
         """
+        query = delete(WorkflowRecordingModel).where(
+            WorkflowRecordingModel.id == recording_pk,
+            WorkflowRecordingModel.organization_id == organization_id,
+        )
+        if is_active is not None:
+            query = query.where(WorkflowRecordingModel.is_active.is_(is_active))
         async with self.async_session() as session:
-            result = await session.execute(
-                delete(WorkflowRecordingModel).where(
-                    WorkflowRecordingModel.recording_id == recording_id,
-                    WorkflowRecordingModel.organization_id == organization_id,
-                )
-            )
+            result = await session.execute(query)
             await session.commit()
             if not result.rowcount:
                 return False
 
             logger.info(
-                f"Deleted recording {recording_id} for organization {organization_id}"
+                f"Deleted recording {recording_pk} for organization {organization_id}"
             )
             return True
