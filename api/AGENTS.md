@@ -55,7 +55,7 @@ Put reusable or multi-step orchestration, business rules, external calls, and su
 ./scripts/migrate.sh                     # Run migrations
 ```
 
-**Encrypted columns:** `external_credentials.credential_data`, `telephony_configurations.credentials`, `integrations.connection_details` and `organization_configurations.value` are `EncryptedJSON` (Fernet envelopes at rest); never query inside them in SQL or migrations — filter on other columns and inspect the decrypted dict in Python.
+**Encrypted columns:** `external_credentials.credential_data`, `telephony_configurations.credentials`, `integrations.connection_details`, `organization_configurations.value` and `user_configurations.configuration` are `EncryptedJSON` (Fernet envelopes at rest); never query inside them in SQL or migrations — filter on other columns and inspect the decrypted dict in Python.
 
 ## Cross-Worker State Sync
 
