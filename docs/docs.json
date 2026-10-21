@@ -62,7 +62,8 @@
               "configurations/interruption",
               "configurations/tracing",
               "configurations/call-events",
-              "configurations/billing"
+              "configurations/billing",
+              "configurations/delete-and-export-data"
             ]
           },
           {

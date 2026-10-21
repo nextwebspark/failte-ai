@@ -1,0 +1,48 @@
+---
+title: "Export or Delete Your Data"
+description: "Download your account or organization data, delete your account, and delete an organization with its 30-day grace period"
+---
+
+You can take a copy of your data and delete it yourself, without contacting support. Everything on this page is in the app under **Your account** (in the menu behind your initials, open to every member) and, for admins, **Workspace settings → Danger zone**.
+
+## Export your data
+
+| Export | Who | What it contains |
+|---|---|---|
+| **Export my data** | Every member | Your profile, the organizations you belong to and your role in each, and your onboarding progress |
+| **Export organization data** | Admins | Organization settings, members and roles, agents with their current and published versions, tools, campaigns (names and progress, not contact lists), the knowledge base file list, prompt recording transcripts, phone numbers, widget and API key metadata, and the billing account and ledger |
+
+Both download as a JSON file. Exports never contain secrets: provider API keys, telephony credentials, tool credentials, API keys and passwords are left out. The organization export also leaves out call content (recordings, transcripts and caller details); those follow your [call data retention period](/developer/environment-variables#data-retention).
+
+## Delete your account
+
+Open **Your account**, choose **Delete my account** and type your email address to confirm. Deleting your account:
+
+- signs you out everywhere and deletes your login, settings and memberships;
+- archives the API keys you created;
+- keeps everything you built (agents, tools, campaigns, knowledge base files, widgets) in your organizations, so your colleagues' agents keep working.
+
+You cannot delete your account while you are:
+
+- **the only admin of an organization that has other members**: make another member an admin on the **Team** page first;
+- **the only member of an organization**: delete that organization first. If you are its admin and it is the organization you have selected, the dialog offers to do that for you.
+
+## Delete an organization
+
+Admins can delete the selected organization from **Workspace settings → Danger zone → Delete organization** by typing its name.
+
+The organization closes as soon as you confirm:
+
+- its API, apart from the export and the cancel, stops answering (requests get `423` with the code `organization_pending_deletion`);
+- its API keys, website widgets, API triggers and running campaigns are switched off, and calls to its phone numbers are refused;
+- every member sees a banner with the date the organization will be erased.
+
+<Note>
+You can cancel until that date: use **Cancel deletion** on the banner or in the Danger zone. Cancelling switches back on exactly what the deletion switched off; anything that was already off stays off. Campaigns resume where they stopped.
+</Note>
+
+30 days after the request, a daily job permanently erases the organization: call recordings and transcripts, agents and their versions, campaigns and contact lists, knowledge base files, prompt recordings, tools, credentials, phone numbers and settings. Billing accounts, the credit ledger and usage records are kept, because invoices and tax records must be retained. Members keep their own accounts and can delete them separately.
+
+## Self-hosting
+
+The erasure job runs every day at 03:47 UTC. Set `ORG_ERASURE_ENABLED=false` to pause it; deletion requests are still accepted and the organizations stay closed until the job runs again. See [Environment variables](/developer/environment-variables#organization-deletion).
