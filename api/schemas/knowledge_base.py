@@ -54,7 +54,7 @@ class DocumentResponseSchema(BaseModel):
     created_at: datetime
     updated_at: datetime
     organization_id: int
-    created_by: int
+    created_by: int | None = None
     is_active: bool
     needs_reindex: bool = Field(
         default=False,

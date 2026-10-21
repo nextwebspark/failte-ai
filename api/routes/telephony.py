@@ -32,6 +32,7 @@ from api.services.call_concurrency import (
     WorkflowRunSlotAlreadyBoundError,
     call_concurrency,
 )
+from api.services.privacy.org_deletion import organization_accepts_calls
 from api.services.quota_service import authorize_workflow_run_start
 from api.services.telephony import ws_auth
 from api.services.telephony.call_transfer_manager import get_call_transfer_manager
@@ -74,12 +75,9 @@ class InitiateCallRequest(BaseModel):
     from_phone_number_id: int | None = None
 
 
-def _get_execution_user_id(workflow) -> int:
-    if workflow.user_id is None:
-        raise HTTPException(
-            status_code=409,
-            detail="Workflow has no execution owner",
-        )
+def _get_execution_user_id(workflow) -> int | None:
+    # Attribution only (the run is scoped by organization): an agent whose
+    # creator deleted their account has no owner and still runs.
     return workflow.user_id
 
 
@@ -399,6 +397,9 @@ async def _validate_inbound_request(
     organization_id = workflow.organization_id
     user_id = workflow.user_id
     provider = normalized_data.provider
+
+    if not await organization_accepts_calls(organization_id):
+        return False, TelephonyError.ORGANIZATION_UNAVAILABLE, {}, None
 
     # Primary path: one combined query that resolves config + phone number
     # together (joins configs and phone_numbers with provider, account_id,
@@ -904,6 +905,15 @@ async def handle_inbound_run(request: Request):
             f"phone={phone_row.id} address={phone_row.address!r} "
             f"inbound_workflow_id={phone_row.inbound_workflow_id}"
         )
+
+        if not await organization_accepts_calls(config.organization_id):
+            logger.info(
+                f"/inbound/run: org {config.organization_id} is scheduled for "
+                "deletion; refusing the call"
+            )
+            return provider_class.generate_validation_error_response(
+                TelephonyError.ORGANIZATION_UNAVAILABLE
+            )
 
         if not phone_row.inbound_workflow_id:
             logger.warning(

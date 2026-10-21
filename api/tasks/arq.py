@@ -63,6 +63,7 @@ from api.tasks.campaign_tasks import (
     sync_campaign_source,
 )
 from api.tasks.knowledge_base_processing import process_knowledge_base_document
+from api.tasks.org_erasure import erase_deleted_organizations_daily
 from api.tasks.retention_purge import purge_expired_data_daily
 from api.tasks.run_integrations import run_integrations_post_workflow_run
 from api.tasks.text_chat_inactivity import (
@@ -123,6 +124,15 @@ class WorkerSettings:
             purge_expired_data_daily,
             hour=3,
             minute=17,
+            second=0,
+            timeout=3 * 60 * 60,
+        ),
+        # GDPR erasure: organisations whose 30-day deletion grace period has
+        # ended lose every stored object and row except billing records.
+        cron(
+            erase_deleted_organizations_daily,
+            hour=3,
+            minute=47,
             second=0,
             timeout=3 * 60 * 60,
         ),

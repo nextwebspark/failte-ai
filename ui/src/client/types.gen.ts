@@ -2544,6 +2544,30 @@ export type DefaultConfigurationsResponse = {
 };
 
 /**
+ * DeleteAccountRequest
+ */
+export type DeleteAccountRequest = {
+    /**
+     * Confirm Email
+     *
+     * The account's email address, typed to confirm (DELETE for an account without one).
+     */
+    confirm_email: string;
+};
+
+/**
+ * DeleteOrganizationRequest
+ */
+export type DeleteOrganizationRequest = {
+    /**
+     * Confirm Name
+     *
+     * The organization's name, typed to confirm.
+     */
+    confirm_name: string;
+};
+
+/**
  * DeleteWorkflowRunDataResponse
  */
 export type DeleteWorkflowRunDataResponse = {
@@ -2768,7 +2792,7 @@ export type DocumentResponseSchema = {
     /**
      * Created By
      */
-    created_by: number;
+    created_by?: number | null;
     /**
      * Is Active
      */
@@ -3337,7 +3361,7 @@ export type FileDescriptor = {
     /**
      * Filename
      *
-     * Original filename of the audio file
+     * Original filename of the audio file. It becomes the last segment of the storage key: anything but letters, digits, '.', '_', '-' and spaces is replaced, and a name with folders is refused.
      */
     filename: string;
     /**
@@ -5895,6 +5919,29 @@ export type OrganizationContextResponse = {
      */
     permissions?: Array<Permission>;
     model_services: OrganizationModelServicesContext;
+    deletion?: OrganizationDeletionStatus | null;
+};
+
+/**
+ * OrganizationDeletionStatus
+ *
+ * Whether the selected organization is scheduled for deletion.
+ */
+export type OrganizationDeletionStatus = {
+    /**
+     * Pending
+     */
+    pending: boolean;
+    /**
+     * Requested At
+     */
+    requested_at?: string | null;
+    /**
+     * Scheduled For
+     *
+     * When the organization and its data are permanently erased. Until then an admin can cancel the deletion.
+     */
+    scheduled_for?: string | null;
 };
 
 /**
@@ -7071,7 +7118,7 @@ export type RecordingResponseSchema = {
     /**
      * Created By
      */
-    created_by: number;
+    created_by?: number | null;
     /**
      * Created At
      */
@@ -13922,6 +13969,244 @@ export type PreviewGoogleVoiceApiV1UserConfigurationsVoicesGooglePreviewGetRespo
      */
     200: unknown;
 };
+
+export type ExportMyDataApiV1UserMeExportGetData = {
+    body?: never;
+    headers?: {
+        /**
+         * Authorization
+         */
+        authorization?: string | null;
+        /**
+         * X-Api-Key
+         */
+        'X-API-Key'?: string | null;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/v1/user/me/export';
+};
+
+export type ExportMyDataApiV1UserMeExportGetErrors = {
+    /**
+     * Not found
+     */
+    404: unknown;
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ExportMyDataApiV1UserMeExportGetError = ExportMyDataApiV1UserMeExportGetErrors[keyof ExportMyDataApiV1UserMeExportGetErrors];
+
+export type ExportMyDataApiV1UserMeExportGetResponses = {
+    /**
+     * A JSON document, sent as a file download.
+     */
+    200: {
+        [key: string]: unknown;
+    };
+};
+
+export type ExportMyDataApiV1UserMeExportGetResponse = ExportMyDataApiV1UserMeExportGetResponses[keyof ExportMyDataApiV1UserMeExportGetResponses];
+
+export type DeleteMyAccountApiV1UserMeDeleteData = {
+    body: DeleteAccountRequest;
+    headers?: {
+        /**
+         * Authorization
+         */
+        authorization?: string | null;
+        /**
+         * X-Api-Key
+         */
+        'X-API-Key'?: string | null;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/v1/user/me';
+};
+
+export type DeleteMyAccountApiV1UserMeDeleteErrors = {
+    /**
+     * Not found
+     */
+    404: unknown;
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type DeleteMyAccountApiV1UserMeDeleteError = DeleteMyAccountApiV1UserMeDeleteErrors[keyof DeleteMyAccountApiV1UserMeDeleteErrors];
+
+export type DeleteMyAccountApiV1UserMeDeleteResponses = {
+    /**
+     * Successful Response
+     */
+    204: void;
+};
+
+export type DeleteMyAccountApiV1UserMeDeleteResponse = DeleteMyAccountApiV1UserMeDeleteResponses[keyof DeleteMyAccountApiV1UserMeDeleteResponses];
+
+export type ExportOrganizationApiV1OrganizationsExportGetData = {
+    body?: never;
+    headers?: {
+        /**
+         * Authorization
+         */
+        authorization?: string | null;
+        /**
+         * X-Api-Key
+         */
+        'X-API-Key'?: string | null;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/v1/organizations/export';
+};
+
+export type ExportOrganizationApiV1OrganizationsExportGetErrors = {
+    /**
+     * Not found
+     */
+    404: unknown;
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ExportOrganizationApiV1OrganizationsExportGetError = ExportOrganizationApiV1OrganizationsExportGetErrors[keyof ExportOrganizationApiV1OrganizationsExportGetErrors];
+
+export type ExportOrganizationApiV1OrganizationsExportGetResponses = {
+    /**
+     * A JSON document, sent as a file download.
+     */
+    200: {
+        [key: string]: unknown;
+    };
+};
+
+export type ExportOrganizationApiV1OrganizationsExportGetResponse = ExportOrganizationApiV1OrganizationsExportGetResponses[keyof ExportOrganizationApiV1OrganizationsExportGetResponses];
+
+export type CancelOrganizationDeletionRequestApiV1OrganizationsDeletionDeleteData = {
+    body?: never;
+    headers?: {
+        /**
+         * Authorization
+         */
+        authorization?: string | null;
+        /**
+         * X-Api-Key
+         */
+        'X-API-Key'?: string | null;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/v1/organizations/deletion';
+};
+
+export type CancelOrganizationDeletionRequestApiV1OrganizationsDeletionDeleteErrors = {
+    /**
+     * Not found
+     */
+    404: unknown;
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type CancelOrganizationDeletionRequestApiV1OrganizationsDeletionDeleteError = CancelOrganizationDeletionRequestApiV1OrganizationsDeletionDeleteErrors[keyof CancelOrganizationDeletionRequestApiV1OrganizationsDeletionDeleteErrors];
+
+export type CancelOrganizationDeletionRequestApiV1OrganizationsDeletionDeleteResponses = {
+    /**
+     * Successful Response
+     */
+    200: OrganizationDeletionStatus;
+};
+
+export type CancelOrganizationDeletionRequestApiV1OrganizationsDeletionDeleteResponse = CancelOrganizationDeletionRequestApiV1OrganizationsDeletionDeleteResponses[keyof CancelOrganizationDeletionRequestApiV1OrganizationsDeletionDeleteResponses];
+
+export type GetOrganizationDeletionApiV1OrganizationsDeletionGetData = {
+    body?: never;
+    headers?: {
+        /**
+         * Authorization
+         */
+        authorization?: string | null;
+        /**
+         * X-Api-Key
+         */
+        'X-API-Key'?: string | null;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/v1/organizations/deletion';
+};
+
+export type GetOrganizationDeletionApiV1OrganizationsDeletionGetErrors = {
+    /**
+     * Not found
+     */
+    404: unknown;
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type GetOrganizationDeletionApiV1OrganizationsDeletionGetError = GetOrganizationDeletionApiV1OrganizationsDeletionGetErrors[keyof GetOrganizationDeletionApiV1OrganizationsDeletionGetErrors];
+
+export type GetOrganizationDeletionApiV1OrganizationsDeletionGetResponses = {
+    /**
+     * Successful Response
+     */
+    200: OrganizationDeletionStatus;
+};
+
+export type GetOrganizationDeletionApiV1OrganizationsDeletionGetResponse = GetOrganizationDeletionApiV1OrganizationsDeletionGetResponses[keyof GetOrganizationDeletionApiV1OrganizationsDeletionGetResponses];
+
+export type DeleteOrganizationApiV1OrganizationsDeletionPostData = {
+    body: DeleteOrganizationRequest;
+    headers?: {
+        /**
+         * Authorization
+         */
+        authorization?: string | null;
+        /**
+         * X-Api-Key
+         */
+        'X-API-Key'?: string | null;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/v1/organizations/deletion';
+};
+
+export type DeleteOrganizationApiV1OrganizationsDeletionPostErrors = {
+    /**
+     * Not found
+     */
+    404: unknown;
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type DeleteOrganizationApiV1OrganizationsDeletionPostError = DeleteOrganizationApiV1OrganizationsDeletionPostErrors[keyof DeleteOrganizationApiV1OrganizationsDeletionPostErrors];
+
+export type DeleteOrganizationApiV1OrganizationsDeletionPostResponses = {
+    /**
+     * Successful Response
+     */
+    200: OrganizationDeletionStatus;
+};
+
+export type DeleteOrganizationApiV1OrganizationsDeletionPostResponse = DeleteOrganizationApiV1OrganizationsDeletionPostResponses[keyof DeleteOrganizationApiV1OrganizationsDeletionPostResponses];
 
 export type GetCampaignTrafficStatsApiV1CampaignCampaignIdTrafficStatsGetData = {
     body?: never;

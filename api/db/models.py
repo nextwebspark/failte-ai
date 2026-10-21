@@ -50,7 +50,12 @@ Base = declarative_base()
 organization_users_association = Table(
     "organization_users",
     Base.metadata,
-    Column("user_id", Integer, ForeignKey("users.id"), primary_key=True),
+    Column(
+        "user_id",
+        Integer,
+        ForeignKey("users.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
     Column(
         "organization_id", Integer, ForeignKey("organizations.id"), primary_key=True
     ),
@@ -127,7 +132,7 @@ class UserConfigurationModel(Base):
 
     __tablename__ = "user_configurations"
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=True)
     key = Column(String, nullable=False)
     # The legacy v1 model configuration holds provider API keys.
     configuration = Column(EncryptedJSON, nullable=False, default=dict)
@@ -188,6 +193,21 @@ class OrganizationModel(Base):
     )
 
     price_per_second_usd = Column(Float, nullable=True)
+
+    # Deletion (GDPR Art. 17). An admin's request sets both timestamps; the
+    # erasure cron erases the organisation once ``deletion_scheduled_for``
+    # passes and leaves this row behind as a tombstone (``erased_at``) so
+    # billing records keep their organisation.
+    deletion_requested_at = Column(DateTime(timezone=True), nullable=True)
+    deletion_scheduled_for = Column(DateTime(timezone=True), nullable=True, index=True)
+    # Ids of what the request switched off, restored on cancel:
+    # {"api_key_ids": [...], "embed_token_ids": [...], "agent_trigger_ids": [...],
+    #  "campaign_ids": [...], "syncing_campaign_ids": [...]}.
+    deletion_suspended = Column(JSON, nullable=True)
+    erased_at = Column(DateTime(timezone=True), nullable=True)
+    # The provider id before erasure, so auth never re-creates the organisation
+    # from its (Stack Auth) team.
+    erased_provider_id = Column(String, nullable=True, index=True)
 
     # Relationships
     users = relationship(
@@ -288,7 +308,9 @@ class APIKeyModel(Base):
     key_hash = Column(String, nullable=False, unique=True, index=True)
     key_prefix = Column(String, nullable=False)  # Store first 8 chars for display
     is_active = Column(Boolean, default=True, nullable=False)
-    created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    created_by = Column(
+        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
     last_used_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
     archived_at = Column(DateTime(timezone=True), nullable=True)
@@ -541,7 +563,7 @@ class IntegrationModel(Base):
     )  # External connection ID
     organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=False)
     provider = Column(String, nullable=False)
-    created_by = Column(Integer, ForeignKey("users.id"))
+    created_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"))
     is_active = Column(Boolean, default=True, nullable=False)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
     # Encrypted at rest (OAuth tokens and the like); see EncryptedJSON.
@@ -633,7 +655,9 @@ class WorkflowModel(Base):
         index=True,
         default=lambda: str(uuid.uuid4()),
     )
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    user_id = Column(
+        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
     user = relationship("UserModel", back_populates="workflows")
     organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=True)
     organization = relationship("OrganizationModel")
@@ -1016,7 +1040,9 @@ class CampaignModel(Base):
     name = Column(String, nullable=False, index=True)
     organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=False)
     workflow_id = Column(Integer, ForeignKey("workflows.id"), nullable=False)
-    created_by = Column(Integer, ForeignKey("users.id"), nullable=False)
+    created_by = Column(
+        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
     # Nullable during the legacy → multi-config migration window. Backfilled to the
     # org's default config by the migration; will become NOT NULL in a follow-up.
     telephony_configuration_id = Column(
@@ -1201,7 +1227,7 @@ class EmbedTokenModel(Base):
     expires_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
     created_by = Column(
-        Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
     updated_at = Column(DateTime(timezone=True), nullable=True)
 
@@ -1334,7 +1360,9 @@ class ExternalCredentialModel(Base):
     credential_data = Column(EncryptedJSON, nullable=False, default=dict)
 
     # Audit fields
-    created_by = Column(Integer, ForeignKey("users.id"), nullable=False)
+    created_by = Column(
+        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
     updated_at = Column(
         DateTime(timezone=True),
@@ -1514,7 +1542,9 @@ class ToolModel(Base):
     definition = Column(JSON, nullable=False, default=dict)
 
     # Audit fields
-    created_by = Column(Integer, ForeignKey("users.id"), nullable=False)
+    created_by = Column(
+        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
     updated_at = Column(
         DateTime(timezone=True),
@@ -1600,7 +1630,9 @@ class KnowledgeBaseDocumentModel(Base):
     custom_metadata = Column(JSON, nullable=False, default=dict)
 
     # Audit fields
-    created_by = Column(Integer, ForeignKey("users.id"), nullable=False)
+    created_by = Column(
+        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
     updated_at = Column(
         DateTime(timezone=True),
@@ -1675,7 +1707,9 @@ class WorkflowRecordingModel(Base):
     )
 
     # Audit
-    created_by = Column(Integer, ForeignKey("users.id"), nullable=False)
+    created_by = Column(
+        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
 
     # Soft delete

@@ -1,4 +1,5 @@
-"""Request and response types for data subject requests (GDPR Art. 15 and 17)."""
+"""Request and response types for data subject requests (GDPR Art. 15, 17
+and 20): call erasure and export, account and organisation deletion."""
 
 from datetime import datetime
 from typing import Any, Optional
@@ -111,4 +112,34 @@ class SubjectErasureResponse(BaseModel):
     campaign_list_rows_removed: int
     campaign_lists_failed: list[int] = Field(
         description="Campaigns whose uploaded contact list could not be rewritten."
+    )
+
+
+# --- account and organisation deletion ----------------------------------------
+
+
+class DeleteAccountRequest(BaseModel):
+    confirm_email: str = Field(
+        description=(
+            "The account's email address, typed to confirm (DELETE for an "
+            "account without one)."
+        )
+    )
+
+
+class DeleteOrganizationRequest(BaseModel):
+    confirm_name: str = Field(description="The organization's name, typed to confirm.")
+
+
+class OrganizationDeletionStatus(BaseModel):
+    """Whether the selected organization is scheduled for deletion."""
+
+    pending: bool
+    requested_at: datetime | None = None
+    scheduled_for: datetime | None = Field(
+        default=None,
+        description=(
+            "When the organization and its data are permanently erased. Until "
+            "then an admin can cancel the deletion."
+        ),
     )

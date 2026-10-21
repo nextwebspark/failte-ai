@@ -22,6 +22,7 @@ from api.services.call_concurrency import (
     CallConcurrencyLimitError,
     call_concurrency,
 )
+from api.services.privacy.org_deletion import organization_accepts_calls
 from api.services.quota_service import authorize_workflow_run_start
 from api.services.telephony import registry as telephony_registry
 from api.services.workflow.run_creation import prepare_workflow_run_inputs
@@ -55,6 +56,12 @@ async def agent_stream_websocket(
     if not workflow:
         logger.warning(f"agent-stream workflow {workflow_uuid} not found")
         await websocket.close(code=1008, reason="Workflow not found")
+        return
+
+    # Refuse before a run row exists: an organization pending deletion takes
+    # no calls, and run rows created now would only hold up its erasure.
+    if not await organization_accepts_calls(workflow.organization_id):
+        await websocket.close(code=1008, reason="Organization unavailable")
         return
 
     try:

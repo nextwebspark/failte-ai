@@ -309,6 +309,15 @@ A daily background job (03:17 UTC) deletes call recordings, transcripts and call
 | `RETENTION_PURGE_ENABLED` | `true` | Set to `false` to turn the daily retention purge off. The job then only logs that it is disabled |
 | `RETENTION_PURGE_DRY_RUN` | `false` | Set to `true` to log one line per organization with the counts of runs, campaigns, queued rows, widget sessions and webhook deliveries the purge would clear, without deleting or changing anything |
 
+## Organization deletion
+
+When an admin deletes an organization it is closed at once and erased 30 days later by a daily background job (03:47 UTC); see [Export or delete your data](/configurations/delete-and-export-data).
+
+| Variable | Default | Description |
+|---|---|---|
+| `ORG_ERASURE_ENABLED` | `true` | Set to `false` to stop the daily erasure job. Deletion requests are still accepted and stay pending (the organization stays closed) until the job is enabled again |
+| `LEGACY_STORAGE_BACKENDS` | empty | Comma-separated storage backends (`s3`, `minio`) this deployment used before its current one. Erasure also deletes an organization's files there. List only backends that are still reachable: an erasure that keeps failing is retried daily and logged as an error once it is 3 days overdue |
+
 ---
 
 ## Further Customisation

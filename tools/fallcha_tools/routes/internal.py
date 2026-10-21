@@ -9,13 +9,18 @@ from fastapi import APIRouter, Depends, Response, status
 from loguru import logger
 from pydantic import JsonValue, ValidationError
 
-from fallcha_tools.core.auth import InternalCallerDep, require_internal_caller
+from fallcha_tools.core.auth import (
+    InternalCallerDep,
+    InternalOrgDep,
+    require_internal_caller,
+)
 from fallcha_tools.core.container import (
     AppServices,
     ConnectionRepoDep,
     KeyRepoDep,
     ServicesDep,
 )
+from fallcha_tools.core.erasure import OrgEraser
 from fallcha_tools.core.errors import (
     ConflictError,
     InvalidRequestError,
@@ -41,12 +46,15 @@ from fallcha_tools.schemas import (
     CreateConnectionRequest,
     IssuedKeyOut,
     IssueKeyRequest,
+    OrgErasureOut,
     SyncStatusOut,
     ToolSummary,
     UpdateConnectionRequest,
 )
 
 router = APIRouter(prefix="/internal", dependencies=[Depends(require_internal_caller)])
+# No acting user: the Fallcha API's erasure job (see ``org_router`` below).
+org_router = APIRouter(prefix="/internal/org")
 
 # OAuth2 connections are created by the OAuth callback, never from raw input.
 _DIRECT_AUTH_MODES = frozenset(
@@ -370,3 +378,26 @@ async def revoke_connection(
 ) -> Response:
     await repo.revoke_connection(caller.org_id, connection_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@org_router.delete("")
+async def erase_org(org_id: InternalOrgDep, services: ServicesDep) -> OrgErasureOut:
+    """Erase everything the org keeps here: stop its syncs, revoke its OAuth
+    grants where the provider allows, delete its connections, keys, OAuth
+    states and OAuth clients. Idempotent."""
+    eraser = OrgEraser(
+        db=services.db,
+        box=services.box,
+        http=services.http,
+        registry=services.registry,
+        sync=services.sync,
+    )
+    result = await eraser.erase(org_id)
+    return OrgErasureOut(
+        connections=result.connections,
+        connection_keys=result.connection_keys,
+        oauth_states=result.oauth_states,
+        provider_apps=result.provider_apps,
+        syncs_stopped=result.syncs_stopped,
+        tokens_revoked=result.tokens_revoked,
+    )

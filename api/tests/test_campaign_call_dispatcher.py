@@ -215,6 +215,40 @@ async def test_cancelled_batch_returns_real_claims(dispatcher, campaign_data, se
 
 
 @pytest.mark.asyncio
+async def test_deletion_requested_mid_batch_returns_the_rest_unclaimed(
+    dispatcher, campaign_data, sessions
+):
+    """The org check passes for the batch, then deletion is requested: the
+    contacts not yet dialled go back to queued, never failed."""
+    instance, seen = dispatcher
+    answers = iter([True, True, False])
+
+    async def accepts(_organization_id):
+        return next(answers, False)
+
+    with patch(
+        "api.services.campaign.campaign_call_dispatcher.organization_accepts_calls",
+        side_effect=accepts,
+    ):
+        processed = await instance.process_batch(campaign_data.campaign.id, 5)
+
+    assert processed == len(seen) == 1
+    async with sessions() as session:
+        rows = list(
+            (
+                await session.execute(
+                    select(QueuedRunModel).where(
+                        QueuedRunModel.campaign_id == campaign_data.campaign.id
+                    )
+                )
+            ).scalars()
+        )
+    assert sum(row.state == "processed" for row in rows) == 1
+    assert sum(row.state == "queued" for row in rows) == 9
+    assert not any(row.state == "failed" for row in rows)
+
+
+@pytest.mark.asyncio
 async def test_paused_campaign_never_claims_work(dispatcher, campaign_data):
     instance, seen = dispatcher
     await db_client.update_campaign(campaign_data.campaign.id, state="paused")

@@ -33,6 +33,7 @@ from api.services.managed_model_services import (
     uses_managed_model_services_v2,
 )
 from api.services.mps_service_key_client import mps_service_key_client
+from api.services.privacy.org_deletion import organization_accepts_calls
 
 MINIMUM_DOGRAH_CREDITS_FOR_CALL = 0.10
 
@@ -341,7 +342,7 @@ async def _store_run_correlation_id(
 
 async def _authorize_hosted_workflow_run_start(
     *,
-    workflow_owner: UserModel,
+    workflow_owner: UserModel | None,
     organization_id: int | None,
     workflow_id: int | None,
     workflow_run_id: int | None,
@@ -382,11 +383,15 @@ async def _authorize_hosted_workflow_run_start(
             minimum_credits=MINIMUM_DOGRAH_CREDITS_FOR_CALL,
             created_by=(
                 str(workflow_owner.provider_id)
-                if workflow_owner.provider_id is not None
+                if workflow_owner is not None and workflow_owner.provider_id is not None
                 else None
             ),
             metadata={
-                "dograh_user_id": str(workflow_owner.id),
+                # The owner is attribution only; an agent whose creator deleted
+                # their account has none.
+                "dograh_user_id": (
+                    str(workflow_owner.id) if workflow_owner is not None else None
+                ),
                 "workflow_id": workflow_id,
             },
         )
@@ -769,6 +774,17 @@ async def authorize_workflow_run_start(
             error_message="Workflow not found",
         )
 
+    if not await organization_accepts_calls(organization_id):
+        logger.info(
+            "Workflow start authorization denied: org {} is scheduled for deletion",
+            organization_id,
+        )
+        return QuotaCheckResult(
+            has_quota=False,
+            error_code="organization_pending_deletion",
+            error_message="This organization is scheduled for deletion",
+        )
+
     try:
         actor_id = getattr(actor_user, "id", None) if actor_user is not None else None
         if actor_user is not None and actor_id is None:
@@ -819,8 +835,12 @@ async def authorize_workflow_run_start(
         # definitive "not found": let it fall through to the outer handler so
         # it fails closed. The None case below is a genuine missing row and keeps
         # its specific code.
-        workflow_owner = await db_client.get_user_by_id(workflow.user_id)
-        if not workflow_owner:
+        workflow_owner = (
+            await db_client.get_user_by_id(workflow.user_id)
+            if workflow.user_id is not None
+            else None
+        )
+        if workflow.user_id is not None and not workflow_owner:
             return QuotaCheckResult(
                 has_quota=False,
                 error_code="user_not_found",

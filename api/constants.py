@@ -219,6 +219,14 @@ MINIO_CONFIGURED = bool(
     os.getenv("MINIO_ENDPOINT") or os.getenv("MINIO_PUBLIC_ENDPOINT")
 )
 
+# Storage backends the deployment used before its current one (comma list of
+# "s3" / "minio"); organisation erasure also deletes there. Empty by default.
+LEGACY_STORAGE_BACKENDS: tuple[str, ...] = tuple(
+    b.strip().lower()
+    for b in os.getenv("LEGACY_STORAGE_BACKENDS", "").split(",")
+    if b.strip()
+)
+
 # AWS S3 Configuration
 S3_BUCKET = os.environ.get("S3_BUCKET")
 S3_REGION = os.environ.get("S3_REGION", "us-east-1")
@@ -251,6 +259,13 @@ RETENTION_PURGE_ENABLED = (
 RETENTION_PURGE_DRY_RUN = (
     os.getenv("RETENTION_PURGE_DRY_RUN", "false").strip().lower() == "true"
 )
+
+# Organisation deletion (api/services/privacy). A request takes effect after
+# ORG_DELETION_GRACE_DAYS; until then an admin can cancel it. The daily erasure
+# cron is a no-op with ORG_ERASURE_ENABLED=false (requests are still accepted
+# and kept pending).
+ORG_DELETION_GRACE_DAYS = 30
+ORG_ERASURE_ENABLED = os.getenv("ORG_ERASURE_ENABLED", "true").strip().lower() == "true"
 
 ENABLE_ARI_STASIS = os.getenv("ENABLE_ARI_STASIS", "false").lower() == "true"
 SERIALIZE_LOG_OUTPUT = os.getenv("SERIALIZE_LOG_OUTPUT", "false").lower() == "true"

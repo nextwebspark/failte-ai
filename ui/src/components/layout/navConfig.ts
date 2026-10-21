@@ -112,6 +112,7 @@ const PAGE_META: Record<string, PageMeta> = {
   "/reports": { title: "Reports", subtitle: "Daily call outcomes" },
   "/settings": { title: "Workspace settings", subtitle: "Platform configuration and integrations" },
   "/team": { title: "Team", subtitle: "Members, roles and invitations" },
+  "/account": { title: "Your account", subtitle: "Export or delete your data" },
   "/automation": { title: "Automation", subtitle: "Scheduled and triggered runs" },
   "/superadmin": { title: "Superadmin", subtitle: "Cross-organisation administration" },
   "/impersonate": { title: "Impersonate", subtitle: "Act as another user" },

@@ -871,6 +871,39 @@ class CampaignClient(BaseDBClient):
             await session.refresh(campaign)
         return campaign
 
+    async def complete_campaign_source_sync(
+        self, campaign_id: int, *, synced_at: datetime
+    ) -> bool:
+        """Record a finished source sync and start the campaign, unless it was
+        paused meanwhile (e.g. its organization is pending deletion).
+
+        Returns True when the campaign moved from syncing to running.
+        """
+        async with self.async_session() as session:
+            started = await session.execute(
+                update(CampaignModel)
+                .where(
+                    CampaignModel.id == campaign_id, CampaignModel.state == "syncing"
+                )
+                .values(state="running")
+                .returning(CampaignModel.id)
+            )
+            moved = started.scalar_one_or_none() is not None
+            recorded = await session.execute(
+                update(CampaignModel)
+                .where(CampaignModel.id == campaign_id)
+                .values(
+                    source_sync_status="completed",
+                    source_last_synced_at=synced_at,
+                    updated_at=synced_at,
+                )
+                .returning(CampaignModel.id)
+            )
+            if recorded.scalar_one_or_none() is None:
+                raise ValueError(f"Campaign {campaign_id} not found")
+            await session.commit()
+            return moved
+
     async def update_campaign_settings(
         self,
         campaign_id: int,

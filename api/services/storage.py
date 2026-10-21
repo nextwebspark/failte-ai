@@ -5,6 +5,7 @@ from minio import Minio
 from api.constants import (
     ENABLE_AWS_S3,
     ENVIRONMENT,
+    LEGACY_STORAGE_BACKENDS,
     MINIO_ACCESS_KEY,
     MINIO_BUCKET,
     MINIO_CONFIGURED,
@@ -82,6 +83,20 @@ def get_storage_for_backend(backend: str) -> BaseFileSystem:
 
     else:
         raise ValueError(f"Unknown storage backend: {backend}")
+
+
+def erasure_storage_backends() -> list[str]:
+    """Backends an organisation's objects may be on: the current one, plus any
+    listed in ``LEGACY_STORAGE_BACKENDS`` (objects written before a backend
+    switch stay where they were written). Explicit on purpose: a backend that
+    merely has default settings but is gone would defer erasure forever."""
+    current = get_current_storage_backend().value
+    known = {backend.value for backend in StorageBackend}
+    return [current] + [
+        backend
+        for backend in LEGACY_STORAGE_BACKENDS
+        if backend in known and backend != current
+    ]
 
 
 def get_current_storage_backend() -> StorageBackend:

@@ -21,6 +21,7 @@ from api.services.campaign.errors import (
     ConcurrentSlotAcquisitionError,
 )
 from api.services.campaign.traffic_split import campaign_split, pick_variant
+from api.services.privacy.org_deletion import organization_accepts_calls
 from api.services.quota_service import authorize_workflow_run_start
 from api.services.workflow.initial_context import merge_external_initial_context
 from api.services.workflow.run_creation import prepare_workflow_run_inputs
@@ -80,6 +81,14 @@ class CampaignCallDispatcher:
             raise ValueError(f"Campaign {campaign_id} not found")
         if campaign.state != "running":
             return 0
+        # An organization pending deletion starts no calls; stop before any
+        # contact is claimed, so none is spent on a refused call.
+        if not await organization_accepts_calls(campaign.organization_id):
+            logger.info(
+                f"Campaign {campaign_id} skipped: its organization is scheduled "
+                "for deletion"
+            )
+            return 0
 
         # Resolve legacy configurations once, and reject incomplete shared setup
         # before taking any claims or concurrency slots.
@@ -97,6 +106,10 @@ class CampaignCallDispatcher:
 
         async def process_one(queued_run):
             async with semaphore:
+                # Deletion may be requested mid-batch: leave the contact
+                # unclaimed (returned below), never dialled nor failed.
+                if not await organization_accepts_calls(campaign.organization_id):
+                    return
                 try:
                     slot = await self.acquire_concurrent_slot(
                         campaign.organization_id,

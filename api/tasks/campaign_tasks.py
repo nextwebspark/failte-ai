@@ -48,13 +48,18 @@ async def sync_campaign_source(ctx: Dict, campaign_id: int) -> None:
             logger.info(f"Campaign {campaign_id} completed with no data to process")
             return
 
-        # Update campaign state to running
-        await db_client.update_campaign(
-            campaign_id=campaign_id,
-            state="running",
-            source_sync_status="completed",
-            source_last_synced_at=datetime.now(UTC),
+        # Start the campaign, unless it was paused while syncing (an
+        # organization pending deletion pauses its campaigns); resuming it
+        # later picks the synced rows up.
+        started = await db_client.complete_campaign_source_sync(
+            campaign_id, synced_at=datetime.now(UTC)
         )
+        if not started:
+            logger.info(
+                f"Campaign {campaign_id} source synced ({rows_synced} rows) but it "
+                "is no longer syncing; not starting it"
+            )
+            return
 
         # Publish sync completed event - orchestrator will schedule first batch
         publisher = await get_campaign_event_publisher()

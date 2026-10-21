@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowUpCircle, Bot, LogOut, Menu, Settings, Users } from "lucide-react";
+import { ArrowUpCircle, Bot, LogOut, Menu, Settings, UserRound, Users } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import React from "react";
@@ -228,6 +228,10 @@ export function AppTopBar({
                 Account settings
               </DropdownMenuItem>
             )}
+            <DropdownMenuItem onClick={() => router.push("/account")} className="cursor-pointer">
+              <UserRound className="mr-2 h-4 w-4" />
+              Your account
+            </DropdownMenuItem>
             <DropdownMenuItem onClick={() => router.push("/team")} className="cursor-pointer">
               <Users className="mr-2 h-4 w-4" />
               Team
