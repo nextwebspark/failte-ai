@@ -6,6 +6,7 @@ import React, { ReactNode, useState } from "react";
 
 import { NoAccess } from "@/components/auth/NoAccess";
 import { LowBalanceBanner } from "@/components/billing/LowBalanceBanner";
+import { NoOrganizationNotice } from "@/components/privacy/NoOrganizationNotice";
 import {
   PendingDeletionBanner,
   PendingDeletionNotice,
@@ -102,13 +103,25 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
   // explanation. A restricted screen waits for the role so it doesn't mount
   // and fire requests the role can't make; if the role can't be loaded at all
   // the screen renders and the API remains the guard.
-  const { role, can, loading: orgLoading, orgContext } = useOrgConfig();
+  const {
+    role,
+    can,
+    loading: orgLoading,
+    orgContext,
+    organizationUnavailable,
+  } = useOrgConfig();
   const requiredPermission = getRequiredPermission(pathname);
   const awaitingRole = requiredPermission !== null && role === null && orgLoading;
   const blocked = role !== null && requiredPermission !== null && !can(requiredPermission);
   // While the organization is pending deletion its API answers 423 everywhere
   // but the export, the cancel and your own account (Settings and Your
   // account); show why instead of a screen of errors.
+  // No organization to work in (erased, or none left): explain instead of
+  // screens of errors. Your account still works without one under local auth.
+  const noOrganization =
+    organizationUnavailable === "erased" ||
+    (organizationUnavailable === "none" &&
+      !["/account", "/superadmin", "/impersonate"].some((p) => pathname.startsWith(p)));
   const closedForDeletion =
     Boolean(orgContext?.deletion?.pending) &&
     !pathname.startsWith("/settings") &&
@@ -136,7 +149,9 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
                   <BackendStatusBanner />
                   <PendingDeletionBanner />
                   <LowBalanceBanner />
-                  {awaitingRole ? null : blocked ? (
+                  {noOrganization && organizationUnavailable ? (
+                    <NoOrganizationNotice reason={organizationUnavailable} />
+                  ) : awaitingRole ? null : blocked ? (
                     <NoAccess role={role} />
                   ) : closedForDeletion ? (
                     <PendingDeletionNotice />

@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { DangerZoneCard } from "./DangerZoneCard";
+import { NoOrganizationNotice } from "./NoOrganizationNotice";
 import { PendingDeletionBanner } from "./PendingDeletionBanner";
 import { YourAccountCard } from "./YourAccountCard";
 
@@ -31,6 +32,7 @@ vi.mock("@/lib/auth", () => ({
     user: { email: "aoife@example.test" },
     logout: mocks.logout,
     loading: false,
+    provider: "local",
   }),
 }));
 
@@ -214,5 +216,23 @@ describe("PendingDeletionBanner", () => {
     mocks.orgConfig = orgConfig({ pending: true });
     render(<PendingDeletionBanner />);
     expect(screen.getByRole("button", { name: "Cancel deletion" })).toBeTruthy();
+  });
+});
+
+describe("NoOrganizationNotice", () => {
+  it("explains an erased organization and lets the user sign out", () => {
+    render(<NoOrganizationNotice reason="erased" />);
+    expect(screen.getByText("This organization has been deleted")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Sign out" }));
+    expect(mocks.logout).toHaveBeenCalled();
+  });
+
+  it("points a user without an organization to the switcher and their account", () => {
+    render(<NoOrganizationNotice reason="none" />);
+    expect(screen.getByText("You don't belong to an organization")).toBeTruthy();
+    expect(screen.getByText(/workspace switcher/)).toBeTruthy();
+    expect(
+      screen.getByRole("link", { name: "Your account" }).getAttribute("href"),
+    ).toBe("/account");
   });
 });

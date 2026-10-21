@@ -33,6 +33,9 @@ interface OrgConfigContextType {
     organizationPricing: OrganizationPricing | null;
     organizationPreferences: OrganizationPreferencesResponse | null;
     externalPbxIntegrationsEnabled: boolean;
+    /** Why there is no organization to work in: it was erased
+     *  ("erased"), or the user belongs to none any more ("none"). */
+    organizationUnavailable: 'erased' | 'none' | null;
 }
 
 const OrgConfigContext = createContext<OrgConfigContextType | null>(null);
@@ -58,6 +61,7 @@ export function OrgConfigProvider({ children }: { children: ReactNode }) {
     const [error, setError] = useState<Error | null>(null);
     const [organizationPricing, setOrganizationPricing] = useState<OrganizationPricing | null>(null);
     const [organizationPreferences, setOrganizationPreferences] = useState<OrganizationPreferencesResponse | null>(null);
+    const [organizationUnavailable, setOrganizationUnavailable] = useState<'erased' | 'none' | null>(null);
 
     const auth = useAuth();
 
@@ -86,6 +90,13 @@ export function OrgConfigProvider({ children }: { children: ReactNode }) {
 
             if (orgContextResponse.data) {
                 setOrgContext(orgContextResponse.data);
+                setOrganizationUnavailable(
+                    orgContextResponse.data.organization_id == null ? 'none' : null,
+                );
+            } else if (errorCodeFromError(orgContextResponse.error) === 'organization_erased') {
+                // Stack Auth: the selected team's organization was erased.
+                setOrganizationUnavailable('erased');
+                return;
             }
 
             if (userConfigResponse.data) {
@@ -97,6 +108,7 @@ export function OrgConfigProvider({ children }: { children: ReactNode }) {
             // the context above carries the deletion state the app shows.
             if (
                 preferencesResponse.error &&
+                orgContextResponse.data?.organization_id != null &&
                 errorCodeFromError(preferencesResponse.error) !== 'organization_pending_deletion'
             ) {
                 throw new Error(detailFromError(preferencesResponse.error, 'Failed to load organization preferences'));
@@ -151,6 +163,7 @@ export function OrgConfigProvider({ children }: { children: ReactNode }) {
                 organizationPreferences,
                 externalPbxIntegrationsEnabled:
                     organizationPreferences?.external_pbx_integrations_enabled ?? false,
+                organizationUnavailable,
             }}
         >
             {children}

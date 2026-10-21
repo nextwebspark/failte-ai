@@ -3335,7 +3335,7 @@ export type FileDescriptor = {
     /**
      * Filename
      *
-     * Original filename of the audio file
+     * Original filename of the audio file. It becomes the last segment of the storage key, so anything but letters, digits, '.', '_', '-' and spaces is replaced.
      */
     filename: string;
     /**
