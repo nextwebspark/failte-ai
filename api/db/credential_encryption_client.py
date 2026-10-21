@@ -31,6 +31,7 @@ ENCRYPTED_COLUMNS: tuple[tuple[str, str], ...] = (
     ("telephony_configurations", "credentials"),
     ("integrations", "connection_details"),
     ("organization_configurations", "value"),
+    ("user_configurations", "configuration"),
 )
 
 
