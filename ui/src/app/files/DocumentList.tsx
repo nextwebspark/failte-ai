@@ -31,10 +31,10 @@ export default function DocumentList({ refreshTrigger }: DocumentListProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [editingDoc, setEditingDoc] = useState<DocumentResponseSchema | null>(null);
-  // Saving an edit re-indexes the document through the model proxy service
-  // (MPS); without one configured, editing is off like uploads.
+  // Saving an edit re-processes the document; when the server can't process
+  // documents, editing is off like uploads.
   const { config } = useAppConfig();
-  const editingAvailable = Boolean(config?.mpsEnabled);
+  const editingAvailable = Boolean(config?.documentProcessingEnabled);
 
   const fetchDocuments = useCallback(async () => {
     try {
@@ -255,6 +255,13 @@ export default function DocumentList({ refreshTrigger }: DocumentListProps) {
                     )}
                     <span>{formatDateTime(doc.created_at, organizationTimezone)}</span>
                   </div>
+                  {doc.needs_reindex && (
+                    <p className="text-xs text-amber mt-1">
+                      Re-index needed: this document was indexed with a different
+                      embedding model than the one now configured, so agents can&apos;t
+                      find it. Delete it and upload it again.
+                    </p>
+                  )}
                   {doc.has_live_content && isBusy(doc) && (
                     <p className="text-xs text-muted-foreground mt-1">
                       Agents keep using the previous version until the update finishes.

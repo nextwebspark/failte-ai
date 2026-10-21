@@ -19,6 +19,7 @@ class PlatformVertexSettings:
     speech_location: str
     # None means Application Default Credentials.
     credentials_json: str | None = None
+    embeddings_location: str = "europe-west1"
 
 
 def load_platform_vertex_settings(
@@ -43,4 +44,5 @@ def load_platform_vertex_settings(
         realtime_location=constants.PLATFORM_VERTEX_REALTIME_LOCATION,
         speech_location=constants.PLATFORM_GOOGLE_SPEECH_LOCATION,
         credentials_json=constants.PLATFORM_GOOGLE_CREDENTIALS_JSON,
+        embeddings_location=constants.PLATFORM_VERTEX_EMBEDDINGS_LOCATION,
     )

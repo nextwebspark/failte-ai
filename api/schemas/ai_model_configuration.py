@@ -190,6 +190,7 @@ def _compile_platform_configuration(
         stt=services.stt,
         tts=services.tts,
         realtime=services.realtime,
+        embeddings=services.embeddings,
         is_realtime=services.is_realtime,
         platform_managed=True,
     )

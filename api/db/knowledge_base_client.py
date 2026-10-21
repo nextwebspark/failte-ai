@@ -352,6 +352,32 @@ class KnowledgeBaseClient(BaseDBClient):
             result = await session.execute(query)
             return list(result.scalars().all())
 
+    async def get_embedding_models_for_documents(
+        self,
+        organization_id: int,
+        document_ids: List[int],
+    ) -> dict[int, set[str]]:
+        """The embedding models each document's chunks were embedded with."""
+        if not document_ids:
+            return {}
+        async with self.async_session() as session:
+            query = (
+                select(
+                    KnowledgeBaseChunkModel.document_id,
+                    KnowledgeBaseChunkModel.embedding_model,
+                )
+                .where(
+                    KnowledgeBaseChunkModel.organization_id == organization_id,
+                    KnowledgeBaseChunkModel.document_id.in_(document_ids),
+                )
+                .distinct()
+            )
+            result = await session.execute(query)
+            models: dict[int, set[str]] = {}
+            for document_id, embedding_model in result.all():
+                models.setdefault(document_id, set()).add(embedding_model)
+            return models
+
     async def search_similar_chunks(
         self,
         query_embedding: List[float],
@@ -678,6 +704,8 @@ class KnowledgeBaseClient(BaseDBClient):
             ".txt": "text/plain",
             ".json": "application/json",
             ".html": "text/html",
+            ".htm": "text/html",
+            ".csv": "text/csv",
             ".md": "text/markdown",
         }
         return mime_types.get(extension, "application/octet-stream")

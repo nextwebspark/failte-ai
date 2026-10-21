@@ -2419,12 +2419,72 @@ class DograhEmbeddingsConfiguration(BaseEmbeddingsConfiguration):
     )
 
 
+GOOGLE_VERTEX_EMBEDDING_MODELS = ["gemini-embedding-001"]
+GOOGLE_VERTEX_EMBEDDINGS_DEFAULT_LOCATION = "europe-west1"
+GOOGLE_VERTEX_EMBEDDINGS_LOCATIONS = [
+    "europe-west1",
+    "europe-west3",
+    "europe-west4",
+    "europe-west9",
+    "europe-north1",
+    "europe-southwest1",
+]
+GOOGLE_VERTEX_EMBEDDINGS_PROVIDER_MODEL_CONFIG = provider_model_config(
+    "Google Vertex AI (EU)",
+    description=(
+        "Embeddings from your own Google Cloud project, processed in the EU "
+        "region you choose."
+    ),
+)
+
+
+@register_embeddings
+class GoogleVertexEmbeddingsConfiguration(BaseEmbeddingsConfiguration):
+    model_config = GOOGLE_VERTEX_EMBEDDINGS_PROVIDER_MODEL_CONFIG
+    provider: Literal[ServiceProviders.GOOGLE_VERTEX] = ServiceProviders.GOOGLE_VERTEX
+    model: str = Field(
+        default="gemini-embedding-001",
+        description=(
+            "Vertex AI embedding model. Embeddings are requested at 1536 dimensions."
+        ),
+        json_schema_extra={"examples": GOOGLE_VERTEX_EMBEDDING_MODELS},
+    )
+    project_id: str = Field(description="Google Cloud project ID for Vertex AI.")
+    location: str = Field(
+        default=GOOGLE_VERTEX_EMBEDDINGS_DEFAULT_LOCATION,
+        description=(
+            "Vertex AI region where embeddings are computed. Keep an EU region "
+            "such as 'europe-west1' to keep document text in the EU."
+        ),
+        json_schema_extra={
+            "examples": GOOGLE_VERTEX_EMBEDDINGS_LOCATIONS,
+            "allow_custom_input": True,
+        },
+    )
+    credentials: str | None = Field(
+        default=None,
+        description=(
+            "Paste the entire service-account JSON file contents. If omitted, "
+            "falls back to Application Default Credentials (ADC)."
+        ),
+        json_schema_extra={"multiline": True},
+    )
+    api_key: str | list[str] | None = Field(
+        default=None,
+        description=(
+            "Not used for Vertex AI — authentication is via the service account "
+            "in `credentials` (or ADC). Leave blank."
+        ),
+    )
+
+
 EmbeddingsConfig = Annotated[
     Union[
         OpenAIEmbeddingsConfiguration,
         OpenRouterEmbeddingsConfiguration,
         AzureOpenAIEmbeddingsConfiguration,
         DograhEmbeddingsConfiguration,
+        GoogleVertexEmbeddingsConfiguration,
     ],
     Field(discriminator="provider"),
 ]

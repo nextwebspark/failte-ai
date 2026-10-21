@@ -195,6 +195,10 @@ class PlatformModelPolicy(_Choice):
     llm_location: str | None = Field(default=None, pattern=_MULTI_REGION_LOCATION)
     realtime_location: str | None = Field(default=None, pattern=_SINGLE_REGION_LOCATION)
     speech_location: str | None = Field(default=None, pattern=_MULTI_REGION_LOCATION)
+    # Knowledge base embeddings: Vertex embedding models are single-region.
+    embeddings_location: str | None = Field(
+        default=None, pattern=_SINGLE_REGION_LOCATION
+    )
 
     @field_validator("extra_models")
     @classmethod

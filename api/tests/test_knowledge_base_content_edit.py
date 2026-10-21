@@ -6,12 +6,11 @@ racing a running job must never leave the file and the index out of step.
 """
 
 import hashlib
+import uuid
 from unittest.mock import AsyncMock, patch
 
 import aiofiles
 import pytest
-
-pytestmark = pytest.mark.usefixtures("mps_configured")
 
 ORIGINAL_TEXT = "Price: $10\n"
 ORIGINAL_HASH = hashlib.sha256(ORIGINAL_TEXT.encode()).hexdigest()
@@ -37,7 +36,10 @@ async def _make_document(
     status: str = "completed",
     full_text: str | None = ORIGINAL_TEXT,
     file_hash: str = ORIGINAL_HASH,
+    s3_key: str | None = None,
+    document_uuid: str | None = None,
 ):
+    document_uuid = document_uuid or str(uuid.uuid4())
     document = await db_session.create_document(
         organization_id=user.selected_organization_id,
         created_by=user.id,
@@ -46,8 +48,10 @@ async def _make_document(
         file_hash=file_hash,
         mime_type="text/plain",
         custom_metadata={
-            "s3_key": f"knowledge_base/{user.selected_organization_id}/x/{filename}"
+            "s3_key": s3_key
+            or f"knowledge_base/{user.selected_organization_id}/{document_uuid}/{filename}"
         },
+        document_uuid=document_uuid,
         retrieval_mode=retrieval_mode,
     )
     if full_text is not None:
@@ -340,3 +344,37 @@ async def test_list_reports_live_content_during_reindex(
         first_upload.document_uuid: False,
         emptied.document_uuid: False,
     }
+
+
+@pytest.mark.parametrize(
+    "foreign_key",
+    [
+        "transcripts/42.txt",
+        "knowledge_base/999999/other-doc/menu.txt",
+        "knowledge_base/{org}/other-doc/menu.txt",
+        "knowledge_base/{org}/{uuid}/../../../transcripts/42.txt",
+    ],
+)
+async def test_files_outside_the_documents_folder_are_never_read_or_written(
+    test_client_factory, db_session, storage, enqueue, foreign_key
+):
+    user = await _make_user(db_session, f"kb_foreign_{uuid.uuid4().hex[:8]}")
+    document_uuid = str(uuid.uuid4())
+    key = foreign_key.format(org=user.selected_organization_id, uuid=document_uuid)
+    document = await _make_document(
+        db_session, user, s3_key=key, document_uuid=document_uuid
+    )
+
+    async with test_client_factory(user) as client:
+        read = await client.get(
+            f"/api/v1/knowledge-base/documents/{document.document_uuid}/content"
+        )
+        write = await client.put(
+            f"/api/v1/knowledge-base/documents/{document.document_uuid}/content",
+            json={"content": EDITED_TEXT, "expected_file_hash": ORIGINAL_HASH},
+        )
+
+    assert read.status_code == 400
+    assert write.status_code == 400
+    storage.adownload_file.assert_not_awaited()
+    storage.acreate_file_from_bytes.assert_not_awaited()

@@ -24,10 +24,10 @@ export default function FilesPage() {
     const { user, redirectToLogin, loading } = useAuth();
     const [refreshKey, setRefreshKey] = useState(0);
     const [isUploadOpen, setIsUploadOpen] = useState(false);
-    // Documents are converted and chunked by the model proxy service (MPS);
-    // without one configured, uploads are off.
+    // Documents are parsed and chunked on the backend itself; uploads are off
+    // only if the backend reports it can't process them.
     const { config } = useAppConfig();
-    const processingAvailable = Boolean(config?.mpsEnabled);
+    const processingAvailable = Boolean(config?.documentProcessingEnabled);
 
     // Redirect if not authenticated
     useEffect(() => {

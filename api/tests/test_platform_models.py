@@ -26,6 +26,7 @@ from api.services.configuration.platform.settings import (
 from api.services.configuration.registry import (
     GoogleSTTConfiguration,
     GoogleTTSConfiguration,
+    GoogleVertexEmbeddingsConfiguration,
     GoogleVertexLLMConfiguration,
     GoogleVertexRealtimeLLMConfiguration,
 )
@@ -100,6 +101,10 @@ def test_realtime_choice_compiles_to_vertex_live_with_server_settings():
     assert effective.llm.model == "gemini-3.5-flash"
     assert effective.llm.location == "eu"
     assert effective.stt is None and effective.tts is None
+    # Knowledge base embeddings run on the operator's project in an EU region.
+    assert isinstance(effective.embeddings, GoogleVertexEmbeddingsConfiguration)
+    assert effective.embeddings.project_id == "operator-project"
+    assert effective.embeddings.location == "europe-west1"
 
 
 def test_pipeline_choice_compiles_to_google_stt_vertex_llm_and_google_tts():
@@ -121,6 +126,9 @@ def test_pipeline_choice_compiles_to_google_stt_vertex_llm_and_google_tts():
     assert effective.tts.voice == "en-GB-Chirp3-HD-Aoede"
     assert effective.tts.speed == 1.1
     assert effective.tts.location == "eu"
+    assert isinstance(effective.embeddings, GoogleVertexEmbeddingsConfiguration)
+    assert effective.embeddings.model == "gemini-embedding-001"
+    assert effective.embeddings.location == "europe-west1"
 
 
 def test_realtime_mode_uses_the_stored_pipeline_llm_choice_for_post_call_work():
@@ -156,6 +164,7 @@ def test_server_credentials_json_is_injected_at_compile_time():
     assert effective.llm.credentials == settings.credentials_json
     assert effective.stt.credentials == settings.credentials_json
     assert effective.tts.credentials == settings.credentials_json
+    assert effective.embeddings.credentials == settings.credentials_json
 
 
 def test_compile_reads_server_settings_by_default(operator_settings):

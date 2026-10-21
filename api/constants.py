@@ -94,7 +94,7 @@ STACK_AUTH_PROJECT_ID = os.getenv("STACK_AUTH_PROJECT_ID")
 STACK_PUBLISHABLE_CLIENT_KEY = os.getenv("STACK_PUBLISHABLE_CLIENT_KEY")
 DOGRAH_MPS_SECRET_KEY = os.getenv("DOGRAH_MPS_SECRET_KEY", None)
 # Upstream Dograh's hosted Model Proxy Service (service keys, managed models,
-# credits, document processing, voice catalogs). Unset by default so nothing
+# credits, voice catalogs). Unset by default so nothing
 # is sent to a third-party service: every MPS feature is then disabled. Only
 # point this at an MPS you operate or have a data processing agreement with.
 MPS_API_URL = (os.getenv("MPS_API_URL") or "").strip().rstrip("/")
@@ -155,6 +155,11 @@ PLATFORM_VERTEX_REALTIME_LOCATION = (
 PLATFORM_GOOGLE_SPEECH_LOCATION = (
     os.getenv("PLATFORM_GOOGLE_SPEECH_LOCATION") or ""
 ).strip() or "eu"
+# Knowledge base embeddings (Vertex AI embedding models are served from single
+# regions, not the "eu" multi-region).
+PLATFORM_VERTEX_EMBEDDINGS_LOCATION = (
+    os.getenv("PLATFORM_VERTEX_EMBEDDINGS_LOCATION") or ""
+).strip() or "europe-west1"
 PLATFORM_GOOGLE_CREDENTIALS_JSON = (
     os.getenv("PLATFORM_GOOGLE_CREDENTIALS_JSON") or ""
 ).strip() or None

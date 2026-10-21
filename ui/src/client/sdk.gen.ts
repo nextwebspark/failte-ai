@@ -2068,8 +2068,10 @@ export const getUploadUrlApiV1KnowledgeBaseUploadUrlPost = <ThrowOnError extends
  *
  * The document status will be updated from 'pending' -> 'processing' -> 'completed' or 'failed'.
  *
- * Embedding:
- * Uses OpenAI text-embedding-3-small (1536-dimensional embeddings, requires API key configured in Model Configurations).
+ * Processing:
+ * The document is parsed and chunked on this server; it is not sent to any
+ * other service. In chunked mode the chunks are embedded with the embedding
+ * model configured in Model Configurations (1536-dimensional embeddings).
  *
  * Access Control:
  * * Users can only process documents in their organization.

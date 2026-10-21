@@ -1,8 +1,9 @@
 """With MPS_API_URL unset (the default) nothing may be sent to an MPS.
 
 Every MPS-only feature degrades instead: the client refuses before building a
-request, hosted-SaaS features answer 404 or empty, knowledge base processing
-fails closed and recordings transcribe on the platform's own Speech-to-Text.
+request, hosted-SaaS features answer 404 or empty, knowledge base documents are
+processed on this server and recordings transcribe on the platform's own
+Speech-to-Text.
 """
 
 import io
@@ -28,7 +29,6 @@ from api.routes import workflow as workflow_routes
 from api.routes import workflow_recording as recording_routes
 from api.schemas.knowledge_base import (
     DocumentUploadRequestSchema,
-    ProcessDocumentRequestSchema,
 )
 from api.services import mps_service_key_client as mps_client_module
 from api.services import recording_transcription
@@ -112,16 +112,6 @@ async def test_client_refuses_before_sending_anything(monkeypatch, no_network, c
         await call(MPSServiceKeyClient())
 
 
-@pytest.mark.asyncio
-async def test_process_document_is_never_sent(no_network, tmp_path):
-    document = tmp_path / "doc.txt"
-    document.write_text("private text")
-    with pytest.raises(MPSNotConfiguredError):
-        await MPSServiceKeyClient().process_document(
-            file_path=str(document), filename="doc.txt", content_type="text/plain"
-        )
-
-
 def test_sync_service_key_validation_refuses(no_network):
     with pytest.raises(MPSNotConfiguredError):
         MPSServiceKeyClient().validate_service_key("sk")
@@ -158,6 +148,8 @@ async def test_health_reports_mps_disabled(monkeypatch):
     monkeypatch.setattr("api.utils.common.get_backend_endpoints", endpoints)
     health = await main_routes.health()
     assert health.mps_enabled is False
+    # Documents are processed on this server, so uploads stay on.
+    assert health.document_processing_enabled is True
 
 
 # Service keys, credits, pricing ------------------------------------------------
@@ -422,53 +414,57 @@ def test_platform_language_code(language, expected):
 
 
 @pytest.mark.asyncio
-async def test_knowledge_base_uploads_are_refused(no_network):
-    with pytest.raises(HTTPException) as upload:
-        await knowledge_base_routes.get_upload_url(
-            request=DocumentUploadRequestSchema(
-                filename="a.pdf", mime_type="application/pdf"
-            ),
-            user=USER,
-        )
-    assert upload.value.status_code == 503
-    assert upload.value.detail == "Document processing isn't available yet."
+async def test_knowledge_base_uploads_work_without_mps(monkeypatch, no_network):
+    presign = AsyncMock(return_value="https://storage.example.test/put")
+    monkeypatch.setattr(
+        knowledge_base_routes.storage_fs, "aget_presigned_put_url", presign
+    )
 
-    with pytest.raises(HTTPException) as process:
-        await knowledge_base_routes.process_document(
-            request=ProcessDocumentRequestSchema(
-                document_uuid="u", s3_key="knowledge_base/11/u/a.pdf"
-            ),
-            user=USER,
-        )
-    assert process.value.status_code == 503
+    response = await knowledge_base_routes.get_upload_url(
+        request=DocumentUploadRequestSchema(
+            filename="a.pdf", mime_type="application/pdf"
+        ),
+        user=USER,
+    )
+
+    assert response.upload_url == "https://storage.example.test/put"
+    assert response.s3_key.startswith("knowledge_base/11/")
+    presign.assert_awaited_once()
 
 
 @pytest.mark.asyncio
-async def test_knowledge_base_task_fails_closed(monkeypatch, no_network):
+async def test_knowledge_base_task_processes_locally(monkeypatch, no_network, tmp_path):
+    async def download(_key, local_path):
+        Path(local_path).write_text("Open nine to five.")
+        return True
+
     update_status = AsyncMock()
-    download = AsyncMock()
-    process_document = AsyncMock()
-    monkeypatch.setattr(
-        knowledge_base_processing.db_client, "update_document_status", update_status
-    )
+    update_full_text = AsyncMock()
+    for name, value in {
+        "update_document_status": update_status,
+        "update_document_full_text": update_full_text,
+        "update_document_metadata": AsyncMock(),
+        "get_document_by_id": AsyncMock(
+            return_value=SimpleNamespace(id=5, organization_id=11)
+        ),
+        "get_document_by_hash": AsyncMock(return_value=None),
+    }.items():
+        monkeypatch.setattr(knowledge_base_processing.db_client, name, value)
     monkeypatch.setattr(
         knowledge_base_processing.storage_fs, "adownload_file", download
     )
-    monkeypatch.setattr(
-        knowledge_base_processing.mps_service_key_client,
-        "process_document",
-        process_document,
-    )
 
     await knowledge_base_processing.process_knowledge_base_document(
-        {}, 5, "knowledge_base/11/u/a.pdf", 11, "provider-1"
+        {},
+        5,
+        "knowledge_base/11/u/hours.txt",
+        11,
+        "provider-1",
+        retrieval_mode="full_document",
     )
 
-    update_status.assert_awaited_once_with(
-        5, "failed", error_message="Document processing isn't available yet."
-    )
-    download.assert_not_awaited()
-    process_document.assert_not_awaited()
+    update_full_text.assert_awaited_once_with(5, "Open nine to five.")
+    assert update_status.await_args.args[:2] == (5, "completed")
 
 
 @pytest.mark.asyncio

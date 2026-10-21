@@ -16,6 +16,7 @@ from api.services.configuration.platform.settings import PlatformVertexSettings
 from api.services.configuration.registry import (
     GoogleSTTConfiguration,
     GoogleTTSConfiguration,
+    GoogleVertexEmbeddingsConfiguration,
     GoogleVertexLLMConfiguration,
     GoogleVertexRealtimeLLMConfiguration,
     ServiceProviders,
@@ -28,6 +29,7 @@ class PlatformServices:
     realtime: GoogleVertexRealtimeLLMConfiguration | None = None
     stt: GoogleSTTConfiguration | None = None
     tts: GoogleTTSConfiguration | None = None
+    embeddings: GoogleVertexEmbeddingsConfiguration | None = None
 
     @property
     def is_realtime(self) -> bool:
@@ -60,6 +62,7 @@ def compile_platform_services(
                 else PlatformLLMChoice(),
                 settings,
             ),
+            embeddings=_vertex_embeddings(settings),
         )
 
     pipeline = configuration.pipeline
@@ -83,6 +86,7 @@ def compile_platform_services(
             location=settings.speech_location,
             credentials=settings.credentials_json,
         ),
+        embeddings=_vertex_embeddings(settings),
     )
 
 
@@ -101,5 +105,17 @@ def _vertex_llm(
         temperature=choice.temperature,
         project_id=settings.project_id,
         location=settings.llm_location,
+        credentials=settings.credentials_json,
+    )
+
+
+def _vertex_embeddings(
+    settings: PlatformVertexSettings,
+) -> GoogleVertexEmbeddingsConfiguration:
+    """Knowledge base embeddings on the operator's project, in an EU region."""
+    return GoogleVertexEmbeddingsConfiguration(
+        provider=ServiceProviders.GOOGLE_VERTEX,
+        project_id=settings.project_id,
+        location=settings.embeddings_location,
         credentials=settings.credentials_json,
     )
