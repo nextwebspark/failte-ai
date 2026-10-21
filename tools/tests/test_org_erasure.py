@@ -127,3 +127,29 @@ async def test_cancel_org_stops_only_that_orgs_syncs(app: FastAPI, org_id: int) 
         await asyncio.wait([runner._tasks[theirs]])
         runner._tasks.clear()
         runner._task_orgs.clear()
+
+
+async def test_grants_of_the_shared_platform_client_are_not_revoked(
+    client: httpx.AsyncClient, engine: AsyncEngine, google: FakeGoogle
+) -> None:
+    """Revoking at Google would revoke that account's grant to the shared
+    client in every workspace; deleting the secret is enough for us."""
+    revoke = google.router.post(GOOGLE_REVOKE_URL).respond(200)
+    await connect(client, org_id=1)
+    # Make the connection's OAuth client the platform client (no org).
+    async with engine.begin() as conn:
+        await conn.execute(text("UPDATE fallcha_tools.provider_apps SET org_id = NULL"))
+
+    response = await client.delete("/internal/org", headers=erase_headers(1))
+
+    assert response.status_code == 200
+    assert response.json()["tokens_revoked"] == 0
+    assert not revoke.called
+    assert (await counts(engine, 1))["connections"] == 0
+    async with engine.connect() as conn:
+        platform_apps = await conn.execute(
+            text(
+                "SELECT count(*) FROM fallcha_tools.provider_apps WHERE org_id IS NULL"
+            )
+        )
+        assert platform_apps.scalar_one() == 1
