@@ -34,14 +34,26 @@ Admins can delete the selected organization from **Workspace settings → Danger
 The organization closes as soon as you confirm:
 
 - its API, apart from the export and the cancel, stops answering (requests get `423` with the code `organization_pending_deletion`);
-- its API keys, website widgets, API triggers and running campaigns are switched off, and calls to its phone numbers are refused;
+- its API keys, website widgets and API triggers are switched off, running and syncing campaigns are paused, and calls to its phone numbers are refused;
 - every member sees a banner with the date the organization will be erased.
 
 <Note>
-You can cancel until that date: use **Cancel deletion** on the banner or in the Danger zone. Cancelling switches back on exactly what the deletion switched off; anything that was already off stays off. Campaigns resume where they stopped.
+You can cancel until that date: use **Cancel deletion** on the banner or in the Danger zone. Cancelling switches back on exactly what the deletion switched off; anything that was already off stays off. Paused campaigns resume where they stopped.
 </Note>
 
-30 days after the request, a daily job permanently erases the organization: call recordings and transcripts, agents and their versions, campaigns and contact lists, knowledge base files, prompt recordings, tools, credentials, phone numbers and settings. Billing accounts, the credit ledger and usage records are kept, because invoices and tax records must be retained. Members keep their own accounts and can delete them separately.
+30 days after the request, a daily job permanently erases what the organization keeps in LightMove.ai: call recordings and transcripts, agents and their versions, campaigns and contact lists, knowledge base files, prompt recordings, tools, credentials, phone numbers, settings, and its integration connections (their OAuth grants are revoked with Google where possible, and imported website catalogues are deleted). Billing accounts, the credit ledger and usage records are kept, because invoices and tax records must be retained. Members keep their own accounts and can delete them separately; members of other organizations are moved to one of those.
+
+### What deletion does not reach
+
+Erasure covers the data LightMove.ai stores. It cannot recall copies that have already left it:
+
+- **Webhooks, call events and integrations.** Call data your agents sent to your own endpoints, a call-events destination, or a connected app (a CRM, a spreadsheet, a calendar) stays there. Delete it in those systems.
+- **Your telephony provider.** Your carrier (Twilio, Vonage, Telnyx and so on) keeps its own call records under its own retention. Delete them in the provider's console if you need to.
+- **Model providers.** Speech, language and voice providers you configured with your own keys process call audio and text under their terms with you.
+- **Langfuse traces.** Traces sent to your own Langfuse project are yours to delete there.
+- **Database backups.** Erased data can survive in backups until they expire.
+
+If you self-host, the same applies to anything you added: product analytics such as PostHog (when `POSTHOG_API_KEY` is set it receives user and organization identifiers and events; delete those people and the organization group in PostHog), a platform-wide Langfuse project (delete the organization's traces there), and your log storage and backups (they expire on their own retention; shorten it or remove the data if a request requires it).
 
 ## Self-hosting
 
