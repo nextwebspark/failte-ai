@@ -13,6 +13,12 @@ from redis.exceptions import RedisError
 from api.constants import DEPLOYMENT_MODE, UI_APP_URL
 from api.db import db_client
 from api.db.models import UserModel
+from api.schemas.privacy import (
+    SUBJECT_NUMBER_MAX_LENGTH,
+    SubjectDataResponse,
+    SubjectErasureRequest,
+    SubjectErasureResponse,
+)
 from api.services.auth.depends import (
     get_user,
     get_user_with_selected_organization,
@@ -21,6 +27,12 @@ from api.services.auth.depends import (
 from api.services.auth.permissions import Permission
 from api.services.call_concurrency import call_concurrency
 from api.services.mps_service_key_client import mps_service_key_client
+from api.services.privacy.call_erasure import (
+    InvalidSubjectNumberError,
+    OrganizationNumberError,
+    erase_subject_data,
+    export_subject_data,
+)
 from api.services.reports import generate_usage_runs_report_csv
 from api.utils.artifacts import artifact_url
 from api.utils.recording_artifacts import has_recording_track
@@ -630,6 +642,65 @@ async def download_usage_runs_report(
         media_type="text/csv",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
+
+
+@router.get(
+    "/usage/subject-data",
+    response_model=SubjectDataResponse,
+    responses={400: {"description": "Not a caller's number"}},
+    dependencies=requires(Permission.ORG_MANAGE),
+)
+async def get_subject_data(
+    number: Annotated[
+        str,
+        Query(
+            min_length=1,
+            max_length=SUBJECT_NUMBER_MAX_LENGTH,
+            description="The caller's phone number, in any format.",
+        ),
+    ],
+    response: Response,
+    user: UserModel = Depends(get_user_with_selected_organization),
+) -> SubjectDataResponse:
+    """Everything stored about calls with one phone number (a caller's access request).
+
+    Matches the number as the caller of inbound calls and the callee of
+    outbound calls, plus campaign contacts still to be called. Recording and
+    transcript links are valid for one hour.
+    """
+    response.headers["Cache-Control"] = "no-store"
+    try:
+        return await export_subject_data(
+            organization_id=user.selected_organization_id, number=number
+        )
+    except (InvalidSubjectNumberError, OrganizationNumberError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+@router.post(
+    "/usage/subject-data/erase",
+    response_model=SubjectErasureResponse,
+    responses={400: {"description": "Not a caller's number"}},
+    dependencies=requires(Permission.ORG_MANAGE),
+)
+async def erase_subject_data_route(
+    request: SubjectErasureRequest,
+    user: UserModel = Depends(get_user_with_selected_organization),
+) -> SubjectErasureResponse:
+    """Erase every call and campaign contact of one phone number (a caller's erasure request).
+
+    Recordings and transcripts are deleted and call content is cleared; each
+    call keeps its date, duration, status and cost for billing. Campaign
+    contacts not yet called are removed and the number's rows are removed
+    from uploaded contact lists. Calls still in progress are skipped and
+    listed, so the request can be repeated once they end.
+    """
+    try:
+        return await erase_subject_data(
+            organization_id=user.selected_organization_id, number=request.number
+        )
+    except (InvalidSubjectNumberError, OrganizationNumberError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
 
 
 @router.get(

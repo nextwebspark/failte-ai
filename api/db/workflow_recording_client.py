@@ -5,7 +5,7 @@ import string
 from typing import List, Optional
 
 from loguru import logger
-from sqlalchemy import func, select, text
+from sqlalchemy import delete, func, select, text
 
 from api.db.base_client import BaseDBClient
 from api.db.models import WorkflowRecordingModel
@@ -320,12 +320,30 @@ class WorkflowRecordingClient(BaseDBClient):
 
         return total
 
+    async def get_recording_for_deletion(
+        self,
+        recording_id: str,
+        organization_id: int,
+    ) -> Optional[WorkflowRecordingModel]:
+        """A recording of the organization, archived or not, for deletion."""
+        async with self.async_session() as session:
+            result = await session.execute(
+                select(WorkflowRecordingModel).where(
+                    WorkflowRecordingModel.recording_id == recording_id,
+                    WorkflowRecordingModel.organization_id == organization_id,
+                )
+            )
+            return result.scalar_one_or_none()
+
     async def delete_recording(
         self,
         recording_id: str,
         organization_id: int,
     ) -> bool:
-        """Soft delete a recording.
+        """Permanently delete a recording row.
+
+        The stored audio is not touched: delete it first (see
+        ``api.services.privacy.stored_files``).
 
         Args:
             recording_id: The short recording ID
@@ -335,19 +353,15 @@ class WorkflowRecordingClient(BaseDBClient):
             True if deleted, False if not found
         """
         async with self.async_session() as session:
-            query = select(WorkflowRecordingModel).where(
-                WorkflowRecordingModel.recording_id == recording_id,
-                WorkflowRecordingModel.organization_id == organization_id,
+            result = await session.execute(
+                delete(WorkflowRecordingModel).where(
+                    WorkflowRecordingModel.recording_id == recording_id,
+                    WorkflowRecordingModel.organization_id == organization_id,
+                )
             )
-
-            result = await session.execute(query)
-            recording = result.scalar_one_or_none()
-
-            if not recording:
-                return False
-
-            recording.is_active = False
             await session.commit()
+            if not result.rowcount:
+                return False
 
             logger.info(
                 f"Deleted recording {recording_id} for organization {organization_id}"

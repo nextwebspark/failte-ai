@@ -575,14 +575,30 @@ class KnowledgeBaseClient(BaseDBClient):
             )
             await session.commit()
 
+    async def get_document_for_deletion(
+        self,
+        document_uuid: str,
+        organization_id: int,
+    ) -> Optional[KnowledgeBaseDocumentModel]:
+        """A document of the organization, archived or not, for deletion."""
+        async with self.async_session() as session:
+            result = await session.execute(
+                select(KnowledgeBaseDocumentModel).where(
+                    KnowledgeBaseDocumentModel.document_uuid == document_uuid,
+                    KnowledgeBaseDocumentModel.organization_id == organization_id,
+                )
+            )
+            return result.scalar_one_or_none()
+
     async def delete_document(
         self,
         document_uuid: str,
         organization_id: int,
     ) -> bool:
-        """Soft delete a document by setting is_active to False.
+        """Permanently delete a document row and all of its chunks.
 
-        This will also cascade delete all chunks via the database foreign key.
+        The stored file is not touched: delete it first (see
+        ``api.services.privacy.stored_files``).
 
         Args:
             document_uuid: The unique document UUID
@@ -592,18 +608,28 @@ class KnowledgeBaseClient(BaseDBClient):
             True if document was deleted, False if not found
         """
         async with self.async_session() as session:
-            query = select(KnowledgeBaseDocumentModel).where(
-                KnowledgeBaseDocumentModel.document_uuid == document_uuid,
-                KnowledgeBaseDocumentModel.organization_id == organization_id,
-            )
-
-            result = await session.execute(query)
-            document = result.scalar_one_or_none()
-
-            if not document:
+            document_id = (
+                await session.execute(
+                    select(KnowledgeBaseDocumentModel.id).where(
+                        KnowledgeBaseDocumentModel.document_uuid == document_uuid,
+                        KnowledgeBaseDocumentModel.organization_id == organization_id,
+                    )
+                )
+            ).scalar_one_or_none()
+            if document_id is None:
                 return False
 
-            document.is_active = False
+            await session.execute(
+                delete(KnowledgeBaseChunkModel).where(
+                    KnowledgeBaseChunkModel.document_id == document_id
+                )
+            )
+            await session.execute(
+                delete(KnowledgeBaseDocumentModel).where(
+                    KnowledgeBaseDocumentModel.id == document_id,
+                    KnowledgeBaseDocumentModel.organization_id == organization_id,
+                )
+            )
             await session.commit()
 
             logger.info(

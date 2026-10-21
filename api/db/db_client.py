@@ -12,6 +12,7 @@ from api.db.membership_client import MembershipClient
 from api.db.organization_client import OrganizationClient
 from api.db.organization_configuration_client import OrganizationConfigurationClient
 from api.db.organization_usage_client import OrganizationUsageClient
+from api.db.privacy_client import PrivacyClient
 from api.db.reports_client import ReportsClient
 from api.db.retention_client import RetentionClient
 from api.db.skill_client import SkillClient
@@ -46,6 +47,7 @@ class DBClient(
     CampaignClient,
     ReportsClient,
     RetentionClient,
+    PrivacyClient,
     APIKeyClient,
     EmbedTokenClient,
     AgentTriggerClient,
@@ -79,6 +81,7 @@ class DBClient(
     - CampaignClient: handles campaign operations
     - ReportsClient: handles reports and analytics operations
     - RetentionClient: finds and scrubs data past its retention period
+    - PrivacyClient: finds and erases one data subject's calls (GDPR requests)
     - APIKeyClient: handles API key operations
     - EmbedTokenClient: handles embed token and session operations
     - AgentTriggerClient: handles agent trigger operations for API-based call triggering

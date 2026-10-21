@@ -25,6 +25,7 @@ from api.enums import (
     WorkflowStatus,
 )
 from api.schemas.ai_model_configuration import OrganizationAIModelConfigurationV2
+from api.schemas.privacy import DeleteWorkflowRunDataResponse
 from api.schemas.workflow import WorkflowRunResponseSchema
 from api.schemas.workflow_configurations import WorkflowConfigurationDefaults
 from api.schemas.workflow_template import (
@@ -68,6 +69,12 @@ from api.services.configuration.resolve import (
 )
 from api.services.mps_service_key_client import mps_service_key_client
 from api.services.posthog_client import capture_event
+from api.services.privacy.call_erasure import (
+    StoredObjectsNotDeletedError,
+    WorkflowRunInProgressError,
+    WorkflowRunNotFoundError,
+    erase_workflow_run,
+)
 from api.services.rate_limit import RateLimiter, get_rate_limiter
 from api.services.reports import generate_workflow_report_csv
 from api.services.storage import storage_fs
@@ -1849,6 +1856,50 @@ async def get_workflow_run(
         "logs": run.logs,
         "annotations": run.annotations,
     }
+
+
+@router.delete(
+    "/{workflow_id}/runs/{run_id}",
+    response_model=DeleteWorkflowRunDataResponse,
+    responses={
+        404: {"description": "No such call in your organization"},
+        409: {"description": "The call is still in progress"},
+        502: {"description": "Stored files could not be deleted; nothing changed"},
+    },
+    dependencies=requires(Permission.ORG_MANAGE),
+)
+async def delete_workflow_run_data(
+    workflow_id: int, run_id: int, user: UserModel = Depends(get_user)
+) -> DeleteWorkflowRunDataResponse:
+    """Erase one call's personal data (a caller's erasure request).
+
+    Deletes the recordings and transcript, then clears the call context,
+    transcript logs, phone numbers, annotations and webhook payloads. The
+    call itself stays, with its date, duration, status and cost, because
+    billing records refer to it.
+    """
+    try:
+        objects_deleted = await erase_workflow_run(
+            organization_id=user.selected_organization_id,
+            workflow_id=workflow_id,
+            run_id=run_id,
+        )
+    except WorkflowRunNotFoundError:
+        raise HTTPException(status_code=404, detail="Workflow run not found")
+    except WorkflowRunInProgressError:
+        raise HTTPException(
+            status_code=409,
+            detail="This call is still in progress. Delete its data once it ends.",
+        )
+    except StoredObjectsNotDeletedError:
+        raise HTTPException(
+            status_code=502,
+            detail=(
+                "The call's recordings could not be deleted, so nothing was "
+                "changed. Try again in a few minutes."
+            ),
+        )
+    return DeleteWorkflowRunDataResponse(run_id=run_id, objects_deleted=objects_deleted)
 
 
 class WorkflowRunsResponse(BaseModel):
