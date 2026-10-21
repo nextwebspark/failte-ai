@@ -16,7 +16,9 @@ import asyncio
 import hashlib
 import math
 import random
+import threading
 import weakref
+from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
 import httpx
@@ -33,11 +35,7 @@ DEFAULT_VERTEX_EMBEDDING_LOCATION = "europe-west1"
 VERTEX_EMBEDDING_DIMENSION = 1536
 MAX_CONCURRENT_REQUESTS = 8
 _RETRY_STATUSES = {429, 500, 502, 503, 504}
-# Ingestion can wait out a rate limit; a live call's query can't wait long.
-DOCUMENT_MAX_ATTEMPTS = 6
-QUERY_MAX_ATTEMPTS = 3
 RETRY_BASE_DELAY_SECONDS = 1.0
-_MAX_RETRY_DELAY_SECONDS = 30.0
 _REQUEST_TIMEOUT_SECONDS = 30.0
 
 TASK_TYPE_DOCUMENT = "RETRIEVAL_DOCUMENT"
@@ -61,15 +59,26 @@ def vertex_predict_url(project_id: str, location: str, model: str) -> str:
 
 
 class _BearerToken:
-    """OAuth token for the org's service account (or ADC), refreshed as needed."""
+    """OAuth token for the org's service account (or ADC), refreshed as needed.
+
+    Shared by every event loop in the process (the API's and the worker's),
+    so it is guarded by a thread lock, taken only in the worker thread that
+    loads or refreshes the credentials, never on an event loop.
+    """
 
     def __init__(self, credentials_json: Optional[str]):
         self._credentials_json = credentials_json
         self._credentials = None
-        self._lock = asyncio.Lock()
+        self._lock = threading.Lock()
 
     async def get(self) -> str:
-        async with self._lock:
+        credentials = self._credentials
+        if credentials is not None and credentials.valid:
+            return credentials.token
+        return await asyncio.to_thread(self._load_or_refresh)
+
+    def _load_or_refresh(self) -> str:
+        with self._lock:
             if self._credentials is None:
                 # Same credential handling as the Vertex LLM services: pasted
                 # service-account JSON, else Application Default Credentials.
@@ -77,14 +86,11 @@ class _BearerToken:
                     service_account_credentials,
                 )
 
-                # Blocking: loads credentials and performs a token refresh.
-                self._credentials = await asyncio.to_thread(
-                    service_account_credentials, self._credentials_json
-                )
+                self._credentials = service_account_credentials(self._credentials_json)
             elif not self._credentials.valid:
                 from google.auth.transport.requests import Request
 
-                await asyncio.to_thread(self._credentials.refresh, Request())
+                self._credentials.refresh(Request())
             return self._credentials.token
 
 
@@ -106,6 +112,9 @@ def shared_token(credentials_json: Optional[str]) -> _BearerToken:
 def shared_http_client() -> httpx.AsyncClient:
     """A pooled client for the running event loop (clients are loop-bound)."""
     loop = asyncio.get_running_loop()
+    # Clients of loops that have closed can't be used (or closed) any more.
+    for stale in [other for other in list(_CLIENTS) if other.is_closed()]:
+        _CLIENTS.pop(stale, None)
     client = _CLIENTS.get(loop)
     if client is None or client.is_closed:
         client = _CLIENTS[loop] = httpx.AsyncClient(
@@ -114,13 +123,33 @@ def shared_http_client() -> httpx.AsyncClient:
     return client
 
 
-def _retry_delay(attempt: int, response: Optional[httpx.Response] = None) -> float:
-    """Exponential backoff with jitter, or the server's Retry-After."""
+@dataclass(frozen=True)
+class RetryPolicy:
+    max_attempts: int
+    # Longest wait before one retry, Retry-After included.
+    max_delay_seconds: float
+    request_timeout_seconds: float
+
+
+# Indexing runs in the background and can wait out a rate limit. A live call's
+# knowledge base lookup can't: a couple of quick retries, then fail.
+DOCUMENT_RETRY = RetryPolicy(
+    max_attempts=6, max_delay_seconds=30.0, request_timeout_seconds=30.0
+)
+QUERY_RETRY = RetryPolicy(
+    max_attempts=3, max_delay_seconds=1.0, request_timeout_seconds=5.0
+)
+
+
+def _retry_delay(
+    attempt: int, policy: RetryPolicy, response: Optional[httpx.Response] = None
+) -> float:
+    """Exponential backoff with jitter, or the server's Retry-After, capped."""
     if response is not None:
         retry_after = response.headers.get("Retry-After", "")
         if retry_after.isdigit():
-            return min(float(retry_after), _MAX_RETRY_DELAY_SECONDS)
-    delay = min(RETRY_BASE_DELAY_SECONDS * 2 ** (attempt - 1), _MAX_RETRY_DELAY_SECONDS)
+            return min(float(retry_after), policy.max_delay_seconds)
+    delay = min(RETRY_BASE_DELAY_SECONDS * 2 ** (attempt - 1), policy.max_delay_seconds)
     return delay * random.uniform(0.5, 1.0)
 
 
@@ -161,10 +190,10 @@ class VertexEmbeddingService(BaseEmbeddingService):
         return VERTEX_EMBEDDING_DIMENSION
 
     async def embed_texts(self, texts: List[str]) -> List[List[float]]:
-        return await self._embed_many(texts, TASK_TYPE_DOCUMENT, DOCUMENT_MAX_ATTEMPTS)
+        return await self._embed_many(texts, TASK_TYPE_DOCUMENT, DOCUMENT_RETRY)
 
     async def embed_query(self, query: str) -> List[float]:
-        return (await self._embed_many([query], TASK_TYPE_QUERY, QUERY_MAX_ATTEMPTS))[0]
+        return (await self._embed_many([query], TASK_TYPE_QUERY, QUERY_RETRY))[0]
 
     async def search_similar_chunks(
         self,
@@ -183,7 +212,7 @@ class VertexEmbeddingService(BaseEmbeddingService):
         )
 
     async def _embed_many(
-        self, texts: List[str], task_type: str, max_attempts: int
+        self, texts: List[str], task_type: str, policy: RetryPolicy
     ) -> List[List[float]]:
         if not texts:
             return []
@@ -192,7 +221,7 @@ class VertexEmbeddingService(BaseEmbeddingService):
 
         async def one(text: str) -> List[float]:
             async with semaphore:
-                return await self._embed_one(client, text, task_type, max_attempts)
+                return await self._embed_one(client, text, task_type, policy)
 
         try:
             # A failure cancels the requests still queued or in flight.
@@ -207,12 +236,13 @@ class VertexEmbeddingService(BaseEmbeddingService):
         client: httpx.AsyncClient,
         text: str,
         task_type: str,
-        max_attempts: int,
+        policy: RetryPolicy,
     ) -> List[float]:
         body = {
             "instances": [{"content": text, "task_type": task_type}],
             "parameters": {"outputDimensionality": VERTEX_EMBEDDING_DIMENSION},
         }
+        max_attempts = policy.max_attempts
         for attempt in range(1, max_attempts + 1):
             token = await self._token()
             try:
@@ -220,16 +250,17 @@ class VertexEmbeddingService(BaseEmbeddingService):
                     self._url,
                     json=body,
                     headers={"Authorization": f"Bearer {token}"},
+                    timeout=policy.request_timeout_seconds,
                 )
             except httpx.RequestError as exc:
                 if attempt == max_attempts:
                     raise VertexEmbeddingError(
                         "Could not reach Vertex AI for embeddings."
                     ) from exc
-                await asyncio.sleep(_retry_delay(attempt))
+                await asyncio.sleep(_retry_delay(attempt, policy))
                 continue
             if response.status_code in _RETRY_STATUSES and attempt < max_attempts:
-                await asyncio.sleep(_retry_delay(attempt, response))
+                await asyncio.sleep(_retry_delay(attempt, policy, response))
                 continue
             if response.status_code != 200:
                 raise VertexEmbeddingError(

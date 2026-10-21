@@ -435,3 +435,98 @@ def test_settings_from_managed_config_without_mps_refuse(monkeypatch):
 
     with pytest.raises(MPSNotConfiguredError):
         EmbeddingSettings.from_config(DograhEmbeddingsConfiguration(api_key="k"))
+
+
+async def test_live_queries_never_wait_long_for_a_rate_limit(monkeypatch):
+    waits = []
+
+    async def record_sleep(seconds):
+        waits.append(seconds)
+
+    monkeypatch.setattr(vertex_service.asyncio, "sleep", record_sleep)
+    vertex = _Vertex(
+        responses=[
+            httpx.Response(429, headers={"Retry-After": "30"}),
+            httpx.Response(503),
+            httpx.Response(200, json=_prediction([1.0] * 1536)),
+        ]
+    )
+
+    await vertex.service().embed_query("hours?")
+
+    retry_waits = [w for w in waits if w != 0.01]
+    assert len(retry_waits) == 2
+    assert sum(retry_waits) <= 2.0
+    # Each request also times out quickly.
+    assert {r.extensions["timeout"]["read"] for r in vertex.requests} == {5.0}
+
+
+async def test_indexing_honours_long_retry_after_and_timeouts(monkeypatch):
+    waits = []
+
+    async def record_sleep(seconds):
+        waits.append(seconds)
+
+    monkeypatch.setattr(vertex_service.asyncio, "sleep", record_sleep)
+    vertex = _Vertex(
+        responses=[
+            httpx.Response(429, headers={"Retry-After": "60"}),
+            httpx.Response(200, json=_prediction([1.0] * 1536)),
+        ]
+    )
+
+    await vertex.service().embed_texts(["hello"])
+
+    assert [w for w in waits if w != 0.01] == [30.0]
+    assert {r.extensions["timeout"]["read"] for r in vertex.requests} == {30.0}
+
+
+def test_one_token_source_serves_several_event_loops(monkeypatch):
+    from api.services.pipecat import vertex_llm
+
+    class Credentials:
+        def __init__(self):
+            self.valid = False
+            self.token = None
+            self.refreshes = 0
+
+        def refresh(self, _request):
+            self.refreshes += 1
+            self.valid = True
+            self.token = f"token-{self.refreshes}"
+
+    credentials = Credentials()
+    loads = []
+
+    def fake_credentials(credentials_json):
+        loads.append(credentials_json)
+        credentials.refresh(None)
+        return credentials
+
+    monkeypatch.setattr(vertex_llm, "service_account_credentials", fake_credentials)
+    token = vertex_service._BearerToken("{}")
+
+    async def contend():
+        return await asyncio.gather(*(token.get() for _ in range(5)))
+
+    # The API and the ARQ worker each run their own loop.
+    assert set(asyncio.run(contend())) == {"token-1"}
+    credentials.valid = False  # expired
+    assert set(asyncio.run(contend())) == {"token-2"}
+    assert loads == ["{}"]
+    assert credentials.refreshes == 2
+
+
+def test_clients_of_closed_loops_are_evicted():
+    async def client_of_this_loop():
+        return vertex_service.shared_http_client()
+
+    loop = asyncio.new_event_loop()
+    old_client = loop.run_until_complete(client_of_this_loop())
+    loop.close()
+    assert loop in vertex_service._CLIENTS
+
+    new_client = asyncio.run(client_of_this_loop())
+
+    assert new_client is not old_client
+    assert loop not in vertex_service._CLIENTS
