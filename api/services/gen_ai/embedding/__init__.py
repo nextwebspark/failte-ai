@@ -9,6 +9,7 @@ from .dograh_service import DograhEmbeddingService
 from .factory import (
     EmbeddingSettings,
     build_embedding_service,
+    embedding_model_id,
     resolve_embedding_correlation_id,
 )
 from .openai_service import EmbeddingAPIKeyNotConfiguredError, OpenAIEmbeddingService
@@ -25,5 +26,6 @@ __all__ = [
     "VertexEmbeddingError",
     "VertexEmbeddingService",
     "build_embedding_service",
+    "embedding_model_id",
     "resolve_embedding_correlation_id",
 ]

@@ -61,8 +61,14 @@ def embeddings(monkeypatch):
 
     state = SimpleNamespace(config=None, embedder=FakeEmbedder(), settings=[])
 
+    state.platform_managed = False
+
     async def resolved(**_kwargs):
-        return SimpleNamespace(effective=SimpleNamespace(embeddings=state.config))
+        return SimpleNamespace(
+            effective=SimpleNamespace(
+                embeddings=state.config, platform_managed=state.platform_managed
+            )
+        )
 
     async def build(*, db_client, settings, **_kwargs):
         state.settings.append(settings)
@@ -226,3 +232,58 @@ async def test_oversized_files_are_still_refused(
     assert stored.processing_status == "failed"
     assert "exceeds the maximum allowed size of 5MB" in stored.processing_error
     parse.assert_not_awaited()
+
+
+async def test_documents_embedded_with_another_model_need_reindex(
+    db_session, tmp_path, stored_file, embeddings, test_client_factory
+):
+    stored_file("faq.md", b"# FAQ\n\nWe open at nine.")
+    # Indexed with the fake embedder ("fake-embedding")...
+    embeddings.config = OpenAIEmbeddingsConfiguration(
+        api_key="sk-test", model="fake-embedding"
+    )
+    document, s3_key, org_id = await _document(
+        db_session, "kb_local_reindex", "faq.md", "chunked"
+    )
+    await _run(document, s3_key, org_id, "chunked")
+    user = await db_session.get_user_by_id(document.created_by)
+    await db_session.update_user_selected_organization(user.id, org_id)
+    user = await db_session.get_user_by_id(user.id)
+
+    async def listed():
+        async with test_client_factory(user) as client:
+            response = await client.get("/api/v1/knowledge-base/documents")
+            single = await client.get(
+                f"/api/v1/knowledge-base/documents/{document.document_uuid}"
+            )
+        assert response.status_code == 200, response.text
+        (row,) = response.json()["documents"]
+        assert single.json()["needs_reindex"] == row["needs_reindex"]
+        return row["needs_reindex"]
+
+    assert await listed() is False
+
+    # ...then the organization switches to another embedding model.
+    embeddings.config = GoogleVertexEmbeddingsConfiguration(project_id="eu-project")
+    assert await listed() is True
+
+    # No embedding model at all: nothing to compare against, no hint.
+    embeddings.config = None
+    assert await listed() is False
+
+
+async def test_platform_orgs_without_embeddings_get_a_platform_message(
+    db_session, stored_file, embeddings
+):
+    stored_file("notes.md", b"# Notes\n\nSome text.")
+    embeddings.platform_managed = True  # server lost its platform settings
+    document, s3_key, org_id = await _document(
+        db_session, "kb_local_platform_noemb", "notes.md", "chunked"
+    )
+
+    await _run(document, s3_key, org_id, "chunked")
+
+    stored = await db_session.get_document_by_id(document.id)
+    assert stored.processing_status == "failed"
+    assert stored.processing_error == task.PLATFORM_EMBEDDINGS_UNAVAILABLE_MESSAGE
+    assert "Model Configurations" not in stored.processing_error

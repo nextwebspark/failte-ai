@@ -28,6 +28,12 @@ EMBEDDINGS_NOT_CONFIGURED_MESSAGE = (
     "No embedding model is configured. Set one in Model Configurations > "
     "Embedding to use chunked search."
 )
+# Platform organizations can't configure embeddings themselves; theirs come
+# from the server's platform settings.
+PLATFORM_EMBEDDINGS_UNAVAILABLE_MESSAGE = (
+    "Chunked search isn't available on this server right now. Upload the "
+    "document in full-document mode, or contact LightMove.ai support."
+)
 
 
 def document_processing_available() -> bool:
@@ -171,6 +177,7 @@ async def process_knowledge_base_document(
         )
 
         embedding_settings = None
+        platform_managed = False
         if retrieval_mode == "chunked":
             from api.services.configuration.ai_model_configuration import (
                 get_resolved_ai_model_configuration,
@@ -178,6 +185,9 @@ async def process_knowledge_base_document(
 
             resolved_config = await get_resolved_ai_model_configuration(
                 organization_id=document.organization_id,
+            )
+            platform_managed = bool(
+                getattr(resolved_config.effective, "platform_managed", False)
             )
             embedding_settings = EmbeddingSettings.from_config(
                 resolved_config.effective.embeddings
@@ -223,11 +233,14 @@ async def process_knowledge_base_document(
             return
 
         if embedding_settings is None or not embedding_settings.is_configured:
-            logger.warning(
-                f"Document {document_id}: {EMBEDDINGS_NOT_CONFIGURED_MESSAGE}"
+            message = (
+                PLATFORM_EMBEDDINGS_UNAVAILABLE_MESSAGE
+                if platform_managed
+                else EMBEDDINGS_NOT_CONFIGURED_MESSAGE
             )
+            logger.warning(f"Document {document_id}: {message}")
             await db_client.update_document_status(
-                document_id, "failed", error_message=EMBEDDINGS_NOT_CONFIGURED_MESSAGE
+                document_id, "failed", error_message=message
             )
             return
 

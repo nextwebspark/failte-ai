@@ -21,7 +21,7 @@ interface DocumentUploadProps {
 
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
 // Matches SUPPORTED_EXTENSIONS in api/services/documents/parse.py.
-const ACCEPTED_FILE_TYPES = ['.pdf', '.docx', '.txt', '.md', '.csv', '.html', '.json'];
+const ACCEPTED_FILE_TYPES = ['.pdf', '.docx', '.txt', '.md', '.csv', '.html', '.htm', '.json'];
 
 export default function DocumentUpload({ onUploadSuccess }: DocumentUploadProps) {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);

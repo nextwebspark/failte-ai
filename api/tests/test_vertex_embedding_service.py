@@ -362,3 +362,76 @@ async def test_a_failure_cancels_the_other_requests():
     # The queue stops once a request fails (the freed slot may already have
     # gone to the next text).
     assert "never-2" not in started
+
+
+# EmbeddingSettings.from_config for the other providers ------------------------------
+
+
+async def test_settings_from_azure_config():
+    from api.services.configuration.registry import AzureOpenAIEmbeddingsConfiguration
+    from api.services.gen_ai import AzureOpenAIEmbeddingService
+
+    settings = EmbeddingSettings.from_config(
+        AzureOpenAIEmbeddingsConfiguration(
+            api_key="az-key",
+            endpoint="https://example.openai.azure.com",
+            model="kb-embeddings",
+        )
+    )
+
+    assert (settings.provider, settings.api_key, settings.model) == (
+        "azure",
+        "az-key",
+        "kb-embeddings",
+    )
+    assert settings.endpoint == "https://example.openai.azure.com"
+    assert settings.api_version == "2024-02-15-preview"
+    assert settings.is_configured
+    service = await build_embedding_service(db_client=None, settings=settings)
+    assert isinstance(service, AzureOpenAIEmbeddingService)
+    assert service.get_model_id() == "kb-embeddings"
+
+
+async def test_settings_from_openrouter_config():
+    from api.services.configuration.registry import OpenRouterEmbeddingsConfiguration
+
+    settings = EmbeddingSettings.from_config(
+        OpenRouterEmbeddingsConfiguration(api_key="or-key")
+    )
+
+    assert settings.provider == "openrouter"
+    assert settings.base_url == "https://openrouter.ai/api/v1"
+    assert settings.model == "openai/text-embedding-3-small"
+    service = await build_embedding_service(db_client=None, settings=settings)
+    assert isinstance(service, OpenAIEmbeddingService)
+    assert str(service.client.base_url).startswith("https://openrouter.ai/api/v1")
+
+
+async def test_settings_from_managed_config_use_the_mps_base_url(mps_configured):
+    from api.services.configuration.registry import DograhEmbeddingsConfiguration
+    from api.services.gen_ai import DograhEmbeddingService
+
+    settings = EmbeddingSettings.from_config(
+        DograhEmbeddingsConfiguration(api_key="mps_sk_1")
+    )
+
+    assert settings.provider == "dograh"
+    assert settings.base_url == f"{mps_configured}/api/v1/llm"
+    assert settings.model == "dograh_embedding_v1"
+    service = await build_embedding_service(
+        db_client=None, settings=settings, correlation_id="cid-1"
+    )
+    assert isinstance(service, DograhEmbeddingService)
+    assert service.get_model_id() == "dograh_embedding_v1"
+
+
+def test_settings_from_managed_config_without_mps_refuse(monkeypatch):
+    from api.errors.mps import MPSNotConfiguredError
+    from api.services import mps_service_key_client as mps_client_module
+    from api.services.configuration.registry import DograhEmbeddingsConfiguration
+
+    monkeypatch.setattr(mps_client_module, "MPS_API_URL", "")
+    monkeypatch.setattr(mps_client_module.mps_service_key_client, "base_url", "")
+
+    with pytest.raises(MPSNotConfiguredError):
+        EmbeddingSettings.from_config(DograhEmbeddingsConfiguration(api_key="k"))

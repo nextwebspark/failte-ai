@@ -51,6 +51,10 @@ In **Chunked Search** mode the chunk text is then sent to the embedding model co
 
 Workspaces on platform-managed models use Google Vertex AI in `europe-west1` automatically. **Full Document** mode sends nothing to an embedding provider.
 
+<Note>
+Chunked documents can only be searched with the embedding model they were indexed with. If you change the embedding model, documents indexed with the old one show **Re-index needed** in the Knowledge Base list: delete them and upload them again.
+</Note>
+
 ## Uploading Documents
 
 1. Go to **Knowledge Base Files** in the dashboard

@@ -59,3 +59,19 @@ describe("document editing", () => {
         expect(screen.queryByRole("button", { name: "Edit faq.md" })).toBeNull();
     });
 });
+
+describe("re-index hint", () => {
+    it("explains documents embedded with another model", async () => {
+        mocks.list.mockResolvedValue({
+            data: { documents: [{ ...document, needs_reindex: true }] },
+        });
+        render(<DocumentList refreshTrigger={0} />);
+        expect(await screen.findByText(/Re-index needed/)).toBeTruthy();
+    });
+
+    it("stays quiet otherwise", async () => {
+        render(<DocumentList refreshTrigger={0} />);
+        await screen.findByText("faq.md");
+        expect(screen.queryByText(/Re-index needed/)).toBeNull();
+    });
+});

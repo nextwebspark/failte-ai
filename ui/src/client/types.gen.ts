@@ -2758,6 +2758,12 @@ export type DocumentResponseSchema = {
      */
     is_active: boolean;
     /**
+     * Needs Reindex
+     *
+     * Whether this chunked document was embedded with a different embedding model than the one now configured. Search only matches chunks embedded with the current model, so the document can't be found until it is processed again (deleted and uploaded again).
+     */
+    needs_reindex?: boolean;
+    /**
      * Has Live Content
      *
      * Whether agents can currently retrieve this document's content. Stays true while an edited document is re-indexed or after its re-index fails, because the previous version keeps serving until a new one succeeds.

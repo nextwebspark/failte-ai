@@ -28,6 +28,7 @@ from api.services.knowledge_base_content import (
     DocumentContentConflictError,
     DocumentContentTooLargeError,
     DocumentNotEditableError,
+    documents_needing_reindex,
     enqueue_document_processing,
     read_document_content,
     update_document_content,
@@ -54,6 +55,7 @@ def _has_live_content(document: KnowledgeBaseDocumentModel) -> bool:
 
 def _to_document_response(
     document: KnowledgeBaseDocumentModel,
+    needs_reindex: bool = False,
 ) -> DocumentResponseSchema:
     return DocumentResponseSchema(
         id=document.id,
@@ -75,6 +77,7 @@ def _to_document_response(
         created_by=document.created_by,
         is_active=document.is_active,
         has_live_content=_has_live_content(document),
+        needs_reindex=needs_reindex,
     )
 
 
@@ -312,7 +315,13 @@ async def list_documents(
             offset=offset,
         )
 
-        document_list = [_to_document_response(doc) for doc in documents]
+        stale = await documents_needing_reindex(
+            user.selected_organization_id, documents
+        )
+        document_list = [
+            _to_document_response(doc, needs_reindex=doc.id in stale)
+            for doc in documents
+        ]
 
         return DocumentListResponseSchema(
             documents=document_list,
@@ -351,7 +360,10 @@ async def get_document(
         if not document:
             raise HTTPException(status_code=404, detail="Document not found")
 
-        return _to_document_response(document)
+        stale = await documents_needing_reindex(
+            user.selected_organization_id, [document]
+        )
+        return _to_document_response(document, needs_reindex=document.id in stale)
 
     except HTTPException:
         raise

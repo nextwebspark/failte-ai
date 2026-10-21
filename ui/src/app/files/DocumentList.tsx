@@ -255,6 +255,13 @@ export default function DocumentList({ refreshTrigger }: DocumentListProps) {
                     )}
                     <span>{formatDateTime(doc.created_at, organizationTimezone)}</span>
                   </div>
+                  {doc.needs_reindex && (
+                    <p className="text-xs text-amber mt-1">
+                      Re-index needed: this document was indexed with a different
+                      embedding model than the one now configured, so agents can&apos;t
+                      find it. Delete it and upload it again.
+                    </p>
+                  )}
                   {doc.has_live_content && isBusy(doc) && (
                     <p className="text-xs text-muted-foreground mt-1">
                       Agents keep using the previous version until the update finishes.

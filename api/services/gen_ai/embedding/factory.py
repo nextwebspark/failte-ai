@@ -17,7 +17,7 @@ from .azure_openai_service import AzureOpenAIEmbeddingService
 from .base import BaseEmbeddingService
 from .dograh_service import DograhEmbeddingService
 from .openai_service import OpenAIEmbeddingService
-from .vertex_service import VertexEmbeddingService
+from .vertex_service import DEFAULT_VERTEX_EMBEDDING_MODEL, VertexEmbeddingService
 
 DEFAULT_EMBEDDING_MODEL = "text-embedding-3-small"
 DEFAULT_AZURE_API_VERSION = "2024-02-15-preview"
@@ -117,6 +117,17 @@ class EmbeddingSettings:
         )
 
 
+def embedding_model_id(provider: Optional[str], model: Optional[str]) -> str:
+    """The model id chunks are stored and searched under for this provider."""
+    from api.services.configuration.registry import ServiceProviders
+
+    if model:
+        return model
+    if provider == ServiceProviders.GOOGLE_VERTEX.value:
+        return DEFAULT_VERTEX_EMBEDDING_MODEL
+    return DEFAULT_EMBEDDING_MODEL
+
+
 async def build_embedding_service(
     *,
     db_client: DBClient,
@@ -146,10 +157,10 @@ async def build_embedding_service(
             project_id=settings.project_id,
             location=settings.location,
             credentials=settings.credentials,
-            model_id=settings.model,
+            model_id=embedding_model_id(provider, settings.model),
         )
 
-    model_id = settings.model or DEFAULT_EMBEDDING_MODEL
+    model_id = embedding_model_id(provider, settings.model)
 
     if provider == ServiceProviders.AZURE.value and settings.endpoint:
         return AzureOpenAIEmbeddingService(
