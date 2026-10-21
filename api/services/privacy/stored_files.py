@@ -31,6 +31,29 @@ def knowledge_base_document_prefix(organization_id: int, document_uuid: str) -> 
     return f"knowledge_base/{organization_id}/{document_uuid}/"
 
 
+def is_safe_storage_key(key: object) -> bool:
+    """A plain relative object key: no ``..`` segment, backslash or empty segment.
+
+    Object stores treat keys as opaque strings, but a key that only looks
+    inside a folder (``knowledge_base/1/u/../../2/x``) must not pass a prefix
+    check, and local or proxied storage may resolve it as a path.
+    """
+    if not isinstance(key, str) or not key or key.startswith("/"):
+        return False
+    if "\\" in key or any(ord(char) < 32 for char in key):
+        return False
+    return all(segment not in ("", ".", "..") for segment in key.split("/"))
+
+
+def is_knowledge_base_document_key(
+    organization_id: int, document_uuid: str, key: object
+) -> bool:
+    """Whether ``key`` is a file of this document, in its organization's folder."""
+    return is_safe_storage_key(key) and key.startswith(
+        knowledge_base_document_prefix(organization_id, document_uuid)
+    )
+
+
 def is_workflow_recording_key(organization_id: int, key: str) -> bool:
     """Whether ``key`` is prompt audio of this organization.
 
@@ -39,6 +62,8 @@ def is_workflow_recording_key(organization_id: int, key: str) -> bool:
     (``recordings/{run_id}/user.wav``, ``recordings/{run_id}/noveum/...``), so
     an organization id that equals a run id must not reach that run's audio.
     """
+    if not is_safe_storage_key(key):
+        return False
     match = re.fullmatch(rf"recordings/{organization_id}/([^/]+)/.+", key)
     return bool(match) and match.group(1) != "noveum"
 
@@ -64,7 +89,7 @@ async def delete_knowledge_base_document(
     key = (document.custom_metadata or {}).get("s3_key")
     try:
         storage = resolve_storage(current_storage_backend())
-        if isinstance(key, str) and key.startswith(prefix):
+        if is_knowledge_base_document_key(organization_id, document.document_uuid, key):
             if not await storage.adelete_file(key):
                 raise StoredFileDeleteError(f"Could not delete {key}")
         elif key:
@@ -72,7 +97,11 @@ async def delete_knowledge_base_document(
                 f"Knowledge base document {document.document_uuid} names a file "
                 "outside its organization's folder; leaving that file alone"
             )
-        await storage.adelete_prefix(prefix)
+        if (
+            is_safe_storage_key(prefix.rstrip("/"))
+            and "/" not in document.document_uuid
+        ):
+            await storage.adelete_prefix(prefix)
     except StoredFileDeleteError:
         raise
     except Exception as exc:

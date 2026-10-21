@@ -77,8 +77,15 @@ class SubjectDataResponse(BaseModel):
     )
 
 
-class SubjectErasureRequest(BaseModel):
-    number: str = Field(min_length=1, max_length=SUBJECT_NUMBER_MAX_LENGTH)
+class SubjectNumberRequest(BaseModel):
+    number: str = Field(
+        min_length=1,
+        max_length=SUBJECT_NUMBER_MAX_LENGTH,
+        description=(
+            "The caller's phone number: international format, or national "
+            "format when all your numbers are in one country."
+        ),
+    )
 
 
 class SubjectErasureResponse(BaseModel):

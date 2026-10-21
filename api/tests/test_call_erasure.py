@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock
 
 import httpx
 import pytest
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from sqlalchemy import select
 
 from api.db import db_client
@@ -38,11 +38,12 @@ from api.routes import workflow as workflow_routes
 from api.routes import workflow_recording as recording_routes
 from api.services.auth.depends import get_user
 from api.services.privacy import call_erasure, stored_files
-from api.services.privacy.call_erasure import (
-    parse_subject_number,
-    remove_subject_rows,
+from api.services.privacy.call_erasure import remove_subject_rows
+from api.services.privacy.phone_matching import parse_subject_number
+from api.services.privacy.stored_files import (
+    is_safe_storage_key,
+    is_workflow_recording_key,
 )
-from api.services.privacy.stored_files import is_workflow_recording_key
 
 NOW = datetime.now(UTC)
 SUBJECT = "+353871234567"
@@ -237,13 +238,79 @@ def test_numbers_are_normalized_before_matching():
         "+353 87 123 4567",
         "+353871234567",
         "353871234567",
+        "00353 87 123 4567",
+        "+00353871234567",
+        "0871234567",  # national, in the subject's own country
+        "+0871234567",
         "sip:+353871234567@pbx.example.com",
+        "sip:0871234567@pbx.example.com",
     ):
-        assert call_erasure.context_names_subject({"caller_number": stored}, subject)
-    assert not call_erasure.context_names_subject(
-        {"caller_number": "+353871234568"}, subject
+        assert subject.matches(stored), stored
+    for stored in ("+353871234568", "+44871234567", "", None, "anonymous"):
+        assert not subject.matches(stored), stored
+
+
+def test_national_numbers_are_read_in_the_organizations_countries():
+    irish_org = frozenset({"353"})
+    uk_caller = parse_subject_number("+44 871 234 567", irish_org)
+    # An Irish org's national "0871234567" is Irish, not this UK caller.
+    assert not uk_caller.matches("0871234567")
+    assert uk_caller.matches("0044871234567")
+
+    # Exotel sends Indian numbers in national format.
+    indian_org = frozenset({"91"})
+    caller = parse_subject_number("+91 94412 33609", indian_org)
+    assert caller.matches("09441233609")
+    assert caller.matches("+919441233609")
+    assert not caller.matches("09441233608")
+
+    # National input needs to know the country.
+    assert parse_subject_number("094412 33609", indian_org).canonical == (
+        "+919441233609"
     )
-    assert not call_erasure.context_names_subject({"note": SUBJECT}, subject)
+    with pytest.raises(ValueError, match="international format"):
+        parse_subject_number("0871234567", frozenset())
+    with pytest.raises(ValueError, match="international format"):
+        parse_subject_number("0871234567", frozenset({"353", "44"}))
+
+
+def test_a_sip_uri_and_a_plain_number_match_both_ways():
+    subject = parse_subject_number("sip:+353871234567@pbx.example.com")
+    assert subject.matches("+353 87 123 4567")
+    assert subject.matches("sip:+353871234567@pbx.example.com")
+    assert parse_subject_number("+353871234567").matches(
+        "sips:+353871234567@other.example.com;transport=tls"
+    )
+
+
+def test_only_the_other_party_of_a_call_is_compared():
+    subject = parse_subject_number(SUBJECT)
+    inbound = {"caller_number": SUBJECT, "called_number": "+35315550000"}
+    outbound = {"caller_number": "+35315550000", "called_number": SUBJECT}
+    assert call_erasure.run_names_subject("inbound", inbound, subject)
+    assert call_erasure.run_names_subject("outbound", outbound, subject)
+    assert call_erasure.run_names_subject(
+        "outbound", {"phone_number": SUBJECT}, subject
+    )
+    # The subject on the organization's side: their own line, not them.
+    assert not call_erasure.run_names_subject("inbound", outbound, subject)
+    assert not call_erasure.run_names_subject("outbound", inbound, subject)
+
+
+def test_storage_keys_must_be_plain_relative_paths():
+    assert is_safe_storage_key("knowledge_base/1/u/a.pdf")
+    for key in (
+        "knowledge_base/1/u/../../2/x.pdf",
+        "knowledge_base/1/u/..",
+        "knowledge_base\\1\\u\\a.pdf",
+        "/knowledge_base/1/u/a.pdf",
+        "knowledge_base//1/a.pdf",
+        "knowledge_base/1/u/a\n.pdf",
+        "",
+        None,
+    ):
+        assert not is_safe_storage_key(key), key
+    assert not is_workflow_recording_key(12, "recordings/12/AbCd1234/../../13/x.wav")
 
 
 @pytest.mark.parametrize("raw", ["", "  ", "12"])
@@ -577,9 +644,9 @@ async def test_caller_data_export_finds_every_call_of_the_number(
     f = await make_number_fixture(async_session, storage)
 
     async with await client_for(f.data.user, usage_routes.router) as client:
-        response = await client.get(
-            "/organizations/usage/subject-data",
-            params={"number": "+353 (87) 123-4567"},
+        response = await client.post(
+            "/organizations/usage/subject-data/export",
+            json={"number": "+353 (87) 123-4567"},
         )
 
     assert response.status_code == 200, response.text
@@ -719,8 +786,9 @@ async def test_an_organizations_own_number_is_refused(
     await async_session.commit()
 
     async with await client_for(data.user, usage_routes.router) as client:
-        export = await client.get(
-            "/organizations/usage/subject-data", params={"number": "+353 1 555 0000"}
+        export = await client.post(
+            "/organizations/usage/subject-data/export",
+            json={"number": "+353 1 555 0000"},
         )
         erase = await client.post(
             "/organizations/usage/subject-data/erase", json={"number": "+35315550000"}
@@ -751,8 +819,8 @@ async def test_only_admins_can_answer_caller_requests(monkeypatch, role):
     ) as client:
         responses = [
             await client.delete("/workflow/1/runs/2"),
-            await client.get(
-                "/organizations/usage/subject-data", params={"number": SUBJECT}
+            await client.post(
+                "/organizations/usage/subject-data/export", json={"number": SUBJECT}
             ),
             await client.post(
                 "/organizations/usage/subject-data/erase", json={"number": SUBJECT}
@@ -908,3 +976,322 @@ async def test_a_recording_never_deletes_a_file_outside_its_folder(
     assert response.status_code == 200
     assert call_audio in storage.objects
     assert create.status_code == 400
+
+
+# --- late writes after hangup ------------------------------------------------------
+
+
+async def test_a_call_is_in_progress_until_post_call_processing_is_done(
+    db_session, async_session, storage
+):
+    data = await make_org(async_session)
+    run = await make_run(
+        async_session,
+        storage,
+        data.workflow,
+        context={"caller_number": SUBJECT},
+        age=timedelta(minutes=5),
+    )
+    await async_session.commit()
+    url = f"/workflow/{data.workflow.id}/runs/{run.id}"
+
+    async with await client_for(data.user, workflow_routes.router) as client:
+        # Hung up, but QA, webhooks and uploads may still be writing.
+        assert (await client.delete(url)).status_code == 409
+
+        just_now = datetime.now(UTC)
+        run.extra = {**run.extra, "post_call_done_at": just_now.isoformat()}
+        await async_session.commit()
+        # Done just now: the last in-flight write may still land.
+        assert (await client.delete(url)).status_code == 409
+
+        run.extra = {
+            **run.extra,
+            "post_call_done_at": (just_now - timedelta(minutes=3)).isoformat(),
+        }
+        await async_session.commit()
+        assert (await client.delete(url)).status_code == 200
+
+    await async_session.refresh(run)
+    assert_scrubbed(run)
+    assert "post_call_done_at" in run.extra
+
+
+async def test_erasing_again_removes_what_was_written_after_the_first_erase(
+    db_session, async_session, storage
+):
+    data = await make_org(async_session)
+    run = await make_run(
+        async_session, storage, data.workflow, context={"caller_number": SUBJECT}
+    )
+    await async_session.commit()
+    url = f"/workflow/{data.workflow.id}/runs/{run.id}"
+
+    async with await client_for(data.user, workflow_routes.router) as client:
+        assert (await client.delete(url)).status_code == 200
+        # A late writer stores a transcript, a recording and QA results.
+        await db_client.update_workflow_run(
+            run_id=run.id,
+            logs={"realtime_feedback_events": [{"text": "late"}]},
+            annotations={"qa": "late"},
+            recording_url=f"recordings/{run.id}.wav",
+        )
+        storage.add(f"recordings/{run.id}.wav")
+        assert (await client.delete(url)).status_code == 200
+
+    await async_session.refresh(run)
+    assert run.logs == {}
+    assert run.annotations == {}
+    assert run.recording_url is None
+    assert f"recordings/{run.id}.wav" not in storage.objects
+
+
+async def test_post_call_jobs_mark_the_run_done(monkeypatch):
+    from api.tasks import run_integrations, workflow_completion
+
+    marked = AsyncMock()
+    inner = AsyncMock(side_effect=RuntimeError("integration failed"))
+    monkeypatch.setattr(run_integrations, "mark_post_call_done", marked)
+    monkeypatch.setattr(run_integrations, "_run_integrations_post_workflow_run", inner)
+
+    # Run on its own (a call that never connected): marks even on failure.
+    with pytest.raises(RuntimeError):
+        await run_integrations.run_integrations_post_workflow_run(None, 5)
+    marked.assert_awaited_once_with(5)
+
+    # Inside the completion job, only the job marks, once it is all done.
+    marked.reset_mock()
+    integrations = AsyncMock()
+    monkeypatch.setattr(
+        workflow_completion, "run_integrations_post_workflow_run", integrations
+    )
+    monkeypatch.setattr(workflow_completion, "mark_post_call_done", marked)
+    monkeypatch.setattr(
+        workflow_completion, "report_completed_workflow_run_platform_usage", AsyncMock()
+    )
+    monkeypatch.setattr(
+        workflow_completion, "sync_external_pbx_call_record", AsyncMock()
+    )
+    await workflow_completion.process_workflow_completion(None, 6)
+    integrations.assert_awaited_once_with(None, 6, mark_done=False)
+    marked.assert_awaited_once_with(6)
+
+
+async def test_mark_post_call_done_stamps_the_run(db_session, async_session, storage):
+    from api.tasks.run_integrations import mark_post_call_done
+
+    data = await make_org(async_session)
+    run = await make_run(async_session, storage, data.workflow, context={})
+    await async_session.commit()
+
+    await mark_post_call_done(run.id)
+
+    await async_session.refresh(run)
+    assert run.extra["use_draft"] is False
+    assert datetime.fromisoformat(run.extra["post_call_done_at"]) <= datetime.now(UTC)
+
+
+# --- number formats and sides ------------------------------------------------------
+
+
+async def add_own_number(session, org, address, country):
+    config = TelephonyConfigurationModel(
+        organization_id=org.id,
+        name=f"Line {uuid.uuid4().hex[:6]}",
+        provider="twilio",
+        credentials={},
+    )
+    session.add(config)
+    await session.flush()
+    session.add(
+        TelephonyPhoneNumberModel(
+            organization_id=org.id,
+            telephony_configuration_id=config.id,
+            address=address,
+            address_normalized=address,
+            address_type="pstn",
+            country_code=country,
+        )
+    )
+    await session.flush()
+
+
+async def test_national_and_00_format_numbers_are_found(
+    db_session, async_session, storage
+):
+    data = await make_org(async_session)
+    await add_own_number(async_session, data.org, "+918037091588", "IN")
+    subject_runs = [
+        await make_run(
+            async_session,
+            storage,
+            data.workflow,
+            context={"caller_number": stored, "called_number": "08037091588"},
+        )
+        for stored in ("09441233609", "0091 94412 33609", "+09441233609")
+    ]
+    other = await make_run(
+        async_session,
+        storage,
+        data.workflow,
+        context={"caller_number": "09441233608", "called_number": "08037091588"},
+    )
+    await async_session.commit()
+
+    async with await client_for(data.user, usage_routes.router) as client:
+        export = await client.post(
+            "/organizations/usage/subject-data/export",
+            json={"number": "+91 94412 33609"},
+        )
+        national = await client.post(
+            "/organizations/usage/subject-data/export", json={"number": "09441233609"}
+        )
+        own_national = await client.post(
+            "/organizations/usage/subject-data/erase", json={"number": "080 3709 1588"}
+        )
+
+    assert export.status_code == 200, export.text
+    assert {call["id"] for call in export.json()["calls"]} == {
+        run.id for run in subject_runs
+    }
+    assert national.json()["number"] == "+919441233609"
+    assert {call["id"] for call in national.json()["calls"]} == {
+        run.id for run in subject_runs
+    }
+    assert own_national.status_code == 400
+    await async_session.refresh(other)
+    assert other.initial_context["caller_number"] == "09441233608"
+
+
+async def test_the_organizations_side_of_a_call_never_matches(
+    db_session, async_session, storage
+):
+    """A number the organization dialled out from (or that was called) is its
+    own line on that call, even once the number is released from the account."""
+    data = await make_org(async_session)
+    released = "+35315559999"
+    outbound_from_it = await make_run(
+        async_session,
+        storage,
+        data.workflow,
+        context={"caller_number": released, "called_number": "+353870000009"},
+        call_type="outbound",
+    )
+    inbound_to_it = await make_run(
+        async_session,
+        storage,
+        data.workflow,
+        context={"caller_number": "+353870000009", "called_number": released},
+    )
+    await async_session.commit()
+
+    async with await client_for(data.user, usage_routes.router) as client:
+        response = await client.post(
+            "/organizations/usage/subject-data/erase", json={"number": released}
+        )
+
+    assert response.status_code == 200
+    assert response.json()["calls_erased"] == 0
+    for run in (outbound_from_it, inbound_to_it):
+        await async_session.refresh(run)
+        assert run.initial_context != {}
+
+
+async def test_upload_keys_with_dot_segments_are_refused(
+    db_session, async_session, storage, monkeypatch
+):
+    data = await make_org(async_session)
+    await async_session.commit()
+    org_id = data.org.id
+
+    async with await client_for(data.user, recording_routes.router) as client:
+        response = await client.post(
+            "/workflow-recordings/",
+            json={
+                "recordings": [
+                    {
+                        "recording_id": "MnOp3456",
+                        "transcript": "Hi",
+                        "storage_key": (
+                            f"recordings/{org_id}/MnOp3456/../../{org_id + 1}/a.wav"
+                        ),
+                    }
+                ]
+            },
+        )
+    assert response.status_code == 400
+
+    monkeypatch.setattr(
+        knowledge_base_routes, "_require_document_processing", lambda: None
+    )
+    document_uuid = str(uuid.uuid4())
+    with pytest.raises(HTTPException) as exc:
+        await knowledge_base_routes.process_document(
+            knowledge_base_routes.ProcessDocumentRequestSchema(
+                document_uuid=document_uuid,
+                s3_key=f"knowledge_base/{org_id}/{document_uuid}/../../9/x.pdf",
+                retrieval_mode="full_document",
+            ),
+            user=data.user,
+        )
+    assert exc.value.status_code == 400
+
+
+# --- archived uploads -----------------------------------------------------------------
+
+
+async def test_retention_purge_deletes_archived_documents_and_recordings(
+    db_session, async_session, storage
+):
+    from api.services.retention import purge_expired_data
+
+    data = await make_org(async_session)
+    archived_uuid, active_uuid = str(uuid.uuid4()), str(uuid.uuid4())
+    archived_key = f"knowledge_base/{data.org.id}/{archived_uuid}/old.pdf"
+    active_key = f"knowledge_base/{data.org.id}/{active_uuid}/new.pdf"
+    old_audio = f"recordings/{data.org.id}/Arch1234/old.wav"
+    live_audio = f"recordings/{data.org.id}/Live1234/new.wav"
+    storage.add(archived_key, active_key, old_audio, live_audio)
+    async_session.add_all(
+        [
+            KnowledgeBaseDocumentModel(
+                document_uuid=uuid_,
+                organization_id=data.org.id,
+                filename="doc.pdf",
+                custom_metadata={"s3_key": key},
+                created_by=data.user.id,
+                is_active=active,
+            )
+            for uuid_, key, active in (
+                (archived_uuid, archived_key, False),
+                (active_uuid, active_key, True),
+            )
+        ]
+        + [
+            WorkflowRecordingModel(
+                recording_id=rid,
+                organization_id=data.org.id,
+                transcript="Hello",
+                storage_key=key,
+                storage_backend="minio",
+                created_by=data.user.id,
+                is_active=active,
+            )
+            for rid, key, active in (
+                ("Arch1234", old_audio, False),
+                ("Live1234", live_audio, True),
+            )
+        ]
+    )
+    await async_session.commit()
+
+    result = await purge_expired_data(resolve_storage=lambda _backend: storage)
+
+    assert result.archived_documents_deleted >= 1
+    assert result.archived_recordings_deleted >= 1
+    assert archived_key not in storage.objects and old_audio not in storage.objects
+    assert active_key in storage.objects and live_audio in storage.objects
+    assert await db_client.get_document_for_deletion(archived_uuid, data.org.id) is None
+    assert await db_client.get_document_for_deletion(active_uuid, data.org.id)
+    assert await db_client.get_recording_for_deletion("Arch1234", data.org.id) is None
+    assert await db_client.get_recording_for_deletion("Live1234", data.org.id)

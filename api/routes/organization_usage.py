@@ -14,10 +14,9 @@ from api.constants import DEPLOYMENT_MODE, UI_APP_URL
 from api.db import db_client
 from api.db.models import UserModel
 from api.schemas.privacy import (
-    SUBJECT_NUMBER_MAX_LENGTH,
     SubjectDataResponse,
-    SubjectErasureRequest,
     SubjectErasureResponse,
+    SubjectNumberRequest,
 )
 from api.services.auth.depends import (
     get_user,
@@ -28,11 +27,11 @@ from api.services.auth.permissions import Permission
 from api.services.call_concurrency import call_concurrency
 from api.services.mps_service_key_client import mps_service_key_client
 from api.services.privacy.call_erasure import (
-    InvalidSubjectNumberError,
     OrganizationNumberError,
     erase_subject_data,
     export_subject_data,
 )
+from api.services.privacy.phone_matching import InvalidSubjectNumberError
 from api.services.reports import generate_usage_runs_report_csv
 from api.utils.artifacts import artifact_url
 from api.utils.recording_artifacts import has_recording_track
@@ -644,34 +643,28 @@ async def download_usage_runs_report(
     )
 
 
-@router.get(
-    "/usage/subject-data",
+@router.post(
+    "/usage/subject-data/export",
     response_model=SubjectDataResponse,
     responses={400: {"description": "Not a caller's number"}},
     dependencies=requires(Permission.ORG_MANAGE),
 )
-async def get_caller_data(
-    number: Annotated[
-        str,
-        Query(
-            min_length=1,
-            max_length=SUBJECT_NUMBER_MAX_LENGTH,
-            description="The caller's phone number, in any format.",
-        ),
-    ],
+async def export_caller_data(
+    request: SubjectNumberRequest,
     response: Response,
     user: UserModel = Depends(get_user_with_selected_organization),
 ) -> SubjectDataResponse:
     """Everything stored about calls with one phone number (a caller's access request).
 
-    Matches the number as the caller of inbound calls and the callee of
-    outbound calls, plus campaign contacts still to be called. Recording and
-    transcript links are valid for one hour.
+    Matches the number as the caller of inbound calls and the number called
+    on outbound calls, plus the number's campaign contacts. Recording and
+    transcript links are valid for one hour. The number travels in the body,
+    so it stays out of URLs and access logs.
     """
     response.headers["Cache-Control"] = "no-store"
     try:
         return await export_subject_data(
-            organization_id=user.selected_organization_id, number=number
+            organization_id=user.selected_organization_id, number=request.number
         )
     except (InvalidSubjectNumberError, OrganizationNumberError) as exc:
         raise HTTPException(status_code=400, detail=str(exc))
@@ -684,7 +677,7 @@ async def get_caller_data(
     dependencies=requires(Permission.ORG_MANAGE),
 )
 async def erase_caller_data(
-    request: SubjectErasureRequest,
+    request: SubjectNumberRequest,
     user: UserModel = Depends(get_user_with_selected_organization),
 ) -> SubjectErasureResponse:
     """Erase every call and campaign contact of one phone number (a caller's erasure request).

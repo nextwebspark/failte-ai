@@ -36,7 +36,7 @@ from api.services.posthog_client import capture_event
 from api.services.privacy.stored_files import (
     StoredFileDeleteError,
     delete_knowledge_base_document,
-    knowledge_base_document_prefix,
+    is_knowledge_base_document_key,
 )
 from api.services.storage import storage_fs
 from api.tasks.knowledge_base_processing import (
@@ -202,10 +202,8 @@ async def process_document(
                 ),
             )
 
-    if not request.s3_key.startswith(
-        knowledge_base_document_prefix(
-            user.selected_organization_id, request.document_uuid
-        )
+    if "/" in request.document_uuid or not is_knowledge_base_document_key(
+        user.selected_organization_id, request.document_uuid, request.s3_key
     ):
         # Deleting the document deletes this key, so it must be the file
         # uploaded for this document, not any other object.

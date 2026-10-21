@@ -15,12 +15,12 @@ numbers go. Stored objects are deleted first and a run is only scrubbed once
 all of its objects are gone (the retention purge's rule), so a storage outage
 never leaves a scrubbed row with a recording nobody can find any more.
 
-A number matches a run when any of ``caller_number``, ``called_number`` or
-``phone_number`` in its call context normalizes to it: the caller of an
-inbound call, the callee of an outbound one. Stored values are not
-normalized, so SQL only narrows the rows down and Python compares. The
-organization's own numbers sit on the other side of every call, so a request
-for one of them is refused rather than matching every call.
+A number matches a run when the other party of the call is that number: the
+``caller_number`` of an inbound call, the ``called_number`` or
+``phone_number`` of an outbound one (``phone_matching`` compares numbers in
+any format). Stored values are not normalized, so SQL only narrows the rows
+down and Python compares. A request for one of the organization's own numbers
+is refused.
 """
 
 import csv
@@ -37,11 +37,11 @@ from api.db import db_client
 from api.db.privacy_client import (
     QUEUED_RUN_IN_FLIGHT_STATE,
     ErasableWorkflowRun,
-    NumberPrefilter,
     SubjectQueuedRun,
     SubjectWorkflowRun,
+    counterpart_keys,
 )
-from api.db.retention_client import CALL_CONTEXT_NUMBER_KEYS
+from api.db.retention_client import WORKFLOW_RUN_POST_CALL_DONE_KEY
 from api.schemas.privacy import (
     SUBJECT_NUMBER_MAX_LENGTH,
     SubjectCallData,
@@ -52,6 +52,11 @@ from api.schemas.privacy import (
     SubjectTranscriptLine,
 )
 from api.services.filesystem import BaseFileSystem
+from api.services.privacy.phone_matching import (
+    SubjectNumber,
+    home_calling_codes,
+    parse_subject_number,
+)
 from api.services.retention.purge import (
     StorageResolver,
     campaign_csv_key,
@@ -64,20 +69,22 @@ from api.utils.recording_artifacts import (
     get_recording_storage_backend,
     get_recording_storage_key,
 )
-from api.utils.telephony_address import normalize_telephony_address
 
-# An unfinished run with activity this recent may be a call still going on.
-# A voice call never lasts this long, so an older unfinished run is abandoned.
+# A run is treated as in progress until post-call processing has marked it
+# done (``WORKFLOW_RUN_POST_CALL_DONE_KEY``), so nothing written after hangup
+# (transcript, recordings, QA results, webhook payloads) lands after erasure.
+# Without the marker, a run with activity this recent may still be a live call
+# or still being processed; an older one is abandoned.
 RUN_ACTIVE_WINDOW = timedelta(hours=6)
+# After the marker, a little longer for the last in-flight write (the final
+# variable extraction on an abrupt hangup) to land.
+POST_CALL_GRACE = timedelta(minutes=2)
 # Signed links in an export: the most any link to call content may live.
 SIGNED_URL_EXPIRES_IN = 3600
 # Calls one export returns. Erasure has no limit.
 EXPORT_CALL_LIMIT = 1000
 CANDIDATE_PAGE_SIZE = 500
 RUN_BATCH_SIZE = 100
-# Digits of a PSTN number the SQL prefilter matches on: enough to be selective,
-# few enough to ignore how the country code was written.
-PREFILTER_DIGITS = 7
 
 
 class CallErasureError(Exception):
@@ -96,10 +103,6 @@ class StoredObjectsNotDeletedError(CallErasureError):
     """Some stored object of the run could not be deleted; nothing was scrubbed."""
 
 
-class InvalidSubjectNumberError(ValueError):
-    pass
-
-
 class OrganizationNumberError(ValueError):
     """The number is one of the organization's own numbers."""
 
@@ -107,83 +110,33 @@ class OrganizationNumberError(ValueError):
 # --- numbers -----------------------------------------------------------------
 
 
-@dataclass(frozen=True)
-class SubjectNumber:
-    canonical: str
-    prefilter: NumberPrefilter
+def run_names_subject(
+    call_type: Optional[str], context: Any, subject: SubjectNumber
+) -> bool:
+    """Whether the other party of the call is the subject.
 
-
-def _canonical(value: str) -> Optional[str]:
-    try:
-        return normalize_telephony_address(value).canonical
-    except ValueError:
-        return None
-
-
-def address_forms(value: Any) -> set[str]:
-    """Every canonical address a stored value can stand for.
-
-    A SIP URI also stands for its user part, so ``sip:+35312345678@pbx``
-    matches the number ``+353 1 234 5678``.
+    Only the counterpart's side is compared: the caller of an inbound call,
+    the number called on an outbound one. The other keys hold the
+    organization's own number.
     """
-    if not isinstance(value, str) or not value.strip():
-        return set()
-    forms = set()
-    normalized = None
-    try:
-        normalized = normalize_telephony_address(value)
-        forms.add(normalized.canonical)
-    except ValueError:
-        return forms
-    if normalized.address_type == "sip_uri":
-        user = value.strip().split(":", 1)[1].split("@", 1)
-        if len(user) == 2:
-            user_part = user[0].split(";", 1)[0]
-            user_form = _canonical(user_part)
-            if user_form:
-                forms.add(user_form)
-    return forms
-
-
-def parse_subject_number(raw: str) -> SubjectNumber:
-    if not isinstance(raw, str) or not raw.strip():
-        raise InvalidSubjectNumberError("Enter a phone number.")
-    if len(raw) > SUBJECT_NUMBER_MAX_LENGTH:
-        raise InvalidSubjectNumberError("That number is too long.")
-    normalized = normalize_telephony_address(raw)
-    canonical = normalized.canonical
-    if normalized.address_type == "pstn":
-        digits = canonical.lstrip("+")
-        prefilter = NumberPrefilter(digits=digits[-PREFILTER_DIGITS:])
-    elif normalized.address_type == "sip_uri":
-        rest = canonical.split(":", 1)[1]
-        user, _, host = rest.partition("@")
-        prefilter = NumberPrefilter(fragment=user if host else rest)
-    else:
-        prefilter = NumberPrefilter(fragment=canonical)
-    if len((prefilter.digits or prefilter.fragment or "").strip()) < 3:
-        raise InvalidSubjectNumberError("That number is too short to search for.")
-    return SubjectNumber(canonical=canonical, prefilter=prefilter)
-
-
-def context_names_subject(context: Any, subject: SubjectNumber) -> bool:
     if not isinstance(context, dict):
         return False
-    return any(
-        subject.canonical in address_forms(context.get(key))
-        for key in CALL_CONTEXT_NUMBER_KEYS
-    )
+    return any(subject.matches(context.get(key)) for key in counterpart_keys(call_type))
 
 
 async def resolve_subject_number(organization_id: int, raw: str) -> SubjectNumber:
-    """The number a request is about, refusing the organization's own numbers."""
-    subject = parse_subject_number(raw)
-    for address, address_normalized in await db_client.get_organization_phone_addresses(
-        organization_id
-    ):
-        if subject.canonical in address_forms(address) | address_forms(
-            address_normalized
-        ):
+    """The number a request is about, refusing the organization's own numbers.
+
+    National-format input and stored numbers are read in the countries of the
+    organization's own numbers.
+    """
+    own = await db_client.get_organization_phone_addresses(organization_id)
+    home = home_calling_codes(
+        (normalized or address, country) for address, normalized, country in own
+    )
+    subject = parse_subject_number(raw, home, max_length=SUBJECT_NUMBER_MAX_LENGTH)
+    for address, normalized, _country in own:
+        if subject.matches(address) or subject.matches(normalized):
             raise OrganizationNumberError(
                 "That is one of your organization's own numbers. Enter the "
                 "caller's number."
@@ -205,8 +158,8 @@ async def find_subject_run_ids(
         )
         run_ids.extend(
             run_id
-            for run_id, context in candidates
-            if context_names_subject(context, subject)
+            for run_id, call_type, context in candidates
+            if run_names_subject(call_type, context, subject)
         )
         if len(candidates) < CANDIDATE_PAGE_SIZE:
             return run_ids
@@ -228,8 +181,7 @@ async def find_subject_queued_runs(
         rows.extend(
             row
             for row in candidates
-            if subject.canonical
-            in address_forms(row.context_variables.get("phone_number"))
+            if subject.matches(row.context_variables.get("phone_number"))
         )
         if len(candidates) < CANDIDATE_PAGE_SIZE:
             return rows
@@ -239,11 +191,27 @@ async def find_subject_queued_runs(
 # --- one call ----------------------------------------------------------------
 
 
+def _post_call_done_at(extra: dict[str, Any]) -> Optional[datetime]:
+    value = extra.get(WORKFLOW_RUN_POST_CALL_DONE_KEY)
+    if not isinstance(value, str):
+        return None
+    try:
+        moment = datetime.fromisoformat(value)
+    except ValueError:
+        return None
+    return moment if moment.tzinfo else moment.replace(tzinfo=UTC)
+
+
 def is_run_in_progress(run: ErasableWorkflowRun, now: datetime) -> bool:
-    """Whether the run may still be a live call or an open chat."""
-    if run.is_completed:
+    """Whether the call may still be live, or post-call work still writing to it."""
+    done_at = _post_call_done_at(run.objects.extra)
+    if done_at is not None and done_at <= now - POST_CALL_GRACE:
         return False
-    activity = [moment for moment in (run.created_at, run.chat_updated_at) if moment]
+    activity = [
+        moment
+        for moment in (run.created_at, run.chat_updated_at, done_at)
+        if moment is not None
+    ]
     return bool(activity) and max(activity) >= now - RUN_ACTIVE_WINDOW
 
 
@@ -267,10 +235,13 @@ async def _erase_runs(
         objects += deleted
         erased.append(run.id)
     if erased:
-        # Runs purged already are skipped by the scrub, but their side data
-        # is cleared again, so a retry after a partial failure completes.
+        # Runs erased before are scrubbed again, with their side data, so
+        # anything written after an earlier pass goes too.
         await db_client.scrub_workflow_runs_call_content(
-            organization_id=organization_id, run_ids=erased, purged_at=now
+            organization_id=organization_id,
+            run_ids=erased,
+            purged_at=now,
+            include_purged=True,
         )
         await db_client.scrub_workflow_run_side_data(
             organization_id=organization_id, run_ids=erased
@@ -474,9 +445,7 @@ def remove_subject_rows(content: bytes, subject: SubjectNumber) -> tuple[bytes, 
 
     removed = 0
     for index, row in enumerate(rows[1:], start=1):
-        if len(row) > phone_index and subject.canonical in address_forms(
-            row[phone_index]
-        ):
+        if len(row) > phone_index and subject.matches(row[phone_index]):
             rows[index] = [""] * len(row)
             removed += 1
     if not removed:

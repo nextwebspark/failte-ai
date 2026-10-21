@@ -19,10 +19,12 @@ from api.db.models import (
     CampaignModel,
     EmbedSessionModel,
     EmbedTokenModel,
+    KnowledgeBaseDocumentModel,
     OrganizationModel,
     QueuedRunModel,
     WebhookDeliveryModel,
     WorkflowModel,
+    WorkflowRecordingModel,
     WorkflowRunModel,
     WorkflowRunTextSessionModel,
 )
@@ -37,7 +39,13 @@ CAMPAIGN_PURGED_AT_KEY = "retention_purged_at"
 # What survives a purge. Everything else in these JSON columns is dropped.
 # ``extra``: run-configuration flags, no personal data (recording metadata is
 # dropped with the recordings themselves).
-WORKFLOW_RUN_EXTRA_KEPT_KEYS = frozenset({"use_draft", "campaign_traffic_split"})
+# Marker stamped into ``workflow_runs.extra`` once post-call processing (QA,
+# integrations, webhooks, billing) has finished writing to a run.
+WORKFLOW_RUN_POST_CALL_DONE_KEY = "post_call_done_at"
+
+WORKFLOW_RUN_EXTRA_KEPT_KEYS = frozenset(
+    {"use_draft", "campaign_traffic_split", WORKFLOW_RUN_POST_CALL_DONE_KEY}
+)
 # ``gathered_context``: the call outcome labels that usage reports aggregate.
 WORKFLOW_RUN_GATHERED_CONTEXT_KEPT_KEYS = frozenset(
     {"call_status", "call_disposition", "mapped_call_disposition"}
@@ -252,6 +260,7 @@ class RetentionClient(BaseDBClient):
         organization_id: int,
         run_ids: list[int],
         purged_at: datetime,
+        include_purged: bool = False,
     ) -> int:
         """Clear the call content of these runs and stamp the purge marker.
 
@@ -261,7 +270,9 @@ class RetentionClient(BaseDBClient):
         out of the run name (``scrub_run_name``). Keeps status,
         timestamps, usage and cost, plus the keys in
         ``WORKFLOW_RUN_EXTRA_KEPT_KEYS`` / ``WORKFLOW_RUN_GATHERED_CONTEXT_KEPT_KEYS``.
-        Only runs that belong to ``organization_id`` are touched.
+        Only runs that belong to ``organization_id`` are touched. Runs already
+        purged are skipped unless ``include_purged``: an explicit erasure
+        scrubs again whatever a late writer stored after an earlier pass.
 
         Returns the number of runs scrubbed.
         """
@@ -274,7 +285,7 @@ class RetentionClient(BaseDBClient):
                 .where(
                     WorkflowModel.organization_id == organization_id,
                     WorkflowRunModel.id.in_(run_ids),
-                    _workflow_run_not_purged(),
+                    *(() if include_purged else (_workflow_run_not_purged(),)),
                 )
                 .with_for_update(of=WorkflowRunModel)
             )
@@ -500,6 +511,45 @@ class RetentionClient(BaseDBClient):
     ) -> int:
         """How many rows ``scrub_finished_queued_runs_context`` would clear."""
         return await self._count(_expired_queued_runs(organization_id, inactive_before))
+
+    # --- archived uploads ------------------------------------------------------
+
+    async def get_archived_knowledge_base_documents(
+        self, *, organization_id: int, after_id: int = 0, limit: int = 100
+    ) -> list[tuple[int, str]]:
+        """``(id, document_uuid)`` of documents deleted before deletes were permanent."""
+        async with self.async_session() as session:
+            result = await session.execute(
+                select(
+                    KnowledgeBaseDocumentModel.id,
+                    KnowledgeBaseDocumentModel.document_uuid,
+                )
+                .where(
+                    KnowledgeBaseDocumentModel.organization_id == organization_id,
+                    KnowledgeBaseDocumentModel.is_active.is_(False),
+                    KnowledgeBaseDocumentModel.id > after_id,
+                )
+                .order_by(KnowledgeBaseDocumentModel.id)
+                .limit(limit)
+            )
+            return [(row.id, row.document_uuid) for row in result.all()]
+
+    async def get_archived_workflow_recordings(
+        self, *, organization_id: int, after_id: int = 0, limit: int = 100
+    ) -> list[tuple[int, str]]:
+        """``(id, recording_id)`` of prompt recordings deleted before deletes were permanent."""
+        async with self.async_session() as session:
+            result = await session.execute(
+                select(WorkflowRecordingModel.id, WorkflowRecordingModel.recording_id)
+                .where(
+                    WorkflowRecordingModel.organization_id == organization_id,
+                    WorkflowRecordingModel.is_active.is_(False),
+                    WorkflowRecordingModel.id > after_id,
+                )
+                .order_by(WorkflowRecordingModel.id)
+                .limit(limit)
+            )
+            return [(row.id, row.recording_id) for row in result.all()]
 
     # --- embed sessions & webhook deliveries --------------------------------
 

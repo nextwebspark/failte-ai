@@ -7,7 +7,10 @@ from api.services.telephony.external_pbx_writeback import (
 from api.services.workflow_run_billing import (
     report_completed_workflow_run_platform_usage,
 )
-from api.tasks.run_integrations import run_integrations_post_workflow_run
+from api.tasks.run_integrations import (
+    mark_post_call_done,
+    run_integrations_post_workflow_run,
+)
 
 
 async def process_workflow_completion(
@@ -29,9 +32,17 @@ async def process_workflow_completion(
 
     logger.info(f"Processing workflow completion for run {workflow_run_id}")
 
+    try:
+        await _process_workflow_completion(_ctx, workflow_run_id)
+    finally:
+        # Erasure waits for this marker: nothing below writes to the run after it.
+        await mark_post_call_done(workflow_run_id)
+
+
+async def _process_workflow_completion(_ctx, workflow_run_id: int) -> None:
     # Run integrations including QA analysis (after uploads are complete)
     try:
-        await run_integrations_post_workflow_run(_ctx, workflow_run_id)
+        await run_integrations_post_workflow_run(_ctx, workflow_run_id, mark_done=False)
     except Exception as e:
         logger.error(f"Error running integrations for workflow {workflow_run_id}: {e}")
 

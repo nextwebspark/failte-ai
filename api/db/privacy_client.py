@@ -17,6 +17,7 @@ from typing import Any, Optional
 
 from sqlalchemy import (
     Text,
+    and_,
     case,
     cast,
     delete,
@@ -42,12 +43,12 @@ from api.db.models import (
     WorkflowRunTextSessionModel,
 )
 from api.db.retention_client import (
-    CALL_CONTEXT_NUMBER_KEYS,
     CAMPAIGN_PURGED_AT_KEY,
     WORKFLOW_RUN_PURGED_AT_KEY,
     ExpiredCampaign,
     ExpiredWorkflowRun,
 )
+from api.enums import CallType
 
 # A queued run being dialled right now; its call is still to come.
 QUEUED_RUN_IN_FLIGHT_STATE = "processing"
@@ -138,14 +139,36 @@ def _matches_prefilter(column, prefilter: NumberPrefilter):
     raise ValueError("A number prefilter needs digits or a fragment")
 
 
+# The call-context keys that hold the other party's number, by direction.
+# The rest hold the organization's own number (the line called, or the
+# caller ID used), so they never identify the data subject.
+INBOUND_COUNTERPART_KEYS = ("caller_number",)
+OUTBOUND_COUNTERPART_KEYS = ("called_number", "phone_number")
+
+
+def counterpart_keys(call_type: Optional[str]) -> tuple[str, ...]:
+    return (
+        INBOUND_COUNTERPART_KEYS
+        if call_type == CallType.INBOUND.value
+        else OUTBOUND_COUNTERPART_KEYS
+    )
+
+
 def _run_number_filter(prefilter: NumberPrefilter):
-    return or_(
-        *(
-            _matches_prefilter(
-                WorkflowRunModel.initial_context[key].as_string(), prefilter
+    def any_key(keys):
+        return or_(
+            *(
+                _matches_prefilter(
+                    WorkflowRunModel.initial_context[key].as_string(), prefilter
+                )
+                for key in keys
             )
-            for key in CALL_CONTEXT_NUMBER_KEYS
         )
+
+    inbound = WorkflowRunModel.call_type == CallType.INBOUND.value
+    return or_(
+        and_(inbound, any_key(INBOUND_COUNTERPART_KEYS)),
+        and_(~inbound, any_key(OUTBOUND_COUNTERPART_KEYS)),
     )
 
 
@@ -221,15 +244,22 @@ class PrivacyClient(BaseDBClient):
         prefilter: NumberPrefilter,
         after_id: int = 0,
         limit: int = 500,
-    ) -> list[tuple[int, dict[str, Any]]]:
-        """``(run id, initial_context)`` of runs whose call context may hold the number.
+    ) -> list[tuple[int, str, dict[str, Any]]]:
+        """``(id, call_type, initial_context)`` of runs that may be with the number.
+
+        Only the other party's side of the call context is searched (see
+        ``counterpart_keys``).
 
         Keyset-paged by id. Runs whose content is already gone are skipped:
         their call context no longer names anyone.
         """
         async with self.async_session() as session:
             result = await session.execute(
-                select(WorkflowRunModel.id, WorkflowRunModel.initial_context)
+                select(
+                    WorkflowRunModel.id,
+                    WorkflowRunModel.call_type,
+                    WorkflowRunModel.initial_context,
+                )
                 .join(WorkflowModel, WorkflowRunModel.workflow_id == WorkflowModel.id)
                 .where(
                     WorkflowModel.organization_id == organization_id,
@@ -239,7 +269,10 @@ class PrivacyClient(BaseDBClient):
                 .order_by(WorkflowRunModel.id)
                 .limit(limit)
             )
-            return [(row.id, _as_dict(row.initial_context)) for row in result.all()]
+            return [
+                (row.id, row.call_type, _as_dict(row.initial_context))
+                for row in result.all()
+            ]
 
     async def get_subject_workflow_runs(
         self, *, organization_id: int, run_ids: list[int]
@@ -369,16 +402,20 @@ class PrivacyClient(BaseDBClient):
 
     async def get_organization_phone_addresses(
         self, organization_id: int
-    ) -> list[tuple[str, str]]:
-        """``(address, address_normalized)`` of every number the organization owns."""
+    ) -> list[tuple[str, str, Optional[str]]]:
+        """``(address, address_normalized, country_code)`` of the organization's numbers."""
         async with self.async_session() as session:
             result = await session.execute(
                 select(
                     TelephonyPhoneNumberModel.address,
                     TelephonyPhoneNumberModel.address_normalized,
+                    TelephonyPhoneNumberModel.country_code,
                 ).where(TelephonyPhoneNumberModel.organization_id == organization_id)
             )
-            return [(row.address, row.address_normalized) for row in result.all()]
+            return [
+                (row.address, row.address_normalized, row.country_code)
+                for row in result.all()
+            ]
 
     # --- campaign contact rows ----------------------------------------------
 
