@@ -406,17 +406,30 @@ def _parse_plain_text(text: str, fallback_title: str) -> ParsedDocument:
 # CSV and JSON --------------------------------------------------------------------
 
 
+# Above the 5 MB upload limit, so no field of an accepted file is too large.
+_MAX_CSV_FIELD_CHARS = 8 * 1024 * 1024
+
+
 def _parse_csv(text: str, fallback_title: str) -> ParsedDocument:
     sample = text[:4096]
     try:
         dialect = csv.Sniffer().sniff(sample, delimiters=",;\t|")
     except csv.Error:
         dialect = csv.excel
-    rows = [
-        [cell.strip() for cell in row]
-        for row in csv.reader(io.StringIO(text), dialect)
-        if any(cell.strip() for cell in row)
-    ]
+    # The default 128 KB field limit is below the 5 MB file limit; one field
+    # may legitimately be the whole file. (The limit is process-wide.)
+    if csv.field_size_limit() < _MAX_CSV_FIELD_CHARS:
+        csv.field_size_limit(_MAX_CSV_FIELD_CHARS)
+    try:
+        rows = [
+            [cell.strip() for cell in row]
+            for row in csv.reader(io.StringIO(text), dialect)
+            if any(cell.strip() for cell in row)
+        ]
+    except csv.Error as exc:
+        raise DocumentParseError(
+            "This CSV file couldn't be read. Check that it is valid CSV."
+        ) from exc
     if not rows:
         raise DocumentParseError(NO_TEXT_MESSAGE)
 
@@ -461,7 +474,20 @@ def _parse_json(text: str, fallback_title: str) -> ParsedDocument:
 
 # HTML ----------------------------------------------------------------------------
 
-_SKIPPED_HTML = {"script", "style", "noscript", "template", "svg", "head"}
+# Elements whose content is never document text. <head> is not skipped as a
+# whole: browsers (and pages that omit </head>) treat body text after it as
+# body text, and its <script>/<style> are skipped by name anyway.
+_SKIPPED_HTML = {
+    "script",
+    "style",
+    "noscript",
+    "template",
+    "svg",
+    "math",
+    "iframe",
+    "object",
+    "canvas",
+}
 _BLOCK_HTML = {
     "p",
     "div",
@@ -499,6 +525,7 @@ class _HTMLTextExtractor(HTMLParser):
         self.title = ""
         self._skip_depth = 0
         self._in_title = False
+        self._title_done = False
         self._heading_level: int | None = None
         self._heading_text: list[str] = []
         self._text: list[str] = []
@@ -525,12 +552,18 @@ class _HTMLTextExtractor(HTMLParser):
     # Parser callbacks ----------------------------------------------------------
 
     def handle_starttag(self, tag, attrs):
+        if tag == "body":
+            # Whatever was left open before the body (an unclosed <noscript>
+            # in <head>, say) must not hide the body.
+            self._skip_depth = 0
+            self._in_title = False
+            return
         if tag in _SKIPPED_HTML:
-            # <title> lives in <head>; read it before skipping the rest.
             self._skip_depth += 1
             return
         if tag == "title":
-            self._in_title = True
+            # Only the document's first <title>; an <svg> has its own.
+            self._in_title = not self._skip_depth and not self._title_done
             return
         if self._skip_depth:
             return
@@ -556,6 +589,8 @@ class _HTMLTextExtractor(HTMLParser):
 
     def handle_endtag(self, tag):
         if tag == "title":
+            if self._in_title:
+                self._title_done = True
             self._in_title = False
             return
         if tag in _SKIPPED_HTML:

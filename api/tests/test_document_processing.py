@@ -139,6 +139,45 @@ def test_html_drops_scripts_and_styles(tmp_path):
     assert parsed.sections[2].text == "Free\nwithin 30 days."
 
 
+def test_html_without_closing_head_keeps_the_body(tmp_path):
+    html = (
+        "<html><head><title>Opening hours</title><meta charset='utf-8'>"
+        "<script>track()</script><h1>Hours</h1><p>Open nine to five.</p>"
+    )
+    path = _write(tmp_path, "hours.html", html)
+
+    parsed = parse_document(path, "hours.html")
+
+    assert parsed.title == "Opening hours"
+    assert parsed.sections[0].headings == ("Hours",)
+    assert parsed.sections[0].text == "Open nine to five."
+    assert "track" not in parsed.full_text
+
+
+def test_html_unclosed_noscript_does_not_hide_the_body(tmp_path):
+    path = _write(
+        tmp_path, "page.html", "<head><noscript>Enable JS<body><p>Welcome.</p>"
+    )
+
+    parsed = parse_document(path, "page.html")
+
+    assert parsed.full_text == "Welcome."
+
+
+def test_html_svg_titles_are_not_the_document_title(tmp_path):
+    html = (
+        "<body><svg><title>Cart icon</title><path d='M0'/></svg>"
+        "<title>Shop help</title><p>Returns are free.</p>"
+        "<svg><title>Another icon</title></svg></body>"
+    )
+    path = _write(tmp_path, "help.html", html)
+
+    parsed = parse_document(path, "help.html")
+
+    assert parsed.title == "Shop help"
+    assert parsed.full_text == "Returns are free."
+
+
 def test_csv_rows_name_their_columns(tmp_path):
     path = _write(tmp_path, "prices.csv", "item;price\ncoffee;3.00\ntea;2.50\n")
 
@@ -149,6 +188,28 @@ def test_csv_rows_name_their_columns(tmp_path):
         "item: tea | price: 2.50",
     ]
     assert parsed.full_text.splitlines()[0] == "| item | price |"
+
+
+def test_csv_with_a_huge_field_is_read(tmp_path):
+    big = "x" * 300_000  # above the csv module's default 128 KB field limit
+    path = _write(tmp_path, "notes.csv", f'name,notes\nsoup,"{big}"\n')
+
+    parsed = parse_document(path, "notes.csv")
+
+    assert parsed.sections[0].blocks[0].text == f"name: soup | notes: {big}"
+
+
+def test_malformed_csv_is_a_clear_error(tmp_path, monkeypatch):
+    import csv
+
+    def broken_reader(*_args, **_kwargs):
+        raise csv.Error("line contains NUL")
+
+    monkeypatch.setattr(csv, "reader", broken_reader)
+    path = _write(tmp_path, "bad.csv", "a,b\n1,2\n")
+
+    with pytest.raises(DocumentParseError, match="This CSV file couldn't be read"):
+        parse_document(path, "bad.csv")
 
 
 def test_plain_text_json_and_legacy_encodings(tmp_path):
