@@ -32,6 +32,11 @@ from api.services.knowledge_base_content import (
     read_document_content,
     update_document_content,
 )
+from api.services.knowledge_base_keys import (
+    is_document_storage_key,
+    is_safe_document_filename,
+    knowledge_base_document_prefix,
+)
 from api.services.posthog_client import capture_event
 from api.services.storage import storage_fs
 
@@ -96,12 +101,20 @@ async def get_upload_url(
     Access Control:
     * All authenticated users can upload documents scoped to their organization.
     """
+    if not is_safe_document_filename(request.filename):
+        raise HTTPException(
+            status_code=400, detail="The file name must not contain folders"
+        )
+
     try:
         # Generate unique document UUID for S3 organization
         document_uuid = str(uuid.uuid4())
 
         # Generate S3 key: knowledge_base/{org_id}/{document_uuid}/{filename}
-        s3_key = f"knowledge_base/{user.selected_organization_id}/{document_uuid}/{request.filename}"
+        s3_key = (
+            knowledge_base_document_prefix(user.selected_organization_id, document_uuid)
+            + request.filename
+        )
 
         # Generate presigned PUT URL (valid for 30 minutes)
         upload_url = await storage_fs.aget_presigned_put_url(
@@ -183,6 +196,15 @@ async def process_document(
                     "Upload the document in full-document mode."
                 ),
             )
+
+    if not is_document_storage_key(
+        request.s3_key, user.selected_organization_id, request.document_uuid
+    ):
+        # The task reads this key and the editor reads and overwrites it, so it
+        # must be the file uploaded for this document, not any other object.
+        raise HTTPException(
+            status_code=400, detail="The file key does not belong to this document"
+        )
 
     try:
         # Extract filename from s3_key

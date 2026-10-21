@@ -387,12 +387,15 @@ async def test_chunked_documents_are_accepted_on_platform_models(make_client):
         ) as enqueue,
         patch("api.routes.knowledge_base.capture_event"),
     ):
-        async with make_client(PLATFORM) as (client, _workflow):
+        async with make_client(PLATFORM) as (client, workflow):
             response = await client.post(
                 "/api/v1/knowledge-base/process-document",
                 json={
                     "document_uuid": "00000000-0000-0000-0000-000000000001",
-                    "s3_key": "knowledge_base/doc.pdf",
+                    "s3_key": (
+                        f"knowledge_base/{workflow.organization_id}/"
+                        "00000000-0000-0000-0000-000000000001/doc.pdf"
+                    ),
                     "retrieval_mode": "chunked",
                 },
             )

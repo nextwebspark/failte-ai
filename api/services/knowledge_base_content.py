@@ -14,6 +14,7 @@ import aiofiles
 from api.db import db_client
 from api.db.models import KnowledgeBaseDocumentModel
 from api.services.documents import DEFAULT_TARGET_TOKENS
+from api.services.knowledge_base_keys import is_document_storage_key
 from api.services.storage import storage_fs
 from api.tasks.arq import enqueue_job
 from api.tasks.function_names import FunctionNames
@@ -47,7 +48,10 @@ def _editable_storage_key(document: KnowledgeBaseDocumentModel) -> str:
     if not is_editable_document(document.filename):
         raise DocumentNotEditableError("Only .txt and .md documents can be edited.")
     s3_key = (document.custom_metadata or {}).get("s3_key")
-    if not s3_key:
+    if not s3_key or not is_document_storage_key(
+        s3_key, document.organization_id, document.document_uuid
+    ):
+        # A key outside the document's own folder is never read or written.
         raise DocumentNotEditableError(
             "The original file for this document is missing."
         )

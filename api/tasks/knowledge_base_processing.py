@@ -20,6 +20,7 @@ from api.services.documents import (
     process_document,
 )
 from api.services.gen_ai import EmbeddingSettings, build_embedding_service
+from api.services.knowledge_base_keys import is_organization_storage_key
 from api.services.storage import storage_fs
 
 MAX_FILE_SIZE_BYTES = 5 * 1024 * 1024
@@ -83,6 +84,18 @@ async def process_knowledge_base_document(
     )
 
     temp_file_path = None
+
+    if not is_organization_storage_key(s3_key, organization_id):
+        # Defence in depth: the route only queues keys in the document's own
+        # folder; never download anything else.
+        logger.error(
+            f"Document {document_id}: refusing storage key outside organization "
+            f"{organization_id}'s knowledge base"
+        )
+        await db_client.update_document_status(
+            document_id, "failed", error_message="The document's file is missing."
+        )
+        return
 
     try:
         await db_client.update_document_status(document_id, "processing")
