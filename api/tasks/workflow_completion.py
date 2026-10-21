@@ -1,3 +1,5 @@
+import asyncio
+
 from loguru import logger
 from pipecat.utils.run_context import set_current_run_id
 
@@ -7,7 +9,10 @@ from api.services.telephony.external_pbx_writeback import (
 from api.services.workflow_run_billing import (
     report_completed_workflow_run_platform_usage,
 )
-from api.tasks.run_integrations import run_integrations_post_workflow_run
+from api.tasks.run_integrations import (
+    mark_post_call_done,
+    run_integrations_post_workflow_run,
+)
 
 
 async def process_workflow_completion(
@@ -29,9 +34,25 @@ async def process_workflow_completion(
 
     logger.info(f"Processing workflow completion for run {workflow_run_id}")
 
+    # Erasure waits for this marker: nothing here writes to the run after it.
+    # A cancelled job is not marked done: after a worker shutdown it is re-run
+    # and writes again; after an ARQ job timeout it is not retried, and
+    # erasure then waits out the 6-hour activity window instead (the safe
+    # direction).
+    try:
+        await _process_workflow_completion(_ctx, workflow_run_id)
+    except asyncio.CancelledError:
+        raise
+    except Exception:
+        await mark_post_call_done(workflow_run_id)
+        raise
+    await mark_post_call_done(workflow_run_id)
+
+
+async def _process_workflow_completion(_ctx, workflow_run_id: int) -> None:
     # Run integrations including QA analysis (after uploads are complete)
     try:
-        await run_integrations_post_workflow_run(_ctx, workflow_run_id)
+        await run_integrations_post_workflow_run(_ctx, workflow_run_id, mark_done=False)
     except Exception as e:
         logger.error(f"Error running integrations for workflow {workflow_run_id}: {e}")
 

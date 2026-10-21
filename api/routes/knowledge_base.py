@@ -33,6 +33,11 @@ from api.services.knowledge_base_content import (
     update_document_content,
 )
 from api.services.posthog_client import capture_event
+from api.services.privacy.stored_files import (
+    StoredFileDeleteError,
+    delete_knowledge_base_document,
+    is_knowledge_base_document_key,
+)
 from api.services.storage import storage_fs
 from api.tasks.knowledge_base_processing import (
     DOCUMENT_PROCESSING_UNAVAILABLE_MESSAGE,
@@ -116,6 +121,15 @@ async def get_upload_url(
 
         # Generate S3 key: knowledge_base/{org_id}/{document_uuid}/{filename}
         s3_key = f"knowledge_base/{user.selected_organization_id}/{document_uuid}/{request.filename}"
+        if "/" in request.filename or not is_knowledge_base_document_key(
+            user.selected_organization_id, document_uuid, s3_key
+        ):
+            # The key must stay inside the document's folder: deleting the
+            # document deletes that folder and nothing else.
+            raise HTTPException(
+                status_code=400,
+                detail="The file name must not contain folders or '..'.",
+            )
 
         # Generate presigned PUT URL (valid for 30 minutes)
         upload_url = await storage_fs.aget_presigned_put_url(
@@ -141,6 +155,8 @@ async def get_upload_url(
             s3_key=s3_key,
         )
 
+    except HTTPException:
+        raise
     except Exception as exc:
         logger.error(f"Error generating upload URL: {exc}")
         raise HTTPException(
@@ -196,6 +212,15 @@ async def process_document(
                     "Upload the document in full-document mode."
                 ),
             )
+
+    if "/" in request.document_uuid or not is_knowledge_base_document_key(
+        user.selected_organization_id, request.document_uuid, request.s3_key
+    ):
+        # Deleting the document deletes this key, so it must be the file
+        # uploaded for this document, not any other object.
+        raise HTTPException(
+            status_code=400, detail="The file key does not belong to this document"
+        )
 
     try:
         # Extract filename from s3_key
@@ -468,16 +493,16 @@ async def delete_document(
     document_uuid: str,
     user=Depends(get_user),
 ):
-    """Soft delete a document and its chunks.
+    """Permanently delete a document, its chunks and its stored file.
 
     Access Control:
     * Users can only delete documents from their organization.
     """
 
     try:
-        success = await db_client.delete_document(
-            document_uuid=document_uuid,
+        success = await delete_knowledge_base_document(
             organization_id=user.selected_organization_id,
+            document_uuid=document_uuid,
         )
 
         if not success:
@@ -492,6 +517,12 @@ async def delete_document(
 
     except HTTPException:
         raise
+    except StoredFileDeleteError as exc:
+        logger.error(f"Could not delete the stored file of document: {exc}")
+        raise HTTPException(
+            status_code=502,
+            detail="The document's file could not be deleted. Try again shortly.",
+        ) from exc
     except Exception as exc:
         logger.error(f"Error deleting document: {exc}")
         raise HTTPException(

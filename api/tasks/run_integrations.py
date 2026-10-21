@@ -1,5 +1,6 @@
 """Execute integrations (QA analysis, webhooks) after workflow run completion."""
 
+import asyncio
 import random
 from datetime import UTC, datetime
 from typing import Any, Dict, Optional
@@ -12,6 +13,7 @@ from pydantic import ValidationError
 from api.constants import BACKEND_API_ENDPOINT, DEFAULT_WEBHOOK_DELIVERY_CONFIG
 from api.db import db_client
 from api.db.models import WorkflowRunModel
+from api.db.retention_client import WORKFLOW_RUN_POST_CALL_DONE_KEY
 from api.enums import OrganizationConfigurationKey
 from api.errors.failure import (
     DograhFailure,
@@ -171,7 +173,51 @@ async def _update_usage_info_with_qa_tokens(
         logger.error(f"Failed to update usage_info with QA tokens: {e}")
 
 
-async def run_integrations_post_workflow_run(_ctx, workflow_run_id: int):
+async def mark_post_call_done(workflow_run_id: int) -> None:
+    """Record that post-call processing has stopped writing to the run.
+
+    Erasure treats a finished call as still in progress until this marker is
+    set, so QA results, transcripts and webhook payloads written after hangup
+    cannot land after its content was erased.
+    """
+    try:
+        await db_client.update_workflow_run(
+            run_id=workflow_run_id,
+            extra={WORKFLOW_RUN_POST_CALL_DONE_KEY: datetime.now(UTC).isoformat()},
+        )
+    except Exception as exc:
+        logger.warning(
+            f"Could not mark post-call processing done for run {workflow_run_id}: "
+            f"{type(exc).__name__}"
+        )
+
+
+async def run_integrations_post_workflow_run(
+    _ctx, workflow_run_id: int, mark_done: bool = True
+):
+    """Run integrations after a workflow run completes.
+
+    When run as its own job (a call that never connected, a failed run) it
+    also marks post-call processing done; ``process_workflow_completion``
+    passes ``mark_done=False`` and marks the run once its later steps finish.
+    """
+    try:
+        await _run_integrations_post_workflow_run(_ctx, workflow_run_id)
+    except asyncio.CancelledError:
+        # Cancelled: a worker shutdown (the job is re-run and writes again)
+        # or an ARQ job timeout (not retried). Either way the run is left
+        # unmarked, so erasure waits out the 6-hour activity window instead:
+        # the safe direction.
+        raise
+    except Exception:
+        if mark_done:
+            await mark_post_call_done(workflow_run_id)
+        raise
+    if mark_done:
+        await mark_post_call_done(workflow_run_id)
+
+
+async def _run_integrations_post_workflow_run(_ctx, workflow_run_id: int):
     """
     Run integrations after a workflow run completes.
 

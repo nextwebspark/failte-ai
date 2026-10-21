@@ -12,6 +12,9 @@ What the privacy policy promises, and what this enforces:
   after ``VISITOR_DATA_RETENTION``.
 * Outgoing webhook payloads and errors are cleared after
   ``WEBHOOK_PAYLOAD_RETENTION``.
+* Knowledge base documents and prompt recordings that were deleted while
+  deletes were still soft (archived rows) lose their stored file, then their
+  row, like a delete does now.
 
 Rows are scrubbed, not deleted, so billing and usage history stays intact.
 Logs carry counts and ids only, never the content being deleted. A dry run
@@ -58,9 +61,12 @@ class RetentionPurgeResult:
     queued_runs_cleared: int = 0
     embed_sessions_cleared: int = 0
     webhook_deliveries_cleared: int = 0
+    archived_documents_deleted: int = 0
+    archived_recordings_deleted: int = 0
+    archived_files_deferred: int = 0
 
 
-def _default_storage_resolver() -> StorageResolver:
+def default_storage_resolver() -> StorageResolver:
     """Storage per backend code, reusing the process-wide instance when it fits."""
     from api.services.storage import (
         get_current_storage_backend,
@@ -78,7 +84,7 @@ def _default_storage_resolver() -> StorageResolver:
     return resolve
 
 
-def _current_backend() -> str:
+def current_storage_backend() -> str:
     from api.services.storage import get_current_storage_backend
 
     return get_current_storage_backend().value
@@ -100,7 +106,7 @@ def _is_run_artifact_key(run_id: int, key: str) -> bool:
     )
 
 
-def _run_object_keys(run: ExpiredWorkflowRun) -> dict[str, str]:
+def run_object_keys(run: ExpiredWorkflowRun) -> dict[str, str]:
     """Every object key the run references, mapped to its storage backend."""
     keys: dict[str, str] = {}
     for key in (run.recording_url, run.transcript_url):
@@ -133,13 +139,13 @@ def _run_object_keys(run: ExpiredWorkflowRun) -> dict[str, str]:
     }
 
 
-async def _delete_run_objects(
+async def delete_run_objects(
     run: ExpiredWorkflowRun, resolve_storage: StorageResolver
 ) -> Optional[int]:
     """Delete every stored object of ``run``; None if any deletion failed."""
     deleted = 0
     try:
-        for key, backend in _run_object_keys(run).items():
+        for key, backend in run_object_keys(run).items():
             if not await resolve_storage(backend).adelete_file(key):
                 return None
             deleted += 1
@@ -149,7 +155,7 @@ async def _delete_run_objects(
         )
     except Exception as exc:
         logger.warning(
-            f"Retention purge could not delete objects of workflow run {run.id}: "
+            f"Could not delete the stored objects of workflow run {run.id}: "
             f"{type(exc).__name__}"
         )
         return None
@@ -204,15 +210,19 @@ async def _log_organization_dry_run(
         organization_id=organization_id,
         created_before=now - WEBHOOK_PAYLOAD_RETENTION,
     )
+    documents, recordings = await _archived_uploads(organization_id)
     logger.info(
         "Retention purge dry run: organization={} runs={} campaigns={} "
-        "queued_rows={} widget_sessions={} webhook_deliveries={}",
+        "queued_rows={} widget_sessions={} webhook_deliveries={} "
+        "archived_documents={} archived_recordings={}",
         organization_id,
         runs,
         campaigns,
         queued_rows,
         widget_sessions,
         webhook_deliveries,
+        len(documents),
+        len(recordings),
     )
 
 
@@ -237,7 +247,7 @@ async def _purge_organization_runs(
 
         cleared: list[int] = []
         for run in runs:
-            deleted = await _delete_run_objects(run, resolve_storage)
+            deleted = await delete_run_objects(run, resolve_storage)
             if deleted is None:
                 result.runs_deferred += 1
                 continue
@@ -251,7 +261,7 @@ async def _purge_organization_runs(
             return
 
 
-def _campaign_csv_key(organization_id: int, campaign: ExpiredCampaign) -> Optional[str]:
+def campaign_csv_key(organization_id: int, campaign: ExpiredCampaign) -> Optional[str]:
     """The uploaded CSV of a campaign, if it is one this organization owns."""
     if campaign.source_type != "csv" or not campaign.source_id:
         return None
@@ -280,7 +290,7 @@ async def _purge_organization_campaigns(
         after_id = campaigns[-1].id
 
         for campaign in campaigns:
-            csv_key = _campaign_csv_key(organization_id, campaign)
+            csv_key = campaign_csv_key(organization_id, campaign)
             if csv_key and await db_client.is_campaign_source_shared(
                 organization_id=organization_id,
                 source_id=csv_key,
@@ -294,9 +304,8 @@ async def _purge_organization_campaigns(
                 if key is None:
                     return True
                 try:
-                    deleted = await resolve_storage(_current_backend()).adelete_file(
-                        key
-                    )
+                    storage = resolve_storage(current_storage_backend())
+                    deleted = await storage.adelete_file(key)
                 except Exception:
                     deleted = False
                 if deleted:
@@ -326,6 +335,75 @@ async def _purge_organization_campaigns(
         result.queued_runs_cleared += cleared
         if cleared < ROW_BATCH_SIZE:
             break
+
+
+async def _archived_uploads(organization_id: int):
+    """Every archived document and recording of the organization."""
+    documents, recordings = [], []
+    for fetch, out in (
+        (db_client.get_archived_knowledge_base_documents, documents),
+        (db_client.get_archived_workflow_recordings, recordings),
+    ):
+        after_id = 0
+        while True:
+            page = await fetch(
+                organization_id=organization_id,
+                after_id=after_id,
+                limit=ROW_BATCH_SIZE,
+            )
+            out.extend(page)
+            if len(page) < ROW_BATCH_SIZE:
+                break
+            after_id = page[-1][0]
+    return documents, recordings
+
+
+def _log_archived_upload_failure(organization_id: int, exc: Exception) -> None:
+    logger.warning(
+        f"Retention purge deferred an archived upload of organization "
+        f"{organization_id}: {type(exc).__name__}"
+    )
+
+
+async def _purge_organization_archived_uploads(
+    organization_id: int,
+    resolve_storage: StorageResolver,
+    result: RetentionPurgeResult,
+) -> None:
+    """Hard-delete uploads that were only archived: stored file first, then row."""
+    from api.services.privacy.stored_files import (
+        delete_archived_workflow_recording,
+        delete_knowledge_base_document,
+    )
+
+    documents, recordings = await _archived_uploads(organization_id)
+    for _document_pk, document_uuid in documents:
+        try:
+            if await delete_knowledge_base_document(
+                organization_id=organization_id,
+                document_uuid=document_uuid,
+                resolve_storage=resolve_storage,
+                archived_only=True,
+            ):
+                result.archived_documents_deleted += 1
+        except Exception as exc:
+            # A storage failure (StoredFileDeleteError) or a bad row defers
+            # this upload only; the rest of the organization still goes.
+            _log_archived_upload_failure(organization_id, exc)
+            result.archived_files_deferred += 1
+    for recording_pk, _recording_id in recordings:
+        try:
+            if await delete_archived_workflow_recording(
+                organization_id=organization_id,
+                recording_pk=recording_pk,
+                resolve_storage=resolve_storage,
+            ):
+                result.archived_recordings_deleted += 1
+        except Exception as exc:
+            # A storage failure (StoredFileDeleteError) or a bad row defers
+            # this upload only; the rest of the organization still goes.
+            _log_archived_upload_failure(organization_id, exc)
+            result.archived_files_deferred += 1
 
 
 async def _scrub_in_batches(scrub, created_before: datetime) -> int:
@@ -372,6 +450,7 @@ async def _purge_organization(
     await _purge_organization_campaigns(
         organization_id, cutoff, now, resolve_storage, result
     )
+    await _purge_organization_archived_uploads(organization_id, resolve_storage, result)
 
 
 async def purge_expired_data(
@@ -387,7 +466,7 @@ async def purge_expired_data(
     """
     now = now or datetime.now(UTC)
     if not dry_run:
-        resolve_storage = resolve_storage or _default_storage_resolver()
+        resolve_storage = resolve_storage or default_storage_resolver()
     result = RetentionPurgeResult()
 
     after_id = 0
@@ -434,7 +513,8 @@ async def purge_expired_data(
         "Retention purge: {} organizations ({} skipped), "
         "{} runs purged ({} deferred), "
         "{} objects deleted, {} campaigns purged ({} deferred), "
-        "{} queued runs, {} embed sessions, {} webhook deliveries cleared",
+        "{} queued runs, {} embed sessions, {} webhook deliveries cleared, "
+        "{} archived documents and {} archived recordings deleted ({} deferred)",
         result.organizations,
         result.organizations_skipped,
         result.runs_purged,
@@ -445,5 +525,8 @@ async def purge_expired_data(
         result.queued_runs_cleared,
         result.embed_sessions_cleared,
         result.webhook_deliveries_cleared,
+        result.archived_documents_deleted,
+        result.archived_recordings_deleted,
+        result.archived_files_deferred,
     )
     return result

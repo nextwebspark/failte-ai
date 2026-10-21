@@ -12,17 +12,20 @@ from datetime import datetime
 from enum import Enum
 from typing import Any, Awaitable, Callable, Optional
 
-from sqlalchemy import Text, cast, exists, func, or_, select, update
+from sqlalchemy import Text, cast, event, exists, func, or_, select, update
+from sqlalchemy.orm import Session
 
 from api.db.base_client import BaseDBClient
 from api.db.models import (
     CampaignModel,
     EmbedSessionModel,
     EmbedTokenModel,
+    KnowledgeBaseDocumentModel,
     OrganizationModel,
     QueuedRunModel,
     WebhookDeliveryModel,
     WorkflowModel,
+    WorkflowRecordingModel,
     WorkflowRunModel,
     WorkflowRunTextSessionModel,
 )
@@ -37,11 +40,22 @@ CAMPAIGN_PURGED_AT_KEY = "retention_purged_at"
 # What survives a purge. Everything else in these JSON columns is dropped.
 # ``extra``: run-configuration flags, no personal data (recording metadata is
 # dropped with the recordings themselves).
-WORKFLOW_RUN_EXTRA_KEPT_KEYS = frozenset({"use_draft", "campaign_traffic_split"})
+# Marker stamped into ``workflow_runs.extra`` once post-call processing (QA,
+# integrations, webhooks, billing) has finished writing to a run.
+WORKFLOW_RUN_POST_CALL_DONE_KEY = "post_call_done_at"
+
+WORKFLOW_RUN_EXTRA_KEPT_KEYS = frozenset(
+    {"use_draft", "campaign_traffic_split", WORKFLOW_RUN_POST_CALL_DONE_KEY}
+)
 # ``gathered_context``: the call outcome labels that usage reports aggregate.
 WORKFLOW_RUN_GATHERED_CONTEXT_KEPT_KEYS = frozenset(
     {"call_status", "call_disposition", "mapped_call_disposition"}
 )
+
+# Call-context keys holding the caller's or callee's address.
+CALL_CONTEXT_NUMBER_KEYS = ("caller_number", "called_number", "phone_number")
+# Older ARI inbound runs were named after the caller's number.
+_LEGACY_NUMBER_NAME_PREFIXES = ("ARI Inbound ",)
 
 TERMINAL_CAMPAIGN_STATES = ("completed", "failed")
 # A campaign idle in one of these states past the retention period cannot be
@@ -76,6 +90,76 @@ class ExpiredCampaign:
     state: str
     source_type: str
     source_id: str
+
+
+def scrub_run_name(name: Optional[str], initial_context: Any) -> Optional[str]:
+    """``name`` without the caller's or callee's number.
+
+    The run name survives a scrub (it shows in usage history), so any number
+    from the call context that a name was built from is cut out of it.
+    """
+    if not name:
+        return name
+    for prefix in _LEGACY_NUMBER_NAME_PREFIXES:
+        if name.startswith(prefix):
+            return prefix.rstrip()
+    context = initial_context if isinstance(initial_context, dict) else {}
+    for key in CALL_CONTEXT_NUMBER_KEYS:
+        value = context.get(key)
+        if isinstance(value, str) and len(value.strip()) >= 3:
+            name = name.replace(value.strip(), "[removed]")
+    return name
+
+
+def is_purged_run(run: WorkflowRunModel) -> bool:
+    extra = run.extra if isinstance(run.extra, dict) else {}
+    return bool(extra.get(WORKFLOW_RUN_PURGED_AT_KEY))
+
+
+def apply_purged_shape(run: WorkflowRunModel, purged_at: Optional[str] = None) -> None:
+    """Reduce a run to what survives a purge (see ``WORKFLOW_RUN_*_KEPT_KEYS``).
+
+    Used by the scrub itself and, through ``_keep_purged_runs_scrubbed``, on
+    every later write to a purged run. Idempotent.
+    """
+    extra = run.extra if isinstance(run.extra, dict) else {}
+    gathered = run.gathered_context if isinstance(run.gathered_context, dict) else {}
+    purged_at = purged_at or extra.get(WORKFLOW_RUN_PURGED_AT_KEY)
+    run.name = scrub_run_name(run.name, run.initial_context)
+    run.recording_url = None
+    run.transcript_url = None
+    run.logs = {}
+    run.initial_context = {}
+    run.annotations = {}
+    run.public_access_token = None
+    run.gathered_context = {
+        key: value
+        for key, value in gathered.items()
+        if key in WORKFLOW_RUN_GATHERED_CONTEXT_KEPT_KEYS
+    }
+    run.extra = {
+        **{
+            key: value
+            for key, value in extra.items()
+            if key in WORKFLOW_RUN_EXTRA_KEPT_KEYS
+        },
+        WORKFLOW_RUN_PURGED_AT_KEY: purged_at,
+    }
+
+
+@event.listens_for(Session, "before_flush")
+def _keep_purged_runs_scrubbed(session, _flush_context, _instances) -> None:
+    """Drop call content written to a run after its content was purged.
+
+    Post-call writers (status callbacks, QA, uploads, the final variable
+    extraction, a re-run job) can land after an erasure or a retention purge.
+    Every ORM write to a run passes through here, so whatever such a writer
+    stores is cleared before it reaches the database; only what a purge keeps
+    (status, timestamps, usage, cost, outcome labels) can still change.
+    """
+    for obj in (*session.new, *session.dirty):
+        if isinstance(obj, WorkflowRunModel) and is_purged_run(obj):
+            apply_purged_shape(obj)
 
 
 def _workflow_run_not_purged():
@@ -228,15 +312,19 @@ class RetentionClient(BaseDBClient):
         organization_id: int,
         run_ids: list[int],
         purged_at: datetime,
+        include_purged: bool = False,
     ) -> int:
         """Clear the call content of these runs and stamp the purge marker.
 
         Clears recording/transcript keys, live transcript logs, call context
         (caller and called numbers, extracted variables), annotations, the
-        public share token and the text-chat transcript. Keeps status,
+        public share token and the text-chat transcript, and cuts any number
+        out of the run name (``scrub_run_name``). Keeps status,
         timestamps, usage and cost, plus the keys in
         ``WORKFLOW_RUN_EXTRA_KEPT_KEYS`` / ``WORKFLOW_RUN_GATHERED_CONTEXT_KEPT_KEYS``.
-        Only runs that belong to ``organization_id`` are touched.
+        Only runs that belong to ``organization_id`` are touched. Runs already
+        purged are skipped unless ``include_purged``: an explicit erasure
+        scrubs again whatever a late writer stored after an earlier pass.
 
         Returns the number of runs scrubbed.
         """
@@ -249,37 +337,13 @@ class RetentionClient(BaseDBClient):
                 .where(
                     WorkflowModel.organization_id == organization_id,
                     WorkflowRunModel.id.in_(run_ids),
-                    _workflow_run_not_purged(),
+                    *(() if include_purged else (_workflow_run_not_purged(),)),
                 )
                 .with_for_update(of=WorkflowRunModel)
             )
             runs = list(result.scalars().all())
             for run in runs:
-                extra = run.extra if isinstance(run.extra, dict) else {}
-                gathered = (
-                    run.gathered_context
-                    if isinstance(run.gathered_context, dict)
-                    else {}
-                )
-                run.recording_url = None
-                run.transcript_url = None
-                run.logs = {}
-                run.initial_context = {}
-                run.annotations = {}
-                run.public_access_token = None
-                run.gathered_context = {
-                    key: value
-                    for key, value in gathered.items()
-                    if key in WORKFLOW_RUN_GATHERED_CONTEXT_KEPT_KEYS
-                }
-                run.extra = {
-                    **{
-                        key: value
-                        for key, value in extra.items()
-                        if key in WORKFLOW_RUN_EXTRA_KEPT_KEYS
-                    },
-                    WORKFLOW_RUN_PURGED_AT_KEY: purged_at.isoformat(),
-                }
+                apply_purged_shape(run, purged_at.isoformat())
 
             scrubbed_ids = [run.id for run in runs]
             if scrubbed_ids:
@@ -474,6 +538,45 @@ class RetentionClient(BaseDBClient):
     ) -> int:
         """How many rows ``scrub_finished_queued_runs_context`` would clear."""
         return await self._count(_expired_queued_runs(organization_id, inactive_before))
+
+    # --- archived uploads ------------------------------------------------------
+
+    async def get_archived_knowledge_base_documents(
+        self, *, organization_id: int, after_id: int = 0, limit: int = 100
+    ) -> list[tuple[int, str]]:
+        """``(id, document_uuid)`` of documents deleted before deletes were permanent."""
+        async with self.async_session() as session:
+            result = await session.execute(
+                select(
+                    KnowledgeBaseDocumentModel.id,
+                    KnowledgeBaseDocumentModel.document_uuid,
+                )
+                .where(
+                    KnowledgeBaseDocumentModel.organization_id == organization_id,
+                    KnowledgeBaseDocumentModel.is_active.is_(False),
+                    KnowledgeBaseDocumentModel.id > after_id,
+                )
+                .order_by(KnowledgeBaseDocumentModel.id)
+                .limit(limit)
+            )
+            return [(row.id, row.document_uuid) for row in result.all()]
+
+    async def get_archived_workflow_recordings(
+        self, *, organization_id: int, after_id: int = 0, limit: int = 100
+    ) -> list[tuple[int, str]]:
+        """``(id, recording_id)`` of prompt recordings deleted before deletes were permanent."""
+        async with self.async_session() as session:
+            result = await session.execute(
+                select(WorkflowRecordingModel.id, WorkflowRecordingModel.recording_id)
+                .where(
+                    WorkflowRecordingModel.organization_id == organization_id,
+                    WorkflowRecordingModel.is_active.is_(False),
+                    WorkflowRecordingModel.id > after_id,
+                )
+                .order_by(WorkflowRecordingModel.id)
+                .limit(limit)
+            )
+            return [(row.id, row.recording_id) for row in result.all()]
 
     # --- embed sessions & webhook deliveries --------------------------------
 

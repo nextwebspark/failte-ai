@@ -13,6 +13,7 @@ import { DailyUsageTable } from '@/components/DailyUsageTable';
 import { FilterBuilder } from '@/components/filters/FilterBuilder';
 import { runDetailHref } from '@/components/layout/shellContext';
 import { MediaPreviewButton, MediaPreviewDialog } from '@/components/MediaPreviewDialog';
+import { CallerDataRequestDialog } from '@/components/privacy/CallerDataRequestDialog';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -66,7 +67,7 @@ const buildUsageFilterAttributes = (
 export default function UsagePage() {
     const router = useRouter();
     const searchParams = useSearchParams();
-    const { organizationPricing } = useUserConfig();
+    const { organizationPricing, can } = useUserConfig();
     const auth = useAuth();
     const { config: appConfig } = useAppConfig();
     // Under Stripe billing each run carries the EUR charged to the credit balance.
@@ -451,7 +452,9 @@ export default function UsagePage() {
             <div>
                 {/* The screen name lives in the app header (AppTopBar); the row
                     below is the timezone control that used to sit beside it. */}
-                <div className="flex justify-end items-start">
+                <div className="flex flex-wrap justify-end items-start gap-3">
+                        {/* Callers' access and erasure requests (GDPR) are admin-only. */}
+                        {can('org:manage') && <CallerDataRequestDialog />}
                         <div className="flex items-center gap-2">
                             <Globe className="h-4 w-4 text-muted-foreground" />
                             <div className="w-[300px]">
