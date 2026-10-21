@@ -174,7 +174,7 @@ export function CallerDataRequestDialog() {
                     <DialogTitle>Caller data request</DialogTitle>
                     <DialogDescription>
                         When a caller asks for a copy of their data or for it to be deleted, enter
-                        their phone number, ideally in international format (+ and country code).
+                        their phone number in international format (+ and the country code).
                         This covers calls from and to that number and its campaign contacts,
                         across all your agents.
                     </DialogDescription>
