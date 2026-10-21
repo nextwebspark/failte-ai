@@ -1,0 +1,76 @@
+---
+title: "Handling caller privacy requests"
+description: "Give a caller a copy of their call data, or erase it, when they ask under GDPR"
+---
+
+The people your agents talk to can ask you for a copy of the data you hold about them (GDPR Article 15) or for it to be deleted (Article 17). For call data you are the controller and LightMove.ai processes it on your behalf, so you answer these requests, and LightMove.ai gives you the tools to do it.
+
+<Note>
+Only organization **Admins** can export or erase call data. Developers and Viewers don't see these options.
+</Note>
+
+## What is erased and what is kept
+
+Erasing a call deletes its personal data for good:
+
+- the recording, including the separate caller and agent tracks
+- the transcript and the live transcript events
+- the call context: phone numbers, template variables, extracted variables and other gathered data
+- QA results and the public share link
+- the payloads of webhooks sent for the call, and the browser details (IP address, user agent) of a website widget call
+- for a text chat, the conversation
+
+The run itself stays in your call history with its **date, duration, status, disposition and cost**. Your billing records refer to it and have to be kept, so the numbers you are invoiced for still add up. Nothing in what is kept identifies the caller.
+
+## Delete one call
+
+1. Open the run from **Agent runs** or the agent's runs list.
+2. Click **Delete call data** and confirm.
+
+A call that is still in progress can't be deleted. Wait until it ends and try again.
+
+## Answer a caller's request
+
+A caller usually identifies themselves by their phone number. Use it to find every call with them across all your agents.
+
+1. Go to **Agent runs** and click **Caller data request**.
+2. Enter the caller's phone number in any format, for example `+353 87 123 4567`.
+3. Choose what to do:
+   - **Download data (JSON)** saves a file with every call with that number: date, agent, direction, duration, status, the call context and gathered data, the transcript, and links to the recordings. It also lists campaign contacts for the number that haven't been called yet. Recording links in the file expire after one hour, so download the recordings you need straight away.
+   - **Erase all data** erases every one of those calls as described above. Campaign contacts not yet called are removed so the number is never called, contact rows of calls already made are cleared, and the number's rows are removed from uploaded campaign CSV files. A summary shows what was erased.
+
+A number matches a call when it is the caller of an inbound call or the number called on an outbound or campaign call. Numbers are compared after normalizing them, so `+353 87 123 4567` and `+353871234567` match.
+
+<Warning>
+You can't search for one of your own phone numbers: it is on every call you make or receive. Enter the caller's number instead.
+</Warning>
+
+### When something is skipped
+
+The erase summary lists anything it couldn't erase:
+
+- **Calls still in progress** are left untouched. Run the erase again once they end.
+- **Calls whose recordings couldn't be deleted** (for example during a storage outage) are left untouched, so nothing is half-erased. Try again shortly.
+- **Campaign contacts being dialled right now** are skipped. Run the erase again once that call ends.
+- **Contact lists that couldn't be rewritten** are named by campaign. Try again shortly.
+
+Erasing is safe to repeat: data already erased is skipped.
+
+## Things to do outside LightMove.ai
+
+- Contact lists for campaigns that read from an external source, such as a Google Sheet, are not changed. Remove the caller there yourself.
+- Data your agents sent to other systems, through webhooks, tools or integrations, is held by those systems. Erase it there too.
+
+## Keeping data no longer than needed
+
+Separately from these requests, LightMove.ai deletes call recordings, transcripts and call content automatically once they are older than your organization's **Call data retention (days)** setting, in **Settings → Preferences**.
+
+## Using the API
+
+The same actions are available to Admin users through the API:
+
+| Action | Endpoint |
+| --- | --- |
+| Delete one call's data | `DELETE /api/v1/workflow/{workflow_id}/runs/{run_id}` |
+| Export a caller's data | `GET /api/v1/organizations/usage/subject-data?number=...` |
+| Erase a caller's data | `POST /api/v1/organizations/usage/subject-data/erase` with `{"number": "..."}` |
