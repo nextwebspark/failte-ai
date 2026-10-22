@@ -1113,7 +1113,7 @@ export function ServiceConfigurationForm({
                 </CardContent>
             </Card>
 
-            {apiError && <p className="text-red-500 mt-4">{apiError}</p>}
+            {apiError && <p className="text-danger mt-4">{apiError}</p>}
 
             <Button type="submit" className="w-full mt-6" disabled={isSaving}>
                 {isSaving ? "Saving..." : (submitLabel || "Save Configuration")}

@@ -18,14 +18,14 @@ export const WorkflowConfigErrorDialog = ({
         <Dialog open={open} onOpenChange={onOpenChange}>
             <DialogContent>
                 <DialogHeader>
-                    <DialogTitle>Workflow Error</DialogTitle>
-                    <DialogDescription className="text-red-500 whitespace-pre-line">
+                    <DialogTitle>Agent error</DialogTitle>
+                    <DialogDescription className="text-danger whitespace-pre-line">
                         {error}
                     </DialogDescription>
                 </DialogHeader>
                 <DialogFooter>
                     <Button onClick={onNavigateToWorkflow}>
-                        Go to Workflow
+                        Go to agent
                     </Button>
                 </DialogFooter>
             </DialogContent>

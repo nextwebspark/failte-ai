@@ -5,6 +5,8 @@
 import * as Sentry from "@sentry/nextjs";
 import posthog from "posthog-js";
 
+import { posthogPrivacyOptions } from "@/lib/posthogPrivacy";
+
 // Drop errors originating from browser extensions (MetaMask's inpage.js,
 // injected widgets, etc.) by matching their URL scheme.
 const sharedSentryOptions = {
@@ -63,11 +65,10 @@ const initPostHog = () => {
     // Use client-side environment variables
     posthog.init(process.env.NEXT_PUBLIC_POSTHOG_KEY!, {
       api_host: process.env.NEXT_PUBLIC_POSTHOG_HOST || '/ingest',
-      ui_host: process.env.NEXT_PUBLIC_POSTHOG_UI_HOST || 'https://us.posthog.com',
+      ui_host: process.env.NEXT_PUBLIC_POSTHOG_UI_HOST || 'https://eu.posthog.com',
       capture_pageview: 'history_change',
       capture_pageleave: true,
-      capture_exceptions: true,
-      cross_subdomain_cookie: true,
+      ...posthogPrivacyOptions,
       debug: process.env.NEXT_PUBLIC_NODE_ENV === 'development',
     });
     console.log('PostHog initialized from NEXT_PUBLIC config');
@@ -82,8 +83,7 @@ const initPostHog = () => {
             ui_host: config.uiHost,
             capture_pageview: 'history_change',
             capture_pageleave: true,
-            capture_exceptions: true,
-            cross_subdomain_cookie: true,
+            ...posthogPrivacyOptions,
             debug: process.env.NEXT_PUBLIC_NODE_ENV === 'development',
           });
           console.log('PostHog initialized from API config');

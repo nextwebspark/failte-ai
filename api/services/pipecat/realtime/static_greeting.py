@@ -38,6 +38,44 @@ def format_opening_line_instruction(greeting_text: str) -> str:
     )
 
 
+def format_open_after_disclosure_prompt() -> str:
+    """Ask for the opening turn once the model has said the call disclosure.
+
+    A start node without a greeting opens with a generated turn. The model
+    says the disclosure as an exact line first, which spends its opening
+    response, so the generated opening is asked for separately.
+    """
+    return (
+        "[Call event, not words from the caller] You have just told the "
+        "caller this call is with an AI and may be recorded. Do not repeat "
+        "that. Now open the conversation as your instructions describe, then "
+        "wait for the caller."
+    )
+
+
+def format_disclosure_for_new_party_prompt(disclosure_text: str) -> str:
+    """Have the model say the disclosure to someone who has just come on the line.
+
+    After call screening the person who picks up never heard the opening, so
+    the notice is said again before the model answers them.
+    """
+    return (
+        "[Call event, not words from the caller] A different person has just "
+        "come on the line and has not heard your earlier lines. Before "
+        "anything else, say this line out loud exactly as written, then "
+        "answer what they said:\n\n"
+        f'"{disclosure_text}"'
+    )
+
+
+def format_recording_played_note(transcript: str) -> str:
+    """Tell an open session what a recording just said to the caller."""
+    return (
+        "[Call event, not words from the caller] A recording then played to "
+        f"the caller, saying: {transcript}\nDo not repeat it."
+    )
+
+
 @runtime_checkable
 class SupportsOpeningLine(Protocol):
     """A speech-to-speech service that can be told its greeting before connecting."""

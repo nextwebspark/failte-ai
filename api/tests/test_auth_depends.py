@@ -368,7 +368,6 @@ def test_associate_user_with_posthog_org_supports_backfill_arguments(monkeypatch
                     "selected_organization_id": 99,
                     "selected_organization_provider_id": "team-99",
                     "organization_ids": [42, 99],
-                    "email": "user@example.com",
                 },
             ),
             {},

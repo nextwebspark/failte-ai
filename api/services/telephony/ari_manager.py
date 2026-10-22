@@ -41,6 +41,7 @@ from api.services.call_concurrency import (
     call_concurrency,
 )
 from api.services.organization_preferences import external_pbx_integrations_enabled
+from api.services.privacy.org_deletion import organization_accepts_calls
 from api.services.quota_service import authorize_workflow_run_start
 from api.services.telephony import ws_auth
 from api.services.telephony.call_transfer_manager import get_call_transfer_manager
@@ -823,7 +824,7 @@ class ARIConnection:
         the POST and avoid racing against the StasisStart event.
         """
         # v() appends URI query params to the websocket_client.conf URL
-        # e.g. wss://api.dograh.com/ws/ari?workflow_id=1&organization_id=2&workflow_run_id=3
+        # e.g. wss://api.example.com/ws/ari?workflow_id=1&organization_id=2&workflow_run_id=3
         vparams = (
             f"workflow_id={workflow_id},"
             f"organization_id={self.organization_id},"
@@ -922,6 +923,14 @@ class ARIConnection:
                 await self._delete_channel(channel_id)
                 return
 
+            if not await organization_accepts_calls(self.organization_id):
+                logger.info(
+                    f"[ARI org={self.organization_id}] Organization is scheduled "
+                    f"for deletion; hanging up inbound channel {channel_id}"
+                )
+                await self._delete_channel(channel_id)
+                return
+
             inbound_workflow_id = phone_row.inbound_workflow_id
             if not inbound_workflow_id:
                 logger.warning(
@@ -980,7 +989,8 @@ class ARIConnection:
                 channel_id, channel.get("name", ""), lead_fields
             )
             workflow_run = await db_client.create_workflow_run(
-                name=f"ARI Inbound {caller_number}",
+                # No caller number in the name: it outlives the call content.
+                name="ARI Inbound",
                 workflow_id=inbound_workflow_id,
                 mode=WorkflowRunMode.ARI.value,
                 user_id=user_id,

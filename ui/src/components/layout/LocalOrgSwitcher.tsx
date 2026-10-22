@@ -94,7 +94,7 @@ export function LocalOrgSwitcher({ className }: { className?: string }) {
           <button
             type="button"
             className={cn(
-              "flex h-7 min-w-0 items-center gap-1.5 rounded-[7px] px-1.5 font-mono text-[13px] font-medium text-ink-3 hover:text-foreground",
+              "flex h-7 min-w-0 items-center gap-1.5 rounded-md px-1.5 font-mono text-[13px] font-medium text-ink-3 hover:text-foreground",
               className,
             )}
           >

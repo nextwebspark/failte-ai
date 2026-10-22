@@ -1,0 +1,223 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Audit findings</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Sora:wght@600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+body{margin:0}
+.lm{--bg:#F7F8FA;--panel:#FFFFFF;--panel2:#F7F8FA;--line:rgba(3,7,18,.09);--line2:rgba(3,7,18,.06);--ink:#0B0D12;--ink2:#3A414D;--ink3:#596170;--brand:#0E7A4B;--brand-dim:rgba(14,122,75,.08);--brand-ink:#FFFFFF;--green:#169B62;--live:#FF883E;--live-dim:rgba(255,136,62,.14);--live-text:#A84C0C;--sky:#1869B5;--sky-dim:rgba(24,105,181,.10);--amber:#8D5D06;--amber-dim:rgba(141,93,6,.10);--ok:#1A754F;--ok-dim:rgba(26,117,79,.10);--danger:#C03630;--danger-dim:rgba(192,54,48,.08);--sans:"DM Sans",system-ui,sans-serif;--display:"Sora",system-ui,sans-serif;--mono:"JetBrains Mono",ui-monospace,monospace}
+.lm.dark{--bg:#08090B;--panel:#0E1013;--panel2:#15181D;--line:rgba(255,255,255,.08);--line2:rgba(255,255,255,.05);--ink:#F4F6F8;--ink2:#A6ADBB;--ink3:#7C8493;--brand:#3DDC97;--brand-dim:rgba(61,220,151,.14);--brand-ink:#0A1F17;--live-text:#FF9A5C;--sky:#5CB3FF;--sky-dim:rgba(92,179,255,.12);--amber:#F0B429;--amber-dim:rgba(240,180,41,.12);--ok:#3FB27F;--ok-dim:rgba(63,178,127,.12);--danger:#E8645D;--danger-dim:rgba(232,100,93,.12)}
+a{color:var(--brand)}a:hover{color:var(--ink)}
+</style>
+</helmet>
+<div class="lm {{themeClass}}" style="min-height: 100vh; box-sizing: border-box; background: var(--bg); color: var(--ink); font-family: var(--sans); font-size: 14px; line-height: 1.5; padding: 48px 56px 64px; display: flex; flex-direction: column; gap: 32px">
+
+  <header style="display: flex; flex-direction: column; gap: 14px; max-width: 980px">
+    <div style="display: flex; align-items: center; gap: 10px">
+      <svg width="28" height="28" viewBox="0 0 64 64" role="img" aria-label="LightMove mark"><rect width="64" height="64" rx="16" fill="#169B62"/><rect x="14" y="26" width="6" height="12" rx="3" fill="#FFFFFF"/><rect x="24" y="19" width="6" height="26" rx="3" fill="#FFFFFF"/><rect x="34" y="13" width="6" height="38" rx="3" fill="#FFFFFF"/><rect x="44" y="24" width="6" height="16" rx="3" fill="#FFFFFF"/><circle cx="47" cy="16.5" r="3.5" fill="#FF883E"/></svg>
+      <span style="font-family: var(--display); font-weight: 600; font-size: 18px; letter-spacing: -0.03em">LightMove<span style="color: var(--brand)">.ai</span></span>
+      <span style="font-family: var(--mono); font-size: 11px; color: var(--ink3); margin-left: 6px">ui v1.48 · audit 17 Oct 2026</span>
+    </div>
+    <h1 style="margin: 0; font-family: var(--display); font-weight: 600; font-size: 36px; line-height: 1.15; letter-spacing: -0.02em">What is inconsistent today, and the system that fixes it</h1>
+    <p style="margin: 0; font-size: 16px; color: var(--ink2); max-width: 760px">Scope: the app shell, the Voice agents landing (list + create flow), and the two screens people live in inside an agent: the Conversation editor with its test rail, and Advanced settings. Every finding below points at the code it comes from, and the boards to the right and below show the redesign in light and dark.</p>
+    <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-top: 4px">
+      <span style="display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; background: var(--danger-dim); color: var(--danger); font-family: var(--mono); font-size: 11px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase">High · fix first</span>
+      <span style="display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; background: var(--amber-dim); color: var(--amber); font-family: var(--mono); font-size: 11px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase">Medium · next sprint</span>
+      <span style="display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; background: var(--sky-dim); color: var(--sky); font-family: var(--mono); font-size: 11px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase">Low · polish</span>
+    </div>
+  </header>
+
+  <section style="display: flex; flex-direction: column; gap: 14px">
+    <h2 style="margin: 0; font-size: 20px; font-weight: 700; letter-spacing: -0.01em">A · Brand consistency</h2>
+    <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px">
+
+      <article style="background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 20px; display: flex; flex-direction: column; gap: 10px">
+        <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px">
+          <h3 style="margin: 0; font-size: 15px; font-weight: 700">Two typographic systems</h3>
+          <span style="padding: 3px 8px; border-radius: 999px; background: var(--danger-dim); color: var(--danger); font-family: var(--mono); font-size: 10.5px; font-weight: 600; letter-spacing: 0.04em">HIGH</span>
+        </div>
+        <p style="margin: 0; color: var(--ink2)"><strong style="color: var(--ink)">Now.</strong> The brand kit (brand-kit/lightmove-brand/BRAND.md) sets DM Sans for interface and Sora for display. The app loads Montserrat for everything and keeps Sora only for the wordmark (ui/src/app/layout.tsx). Montserrat is wide and dark at 13 to 14 px, so nav rows and table cells feel heavier than the kit intends.</p>
+        <p style="margin: 0; color: var(--ink2)"><strong style="color: var(--ink)">Change.</strong> DM Sans 400/500/600 for interface, Sora 600 for page titles, big numbers and the wordmark, JetBrains Mono for ids, timers, numbers and keys. One font swap in layout.tsx and the tokens in globals.css.</p>
+      </article>
+
+      <article style="background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 20px; display: flex; flex-direction: column; gap: 10px">
+        <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px">
+          <h3 style="margin: 0; font-size: 15px; font-weight: 700">Two accents fight for "primary"</h3>
+          <span style="padding: 3px 8px; border-radius: 999px; background: var(--danger-dim); color: var(--danger); font-family: var(--mono); font-size: 10.5px; font-weight: 600; letter-spacing: 0.04em">HIGH</span>
+        </div>
+        <p style="margin: 0; color: var(--ink2)"><strong style="color: var(--ink)">Now.</strong> Brand green is the button colour, but the active nav row, focus rings, selection, the avatar chip and the sidebar "primary" are all sky blue (globals.css: --sidebar-primary, --ring; AppSidebar.tsx: bg-sky-dim text-sky). Nothing in the kit is blue, so the UI reads as a generic shadcn app with a green button.</p>
+        <p style="margin: 0; color: var(--ink2)"><strong style="color: var(--ink)">Change.</strong> Green is the one interactive accent: primary buttons, active nav, focus ring, selected rows, links. Sky stays as an information tone only (pills, "viewing version"). Spark orange is reserved for live calls, as the kit says.</p>
+      </article>
+
+      <article style="background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 20px; display: flex; flex-direction: column; gap: 10px">
+        <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px">
+          <h3 style="margin: 0; font-size: 15px; font-weight: 700">207 hard-coded palette colours</h3>
+          <span style="padding: 3px 8px; border-radius: 999px; background: var(--danger-dim); color: var(--danger); font-family: var(--mono); font-size: 10.5px; font-weight: 600; letter-spacing: 0.04em">HIGH</span>
+        </div>
+        <p style="margin: 0; color: var(--ink2)"><strong style="color: var(--ink)">Now.</strong> 54 component files still use Tailwind's raw palette (text-red-500 on the create page error, text-green-600 on the success dialog, grey and blue variants in filters, tools, billing, telephony). These ignore the tokens, so they look wrong in one of the two themes and never match the brand greens.</p>
+        <p style="margin: 0; color: var(--ink2)"><strong style="color: var(--ink)">Change.</strong> Map each to a token (danger, ok, sky, amber, ink-3) and add an ESLint rule that bans raw palette classes so it cannot regress.</p>
+      </article>
+
+      <article style="background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 20px; display: flex; flex-direction: column; gap: 10px">
+        <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px">
+          <h3 style="margin: 0; font-size: 15px; font-weight: 700">Five corner radii, three button heights</h3>
+          <span style="padding: 3px 8px; border-radius: 999px; background: var(--amber-dim); color: var(--amber); font-family: var(--mono); font-size: 10.5px; font-weight: 600; letter-spacing: 0.04em">MEDIUM</span>
+        </div>
+        <p style="margin: 0; color: var(--ink2)"><strong style="color: var(--ink)">Now.</strong> Panels 10 px, cards 10 px, buttons 8 px, nav rows and header buttons 7 px, pills 6 px, the tester 12 px, dialogs 12 px. Buttons are 36 px in the body, forced to 28 px when portalled into the header (.page-actions in globals.css), and the kit asks for 44 px.</p>
+        <p style="margin: 0; color: var(--ink2)"><strong style="color: var(--ink)">Change.</strong> Four radii: 6 chip, 8 control, 12 card, 14 shell panel. Three button heights: 32 toolbar and table, 36 default, 40 form CTA. Drop the un-layered header override and let the slot pick size="sm".</p>
+      </article>
+
+      <article style="background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 20px; display: flex; flex-direction: column; gap: 10px">
+        <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px">
+          <h3 style="margin: 0; font-size: 15px; font-weight: 700">Two card looks, plus a texture</h3>
+          <span style="padding: 3px 8px; border-radius: 999px; background: var(--amber-dim); color: var(--amber); font-family: var(--mono); font-size: 10.5px; font-weight: 600; letter-spacing: 0.04em">MEDIUM</span>
+        </div>
+        <p style="margin: 0; color: var(--ink2)"><strong style="color: var(--ink)">Now.</strong> The Card primitive paints a 45° crosshatch, a shadow and (dark only) a bright top edge; inside the content panel a second rule flattens it to panel-2 with no shadow. So the same component looks raised in a dialog and recessed on a page.</p>
+        <p style="margin: 0; color: var(--ink2)"><strong style="color: var(--ink)">Change.</strong> One flat card everywhere: panel surface, 1 px hairline, 12 px radius, no texture. Elevation (shadow) only for things that float: menus, popovers, dialogs, the floating canvas toolbar.</p>
+      </article>
+
+      <article style="background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 20px; display: flex; flex-direction: column; gap: 10px">
+        <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px">
+          <h3 style="margin: 0; font-size: 15px; font-weight: 700">Dark is a different brand from light</h3>
+          <span style="padding: 3px 8px; border-radius: 999px; background: var(--amber-dim); color: var(--amber); font-family: var(--mono); font-size: 10.5px; font-weight: 600; letter-spacing: 0.04em">MEDIUM</span>
+        </div>
+        <p style="margin: 0; color: var(--ink2)"><strong style="color: var(--ink)">Now.</strong> Light surfaces carry a faint green cast (#F3F6F4 on #0B2E22 ink). Dark drops to neutral blue-grey charcoal (#0B0D11, ink #F1F3F6), so switching themes changes the personality, not just the brightness. Dark is also force-locked as default (enableSystem false) while the kit says light default, system aware.</p>
+        <p style="margin: 0; color: var(--ink2)"><strong style="color: var(--ink)">Change.</strong> Use the Uncava dark ladder from app-lightmove (#08090B, panel #0E1013, ink #F4F6F8) with Mint as the only colour, and follow the OS by default with the explicit choice remembered.</p>
+      </article>
+    </div>
+  </section>
+
+  <section style="display: flex; flex-direction: column; gap: 14px">
+    <h2 style="margin: 0; font-size: 20px; font-weight: 700; letter-spacing: -0.01em">B · Voice agents landing and create flow</h2>
+    <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px">
+
+      <article style="background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 20px; display: flex; flex-direction: column; gap: 10px">
+        <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px">
+          <h3 style="margin: 0; font-size: 15px; font-weight: 700">"Workflow" and "Agent" in the same screen</h3>
+          <span style="padding: 3px 8px; border-radius: 999px; background: var(--danger-dim); color: var(--danger); font-family: var(--mono); font-size: 10.5px; font-weight: 600; letter-spacing: 0.04em">HIGH</span>
+        </div>
+        <p style="margin: 0; color: var(--ink2)"><strong style="color: var(--ink)">Now.</strong> Nav says Voice agents, the button says Create Agent, the empty state says "No active workflows found", toasts say "Workflow archived", a blank agent is named "Workflow-x7k2", the success dialog says "Workflow Created Successfully!" (WorkflowTable.tsx, CreateWorkflowButton.tsx, create/page.tsx).</p>
+        <p style="margin: 0; color: var(--ink2)"><strong style="color: var(--ink)">Change.</strong> "Agent" is the only word users see. Default name "Untitled agent". Sentence case everywhere (Create agent, Active agents).</p>
+      </article>
+
+      <article style="background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 20px; display: flex; flex-direction: column; gap: 10px">
+        <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px">
+          <h3 style="margin: 0; font-size: 15px; font-weight: 700">A table that hides what matters</h3>
+          <span style="padding: 3px 8px; border-radius: 999px; background: var(--danger-dim); color: var(--danger); font-family: var(--mono); font-size: 10.5px; font-weight: 600; letter-spacing: 0.04em">HIGH</span>
+        </div>
+        <p style="margin: 0; color: var(--ink2)"><strong style="color: var(--ink)">Now.</strong> Columns are ID, name, created date, total runs, and three bordered buttons per row (Edit, Move, Archive). The row already opens the agent, so Edit is redundant, and the numeric ID is the first thing you read. There is no status, no channel, no last call, no search.</p>
+        <p style="margin: 0; color: var(--ink2)"><strong style="color: var(--ink)">Change.</strong> Row = mark + name + draft/published pill, channels (phone, web), runs with a 7-day sparkline, last call, one kebab menu (Open, Duplicate, Move, Archive). Search and a status filter above; a stat strip (agents, calls today, minutes, success rate) so the landing answers "how is it going".</p>
+      </article>
+
+      <article style="background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 20px; display: flex; flex-direction: column; gap: 10px">
+        <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px">
+          <h3 style="margin: 0; font-size: 15px; font-weight: 700">Creating an agent takes four screens</h3>
+          <span style="padding: 3px 8px; border-radius: 999px; background: var(--danger-dim); color: var(--danger); font-family: var(--mono); font-size: 10.5px; font-weight: 600; letter-spacing: 0.04em">HIGH</span>
+        </div>
+        <p style="margin: 0; color: var(--ink2)"><strong style="color: var(--ink)">Now.</strong> Create Agent opens a dropdown (Agent Builder or Blank Canvas); Builder navigates to a page with a generic "Agent Details" card, a full-screen loading overlay, then a success dialog with three paragraphs, then the editor. Templates (TemplateCard.tsx) are not reachable from here at all.</p>
+        <p style="margin: 0; color: var(--ink2)"><strong style="color: var(--ink)">Change.</strong> One dialog with three ways in (Describe it, Start from a template, Blank), the form inline for Describe, generation shown as a progress state inside the dialog, then straight into the editor with the test rail open.</p>
+      </article>
+    </div>
+  </section>
+
+  <section style="display: flex; flex-direction: column; gap: 14px">
+    <h2 style="margin: 0; font-size: 20px; font-weight: 700; letter-spacing: -0.01em">C · Inside the agent: Conversation editor and Advanced settings</h2>
+    <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px">
+
+      <article style="background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 20px; display: flex; flex-direction: column; gap: 10px">
+        <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px">
+          <h3 style="margin: 0; font-size: 15px; font-weight: 700">Editor state is split across two bars</h3>
+          <span style="padding: 3px 8px; border-radius: 999px; background: var(--danger-dim); color: var(--danger); font-family: var(--mono); font-size: 10.5px; font-weight: 600; letter-spacing: 0.04em">HIGH</span>
+        </div>
+        <p style="margin: 0; color: var(--ink2)"><strong style="color: var(--ink)">Now.</strong> Save, Publish and Phone call are portalled into the 46 px app header next to the breadcrumb; Rename, version, "Unsaved changes" and errors sit in a second 48 px toolbar below (WorkflowEditorHeader.tsx). The thing you are saving and the Save button are 60 px apart in different bars. The agent name is printed three times (header, nav, rename button).</p>
+        <p style="margin: 0; color: var(--ink2)"><strong style="color: var(--ink)">Change.</strong> One editor toolbar: name (click to rename) + version pill + unsaved dot on the left, Phone call / Save / Publish / more on the right. The app header keeps only workspace identity.</p>
+      </article>
+
+      <article style="background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 20px; display: flex; flex-direction: column; gap: 10px">
+        <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px">
+          <h3 style="margin: 0; font-size: 15px; font-weight: 700">Canvas controls scattered in corners</h3>
+          <span style="padding: 3px 8px; border-radius: 999px; background: var(--amber-dim); color: var(--amber); font-family: var(--mono); font-size: 10.5px; font-weight: 600; letter-spacing: 0.04em">MEDIUM</span>
+        </div>
+        <p style="margin: 0; color: var(--ink2)"><strong style="color: var(--ink)">Now.</strong> Add node is a lone green round button top-right; zoom in, zoom out, fit and tidy are four square buttons at bottom-12 left-8 (RenderWorkflow.tsx); the add-node sheet slides over the whole viewport in bg-background with a 20 px title.</p>
+        <p style="margin: 0; color: var(--ink2)"><strong style="color: var(--ink)">Change.</strong> One floating toolbar at the bottom centre: Add node (primary), then zoom out, 75 %, zoom in, fit, tidy. Node palette opens as a panel inside the canvas column, not over the test rail.</p>
+      </article>
+
+      <article style="background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 20px; display: flex; flex-direction: column; gap: 10px">
+        <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px">
+          <h3 style="margin: 0; font-size: 15px; font-weight: 700">Test rail has no state of its own</h3>
+          <span style="padding: 3px 8px; border-radius: 999px; background: var(--amber-dim); color: var(--amber); font-family: var(--mono); font-size: 10.5px; font-weight: 600; letter-spacing: 0.04em">MEDIUM</span>
+        </div>
+        <p style="margin: 0; color: var(--ink2)"><strong style="color: var(--ink)">Now.</strong> Two grey tabs (Audio, Text), a close X that does nothing on desktop, then a nested 12 px rounded box inside the 10 px panel. Nothing says whether a call is live, how long, or which node the agent is on.</p>
+        <p style="margin: 0; color: var(--ink2)"><strong style="color: var(--ink)">Change.</strong> Rail header: "Test agent" + a live pill (spark orange dot, timer) + segmented Voice / Text. Transcript with node-transition markers. A composer pinned to the bottom. Same rail on every agent screen, as today.</p>
+      </article>
+
+      <article style="background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 20px; display: flex; flex-direction: column; gap: 10px">
+        <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px">
+          <h3 style="margin: 0; font-size: 15px; font-weight: 700">Settings: 1,500 lines, seven Save buttons</h3>
+          <span style="padding: 3px 8px; border-radius: 999px; background: var(--danger-dim); color: var(--danger); font-family: var(--mono); font-size: 10.5px; font-weight: 600; letter-spacing: 0.04em">HIGH</span>
+        </div>
+        <p style="margin: 0; color: var(--ink2)"><strong style="color: var(--ink)">Now.</strong> Seven stacked cards (General, Variables, Dictionary, Voicemail, Identity, Recordings, Report), each with its own footer Save. General alone holds nine sub-sections as 14 px h3s. There is no way to jump to a section and no indication of what is unsaved.</p>
+        <p style="margin: 0; color: var(--ink2)"><strong style="color: var(--ink)">Change.</strong> Sticky section index on the left, one card per section with the same header (icon, title, one-line description), each setting as a row (label + help on the left, control on the right), and a single sticky save bar that appears only when something changed.</p>
+      </article>
+
+      <article style="background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 20px; display: flex; flex-direction: column; gap: 10px">
+        <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px">
+          <h3 style="margin: 0; font-size: 15px; font-weight: 700">Agent nav: three groups for five rows</h3>
+          <span style="padding: 3px 8px; border-radius: 999px; background: var(--sky-dim); color: var(--sky); font-family: var(--mono); font-size: 10.5px; font-weight: 600; letter-spacing: 0.04em">LOW</span>
+        </div>
+        <p style="margin: 0; color: var(--ink2)"><strong style="color: var(--ink)">Now.</strong> CONFIGURE (3), CONNECT (1), ANALYSE (1). The labels cost more height than they organise, and the status pill under the agent name is a one-off style instead of StatusPill.</p>
+        <p style="margin: 0; color: var(--ink2)"><strong style="color: var(--ink)">Change.</strong> Keep the groups (they will fill out), but tighten to 12 px label spacing, use StatusPill for the version status, and show a count on Runs.</p>
+      </article>
+
+      <article style="background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 20px; display: flex; flex-direction: column; gap: 10px">
+        <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px">
+          <h3 style="margin: 0; font-size: 15px; font-weight: 700">Header: mono and sans breadcrumb</h3>
+          <span style="padding: 3px 8px; border-radius: 999px; background: var(--sky-dim); color: var(--sky); font-family: var(--mono); font-size: 10.5px; font-weight: 600; letter-spacing: 0.04em">LOW</span>
+        </div>
+        <p style="margin: 0; color: var(--ink2)"><strong style="color: var(--ink)">Now.</strong> The workspace switcher is mono, the page title is sans semibold, the strapline is mono again and only shows above 1280 px. Overview is the one page that also prints an h1 in its body.</p>
+        <p style="margin: 0; color: var(--ink2)"><strong style="color: var(--ink)">Change.</strong> Breadcrumb entirely in DM Sans (workspace in ink-3, page in ink), mono reserved for data. Straplines move into the page as a one-line description under a compact page title, so every screen has the same opening.</p>
+      </article>
+    </div>
+  </section>
+
+  <section style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px">
+    <div style="background: var(--brand-dim); border: 1px solid var(--line); border-radius: 12px; padding: 22px 24px; display: flex; flex-direction: column; gap: 10px">
+      <h2 style="margin: 0; font-size: 18px; font-weight: 700">Design principles for the redesign</h2>
+      <ol style="margin: 0; padding-left: 20px; color: var(--ink2); display: flex; flex-direction: column; gap: 6px">
+        <li><strong style="color: var(--ink)">One accent.</strong> Green does every interactive job. Blue, amber, red, orange are statuses, never buttons.</li>
+        <li><strong style="color: var(--ink)">Same opening on every screen.</strong> Title, one-line description, actions on the right, then content. Nothing repeated in the header.</li>
+        <li><strong style="color: var(--ink)">Flat surfaces, floating overlays.</strong> Shadows only on things that are above the page.</li>
+        <li><strong style="color: var(--ink)">Rows, not button rows.</strong> A list row navigates; secondary actions live in one menu.</li>
+        <li><strong style="color: var(--ink)">Dark uses the Uncava ladder.</strong> Cool near-black surfaces in steps, same spacing and type; Mint is the only colour.</li>
+        <li><strong style="color: var(--ink)">Voice is the product.</strong> Live state uses the spark orange and a waveform, everywhere a call is happening.</li>
+      </ol>
+    </div>
+    <div style="background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 22px 24px; display: flex; flex-direction: column; gap: 10px">
+      <h2 style="margin: 0; font-size: 18px; font-weight: 700">Suggested order of work</h2>
+      <ol style="margin: 0; padding-left: 20px; color: var(--ink2); display: flex; flex-direction: column; gap: 6px">
+        <li><strong style="color: var(--ink)">Tokens and type</strong> in globals.css and layout.tsx: fonts, Uncava dark, near-black light ink, green ring and active nav, radius scale, flat Card. Reaches every screen at once.</li>
+        <li><strong style="color: var(--ink)">Copy pass</strong>: agent everywhere, sentence case, default names.</li>
+        <li><strong style="color: var(--ink)">Voice agents landing</strong>: new row model, search, filter, stat strip, empty state, create dialog.</li>
+        <li><strong style="color: var(--ink)">Editor toolbar and canvas toolbar</strong>, then the test rail header.</li>
+        <li><strong style="color: var(--ink)">Advanced settings</strong>: section index, setting rows, single save bar.</li>
+        <li><strong style="color: var(--ink)">Palette lint rule</strong> and migration of the 54 files.</li>
+      </ol>
+    </div>
+  </section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"dark":{"editor":"boolean","default":false,"section":"Theme"},"$preview":{"width":1440,"height":1760}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return { themeClass: this.props.dark ? 'dark' : '' };
+  }
+}
+</script>
+</body>
+</html>

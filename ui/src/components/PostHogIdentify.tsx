@@ -10,7 +10,7 @@ import { useAuth } from '@/lib/auth';
  * PostHogIdentify
  * ---------------
  * Calls `posthog.identify` once the authenticated user object is available,
- * using the Stack Auth user ID as distinct_id with email and name as properties.
+ * using the provider ID as distinct_id. No email or name is sent.
  *
  * Rendered in the root layout (`app/layout.tsx`) so it fires on every session
  * for every logged-in user.
@@ -22,17 +22,6 @@ export default function PostHogIdentify() {
         if (user) {
             const identify = () => {
                 try {
-                    // Stack Auth users expose primaryEmail/displayName,
-                    // local users expose email/name — handle both.
-                    const email =
-                        'primaryEmail' in user ? user.primaryEmail :
-                        'email' in user ? user.email :
-                        undefined;
-                    const name =
-                        'displayName' in user ? user.displayName :
-                        'name' in user ? user.name :
-                        undefined;
-
                     // Use provider_id as distinct_id to match backend PostHog events.
                     // Stack Auth users: user.id is already the provider_id.
                     // OSS users: provider_id is returned from the auth API.
@@ -41,10 +30,8 @@ export default function PostHogIdentify() {
                             ? String(user.provider_id)
                             : String(user.id);
 
-                    posthog.identify(distinctId, {
-                        ...(email && { email }),
-                        ...(name && { name }),
-                    });
+                    // ID only: no email or name leaves for analytics.
+                    posthog.identify(distinctId);
                     posthog.capture(PostHogEvent.SIGNED_IN);
                 } catch (err) {
                     console.warn('Failed to identify user in PostHog', err);

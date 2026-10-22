@@ -1,5 +1,7 @@
 """Set up logging before importing anything else"""
 
+import asyncio
+
 import sentry_sdk
 
 from api.constants import (
@@ -21,7 +23,7 @@ if SENTRY_DSN and (
 
     sentry_sdk.init(
         dsn=SENTRY_DSN,
-        send_default_pii=True,
+        send_default_pii=False,
         # The OAuth browser nonce travels in a request body (integrations
         # activate); keep it out of error reports.
         event_scrubber=EventScrubber(denylist=DEFAULT_DENYLIST + ["browser_nonce"]),
@@ -37,9 +39,14 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from loguru import logger
 
-from api.constants import BRAND_APP_URL, BRAND_NAME, REDIS_URL
+from api.constants import BRAND_APP_URL, BRAND_NAME, PUBLIC_BASE_URL, REDIS_URL
 from api.errors.domain import DomainError
-from api.errors.mps import MPS_UNAVAILABLE_PUBLIC_MESSAGE, MPSUnavailableError
+from api.errors.mps import (
+    MPS_NOT_CONFIGURED_PUBLIC_MESSAGE,
+    MPS_UNAVAILABLE_PUBLIC_MESSAGE,
+    MPSNotConfiguredError,
+    MPSUnavailableError,
+)
 from api.mcp_server import mcp
 from api.routes.main import router as main_router
 from api.services.credential_encryption import verify_credential_encryption
@@ -49,6 +56,7 @@ from api.services.pipecat.tracing_config import (
 )
 from api.services.pipecat.tts_cache.runtime import close_speech_cache
 from api.services.skills import sync_seed_library_on_startup
+from api.services.storage import secure_legacy_minio_bucket
 from api.services.tool_integrations.client import close_shared_http_client
 from api.services.worker_sync.manager import (
     WorkerSyncManager,
@@ -56,6 +64,7 @@ from api.services.worker_sync.manager import (
 )
 from api.services.worker_sync.protocol import WorkerSyncEventType
 from api.tasks.arq import get_arq_redis
+from api.utils.cors import resolve_cors_settings
 
 API_PREFIX = "/api/v1"
 
@@ -69,6 +78,8 @@ async def lifespan(app: FastAPI):
     await verify_credential_encryption()
     # Fallcha: sync seed skills (api/skills_library) into the library.
     await sync_seed_library_on_startup()
+    # Close the old public MinIO bucket even when S3/GCS is the primary backend.
+    await asyncio.to_thread(secure_legacy_minio_bucket)
 
     async with mcp_app.lifespan(app):
         # warmup arq pool
@@ -130,6 +141,19 @@ app = FastAPI(
 )
 
 
+@app.exception_handler(MPSNotConfiguredError)
+async def handle_mps_not_configured_error(
+    _request: Request,
+    _exc: MPSNotConfiguredError,
+) -> JSONResponse:
+    """An MPS-only feature was used on a server without an MPS configured."""
+
+    return JSONResponse(
+        status_code=404,
+        content={"detail": MPS_NOT_CONFIGURED_PUBLIC_MESSAGE},
+    )
+
+
 @app.exception_handler(MPSUnavailableError)
 async def handle_mps_unavailable_error(
     _request: Request,
@@ -153,26 +177,19 @@ async def handle_domain_error(_request: Request, exc: DomainError) -> JSONRespon
     return JSONResponse(status_code=exc.status_code, content=content)
 
 
-# Configure CORS.
-# OSS is typically deployed with UI and API behind a single reverse proxy
-# (same-origin, so CORS does not apply). Keep it permissive without
-# credentials — wildcard + credentials is rejected by browsers and unsafe.
-# SaaS deployments must set CORS_ALLOWED_ORIGINS to an explicit allowlist.
-if DEPLOYMENT_MODE == "oss":
-    cors_origins: list[str] = ["*"]
-    cors_allow_credentials = False
-else:
-    if not CORS_ALLOWED_ORIGINS:
-        raise RuntimeError(
-            "CORS_ALLOWED_ORIGINS must be set to an explicit origin allowlist "
-            "when DEPLOYMENT_MODE != 'oss'"
-        )
-    if "*" in CORS_ALLOWED_ORIGINS:
-        raise RuntimeError(
-            "CORS_ALLOWED_ORIGINS cannot contain '*' with credentialed requests"
-        )
-    cors_origins = CORS_ALLOWED_ORIGINS
-    cors_allow_credentials = True
+# Configure CORS: an explicit allowlist whenever CORS_ALLOWED_ORIGINS is set,
+# and always in production (derived from PUBLIC_BASE_URL when the list is
+# unset); "*" without credentials only for local OSS development. The embed
+# widget's public endpoints handle their own CORS (PublicEmbedCORSMiddleware
+# below). See api/utils/cors.py.
+_cors = resolve_cors_settings(
+    deployment_mode=DEPLOYMENT_MODE,
+    environment=ENVIRONMENT,
+    allowed_origins=CORS_ALLOWED_ORIGINS,
+    public_base_url=PUBLIC_BASE_URL,
+)
+cors_origins: list[str] = _cors.allow_origins
+cors_allow_credentials = _cors.allow_credentials
 
 app.add_middleware(
     CORSMiddleware,

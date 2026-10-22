@@ -332,7 +332,7 @@ export default function ToolsPage() {
     const getStatusBadge = (status: string) => {
         switch (status) {
             case "active":
-                return <Badge className="bg-green-500">Active</Badge>;
+                return <Badge variant="success">Active</Badge>;
             case "draft":
                 return <Badge variant="secondary">Draft</Badge>;
             case "archived":
@@ -359,7 +359,7 @@ export default function ToolsPage() {
                 {/* Screen name, strapline and primary action are rendered by the
                     app header (AppTopBar) — see PageActions. */}
                 <PageActions>
-                    <Button onClick={() => setIsCreateDialogOpen(true)}>
+                    <Button size="toolbar" onClick={() => setIsCreateDialogOpen(true)}>
                         <Plus className="w-4 h-4" />
                         New tool
                     </Button>
@@ -558,7 +558,7 @@ export default function ToolsPage() {
                     <DialogHeader>
                         <DialogTitle>Create New Tool</DialogTitle>
                         <DialogDescription>
-                            Create a new tool that can be used in your workflows.
+                            Create a new tool that can be used by your agents.
                         </DialogDescription>
                     </DialogHeader>
                     <div className="grid gap-4 py-4">

@@ -255,12 +255,12 @@ function MpsBillingPage() {
             {/* Screen name, strapline and primary actions are rendered by the
                 app header (AppTopBar) — see PageActions. */}
             <PageActions>
-                <Button variant="outline" onClick={handleRefresh} disabled={loading}>
+                <Button size="toolbar" variant="outline" onClick={handleRefresh} disabled={loading}>
                     <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
                     Refresh
                 </Button>
                 {canPurchaseCredits && (
-                    <Button onClick={handlePurchaseCredits} disabled={purchasing}>
+                    <Button size="toolbar" onClick={handlePurchaseCredits} disabled={purchasing}>
                         <CreditCard className="h-4 w-4" />
                         {purchasing ? "Opening..." : "Add credits"}
                     </Button>
@@ -268,9 +268,9 @@ function MpsBillingPage() {
             </PageActions>
 
             {isOssMode && (
-                <div className="flex gap-3 rounded-lg border border-amber-200 bg-amber-50 p-4 dark:border-amber-900/50 dark:bg-amber-950/30">
-                    <Info className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-600 dark:text-amber-400" />
-                    <div className="text-sm text-amber-900 dark:text-amber-200">
+                <div className="flex gap-3 rounded-lg border border-amber/30 bg-amber-dim p-4">
+                    <Info className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber" />
+                    <div className="text-sm text-amber">
                         <p className="font-medium">Credit purchases are unavailable in OSS mode</p>
                         <p className="mt-1">
                             You can&apos;t purchase credits from this self-hosted app.{" "}
@@ -396,7 +396,7 @@ function MpsBillingPage() {
                                                             "-"
                                                         )}
                                                     </TableCell>
-                                                    <TableCell className={`text-right font-medium ${delta >= 0 ? "text-green-600" : "text-destructive"}`}>
+                                                    <TableCell className={`text-right font-medium ${delta >= 0 ? "text-ok" : "text-destructive"}`}>
                                                         {delta >= 0 ? "+" : ""}
                                                         {formatCredits(delta)}
                                                     </TableCell>
@@ -462,11 +462,38 @@ function MpsBillingPage() {
     );
 }
 
+function BillingUnavailable() {
+    return (
+        <div className="page-body space-y-6">
+            <div className="flex gap-3 rounded-lg border border-border bg-muted/40 p-4">
+                <Info className="mt-0.5 h-4 w-4 flex-shrink-0 text-muted-foreground" />
+                <div className="text-sm text-muted-foreground">
+                    <p className="font-medium text-foreground">Billing isn&apos;t enabled on this server</p>
+                    <p className="mt-1">
+                        There are no credits to manage here.{" "}
+                        <a
+                            href={SUPPORT_MAILTO}
+                            className="font-medium underline underline-offset-2"
+                        >
+                            Contact us
+                        </a>{" "}
+                        about a managed plan.
+                    </p>
+                </div>
+            </div>
+        </div>
+    );
+}
+
 export default function BillingPage() {
     const { config } = useAppConfig();
     // Under Stripe billing, credits live in this app's own EUR ledger.
     if (config?.billingProvider === "stripe") {
         return <StripeBilling />;
+    }
+    // MPS credits need an MPS; without one there is nothing to show.
+    if (config && !config.mpsEnabled) {
+        return <BillingUnavailable />;
     }
     return <MpsBillingPage />;
 }

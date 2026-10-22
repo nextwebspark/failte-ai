@@ -32,7 +32,7 @@ from starlette.websockets import WebSocketState
 from api.constants import ENABLE_COTURN, ENVIRONMENT, FORCE_TURN_RELAY, SERVER_IP
 from api.db import db_client
 from api.db.models import UserModel
-from api.enums import Environment, WorkflowRunMode
+from api.enums import Environment, WorkflowRunMode, WorkflowRunState
 from api.errors.failure import (
     ErrorSource,
     classify_exception,
@@ -419,7 +419,7 @@ class SignalingManager:
         websocket: WebSocket,
         workflow_id: int,
         workflow_run_id: int,
-        user: UserModel,
+        user: UserModel | None,
         organization_id: int,
         enforce_call_concurrency: bool = False,
         call_concurrency_source: str = "webrtc",
@@ -427,7 +427,11 @@ class SignalingManager:
     ):
         """Handle WebSocket connection for signaling."""
         await websocket.accept()
-        connection_id = f"{workflow_id}:{workflow_run_id}:{user.id}"
+        # ``user`` is None for a widget whose token creator deleted their
+        # account; the run is scoped by organization either way.
+        connection_id = (
+            f"{workflow_id}:{workflow_run_id}:{user.id if user else 'embed'}"
+        )
         connection_key = f"{connection_id}:{id(websocket)}"
         self._connections[connection_key] = websocket
 
@@ -484,7 +488,7 @@ class SignalingManager:
         message: dict,
         workflow_id: int,
         workflow_run_id: int,
-        user: UserModel,
+        user: UserModel | None,
         organization_id: int,
         connection_key: str,
         enforce_call_concurrency: bool,
@@ -519,7 +523,7 @@ class SignalingManager:
         payload: dict,
         workflow_id: int,
         workflow_run_id: int,
-        user: UserModel,
+        user: UserModel | None,
         organization_id: int,
         connection_key: str,
         enforce_call_concurrency: bool,
@@ -667,7 +671,9 @@ class SignalingManager:
             # Create new connection using correct SmallWebRTC API
             # Generate ICE servers with time-limited TURN credentials for this user
             try:
-                user_ice_servers = get_ice_servers(user_id=str(user.id))
+                user_ice_servers = get_ice_servers(
+                    user_id=str(user.id) if user else f"run-{workflow_run_id}"
+                )
                 pc = SmallWebRTCConnection(
                     ice_servers=user_ice_servers, connection_timeout_secs=60
                 )
@@ -704,15 +710,23 @@ class SignalingManager:
                             reason="peer_connection_closed",
                         )
 
+                # Mark the run live, as the telephony and agent-stream routes
+                # do; the Voice agents list counts running runs as live calls.
+                # A missing run is still the pipeline's to refuse.
+                if workflow_run is not None:
+                    await db_client.update_workflow_run(
+                        run_id=workflow_run_id, state=WorkflowRunState.RUNNING.value
+                    )
+
                 # Start pipeline in background
                 pipeline_task = asyncio.create_task(
                     run_pipeline_smallwebrtc(
                         pc,
                         workflow_id,
                         workflow_run_id,
-                        user.id,
+                        user.id if user else None,
                         call_context_vars,
-                        user_provider_id=str(user.provider_id),
+                        user_provider_id=str(user.provider_id) if user else None,
                         organization_id=organization_id,
                     )
                 )
@@ -937,10 +951,14 @@ async def public_signaling_websocket(
 
     # Create a minimal user object for compatibility with signaling manager
     # Use the embed token creator as the user
-    user = await db_client.get_user_by_id(embed_token.created_by)
-    if not user:
-        await websocket.close(code=1008, reason="Invalid user")
-        return
+    # A token whose creator has deleted their account keeps working; the run
+    # is scoped by the token's organization.
+    user = None
+    if embed_token.created_by is not None:
+        user = await db_client.get_user_by_id(embed_token.created_by)
+        if not user:
+            await websocket.close(code=1008, reason="Invalid user")
+            return
 
     # Handle the WebSocket connection using the existing signaling manager
     await signaling_manager.handle_websocket(

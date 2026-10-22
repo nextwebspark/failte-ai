@@ -1,4 +1,4 @@
-import { BaseEdge, type Edge, EdgeLabelRenderer, type EdgeProps, getSmoothStepPath, useReactFlow } from '@xyflow/react';
+import { BaseEdge, EdgeLabelRenderer, type EdgeProps, getSmoothStepPath, useReactFlow } from '@xyflow/react';
 import { AlertCircle, Pencil, Trash2 } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 
@@ -13,7 +13,6 @@ import { Textarea } from '@/components/ui/textarea';
 import { cn } from "@/lib/utils";
 
 import { FlowEdge, FlowEdgeData, FlowNode } from '../types';
-type CustomEdge = Edge<{ value: number }, 'custom'>;
 
 
 interface EdgeDetailsDialogProps {
@@ -154,6 +153,7 @@ export default function CustomEdge(props: CustomEdgeProps) {
 
     const { getEdges, setNodes } = useReactFlow<FlowNode, FlowEdge>();
     const { saveWorkflow } = useWorkflow();
+    const readOnly = useWorkflowOptional()?.readOnly ?? false;
     const updateEdge = useWorkflowStore((state) => state.updateEdge);
     const deleteEdge = useWorkflowStore((state) => state.deleteEdge);
     const [open, setOpen] = useState(false);
@@ -273,14 +273,17 @@ export default function CustomEdge(props: CustomEdgeProps) {
                     path={edgePath}
                     style={{
                         ...style,
-                        // Sky marks selection and hover, matching node selection;
-                        // idle edges sit back on the muted ink.
-                        stroke: selected || isHovered
-                            ? 'var(--sky)'
-                            : data?.invalid ? 'var(--danger)' : 'var(--ink-3)',
-                        strokeWidth: selected ? 4 : isHovered ? 3 : 2.5,
-                        strokeOpacity: selected || isHovered ? 1 : 0.75,
-                        transition: 'stroke 0.2s ease, stroke-width 0.2s ease, stroke-opacity 0.2s ease',
+                        // Brand marks selection and hover, as on the steps; idle
+                        // connections are a calm solid ink line (Conversation.dc.html),
+                        // even on edges saved as `animated`. An invalid connection
+                        // stays danger-red; width alone shows hover and selection.
+                        stroke: data?.invalid
+                            ? 'var(--danger)'
+                            : selected || isHovered ? 'var(--brand)' : 'var(--ink-3)',
+                        strokeWidth: selected ? 2.5 : isHovered ? 2 : 1.5,
+                        strokeDasharray: 'none',
+                        animation: 'none',
+                        transition: 'stroke 0.2s ease, stroke-width 0.2s ease',
                     }}
                     interactionWidth={20}
                 />
@@ -302,60 +305,68 @@ export default function CustomEdge(props: CustomEdgeProps) {
                 >
                     {/* Show full EdgeLabel when selected or hovered, otherwise show simple label */}
                     {(selected || isHovered) ? (
-                        <div className={cn(
-                            "flex flex-col gap-2 bg-card rounded-lg border min-w-[220px]",
-                            "animate-in fade-in zoom-in duration-200",
-                            data?.invalid
-                                ? "border-destructive/50 shadow-[0_0_15px_rgba(239,68,68,0.3)]"
-                                : selected
-                                    ? "border-primary ring-2 ring-primary/40 shadow-[0_0_20px_rgba(59,130,246,0.5)]"
-                                    : "border-border shadow-xl"
-                        )}>
-                            {/* Header with label */}
-                            <div className={cn(
-                                "flex items-center justify-between px-3 py-2 border-b",
-                                data?.invalid ? "bg-destructive/10 border-destructive/30" : "bg-muted/50 border-border"
-                            )}>
-                                <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                                    Condition
+                        <div
+                            className={cn(
+                                "min-w-[220px] max-w-[280px] rounded-lg border bg-panel shadow-panel",
+                                "animate-in fade-in zoom-in-95 duration-150",
+                                data?.invalid
+                                    ? "border-danger"
+                                    : selected
+                                        ? "border-brand ring-4 ring-brand-dim"
+                                        : "border-line",
+                            )}
+                        >
+                            <div className="flex items-center justify-between gap-2 border-b border-line-soft py-1.5 pr-1.5 pl-3">
+                                <span className="text-[10.5px] font-semibold tracking-[0.08em] text-ink-3 uppercase">
+                                    Move on when
                                 </span>
-                                <div className="flex items-center gap-1">
+                                <div className="flex items-center gap-0.5">
                                     <Button
                                         variant="ghost"
                                         size="icon"
-                                        className="h-6 w-6 p-0 hover:bg-destructive/10 hover:text-destructive text-muted-foreground"
-                                        onClick={handleDeleteEdge}
-                                    >
-                                        <Trash2 className="h-3 w-3" />
-                                    </Button>
-                                    <Button
-                                        variant="ghost"
-                                        size="icon"
-                                        className="h-6 w-6 p-0 hover:bg-muted text-muted-foreground"
+                                        aria-label="Edit connection"
+                                        className="size-7 text-ink-3 hover:text-foreground"
                                         onClick={() => setOpen(true)}
                                     >
-                                        <Pencil className="h-3 w-3" />
+                                        <Pencil className="size-3.5" />
                                     </Button>
+                                    {!readOnly && (
+                                        <Button
+                                            variant="ghost"
+                                            size="icon"
+                                            aria-label="Delete connection"
+                                            className="size-7 text-ink-3 hover:bg-danger-dim hover:text-danger"
+                                            onClick={handleDeleteEdge}
+                                        >
+                                            <Trash2 className="size-3.5" />
+                                        </Button>
+                                    )}
                                 </div>
                             </div>
-                            {/* Content */}
-                            <div className="px-3 pb-3">
-                                <div className="text-sm font-medium text-card-foreground break-words">
-                                    {data?.label || data?.condition || 'Click to set condition'}
-                                </div>
+                            <div className="px-3 py-2.5">
+                                {data?.invalid && data.validationMessage && (
+                                    <p className="mb-1 text-[12px] text-danger">{data.validationMessage}</p>
+                                )}
+                                <p className={cn(
+                                    "break-words text-[13px]",
+                                    data?.condition ? "text-ink" : "text-ink-3 italic",
+                                )}>
+                                    {data?.condition
+                                        || (readOnly ? "No condition set" : "Double-click to say when the agent moves on")}
+                                </p>
                             </div>
                         </div>
                     ) : (
-                        /* Default label: the canvas "info" pill — mono on a panel
-                           chip so it stays readable over the flow background. */
+                        /* Default label (Conversation.dc.html): a small mono tag on the
+                           panel, readable over the dotted canvas without competing
+                           with the steps. */
                         <div className={cn(
-                            "rounded-full border px-2.5 py-1 font-mono text-[11px] font-medium shadow-sm",
-                            "transition-all duration-200",
+                            "max-w-[200px] truncate rounded-sm border px-2 py-0.5 font-mono text-[10.5px] font-medium",
                             data?.invalid
                                 ? "border-danger/40 bg-danger-dim text-danger"
-                                : "border-sky/40 bg-panel text-sky"
+                                : "border-line bg-panel text-ink-2",
                         )}>
-                            {data?.label || data?.condition || 'No condition'}
+                            {data?.label || data?.condition || 'Set a condition'}
                         </div>
                     )}
                 </div>

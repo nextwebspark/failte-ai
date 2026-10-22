@@ -175,6 +175,17 @@ class IssuedKeyOut(BaseModel):
     key: str = Field(description="Plaintext connection key. Shown only once.")
 
 
+class OrgErasureOut(BaseModel):
+    """What ``DELETE /internal/org`` removed (counts only)."""
+
+    connections: int
+    connection_keys: int
+    oauth_states: int
+    provider_apps: int
+    syncs_stopped: int
+    tokens_revoked: int
+
+
 class ConnectionTestOut(BaseModel):
     ok: bool
     message: str

@@ -13,6 +13,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
+import { useAppConfig } from '@/context/AppConfigContext';
 import { useOrganizationTimezone } from '@/hooks/useOrganizationTimezone';
 import { formatDateTime } from '@/lib/dateTime';
 import logger from '@/lib/logger';
@@ -30,6 +31,10 @@ export default function DocumentList({ refreshTrigger }: DocumentListProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [editingDoc, setEditingDoc] = useState<DocumentResponseSchema | null>(null);
+  // Saving an edit re-processes the document; when the server can't process
+  // documents, editing is off like uploads.
+  const { config } = useAppConfig();
+  const editingAvailable = Boolean(config?.documentProcessingEnabled);
 
   const fetchDocuments = useCallback(async () => {
     try {
@@ -102,8 +107,10 @@ export default function DocumentList({ refreshTrigger }: DocumentListProps) {
   const isBusy = (doc: DocumentResponseSchema) =>
     doc.processing_status === 'processing' || doc.processing_status === 'pending';
 
-  const canOpen = (doc: DocumentResponseSchema) =>
-    isEditableDocument(doc.filename) && !isBusy(doc);
+  const canEdit = (doc: DocumentResponseSchema) =>
+    editingAvailable && isEditableDocument(doc.filename);
+
+  const canOpen = (doc: DocumentResponseSchema) => canEdit(doc) && !isBusy(doc);
 
   const getStatusBadge = (doc: DocumentResponseSchema) => {
     // A previously indexed document keeps serving agents while it is re-indexed
@@ -120,7 +127,7 @@ export default function DocumentList({ refreshTrigger }: DocumentListProps) {
     }
     switch (doc.processing_status) {
       case 'completed':
-        return <Badge className="bg-green-500">Completed</Badge>;
+        return <Badge variant="success">Completed</Badge>;
       case 'processing':
         return (
           <Badge variant="secondary" className="animate-pulse">
@@ -248,6 +255,13 @@ export default function DocumentList({ refreshTrigger }: DocumentListProps) {
                     )}
                     <span>{formatDateTime(doc.created_at, organizationTimezone)}</span>
                   </div>
+                  {doc.needs_reindex && (
+                    <p className="text-xs text-amber mt-1">
+                      Re-index needed: this document was indexed with a different
+                      embedding model than the one now configured, so agents can&apos;t
+                      find it. Delete it and upload it again.
+                    </p>
+                  )}
                   {doc.has_live_content && isBusy(doc) && (
                     <p className="text-xs text-muted-foreground mt-1">
                       Agents keep using the previous version until the update finishes.
@@ -273,7 +287,7 @@ export default function DocumentList({ refreshTrigger }: DocumentListProps) {
                 className="flex items-center gap-1"
                 onClick={(event) => event.stopPropagation()}
               >
-                {isEditableDocument(doc.filename) && (
+                {canEdit(doc) && (
                   <Button
                     variant="ghost"
                     size="sm"

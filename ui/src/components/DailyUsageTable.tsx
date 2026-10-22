@@ -27,7 +27,7 @@ export function DailyUsageTable({ data, isLoading }: DailyUsageTableProps) {
                 <CardContent>
                     <div className="animate-pulse space-y-3">
                         {[...Array(7)].map((_, i) => (
-                            <div key={i} className="h-12 bg-gray-200 rounded"></div>
+                            <div key={i} className="h-12 bg-line rounded"></div>
                         ))}
                     </div>
                 </CardContent>
@@ -43,7 +43,7 @@ export function DailyUsageTable({ data, isLoading }: DailyUsageTableProps) {
                     <CardDescription>Last 7 days of usage</CardDescription>
                 </CardHeader>
                 <CardContent>
-                    <p className="text-center py-8 text-gray-500">No usage data available</p>
+                    <p className="text-center py-8 text-ink-3">No usage data available</p>
                 </CardContent>
             </Card>
         );
@@ -59,7 +59,7 @@ export function DailyUsageTable({ data, isLoading }: DailyUsageTableProps) {
                 <div className="bg-white border rounded-lg overflow-hidden shadow-sm">
                     <Table>
                         <TableHeader>
-                            <TableRow className="bg-gray-50">
+                            <TableRow className="bg-panel-2">
                                 <TableHead className="font-semibold">Date</TableHead>
                                 <TableHead className="font-semibold text-right">Usage (minutes)</TableHead>
                                 <TableHead className="font-semibold text-right">Cost (USD)</TableHead>
@@ -85,7 +85,7 @@ export function DailyUsageTable({ data, isLoading }: DailyUsageTableProps) {
                             ))}
                         </TableBody>
                         <TableFooter>
-                            <TableRow className="bg-gray-50 font-semibold">
+                            <TableRow className="bg-panel-2 font-semibold">
                                 <TableCell>Total</TableCell>
                                 <TableCell className="text-right">
                                     {data.total_minutes.toFixed(1)}

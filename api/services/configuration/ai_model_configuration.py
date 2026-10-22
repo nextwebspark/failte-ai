@@ -10,7 +10,6 @@ from loguru import logger
 from pydantic import ValidationError
 
 from api import constants
-from api.constants import MPS_API_URL
 from api.db import db_client
 from api.db.models import OrganizationConfigurationModel, UserModel
 from api.enums import OrganizationConfigurationKey
@@ -45,6 +44,7 @@ from api.services.configuration.platform.settings import (
 )
 from api.services.configuration.registry import ServiceProviders
 from api.services.configuration.resolve import resolve_effective_config
+from api.services.mps_service_key_client import mps_base_url
 
 AIModelConfigurationSource = Literal["organization_v2", "legacy_user_v1", "empty"]
 WORKFLOW_MODEL_CONFIGURATION_V2_OVERRIDE_KEY = "model_configuration_v2_override"
@@ -481,7 +481,7 @@ def convert_legacy_ai_model_configuration_to_v2(
 
 def dograh_embeddings_base_url() -> str:
     # AsyncOpenAI appends "/embeddings"; MPS exposes that under /api/v1/llm.
-    return f"{MPS_API_URL}/api/v1/llm"
+    return f"{mps_base_url()}/api/v1/llm"
 
 
 def apply_managed_embeddings_base_url(

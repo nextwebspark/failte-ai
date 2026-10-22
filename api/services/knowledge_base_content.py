@@ -10,9 +10,12 @@ import os
 import tempfile
 
 import aiofiles
+from loguru import logger
 
 from api.db import db_client
 from api.db.models import KnowledgeBaseDocumentModel
+from api.services.documents import DEFAULT_TARGET_TOKENS
+from api.services.knowledge_base_keys import is_document_storage_key
 from api.services.storage import storage_fs
 from api.tasks.arq import enqueue_job
 from api.tasks.function_names import FunctionNames
@@ -20,8 +23,8 @@ from api.tasks.knowledge_base_processing import MAX_FILE_SIZE_BYTES
 
 EDITABLE_EXTENSIONS = (".txt", ".md")
 
-# Max tokens per chunk passed to document processing.
-DEFAULT_CHUNK_MAX_TOKENS = 128
+# Target tokens per chunk passed to document processing.
+DEFAULT_CHUNK_MAX_TOKENS = DEFAULT_TARGET_TOKENS
 
 _STALE_MESSAGE = "This document changed since you opened it. Reload it and try again."
 
@@ -46,7 +49,10 @@ def _editable_storage_key(document: KnowledgeBaseDocumentModel) -> str:
     if not is_editable_document(document.filename):
         raise DocumentNotEditableError("Only .txt and .md documents can be edited.")
     s3_key = (document.custom_metadata or {}).get("s3_key")
-    if not s3_key:
+    if not s3_key or not is_document_storage_key(
+        s3_key, document.organization_id, document.document_uuid
+    ):
+        # A key outside the document's own folder is never read or written.
         raise DocumentNotEditableError(
             "The original file for this document is missing."
         )
@@ -177,3 +183,55 @@ async def update_document_content(
         raise
 
     return claimed
+
+
+async def current_embedding_model_id(organization_id: int) -> str | None:
+    """The embedding model new chunks would get, or None when there is none."""
+    from api.services.configuration.ai_model_configuration import (
+        get_resolved_ai_model_configuration,
+    )
+    from api.services.gen_ai import embedding_model_id
+
+    try:
+        resolved = await get_resolved_ai_model_configuration(
+            organization_id=organization_id
+        )
+    except Exception as exc:  # a broken configuration must not break the list
+        logger.warning(
+            f"Could not resolve embeddings for organization {organization_id}: {exc}"
+        )
+        return None
+    embeddings = resolved.effective.embeddings
+    if embeddings is None:
+        return None
+    provider = getattr(embeddings, "provider", None)
+    return embedding_model_id(
+        getattr(provider, "value", provider), getattr(embeddings, "model", None)
+    )
+
+
+async def documents_needing_reindex(
+    organization_id: int, documents: list[KnowledgeBaseDocumentModel]
+) -> set[int]:
+    """Chunked documents embedded with a model other than the current one.
+
+    Search filters on the current model, so these would never be found.
+    """
+    chunked = [
+        document.id
+        for document in documents
+        if document.retrieval_mode == "chunked" and document.total_chunks > 0
+    ]
+    if not chunked:
+        return set()
+    current = await current_embedding_model_id(organization_id)
+    if current is None:
+        return set()
+    models = await db_client.get_embedding_models_for_documents(
+        organization_id, chunked
+    )
+    return {
+        document_id
+        for document_id, document_models in models.items()
+        if document_models != {current}
+    }

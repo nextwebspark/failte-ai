@@ -30,6 +30,7 @@ import { getPageMeta } from '@/components/layout/navConfig';
 import { RETURN_TO_PARAM, safeReturnTo } from '@/components/layout/shellContext';
 import { MediaPreviewButton, MediaPreviewDialog } from '@/components/MediaPreviewDialog';
 import { OnboardingTooltip } from '@/components/onboarding/OnboardingTooltip';
+import { DeleteCallDataButton } from '@/components/privacy/DeleteCallDataButton';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -37,6 +38,7 @@ import { ConversationRailFrame, RealtimeFeedback, WorkflowRunLogs } from '@/comp
 import { conversationItemsFromRealtimeFeedbackEvents } from '@/components/workflow/conversation/adapters/fromRealtimeFeedback';
 import { PostHogEvent } from '@/constants/posthog-events';
 import { WORKFLOW_RUN_MODES } from '@/constants/workflowRunModes';
+import { useOrgConfig } from '@/context/OrgConfigContext';
 import { useOrganizationTimezone } from '@/hooks/useOrganizationTimezone';
 import { useAuth } from '@/lib/auth';
 import { copyTextToClipboard } from '@/lib/clipboard';
@@ -208,7 +210,7 @@ function WaveformLane({
                         key={`${track}-${index}`}
                         className={cn(
                             'min-h-1 flex-1 rounded-full',
-                            track === 'user' ? 'bg-sky-500' : 'bg-emerald-500'
+                            track === 'user' ? 'bg-sky' : 'bg-ok'
                         )}
                         style={{ height: `${Math.round(peak * 100)}%` }}
                     />
@@ -448,10 +450,12 @@ function SplitTracksSection({
                             aria-pressed={userTrackActive}
                             aria-label={playbackMode === 'user' ? 'Play both tracks' : 'Play user track only'}
                             onClick={() => handleTrackButtonClick('user')}
+                            // The dark: and hover: twins outrank the outline variant's
+                            // dark:bg-input/30, dark:border-input and hover:bg-accent.
                             className={cn(
                                 'gap-1.5',
                                 userTrackActive
-                                    ? 'border-sky-200 bg-sky-50 text-sky-700 hover:bg-sky-100 dark:border-sky-900/60 dark:bg-sky-950/30 dark:text-sky-300'
+                                    ? 'border-sky/30 bg-sky-dim text-sky hover:bg-sky/15 hover:text-sky dark:border-sky/30 dark:bg-sky-dim dark:hover:bg-sky/15'
                                     : 'text-muted-foreground opacity-60'
                             )}
                         >
@@ -469,7 +473,7 @@ function SplitTracksSection({
                             className={cn(
                                 'gap-1.5',
                                 botTrackActive
-                                    ? 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:border-emerald-900/60 dark:bg-emerald-950/30 dark:text-emerald-300'
+                                    ? 'border-ok/30 bg-ok-dim text-ok hover:bg-ok/15 hover:text-ok dark:border-ok/30 dark:bg-ok-dim dark:hover:bg-ok/15'
                                     : 'text-muted-foreground opacity-60'
                             )}
                         >
@@ -619,6 +623,9 @@ export default function WorkflowRunPage() {
     const [workflowName, setWorkflowName] = useState<string | null>(null);
     const searchParams = useSearchParams();
     const agentLinkRef = useRef<HTMLAnchorElement | null>(null);
+    const { can } = useOrgConfig();
+    // Bumped after the call's data is deleted, to show the run as it is now.
+    const [reloadKey, setReloadKey] = useState(0);
 
     // Redirect if not authenticated
     useEffect(() => {
@@ -683,7 +690,7 @@ export default function WorkflowRunPage() {
             }
         };
         fetchWorkflowRun();
-    }, [params.workflowId, params.runId, auth]);
+    }, [params.workflowId, params.runId, auth, reloadKey]);
 
     let returnValue = null;
     const isTextChatRun = workflowRun?.mode === WORKFLOW_RUN_MODES.TEXTCHAT;
@@ -748,8 +755,8 @@ export default function WorkflowRunPage() {
                                 className={cn(
                                     'inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold',
                                     isTextChatRun
-                                        ? 'bg-sky-500/15 text-sky-500'
-                                        : 'bg-emerald-500/15 text-emerald-500'
+                                        ? 'bg-sky-dim text-sky'
+                                        : 'bg-ok-dim text-ok'
                                 )}
                             >
                                 {isTextChatRun ? <FileText className="h-3.5 w-3.5" /> : <Check className="h-3.5 w-3.5" />}
@@ -822,6 +829,15 @@ export default function WorkflowRunPage() {
                         <div className="flex flex-wrap items-center gap-2">
                             <CopyDebugIdButton label="Agent ID" value={workflowId} />
                             <CopyDebugIdButton label="Run ID" value={runId} />
+                            {can('org:manage') && (
+                                <div className="ml-auto">
+                                    <DeleteCallDataButton
+                                        workflowId={Number(params.workflowId)}
+                                        runId={Number(params.runId)}
+                                        onDeleted={() => setReloadKey((key) => key + 1)}
+                                    />
+                                </div>
+                            )}
                         </div>
                     </div>
 
@@ -879,7 +895,7 @@ export default function WorkflowRunPage() {
                     <CardHeader className="space-y-2">
                         <CardTitle className="text-2xl">Run Details Unavailable</CardTitle>
                         <p className="text-sm text-muted-foreground">
-                            This run does not have a details view yet. Go back to the workflow to continue testing or make changes.
+                            This run does not have a details view yet. Go back to the agent to continue testing or make changes.
                         </p>
                     </CardHeader>
                     <CardFooter className="gap-2">
@@ -910,9 +926,9 @@ export default function WorkflowRunPage() {
             {showRunDetailsView && cameFromWorkspace && workflowName && (
                 <OnboardingTooltip
                     tooltipKey="customize_workflow"
-                    title='Customize Your Workflow'
+                    title='Customize your agent'
                     targetRef={agentLinkRef}
-                    message="Edit your workflow to adjust the voice agent's behavior, add new steps, or modify the conversation flow."
+                    message="Edit your agent to adjust the voice agent's behavior, add new steps, or modify the conversation flow."
                     showNext={false}
                 />
             )}

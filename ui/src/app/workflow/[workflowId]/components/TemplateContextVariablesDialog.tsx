@@ -71,10 +71,10 @@ export const TemplateContextVariablesDialog = ({
         <Dialog open={open} onOpenChange={handleDialogOpenChange}>
             <DialogContent className="max-w-lg">
                 <DialogHeader>
-                    <DialogTitle>Template Context Variables</DialogTitle>
+                    <DialogTitle>Template context variables</DialogTitle>
                     <DialogDescription>
-                        Add or remove template context variables that will be available to your workflow. You can use
-                        these variables within your workflow nodes within double curly braces. Example: {`{{variable_name}}`}.
+                        Add or remove template context variables that will be available to your agent. You can use
+                        these variables in your agent&apos;s nodes within double curly braces. Example: {`{{variable_name}}`}.
                     </DialogDescription>
                 </DialogHeader>
                 <div className="space-y-4">

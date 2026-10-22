@@ -6,7 +6,7 @@ import { client } from '@/client/client.gen';
 import { getCurrentOrganizationContextApiV1OrganizationsContextGet, getPreferencesApiV1OrganizationsPreferencesGet, getUserConfigurationsApiV1UserConfigurationsUserGet } from '@/client/sdk.gen';
 import type { OrganizationContextResponse, OrganizationPreferencesResponse, UserConfigurationRequestResponseSchema } from '@/client/types.gen';
 import { setupAuthInterceptor } from '@/lib/apiClient';
-import { detailFromError } from '@/lib/apiError';
+import { detailFromError, errorCodeFromError } from '@/lib/apiError';
 import type { AuthUser } from '@/lib/auth';
 import { useAuth } from '@/lib/auth';
 import type { OrgRole, Permission } from '@/lib/auth/roles';
@@ -33,6 +33,9 @@ interface OrgConfigContextType {
     organizationPricing: OrganizationPricing | null;
     organizationPreferences: OrganizationPreferencesResponse | null;
     externalPbxIntegrationsEnabled: boolean;
+    /** Why there is no organization to work in: it was erased
+     *  ("erased"), or the user belongs to none any more ("none"). */
+    organizationUnavailable: 'erased' | 'none' | null;
 }
 
 const OrgConfigContext = createContext<OrgConfigContextType | null>(null);
@@ -58,6 +61,7 @@ export function OrgConfigProvider({ children }: { children: ReactNode }) {
     const [error, setError] = useState<Error | null>(null);
     const [organizationPricing, setOrganizationPricing] = useState<OrganizationPricing | null>(null);
     const [organizationPreferences, setOrganizationPreferences] = useState<OrganizationPreferencesResponse | null>(null);
+    const [organizationUnavailable, setOrganizationUnavailable] = useState<'erased' | 'none' | null>(null);
 
     const auth = useAuth();
 
@@ -84,17 +88,30 @@ export function OrgConfigProvider({ children }: { children: ReactNode }) {
                 getPreferencesApiV1OrganizationsPreferencesGet(),
             ]);
 
-            if (preferencesResponse.error) {
-                throw new Error(detailFromError(preferencesResponse.error, 'Failed to load organization preferences'));
-            }
-
             if (orgContextResponse.data) {
                 setOrgContext(orgContextResponse.data);
+                setOrganizationUnavailable(
+                    orgContextResponse.data.organization_id == null ? 'none' : null,
+                );
+            } else if (errorCodeFromError(orgContextResponse.error) === 'organization_erased') {
+                // Stack Auth: the selected team's organization was erased.
+                setOrganizationUnavailable('erased');
+                return;
             }
 
             if (userConfigResponse.data) {
                 setUserConfig(userConfigResponse.data);
                 setOrganizationPricing(pricingFromUserConfig(userConfigResponse.data));
+            }
+
+            // An organization pending deletion refuses its preferences (423);
+            // the context above carries the deletion state the app shows.
+            if (
+                preferencesResponse.error &&
+                orgContextResponse.data?.organization_id != null &&
+                errorCodeFromError(preferencesResponse.error) !== 'organization_pending_deletion'
+            ) {
+                throw new Error(detailFromError(preferencesResponse.error, 'Failed to load organization preferences'));
             }
 
             if (preferencesResponse.data) {
@@ -146,6 +163,7 @@ export function OrgConfigProvider({ children }: { children: ReactNode }) {
                 organizationPreferences,
                 externalPbxIntegrationsEnabled:
                     organizationPreferences?.external_pbx_integrations_enabled ?? false,
+                organizationUnavailable,
             }}
         >
             {children}

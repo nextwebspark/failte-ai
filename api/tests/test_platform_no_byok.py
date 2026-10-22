@@ -1,6 +1,7 @@
 """On platform-models servers customers cannot store keys or providers (#47)."""
 
 import uuid
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -378,16 +379,62 @@ def test_voicemail_classifier_key_is_dropped_from_customer_responses():
 
 
 @pytest.mark.asyncio
-async def test_chunked_documents_are_refused_on_platform_models(make_client):
-    async with make_client(PLATFORM) as (client, _workflow):
-        response = await client.post(
-            "/api/v1/knowledge-base/process-document",
-            json={
-                "document_uuid": "00000000-0000-0000-0000-000000000001",
-                "s3_key": "knowledge_base/doc.pdf",
-                "retrieval_mode": "chunked",
-            },
-        )
+async def test_chunked_documents_are_accepted_on_platform_models(make_client):
+    # Platform organizations get Vertex AI embeddings in the EU (#126).
+    with (
+        patch(
+            "api.routes.knowledge_base.enqueue_document_processing", new=AsyncMock()
+        ) as enqueue,
+        patch("api.routes.knowledge_base.capture_event"),
+    ):
+        async with make_client(PLATFORM) as (client, workflow):
+            response = await client.post(
+                "/api/v1/knowledge-base/process-document",
+                json={
+                    "document_uuid": "00000000-0000-0000-0000-000000000001",
+                    "s3_key": (
+                        f"knowledge_base/{workflow.organization_id}/"
+                        "00000000-0000-0000-0000-000000000001/doc.pdf"
+                    ),
+                    "retrieval_mode": "chunked",
+                },
+            )
 
-    assert response.status_code == 422
-    assert "full-document" in response.json()["detail"]
+    assert response.status_code == 200, response.text
+    assert response.json()["retrieval_mode"] == "chunked"
+    enqueue.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_chunked_documents_are_refused_without_platform_embeddings():
+    from types import SimpleNamespace
+
+    from fastapi import HTTPException
+
+    from api.routes import knowledge_base as knowledge_base_routes
+    from api.schemas.knowledge_base import ProcessDocumentRequestSchema
+    from api.services.configuration import ai_model_configuration
+
+    # A platform server that lost its settings compiles to no embeddings.
+    resolved = SimpleNamespace(
+        effective=SimpleNamespace(platform_managed=True, embeddings=None)
+    )
+    with patch.object(
+        ai_model_configuration,
+        "get_resolved_ai_model_configuration",
+        new=AsyncMock(return_value=resolved),
+    ):
+        with pytest.raises(HTTPException) as error:
+            await knowledge_base_routes.process_document(
+                request=ProcessDocumentRequestSchema(
+                    document_uuid="u",
+                    s3_key="knowledge_base/11/u/a.pdf",
+                    retrieval_mode="chunked",
+                ),
+                user=SimpleNamespace(
+                    id=1, provider_id="p", selected_organization_id=11
+                ),
+            )
+
+    assert error.value.status_code == 422
+    assert "full-document" in error.value.detail

@@ -93,7 +93,12 @@ GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET") or None
 STACK_AUTH_PROJECT_ID = os.getenv("STACK_AUTH_PROJECT_ID")
 STACK_PUBLISHABLE_CLIENT_KEY = os.getenv("STACK_PUBLISHABLE_CLIENT_KEY")
 DOGRAH_MPS_SECRET_KEY = os.getenv("DOGRAH_MPS_SECRET_KEY", None)
-MPS_API_URL = os.getenv("MPS_API_URL", "https://services.dograh.com")
+# Upstream Dograh's hosted Model Proxy Service (service keys, managed models,
+# credits, voice catalogs). Unset by default so nothing
+# is sent to a third-party service: every MPS feature is then disabled. Only
+# point this at an MPS you operate or have a data processing agreement with.
+MPS_API_URL = (os.getenv("MPS_API_URL") or "").strip().rstrip("/")
+MPS_ENABLED = bool(MPS_API_URL)
 DOGRAH_DEVOPS_SECRET = os.getenv("DOGRAH_DEVOPS_SECRET") or None
 # Fallcha tools service (tools/): hosts catalog providers as MCP servers. The
 # integrations API is disabled (503) until TOOLS_INTERNAL_SECRET is set.
@@ -119,14 +124,17 @@ TRUSTED_TOOL_HOSTS: tuple[str, ...] = tuple(
 )
 # Who owns credit balances and charging: "stripe" (local ledger, paid through
 # Stripe), "mps" (the managed model service, MPS) or "none" (no billing). Defaults
-# keep the pre-existing behavior: no billing in OSS mode, MPS when hosted.
+# to MPS only when hosted with MPS_API_URL set; otherwise (OSS mode, or no MPS
+# configured, the default) to none.
 BILLING_PROVIDER = (os.getenv("BILLING_PROVIDER") or "").strip().lower() or (
-    "none" if DEPLOYMENT_MODE == "oss" else "mps"
+    "mps" if DEPLOYMENT_MODE != "oss" and MPS_ENABLED else "none"
 )
 if BILLING_PROVIDER not in ("stripe", "mps", "none"):
     raise ValueError(
         f"BILLING_PROVIDER must be stripe, mps or none, not {BILLING_PROVIDER!r}"
     )
+if BILLING_PROVIDER == "mps" and not MPS_ENABLED:
+    raise ValueError("BILLING_PROVIDER=mps requires MPS_API_URL")
 # Platform-managed models: every org runs on the operator's own Vertex AI
 # project, so customers pick models and voices but never hold keys. Each service
 # gets its own location because Google serves them from different places:
@@ -147,6 +155,11 @@ PLATFORM_VERTEX_REALTIME_LOCATION = (
 PLATFORM_GOOGLE_SPEECH_LOCATION = (
     os.getenv("PLATFORM_GOOGLE_SPEECH_LOCATION") or ""
 ).strip() or "eu"
+# Knowledge base embeddings (Vertex AI embedding models are served from single
+# regions, not the "eu" multi-region).
+PLATFORM_VERTEX_EMBEDDINGS_LOCATION = (
+    os.getenv("PLATFORM_VERTEX_EMBEDDINGS_LOCATION") or ""
+).strip() or "europe-west1"
 PLATFORM_GOOGLE_CREDENTIALS_JSON = (
     os.getenv("PLATFORM_GOOGLE_CREDENTIALS_JSON") or ""
 ).strip() or None
@@ -155,11 +168,18 @@ if PLATFORM_MODELS_ENABLED and not PLATFORM_VERTEX_PROJECT_ID:
         "PLATFORM_VERTEX_PROJECT_ID is required when PLATFORM_MODELS_ENABLED is true"
     )
 # Dograh-managed Cloudonix SIP is provisioned through MPS. A platform-models
-# deployment brings its own telephony, so it is off there unless set explicitly.
+# deployment brings its own telephony, so it is off there unless set explicitly,
+# and it is always off without an MPS to provision it.
 MANAGED_SIP_PROVISIONING_ENABLED = (
-    os.getenv("MANAGED_SIP_PROVISIONING_ENABLED")
-    or ("false" if PLATFORM_MODELS_ENABLED else "true")
-).strip().lower() == "true"
+    MPS_ENABLED
+    and (
+        os.getenv("MANAGED_SIP_PROVISIONING_ENABLED")
+        or ("false" if PLATFORM_MODELS_ENABLED else "true")
+    )
+    .strip()
+    .lower()
+    == "true"
+)
 if PLATFORM_MODELS_ENABLED and BILLING_PROVIDER == "mps":
     # MPS bills through per-org MPS accounts, which platform orgs never get.
     raise ValueError(
@@ -190,6 +210,22 @@ MINIO_ACCESS_KEY = os.getenv("MINIO_ACCESS_KEY", "minioadmin")
 MINIO_SECRET_KEY = os.getenv("MINIO_SECRET_KEY", "minioadmin")
 MINIO_BUCKET = os.getenv("MINIO_BUCKET", "voice-audio")
 MINIO_SECURE = os.getenv("MINIO_SECURE", "false").lower() == "true"
+# Region MinIO signs requests for. Must match the server's MINIO_REGION
+# (MinIO's default is us-east-1).
+MINIO_REGION = os.getenv("MINIO_REGION", "us-east-1")
+# True when a MinIO server is deployed, even if it isn't the primary storage
+# backend (e.g. kept for legacy rows after moving to S3/GCS).
+MINIO_CONFIGURED = bool(
+    os.getenv("MINIO_ENDPOINT") or os.getenv("MINIO_PUBLIC_ENDPOINT")
+)
+
+# Storage backends the deployment used before its current one (comma list of
+# "s3" / "minio"); organisation erasure also deletes there. Empty by default.
+LEGACY_STORAGE_BACKENDS: tuple[str, ...] = tuple(
+    b.strip().lower()
+    for b in os.getenv("LEGACY_STORAGE_BACKENDS", "").split(",")
+    if b.strip()
+)
 
 # AWS S3 Configuration
 S3_BUCKET = os.environ.get("S3_BUCKET")
@@ -211,8 +247,25 @@ SENTRY_DSN = os.getenv("SENTRY_DSN")
 
 # PostHog configuration
 POSTHOG_API_KEY = os.getenv("POSTHOG_API_KEY")
-POSTHOG_HOST = os.getenv("POSTHOG_HOST", "https://us.i.posthog.com")
+POSTHOG_HOST = os.getenv("POSTHOG_HOST", "https://eu.i.posthog.com")
 
+
+# Daily data-retention purge (api/services/retention). ENABLED=false turns the
+# cron into a no-op; DRY_RUN=true logs per-organization counts of what a pass
+# would purge without deleting or scrubbing anything.
+RETENTION_PURGE_ENABLED = (
+    os.getenv("RETENTION_PURGE_ENABLED", "true").strip().lower() == "true"
+)
+RETENTION_PURGE_DRY_RUN = (
+    os.getenv("RETENTION_PURGE_DRY_RUN", "false").strip().lower() == "true"
+)
+
+# Organisation deletion (api/services/privacy). A request takes effect after
+# ORG_DELETION_GRACE_DAYS; until then an admin can cancel it. The daily erasure
+# cron is a no-op with ORG_ERASURE_ENABLED=false (requests are still accepted
+# and kept pending).
+ORG_DELETION_GRACE_DAYS = 30
+ORG_ERASURE_ENABLED = os.getenv("ORG_ERASURE_ENABLED", "true").strip().lower() == "true"
 
 ENABLE_ARI_STASIS = os.getenv("ENABLE_ARI_STASIS", "false").lower() == "true"
 SERIALIZE_LOG_OUTPUT = os.getenv("SERIALIZE_LOG_OUTPUT", "false").lower() == "true"
@@ -245,7 +298,7 @@ TELEPHONY_WS_TOKEN_ENFORCE = (
 
 # Logging configuration
 LOG_FILE_PATH = os.getenv("LOG_FILE_PATH", None)
-LOG_LEVEL = os.getenv("LOG_LEVEL", "DEBUG").upper()
+LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
 
 # Log rotation configuration
 LOG_ROTATION_SIZE = os.getenv("LOG_ROTATION_SIZE", "100 MB")

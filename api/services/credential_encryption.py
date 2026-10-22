@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from api.constants import DEPLOYMENT_MODE
+from api.constants import DEPLOYMENT_MODE, ENVIRONMENT
 from api.db import db_client
 from api.db.credential_encryption_client import CredentialEncryptionClient
 from api.utils.credential_crypto import (
@@ -13,12 +13,14 @@ from api.utils.credential_crypto import (
 
 async def verify_credential_encryption() -> None:
     """Raise ``CredentialEncryptionStartupError`` when the process must not
-    start: encrypted rows without keys, no keys outside OSS mode, or keys
+    start: encrypted rows without keys, no keys in production or outside OSS
+    mode, or keys
     that cannot open an existing envelope. See ``check_credential_encryption``.
     """
     sample = await CredentialEncryptionClient(db_client.engine).sample_envelope()
     check_credential_encryption(
         cipher=get_credential_cipher(),
         deployment_mode=DEPLOYMENT_MODE,
+        environment=ENVIRONMENT,
         sample_envelope=sample,
     )

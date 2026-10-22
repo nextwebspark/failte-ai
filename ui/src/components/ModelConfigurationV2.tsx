@@ -153,7 +153,7 @@ export default function ModelConfigurationV2() {
                 </div>
             )}
             {notice && (
-                <div className="rounded-md border border-green-500/40 bg-green-500/10 px-4 py-3 text-sm text-green-700 dark:text-green-300">
+                <div className="rounded-md border border-ok/40 bg-ok-dim px-4 py-3 text-sm text-ok">
                     {notice}
                 </div>
             )}

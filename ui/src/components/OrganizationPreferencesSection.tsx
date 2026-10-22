@@ -11,6 +11,16 @@ import {
 } from "@/client/sdk.gen";
 import type { OrganizationPreferences } from "@/client/types.gen";
 import { DispositionMappingDialog } from "@/components/DispositionMappingDialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -20,10 +30,25 @@ import { useUserConfig } from "@/context/UserConfigContext";
 import { detailFromError } from "@/lib/apiError";
 import { useAuth } from "@/lib/auth";
 
+// Mirrors api/schemas/organization_preferences.py.
+const DEFAULT_RETENTION_DAYS = 90;
+const MIN_RETENTION_DAYS = 1;
+const MAX_RETENTION_DAYS = 365;
+
+function parseRetentionDays(value: string): number | null {
+  const days = Number(value);
+  return Number.isInteger(days) &&
+    days >= MIN_RETENTION_DAYS &&
+    days <= MAX_RETENTION_DAYS
+    ? days
+    : null;
+}
+
 const emptyPreferences: OrganizationPreferences = {
   test_phone_number: "",
   timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
   external_pbx_integrations_enabled: false,
+  call_data_retention_days: DEFAULT_RETENTION_DAYS,
   disposition_mapping_enabled: false,
   disposition_mapping: {},
 };
@@ -37,6 +62,8 @@ function toFormPreferences(
     timezone: preferences.timezone || emptyPreferences.timezone,
     external_pbx_integrations_enabled:
       preferences.external_pbx_integrations_enabled ?? false,
+    call_data_retention_days:
+      preferences.call_data_retention_days ?? DEFAULT_RETENTION_DAYS,
     disposition_mapping_enabled: preferences.disposition_mapping_enabled ?? false,
     disposition_mapping: preferences.disposition_mapping ?? {},
   };
@@ -119,7 +146,19 @@ export function OrganizationPreferencesSection() {
   const [timezone, setTimezone] = useState<ITimezoneOption | string>(
     emptyPreferences.timezone || "UTC",
   );
+  const [retentionDays, setRetentionDays] = useState(
+    String(DEFAULT_RETENTION_DAYS),
+  );
+  // The period stored on the server; null until it has been loaded.
+  const [savedRetentionDays, setSavedRetentionDays] = useState<number | null>(
+    null,
+  );
+  // Days awaiting confirmation that shortening the period deletes call data.
+  const [pendingShorterRetention, setPendingShorterRetention] = useState<
+    number | null
+  >(null);
   const [loading, setLoading] = useState(true);
+  const [loadFailed, setLoadFailed] = useState(false);
   const [saving, setSaving] = useState(false);
   const [mappingDialogOpen, setMappingDialogOpen] = useState(false);
 
@@ -137,7 +176,8 @@ export function OrganizationPreferencesSection() {
       const result =
         await getPreferencesApiV1OrganizationsPreferencesGet();
 
-      if (result.error) {
+      if (result.error || !result.data) {
+        setLoadFailed(true);
         toast.error(
           detailFromError(
             result.error,
@@ -147,22 +187,33 @@ export function OrganizationPreferencesSection() {
         return;
       }
 
-      const nextPreferences = result.data || emptyPreferences;
-      setPreferences(toFormPreferences(nextPreferences));
-      setTimezone(
-        nextPreferences.timezone || emptyPreferences.timezone || "UTC",
-      );
+      const formPreferences = toFormPreferences(result.data);
+      setPreferences(formPreferences);
+      setRetentionDays(String(formPreferences.call_data_retention_days));
+      setSavedRetentionDays(formPreferences.call_data_retention_days ?? null);
+      setTimezone(result.data.timezone || emptyPreferences.timezone || "UTC");
     } catch {
+      setLoadFailed(true);
       toast.error("Failed to load organization preferences");
     } finally {
       setLoading(false);
     }
   }
 
+  /**
+   * Save the preferences. The retention period is only sent when given (the
+   * main form changed it), so another save never persists an unsaved edit.
+   */
   async function persistPreferences(
     nextPreferences: OrganizationPreferences,
     successMessage: string,
+    callDataRetentionDays?: number,
   ): Promise<boolean> {
+    if (loadFailed) {
+      // Saving now would overwrite the stored values with the form defaults.
+      toast.error("Preferences could not be loaded, so they cannot be saved");
+      return false;
+    }
     setSaving(true);
     try {
       const result =
@@ -173,6 +224,9 @@ export function OrganizationPreferencesSection() {
               timezone: getTimezoneValue(timezone),
               external_pbx_integrations_enabled:
                 nextPreferences.external_pbx_integrations_enabled ?? false,
+              ...(callDataRetentionDays !== undefined && {
+                call_data_retention_days: callDataRetentionDays,
+              }),
               disposition_mapping_enabled:
                 nextPreferences.disposition_mapping_enabled ?? false,
               // Sent even when the toggle is off: turning the mapping off
@@ -192,7 +246,12 @@ export function OrganizationPreferencesSection() {
         return false;
       }
 
-      setPreferences(toFormPreferences(result.data));
+      const savedPreferences = toFormPreferences(result.data);
+      setPreferences(savedPreferences);
+      setSavedRetentionDays(savedPreferences.call_data_retention_days ?? null);
+      if (callDataRetentionDays !== undefined) {
+        setRetentionDays(String(savedPreferences.call_data_retention_days));
+      }
       setTimezone(result.data.timezone || emptyPreferences.timezone || "UTC");
       await refreshConfig();
       toast.success(successMessage);
@@ -207,7 +266,30 @@ export function OrganizationPreferencesSection() {
 
   async function handleSave(e: React.FormEvent) {
     e.preventDefault();
-    await persistPreferences(preferences, "Preferences saved");
+    const days = parseRetentionDays(retentionDays);
+    if (days === null) {
+      toast.error(
+        `Call data retention must be a whole number of days from ${MIN_RETENTION_DAYS} to ${MAX_RETENTION_DAYS}`,
+      );
+      return;
+    }
+    if (savedRetentionDays !== null && days < savedRetentionDays) {
+      setPendingShorterRetention(days);
+      return;
+    }
+    await persistPreferences(
+      preferences,
+      "Preferences saved",
+      days !== savedRetentionDays ? days : undefined,
+    );
+  }
+
+  async function handleConfirmShorterRetention() {
+    const days = pendingShorterRetention;
+    setPendingShorterRetention(null);
+    if (days !== null) {
+      await persistPreferences(preferences, "Preferences saved", days);
+    }
   }
 
   async function handleDispositionMappingSave(
@@ -230,6 +312,12 @@ export function OrganizationPreferencesSection() {
       <p className="text-sm text-muted-foreground">
         Set organization-wide defaults used by testing and scheduling flows.
       </p>
+      {loadFailed && (
+        <p role="alert" className="text-sm text-destructive">
+          Preferences could not be loaded. Reload the page before changing
+          them.
+        </p>
+      )}
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="space-y-2">
           <Label htmlFor="settings-test-phone-number">Test Phone Number</Label>
@@ -254,6 +342,30 @@ export function OrganizationPreferencesSection() {
             styles={timezoneSelectStyles}
           />
         </div>
+      </div>
+      <div className="space-y-2">
+        <Label htmlFor="settings-call-data-retention">
+          Call data retention (days)
+        </Label>
+        <Input
+          id="settings-call-data-retention"
+          type="number"
+          inputMode="numeric"
+          min={MIN_RETENTION_DAYS}
+          max={MAX_RETENTION_DAYS}
+          step={1}
+          className="sm:max-w-[12rem]"
+          value={retentionDays}
+          onChange={(event) => setRetentionDays(event.target.value)}
+          aria-describedby="settings-call-data-retention-help"
+        />
+        <p
+          id="settings-call-data-retention-help"
+          className="text-xs text-muted-foreground"
+        >
+          Recordings, transcripts and call details are permanently deleted
+          after this many days ({MIN_RETENTION_DAYS}–{MAX_RETENTION_DAYS}).
+        </p>
       </div>
       <div className="flex items-start justify-between gap-4 rounded-lg border p-4">
         <div className="space-y-1">
@@ -307,6 +419,7 @@ export function OrganizationPreferencesSection() {
               type="button"
               variant="outline"
               size="sm"
+              disabled={loadFailed}
               onClick={() => setMappingDialogOpen(true)}
             >
               <SlidersHorizontal className="mr-2 h-3.5 w-3.5" />
@@ -326,7 +439,30 @@ export function OrganizationPreferencesSection() {
         mapping={preferences.disposition_mapping ?? {}}
         onSave={handleDispositionMappingSave}
       />
-      <Button type="submit" disabled={saving}>
+      <AlertDialog
+        open={pendingShorterRetention !== null}
+        onOpenChange={(open) => {
+          if (!open) setPendingShorterRetention(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Shorten call data retention?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Recordings, transcripts and call details older than{" "}
+              {pendingShorterRetention} days will be permanently deleted at the
+              next daily cleanup run. This cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={() => void handleConfirmShorterRetention()}>
+              Shorten and save
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      <Button type="submit" disabled={saving || loadFailed}>
         <Save className="mr-2 h-4 w-4" />
         {saving ? "Saving..." : "Save"}
       </Button>

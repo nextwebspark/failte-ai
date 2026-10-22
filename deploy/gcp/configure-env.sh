@@ -15,7 +15,10 @@
 # `setting` (ENABLE_SIGNUP, EMAIL_FROM, PLATFORM_MODELS_ENABLED, ...) keep the
 # value .env already has, whether set by hand or with a DOGRAH_* variable.
 # Everything else is rewritten from Secret Manager and this script's defaults
-# on every Deploy, so change those here, not in .env.
+# on every Deploy, so change those here, not in .env. Each run first copies
+# .env to .env.bak.<UTC timestamp>. First install on an empty database without
+# dograh-credentials-encryption-keys: add DOGRAH_GENERATE_CREDENTIALS_KEY=1
+# (see "Secrets at rest" below).
 
 set -euo pipefail
 
@@ -116,6 +119,119 @@ PY
   echo "  removed $key"
 }
 
+# Every run rewrites .env in place: keep a timestamped, root-only copy first so
+# any value this run replaces (a key above all) can be recovered.
+ENV_BACKUP="$ENV_FILE.bak.$(date -u +%Y%m%dT%H%M%SZ)"
+install -m 600 "$ENV_FILE" "$ENV_BACKUP"
+echo "backed up $ENV_FILE to $ENV_BACKUP"
+
+# keeps_all CURRENT NEW: true when NEW (comma-separated Fernet keys) still has
+# every key CURRENT has, so rows encrypted with any of them stay readable.
+keeps_all() {
+  local key current new
+  current="$(printf %s "$1" | tr -d " \"'")" new="$(printf %s "$2" | tr -d " \"'")"
+  local -a keys
+  [[ -n "$current" ]] || return 0
+  IFS=, read -r -a keys <<< "$current"
+  for key in "${keys[@]}"; do
+    [[ -z "$key" || ",$new," == *",$key,"* ]] || return 1
+  done
+}
+
+# Secrets at rest (api): external credentials, telephony credentials,
+# integration connection details and organization configuration values are
+# Fernet-encrypted with CREDENTIALS_ENCRYPTION_KEYS, and with
+# ENVIRONMENT=production the api refuses to start without it. Decided before
+# anything is written, so a refusal leaves .env untouched. Losing or silently
+# replacing the key makes every stored secret unreadable, so this never guesses:
+#   - Secret Manager (dograh-credentials-encryption-keys) and .env agree, or
+#     only one has a value: that value.
+#   - Both have values and Secret Manager's still has every .env key (a new
+#     key added in front for rotation): Secret Manager's, so a Deploy rotates.
+#   - Both have values and Secret Manager's drops a .env key: refuse, unless
+#     DOGRAH_CREDENTIALS_KEYS_OVERRIDE=sm (take Secret Manager's, e.g. the
+#     last rotation step) or =env (keep .env's).
+#   - Neither: refuse, unless DOGRAH_GENERATE_CREDENTIALS_KEY=1 (first install
+#     on an empty database only). The new key goes to Secret Manager when this
+#     identity may create the secret, otherwise only to .env (warned loudly).
+# README.md "Encryption at rest" has the recovery and rotation steps.
+SM_CRED_KEYS="$(sm_optional dograh-credentials-encryption-keys)"
+ENV_CRED_KEYS="$(env_value CREDENTIALS_ENCRYPTION_KEYS)"
+CRED_KEYS=""
+if [[ -n "$SM_CRED_KEYS" && -n "$ENV_CRED_KEYS" && "$SM_CRED_KEYS" != "$ENV_CRED_KEYS" ]] \
+    && [[ -z "${DOGRAH_CREDENTIALS_KEYS_OVERRIDE:-}" ]] && keeps_all "$ENV_CRED_KEYS" "$SM_CRED_KEYS"; then
+  # Rotation: Secret Manager has a new key and still every key in .env.
+  CRED_KEYS="$SM_CRED_KEYS"
+  echo "  CREDENTIALS_ENCRYPTION_KEYS: taking Secret Manager's value, which keeps" \
+    "every key in .env; the previous .env value is in $ENV_BACKUP" >&2
+elif [[ -n "$SM_CRED_KEYS" && -n "$ENV_CRED_KEYS" && "$SM_CRED_KEYS" != "$ENV_CRED_KEYS" ]]; then
+  case "${DOGRAH_CREDENTIALS_KEYS_OVERRIDE:-}" in
+    sm)
+      CRED_KEYS="$SM_CRED_KEYS"
+      echo "  CREDENTIALS_ENCRYPTION_KEYS: taking Secret Manager's value" \
+        "(DOGRAH_CREDENTIALS_KEYS_OVERRIDE=sm); the previous .env value is in" \
+        "$ENV_BACKUP" >&2
+      ;;
+    env)
+      CRED_KEYS="$ENV_CRED_KEYS"
+      echo "  WARNING: CREDENTIALS_ENCRYPTION_KEYS: keeping the .env value" \
+        "(DOGRAH_CREDENTIALS_KEYS_OVERRIDE=env), but dograh-credentials-encryption-keys" \
+        "in Secret Manager still differs. Update the secret to match (README.md" \
+        "\"Encryption at rest\")." >&2
+      ;;
+    *)
+      cat >&2 <<MSG
+ERROR: CREDENTIALS_ENCRYPTION_KEYS in $ENV_FILE differs from the Secret Manager
+secret dograh-credentials-encryption-keys. Nothing was changed. Replacing the
+key the database was encrypted with makes every stored secret unreadable, so
+decide which one is right and re-run with:
+  DOGRAH_CREDENTIALS_KEYS_OVERRIDE=sm   use Secret Manager's value (e.g. you
+                                        added a key there for rotation)
+  DOGRAH_CREDENTIALS_KEYS_OVERRIDE=env  keep the .env value (then update the
+                                        secret to match)
+Unsure which encrypted the data? Put both in the secret, comma-separated, the
+one to encrypt with first: every listed key decrypts. Then use =sm.
+See README.md "Encryption at rest".
+MSG
+      exit 1
+      ;;
+  esac
+elif [[ -n "$SM_CRED_KEYS" ]]; then
+  CRED_KEYS="$SM_CRED_KEYS"
+elif [[ -n "$ENV_CRED_KEYS" ]]; then
+  CRED_KEYS="$ENV_CRED_KEYS"
+  echo "  dograh-credentials-encryption-keys not readable: keeping" \
+    "CREDENTIALS_ENCRYPTION_KEYS from .env. Store it in Secret Manager so" \
+    "it survives the VM (README.md \"Encryption at rest\")." >&2
+elif [[ "${DOGRAH_GENERATE_CREDENTIALS_KEY:-}" == 1 ]]; then
+  CRED_KEYS="$(python3 -c 'import base64, os; print(base64.urlsafe_b64encode(os.urandom(32)).decode())')"
+  if printf '%s' "$CRED_KEYS" | gcloud secrets create dograh-credentials-encryption-keys \
+      --data-file=- --project="$PROJECT" --replication-policy=user-managed \
+      --locations="$REGION" >/dev/null 2>&1; then
+    echo "  generated CREDENTIALS_ENCRYPTION_KEYS and stored it in Secret Manager" \
+      "(dograh-credentials-encryption-keys)"
+  else
+    echo "  WARNING: generated CREDENTIALS_ENCRYPTION_KEYS, but could not create" \
+      "the dograh-credentials-encryption-keys secret: the key exists ONLY in" \
+      "$ENV_FILE. Copy it into Secret Manager now (README.md \"Encryption at" \
+      "rest\"); losing it makes every stored secret unreadable." >&2
+  fi
+else
+  cat >&2 <<MSG
+ERROR: no CREDENTIALS_ENCRYPTION_KEYS: the Secret Manager secret
+dograh-credentials-encryption-keys is absent or not readable by this VM, and
+$ENV_FILE has none. Nothing was changed.
+  - Existing database (e.g. a rebuilt VM): restore the key the data was
+    encrypted with: grant this VM's service account read access to the secret,
+    or recreate the secret from your key backup. A new key cannot read the
+    secrets already stored.
+  - First install on an empty database: re-run with
+    DOGRAH_GENERATE_CREDENTIALS_KEY=1 to generate one.
+See README.md "Encryption at rest".
+MSG
+  exit 1
+fi
+
 echo "reading secrets from Secret Manager (project $PROJECT)..."
 # Bare assignments, so set -e stops the script when a lookup fails: inside
 # set_key's arguments it would write an empty value instead.
@@ -125,36 +241,28 @@ HMAC_SECRET="$(sm dograh-s3-hmac-secret)"
 JWT_SECRET="$(sm dograh-oss-jwt-secret)"
 TURN_SECRET="$(sm dograh-turn-secret)"
 DEVOPS_SECRET="$(sm dograh-devops-secret)"
-WS_TOKEN_SECRET="$(sm dograh-telephony-ws-token-secret)"
-for name in DB_PW HMAC_ID HMAC_SECRET JWT_SECRET TURN_SECRET DEVOPS_SECRET WS_TOKEN_SECRET; do
+for name in DB_PW HMAC_ID HMAC_SECRET JWT_SECRET TURN_SECRET DEVOPS_SECRET; do
   [[ -n "${!name}" ]] || { echo "a required secret is empty ($name)" >&2; exit 1; }
 done
 
-# keeps_keys NAME CURRENT NEW: stops when NEW (comma-separated Fernet keys)
-# drops a key CURRENT has. Stored rows encrypted with it would become
-# unreadable, and every Deploy runs this script. Rotate by adding the new key in
-# front; drop the old one only after re-encrypting, with one hand run using
-# DOGRAH_DROP_ENCRYPTION_KEYS=true.
-keeps_keys() {
-  local name="$1" key current new
-  current="$(printf %s "$2" | tr -d " \"'")" new="$(printf %s "$3" | tr -d " \"'")"
-  local -a keys
-  [[ -n "$current" && "${DOGRAH_DROP_ENCRYPTION_KEYS:-}" != true ]] || return 0
-  IFS=, read -r -a keys <<< "$current"
-  for key in "${keys[@]}"; do
-    if [[ -n "$key" && ",$new," != *",$key,"* ]]; then
-      echo "$name from Secret Manager drops a key in use; see keeps_keys in configure-env.sh" >&2
-      exit 1
-    fi
-  done
-}
-
-# Encryption keys are read and checked before anything is written, so a run
-# that stops here leaves .env and tools.env untouched.
-CRED_KEYS="$(sm_optional dograh-credentials-encryption-keys)"
-if [[ -n "$CRED_KEYS" ]]; then
-  keeps_keys CREDENTIALS_ENCRYPTION_KEYS "$(env_value CREDENTIALS_ENCRYPTION_KEYS)" "$CRED_KEYS"
+# Telephony media WebSocket tokens (api/services/telephony/ws_auth.py). The
+# socket only accepts URLs carrying a token minted with this secret, so a
+# guessed workflow/org/run id triple can no longer open a live call's socket.
+# The secret: Secret Manager's dograh-telephony-ws-token-secret, else the
+# value already in .env, else a new random one (rotating it only invalidates
+# calls in flight, so a generated value needs no backup).
+WS_SECRET="$(sm_optional dograh-telephony-ws-token-secret)"
+WS_SECRET="${WS_SECRET:-$(env_value TELEPHONY_WS_TOKEN_SECRET)}"
+if [[ -z "$WS_SECRET" ]]; then
+  WS_SECRET="$(openssl rand -hex 32)"
+  echo "  generated TELEPHONY_WS_TOKEN_SECRET (no Secret Manager value)" >&2
 fi
+
+# fallcha-tools keys, read and checked here so a refusal leaves .env and
+# tools.env untouched. TOOLS_ENCRYPTION_KEYS must keep every key tools.env has
+# (rows encrypted with a dropped key become unreadable). Rotate by adding the
+# new key in front; drop the old one only after re-encrypting, with one hand run
+# using DOGRAH_DROP_ENCRYPTION_KEYS=true.
 TOOLS_SECRET="$(sm dograh-tools-internal-secret)"
 TOOLS_KEYS="$(sm dograh-tools-encryption-keys)"
 [[ -n "$TOOLS_SECRET" && -n "$TOOLS_KEYS" ]] || {
@@ -163,9 +271,11 @@ TOOLS_KEYS="$(sm dograh-tools-encryption-keys)"
 }
 TOOLS_DIR="$(dirname "$ENV_FILE")/deploy/gcp/secrets"
 TOOLS_ENV="$TOOLS_DIR/tools.env"
-if [[ -f "$TOOLS_ENV" ]]; then
-  keeps_keys TOOLS_ENCRYPTION_KEYS \
-    "$(grep -E '^TOOLS_ENCRYPTION_KEYS=' "$TOOLS_ENV" | tail -1 | cut -d= -f2- || true)" "$TOOLS_KEYS"
+if [[ -f "$TOOLS_ENV" && "${DOGRAH_DROP_ENCRYPTION_KEYS:-}" != true ]] && ! keeps_all \
+    "$(grep -E '^TOOLS_ENCRYPTION_KEYS=' "$TOOLS_ENV" | tail -1 | cut -d= -f2- || true)" "$TOOLS_KEYS"; then
+  echo "TOOLS_ENCRYPTION_KEYS from Secret Manager drops a key in use; nothing was changed" \
+    "(see the fallcha-tools keys comment in configure-env.sh)" >&2
+  exit 1
 fi
 
 echo "writing $ENV_FILE ..."
@@ -192,11 +302,10 @@ set_key AWS_SECRET_ACCESS_KEY "$HMAC_SECRET"
 set_key OSS_JWT_SECRET "$JWT_SECRET"
 set_key TURN_SECRET "$TURN_SECRET"
 set_key DOGRAH_DEVOPS_SECRET "$DEVOPS_SECRET"
-set_key TELEPHONY_WS_TOKEN_SECRET "$WS_TOKEN_SECRET"
-
-# Enforcement stays off until the carrier leg is proven end to end; switching
-# it on in .env survives later runs.
-setting TELEPHONY_WS_TOKEN_ENFORCE false
+set_key TELEPHONY_WS_TOKEN_SECRET "$WS_SECRET"
+set_key TELEPHONY_WS_TOKEN_ENFORCE true
+# CREDENTIALS_ENCRYPTION_KEYS was decided at the top, before .env changed.
+set_key CREDENTIALS_ENCRYPTION_KEYS "$CRED_KEYS"
 
 # Billing, email and Google are opt-in: each is configured only when its secret
 # exists in Secret Manager, so an install without them keeps working unchanged.
@@ -272,15 +381,6 @@ else
   unset_key GOOGLE_CLIENT_SECRET
 fi
 
-# Workspace credentials at rest (api). Opt-in like billing: once set, never
-# remove a key that encrypted stored rows (see docs/developer/environment-variables.mdx).
-#   python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())" \
-#     | gcloud secrets create dograh-credentials-encryption-keys --data-file=-
-# (read and checked with the required secrets above)
-if [[ -n "$CRED_KEYS" ]]; then
-  set_key CREDENTIALS_ENCRYPTION_KEYS "$CRED_KEYS"
-fi
-
 # fallcha-tools (integrations). REQUIRED: the overlay runs fallcha-tools and
 # fails without these, so a missing secret stops this script (sm, not
 # sm_optional). Create them once:
@@ -289,7 +389,7 @@ fi
 #     | gcloud secrets create dograh-tools-encryption-keys --data-file=-
 # TOOLS_INTERNAL_SECRET goes in .env (the api and the tools service share it);
 # the tools-only keys go in deploy/gcp/secrets/tools.env (the overlay's env_file).
-# (both read and checked with the required secrets above)
+# (both read and checked before anything was written, above)
 set_key TOOLS_INTERNAL_SECRET "$TOOLS_SECRET"
 PUBLIC_URL="$(grep -E '^PUBLIC_BASE_URL=' "$ENV_FILE" | tail -1 | cut -d= -f2- | tr -d '"' || true)"
 mkdir -p "$TOOLS_DIR"
@@ -313,8 +413,26 @@ mkdir -p "$TOOLS_DIR"
 chmod 600 "$TOOLS_ENV"
 echo "  wrote $TOOLS_ENV"
 
+# CORS: an explicit allowlist, never "*". The UI is served from
+# PUBLIC_BASE_URL, so that origin is the default; add more (comma-separated)
+# with DOGRAH_CORS_ALLOWED_ORIGINS (until the next Deploy, which derives it from
+# PUBLIC_BASE_URL again). The embed widget on customer sites is not affected:
+# its public endpoints answer CORS per embed token's allowed domains.
+CORS_ORIGINS="${DOGRAH_CORS_ALLOWED_ORIGINS:-${PUBLIC_URL%/}}"
+[[ -n "$CORS_ORIGINS" ]] || {
+  echo "PUBLIC_BASE_URL is not set in $ENV_FILE; set it (or DOGRAH_CORS_ALLOWED_ORIGINS)" >&2
+  exit 1
+}
+set_key CORS_ALLOWED_ORIGINS "$CORS_ORIGINS"
+
 setting ENABLE_SIGNUP true
 setting FASTAPI_WORKERS 2
+
+# The retention purge deletes for real from the first deploy. For a dry run
+# (logs, per organisation, what it would delete; deletes nothing) re-run this
+# script with DOGRAH_RETENTION_PURGE_DRY_RUN=true; later Deploys keep it until
+# a run with DOGRAH_RETENTION_PURGE_DRY_RUN=false. See README.md "Data retention".
+setting RETENTION_PURGE_DRY_RUN false "${DOGRAH_RETENTION_PURGE_DRY_RUN:-}"
 
 # Platform-managed models: every org runs on this project's Vertex AI, Speech
 # and TTS (locations default to eu / europe-west1, see api/constants.py), with

@@ -8,6 +8,12 @@ opaque connection key.
 - `/internal/*` is called by the Fallcha API only. It requires
   `X-Internal-Secret` plus `X-Org-Id` / `X-User-Id`. It serves the provider
   catalog and manages connections and connection keys.
+- `DELETE /internal/org` (shared secret and `X-Org-Id` only, no user) erases
+  everything an org keeps here, for the API's organisation erasure (GDPR):
+  it stops the org's running syncs, revokes its OAuth refresh tokens where
+  the provider has a revocation endpoint (best effort), and deletes its
+  connections (with their keys, sync status and imported catalogue), OAuth
+  states and its own OAuth clients. Idempotent.
 - `/mcp/{provider}` is a streamable-HTTP MCP server per provider. The voice
   engine calls it with `Authorization: Bearer <connection key>`. A key works
   only at its own provider's endpoint and only for its own connection.

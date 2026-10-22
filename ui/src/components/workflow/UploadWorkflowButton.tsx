@@ -2,7 +2,7 @@
 
 import { Upload } from 'lucide-react';
 import { useRouter } from 'next/navigation';
-import { useCallback, useState } from 'react';
+import { type ComponentProps, useCallback, useState } from 'react';
 
 import { createWorkflowApiV1WorkflowCreateDefinitionPost } from '@/client/sdk.gen';
 import { Button } from "@/components/ui/button";
@@ -13,7 +13,17 @@ import { getRandomId } from '@/lib/utils';
 
 import { WorkflowData } from '../flow/types';
 
-export function UploadWorkflowButton() {
+interface UploadWorkflowButtonProps {
+    size?: ComponentProps<typeof Button>['size'];
+    variant?: ComponentProps<typeof Button>['variant'];
+    label?: string;
+}
+
+export function UploadWorkflowButton({
+    size = 'toolbar',
+    variant = 'outline',
+    label = 'Import agent',
+}: UploadWorkflowButtonProps = {}) {
     const router = useRouter();
     const [isOpen, setIsOpen] = useState(false);
     const [isDragging, setIsDragging] = useState(false);
@@ -28,7 +38,7 @@ export function UploadWorkflowButton() {
             if (!workflowData.workflow_definition?.nodes ||
                 !workflowData.workflow_definition?.edges ||
                 !workflowData.workflow_definition?.viewport) {
-                throw new Error('Invalid workflow data structure');
+                throw new Error('This file is not a valid agent definition');
             }
 
             if (!user) return;
@@ -48,7 +58,7 @@ export function UploadWorkflowButton() {
                 setIsOpen(false);
             }
         } catch (err) {
-            setError('Failed to upload workflow. Please check if the file is valid.');
+            setError('Failed to import agent. Check that the file is a valid agent export.');
             logger.error(`Error uploading workflow: ${err}`);
         }
     }, [router, user, getAccessToken]);
@@ -85,18 +95,15 @@ export function UploadWorkflowButton() {
 
     return (
         <>
-            <Button
-                onClick={() => setIsOpen(true)}
-                variant="outline"
-            >
-                <Upload className="w-4 h-4 mr-2" />
-                Upload Agent Definition
+            <Button onClick={() => setIsOpen(true)} variant={variant} size={size}>
+                <Upload className="w-4 h-4" />
+                {label}
             </Button>
 
             <Dialog open={isOpen} onOpenChange={setIsOpen}>
                 <DialogContent className="sm:max-w-md">
                     <DialogHeader>
-                        <DialogTitle>Upload Agent Definition</DialogTitle>
+                        <DialogTitle>Import agent</DialogTitle>
                     </DialogHeader>
                     <div
                         className={`mt-4 border-2 border-dashed rounded-lg p-8 text-center ${isDragging ? 'border-primary bg-primary/5' : 'border-line'
@@ -107,7 +114,7 @@ export function UploadWorkflowButton() {
                     >
                         <Upload className="w-8 h-8 mx-auto mb-4 text-ink-3" />
                         <p className="text-sm text-ink-2 mb-4">
-                            Drag and drop your Workflow JSON File here, or Click to Select
+                            Drag an agent JSON file here, or click to select one
                         </p>
                         <input
                             type="file"
@@ -120,7 +127,7 @@ export function UploadWorkflowButton() {
                             variant="outline"
                             onClick={() => document.getElementById('workflow-upload')?.click()}
                         >
-                            Select File
+                            Select file
                         </Button>
                         {error && (
                             <p className="mt-4 text-sm text-danger">{error}</p>

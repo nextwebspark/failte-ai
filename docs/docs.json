@@ -46,6 +46,7 @@
               "core-concepts/how-dograh-works",
               "core-concepts/workflows-and-agents",
               "core-concepts/calls-and-runs",
+              "core-concepts/caller-privacy-requests",
               "core-concepts/context-and-variables",
               "core-concepts/campaigns"
             ]
@@ -62,7 +63,8 @@
               "configurations/interruption",
               "configurations/tracing",
               "configurations/call-events",
-              "configurations/billing"
+              "configurations/billing",
+              "configurations/delete-and-export-data"
             ]
           },
           {

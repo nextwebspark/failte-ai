@@ -51,7 +51,7 @@ export default function WorkflowDetailPage() {
                 if (version !== null && version !== 'latest' && (
                     !/^[1-9]\d*$/.test(version) || !Number.isSafeInteger(Number(version))
                 )) {
-                    setError('Invalid workflow version. Use a version number or “latest”.');
+                    setError('Invalid version. Use a version number or “latest”.');
                     return;
                 }
                 const [response, versionResponse] = await Promise.all([
@@ -70,23 +70,23 @@ export default function WorkflowDetailPage() {
                 if (response.error) {
                     const fallback = response.response?.status === 503
                         ? `${BRAND.name} is temporarily unavailable. Please try again later.`
-                        : 'Failed to fetch workflow';
+                        : 'Failed to load agent';
                     setError(detailFromError(response.error, fallback));
                     return;
                 }
 
                 const workflow = response.data;
                 if (!workflow) {
-                    setError('Workflow not found');
+                    setError('Agent not found');
                     return;
                 }
                 if (versionResponse?.error) {
-                    setError(detailFromError(versionResponse.error, 'Failed to fetch workflow version'));
+                    setError(detailFromError(versionResponse.error, 'Failed to load this version'));
                     return;
                 }
                 const selectedVersion = versionResponse?.data?.[0];
                 if (version !== null && !selectedVersion) {
-                    setError('Workflow version not found');
+                    setError('Version not found');
                     return;
                 }
                 setLoaded({ key: requestKey, workflow, version: selectedVersion });
@@ -95,7 +95,7 @@ export default function WorkflowDetailPage() {
                     workflow_name: workflow.name,
                 });
             } catch (err) {
-                if (!cancelled) setError('Failed to fetch workflow');
+                if (!cancelled) setError('Failed to load agent');
                 logger.error(`Error fetching workflow: ${err}`);
             } finally {
                 if (!cancelled) setLoading(false);
@@ -125,7 +125,7 @@ export default function WorkflowDetailPage() {
         return (
             <WorkflowLayout showFeaturesNav={false}>
                 <div className="flex items-center justify-center min-h-screen">
-                    <div className="text-lg text-destructive">{error || 'Workflow not found'}</div>
+                    <div className="text-lg text-destructive">{error || 'Agent not found'}</div>
                 </div>
             </WorkflowLayout>
         );

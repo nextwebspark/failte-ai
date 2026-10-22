@@ -41,7 +41,7 @@ export default function RecordingsPage() {
             {/* Screen name, strapline and primary action are rendered by the
                 app header (AppTopBar) — see PageActions. */}
             <PageActions>
-                <Button onClick={() => setIsUploadOpen(true)}>
+                <Button size="toolbar" onClick={() => setIsUploadOpen(true)}>
                     <Upload className="w-4 h-4" />
                     Upload recording
                 </Button>
@@ -72,7 +72,7 @@ export default function RecordingsPage() {
                         <CardHeader>
                             <CardTitle>Cached speech</CardTitle>
                             <CardDescription>
-                                Speech reused across your organization’s workflows. Listen to a phrase and invalidate it to generate fresh audio on its next request.
+                                Speech reused across your organization’s agents. Listen to a phrase and invalidate it to generate fresh audio on its next request.
                             </CardDescription>
                         </CardHeader>
                         <CardContent>

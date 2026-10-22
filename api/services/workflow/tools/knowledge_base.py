@@ -14,7 +14,7 @@ from opentelemetry import trace
 from pipecat.utils.tracing.langfuse_helpers import mark_trace_public
 
 from api.db import db_client
-from api.services.gen_ai import build_embedding_service
+from api.services.gen_ai import EmbeddingSettings, build_embedding_service
 from api.services.pipecat.tracing_config import ensure_tracing
 
 
@@ -23,12 +23,7 @@ async def retrieve_from_knowledge_base(
     organization_id: int,
     document_uuids: Optional[List[str]] = None,
     limit: int = 3,
-    embeddings_api_key: Optional[str] = None,
-    embeddings_model: Optional[str] = None,
-    embeddings_base_url: Optional[str] = None,
-    embeddings_provider: Optional[str] = None,
-    embeddings_endpoint: Optional[str] = None,
-    embeddings_api_version: Optional[str] = None,
+    embedding_settings: Optional[EmbeddingSettings] = None,
     correlation_id: Optional[str] = None,
     tracing_context=None,
 ) -> Dict[str, Any]:
@@ -44,9 +39,7 @@ async def retrieve_from_knowledge_base(
         organization_id: Organization ID for scoping the search
         document_uuids: Optional list of document UUIDs to filter by
         limit: Maximum number of chunks to return (default: 3)
-        embeddings_api_key: Optional API key for embedding service
-        embeddings_model: Optional model ID for embedding service
-        embeddings_base_url: Optional base URL for embedding service
+        embedding_settings: The organization's embeddings provider settings
         tracing_context: Optional OpenTelemetry context for tracing
 
     Returns:
@@ -70,12 +63,7 @@ async def retrieve_from_knowledge_base(
                 organization_id,
                 document_uuids,
                 limit,
-                embeddings_api_key,
-                embeddings_model,
-                embeddings_base_url,
-                embeddings_provider,
-                embeddings_endpoint,
-                embeddings_api_version,
+                embedding_settings,
                 correlation_id,
             )
 
@@ -110,12 +98,7 @@ async def retrieve_from_knowledge_base(
                         organization_id,
                         document_uuids,
                         limit,
-                        embeddings_api_key,
-                        embeddings_model,
-                        embeddings_base_url,
-                        embeddings_provider,
-                        embeddings_endpoint,
-                        embeddings_api_version,
+                        embedding_settings,
                         correlation_id,
                     )
 
@@ -188,12 +171,7 @@ async def retrieve_from_knowledge_base(
                 organization_id,
                 document_uuids,
                 limit,
-                embeddings_api_key,
-                embeddings_model,
-                embeddings_base_url,
-                embeddings_provider,
-                embeddings_endpoint,
-                embeddings_api_version,
+                embedding_settings,
                 correlation_id,
             )
     else:
@@ -203,12 +181,7 @@ async def retrieve_from_knowledge_base(
             organization_id,
             document_uuids,
             limit,
-            embeddings_api_key,
-            embeddings_model,
-            embeddings_base_url,
-            embeddings_provider,
-            embeddings_endpoint,
-            embeddings_api_version,
+            embedding_settings,
             correlation_id,
         )
 
@@ -218,12 +191,7 @@ async def _perform_retrieval(
     organization_id: int,
     document_uuids: Optional[List[str]],
     limit: int,
-    embeddings_api_key: Optional[str] = None,
-    embeddings_model: Optional[str] = None,
-    embeddings_base_url: Optional[str] = None,
-    embeddings_provider: Optional[str] = None,
-    embeddings_endpoint: Optional[str] = None,
-    embeddings_api_version: Optional[str] = None,
+    embedding_settings: Optional[EmbeddingSettings] = None,
     correlation_id: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Internal function to perform the actual retrieval operation.
@@ -259,9 +227,9 @@ async def _perform_retrieval(
 
         # Perform vector similarity search on chunked documents
         if chunked_uuids is None or len(chunked_uuids) > 0:
-            if not embeddings_api_key:
+            if embedding_settings is None or not embedding_settings.is_configured:
                 raise ValueError(
-                    "Embeddings API key not configured. Please set your API key in "
+                    "Embeddings not configured. Please set an embedding model in "
                     "Model Configurations > Embedding."
                 )
 
@@ -269,12 +237,7 @@ async def _perform_retrieval(
             # id. The Dograh-managed path forwards it via request metadata.
             embedding_service = await build_embedding_service(
                 db_client=db_client,
-                provider=embeddings_provider,
-                api_key=embeddings_api_key,
-                model=embeddings_model,
-                base_url=embeddings_base_url,
-                endpoint=embeddings_endpoint,
-                api_version=embeddings_api_version,
+                settings=embedding_settings,
                 correlation_id=correlation_id,
             )
 

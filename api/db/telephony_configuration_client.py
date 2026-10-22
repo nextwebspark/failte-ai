@@ -6,14 +6,54 @@ Each row represents one provider account that an organization has connected
 """
 
 from datetime import UTC, datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Sequence
 
-from sqlalchemy import func, update
+from loguru import logger
+from sqlalchemy import JSON, Select, type_coerce, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.future import select
+from sqlalchemy.orm import defer
+from sqlalchemy.orm.attributes import set_committed_value
 
 from api.db.base_client import BaseDBClient
+from api.db.encrypted_json import decrypt_stored_json
 from api.db.models import CampaignModel, TelephonyConfigurationModel
+from api.utils.credential_crypto import CredentialDecryptionError
+
+# ``credentials`` as stored (still encrypted). Cross-organization lookups load
+# it this way and decrypt row by row (``decrypt_config_rows``): through the
+# ORM, one envelope no configured key opens would fail the whole result, and
+# with it every other organization's calls.
+_STORED_CREDENTIALS = type_coerce(TelephonyConfigurationModel.credentials, JSON)
+
+
+def select_configs_decrypting_per_row(*others: Any) -> Select:
+    """``select(config, *others, stored credentials)``; pair it with
+    ``decrypt_config_rows``. ``config.credentials`` is not loaded by the ORM
+    (accessing it before ``decrypt_config_rows`` raises)."""
+    return select(TelephonyConfigurationModel, *others, _STORED_CREDENTIALS).options(
+        defer(TelephonyConfigurationModel.credentials, raiseload=True)
+    )
+
+
+def decrypt_config_rows(rows: Sequence[Any]) -> List[tuple]:
+    """Rows of ``select_configs_decrypting_per_row`` as ``(config, *others)``
+    with ``config.credentials`` decrypted. A row whose credentials no
+    configured key opens is logged (ids only) and skipped."""
+    out: List[tuple] = []
+    for row in rows:
+        config, others, stored = row[0], tuple(row[1:-1]), row[-1]
+        try:
+            credentials = decrypt_stored_json(stored)
+        except CredentialDecryptionError:
+            logger.error(
+                "Skipping telephony configuration with undecryptable "
+                f"credentials: config={config.id} org={config.organization_id}"
+            )
+            continue
+        set_committed_value(config, "credentials", credentials)
+        out.append((config, *others))
+    return out
 
 
 class TelephonyConfigurationInUseError(Exception):
@@ -118,49 +158,31 @@ class TelephonyConfigurationClient(BaseDBClient):
         Used by the org-warnings endpoint to surface a UI nudge until customers
         paste their portal-issued public key.
         """
-        async with self.async_session() as session:
-            result = await session.execute(
-                select(func.count(TelephonyConfigurationModel.id)).where(
-                    TelephonyConfigurationModel.organization_id == organization_id,
-                    TelephonyConfigurationModel.provider == "telnyx",
-                    (
-                        TelephonyConfigurationModel.credentials.op("->>")(
-                            "webhook_public_key"
-                        ).is_(None)
-                    )
-                    | (
-                        TelephonyConfigurationModel.credentials.op("->>")(
-                            "webhook_public_key"
-                        )
-                        == ""
-                    ),
-                )
-            )
-            return int(result.scalar() or 0)
+        return await self._count_configs_missing_credential(
+            organization_id, "telnyx", "webhook_public_key"
+        )
 
     async def count_vonage_configs_missing_signature_secret(
         self, organization_id: int
     ) -> int:
         """Count Vonage configs in this org with no signature_secret."""
-        async with self.async_session() as session:
-            result = await session.execute(
-                select(func.count(TelephonyConfigurationModel.id)).where(
-                    TelephonyConfigurationModel.organization_id == organization_id,
-                    TelephonyConfigurationModel.provider == "vonage",
-                    (
-                        TelephonyConfigurationModel.credentials.op("->>")(
-                            "signature_secret"
-                        ).is_(None)
-                    )
-                    | (
-                        TelephonyConfigurationModel.credentials.op("->>")(
-                            "signature_secret"
-                        )
-                        == ""
-                    ),
-                )
-            )
-            return int(result.scalar() or 0)
+        return await self._count_configs_missing_credential(
+            organization_id, "vonage", "signature_secret"
+        )
+
+    async def _count_configs_missing_credential(
+        self, organization_id: int, provider: str, field: str
+    ) -> int:
+        # ``credentials`` is encrypted at rest, so the field is checked on the
+        # decrypted dicts in Python (an org has a handful of configs at most).
+        configs = await self.list_telephony_configurations_by_provider(
+            organization_id, provider, active_only=False
+        )
+        return sum(
+            1
+            for config in configs
+            if (config.credentials or {}).get(field) in (None, "")
+        )
 
     async def list_active_telephony_configurations_by_provider(
         self, provider: str
@@ -169,16 +191,17 @@ class TelephonyConfigurationClient(BaseDBClient):
 
         Used by background workers like the ARI manager that maintain
         long-lived connections per config row, independent of any one org.
-        Deactivated rows stay excluded until someone reactivates them.
+        Deactivated rows stay excluded until someone reactivates them. Rows
+        whose credentials cannot be decrypted are logged and skipped.
         """
         async with self.async_session() as session:
             result = await session.execute(
-                select(TelephonyConfigurationModel).where(
+                select_configs_decrypting_per_row().where(
                     TelephonyConfigurationModel.provider == provider,
                     TelephonyConfigurationModel.inactive.is_(False),
                 )
             )
-            return list(result.scalars().all())
+            return [config for (config,) in decrypt_config_rows(result.all())]
 
     async def set_telephony_configuration_inactive(
         self, config_id: int, organization_id: int, reason: str

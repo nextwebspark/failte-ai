@@ -5,7 +5,6 @@ from typing import Annotated, Optional
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from loguru import logger
 
-from api.constants import DEPLOYMENT_MODE
 from api.db import db_client
 from api.db.workflow_recording_client import generate_short_id
 from api.enums import StorageBackend
@@ -22,7 +21,15 @@ from api.schemas.workflow_recording import (
 from api.sdk_expose import sdk_expose
 from api.services.auth.depends import get_user, requires
 from api.services.auth.permissions import Permission
-from api.services.mps_service_key_client import mps_service_key_client
+from api.services.privacy.stored_files import (
+    StoredFileDeleteError,
+    delete_workflow_recording,
+    is_workflow_recording_key,
+)
+from api.services.recording_transcription import (
+    transcribe_recording,
+    transcription_available,
+)
 from api.services.storage import storage_fs
 
 router = APIRouter(prefix="/workflow-recordings", tags=["workflow-recordings"])
@@ -82,6 +89,15 @@ async def get_upload_urls(
                 f"/{recording_id}"
                 f"/{fd.filename}"
             )
+            if "/" in fd.filename or not is_workflow_recording_key(
+                user.selected_organization_id, storage_key
+            ):
+                # The key must stay inside the recording's folder: deleting
+                # the recording deletes that key and nothing else.
+                raise HTTPException(
+                    status_code=400,
+                    detail="The file name must not contain folders or '..'.",
+                )
 
             upload_url = await storage_fs.aget_presigned_put_url(
                 file_path=storage_key,
@@ -134,6 +150,20 @@ async def create_recordings(
     try:
         backend = StorageBackend.get_current_backend()
         results = []
+
+        for rec_req in request.recordings:
+            if not rec_req.storage_key.startswith(
+                f"recordings/{user.selected_organization_id}/{rec_req.recording_id}/"
+            ) or not is_workflow_recording_key(
+                user.selected_organization_id, rec_req.storage_key
+            ):
+                # Deleting the recording deletes this key, so it must be the
+                # audio uploaded for this recording, not any other object.
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"The storage key of {rec_req.recording_id} does not "
+                    "belong to it",
+                )
 
         for rec_req in request.recordings:
             recording = await db_client.create_recording(
@@ -221,11 +251,11 @@ async def delete_recording(
     recording_id: str,
     user=Depends(get_user),
 ):
-    """Soft delete a recording."""
+    """Permanently delete a recording and its stored audio."""
     try:
-        success = await db_client.delete_recording(
-            recording_id=recording_id,
+        success = await delete_workflow_recording(
             organization_id=user.selected_organization_id,
+            recording_id=recording_id,
         )
 
         if not success:
@@ -239,6 +269,12 @@ async def delete_recording(
 
     except HTTPException:
         raise
+    except StoredFileDeleteError as exc:
+        logger.error(f"Could not delete the audio of recording: {exc}")
+        raise HTTPException(
+            status_code=502,
+            detail="The recording's audio could not be deleted. Try again shortly.",
+        ) from exc
     except Exception as exc:
         logger.error(f"Error deleting recording: {exc}")
         raise HTTPException(
@@ -325,28 +361,26 @@ async def transcribe_audio(
     language: str = Form("en"),
     user=Depends(get_user),
 ):
-    """Transcribe an uploaded audio file using MPS STT."""
+    """Transcribe an uploaded audio file.
+
+    Uses the platform's Google Speech-to-Text when platform models are
+    enabled, otherwise the configured MPS; 404 when neither is available.
+    """
+    if not transcription_available():
+        raise HTTPException(
+            status_code=404,
+            detail="Transcription isn't available on this server.",
+        )
     try:
         audio_data = await file.read()
-
-        if DEPLOYMENT_MODE == "oss":
-            result = await mps_service_key_client.transcribe_audio(
-                audio_data=audio_data,
-                filename=file.filename or "audio.wav",
-                content_type=file.content_type or "audio/wav",
-                language=language,
-                created_by=str(user.provider_id),
-            )
-        else:
-            result = await mps_service_key_client.transcribe_audio(
-                audio_data=audio_data,
-                filename=file.filename or "audio.wav",
-                content_type=file.content_type or "audio/wav",
-                language=language,
-                organization_id=user.selected_organization_id,
-            )
-
-        return result
+        return await transcribe_recording(
+            audio_data=audio_data,
+            filename=file.filename or "audio.wav",
+            content_type=file.content_type or "audio/wav",
+            language=language,
+            organization_id=user.selected_organization_id,
+            created_by=str(user.provider_id),
+        )
 
     except Exception as exc:
         logger.error(f"Error transcribing audio: {exc}")

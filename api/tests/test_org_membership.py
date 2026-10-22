@@ -296,3 +296,28 @@ async def test_concurrent_removal_of_both_admins_keeps_one(sessions, org_with_me
         for u in (data.admin, data.developer)
     ]
     assert OrgRole.ADMIN in roles
+
+
+async def test_membership_lock_does_not_block_rows_referencing_the_org(
+    sessions, org_with_members
+):
+    """An account deletion holds the organization lock across a call to the
+    identity provider; inserts referencing the organization must not wait."""
+    from sqlalchemy import text
+
+    from api.db.membership_client import MembershipClient
+    from api.db.models import FolderModel
+
+    data = org_with_members
+    async with sessions() as holder, sessions() as writer:
+        await MembershipClient._lock_organization(holder, data.org.id)
+        await writer.execute(text("SET LOCAL lock_timeout = '2s'"))
+        writer.add(FolderModel(organization_id=data.org.id, name="While locked"))
+        await writer.commit()  # would time out under FOR UPDATE
+
+        # Membership changes still serialize on it.
+        async with sessions() as rival:
+            await rival.execute(text("SET LOCAL lock_timeout = '200ms'"))
+            with pytest.raises(Exception, match="lock"):
+                await MembershipClient._lock_organization(rival, data.org.id)
+        await holder.rollback()

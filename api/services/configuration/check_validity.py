@@ -364,6 +364,11 @@ class UserConfigurationValidator:
         return True
 
     def _check_dograh_api_key(self, model: str, api_key: str) -> bool:
+        if not mps_service_key_client.is_configured:
+            raise ValueError(
+                "LightMove.ai managed models aren't available on this server. "
+                "Please choose another provider."
+            )
         if api_key.startswith("dgr"):
             raise ValueError(
                 "You provided a LightMove.ai API key (dgr...) instead of a service key. "

@@ -18,6 +18,8 @@ from api.services.configuration.ai_model_configuration import (
 )
 from api.services.configuration.check_validity import UserConfigurationValidator
 
+pytestmark = pytest.mark.usefixtures("mps_configured")
+
 
 @pytest.mark.asyncio
 async def test_validate_user_configurations_marks_stale_org_v2_config_validated(

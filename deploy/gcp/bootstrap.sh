@@ -3,13 +3,15 @@
 # Idempotent GCP bootstrap for a Dograh deployment in europe-west1.
 #
 # Every step checks before it creates, so re-running is safe and is the intended
-# way to converge drift. Nothing here is destructive.
+# way to converge drift. Nothing here deletes resources, but the storage step
+# sets a bucket lifecycle rule that deletes old transcript objects, and the ci
+# step lets deploys prune old on-demand SQL backups.
 #
 #   ./bootstrap.sh            # show what would run, change nothing
 #   ./bootstrap.sh apply      # actually create resources (BILLABLE)
 #   ./bootstrap.sh apply net  # run a single step
 #
-# Steps: project apis ips firewall storage sql registry schedule ci
+# Steps: project apis logging ips firewall storage sql registry schedule ci
 #
 # See README.md for the full runbook and what each resource is for.
 
@@ -26,6 +28,9 @@ SQL_INSTANCE="${DOGRAH_SQL_INSTANCE:-dograh-pg}"
 SQL_TIER="${DOGRAH_SQL_TIER:-db-g1-small}"
 SQL_VERSION="${DOGRAH_SQL_VERSION:-POSTGRES_17}"
 AR_REPO="${DOGRAH_AR_REPO:-dograh}"
+# Cloud Logging _Default bucket retention. Container logs on the VM can carry
+# phone numbers and call metadata, so keep them no longer than needed.
+LOG_RETENTION_DAYS="${DOGRAH_LOG_RETENTION_DAYS:-30}"
 
 STORAGE_SA="dograh-storage"
 
@@ -132,6 +137,7 @@ if want apis; then
     sts.googleapis.com                 # Workload Identity Federation token exchange
     sqladmin.googleapis.com
     servicenetworking.googleapis.com   # required for Cloud SQL private IP
+    logging.googleapis.com             # logging step (_Default bucket retention)
   )
   ENABLED="$(gcloud services list --enabled --project="$PROJECT_ID" --format='value(config.name)' 2>/dev/null || true)"
   TO_ENABLE=()
@@ -141,6 +147,25 @@ if want apis; then
   if (( ${#TO_ENABLE[@]} )); then
     run gcloud services enable "${TO_ENABLE[@]}" --project="$PROJECT_ID"
     ok "${TO_ENABLE[*]}"
+  fi
+fi
+
+# --- logging -----------------------------------------------------------------
+# Personal data minimisation (GDPR Art. 5(1)(e)/32): the project's _Default log
+# bucket keeps entries for LOG_RETENTION_DAYS (Google's default is 30, but a
+# console edit can raise it silently; this converges it back). The identity
+# running this needs logging.buckets.update (roles/logging.configWriter, or
+# Owner/Editor).
+if want logging; then
+  step "logging"
+  CURRENT_RETENTION="$(gcloud logging buckets describe _Default --location=global \
+    --project="$PROJECT_ID" --format='value(retentionDays)' 2>/dev/null || true)"
+  if [[ "$CURRENT_RETENTION" == "$LOG_RETENTION_DAYS" ]]; then
+    skip "_Default log bucket retention ${LOG_RETENTION_DAYS}d"
+  else
+    run gcloud logging buckets update _Default --location=global \
+      --retention-days="$LOG_RETENTION_DAYS" --project="$PROJECT_ID"
+    ok "_Default log bucket retention ${CURRENT_RETENTION:-?}d -> ${LOG_RETENTION_DAYS}d"
   fi
 fi
 
@@ -239,6 +264,29 @@ if want storage; then
     warn "creating an HMAC key — the secret is shown once, save it now"
     run gcloud storage hmac create "$SA_EMAIL" --project="$PROJECT_ID"
   fi
+
+  # Retention backstop. The app's daily purge (api/services/retention) deletes
+  # call content after each organization's period (max 365 days); this rule
+  # catches anything it missed. Only transcripts/: recordings/ also holds
+  # agent prompt audio (recordings/{org_id}/{recording_id}/{file}), which a
+  # prefix rule cannot tell apart from call recordings and must never expire.
+  # Setting the lifecycle replaces the bucket's whole config, so re-running
+  # converges to exactly this rule.
+  LIFECYCLE_FILE="$(mktemp)"
+  trap 'rm -f "$LIFECYCLE_FILE"' EXIT
+  cat > "$LIFECYCLE_FILE" <<'JSON'
+{
+  "rule": [
+    {
+      "action": {"type": "Delete"},
+      "condition": {"age": 365, "matchesPrefix": ["transcripts/"]}
+    }
+  ]
+}
+JSON
+  run gcloud storage buckets update "gs://$BUCKET" \
+    --project="$PROJECT_ID" --lifecycle-file="$LIFECYCLE_FILE"
+  ok "lifecycle on gs://$BUCKET: delete transcripts/ after 365 days (idempotent)"
 fi
 
 # --- sql ---------------------------------------------------------------------
@@ -356,13 +404,18 @@ if want ci; then
     --member="principalSet://iam.googleapis.com/projects/${PROJECT_NUMBER}/locations/global/workloadIdentityPools/${WIF_POOL}/attribute.repository_id/${GITHUB_REPO_ID}"
   ok "GitHub repo $GITHUB_REPO may impersonate $DEPLOY_SA (idempotent)"
 
-  # Least privilege for backups: create one, follow its operation.
+  # Least privilege for backups: create one, follow its operation, and prune
+  # pre-deploy backups older than 30 days (deploy.yml). Updating an existing
+  # role converges its permissions to exactly this list.
+  SQL_BACKUP_PERMISSIONS="cloudsql.backupRuns.create,cloudsql.backupRuns.delete,cloudsql.backupRuns.get,cloudsql.backupRuns.list,cloudsql.instances.get"
   if exists gcloud iam roles describe lightmoveSqlBackup --project="$PROJECT_ID"; then
-    skip "custom role lightmoveSqlBackup"
+    run gcloud iam roles update lightmoveSqlBackup --project="$PROJECT_ID" --format=none \
+      --quiet --permissions="$SQL_BACKUP_PERMISSIONS"
+    ok "custom role lightmoveSqlBackup (permissions converged)"
   else
     run gcloud iam roles create lightmoveSqlBackup --project="$PROJECT_ID" --format=none \
       --title="LightMove pre-deploy SQL backup" \
-      --permissions=cloudsql.backupRuns.create,cloudsql.backupRuns.get,cloudsql.backupRuns.list,cloudsql.instances.get
+      --permissions="$SQL_BACKUP_PERMISSIONS"
     ok "custom role lightmoveSqlBackup"
   fi
 

@@ -41,19 +41,19 @@ Workspace credentials (API keys, bearer tokens, passwords and integration connec
 
 | Variable | Default | Description |
 |---|---|---|
-| `CREDENTIALS_ENCRYPTION_KEYS` | unset | Comma-separated Fernet keys. The first key encrypts; every key decrypts. **Required when `DEPLOYMENT_MODE` is not `oss`.** In OSS mode, unset stores credentials in plaintext and logs a warning at startup |
+| `CREDENTIALS_ENCRYPTION_KEYS` | unset | Comma-separated Fernet keys. The first key encrypts; every key decrypts. Encrypts workspace credentials, telephony provider credentials, integration connection details and organization configuration values at rest. **Required when `ENVIRONMENT` is `production` or `DEPLOYMENT_MODE` is not `oss`.** In local development and tests, unset stores them in plaintext and logs a warning at startup |
 
 The API and the background worker check this at startup and refuse to start when:
 
 - a key is not a valid Fernet key;
-- the keys are unset but encrypted credentials already exist (any mode);
-- the keys are unset and `DEPLOYMENT_MODE` is not `oss`;
+- the keys are unset but encrypted values already exist (any mode);
+- the keys are unset and `ENVIRONMENT` is `production` or `DEPLOYMENT_MODE` is not `oss`;
 - the keys are set but cannot decrypt an existing encrypted credential (a key that wrote stored rows was removed).
 
 Generate a key with `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"` and set the same value on every API and worker process.
 
-- **Enabling:** set the key and run migrations — existing plaintext credentials are encrypted by the migration. If the key is added after migrating, or migrations are applied offline (`alembic upgrade --sql`, which refuses to run with keys set), run `python -m scripts.reencrypt_credentials` once (reads accept plaintext rows meanwhile).
-- **Rotating:** set `CREDENTIALS_ENCRYPTION_KEYS=<new>,<old>` and restart, run `python -m scripts.reencrypt_credentials`, then set `CREDENTIALS_ENCRYPTION_KEYS=<new>` and restart again.
+- **Enabling:** set the key and run migrations — existing plaintext rows are encrypted by the migrations. If the key is added after migrating, or migrations are applied offline (`alembic upgrade --sql`, which refuses to run with keys set), run `python -m scripts.reencrypt_credentials` once (reads accept plaintext rows meanwhile).
+- **Rotating:** set `CREDENTIALS_ENCRYPTION_KEYS=<new>,<old>` and restart, run `python -m scripts.reencrypt_credentials` (re-seals all four encrypted columns), then set `CREDENTIALS_ENCRYPTION_KEYS=<new>` and restart again.
 
 <Warning>
 Back the keys up with your database backups. Losing every key that encrypted a credential makes it unreadable, and removing the key while encrypted credentials exist breaks the tools and webhooks that use them.
@@ -156,9 +156,9 @@ For local development, `docker-compose-local.yaml` runs Mailpit. Set `EMAIL_PROV
 | `PUBLIC_HOST` | `null` | Public host without scheme (e.g. `203-0-113-10.sslip.io`); `TURN_HOST` derives from it |
 | `BACKEND_API_ENDPOINT` | `PUBLIC_BASE_URL`, else `http://localhost:8000` | Public URL the backend builds webhook / callback / embed links from. Set explicitly only to override the value derived from `PUBLIC_BASE_URL` |
 | `UI_APP_URL` | `http://localhost:3010` | URL of the frontend application |
-| `MPS_API_URL` | `https://services.dograh.com` | Dograh Managed Platform Services (MPS) URL |
+| `MPS_API_URL` | unset | Upstream Dograh Model Proxy Service (MPS) URL. Unset by default so no data is sent to it; while unset, MPS-only features (service keys, managed "dograh" models, MPS credits, the Agent Builder without platform models, voice catalogs other than Google) are disabled. Knowledge base documents are parsed and chunked by the API itself and never need it. Only set it for an MPS you operate or have a data processing agreement with. Organizations created while it is unset get no managed model configuration, and setting it later does not backfill them |
 | `DOGRAH_MPS_SECRET_KEY` | `null` | **Required for non-OSS deployments.** Secret key for authenticating with MPS |
-| `CORS_ALLOWED_ORIGINS` | `null` | **Required for non-OSS deployments.** Comma-separated list of origins allowed to make credentialed cross-origin requests (e.g. `https://app.example.com,https://admin.example.com`). Ignored in OSS mode, which serves a permissive same-origin policy without credentials |
+| `CORS_ALLOWED_ORIGINS` | `null` | Comma-separated list of origins allowed to make credentialed cross-origin requests (e.g. `https://app.example.com,https://admin.example.com`); `*` is refused. Honoured in every mode when set. **Required for non-OSS deployments.** Unset with `ENVIRONMENT=production`, the origin of `PUBLIC_BASE_URL` is used (startup fails if neither is set): production never allows every origin. Unset in local OSS development, any origin is allowed without credentials. The embed widget's `/api/v1/public/embed/*` endpoints handle CORS themselves, per embed token's allowed domains |
 
 ---
 
@@ -171,11 +171,12 @@ LightMove.ai uses **MinIO by default**, which is bundled with the self-hosted de
 | Variable | Default | Description |
 |---|---|---|
 | `MINIO_ENDPOINT` | `localhost:9000` | MinIO server host and port |
-| `MINIO_PUBLIC_ENDPOINT` | `PUBLIC_BASE_URL`, else `http://localhost:9000` | Publicly accessible MinIO URL for download links. Derives from `PUBLIC_BASE_URL`; set explicitly only for a separate object-storage origin |
+| `MINIO_PUBLIC_ENDPOINT` | `PUBLIC_BASE_URL`, else `http://localhost:9000` | Origin (scheme + host, no path) browsers use to reach MinIO; presigned download and upload URLs are signed for it. Derives from `PUBLIC_BASE_URL`; set explicitly only for a separate object-storage origin |
 | `MINIO_ACCESS_KEY` | N/A | **Required for OSS deployments.** MinIO access key. Must be set to a secure value in production |
 | `MINIO_SECRET_KEY` | N/A | **Required for OSS deployments.** MinIO secret key. Must be set to a secure value in production |
 | `MINIO_BUCKET` | `voice-audio` | Bucket name for audio files |
 | `MINIO_SECURE` | `false` | Use HTTPS for MinIO connections |
+| `MINIO_REGION` | `us-east-1` | Region MinIO signs requests (and presigned URLs) for. Must match the MinIO server's `MINIO_REGION`; MinIO's default is `us-east-1` |
 
 ### AWS S3 (alternative)
 
@@ -192,7 +193,7 @@ Credentials come from the standard `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY`
 
 #### S3-compatible servers (MinIO, rustfs, Ceph, ...)
 
-The S3 backend can target any S3-compatible server, not just AWS. Prefer it over the MinIO backend when you need **presigned URLs against a private bucket**: the MinIO backend returns plain unsigned object URLs and relies on the bucket being anonymously public-readable, whereas the S3 backend issues real presigned URLs so the bucket can stay private.
+The S3 backend can target any S3-compatible server, not just AWS. Both backends keep the bucket private and hand browsers presigned URLs; the S3 backend adds custom endpoints, signature versions and addressing styles.
 
 To use it, set `ENABLE_AWS_S3=true` and point it at your server with the `S3_*` overrides above. For example, against [rustfs](https://github.com/rustfs/rustfs):
 
@@ -296,6 +297,26 @@ Controls concurrency for [Campaigns](/core-concepts/campaigns), LightMove.ai's b
 | Variable | Default | Description |
 |---|---|---|
 | `DEFAULT_ORG_CONCURRENCY_LIMIT` | `10` | Maximum concurrent active calls per organization (values below 1 are clamped to 1) |
+
+---
+
+## Data retention
+
+A daily background job (03:17 UTC) deletes call recordings, transcripts and call content older than each organization's **Call data retention (days)** setting, and clears widget visitor data and webhook payloads after 30 days.
+
+| Variable | Default | Description |
+|---|---|---|
+| `RETENTION_PURGE_ENABLED` | `true` | Set to `false` to turn the daily retention purge off. The job then only logs that it is disabled |
+| `RETENTION_PURGE_DRY_RUN` | `false` | Set to `true` to log one line per organization with the counts of runs, campaigns, queued rows, widget sessions and webhook deliveries the purge would clear, without deleting or changing anything |
+
+## Organization deletion
+
+When an admin deletes an organization it is closed at once and erased 30 days later by a daily background job (03:47 UTC); see [Export or delete your data](/configurations/delete-and-export-data).
+
+| Variable | Default | Description |
+|---|---|---|
+| `ORG_ERASURE_ENABLED` | `true` | Set to `false` to stop the daily erasure job. Deletion requests are still accepted and stay pending (the organization stays closed) until the job is enabled again |
+| `LEGACY_STORAGE_BACKENDS` | empty | Comma-separated storage backends (`s3`, `minio`) this deployment used before its current one. Erasure also deletes an organization's files there. List only backends that are still reachable: an erasure that keeps failing is retried daily and logged as an error once it is 3 days overdue |
 
 ---
 

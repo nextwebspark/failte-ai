@@ -212,7 +212,7 @@ export function PresetParameterEditor({
         <div className="space-y-4">
             {parameters.length === 0 && (
                 <div className="text-sm text-muted-foreground py-4 text-center border border-dashed rounded-md">
-                    No preset parameters defined. Add one to inject a fixed value or workflow context into the request.
+                    No preset parameters defined. Add one to inject a fixed value or agent context into the request.
                 </div>
             )}
 

@@ -92,12 +92,9 @@ def _ensure_workflow_is_active(workflow) -> None:
         raise HTTPException(status_code=404, detail="Workflow is not active")
 
 
-def _get_execution_user_id(workflow) -> int:
-    if workflow.user_id is None:
-        raise HTTPException(
-            status_code=409,
-            detail="Workflow has no execution owner",
-        )
+def _get_execution_user_id(workflow) -> int | None:
+    # Attribution only (the run is scoped by organization): an agent whose
+    # creator deleted their account has no owner and still runs.
     return workflow.user_id
 
 

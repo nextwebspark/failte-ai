@@ -7,6 +7,8 @@ from fastapi import HTTPException
 from api.errors.failure import ErrorSource, ErrorType, failure_metadata_for_processor
 from api.services.pipecat.service_factory import create_llm_service_from_provider
 
+pytestmark = pytest.mark.usefixtures("mps_configured")
+
 
 def test_service_factory_classifies_constructor_failure_and_reraises(monkeypatch):
     captured = []

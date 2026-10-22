@@ -42,8 +42,21 @@ async def _upload_bytes(
     label: str,
 ) -> bool:
     try:
+        if await db_client.is_workflow_run_purged(workflow_run_id):
+            # A late upload (a retried or delayed job) after the call's data
+            # was erased: its reference would be dropped, orphaning the file.
+            logger.info(f"Skipping {label} upload: workflow {workflow_run_id} erased")
+            return False
         logger.debug(f"{label} size: {len(data)} bytes")
         if await storage_fs.acreate_file_from_bytes(storage_key, data):
+            if await db_client.is_workflow_run_purged(workflow_run_id):
+                # Erased while uploading: take the file back out.
+                await storage_fs.adelete_file(storage_key)
+                logger.info(
+                    f"Deleted {label} uploaded during erasure of workflow "
+                    f"{workflow_run_id}"
+                )
+                return False
             logger.info(f"Successfully uploaded {label}: {storage_key}")
             return True
         logger.error(

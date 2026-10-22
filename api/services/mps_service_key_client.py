@@ -13,7 +13,7 @@ from loguru import logger
 
 from api.constants import DEPLOYMENT_MODE, DOGRAH_MPS_SECRET_KEY, MPS_API_URL
 from api.errors.failure import ErrorSource, classify_exception, log_failure
-from api.errors.mps import MPSUnavailableError
+from api.errors.mps import MPSNotConfiguredError, MPSUnavailableError
 
 _INVALID_SERVICE_KEY_STATUSES = frozenset({401, 403})
 
@@ -46,6 +46,17 @@ class MPSServiceKeyClient:
     def __init__(self):
         self.base_url = MPS_API_URL
         self.timeout = httpx.Timeout(10.0)
+
+    @property
+    def is_configured(self) -> bool:
+        """Whether an MPS is configured. Without one nothing is ever sent."""
+        return bool(self.base_url)
+
+    def _url(self, path: str) -> str:
+        """Build an MPS URL, failing closed when no MPS is configured."""
+        if not self.base_url:
+            raise MPSNotConfiguredError()
+        return f"{self.base_url}{path}"
 
     def _get_headers(
         self,
@@ -104,7 +115,7 @@ class MPSServiceKeyClient:
                 request_body["organization_id"] = organization_id
 
             response = await client.post(
-                f"{self.base_url}/api/v1/service-keys/",
+                self._url("/api/v1/service-keys/"),
                 json=request_body,
                 headers=self._get_headers(organization_id, created_by),
             )
@@ -148,7 +159,7 @@ class MPSServiceKeyClient:
         """
         async with httpx.AsyncClient(timeout=self.timeout) as client:
             response = await client.put(
-                f"{self.base_url}/api/v1/cloudonix/domains/self",
+                self._url("/api/v1/cloudonix/domains/self"),
                 headers=self._get_headers(organization_id, created_by),
             )
 
@@ -197,7 +208,7 @@ class MPSServiceKeyClient:
                 params["include_archived"] = "true"
 
             response = await client.get(
-                f"{self.base_url}/api/v1/service-keys/",
+                self._url("/api/v1/service-keys/"),
                 params=params,
                 headers=self._get_headers(organization_id, created_by),
             )
@@ -234,7 +245,7 @@ class MPSServiceKeyClient:
         """Get a specific service key by ID."""
         async with httpx.AsyncClient(timeout=self.timeout) as client:
             response = await client.get(
-                f"{self.base_url}/api/v1/service-keys/{key_id}",
+                self._url(f"/api/v1/service-keys/{key_id}"),
                 headers=self._get_headers(organization_id, created_by),
             )
 
@@ -291,7 +302,7 @@ class MPSServiceKeyClient:
 
         async with httpx.AsyncClient(timeout=self.timeout) as client:
             response = await client.delete(
-                f"{self.base_url}/api/v1/service-keys/{key_id}",
+                self._url(f"/api/v1/service-keys/{key_id}"),
                 headers=self._get_headers(organization_id, created_by),
             )
 
@@ -320,7 +331,7 @@ class MPSServiceKeyClient:
         """
         async with httpx.AsyncClient(timeout=self.timeout) as client:
             response = await client.get(
-                f"{self.base_url}/api/v1/service-keys/usage/self",
+                self._url("/api/v1/service-keys/usage/self"),
                 headers={
                     "Authorization": f"Bearer {service_key}",
                     "Content-Type": "application/json",
@@ -355,7 +366,7 @@ class MPSServiceKeyClient:
         """
         async with httpx.AsyncClient(timeout=self.timeout) as client:
             response = await client.post(
-                f"{self.base_url}/api/v1/service-keys/usage/created-by",
+                self._url("/api/v1/service-keys/usage/created-by"),
                 json={"created_by": created_by},
                 headers=self._get_headers(created_by=created_by),
             )
@@ -392,7 +403,9 @@ class MPSServiceKeyClient:
 
         async with httpx.AsyncClient(timeout=self.timeout) as client:
             response = await client.post(
-                f"{self.base_url}/api/v1/billing/accounts/{organization_id}/checkout-sessions",
+                self._url(
+                    f"/api/v1/billing/accounts/{organization_id}/checkout-sessions"
+                ),
                 json=payload,
                 headers=self._get_headers(
                     organization_id=organization_id,
@@ -433,7 +446,7 @@ class MPSServiceKeyClient:
             params["end_date"] = end_date.isoformat()
         async with httpx.AsyncClient(timeout=self.timeout) as client:
             response = await client.get(
-                f"{self.base_url}/api/v1/billing/accounts/{organization_id}/ledger",
+                self._url(f"/api/v1/billing/accounts/{organization_id}/ledger"),
                 params=params,
                 headers=self._get_headers(
                     organization_id=organization_id,
@@ -463,7 +476,7 @@ class MPSServiceKeyClient:
         try:
             async with httpx.AsyncClient(timeout=self.timeout) as client:
                 response = await client.get(
-                    f"{self.base_url}/api/v1/billing/accounts/{organization_id}/pricing",
+                    self._url(f"/api/v1/billing/accounts/{organization_id}/pricing"),
                     headers=self._get_headers(organization_id=organization_id),
                 )
 
@@ -497,7 +510,7 @@ class MPSServiceKeyClient:
         """Create or return the MPS v2 billing account for an organization."""
         async with httpx.AsyncClient(timeout=self.timeout) as client:
             response = await client.get(
-                f"{self.base_url}/api/v1/billing/accounts/{organization_id}/balance",
+                self._url(f"/api/v1/billing/accounts/{organization_id}/balance"),
                 headers=self._get_headers(
                     organization_id=organization_id,
                     created_by=created_by,
@@ -540,7 +553,9 @@ class MPSServiceKeyClient:
 
         async with httpx.AsyncClient(timeout=self.timeout) as client:
             response = await client.post(
-                f"{self.base_url}/api/v1/billing/accounts/{organization_id}/run-authorization",
+                self._url(
+                    f"/api/v1/billing/accounts/{organization_id}/run-authorization"
+                ),
                 json=payload,
                 headers=self._get_headers(
                     organization_id=organization_id,
@@ -581,7 +596,7 @@ class MPSServiceKeyClient:
 
         async with httpx.AsyncClient(timeout=self.timeout) as client:
             response = await client.post(
-                f"{self.base_url}/api/v1/service-keys/run-authorization/self",
+                self._url("/api/v1/service-keys/run-authorization/self"),
                 json=payload,
                 headers={
                     "Authorization": f"Bearer {service_key}",
@@ -615,7 +630,7 @@ class MPSServiceKeyClient:
 
         async with httpx.AsyncClient(timeout=self.timeout) as client:
             response = await client.post(
-                f"{self.base_url}/api/v1/service-keys/correlation-id/self",
+                self._url("/api/v1/service-keys/correlation-id/self"),
                 json=payload,
                 headers={
                     "Authorization": f"Bearer {service_key}",
@@ -669,9 +684,8 @@ class MPSServiceKeyClient:
         async with httpx.AsyncClient(timeout=self.timeout) as client:
             for attempt in range(1, max_attempts + 1):
                 response = await client.post(
-                    (
-                        f"{self.base_url}/api/v1/billing/accounts/"
-                        f"{organization_id}/platform-usage"
+                    self._url(
+                        f"/api/v1/billing/accounts/{organization_id}/platform-usage"
                     ),
                     json=payload,
                     headers=self._get_headers(organization_id=organization_id),
@@ -752,7 +766,7 @@ class MPSServiceKeyClient:
             headers.pop("Content-Type", None)
 
             response = await client.post(
-                f"{self.base_url}/api/v1/stt/transcribe",
+                self._url("/api/v1/stt/transcribe"),
                 files=files,
                 data=data,
                 headers=headers,
@@ -787,7 +801,7 @@ class MPSServiceKeyClient:
         try:
             with httpx.Client(timeout=self.timeout) as client:
                 response = client.get(
-                    f"{self.base_url}/api/v1/service-keys/usage/self",
+                    self._url("/api/v1/service-keys/usage/self"),
                     headers={
                         "Authorization": f"Bearer {service_key}",
                         "Content-Type": "application/json",
@@ -858,7 +872,7 @@ class MPSServiceKeyClient:
                 if accent:
                     params["accent"] = accent
                 response = await client.get(
-                    f"{self.base_url}/api/v1/voice-proxy/{provider}/voices",
+                    self._url(f"/api/v1/voice-proxy/{provider}/voices"),
                     headers=self._get_headers(organization_id, created_by),
                     params=params,
                 )
@@ -886,71 +900,6 @@ class MPSServiceKeyClient:
                 requested_provider=provider,
             )
             raise MPSUnavailableError(operation) from exc
-
-    async def process_document(
-        self,
-        file_path: str,
-        filename: str,
-        content_type: str,
-        retrieval_mode: str = "chunked",
-        max_tokens: int = 128,
-        chunk_overlap_tokens: int = 0,
-        merge_peers: bool = True,
-        tokenizer_model: Optional[str] = None,
-        correlation_id: Optional[str] = None,
-        organization_id: Optional[int] = None,
-        created_by: Optional[str] = None,
-    ) -> dict:
-        """Convert + chunk a document via MPS /document/process.
-
-        Returns a dict matching DocumentProcessResponse in MPS:
-            {
-              "mode": "chunked" | "full_document",
-              "docling_metadata": {...},
-              "full_text": str | None,   # populated only in full_document mode
-              "chunks": [...],           # populated only in chunked mode
-            }
-
-        Timeout is 300s to match the ALB idle_timeout configured in
-        infrastructure/mps/main.tf. Raises on non-2xx responses.
-        """
-        data = {
-            "retrieval_mode": retrieval_mode,
-            "max_tokens": str(max_tokens),
-            "chunk_overlap_tokens": str(chunk_overlap_tokens),
-            "merge_peers": str(merge_peers).lower(),
-        }
-        if tokenizer_model is not None:
-            data["tokenizer_model"] = tokenizer_model
-        if correlation_id:
-            data["correlation_id"] = correlation_id
-
-        headers = self._get_headers(organization_id, created_by)
-        # Remove JSON content-type so httpx sets the correct multipart boundary.
-        headers.pop("Content-Type", None)
-
-        async with httpx.AsyncClient(timeout=httpx.Timeout(300.0)) as client:
-            with open(file_path, "rb") as fh:
-                files = {"file": (filename, fh.read(), content_type)}
-
-            response = await client.post(
-                f"{self.base_url}/api/v1/document/process",
-                files=files,
-                data=data,
-                headers=headers,
-            )
-
-            if response.status_code == 200:
-                return response.json()
-
-            logger.error(
-                f"Failed to process document: {response.status_code} - {response.text}"
-            )
-            raise httpx.HTTPStatusError(
-                f"Failed to process document: {response.text}",
-                request=response.request,
-                response=response,
-            )
 
     async def call_workflow_api(
         self,
@@ -981,7 +930,7 @@ class MPSServiceKeyClient:
         """
         async with httpx.AsyncClient(timeout=httpx.Timeout(30.0)) as client:
             response = await client.post(
-                f"{self.base_url}/api/v1/workflow/create-workflow",
+                self._url("/api/v1/workflow/create-workflow"),
                 json={
                     "call_type": call_type,
                     "use_case": use_case,
@@ -1005,3 +954,14 @@ class MPSServiceKeyClient:
 
 # Create a singleton instance
 mps_service_key_client = MPSServiceKeyClient()
+
+
+def mps_base_url() -> str:
+    """The configured MPS base URL, for the managed model services.
+
+    Raises MPSNotConfiguredError when none is configured, so a managed
+    ("dograh") model is never pointed at a default third-party host.
+    """
+    if not mps_service_key_client.is_configured:
+        raise MPSNotConfiguredError()
+    return mps_service_key_client.base_url

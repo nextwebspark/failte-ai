@@ -213,7 +213,9 @@ async def test_enterprise_placement_applies_to_that_organization_only(make_org):
         await save_platform_model_policy(
             enterprise.id,
             PlatformModelPolicy(
-                project_id="enterprise-project", realtime_location="europe-west4"
+                project_id="enterprise-project",
+                realtime_location="europe-west4",
+                embeddings_location="europe-west3",
             ),
         )
         config = OrganizationAIModelConfigurationV2.model_validate(REALTIME)
@@ -226,6 +228,11 @@ async def test_enterprise_placement_applies_to_that_organization_only(make_org):
     assert placed.llm.location == "eu"
     assert default.realtime.project_id == "operator-project"
     assert default.realtime.location == "europe-west1"
+    # Knowledge base embeddings follow the same placement.
+    assert placed.embeddings.project_id == "enterprise-project"
+    assert placed.embeddings.location == "europe-west3"
+    assert default.embeddings.project_id == "operator-project"
+    assert default.embeddings.location == "europe-west1"
 
 
 @pytest.mark.asyncio
@@ -380,6 +387,7 @@ async def test_agent_override_runs_with_the_organization_placement(make_org):
     "field, value",
     [
         ("realtime_location", "eu"),
+        ("embeddings_location", "eu"),
         ("llm_location", "Europe West"),
         ("project_id", "Bad_Project"),
     ],

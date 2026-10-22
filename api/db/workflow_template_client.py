@@ -1,3 +1,5 @@
+from typing import Any
+
 from sqlalchemy.future import select
 
 from api.db.base_client import BaseDBClient
@@ -79,6 +81,28 @@ class WorkflowTemplateClient(BaseDBClient):
             except Exception as e:
                 await session.rollback()
                 raise e
+
+    async def upsert_workflow_template(
+        self, template_name: str, values: dict[str, Any]
+    ) -> tuple[WorkflowTemplates, bool]:
+        """Create the template named *template_name*, or overwrite *values* on
+        it. Returns the template and whether it was created."""
+        async with self.async_session() as session:
+            result = await session.execute(
+                select(WorkflowTemplates).where(
+                    WorkflowTemplates.template_name == template_name
+                )
+            )
+            template = result.scalars().first()
+            created = template is None
+            if created:
+                template = WorkflowTemplates(template_name=template_name)
+                session.add(template)
+            for key, value in values.items():
+                setattr(template, key, value)
+            await session.commit()
+            await session.refresh(template)
+            return template, created
 
     async def delete_workflow_template(self, template_id: int) -> bool:
         """Delete a workflow template by ID."""

@@ -1,7 +1,7 @@
 "use client";
 
 import { useWorkflow } from "@/app/workflow/[workflowId]/contexts/WorkflowContext";
-import { Badge } from "@/components/ui/badge";
+import { NodeChip } from "@/components/flow/NodeChip";
 
 interface SkillBadgesProps {
     /** `skill_uuids`: null/undefined lists all skills, `[]` none. */
@@ -18,22 +18,18 @@ export function SkillBadges({ skillUuids, preloadSkillUuids }: SkillBadgesProps)
     const preload = preloadSkillUuids ?? [];
 
     return (
-        <div className="flex flex-wrap gap-1">
-            {skillUuids && skillUuids.length === 0 && (
-                <Badge variant="outline" className="text-xs text-muted-foreground">
-                    No skills
-                </Badge>
-            )}
+        <>
+            {skillUuids && skillUuids.length === 0 && <NodeChip>no skills</NodeChip>}
             {(skillUuids ?? []).map((uuid) => (
-                <Badge key={uuid} variant="outline" className="font-mono text-xs">
-                    {label(uuid)}
-                </Badge>
+                <NodeChip key={uuid} title={label(uuid)}>
+                    skill: {label(uuid)}
+                </NodeChip>
             ))}
             {preload.map((uuid) => (
-                <Badge key={`preload-${uuid}`} variant="outline" className="font-mono text-xs" title="Preloaded">
-                    {label(uuid)} · preloaded
-                </Badge>
+                <NodeChip key={`preload-${uuid}`} title={`${label(uuid)} (preloaded)`}>
+                    skill: {label(uuid)} · preloaded
+                </NodeChip>
             ))}
-        </div>
+        </>
     );
 }

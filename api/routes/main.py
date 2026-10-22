@@ -20,6 +20,7 @@ from api.routes.node_types import router as node_types_router
 from api.routes.organization import router as organization_router
 from api.routes.organization_usage import router as organization_usage_router
 from api.routes.platform_admin import router as platform_admin_router
+from api.routes.privacy import router as privacy_router
 from api.routes.public_agent import router as public_agent_router
 from api.routes.public_download import router as public_download_router
 from api.routes.public_embed import router as public_embed_router
@@ -53,6 +54,7 @@ router.include_router(superuser_router)
 router.include_router(workflow_router)
 router.include_router(workflow_text_chat_router)
 router.include_router(user_router)
+router.include_router(privacy_router)
 router.include_router(campaign_router)
 router.include_router(credentials_router)
 router.include_router(tool_router)
@@ -103,6 +105,12 @@ class HealthResponse(BaseModel):
     billing_provider: str = "none"
     # Customers pick from the platform model catalog instead of entering keys.
     platform_models_enabled: bool = False
+    # An MPS (MPS_API_URL) is configured. Without one, MPS-only features
+    # (service keys, managed models, MPS credits) are off.
+    mps_enabled: bool = False
+    # Knowledge base documents can be uploaded: they are parsed and chunked on
+    # this server.
+    document_processing_enabled: bool = False
     turn_enabled: bool
     force_turn_relay: bool
     signup_enabled: bool
@@ -128,12 +136,14 @@ async def health() -> HealthResponse:
         ENABLE_COTURN,
         ENABLE_SIGNUP,
         FORCE_TURN_RELAY,
+        MPS_ENABLED,
         PLATFORM_MODELS_ENABLED,
         REQUIRE_EMAIL_VERIFICATION,
         STACK_AUTH_PROJECT_ID,
         STACK_PUBLISHABLE_CLIENT_KEY,
     )
     from api.services.auth.oauth import google_oauth_enabled
+    from api.tasks.knowledge_base_processing import document_processing_available
     from api.utils.common import get_backend_endpoints, is_local_or_private_url
 
     backend_endpoint, _ = await get_backend_endpoints()
@@ -158,6 +168,8 @@ async def health() -> HealthResponse:
         auth_provider=AUTH_PROVIDER,
         billing_provider=BILLING_PROVIDER,
         platform_models_enabled=PLATFORM_MODELS_ENABLED,
+        mps_enabled=MPS_ENABLED,
+        document_processing_enabled=document_processing_available(),
         turn_enabled=ENABLE_COTURN,
         force_turn_relay=FORCE_TURN_RELAY,
         signup_enabled=ENABLE_SIGNUP,

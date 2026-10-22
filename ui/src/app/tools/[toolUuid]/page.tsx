@@ -1198,7 +1198,7 @@ const data = await response.json();`;
                     )}
 
                     {saveSuccess && (
-                        <div className="mt-4 p-4 bg-green-500/10 border border-green-500/20 rounded-lg text-green-600">
+                        <div className="mt-4 p-4 bg-ok-dim border border-ok/20 rounded-lg text-ok">
                             Tool saved successfully!
                         </div>
                     )}

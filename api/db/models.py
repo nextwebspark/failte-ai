@@ -50,7 +50,12 @@ Base = declarative_base()
 organization_users_association = Table(
     "organization_users",
     Base.metadata,
-    Column("user_id", Integer, ForeignKey("users.id"), primary_key=True),
+    Column(
+        "user_id",
+        Integer,
+        ForeignKey("users.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
     Column(
         "organization_id", Integer, ForeignKey("organizations.id"), primary_key=True
     ),
@@ -127,9 +132,10 @@ class UserConfigurationModel(Base):
 
     __tablename__ = "user_configurations"
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=True)
     key = Column(String, nullable=False)
-    configuration = Column(JSON, nullable=False, default=dict)
+    # The legacy v1 model configuration holds provider API keys.
+    configuration = Column(EncryptedJSON, nullable=False, default=dict)
     last_validated_at = Column(DateTime(timezone=True), nullable=True)
 
     __table_args__ = (
@@ -187,6 +193,21 @@ class OrganizationModel(Base):
     )
 
     price_per_second_usd = Column(Float, nullable=True)
+
+    # Deletion (GDPR Art. 17). An admin's request sets both timestamps; the
+    # erasure cron erases the organisation once ``deletion_scheduled_for``
+    # passes and leaves this row behind as a tombstone (``erased_at``) so
+    # billing records keep their organisation.
+    deletion_requested_at = Column(DateTime(timezone=True), nullable=True)
+    deletion_scheduled_for = Column(DateTime(timezone=True), nullable=True, index=True)
+    # Ids of what the request switched off, restored on cancel:
+    # {"api_key_ids": [...], "embed_token_ids": [...], "agent_trigger_ids": [...],
+    #  "campaign_ids": [...], "syncing_campaign_ids": [...]}.
+    deletion_suspended = Column(JSON, nullable=True)
+    erased_at = Column(DateTime(timezone=True), nullable=True)
+    # The provider id before erasure, so auth never re-creates the organisation
+    # from its (Stack Auth) team.
+    erased_provider_id = Column(String, nullable=True, index=True)
 
     # Relationships
     users = relationship(
@@ -287,7 +308,9 @@ class APIKeyModel(Base):
     key_hash = Column(String, nullable=False, unique=True, index=True)
     key_prefix = Column(String, nullable=False)  # Store first 8 chars for display
     is_active = Column(Boolean, default=True, nullable=False)
-    created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    created_by = Column(
+        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
     last_used_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
     archived_at = Column(DateTime(timezone=True), nullable=True)
@@ -312,7 +335,11 @@ class OrganizationConfigurationModel(Base):
         Integer, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False
     )
     key = Column(String, nullable=False)
-    value = Column(JSON, nullable=False, default=dict)
+    # Encrypted at rest: several keys hold provider API keys and other secrets
+    # (MODEL_CONFIGURATION_V2, LANGFUSE_CREDENTIALS, TELEPHONY_CONFIGURATION,
+    # ...). SQL cannot look inside it; filter by organization_id/key and read
+    # the decrypted dict in Python.
+    value = Column(EncryptedJSON, nullable=False, default=dict)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
     updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
     last_validated_at = Column(DateTime(timezone=True), nullable=True)
@@ -336,7 +363,8 @@ class TelephonyConfigurationModel(Base):
     )
     name = Column(String(64), nullable=False)
     provider = Column(String(32), nullable=False)
-    credentials = Column(JSON, nullable=False, default=dict)
+    # Encrypted at rest; SQL cannot filter on its contents (see EncryptedJSON).
+    credentials = Column(EncryptedJSON, nullable=False, default=dict)
     is_default_outbound = Column(
         Boolean, nullable=False, default=False, server_default=text("false")
     )
@@ -535,10 +563,11 @@ class IntegrationModel(Base):
     )  # External connection ID
     organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=False)
     provider = Column(String, nullable=False)
-    created_by = Column(Integer, ForeignKey("users.id"))
+    created_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"))
     is_active = Column(Boolean, default=True, nullable=False)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
-    connection_details = Column(JSON, nullable=False, default=dict)
+    # Encrypted at rest (OAuth tokens and the like); see EncryptedJSON.
+    connection_details = Column(EncryptedJSON, nullable=False, default=dict)
     action = Column(String, nullable=False, default=IntegrationAction.ALL_CALLS.value)
 
     # Relationships
@@ -626,7 +655,9 @@ class WorkflowModel(Base):
         index=True,
         default=lambda: str(uuid.uuid4()),
     )
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    user_id = Column(
+        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
     user = relationship("UserModel", back_populates="workflows")
     organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=True)
     organization = relationship("OrganizationModel")
@@ -706,6 +737,18 @@ class WorkflowTemplates(Base):
     template_name = Column(String, nullable=False, index=True)
     template_description = Column(String, nullable=False, index=True)
     template_json = Column(JSON, nullable=False, default=dict)
+    # The questions the Create agent dialog asks before copying the template:
+    # a list of TemplateSetupField dicts whose answers fill {{key}} placeholders.
+    setup_fields = Column(JSON, nullable=False, default=list, server_default="[]")
+    # How the template's card reads in the dialog: "inbound" or "outbound",
+    # an icon name, whether it leads the list, and an optional sample call.
+    call_type = Column(String, nullable=True)
+    icon = Column(String, nullable=True)
+    featured = Column(Boolean, nullable=False, default=False, server_default="false")
+    sample_audio_url = Column(String, nullable=True)
+    # Integration providers (e.g. "google_calendar") the dialog offers to
+    # connect while setting the agent up.
+    integrations = Column(JSON, nullable=False, default=list, server_default="[]")
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
 
 
@@ -997,7 +1040,9 @@ class CampaignModel(Base):
     name = Column(String, nullable=False, index=True)
     organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=False)
     workflow_id = Column(Integer, ForeignKey("workflows.id"), nullable=False)
-    created_by = Column(Integer, ForeignKey("users.id"), nullable=False)
+    created_by = Column(
+        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
     # Nullable during the legacy → multi-config migration window. Backfilled to the
     # org's default config by the migration; will become NOT NULL in a follow-up.
     telephony_configuration_id = Column(
@@ -1182,7 +1227,7 @@ class EmbedTokenModel(Base):
     expires_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
     created_by = Column(
-        Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
     updated_at = Column(DateTime(timezone=True), nullable=True)
 
@@ -1315,7 +1360,9 @@ class ExternalCredentialModel(Base):
     credential_data = Column(EncryptedJSON, nullable=False, default=dict)
 
     # Audit fields
-    created_by = Column(Integer, ForeignKey("users.id"), nullable=False)
+    created_by = Column(
+        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
     updated_at = Column(
         DateTime(timezone=True),
@@ -1495,7 +1542,9 @@ class ToolModel(Base):
     definition = Column(JSON, nullable=False, default=dict)
 
     # Audit fields
-    created_by = Column(Integer, ForeignKey("users.id"), nullable=False)
+    created_by = Column(
+        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
     updated_at = Column(
         DateTime(timezone=True),
@@ -1581,7 +1630,9 @@ class KnowledgeBaseDocumentModel(Base):
     custom_metadata = Column(JSON, nullable=False, default=dict)
 
     # Audit fields
-    created_by = Column(Integer, ForeignKey("users.id"), nullable=False)
+    created_by = Column(
+        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
     updated_at = Column(
         DateTime(timezone=True),
@@ -1656,7 +1707,9 @@ class WorkflowRecordingModel(Base):
     )
 
     # Audit
-    created_by = Column(Integer, ForeignKey("users.id"), nullable=False)
+    created_by = Column(
+        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
 
     # Soft delete

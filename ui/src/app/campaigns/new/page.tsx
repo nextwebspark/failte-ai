@@ -325,7 +325,7 @@ export default function NewCampaignPage() {
                     Back to Campaigns
                 </Button>
                 <h1 className="text-3xl font-bold mb-2">Create New Campaign</h1>
-                <p className="text-muted-foreground">Set up a new campaign to execute workflows at scale</p>
+                <p className="text-muted-foreground">Set up a campaign to run an agent across a contact list</p>
             </div>
 
             <Card>

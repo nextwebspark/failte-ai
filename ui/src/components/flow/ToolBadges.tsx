@@ -4,7 +4,10 @@ import { useCallback, useEffect, useState } from "react";
 
 import { useWorkflow } from "@/app/workflow/[workflowId]/contexts/WorkflowContext";
 import type { ToolResponse } from "@/client/types.gen";
-import { Badge } from "@/components/ui/badge";
+import { NodeChip } from "@/components/flow/NodeChip";
+
+/** More tool chips than this collapse into "+N more"; MCP servers can list many functions. */
+const MAX_CHIPS = 3;
 
 interface ToolBadgesProps {
     toolUuids: string[];
@@ -40,40 +43,31 @@ export function ToolBadges({ toolUuids, onStaleUuidsDetected, mcpToolFilters }: 
 
     // Show loading while data hasn't loaded yet
     if (tools === undefined && toolUuids.length > 0) {
-        return (
-            <div className="flex flex-wrap gap-1">
-                <Badge variant="outline" className="text-xs">
-                    Loading...
-                </Badge>
-            </div>
-        );
+        return <NodeChip tone="sky">…</NodeChip>;
     }
 
+    // One chip per tool; an MCP server shows the functions this step enabled.
+    const labels = selectedTools.flatMap((tool) => {
+        const enabledFns = tool.category === "mcp" ? (mcpToolFilters?.[tool.tool_uuid] ?? []) : [];
+        return enabledFns.length > 0
+            ? enabledFns.map((fn) => ({ key: `${tool.tool_uuid}-${fn}`, label: fn }))
+            : [{ key: tool.tool_uuid, label: tool.name }];
+    });
+    const shown = labels.slice(0, MAX_CHIPS);
+    const hidden = labels.slice(MAX_CHIPS);
+
     return (
-        <div className="flex flex-wrap gap-1">
-            {selectedTools.map((tool) => {
-                const isMcp = tool.category === "mcp";
-                const enabledFns = isMcp ? (mcpToolFilters?.[tool.tool_uuid] ?? []) : [];
-
-                if (isMcp && enabledFns.length > 0) {
-                    return enabledFns.map((fn) => (
-                        <Badge
-                            key={`${tool.tool_uuid}-${fn}`}
-                            variant="outline"
-                            className="text-xs flex items-center gap-1.5"
-                        >
-                            <span className="h-1.5 w-1.5 rounded-full bg-green-500 shrink-0" />
-                            {fn}
-                        </Badge>
-                    ));
-                }
-
-                return (
-                    <Badge key={tool.tool_uuid} variant="outline" className="text-xs">
-                        {tool.name}
-                    </Badge>
-                );
-            })}
-        </div>
+        <>
+            {shown.map(({ key, label }) => (
+                <NodeChip key={key} tone="sky" title={label}>
+                    {label}
+                </NodeChip>
+            ))}
+            {hidden.length > 0 && (
+                <NodeChip tone="sky" title={hidden.map((h) => h.label).join(", ")}>
+                    +{hidden.length} more
+                </NodeChip>
+            )}
+        </>
     );
 }

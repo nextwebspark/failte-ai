@@ -110,6 +110,19 @@ jobs:
           gcloud sql backups create --instance "$SQL_INSTANCE" --project "$GCP_PROJECT" \
             --description "pre-deploy v${VERSION} (run ${GITHUB_RUN_ID})"
 
+      # On-demand backups are kept until deleted, and they hold personal data.
+      # The privacy policy promises backups go after 30 days, so prune the
+      # pre-deploy ones here. Automated backups (type AUTOMATED) age out on
+      # their own (retained-backups-count) and are never touched.
+      - name: Prune pre-deploy Cloud SQL backups older than 30 days
+        run: |
+          ids=$(gcloud sql backups list --instance "$SQL_INSTANCE" --project "$GCP_PROJECT" \
+            --filter='type=ON_DEMAND AND startTime<-P30D' --format='value(id)')
+          for id in $ids; do
+            gcloud sql backups delete "$id" --instance "$SQL_INSTANCE" --project "$GCP_PROJECT" --quiet
+            echo "deleted on-demand backup ${id}"
+          done
+
       - name: SSH reachable (IAP)
         run: |
           for attempt in 1 2 3 4 5; do

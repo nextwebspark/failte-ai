@@ -41,7 +41,7 @@ export function MessageBubble({
                             ? "rounded-br-md bg-primary text-primary-foreground"
                             : isMuted
                                 ? "rounded-bl-md border border-dashed border-border bg-background text-muted-foreground"
-                                : "rounded-bl-md border border-slate-200/80 bg-muted text-foreground",
+                                : "rounded-bl-md border border-line bg-muted text-foreground",
                         !final && "opacity-70",
                     )}
                 >

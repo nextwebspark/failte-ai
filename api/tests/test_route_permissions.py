@@ -16,7 +16,11 @@ from api.db import db_client
 from api.db.models import OrganizationModel, UserModel
 from api.enums import OrgRole
 from api.services.auth import depends as auth_depends
-from api.services.auth.depends import get_org_membership, get_user
+from api.services.auth.depends import (
+    get_org_membership,
+    get_org_membership_during_deletion,
+    get_user,
+)
 from api.services.auth.platform_admin import require_platform_admin
 
 pytestmark = pytest.mark.real_org_roles
@@ -31,8 +35,9 @@ UNSCOPED_ROUTES = {
     ("GET", "/api/v1/user/configurations/user/validate"),
     ("GET", "/api/v1/user/onboarding-state"),
     ("PUT", "/api/v1/user/onboarding-state"),
+    ("GET", "/api/v1/user/me/export"),
+    ("DELETE", "/api/v1/user/me"),
     ("GET", "/api/v1/organizations/context"),
-    ("GET", "/api/v1/organizations/telephony-config-warnings"),
     ("GET", "/api/v1/organizations/mine"),
     ("POST", "/api/v1/organizations"),
     ("POST", "/api/v1/organizations/{organization_id}/select"),
@@ -80,7 +85,14 @@ def test_every_authenticated_route_checks_an_org_role():
         if not isinstance(route, APIRoute):
             continue
         calls = _dependency_calls(route.dependant)
-        if get_user not in calls or get_org_membership in calls:
+        if (
+            get_user not in calls
+            or {
+                get_org_membership,
+                get_org_membership_during_deletion,
+            }
+            & calls
+        ):
             continue
         # Platform-wide resources (the skill library) belong to no
         # organization; their writes are guarded by the platform-admin check.

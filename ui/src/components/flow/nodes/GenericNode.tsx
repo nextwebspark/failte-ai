@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import { useWorkflow } from "@/app/workflow/[workflowId]/contexts/WorkflowContext";
 import type { NodeSpec } from "@/client/types.gen";
 import { DocumentBadges } from "@/components/flow/DocumentBadges";
+import { NodeChip } from "@/components/flow/NodeChip";
 import { NodeEditForm, useNodeSpecs } from "@/components/flow/renderer";
 import { SkillBadges } from "@/components/flow/SkillBadges";
 import { ToolBadges } from "@/components/flow/ToolBadges";
@@ -21,7 +22,7 @@ import { cn } from "@/lib/utils";
 import { createUuid } from "@/lib/uuid";
 import { resolveWebhookBaseUrl } from "@/lib/webhookUrl";
 
-import { NodeContent } from "./common/NodeContent";
+import { NodeContent, type NodeTone } from "./common/NodeContent";
 import { NodeEditDialog } from "./common/NodeEditDialog";
 import { useNodeHandlers } from "./common/useNodeHandlers";
 
@@ -30,7 +31,7 @@ import { useNodeHandlers } from "./common/useNodeHandlers";
 // the spec) avoids leaking UI concerns into the backend schema. Add an
 // entry when registering a new node type.
 
-type NodeStyleVariant =
+export type NodeStyleVariant =
     | "start"
     | "agent"
     | "end"
@@ -139,48 +140,36 @@ function resolveIntegrationSummary(
     return hasSecret ? "Configured" : "Not configured";
 }
 
-/** Canvas status tones, as the dim-wash backgrounds node badges are drawn with. */
-const TONE = {
-    // Filled washes
-    ok: "bg-ok-dim text-ok",
-    info: "bg-sky-dim text-sky",
-    warn: "bg-amber-dim text-amber",
-    bad: "bg-danger-dim text-danger",
-    mute: "bg-panel-2 text-ink-3",
-    // Outlined counterparts. Same hues, different form — enough to separate
-    // eight node types from a five-hue palette. The borders are solid because
-    // a badge sits on --panel, where border-line is 1.25:1 and invisible.
-    brandOutline: "border border-brand bg-panel text-brand",
-    infoOutline: "border border-sky bg-panel text-sky",
-    warnOutline: "border border-amber bg-panel text-amber",
-    muteOutline: "border border-ink-3 bg-panel text-ink-2",
-} as const;
-
-function getBadgeForSpec(
+/** The header's kind label and icon colour for each step type. */
+export function getKindForSpec(
     spec: NodeSpec | undefined,
     variant: NodeStyleVariant,
-): { label: string; className: string } {
+    data: FlowNodeData,
+): { label: string; tone: NodeTone } {
     if (!spec) {
-        return { label: "Node", className: TONE.mute };
+        return { label: "Step", tone: "mute" };
     }
+
+    // Legend: brand when the step only speaks, sky when it uses a tool.
+    const speakingTone: NodeTone = (data.tool_uuids?.length ?? 0) > 0 ? "sky" : "brand";
 
     switch (variant) {
         case "start":
-            return { label: "Start Node", className: TONE.ok };
+            return { label: "Start", tone: speakingTone };
         case "agent":
-            return { label: "Agent Node", className: TONE.info };
+            return { label: "Agent", tone: speakingTone };
         case "end":
-            return { label: "End Node", className: TONE.bad };
+            return { label: "End", tone: "danger" };
         case "global":
-            return { label: "Global Node", className: TONE.warn };
+            return { label: "Global", tone: "amber" };
         case "trigger":
-            return { label: "API Trigger", className: TONE.brandOutline };
+            return { label: "API trigger", tone: "mute" };
         case "webhook":
-            return { label: "Webhook", className: TONE.muteOutline };
+            return { label: "Webhook", tone: "mute" };
         case "qa":
-            return { label: "QA Analysis", className: TONE.warnOutline };
+            return { label: "QA", tone: "mute" };
         case "integration":
-            return { label: spec.display_name, className: TONE.infoOutline };
+            return { label: "Integration", tone: "sky" };
     }
 }
 
@@ -263,7 +252,7 @@ function CanvasPreview({
         // Platform models always run QA on the agent's model.
         const llmSource =
             data.qa_use_workflow_llm !== false || platformModels
-                ? "Workflow LLM"
+                ? "Agent LLM"
                 : `${data.qa_provider || "openai"}/${data.qa_model || "gpt-4.1"}`;
         const enabled = data.qa_enabled !== false;
         return (
@@ -293,53 +282,47 @@ function CanvasPreview({
         );
     }
 
-    // Default: prompt preview + tool/document badges (when spec declares them).
+    // Default: prompt preview, then one row of chips for what the step uses.
     const hasToolRefs = spec.properties.some((p) => p.type === "tool_refs");
     const hasDocRefs = spec.properties.some((p) => p.type === "document_refs");
     const hasSkillRefs = spec.properties.some((p) => p.type === "skill_refs");
+    const showTools = hasToolRefs && (data.tool_uuids?.length ?? 0) > 0;
+    const showDocuments = hasDocRefs && (data.document_uuids?.length ?? 0) > 0;
     const showSkills =
         hasSkillRefs &&
         (Array.isArray(data.skill_uuids) || (data.preload_skill_uuids?.length ?? 0) > 0);
+    const extracted = data.extraction_enabled ? (data.extraction_variables?.length ?? 0) : 0;
     return (
         <>
-            <p className="text-sm text-muted-foreground line-clamp-5 leading-relaxed">
-                {data.prompt || "No prompt configured"}
-            </p>
-            {hasToolRefs && data.tool_uuids && data.tool_uuids.length > 0 && (
-                <div className="mt-3 pt-3 border-t border-border/50">
-                    <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-2">
-                        <LucideIcons.Wrench className="h-3 w-3" />
-                        <span>Tools:</span>
-                    </div>
-                    <ToolBadges
-                        toolUuids={data.tool_uuids}
-                        onStaleUuidsDetected={onStaleTools}
-                        mcpToolFilters={data.mcp_tool_filters}
-                    />
-                </div>
+            {data.prompt ? (
+                <p className="line-clamp-4 text-xs leading-[1.45] text-ink-2">{data.prompt}</p>
+            ) : (
+                <p className="text-xs leading-[1.45] text-ink-3 italic">No prompt yet. Open the step to add one.</p>
             )}
-            {hasDocRefs && data.document_uuids && data.document_uuids.length > 0 && (
-                <div className="mt-3 pt-3 border-t border-border/50">
-                    <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-2">
-                        <LucideIcons.FileText className="h-3 w-3" />
-                        <span>Documents:</span>
-                    </div>
-                    <DocumentBadges
-                        documentUuids={data.document_uuids}
-                        onStaleUuidsDetected={onStaleDocuments}
-                    />
-                </div>
-            )}
-            {showSkills && (
-                <div className="mt-3 pt-3 border-t border-border/50">
-                    <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-2">
-                        <LucideIcons.BookOpen className="h-3 w-3" />
-                        <span>Skills:</span>
-                    </div>
-                    <SkillBadges
-                        skillUuids={data.skill_uuids}
-                        preloadSkillUuids={data.preload_skill_uuids}
-                    />
+            {(showTools || showDocuments || showSkills || extracted > 0) && (
+                <div className="mt-2.5 flex flex-wrap gap-1.5">
+                    {showTools && (
+                        <ToolBadges
+                            toolUuids={data.tool_uuids!}
+                            onStaleUuidsDetected={onStaleTools}
+                            mcpToolFilters={data.mcp_tool_filters}
+                        />
+                    )}
+                    {showSkills && (
+                        <SkillBadges
+                            skillUuids={data.skill_uuids}
+                            preloadSkillUuids={data.preload_skill_uuids}
+                        />
+                    )}
+                    {showDocuments && (
+                        <DocumentBadges
+                            documentUuids={data.document_uuids!}
+                            onStaleUuidsDetected={onStaleDocuments}
+                        />
+                    )}
+                    {extracted > 0 && (
+                        <NodeChip>{extracted === 1 ? "extracts 1 field" : `extracts ${extracted} fields`}</NodeChip>
+                    )}
                 </div>
             )}
         </>
@@ -646,12 +629,9 @@ export const GenericNode = memo(({ data, selected, id, type }: GenericNodeProps)
         (spec?.category === "integration"
             ? { source: false, target: false }
             : { source: true, target: true });
-    const badge = getBadgeForSpec(spec, styleVariant);
+    const kind = getKindForSpec(spec, styleVariant, data);
     const Icon = spec ? resolveIcon(spec.icon) : Circle;
     const docUrl = publicDocsHref(spec?.docs_url);
-    const contentLabel = spec?.properties.some((p) => p.name === "prompt")
-        ? "Prompt"
-        : "Details";
 
     // Edit dialog title: "Edit {display_name}". Webhook keeps the original
     // "Edit Webhook" wording — display_name is "Webhook" so it works out.
@@ -663,18 +643,18 @@ export const GenericNode = memo(({ data, selected, id, type }: GenericNodeProps)
             <NodeContent
                 selected={selected}
                 invalid={data.invalid}
+                invalidMessage={data.validationMessage}
                 selected_through_edge={data.selected_through_edge}
                 hovered_through_edge={data.hovered_through_edge}
                 runtimeActive={data.runtime_active}
                 title={data.name || fallbackTitle}
                 icon={<Icon />}
-                badgeLabel={badge.label}
-                badgeClassName={badge.className}
-                contentLabel={contentLabel}
+                tone={kind.tone}
+                kindLabel={kind.label}
+                isStart={styleVariant === "start"}
                 hasSourceHandle={handles.source}
                 hasTargetHandle={handles.target}
                 onDoubleClick={() => setOpen(true)}
-                nodeId={id}
             >
                 {spec && (
                     <CanvasPreview

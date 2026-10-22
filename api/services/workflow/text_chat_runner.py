@@ -37,7 +37,10 @@ from pipecat.utils.run_context import set_current_org_id
 
 from api.db import db_client
 from api.enums import WorkflowRunMode, WorkflowRunState
-from api.schemas.workflow_configurations import WorkflowConfigurationDefaults
+from api.schemas.workflow_configurations import (
+    WorkflowConfigurationDefaults,
+    resolve_call_disclosure,
+)
 from api.services.configuration.registry import ServiceProviders
 from api.services.pipecat.audio_config import create_audio_config
 from api.services.pipecat.pipeline_builder import create_pipeline_task
@@ -631,26 +634,9 @@ async def execute_text_chat_pending_turn(
             }
         )
 
-    embeddings_api_key = None
-    embeddings_model = None
-    embeddings_base_url = None
-    embeddings_provider = None
-    embeddings_endpoint = None
-    embeddings_api_version = None
-    if user_config.embeddings:
-        from api.services.configuration.ai_model_configuration import (
-            apply_managed_embeddings_base_url,
-        )
+    from api.services.gen_ai import EmbeddingSettings
 
-        embeddings_api_key = user_config.embeddings.api_key
-        embeddings_model = user_config.embeddings.model
-        embeddings_provider = getattr(user_config.embeddings, "provider", None)
-        embeddings_base_url = apply_managed_embeddings_base_url(
-            provider=embeddings_provider,
-            base_url=getattr(user_config.embeddings, "base_url", None),
-        )
-        embeddings_endpoint = getattr(user_config.embeddings, "endpoint", None)
-        embeddings_api_version = getattr(user_config.embeddings, "api_version", None)
+    embedding_settings = EmbeddingSettings.from_config(user_config.embeddings)
 
     has_recordings, skill_set = await asyncio.gather(
         db_client.has_active_recordings(workflow.organization_id),
@@ -668,16 +654,16 @@ async def execute_text_chat_pending_turn(
         call_context_vars=initial_context,
         workflow_run_id=workflow_run_id,
         node_transition_callback=send_node_transition,
-        embeddings_api_key=embeddings_api_key,
-        embeddings_model=embeddings_model,
-        embeddings_base_url=embeddings_base_url,
-        embeddings_provider=embeddings_provider,
-        embeddings_endpoint=embeddings_endpoint,
-        embeddings_api_version=embeddings_api_version,
+        embedding_settings=embedding_settings,
         has_recordings=has_recordings,
         context_compaction_enabled=context_compaction_enabled,
         call_dispositions=call_dispositions,
         skill_set=skill_set,
+        # Text chat has no audio, so a recorded disclosure is sent as its text
+        # (the default notice when a recording-only disclosure has none).
+        call_disclosure=resolve_call_disclosure(run_configs).model_copy(
+            update={"type": "text"}
+        ),
         # Each text turn owns a short-lived pipeline. Complete extraction before
         # leaving a node so teardown cannot discard the result before checkpointing.
         run_transition_variable_extraction_in_background=False,

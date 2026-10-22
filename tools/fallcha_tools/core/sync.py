@@ -217,6 +217,7 @@ class SyncRunner:
     clock: Clock = utc_now
     max_concurrent: int = MAX_CONCURRENT_SYNCS
     _tasks: dict[uuid.UUID, asyncio.Task[None]] = field(default_factory=dict)
+    _task_orgs: dict[uuid.UUID, int] = field(default_factory=dict)
 
     async def start(
         self, org_id: int, user_id: int | None, connection_id: uuid.UUID
@@ -256,6 +257,7 @@ class SyncRunner:
             self._run(provider, ctx, lock),
             name=f"sync-{connection_id}",
         )
+        self._task_orgs[connection_id] = org_id
         logger.info("sync started for connection {} (org {})", connection_id, org_id)
         return started
 
@@ -271,6 +273,20 @@ class SyncRunner:
             task.cancel()
         if tasks:
             await asyncio.wait(tasks)
+
+    async def cancel_org(self, org_id: int) -> int:
+        """Stop this process's running syncs of the org's connections (its
+        data is being erased). Returns how many were stopped."""
+        tasks = [
+            task
+            for connection_id, task in list(self._tasks.items())
+            if self._task_orgs.get(connection_id) == org_id
+        ]
+        for task in tasks:
+            task.cancel()
+        if tasks:
+            await asyncio.wait(tasks)
+        return len(tasks)
 
     @property
     def running(self) -> int:
@@ -322,6 +338,7 @@ class SyncRunner:
                 )
             await self._unlock(lock, connection_id)
             self._tasks.pop(connection_id, None)
+            self._task_orgs.pop(connection_id, None)
 
     async def _try_lock(self, connection_id: uuid.UUID) -> AsyncConnection | None:
         conn = await self.db.engine.connect()

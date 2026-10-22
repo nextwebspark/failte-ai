@@ -1,5 +1,6 @@
 import logging
 import os
+import re
 import sys
 
 import loguru
@@ -48,8 +49,70 @@ class InterceptHandler(logging.Handler):
         ).log(level, record.getMessage())
 
 
+# Caller numbers (E.164, also URL-encoded as %2B) and email addresses are
+# personal data; logs keep only the last three digits / the domain.
+_PHONE_RE = re.compile(r"(?:\+|%2B)(\d{5,12})(\d{3})\b")
+_EMAIL_RE = re.compile(r"\b[\w.+-]+@([\w-]+(?:\.[\w-]+)+)\b")
+
+
+def redact_personal_data(text: str) -> str:
+    """Mask phone numbers and email addresses in a log line."""
+    text = _PHONE_RE.sub(lambda m: "+" + "*" * len(m.group(1)) + m.group(2), text)
+    return _EMAIL_RE.sub(r"***@\1", text)
+
+
+def mask_phone(number: object) -> object:
+    """Mask a phone number for a log line, keeping only the last three digits.
+
+    For numbers the patcher's regex can't recognise because they are logged
+    without a leading '+' (Vonage, Plivo and Vobiz use bare E.164 digits).
+    """
+    if not isinstance(number, str) or len(number) <= 3:
+        return number
+    prefix = "+" if number.startswith("+") else ""
+    rest = number[len(prefix) :]
+    return prefix + "*" * (len(rest) - 3) + rest[-3:]
+
+
+# Callback fields that carry a caller/callee number or name, compared
+# case-insensitively and ignoring underscores (From, CallFrom, from_number, ...).
+_PHONE_FIELDS = {
+    "from",
+    "to",
+    "caller",
+    "called",
+    "callername",
+    "callfrom",
+    "callto",
+    "dialwhomnumber",
+    "forwardedfrom",
+    "fromnumber",
+    "tonumber",
+    "phonenumber",
+}
+
+
+def mask_phone_fields(data: object) -> object:
+    """Copy of a webhook payload with caller/callee fields masked, for logging."""
+    if isinstance(data, dict):
+        return {
+            key: mask_phone(value)
+            if isinstance(key, str)
+            and key.lower().replace("_", "") in _PHONE_FIELDS
+            and isinstance(value, str)
+            else mask_phone_fields(value)
+            for key, value in data.items()
+        }
+    if isinstance(data, list):
+        return [mask_phone_fields(item) for item in data]
+    return data
+
+
 def enrich_log_record(record):
-    """Inject run context and conservatively classify every ERROR record."""
+    """Redact personal data, inject run context and classify ERROR records."""
+
+    if record.get("message"):
+        record["message"] = redact_personal_data(record["message"])
 
     extra = record["extra"]
     extra["run_id"] = run_id_var.get()

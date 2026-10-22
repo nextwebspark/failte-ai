@@ -150,7 +150,7 @@ export const useWorkflowState = ({
         templateContextVariables,
         workflowConfigurations,
         initializeWorkflow,
-        commitDeletion,
+        commitSnapshot,
         setNodes,
         setEdges,
         setWorkflowName,
@@ -276,8 +276,10 @@ export const useWorkflowState = ({
                 return;
             }
 
+            // Shift (or Caps Lock) upper-cases e.key, so Ctrl+Shift+Z arrives as 'Z'.
+            const key = e.key.toLowerCase();
             // Undo: Cmd/Ctrl + Z
-            if ((e.metaKey || e.ctrlKey) && e.key === 'z' && !e.shiftKey) {
+            if ((e.metaKey || e.ctrlKey) && key === 'z' && !e.shiftKey) {
                 e.preventDefault();
                 if (canUndo) {
                     undo();
@@ -285,8 +287,8 @@ export const useWorkflowState = ({
             }
             // Redo: Cmd/Ctrl + Shift + Z or Cmd/Ctrl + Y
             else if (
-                ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key === 'z') ||
-                ((e.metaKey || e.ctrlKey) && e.key === 'y')
+                ((e.metaKey || e.ctrlKey) && e.shiftKey && key === 'z') ||
+                ((e.metaKey || e.ctrlKey) && key === 'y')
             ) {
                 e.preventDefault();
                 if (canRedo) {
@@ -526,8 +528,8 @@ export const useWorkflowState = ({
     );
 
     const onDelete = useCallback(() => {
-        commitDeletion();
-    }, [commitDeletion]);
+        commitSnapshot();
+    }, [commitSnapshot]);
 
     const onRun = async (mode: string) => {
         if (!user?.id) return;
@@ -591,7 +593,7 @@ export const useWorkflowState = ({
 
             if (response.error) {
                 const detail = (response.error as { detail?: unknown }).detail;
-                let msg = 'Failed to save workflow configurations';
+                let msg = 'Failed to save agent settings';
                 if (typeof detail === 'string') {
                     msg = detail;
                 } else if (Array.isArray(detail)) {
@@ -687,6 +689,8 @@ export const useWorkflowState = ({
         onEdgesChange,
         onNodesChange,
         onDelete,
+        // Records the current nodes/edges as one undoable step.
+        commitSnapshot,
         onRun,
         saveTemplateContextVariables,
         saveWorkflowConfigurations,

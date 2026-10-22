@@ -329,9 +329,9 @@ export const FilterBuilder: React.FC<FilterBuilderProps> = ({
       <CardHeader>
         <div className="flex items-center justify-between">
           <div>
-            <CardTitle>Filter Workflow Runs</CardTitle>
+            <CardTitle>Filter runs</CardTitle>
             <CardDescription>
-              Build custom filters to find specific workflow runs
+              Build custom filters to find specific runs
             </CardDescription>
           </div>
           <div className="flex items-center gap-2">
@@ -402,7 +402,7 @@ export const FilterBuilder: React.FC<FilterBuilderProps> = ({
               </div>
 
               {resolvedActiveFilters.map((filter, index) => (
-                <Card key={index} className={filter.isValid ? "" : "border-red-200"}>
+                <Card key={index} className={filter.isValid ? "" : "border-danger/30"}>
                   <CardHeader className="pb-3">
                     <div
                       className="flex items-center justify-between cursor-pointer"
@@ -412,7 +412,7 @@ export const FilterBuilder: React.FC<FilterBuilderProps> = ({
                         {getFilterIcon(filter.attribute.type)}
                         <span className="font-medium">{filter.attribute.label}</span>
                         {!filter.isValid && (
-                          <AlertCircle className="h-4 w-4 text-red-500" />
+                          <AlertCircle className="h-4 w-4 text-danger" />
                         )}
                       </div>
                       <div className="flex items-center gap-2">
@@ -460,7 +460,7 @@ export const FilterBuilder: React.FC<FilterBuilderProps> = ({
                     Auto-refresh every 5s
                   </label>
                   {autoRefresh && (
-                    <RefreshCw className="h-4 w-4 text-gray-500 animate-spin" />
+                    <RefreshCw className="h-4 w-4 text-ink-3 animate-spin" />
                   )}
                 </div>
               )}

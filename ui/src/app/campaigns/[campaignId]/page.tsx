@@ -379,9 +379,9 @@ export default function CampaignDetailPage() {
             case 'error':
                 return <AlertCircle className="h-4 w-4 text-destructive" />;
             case 'warning':
-                return <AlertTriangle className="h-4 w-4 text-amber-500" />;
+                return <AlertTriangle className="h-4 w-4 text-amber" />;
             default:
-                return <Info className="h-4 w-4 text-blue-500" />;
+                return <Info className="h-4 w-4 text-sky" />;
         }
     };
 
@@ -610,7 +610,7 @@ export default function CampaignDetailPage() {
                                     {campaign.source_type === 'csv' ? (
                                         <button
                                             onClick={handleDownloadCsv}
-                                            className="text-blue-600 hover:text-blue-800 hover:underline text-sm break-all"
+                                            className="text-sky hover:text-sky/80 hover:underline text-sm break-all"
                                         >
                                             {campaign.source_id.split('/').pop()}
                                         </button>
@@ -619,7 +619,7 @@ export default function CampaignDetailPage() {
                                             href={campaign.source_id}
                                             target="_blank"
                                             rel="noopener noreferrer"
-                                            className="text-blue-600 hover:text-blue-800 hover:underline text-sm break-all"
+                                            className="text-sky hover:text-sky/80 hover:underline text-sm break-all"
                                         >
                                             {campaign.source_id}
                                         </a>
@@ -632,7 +632,7 @@ export default function CampaignDetailPage() {
                                     {campaign.telephony_configuration_id ? (
                                         <button
                                             onClick={() => router.push(`/telephony-configurations/${campaign.telephony_configuration_id}`)}
-                                            className="text-blue-600 hover:text-blue-800 hover:underline"
+                                            className="text-sky hover:text-sky/80 hover:underline"
                                         >
                                             {campaign.telephony_configuration_name || `Configuration #${campaign.telephony_configuration_id}`}
                                         </button>
@@ -657,7 +657,7 @@ export default function CampaignDetailPage() {
                                     <dd className="mt-1">
                                         <button
                                             onClick={() => router.push(`/campaigns/${campaign.parent_campaign_id}`)}
-                                            className="text-blue-600 hover:text-blue-800 hover:underline"
+                                            className="text-sky hover:text-sky/80 hover:underline"
                                         >
                                             Campaign #{campaign.parent_campaign_id}
                                         </button>
@@ -670,7 +670,7 @@ export default function CampaignDetailPage() {
                                     <dd className="mt-1">
                                         <button
                                             onClick={() => router.push(`/campaigns/${campaign.redialed_campaign_id}`)}
-                                            className="text-blue-600 hover:text-blue-800 hover:underline"
+                                            className="text-sky hover:text-sky/80 hover:underline"
                                         >
                                             Campaign #{campaign.redialed_campaign_id}
                                         </button>

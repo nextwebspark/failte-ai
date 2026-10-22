@@ -37,6 +37,8 @@ from api.schemas.integrations import (
 DEFAULT_TIMEOUT = httpx.Timeout(10.0, connect=3.0)
 # Connection tests call the provider (e.g. Google), so allow a little longer.
 TEST_TIMEOUT = httpx.Timeout(20.0, connect=3.0)
+# Erasing an org revokes its OAuth grants at the provider first.
+ERASE_TIMEOUT = httpx.Timeout(60.0, connect=3.0)
 _MAX_DETAIL_CHARS = 300
 
 _Model = TypeVar("_Model", bound=BaseModel)
@@ -289,6 +291,20 @@ class ToolsServiceClient:
         )
         return self._parse(response, StartedOAuth)
 
+    async def erase_organization(self, organization_id: int) -> dict[str, int]:
+        """Erase everything the organization keeps in the tools service
+        (connections and their secrets, keys, OAuth clients and states,
+        imported data) and stop its syncs. Idempotent. Sent without an acting
+        user: the erasure job acts for nobody."""
+        response = await self._request(
+            "DELETE",
+            "/internal/org",
+            Caller(org_id=organization_id, user_id=0),
+            timeout=ERASE_TIMEOUT,
+        )
+        body = response.json()
+        return {k: v for k, v in body.items() if isinstance(v, int)}
+
     async def revoke_connection(self, caller: Caller, connection_id: uuid.UUID) -> None:
         """Revoke the connection and every key issued for it (idempotent)."""
         await self._request("DELETE", f"/internal/connections/{connection_id}", caller)
@@ -307,8 +323,9 @@ class ToolsServiceClient:
         headers = {
             "X-Internal-Secret": self._secret,
             "X-Org-Id": str(caller.org_id),
-            "X-User-Id": str(caller.user_id),
         }
+        if caller.user_id:  # 0: a system call with no acting user
+            headers["X-User-Id"] = str(caller.user_id)
         try:
             http = self._http or shared_http_client()
             response = await http.request(

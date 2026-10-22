@@ -1,8 +1,7 @@
 """OpenAI embedding service.
 
 Embeds text and performs vector similarity search via the local database.
-Document conversion and chunking now live in the Model Proxy Service (MPS);
-this file no longer pulls docling/transformers.
+Document conversion and chunking live in api.services.documents.
 """
 
 from typing import Any, Dict, List, Optional

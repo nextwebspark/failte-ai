@@ -9,6 +9,7 @@ from loguru import logger
 from api.db import db_client
 from api.db.models import KnowledgeBaseDocumentModel
 from api.enums import PostHogEvent
+from api.errors.mps import MPSNotConfiguredError
 from api.schemas.knowledge_base import (
     ChunkSearchRequestSchema,
     ChunkSearchResponseSchema,
@@ -27,11 +28,22 @@ from api.services.knowledge_base_content import (
     DocumentContentConflictError,
     DocumentContentTooLargeError,
     DocumentNotEditableError,
+    documents_needing_reindex,
     enqueue_document_processing,
     read_document_content,
     update_document_content,
 )
+from api.services.knowledge_base_keys import (
+    is_document_storage_key,
+    is_safe_document_filename,
+    knowledge_base_document_prefix,
+)
 from api.services.posthog_client import capture_event
+from api.services.privacy.stored_files import (
+    StoredFileDeleteError,
+    delete_knowledge_base_document,
+    is_knowledge_base_document_key,
+)
 from api.services.storage import storage_fs
 
 router = APIRouter(prefix="/knowledge-base", tags=["knowledge-base"])
@@ -48,6 +60,7 @@ def _has_live_content(document: KnowledgeBaseDocumentModel) -> bool:
 
 def _to_document_response(
     document: KnowledgeBaseDocumentModel,
+    needs_reindex: bool = False,
 ) -> DocumentResponseSchema:
     return DocumentResponseSchema(
         id=document.id,
@@ -69,6 +82,7 @@ def _to_document_response(
         created_by=document.created_by,
         is_active=document.is_active,
         has_live_content=_has_live_content(document),
+        needs_reindex=needs_reindex,
     )
 
 
@@ -95,13 +109,29 @@ async def get_upload_url(
     Access Control:
     * All authenticated users can upload documents scoped to their organization.
     """
+    if not is_safe_document_filename(request.filename):
+        raise HTTPException(
+            status_code=400, detail="The file name must not contain folders"
+        )
 
     try:
         # Generate unique document UUID for S3 organization
         document_uuid = str(uuid.uuid4())
 
         # Generate S3 key: knowledge_base/{org_id}/{document_uuid}/{filename}
-        s3_key = f"knowledge_base/{user.selected_organization_id}/{document_uuid}/{request.filename}"
+        s3_key = (
+            knowledge_base_document_prefix(user.selected_organization_id, document_uuid)
+            + request.filename
+        )
+        if not is_knowledge_base_document_key(
+            user.selected_organization_id, document_uuid, s3_key
+        ):
+            # The key must stay inside the document's folder: deleting the
+            # document deletes that folder and nothing else.
+            raise HTTPException(
+                status_code=400,
+                detail="The file name must not contain folders or '..'.",
+            )
 
         # Generate presigned PUT URL (valid for 30 minutes)
         upload_url = await storage_fs.aget_presigned_put_url(
@@ -127,6 +157,8 @@ async def get_upload_url(
             s3_key=s3_key,
         )
 
+    except HTTPException:
+        raise
     except Exception as exc:
         logger.error(f"Error generating upload URL: {exc}")
         raise HTTPException(
@@ -153,13 +185,14 @@ async def process_document(
 
     The document status will be updated from 'pending' -> 'processing' -> 'completed' or 'failed'.
 
-    Embedding:
-    Uses OpenAI text-embedding-3-small (1536-dimensional embeddings, requires API key configured in Model Configurations).
+    Processing:
+    The document is parsed and chunked on this server; it is not sent to any
+    other service. In chunked mode the chunks are embedded with the embedding
+    model configured in Model Configurations (1536-dimensional embeddings).
 
     Access Control:
     * Users can only process documents in their organization.
     """
-
     if request.retrieval_mode == "chunked":
         from api.services.configuration.ai_model_configuration import (
             get_resolved_ai_model_configuration,
@@ -172,8 +205,9 @@ async def process_document(
             resolved.effective.platform_managed
             and resolved.effective.embeddings is None
         ):
-            # Platform models offer no embedding model yet; fail before the
-            # document is stored rather than in the background task.
+            # Platform models without an embedding model (the server has no
+            # platform settings); fail before the document is stored rather
+            # than in the background task.
             raise HTTPException(
                 status_code=422,
                 detail=(
@@ -181,6 +215,18 @@ async def process_document(
                     "Upload the document in full-document mode."
                 ),
             )
+
+    if not is_document_storage_key(
+        request.s3_key, user.selected_organization_id, request.document_uuid
+    ) or not is_knowledge_base_document_key(
+        user.selected_organization_id, request.document_uuid, request.s3_key
+    ):
+        # The task reads this key, the editor reads and overwrites it and
+        # deleting the document deletes it, so it must be the file uploaded
+        # for this document, not any other object.
+        raise HTTPException(
+            status_code=400, detail="The file key does not belong to this document"
+        )
 
     try:
         # Extract filename from s3_key
@@ -209,8 +255,8 @@ async def process_document(
         )
 
         logger.info(
-            f"Created document {request.document_uuid} (id={document.id}) and enqueued processing "
-            f"with OpenAI embeddings, org {user.selected_organization_id}"
+            f"Created document {request.document_uuid} (id={document.id}) and enqueued "
+            f"processing, org {user.selected_organization_id}"
         )
 
         capture_event(
@@ -288,7 +334,13 @@ async def list_documents(
             offset=offset,
         )
 
-        document_list = [_to_document_response(doc) for doc in documents]
+        stale = await documents_needing_reindex(
+            user.selected_organization_id, documents
+        )
+        document_list = [
+            _to_document_response(doc, needs_reindex=doc.id in stale)
+            for doc in documents
+        ]
 
         return DocumentListResponseSchema(
             documents=document_list,
@@ -327,7 +379,10 @@ async def get_document(
         if not document:
             raise HTTPException(status_code=404, detail="Document not found")
 
-        return _to_document_response(document)
+        stale = await documents_needing_reindex(
+            user.selected_organization_id, [document]
+        )
+        return _to_document_response(document, needs_reindex=document.id in stale)
 
     except HTTPException:
         raise
@@ -397,7 +452,6 @@ async def save_document_content(
     Access Control:
     * Users can only edit documents from their organization.
     """
-
     document = await db_client.get_document_by_uuid(
         document_uuid=document_uuid,
         organization_id=user.selected_organization_id,
@@ -452,16 +506,16 @@ async def delete_document(
     document_uuid: str,
     user=Depends(get_user),
 ):
-    """Soft delete a document and its chunks.
+    """Permanently delete a document, its chunks and its stored file.
 
     Access Control:
     * Users can only delete documents from their organization.
     """
 
     try:
-        success = await db_client.delete_document(
-            document_uuid=document_uuid,
+        success = await delete_knowledge_base_document(
             organization_id=user.selected_organization_id,
+            document_uuid=document_uuid,
         )
 
         if not success:
@@ -476,6 +530,12 @@ async def delete_document(
 
     except HTTPException:
         raise
+    except StoredFileDeleteError as exc:
+        logger.error(f"Could not delete the stored file of document: {exc}")
+        raise HTTPException(
+            status_code=502,
+            detail="The document's file could not be deleted. Try again shortly.",
+        ) from exc
     except Exception as exc:
         logger.error(f"Error deleting document: {exc}")
         raise HTTPException(
@@ -506,46 +566,22 @@ async def search_chunks(
     try:
         # Import here to avoid circular dependency
         from api.services.configuration.ai_model_configuration import (
-            apply_managed_embeddings_base_url,
             get_resolved_ai_model_configuration,
         )
-        from api.services.gen_ai import build_embedding_service
+        from api.services.gen_ai import EmbeddingSettings, build_embedding_service
 
         # Try to get the organization's embeddings configuration
         resolved_config = await get_resolved_ai_model_configuration(
             organization_id=user.selected_organization_id,
         )
-        effective_config = resolved_config.effective
-        embeddings_api_key = None
-        embeddings_model = None
-        embeddings_provider = None
-        embeddings_base_url = None
-        embeddings_endpoint = None
-        embeddings_api_version = None
-
-        if effective_config.embeddings:
-            embeddings_api_key = effective_config.embeddings.api_key
-            embeddings_model = effective_config.embeddings.model
-            embeddings_provider = getattr(effective_config.embeddings, "provider", None)
-            embeddings_endpoint = getattr(effective_config.embeddings, "endpoint", None)
-            embeddings_base_url = apply_managed_embeddings_base_url(
-                provider=embeddings_provider,
-                base_url=getattr(effective_config.embeddings, "base_url", None),
-            )
-            embeddings_api_version = getattr(
-                effective_config.embeddings, "api_version", None
-            )
 
         # Manual search runs outside any workflow run, so resolve the MPS
         # correlation id here.
         embedding_service = await build_embedding_service(
             db_client=db_client,
-            provider=embeddings_provider,
-            api_key=embeddings_api_key,
-            model=embeddings_model,
-            base_url=embeddings_base_url,
-            endpoint=embeddings_endpoint,
-            api_version=embeddings_api_version,
+            settings=EmbeddingSettings.from_config(
+                resolved_config.effective.embeddings
+            ),
             resolve_correlation=True,
         )
 
@@ -585,6 +621,10 @@ async def search_chunks(
             total_results=len(chunks),
         )
 
+    except MPSNotConfiguredError:
+        # The org's embeddings use the managed provider, which this server
+        # does not offer; the app-level handler answers with a clear 404.
+        raise
     except Exception as exc:
         logger.error(f"Error searching chunks: {exc}")
         raise HTTPException(status_code=500, detail="Failed to search chunks") from exc

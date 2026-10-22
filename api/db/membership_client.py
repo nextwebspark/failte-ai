@@ -1,9 +1,10 @@
 """Data access for organization memberships (``organization_users``)."""
 
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
-from sqlalchemy import and_, func, update
+from sqlalchemy import and_, delete, func, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 
@@ -16,6 +17,11 @@ from api.db.models import (
 )
 from api.enums import OrgRole
 from api.errors.membership import LastAdminError, MemberNotFoundError
+from api.errors.privacy import (
+    LastAdminWithMembersError,
+    PrivacyError,
+    SoleMemberOfOrganizationError,
+)
 
 _members = organization_users_association
 
@@ -231,6 +237,123 @@ class MembershipClient(BaseDBClient):
             )
             await session.commit()
 
+    # -- account deletion ---------------------------------------------------
+
+    async def check_user_account_deletable(self, user_id: int) -> None:
+        """Raise the reason the user's account cannot be deleted, if any.
+
+        See :meth:`delete_user_account`; this is the same check without
+        deleting, for callers that must act elsewhere (an identity provider)
+        before the account goes.
+        """
+        async with self.async_session() as session:
+            blocker = await self._account_deletion_blocker(session, user_id)
+            if blocker is not None:
+                raise blocker
+
+    async def delete_user_account(
+        self,
+        user_id: int,
+        *,
+        before_commit: Callable[[], Awaitable[None]] | None = None,
+    ) -> bool:
+        """Delete a user and their memberships; keep what they created.
+
+        Refuses, raising a ``PrivacyError``, when the user is the only admin of
+        an organisation that has other members, or the only member of one that
+        is not already scheduled for deletion. The user's API keys are
+        archived; their configurations, tokens and memberships go with the
+        user row, and everything they created stays with its organisation with
+        the creator cleared. Returns False if there was no such user.
+
+        ``before_commit`` runs after the check and the deletes, under the
+        organization locks, before the commit (e.g. deleting the user at the
+        identity provider): if it raises, nothing is deleted.
+        """
+        async with self.async_session() as session:
+            organization_ids = (
+                (
+                    await session.execute(
+                        select(_members.c.organization_id)
+                        .where(_members.c.user_id == user_id)
+                        .order_by(_members.c.organization_id)
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            # Same lock order as role changes and removals (organization
+            # first), so the last-admin check sees a stable set of admins.
+            for organization_id in organization_ids:
+                await self._lock_organization(session, organization_id)
+            blocker = await self._account_deletion_blocker(session, user_id)
+            if blocker is not None:
+                raise blocker
+
+            # A savepoint, so a failing ``before_commit`` undoes the deletes
+            # while the organization locks are still held.
+            savepoint = await session.begin_nested()
+            try:
+                await session.execute(
+                    update(APIKeyModel)
+                    .where(
+                        APIKeyModel.created_by == user_id,
+                        APIKeyModel.archived_at.is_(None),
+                    )
+                    .values(is_active=False, archived_at=datetime.now(UTC))
+                )
+                await session.execute(
+                    _members.delete().where(_members.c.user_id == user_id)
+                )
+                result = await session.execute(
+                    delete(UserModel).where(UserModel.id == user_id)
+                )
+                if before_commit is not None:
+                    await before_commit()
+            except BaseException:
+                await savepoint.rollback()
+                raise
+            await savepoint.commit()
+            await session.commit()
+            return bool(result.rowcount)
+
+    @staticmethod
+    async def _account_deletion_blocker(
+        session: AsyncSession, user_id: int
+    ) -> PrivacyError | None:
+        memberships = await session.execute(
+            select(
+                OrganizationModel.id,
+                OrganizationModel.name,
+                _members.c.role,
+                OrganizationModel.deletion_requested_at.is_not(None).label(
+                    "pending_deletion"
+                ),
+            )
+            .join(_members, _members.c.organization_id == OrganizationModel.id)
+            .where(
+                _members.c.user_id == user_id,
+                OrganizationModel.erased_at.is_(None),
+            )
+            .order_by(OrganizationModel.id)
+        )
+        for organization_id, name, role, pending_deletion in memberships.all():
+            others = await session.execute(
+                select(_members.c.role).where(
+                    _members.c.organization_id == organization_id,
+                    _members.c.user_id != user_id,
+                )
+            )
+            other_roles = list(others.scalars().all())
+            if not other_roles:
+                # Its own deletion is already scheduled: nothing is orphaned.
+                if pending_deletion:
+                    continue
+                return SoleMemberOfOrganizationError(organization_id, name)
+            if role == OrgRole.ADMIN.value and OrgRole.ADMIN.value not in other_roles:
+                return LastAdminWithMembersError(organization_id, name)
+        return None
+
     async def update_organization_name(self, organization_id: int, name: str) -> None:
         async with self.async_session() as session:
             await session.execute(
@@ -247,11 +370,17 @@ class MembershipClient(BaseDBClient):
         Every role change and removal takes this lock first, so concurrent
         changes never acquire membership row locks in opposite orders
         (deadlock) and the last-admin check sees a stable set of admins.
+
+        FOR NO KEY UPDATE: it conflicts with itself (and with FOR UPDATE), so
+        membership changes still serialize, but not with the FOR KEY SHARE
+        that inserting rows referencing the organization takes, so new
+        workflow runs and the like never wait on a membership change (an
+        account deletion holds it across a call to the identity provider).
         """
         await session.execute(
             select(OrganizationModel.id)
             .where(OrganizationModel.id == organization_id)
-            .with_for_update()
+            .with_for_update(key_share=True)
         )
 
     @staticmethod

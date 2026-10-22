@@ -5,7 +5,9 @@ import { X } from 'lucide-react';
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 
+import { Button } from '@/components/ui/button';
 import { type TooltipKey, useOnboarding } from '@/context/OnboardingContext';
+import { cn } from '@/lib/utils';
 
 interface OnboardingTooltipProps {
     /** Onboarding flag this tooltip is keyed to. Visibility ("not seen yet")
@@ -97,10 +99,13 @@ export const OnboardingTooltip = ({
     // Actual side after flip(): 'bottom' (below target) or 'top' (above).
     const side = placement.split('-')[0] === 'top' ? 'top' : 'bottom';
 
+    // z-50 is the dialogs' layer: the tooltip shows over the test-rail Sheet it
+    // points into (mounted before it), while a dialog opened later is appended
+    // after it and covers it.
     const tooltipContent = (
         <div
             ref={refs.setFloating}
-            className={`z-[100] animate-in fade-in duration-300 ${side === 'bottom' ? 'slide-in-from-top-2' : 'slide-in-from-bottom-2'}`}
+            className={`z-50 animate-in fade-in duration-300 ${side === 'bottom' ? 'slide-in-from-top-2' : 'slide-in-from-bottom-2'}`}
             style={{
                 ...floatingStyles,
                 // Avoid a flash at (0,0) before the first position resolves.
@@ -111,52 +116,48 @@ export const OnboardingTooltip = ({
                 when the tooltip body is shifted to stay on-screen. */}
             <div
                 ref={arrowRef}
-                className="absolute h-4 w-4 rotate-45 bg-blue-500"
+                aria-hidden
+                className={cn(
+                    "absolute h-3 w-3 rotate-45 border-line bg-panel",
+                    side === 'bottom' ? "border-l border-t" : "border-r border-b",
+                )}
                 style={{
                     left: middlewareData.arrow?.x != null ? `${middlewareData.arrow.x}px` : undefined,
-                    ...(side === 'bottom' ? { top: '-8px' } : { bottom: '-8px' }),
-                    boxShadow: '-2px -2px 4px rgba(0, 0, 0, 0.1)',
+                    ...(side === 'bottom' ? { top: '-6px' } : { bottom: '-6px' }),
                 }}
             />
 
-            {/* Tooltip content */}
-            <div className="relative bg-blue-500 text-white rounded-lg shadow-2xl p-6 max-w-sm">
-                {/* Close button */}
+            {/* A floating panel like the app's other popovers, brand only on the action. */}
+            <div className="relative max-w-sm rounded-xl border border-line bg-panel p-5 text-foreground shadow-[var(--panel-shadow)]">
                 <button
                     onClick={dismiss}
-                    className="absolute top-2 right-2 p-1 hover:bg-blue-600 rounded-full transition-colors"
+                    className="absolute top-2.5 right-2.5 rounded-md p-1 text-ink-3 transition-colors hover:bg-panel-2 hover:text-foreground"
                     aria-label="Close tooltip"
                 >
                     <X className="h-4 w-4" />
                 </button>
 
-                {/* Title */}
-                <h3 className="text-lg font-semibold mb-3">{title}</h3>
+                <h3 className="mb-1.5 pr-6 text-[15px] font-semibold">{title}</h3>
 
-                {/* Message */}
-                <p id={messageId} className="text-sm leading-relaxed mb-4 pr-4">
+                <p id={messageId} className="mb-4 pr-4 text-[13.5px] leading-relaxed text-ink-2">
                     {message}
                 </p>
 
-                {/* Footer actions */}
-                <div className="flex items-center justify-end gap-3">
-                    <button
-                        onClick={dismiss}
-                        className="bg-white text-blue-500 px-4 py-1.5 rounded font-medium text-sm hover:bg-blue-50 transition-colors cursor-pointer"
-                    >
+                <div className="flex items-center justify-end gap-2">
+                    <Button size="sm" variant={showNext ? "outline" : "default"} onClick={dismiss}>
                         Close
-                    </button>
+                    </Button>
 
                     {showNext && (
-                        <button
+                        <Button
+                            size="sm"
                             onClick={() => {
                                 onNext?.();
                                 dismiss();
                             }}
-                            className="bg-white text-blue-500 px-4 py-1.5 rounded font-medium text-sm hover:bg-blue-50 transition-colors"
                         >
                             Next
-                        </button>
+                        </Button>
                     )}
                 </div>
             </div>

@@ -5,6 +5,7 @@ from pydantic import BaseModel
 from api.db import db_client
 from api.db.models import UserModel
 from api.enums import OrgRole
+from api.schemas.privacy import OrganizationDeletionStatus
 from api.services.auth.permissions import Permission, permissions_for
 from api.services.configuration.ai_model_configuration import (
     get_resolved_ai_model_configuration,
@@ -27,6 +28,9 @@ class OrganizationContextResponse(BaseModel):
     role: OrgRole | None = None
     permissions: list[Permission] = []
     model_services: OrganizationModelServicesContext
+    # Set while the organization is scheduled for deletion; the UI shows a
+    # banner and most of the API answers 423 until an admin cancels.
+    deletion: OrganizationDeletionStatus | None = None
 
 
 async def get_organization_context(user: UserModel) -> OrganizationContextResponse:
@@ -50,6 +54,15 @@ async def get_organization_context(user: UserModel) -> OrganizationContextRespon
     )
     managed_service_version = resolved.effective.managed_service_version
 
+    deletion = None
+    requested_at = getattr(organization, "deletion_requested_at", None)
+    if requested_at is not None:
+        deletion = OrganizationDeletionStatus(
+            pending=getattr(organization, "erased_at", None) is None,
+            requested_at=requested_at,
+            scheduled_for=getattr(organization, "deletion_scheduled_for", None),
+        )
+
     return OrganizationContextResponse(
         organization_id=organization_id,
         organization_provider_id=organization.provider_id if organization else None,
@@ -64,4 +77,5 @@ async def get_organization_context(user: UserModel) -> OrganizationContextRespon
                 resolved.source == "organization_v2" and managed_service_version == 2
             ),
         ),
+        deletion=deletion,
     )

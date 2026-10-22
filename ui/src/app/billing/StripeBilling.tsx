@@ -245,12 +245,12 @@ export function StripeBilling() {
     return (
         <div className="page-body space-y-6">
             <PageActions>
-                <Button variant="outline" onClick={() => setRefreshKey(value => value + 1)} disabled={loading}>
+                <Button size="toolbar" variant="outline" onClick={() => setRefreshKey(value => value + 1)} disabled={loading}>
                     <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
                     Refresh
                 </Button>
                 {canManage && (
-                    <Button variant="outline" onClick={handleInvoices} disabled={redirecting !== null}>
+                    <Button size="toolbar" variant="outline" onClick={handleInvoices} disabled={redirecting !== null}>
                         <FileText className="h-4 w-4" />
                         {redirecting === "portal" ? "Opening..." : "Invoices & receipts"}
                     </Button>
@@ -460,7 +460,7 @@ export function StripeBilling() {
                                                     </div>
                                                 </TableCell>
                                                 <TableCell>{entry.workflow_run_id ? `#${entry.workflow_run_id}` : "-"}</TableCell>
-                                                <TableCell className={`text-right font-medium ${amount >= 0 ? "text-green-600" : "text-destructive"}`}>
+                                                <TableCell className={`text-right font-medium ${amount >= 0 ? "text-ok" : "text-destructive"}`}>
                                                     {amount >= 0 ? "+" : "-"}
                                                     {formatEur(Math.abs(amount), 4)}
                                                 </TableCell>

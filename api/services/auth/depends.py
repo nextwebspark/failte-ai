@@ -9,6 +9,7 @@ from api.constants import AUTH_PROVIDER, REQUIRE_EMAIL_VERIFICATION
 from api.db import db_client
 from api.db.models import UserModel
 from api.enums import OrgRole, PostHogEvent
+from api.errors.domain import DomainError
 from api.services.auth.permissions import Permission, has_permissions
 from api.services.auth.stack_auth import stackauth
 from api.services.organization_bootstrap import ensure_organization_bootstrapped
@@ -18,6 +19,7 @@ from api.services.posthog_client import (
     group_identify,
     set_person_properties,
 )
+from api.services.privacy.org_deletion import ensure_organization_open
 from api.utils.auth import decode_jwt_token
 
 
@@ -141,6 +143,9 @@ async def get_user(
                 org_was_created=org_was_created,
             )
 
+    except DomainError:
+        # e.g. the team belongs to an erased organization.
+        raise
     except Exception as exc:
         raise HTTPException(
             status_code=500,
@@ -231,8 +236,6 @@ def _associate_user_with_posthog_organization(
         }
         if organization_ids is not None:
             person_properties["organization_ids"] = organization_ids
-        if user.email:
-            person_properties["email"] = user.email
         set_person_properties(user_distinct_id, person_properties)
         event_properties = {
             "user_id": user.id,
@@ -278,11 +281,29 @@ async def get_org_membership(
     return await resolve_org_membership(user)
 
 
+async def get_org_membership_during_deletion(
+    user: Annotated[UserModel, Depends(get_user_with_selected_organization)],
+) -> OrgMembership:
+    """Like ``get_org_membership``, but also while the organization is pending
+    deletion. Only for the endpoints that must keep working then: its export,
+    its deletion status and cancelling the deletion."""
+    return await _membership_in_selected_organization(user)
+
+
 async def resolve_org_membership(user: UserModel) -> OrgMembership:
     """The user's membership in their selected organization (403 if none).
 
+    Refuses (423, ``organization_pending_deletion``) while the organization is
+    scheduled for deletion; see ``api.services.privacy.org_deletion``.
+
     For callers outside FastAPI's dependency graph, e.g. WebSocket handlers.
     """
+    membership = await _membership_in_selected_organization(user)
+    await ensure_organization_open(membership.organization_id)
+    return membership
+
+
+async def _membership_in_selected_organization(user: UserModel) -> OrgMembership:
     if user.selected_organization_id is None:
         raise HTTPException(status_code=400, detail="No organization selected")
     organization_id: int = user.selected_organization_id
@@ -299,16 +320,24 @@ async def resolve_org_membership(user: UserModel) -> OrgMembership:
 
 def require_permission(
     *permissions: Permission,
+    allow_pending_deletion: bool = False,
 ) -> Callable[..., Awaitable[OrgMembership]]:
     """Dependency factory: 403 unless the member's role grants every permission.
 
     Use as ``Depends(require_permission(Permission.AGENTS_WRITE))``, either on a
     handler parameter (to receive the ``OrgMembership``) or in a route/router
-    ``dependencies=[...]`` list.
+    ``dependencies=[...]`` list. ``allow_pending_deletion`` keeps the endpoint
+    open while the organization is scheduled for deletion (export, deletion
+    status and cancel only).
     """
+    membership_dependency = (
+        get_org_membership_during_deletion
+        if allow_pending_deletion
+        else get_org_membership
+    )
 
     async def _dependency(
-        membership: Annotated[OrgMembership, Depends(get_org_membership)],
+        membership: Annotated[OrgMembership, Depends(membership_dependency)],
     ) -> OrgMembership:
         if not membership.can(*permissions):
             raise HTTPException(

@@ -1,4 +1,9 @@
-"""Encrypt / re-encrypt every external credential under the primary key.
+"""Encrypt / re-encrypt every secret column under the primary key.
+
+Covers every EncryptedJSON column (api/db/credential_encryption_client.py
+ENCRYPTED_COLUMNS): external_credentials.credential_data,
+telephony_configurations.credentials, integrations.connection_details,
+organization_configurations.value and user_configurations.configuration.
 
 Run from the repo root with the api environment (CREDENTIALS_ENCRYPTION_KEYS
 set to the new key list, primary first):
@@ -14,7 +19,8 @@ time), and as step 2 of key rotation:
     3. CREDENTIALS_ENCRYPTION_KEYS=<new>          (restart again)
 
 Exits non-zero if any row could not be decrypted with the configured keys;
-those rows are left untouched and their ids are printed (never their data).
+those rows are left untouched and their table and id are printed (never their
+data).
 """
 
 from __future__ import annotations
@@ -45,12 +51,13 @@ async def _run(batch_size: int, dry_run: bool) -> int:
     prefix = "[dry run] " if dry_run else ""
     print(
         f"{prefix}scanned={report.scanned} encrypted={report.encrypted} "
-        f"rotated={report.rotated} failed={len(report.failed_ids)}"
+        f"rotated={report.rotated} failed={len(report.failed)}"
     )
-    if report.failed_ids:
+    if report.failed:
         print(
-            "Rows no configured key can decrypt (left unchanged): "
-            + ", ".join(str(i) for i in report.failed_ids),
+            "Rows no configured key can decrypt, or not JSON objects (left "
+            "unchanged): "
+            + ", ".join(f"{table}#{row_id}" for table, row_id in report.failed),
             file=sys.stderr,
         )
         return 1

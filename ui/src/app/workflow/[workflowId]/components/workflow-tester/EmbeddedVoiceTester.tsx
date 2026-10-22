@@ -18,6 +18,8 @@ interface EmbeddedVoiceTesterProps {
     accessToken: string;
     onReset: () => void;
     onNodeTransition?: (transition: WorkflowRuntimeNodeTransition) => void;
+    /** Called when the call connects (true) and when it ends (false). */
+    onLiveChange?: (live: boolean) => void;
 }
 
 export function EmbeddedVoiceTester({
@@ -27,6 +29,7 @@ export function EmbeddedVoiceTester({
     accessToken,
     onReset,
     onNodeTransition,
+    onLiveChange,
 }: EmbeddedVoiceTesterProps) {
     const router = useRouter();
     const {
@@ -56,6 +59,12 @@ export function EmbeddedVoiceTester({
         initialContextVariables,
         onNodeTransition,
     });
+    useEffect(() => {
+        onLiveChange?.(connectionActive);
+    }, [connectionActive, onLiveChange]);
+    // Unmounting ends the call.
+    useEffect(() => () => onLiveChange?.(false), [onLiveChange]);
+
     const autoStartedRef = useRef(false);
     const configRetriedRef = useRef(false);
 

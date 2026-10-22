@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 
 import { useWorkflow } from "@/app/workflow/[workflowId]/contexts/WorkflowContext";
 import type { DocumentResponseSchema } from "@/client/types.gen";
-import { Badge } from "@/components/ui/badge";
+import { NodeChip } from "@/components/flow/NodeChip";
 
 interface DocumentBadgesProps {
     documentUuids: string[];
@@ -50,15 +50,15 @@ export const DocumentBadges = ({ documentUuids, onStaleUuidsDetected }: Document
 
     // Show loading while data hasn't loaded yet
     if (documents === undefined) {
-        return <Badge variant="outline">Loading...</Badge>;
+        return <NodeChip>…</NodeChip>;
     }
 
     return (
         <>
             {documentUuids.map((uuid) => (
-                <Badge key={uuid} variant="outline">
-                    {documentNames[uuid] || uuid}
-                </Badge>
+                <NodeChip key={uuid} title={documentNames[uuid] || uuid}>
+                    doc: {documentNames[uuid] || uuid}
+                </NodeChip>
             ))}
         </>
     );

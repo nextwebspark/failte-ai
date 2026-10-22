@@ -9,7 +9,7 @@ export const ConnectionStatus = ({ connectionStatus }: ConnectionStatusProps) =>
 
     if (connectionStatus === 'connecting') {
         return (
-            <div className="flex items-center justify-center space-x-2 text-blue-600">
+            <div className="flex items-center justify-center space-x-2 text-sky">
                 <Loader2 className="h-5 w-5 animate-spin" />
                 <span className="text-sm font-medium">Establishing Connection...</span>
             </div>
@@ -27,8 +27,8 @@ export const ConnectionStatus = ({ connectionStatus }: ConnectionStatusProps) =>
 
     if (connectionStatus === 'failed') {
         return (
-            <div className="flex items-center justify-center space-x-2 text-red-600">
-                <div className="h-2 w-2 bg-red-600 rounded-full" />
+            <div className="flex items-center justify-center space-x-2 text-danger">
+                <div className="h-2 w-2 bg-danger rounded-full" />
                 <span className="text-sm font-medium">Connection Failed</span>
             </div>
         );

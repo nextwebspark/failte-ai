@@ -54,8 +54,17 @@ class DocumentResponseSchema(BaseModel):
     created_at: datetime
     updated_at: datetime
     organization_id: int
-    created_by: int
+    created_by: int | None = None
     is_active: bool
+    needs_reindex: bool = Field(
+        default=False,
+        description=(
+            "Whether this chunked document was embedded with a different "
+            "embedding model than the one now configured. Search only matches "
+            "chunks embedded with the current model, so the document can't be "
+            "found until it is processed again (deleted and uploaded again)."
+        ),
+    )
     has_live_content: bool = Field(
         default=False,
         description=(

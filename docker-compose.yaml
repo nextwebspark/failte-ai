@@ -10,7 +10,7 @@
 #
 # Running `docker compose up` against a fresh checkout will fail or come up
 # misconfigured (e.g. OSS_JWT_SECRET is required). Full guide:
-# https://docs.dograh.com/deployment/docker
+# https://lightmove.ai/docs
 
 services:
   postgres:
@@ -152,6 +152,15 @@ services:
       # Set to "false" in .env to disable public signup (invite-only installs).
       ENABLE_SIGNUP: "${ENABLE_SIGNUP:-true}"
 
+      # Daily data-retention purge (ARQ cron). DRY_RUN=true only logs counts.
+      RETENTION_PURGE_ENABLED: "${RETENTION_PURGE_ENABLED:-true}"
+      RETENTION_PURGE_DRY_RUN: "${RETENTION_PURGE_DRY_RUN:-false}"
+      # Daily erasure of organisations whose deletion grace period has ended.
+      ORG_ERASURE_ENABLED: "${ORG_ERASURE_ENABLED:-true}"
+      # Storage backends used before the current one (e.g. "minio" after
+      # moving to S3); organisation erasure deletes there too.
+      LEGACY_STORAGE_BACKENDS: "${LEGACY_STORAGE_BACKENDS:-}"
+
       # Public origin for this deployment. The API derives BACKEND_API_ENDPOINT,
       # MINIO_PUBLIC_ENDPOINT and TURN_HOST from PUBLIC_BASE_URL / PUBLIC_HOST when
       # they are not set explicitly (see api/constants.py), so a standard remote
@@ -255,9 +264,11 @@ services:
 
       OSS_JWT_SECRET: "${OSS_JWT_SECRET:?OSS_JWT_SECRET must be set to a strong secret}"
 
-      # Comma-separated Fernet keys (first one encrypts) for workspace
-      # credentials at rest. Unset stores them in plaintext (with a warning);
-      # outside DEPLOYMENT_MODE=oss the API refuses to start without them.
+      # Comma-separated Fernet keys (first one encrypts) for secrets at rest
+      # (workspace and telephony credentials, integration connection details,
+      # organization configuration). Unset stores them in plaintext (with a
+      # warning); with ENVIRONMENT=production or outside DEPLOYMENT_MODE=oss the
+      # API refuses to start without them.
       # Generate: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
       CREDENTIALS_ENCRYPTION_KEYS: "${CREDENTIALS_ENCRYPTION_KEYS:-}"
 
@@ -311,6 +322,7 @@ services:
       PLATFORM_VERTEX_LLM_LOCATION: "${PLATFORM_VERTEX_LLM_LOCATION:-}"
       PLATFORM_VERTEX_REALTIME_LOCATION: "${PLATFORM_VERTEX_REALTIME_LOCATION:-}"
       PLATFORM_GOOGLE_SPEECH_LOCATION: "${PLATFORM_GOOGLE_SPEECH_LOCATION:-}"
+      PLATFORM_VERTEX_EMBEDDINGS_LOCATION: "${PLATFORM_VERTEX_EMBEDDINGS_LOCATION:-}"
       PLATFORM_GOOGLE_CREDENTIALS_JSON: "${PLATFORM_GOOGLE_CREDENTIALS_JSON:-}"
       MANAGED_SIP_PROVISIONING_ENABLED: "${MANAGED_SIP_PROVISIONING_ENABLED:-}"
 
@@ -325,8 +337,10 @@ services:
 
       # Telemetry
       ENABLE_TELEMETRY: "${ENABLE_TELEMETRY:-true}"
-      POSTHOG_API_KEY: "phc_ItizB1dP6yv7ZYobbcqrpxTdbomDA8hJFSEmAMdYvIr"
-      POSTHOG_HOST: "https://us.i.posthog.com"
+      # No key by default: telemetry goes nowhere until you set your own
+      # (EU) PostHog project.
+      POSTHOG_API_KEY: "${POSTHOG_API_KEY:-}"
+      POSTHOG_HOST: "${POSTHOG_HOST:-https://eu.i.posthog.com}"
 
     ports:
       - "8000:8000"
@@ -418,8 +432,8 @@ services:
       ENABLE_TELEMETRY: "${ENABLE_TELEMETRY:-true}"
 
       # Posthog
-      POSTHOG_KEY: "phc_ItizB1dP6yv7ZYobbcqrpxTdbomDA8hJFSEmAMdYvIr"
-      POSTHOG_HOST: "https://us.posthog.com"
+      POSTHOG_KEY: "${POSTHOG_KEY:-}"
+      POSTHOG_HOST: "${POSTHOG_HOST:-https://eu.i.posthog.com}"
     ports:
       - "3010:3010"
     depends_on:

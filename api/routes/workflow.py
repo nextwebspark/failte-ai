@@ -1,3 +1,4 @@
+import asyncio
 import json
 import re
 import uuid
@@ -24,8 +25,13 @@ from api.enums import (
     WorkflowStatus,
 )
 from api.schemas.ai_model_configuration import OrganizationAIModelConfigurationV2
+from api.schemas.privacy import DeleteWorkflowRunDataResponse
 from api.schemas.workflow import WorkflowRunResponseSchema
 from api.schemas.workflow_configurations import WorkflowConfigurationDefaults
+from api.schemas.workflow_template import (
+    DuplicateTemplateRequest,
+    WorkflowTemplateResponse,
+)
 from api.sdk_expose import sdk_expose
 from api.services.auth.depends import get_user, requires
 from api.services.auth.permissions import Permission
@@ -63,6 +69,12 @@ from api.services.configuration.resolve import (
 )
 from api.services.mps_service_key_client import mps_service_key_client
 from api.services.posthog_client import capture_event
+from api.services.privacy.call_erasure import (
+    StoredObjectsNotDeletedError,
+    WorkflowRunInProgressError,
+    WorkflowRunNotFoundError,
+    erase_workflow_run,
+)
 from api.services.rate_limit import RateLimiter, get_rate_limiter
 from api.services.reports import generate_workflow_report_csv
 from api.services.storage import storage_fs
@@ -85,6 +97,12 @@ from api.services.workflow.run_creation import prepare_workflow_run_inputs
 from api.services.workflow.run_usage_response import (
     format_public_cost_info,
     format_public_usage_info,
+)
+from api.services.workflow.template_setup import (
+    TemplateSetupError,
+    attach_integration_tools,
+    fill_template_values,
+    parse_setup_fields,
 )
 from api.services.workflow.tool_name_validation import (
     validate_workflow_tool_name_collisions,
@@ -323,6 +341,17 @@ class WorkflowListResponse(BaseModel):
     total_runs: int
     folder_id: int | None = None
     workflow_uuid: str | None = None
+    # Runs per rolling 24-hour day over the last 7 days, oldest first. Only
+    # the list endpoint fills these in.
+    runs_7d: list[int] | None = None
+    last_run_at: datetime | None = None
+    # True when the agent has edits that aren't published yet.
+    has_draft: bool | None = None
+    # Seconds of call time in the last 24 hours, and calls connected now.
+    talk_seconds_24h: int | None = None
+    live_calls: int | None = None
+    # How callers reach the agent: a phone number and/or the website widget.
+    channels: list[Literal["phone", "web"]] | None = None
 
 
 class MoveWorkflowToFolderRequest(BaseModel):
@@ -339,22 +368,9 @@ class WorkflowCountResponse(BaseModel):
     archived: int
 
 
-class WorkflowTemplateResponse(BaseModel):
-    id: int
-    template_name: str
-    template_description: str
-    template_json: dict
-    created_at: datetime
-
-
 class CreateWorkflowRequest(BaseModel):
     name: str
     workflow_definition: dict
-
-
-class DuplicateTemplateRequest(BaseModel):
-    template_id: int
-    workflow_name: str
 
 
 class UpdateWorkflowRequest(BaseModel):
@@ -625,6 +641,16 @@ async def create_workflow_from_template(
                 agent_spec_generator,
             )
             workflow_data = generated.as_workflow_data()
+        elif not mps_service_key_client.is_configured:
+            # Without platform models the builder runs in MPS; with no MPS
+            # configured there is nothing to generate the agent.
+            raise HTTPException(
+                status_code=404,
+                detail=(
+                    "The Agent Builder isn't available on this server. "
+                    "Build the agent manually instead."
+                ),
+            )
         elif DEPLOYMENT_MODE == "oss":
             workflow_data = await mps_service_key_client.call_workflow_api(
                 call_type=request.call_type.upper(),
@@ -825,22 +851,37 @@ async def get_workflows(
             organization_id=user.selected_organization_id, status=None
         )
 
-    # Get run counts for all workflows in a single query
+    # Run totals, recent activity and drafts for all workflows, fetched together
     workflow_ids = [workflow.id for workflow in workflows]
-    run_counts = await db_client.get_workflow_run_counts(workflow_ids)
+    activity, with_draft, channels = await asyncio.gather(
+        db_client.get_workflow_run_activity(workflow_ids),
+        db_client.get_workflow_ids_with_draft(workflow_ids),
+        db_client.get_workflow_channels(
+            workflow_ids, organization_id=user.selected_organization_id
+        ),
+    )
 
-    return [
-        WorkflowListResponse(
-            id=workflow.id,
-            name=workflow.name,
-            status=workflow.status,
-            created_at=workflow.created_at,
-            total_runs=run_counts.get(workflow.id, 0),
-            folder_id=workflow.folder_id,
-            workflow_uuid=workflow.workflow_uuid,
+    responses = []
+    for workflow in workflows:
+        runs = activity[workflow.id]
+        responses.append(
+            WorkflowListResponse(
+                id=workflow.id,
+                name=workflow.name,
+                status=workflow.status,
+                created_at=workflow.created_at,
+                total_runs=runs.total_runs,
+                folder_id=workflow.folder_id,
+                workflow_uuid=workflow.workflow_uuid,
+                runs_7d=runs.daily_runs,
+                last_run_at=runs.last_run_at,
+                has_draft=workflow.id in with_draft,
+                talk_seconds_24h=runs.talk_seconds_24h,
+                live_calls=runs.live_calls,
+                channels=sorted(channels[workflow.id]),
+            )
         )
-        for workflow in workflows
-    ]
+    return responses
 
 
 @router.get(
@@ -1510,6 +1551,131 @@ async def update_workflow(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+# The template routes come before /{workflow_id}/duplicate: declared after it,
+# POST /templates/duplicate matched that route and failed on workflow_id.
+@router.get("/templates")
+async def get_workflow_templates() -> List[WorkflowTemplateResponse]:
+    """
+    Get all available workflow templates.
+
+    Returns:
+        List of workflow templates
+    """
+    template_client = WorkflowTemplateClient()
+    templates = await template_client.get_all_workflow_templates()
+
+    return [
+        {
+            "id": template.id,
+            "template_name": template.template_name,
+            "template_description": template.template_description,
+            "template_json": template.template_json,
+            "setup_fields": template.setup_fields or [],
+            "call_type": template.call_type,
+            "icon": template.icon,
+            "featured": bool(template.featured),
+            "sample_audio_url": template.sample_audio_url,
+            "integrations": template.integrations or [],
+            "created_at": template.created_at,
+        }
+        for template in templates
+    ]
+
+
+@router.post(
+    "/templates/duplicate",
+    dependencies=requires(Permission.AGENTS_WRITE),
+)
+async def duplicate_workflow_template(
+    request: DuplicateTemplateRequest, user: UserModel = Depends(get_user)
+) -> WorkflowResponse:
+    """
+    Duplicate a workflow template to create a new workflow for the user.
+
+    Args:
+        request: The duplicate template request
+        user: The authenticated user
+
+    Returns:
+        The newly created workflow
+    """
+    template_client = WorkflowTemplateClient()
+    template = await template_client.get_workflow_template(request.template_id)
+
+    if not template:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Workflow template with id {request.template_id} not found",
+        )
+
+    try:
+        filled = fill_template_values(
+            template.template_json,
+            parse_setup_fields(template.setup_fields),
+            request.values,
+        )
+    except TemplateSetupError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+
+    unknown = sorted(set(request.integration_tools) - set(template.integrations or []))
+    if unknown:
+        raise HTTPException(
+            status_code=422,
+            detail=f"This template doesn't use: {', '.join(unknown)}",
+        )
+    if request.integration_tools:
+        tool_uuids = set(request.integration_tools.values())
+        tools = await db_client.get_tools_by_uuids(
+            list(tool_uuids), user.selected_organization_id
+        )
+        if {tool.tool_uuid for tool in tools} != tool_uuids:
+            raise HTTPException(status_code=404, detail="Connected tool not found")
+    filled = attach_integration_tools(filled, request.integration_tools)
+
+    # Create a new workflow from the template
+    # Regenerate trigger UUIDs to avoid conflicts with existing triggers
+    workflow_def = regenerate_trigger_uuids(filled)
+
+    trigger_paths = extract_trigger_paths(workflow_def) if workflow_def else []
+    if trigger_paths:
+        try:
+            await db_client.assert_trigger_paths_available(
+                trigger_paths=trigger_paths,
+            )
+        except TriggerPathConflictError as e:
+            raise HTTPException(status_code=409, detail=str(e))
+
+    workflow = await db_client.create_workflow(
+        request.workflow_name,
+        workflow_def,
+        user.id,
+        user.selected_organization_id,
+    )
+
+    if trigger_paths:
+        await db_client.sync_triggers_for_workflow(
+            workflow_id=workflow.id,
+            organization_id=user.selected_organization_id,
+            trigger_paths=trigger_paths,
+        )
+
+    return {
+        "id": workflow.id,
+        "name": workflow.name,
+        "status": workflow.status,
+        "created_at": workflow.created_at,
+        "workflow_definition": mask_workflow_definition(
+            workflow_def, drop_secrets=secrets_hidden_for(user)
+        ),
+        "current_definition_id": workflow.current_definition_id,
+        "template_context_variables": workflow.template_context_variables,
+        "call_disposition_codes": workflow.call_disposition_codes,
+        "workflow_configurations": mask_workflow_configurations(
+            workflow.workflow_configurations, drop_secrets=secrets_hidden_for(user)
+        ),
+    }
+
+
 @router.post(
     "/{workflow_id}/duplicate",
     dependencies=requires(Permission.AGENTS_WRITE),
@@ -1692,6 +1858,50 @@ async def get_workflow_run(
     }
 
 
+@router.delete(
+    "/{workflow_id}/runs/{run_id}",
+    response_model=DeleteWorkflowRunDataResponse,
+    responses={
+        404: {"description": "No such call in your organization"},
+        409: {"description": "The call is still in progress"},
+        502: {"description": "Stored files could not be deleted; nothing changed"},
+    },
+    dependencies=requires(Permission.ORG_MANAGE),
+)
+async def delete_workflow_run_data(
+    workflow_id: int, run_id: int, user: UserModel = Depends(get_user)
+) -> DeleteWorkflowRunDataResponse:
+    """Erase one call's personal data (a caller's erasure request).
+
+    Deletes the recordings and transcript, then clears the call context,
+    transcript logs, phone numbers, annotations and webhook payloads. The
+    call itself stays, with its date, duration, status and cost, because
+    billing records refer to it.
+    """
+    try:
+        objects_deleted = await erase_workflow_run(
+            organization_id=user.selected_organization_id,
+            workflow_id=workflow_id,
+            run_id=run_id,
+        )
+    except WorkflowRunNotFoundError:
+        raise HTTPException(status_code=404, detail="Workflow run not found")
+    except WorkflowRunInProgressError:
+        raise HTTPException(
+            status_code=409,
+            detail="This call is still in progress. Delete its data once it ends.",
+        )
+    except StoredObjectsNotDeletedError:
+        raise HTTPException(
+            status_code=502,
+            detail=(
+                "The call's recordings could not be deleted, so nothing was "
+                "changed. Try again in a few minutes."
+            ),
+        )
+    return DeleteWorkflowRunDataResponse(run_id=run_id, objects_deleted=objects_deleted)
+
+
 class WorkflowRunsResponse(BaseModel):
     runs: List[WorkflowRunResponseSchema]
     total_count: int
@@ -1803,99 +2013,6 @@ async def download_workflow_report(
         media_type="text/csv",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
-
-
-@router.get("/templates")
-async def get_workflow_templates() -> List[WorkflowTemplateResponse]:
-    """
-    Get all available workflow templates.
-
-    Returns:
-        List of workflow templates
-    """
-    template_client = WorkflowTemplateClient()
-    templates = await template_client.get_all_workflow_templates()
-
-    return [
-        {
-            "id": template.id,
-            "template_name": template.template_name,
-            "template_description": template.template_description,
-            "template_json": template.template_json,
-            "created_at": template.created_at,
-        }
-        for template in templates
-    ]
-
-
-@router.post(
-    "/templates/duplicate",
-    dependencies=requires(Permission.AGENTS_WRITE),
-)
-async def duplicate_workflow_template(
-    request: DuplicateTemplateRequest, user: UserModel = Depends(get_user)
-) -> WorkflowResponse:
-    """
-    Duplicate a workflow template to create a new workflow for the user.
-
-    Args:
-        request: The duplicate template request
-        user: The authenticated user
-
-    Returns:
-        The newly created workflow
-    """
-    template_client = WorkflowTemplateClient()
-    template = await template_client.get_workflow_template(request.template_id)
-
-    if not template:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Workflow template with id {request.template_id} not found",
-        )
-
-    # Create a new workflow from the template
-    # Regenerate trigger UUIDs to avoid conflicts with existing triggers
-    workflow_def = regenerate_trigger_uuids(template.template_json)
-
-    trigger_paths = extract_trigger_paths(workflow_def) if workflow_def else []
-    if trigger_paths:
-        try:
-            await db_client.assert_trigger_paths_available(
-                trigger_paths=trigger_paths,
-            )
-        except TriggerPathConflictError as e:
-            raise HTTPException(status_code=409, detail=str(e))
-
-    workflow = await db_client.create_workflow(
-        request.workflow_name,
-        workflow_def,
-        user.id,
-        user.selected_organization_id,
-    )
-
-    if trigger_paths:
-        await db_client.sync_triggers_for_workflow(
-            workflow_id=workflow.id,
-            organization_id=user.selected_organization_id,
-            trigger_paths=trigger_paths,
-        )
-
-    return {
-        "id": workflow.id,
-        "name": workflow.name,
-        "status": workflow.status,
-        "created_at": workflow.created_at,
-        "workflow_definition": mask_workflow_definition(
-            workflow_def, drop_secrets=secrets_hidden_for(user)
-        ),
-        "current_definition_id": workflow.current_definition_id,
-        "template_context_variables": workflow.template_context_variables,
-        "call_disposition_codes": workflow.call_disposition_codes,
-        "workflow_configurations": mask_workflow_configurations(
-            workflow.workflow_configurations, drop_secrets=secrets_hidden_for(user)
-        ),
-    }
 
 
 # ---------------------------------------------------------------------------

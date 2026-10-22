@@ -363,6 +363,26 @@ class DograhGeminiLiveLLMService(RealtimeConversationMixin, GeminiLiveLLMService
         await self._prepare_context_for_fresh_session()
         await self._create_prerecorded_greeting_response(transcript)
 
+    async def _seed_spoken_turn(self, transcript: str):
+        """Add a recording played after the model's opening line.
+
+        Sent as a model turn with ``turn_complete=False``, like the
+        prerecorded-greeting seed, so Gemini takes it as history and keeps
+        waiting for the caller.
+        """
+        if self._disconnecting:
+            return
+        if not self._session:
+            logger.warning(f"{self}: no session; recording transcript dropped")
+            return
+        try:
+            await self._session.send_client_content(
+                turns=[Content(role="model", parts=[Part(text=transcript)])],
+                turn_complete=False,
+            )
+        except Exception as e:
+            await self._handle_send_error(e)
+
     async def _create_prerecorded_greeting_response(self, transcript: str | None):
         """Seed the spoken greeting, leaving the turn open for the caller.
 
