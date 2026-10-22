@@ -124,9 +124,6 @@ PY
 ENV_BACKUP="$ENV_FILE.bak.$(date -u +%Y%m%dT%H%M%SZ)"
 install -m 600 "$ENV_FILE" "$ENV_BACKUP"
 echo "backed up $ENV_FILE to $ENV_BACKUP"
-# Every Deploy runs this script; keep the newest 10 copies (each holds every
-# secret, revoked ones too). The glob always matches the copy just made.
-ls -1t -- "$ENV_FILE".bak.* | tail -n +11 | while IFS= read -r old; do rm -f -- "$old"; done
 
 # Key lists are compared without spaces or quotes (a hand-quoted .env value).
 strip_keys() { printf %s "$1" | tr -d " \"'"; }
@@ -481,4 +478,11 @@ setting PLATFORM_VERTEX_PROJECT_ID "$PROJECT" "${DOGRAH_PLATFORM_VERTEX_PROJECT_
 set_key ENABLE_TELEMETRY false
 
 chmod 600 "$ENV_FILE"
+
+# Every Deploy runs this script: keep the newest 10 timestamped copies (each
+# holds every secret, revoked ones too). Only after a run that wrote .env, so
+# refused retries never rotate out older, different copies. The glob always
+# matches this run's copy.
+ls -1t -- "$ENV_FILE".bak.[0-9]*T*Z | tail -n +11 | while IFS= read -r old; do rm -f -- "$old"; done
+
 echo "done. $ENV_FILE is chmod 600."

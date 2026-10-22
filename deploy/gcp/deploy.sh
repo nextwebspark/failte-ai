@@ -252,9 +252,14 @@ rollback() {
   tools_keys="$(file_value "$TOOLS_ENV" TOOLS_ENCRYPTION_KEYS 2>/dev/null)"
   git checkout --quiet --detach "$PREV_REF"
   restore_settings
-  if [[ -n "$cred_keys" ]]; then put_value .env CREDENTIALS_ENCRYPTION_KEYS "$cred_keys"; fi
+  # A failure here must not stop the switch back.
+  if [[ -n "$cred_keys" ]]; then
+    put_value .env CREDENTIALS_ENCRYPTION_KEYS "$cred_keys" \
+      || log "WARNING: could not keep the synced CREDENTIALS_ENCRYPTION_KEYS"
+  fi
   if [[ -n "$tools_keys" && -f "$TOOLS_ENV" ]]; then
-    put_value "$TOOLS_ENV" TOOLS_ENCRYPTION_KEYS "$tools_keys"
+    put_value "$TOOLS_ENV" TOOLS_ENCRYPTION_KEYS "$tools_keys" \
+      || log "WARNING: could not keep the synced TOOLS_ENCRYPTION_KEYS"
   fi
   switch_to "$PREV_VERSION" || log "compose reported errors while rolling back"
   if wait_healthy "$PREV_VERSION"; then
