@@ -221,14 +221,41 @@ restore_settings() {
   fi
 }
 
+# file_value FILE KEY / put_value FILE KEY VALUE: one line of a KEY=value file.
+# The value goes through stdin, never argv or a sed expression; an unchanged
+# value leaves the file as it is.
+file_value() { grep -E "^$2=" "$1" | tail -1 | cut -d= -f2- || true; }
+put_value() {
+  [[ "$(file_value "$1" "$2")" != "$3" ]] || return 0
+  printf %s "$3" | python3 -c '
+import sys
+path, key = sys.argv[1], sys.argv[2]
+line = key + "=" + sys.stdin.read()
+lines = open(path).read().splitlines()
+out = [line if l.startswith(key + "=") else l for l in lines]
+if out == lines:
+    out.append(line)
+open(path, "w").write("\n".join(out) + "\n")' "$1" "$2"
+}
+
 rollback() {
   if [[ -z "$PREV_VERSION" ]]; then
     log "no previous version recorded — cannot roll back"
     return
   fi
   log "ROLLING BACK to $PREV_VERSION"
+  # The new version may already have encrypted rows with a key the sync added
+  # (a rotation: configure-env.sh only ever adds keys unattended). Keep the
+  # synced key lists, so the previous version can still read those rows.
+  local cred_keys tools_keys
+  cred_keys="$(file_value .env CREDENTIALS_ENCRYPTION_KEYS)"
+  tools_keys="$(file_value "$TOOLS_ENV" TOOLS_ENCRYPTION_KEYS 2>/dev/null)"
   git checkout --quiet --detach "$PREV_REF"
   restore_settings
+  if [[ -n "$cred_keys" ]]; then put_value .env CREDENTIALS_ENCRYPTION_KEYS "$cred_keys"; fi
+  if [[ -n "$tools_keys" && -f "$TOOLS_ENV" ]]; then
+    put_value "$TOOLS_ENV" TOOLS_ENCRYPTION_KEYS "$tools_keys"
+  fi
   switch_to "$PREV_VERSION" || log "compose reported errors while rolling back"
   if wait_healthy "$PREV_VERSION"; then
     log "rolled back to $PREV_VERSION"

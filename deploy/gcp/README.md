@@ -88,10 +88,14 @@ edit or `DOGRAH_*` override of those lasts only until the next Deploy. The
 encryption keys are checked before anything is written: a Secret Manager value
 that drops a key still in `.env` or `tools.env` stops the deploy (see
 [Encryption at rest](#encryption-at-rest) and the fallcha-tools keys comment in
-`configure-env.sh`). Each run also leaves a root-only `.env.bak.<UTC timestamp>`
-next to `.env`. Copies of `.env` and `tools.env` from before the deploy stay in
+`configure-env.sh`); so does a value that is not a list of Fernet keys. Each run
+also leaves a root-only `.env.bak.<UTC timestamp>` next to `.env` (the newest 10
+are kept). Copies of `.env` and `tools.env` from before the deploy stay in
 `/var/backups/lightmove/pre-deploy/` (`env`, `tools.env`) and are put back if
-the deploy stops before the switch or rolls back. Because a rollback restores the previous secrets too, rotate a
+the deploy stops before the switch or rolls back. A rollback keeps the synced
+`CREDENTIALS_ENCRYPTION_KEYS` and `TOOLS_ENCRYPTION_KEYS` (unattended runs only
+ever add keys): the new version may already have encrypted rows with an added
+key. Because a rollback restores the previous secrets too, rotate a
 credential by adding the new value, deploying, and only then revoking the old
 one.
 
@@ -513,7 +517,7 @@ and legacy telephony settings). Each value is stored as a
   breaking calls later.
 - **Where the key comes from.** `configure-env.sh` decides before it writes
   anything (and every run first copies `.env` to a root-only
-  `.env.bak.<UTC timestamp>`):
+  `.env.bak.<UTC timestamp>`, keeping the newest 10):
   - the Secret Manager secret `dograh-credentials-encryption-keys` and `.env`
     agree, or only one of them has a value: that value (a `.env`-only key gets a
     warning to store it in Secret Manager);

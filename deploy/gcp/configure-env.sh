@@ -124,18 +124,41 @@ PY
 ENV_BACKUP="$ENV_FILE.bak.$(date -u +%Y%m%dT%H%M%SZ)"
 install -m 600 "$ENV_FILE" "$ENV_BACKUP"
 echo "backed up $ENV_FILE to $ENV_BACKUP"
+# Every Deploy runs this script; keep the newest 10 copies (each holds every
+# secret, revoked ones too). The glob always matches the copy just made.
+ls -1t -- "$ENV_FILE".bak.* | tail -n +11 | while IFS= read -r old; do rm -f -- "$old"; done
+
+# Key lists are compared without spaces or quotes (a hand-quoted .env value).
+strip_keys() { printf %s "$1" | tr -d " \"'"; }
 
 # keeps_all CURRENT NEW: true when NEW (comma-separated Fernet keys) still has
 # every key CURRENT has, so rows encrypted with any of them stay readable.
 keeps_all() {
   local key current new
-  current="$(printf %s "$1" | tr -d " \"'")" new="$(printf %s "$2" | tr -d " \"'")"
+  current="$(strip_keys "$1")" new="$(strip_keys "$2")"
   local -a keys
   [[ -n "$current" ]] || return 0
   IFS=, read -r -a keys <<< "$current"
   for key in "${keys[@]}"; do
     [[ -z "$key" || ",$new," == *",$key,"* ]] || return 1
   done
+}
+
+# check_fernet NAME LIST: stops unless every key in LIST is a Fernet key
+# (urlsafe base64 of 32 bytes), so a malformed value fails here, before the
+# drain, instead of at api start (and is never carried into a rollback).
+check_fernet() {
+  printf %s "$2" | python3 -c '
+import base64, binascii, sys
+keys = [k for k in sys.stdin.read().split(",") if k]
+try:
+    ok = bool(keys) and all(len(base64.urlsafe_b64decode(k)) == 32 for k in keys)
+except (binascii.Error, ValueError):
+    ok = False
+sys.exit(0 if ok else 1)' || {
+    echo "$1 is not a comma-separated list of Fernet keys; nothing was changed" >&2
+    exit 1
+  }
 }
 
 # Secrets at rest (api): external credentials, telephony credentials,
@@ -156,7 +179,8 @@ keeps_all() {
 #     identity may create the secret, otherwise only to .env (warned loudly).
 # README.md "Encryption at rest" has the recovery and rotation steps.
 SM_CRED_KEYS="$(sm_optional dograh-credentials-encryption-keys)"
-ENV_CRED_KEYS="$(env_value CREDENTIALS_ENCRYPTION_KEYS)"
+SM_CRED_KEYS="$(strip_keys "$SM_CRED_KEYS")"
+ENV_CRED_KEYS="$(strip_keys "$(env_value CREDENTIALS_ENCRYPTION_KEYS)")"
 CRED_KEYS=""
 if [[ -n "$SM_CRED_KEYS" && -n "$ENV_CRED_KEYS" && "$SM_CRED_KEYS" != "$ENV_CRED_KEYS" ]] \
     && [[ -z "${DOGRAH_CREDENTIALS_KEYS_OVERRIDE:-}" ]] && keeps_all "$ENV_CRED_KEYS" "$SM_CRED_KEYS"; then
@@ -232,6 +256,8 @@ MSG
   exit 1
 fi
 
+check_fernet CREDENTIALS_ENCRYPTION_KEYS "$CRED_KEYS"
+
 echo "reading secrets from Secret Manager (project $PROJECT)..."
 # Bare assignments, so set -e stops the script when a lookup fails: inside
 # set_key's arguments it would write an empty value instead.
@@ -265,6 +291,7 @@ fi
 # using DOGRAH_DROP_ENCRYPTION_KEYS=true.
 TOOLS_SECRET="$(sm dograh-tools-internal-secret)"
 TOOLS_KEYS="$(sm dograh-tools-encryption-keys)"
+TOOLS_KEYS="$(strip_keys "$TOOLS_KEYS")"
 [[ -n "$TOOLS_SECRET" && -n "$TOOLS_KEYS" ]] || {
   echo "dograh-tools-internal-secret / dograh-tools-encryption-keys are empty" >&2
   exit 1
@@ -277,6 +304,34 @@ if [[ -f "$TOOLS_ENV" && "${DOGRAH_DROP_ENCRYPTION_KEYS:-}" != true ]] && ! keep
     "(see the fallcha-tools keys comment in configure-env.sh)" >&2
   exit 1
 fi
+check_fernet TOOLS_ENCRYPTION_KEYS "$TOOLS_KEYS"
+
+# Billing, email and Google (applied below) and the CORS origin, also read
+# before anything is written.
+STRIPE_KEY="$(sm_optional dograh-stripe-secret-key)"
+STRIPE_WEBHOOK=""
+if [[ -n "$STRIPE_KEY" ]]; then
+  # A bare assignment, so set -e stops the script if the secret is missing.
+  STRIPE_WEBHOOK="$(sm dograh-stripe-webhook-secret)"
+fi
+RESEND_KEY="$(sm_optional dograh-resend-api-key)"
+GOOGLE_ID="" GOOGLE_SECRET=""
+GOOGLE_ID_STATUS=0 GOOGLE_SECRET_STATUS=0
+if [[ "${DOGRAH_GOOGLE:-}" != off ]]; then
+  sm_read dograh-google-oauth-client-id GOOGLE_ID || GOOGLE_ID_STATUS=$?
+  sm_read dograh-google-oauth-client-secret GOOGLE_SECRET || GOOGLE_SECRET_STATUS=$?
+fi
+PUBLIC_URL="$(grep -E '^PUBLIC_BASE_URL=' "$ENV_FILE" | tail -1 | cut -d= -f2- | tr -d '"' || true)"
+# CORS: an explicit allowlist, never "*". The UI is served from
+# PUBLIC_BASE_URL, so that origin is the default; add more (comma-separated)
+# with DOGRAH_CORS_ALLOWED_ORIGINS (until the next Deploy, which derives it from
+# PUBLIC_BASE_URL again). The embed widget on customer sites is not affected:
+# its public endpoints answer CORS per embed token's allowed domains.
+CORS_ORIGINS="${DOGRAH_CORS_ALLOWED_ORIGINS:-${PUBLIC_URL%/}}"
+[[ -n "$CORS_ORIGINS" ]] || {
+  echo "PUBLIC_BASE_URL is not set in $ENV_FILE; set it (or DOGRAH_CORS_ALLOWED_ORIGINS)" >&2
+  exit 1
+}
 
 echo "writing $ENV_FILE ..."
 set_key ENVIRONMENT production
@@ -319,11 +374,7 @@ set_key CREDENTIALS_ENCRYPTION_KEYS "$CRED_KEYS"
 # (whsec_ of the dashboard endpoint), dograh-resend-api-key (re_...),
 # dograh-google-oauth-client-id / dograh-google-oauth-client-secret.
 
-STRIPE_KEY="$(sm_optional dograh-stripe-secret-key)"
 if [[ -n "$STRIPE_KEY" ]]; then
-  # A bare assignment, so set -e stops the script if the secret is missing
-  # (inside set_key's arguments a failed lookup would write an empty value).
-  STRIPE_WEBHOOK="$(sm dograh-stripe-webhook-secret)"
   set_key BILLING_PROVIDER stripe
   set_key STRIPE_SECRET_KEY "$STRIPE_KEY"
   set_key STRIPE_WEBHOOK_SECRET "$STRIPE_WEBHOOK"
@@ -333,7 +384,6 @@ if [[ -n "$STRIPE_KEY" ]]; then
   fi
 fi
 
-RESEND_KEY="$(sm_optional dograh-resend-api-key)"
 if [[ -n "$RESEND_KEY" ]]; then
   set_key EMAIL_PROVIDER resend
   set_key RESEND_API_KEY "$RESEND_KEY"
@@ -352,13 +402,7 @@ fi
 # explicitly. The next Deploy reads the secrets again, so to keep it off also
 # delete them. The client (Google Auth Platform, this project) must list these
 # redirect URIs: <PUBLIC_BASE_URL>/auth/google/callback and
-# <PUBLIC_BASE_URL>/oauth/google-{calendar,sheets}/callback.
-GOOGLE_ID="" GOOGLE_SECRET=""
-GOOGLE_ID_STATUS=0 GOOGLE_SECRET_STATUS=0
-if [[ "${DOGRAH_GOOGLE:-}" != off ]]; then
-  sm_read dograh-google-oauth-client-id GOOGLE_ID || GOOGLE_ID_STATUS=$?
-  sm_read dograh-google-oauth-client-secret GOOGLE_SECRET || GOOGLE_SECRET_STATUS=$?
-fi
+# <PUBLIC_BASE_URL>/oauth/google-{calendar,sheets}/callback. (Read above.)
 if [[ -n "$GOOGLE_ID" && -n "$GOOGLE_SECRET" ]]; then
   set_key GOOGLE_CLIENT_ID "$GOOGLE_ID"
   set_key GOOGLE_CLIENT_SECRET "$GOOGLE_SECRET"
@@ -391,7 +435,6 @@ fi
 # the tools-only keys go in deploy/gcp/secrets/tools.env (the overlay's env_file).
 # (both read and checked before anything was written, above)
 set_key TOOLS_INTERNAL_SECRET "$TOOLS_SECRET"
-PUBLIC_URL="$(grep -E '^PUBLIC_BASE_URL=' "$ENV_FILE" | tail -1 | cut -d= -f2- | tr -d '"' || true)"
 mkdir -p "$TOOLS_DIR"
 (
   umask 077
@@ -413,16 +456,7 @@ mkdir -p "$TOOLS_DIR"
 chmod 600 "$TOOLS_ENV"
 echo "  wrote $TOOLS_ENV"
 
-# CORS: an explicit allowlist, never "*". The UI is served from
-# PUBLIC_BASE_URL, so that origin is the default; add more (comma-separated)
-# with DOGRAH_CORS_ALLOWED_ORIGINS (until the next Deploy, which derives it from
-# PUBLIC_BASE_URL again). The embed widget on customer sites is not affected:
-# its public endpoints answer CORS per embed token's allowed domains.
-CORS_ORIGINS="${DOGRAH_CORS_ALLOWED_ORIGINS:-${PUBLIC_URL%/}}"
-[[ -n "$CORS_ORIGINS" ]] || {
-  echo "PUBLIC_BASE_URL is not set in $ENV_FILE; set it (or DOGRAH_CORS_ALLOWED_ORIGINS)" >&2
-  exit 1
-}
+# CORS_ORIGINS was derived above, before .env changed.
 set_key CORS_ALLOWED_ORIGINS "$CORS_ORIGINS"
 
 setting ENABLE_SIGNUP true
