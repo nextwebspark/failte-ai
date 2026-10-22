@@ -44,7 +44,7 @@ or copied to the VM by hand.
 | Workflow | Run it when | What it does |
 |---|---|---|
 | **Release** (`release.yml`) | main has what you want to ship | Full CI on main's head → next version → Cloud Build images tagged `X.Y.Z` → tag `vX.Y.Z` + GitHub Release with notes |
-| **Deploy** (`deploy.yml`) | you approve a release for production | Checks images and both VMs → Cloud SQL backup (prunes pre-deploy backups older than 30 days) → IAP SSH → that release's `deploy.sh` → public health check |
+| **Deploy** (`deploy.yml`) | you approve a release for production | Checks images and both VMs → Cloud SQL backup (prunes pre-deploy backups older than 30 days) → IAP SSH → that release's `deploy.sh` (re-syncs `.env` from Secret Manager, swaps the images) → public health check |
 
 **Versions.** Semver tags `vX.Y.Z`, starting at `v0.1.0`. When you run
 Release you pick the bump: `patch` (fixes), `minor` (features), `major`
@@ -65,13 +65,39 @@ it does **not** reverse database migrations (the api runs `alembic upgrade
 head` on start), so keep migrations backward compatible, or roll forward with
 a fix release. `deploy.sh` also rolls back by itself when the new version
 fails its health check (from the second deploy on; the first has nothing to
-roll back to, so watch it).
+roll back to, so watch it). A manual roll back keeps the current settings: the
+older release re-syncs `.env` from Secret Manager if it already does so (see
+below), otherwise it leaves `.env` as it is.
 
 **Where the deploy runs.** Deploy starts `deploy.sh` on the VM as a transient
 systemd unit (`deploy/gcp/remote-deploy.sh`) and streams its log into the job.
 If the SSH session drops or the job is cancelled, the deploy still finishes or
 rolls back on the VM. The job summary names the unit; read it with
 `journalctl -u lightmove-deploy-<run>-<attempt>`.
+
+**Settings ship with the release.** Before switching, `deploy.sh` runs that
+release's `configure-env.sh`. A secret added to Secret Manager (and granted to
+`dograh-app-sa`) goes live with the next Deploy, with no SSH; re-running
+Deploy for the current version is enough. Values an operator chooses keep what
+`.env` has: `ENABLE_SIGNUP`, `FASTAPI_WORKERS`, `EMAIL_FROM`,
+`STRIPE_AUTOMATIC_TAX`, `RETENTION_PURGE_DRY_RUN`, `PLATFORM_MODELS_ENABLED`
+and `PLATFORM_VERTEX_PROJECT_ID`. Everything else (secrets, `DATABASE_URL`,
+storage, `TELEPHONY_WS_TOKEN_ENFORCE=true`, and the tools URLs and
+`CORS_ALLOWED_ORIGINS`, which follow `PUBLIC_BASE_URL`) is rewritten, so a hand
+edit or `DOGRAH_*` override of those lasts only until the next Deploy. The
+encryption keys are checked before anything is written: a Secret Manager value
+that drops a key still in `.env` or `tools.env` stops the deploy (see
+[Encryption at rest](#encryption-at-rest) and the fallcha-tools keys comment in
+`configure-env.sh`); so does a value that is not a list of Fernet keys. Each run
+also leaves a root-only `.env.bak.<UTC timestamp>` next to `.env` (the newest 10
+are kept). Copies of `.env` and `tools.env` from before the deploy stay in
+`/var/backups/lightmove/pre-deploy/` (`env`, `tools.env`) and are put back if
+the deploy stops before the switch or rolls back. A rollback keeps the synced
+`CREDENTIALS_ENCRYPTION_KEYS` and `TOOLS_ENCRYPTION_KEYS` (unattended runs only
+ever add keys): the new version may already have encrypted rows with an added
+key. Because a rollback restores the previous secrets too, rotate a
+credential by adding the new value, deploying, and only then revoking the old
+one.
 
 **What Deploy refuses to do**
 
@@ -264,8 +290,9 @@ is skipped and logged at ERROR.
 preview the effect of a shorter retention setting: re-run
 `DOGRAH_RETENTION_PURGE_DRY_RUN=true ./deploy/gcp/configure-env.sh`, then
 redeploy so the containers pick it up, and read the lines with
-`docker compose logs api | grep "Retention purge dry run"`. Re-run without the
-variable (or with `false`) to switch deletion back on.
+`docker compose logs api | grep "Retention purge dry run"`. Later Deploys keep
+the dry run; re-run with `DOGRAH_RETENTION_PURGE_DRY_RUN=false` to switch
+deletion back on.
 
 Database backups: automated backups 7 days, PITR 7 days, pre-deploy backups
 pruned after 30 days (`deploy.yml` deletes on-demand backups older than 30 days
@@ -445,7 +472,8 @@ openssl rand -hex 32 | gcloud secrets create dograh-tools-internal-secret --data
 secret) and the tools-only keys into `deploy/gcp/secrets/tools.env` (see
 `secrets/tools.env.example`). `TOOLS_PUBLIC_BASE_URL` defaults to
 `PUBLIC_BASE_URL` and `TOOLS_UI_RETURN_URL` to `PUBLIC_BASE_URL/integrations`;
-override with `DOGRAH_TOOLS_PUBLIC_BASE_URL` / `DOGRAH_TOOLS_UI_RETURN_URL`.
+override with `DOGRAH_TOOLS_PUBLIC_BASE_URL` / `DOGRAH_TOOLS_UI_RETURN_URL`
+(until the next Deploy, which derives them from `PUBLIC_BASE_URL` again).
 
 **Platform Google client (optional).** When both `dograh-google-oauth-client-id`
 and `dograh-google-oauth-client-secret` exist, `tools.env` also gets
@@ -489,13 +517,17 @@ and legacy telephony settings). Each value is stored as a
   breaking calls later.
 - **Where the key comes from.** `configure-env.sh` decides before it writes
   anything (and every run first copies `.env` to a root-only
-  `.env.bak.<UTC timestamp>`):
+  `.env.bak.<UTC timestamp>`, keeping the newest 10):
   - the Secret Manager secret `dograh-credentials-encryption-keys` and `.env`
     agree, or only one of them has a value: that value (a `.env`-only key gets a
     warning to store it in Secret Manager);
-  - **both have values and they differ: it stops** and changes nothing. Re-run
+  - both have values and Secret Manager's still holds every key in `.env` (a
+    new key added in front for rotation): Secret Manager's, so a Deploy
+    rotates;
+  - **both have values and Secret Manager's drops a key in `.env`: it stops**
+    and changes nothing (a Deploy fails before switching). Re-run
     with `DOGRAH_CREDENTIALS_KEYS_OVERRIDE=sm` to take Secret Manager's value
-    (the normal case after adding a key there for rotation) or `=env` to keep
+    (the last rotation step) or `=env` to keep
     `.env`'s (then update the secret to match). Unsure which key encrypted the
     data? Set the secret to both, comma-separated, and use `=sm`: every listed
     key decrypts;
@@ -531,9 +563,9 @@ and legacy telephony settings). Each value is stored as a
 - **Rotation.** Supported without downtime:
   1. Generate a new key and set the secret to `<new>,<old>` (new first):
      `printf '%s,%s' "$NEW" "$OLD" | gcloud secrets versions add dograh-credentials-encryption-keys --data-file=- --project=dograh-eu`.
-  2. Re-run `configure-env.sh` with `DOGRAH_CREDENTIALS_KEYS_OVERRIDE=sm` (the
-     secret now differs from `.env` on purpose) and `docker compose up -d api`
-     (every api and worker must hold both keys).
+  2. Run Deploy (re-running Deploy for the current version is enough): the
+     secret still holds `<old>`, so `configure-env.sh` takes it without an
+     override and every api and worker restarts holding both keys.
   3. `docker compose exec api python -m scripts.reencrypt_credentials` re-seals
      every row of all five columns under the new key; it exits non-zero and lists
      `table#id` for any row it cannot open.
@@ -562,8 +594,9 @@ GCP is stopped as of 2026-10; this is the plan for when it comes back. Do it in
 this order, so no step leaves an agent without a working tool. The old
 sidecars keep running until step 7.
 
-1. **Deploy.** Create the secrets, run `configure-env.sh`, then Release and
-   Deploy (see [Releases and deploys](#releases-and-deploys)). For the cutover
+1. **Deploy.** Create the secrets, then Release and Deploy (see
+   [Releases and deploys](#releases-and-deploys)); Deploy runs
+   `configure-env.sh`. For the cutover
    window, keep the old tools answering by setting
    `COMPOSE_PROFILES=remote,legacy-sidecars` in the VM's `.env` before the
    deploy. That starts `calendar-shim` and `chmarine-product-service` from
@@ -706,9 +739,11 @@ the full carrier source-IP list. Everything else ships without it.
 
 ## Billing (Stripe), email (Resend) and Google sign-in
 
-All optional. `configure-env.sh` turns each on only when its secret exists.
-`dograh-app-sa` has no project-wide Secret Manager access, so grant it each new
-secret (otherwise the script reports it as skipped and the feature stays off):
+All optional. `configure-env.sh` turns each on only when its secret exists,
+and every Deploy runs it, so the next Deploy after creating a secret turns the
+feature on. `dograh-app-sa` has no project-wide Secret Manager access, so grant
+it each new secret (otherwise the script reports it as skipped and the feature
+stays off):
 
 ```bash
 # For each secret you use: paste the value at the prompt (keeps it out of
@@ -724,19 +759,21 @@ unset V
 # Stripe works the same way: dograh-stripe-secret-key (sk_...) and
 # dograh-stripe-webhook-secret (whsec_...).
 
-# On the app VM:
+# Then run Deploy (the current version is fine once it includes the settings
+# sync). Or, on the app VM:
 cd /opt/lightmove/dograh
-sudo DOGRAH_SQL_IP=<ip> DOGRAH_EMAIL_FROM='LightMove.ai <no-reply@mail.<domain>>' \
-  ./deploy/gcp/configure-env.sh
+sudo ./deploy/gcp/configure-env.sh
 sudo docker compose up -d api fallcha-tools
 ```
 
 `up -d` recreates the containers with the new values; `docker compose restart`
-does not re-read them. `DOGRAH_EMAIL_FROM` is needed on the first run with
-Resend; later runs keep the sender already in `.env`. To turn Google sign-in
-and the platform client off, run the script with `DOGRAH_GOOGLE=off` (a
-deleted secret looks the same to the VM as a missing grant, so the script
-keeps the current values in that case). For the other secrets `set_key` never
+does not re-read them. The sender defaults to
+`LightMove.ai <no-reply@mail.lightmove.ai>`; `DOGRAH_EMAIL_FROM` changes it,
+and later runs keep it. To turn Google sign-in and the platform client off, run
+the script with `DOGRAH_GOOGLE=off` and delete the two secrets, or the next
+Deploy turns them back on (a deleted secret looks the same to the VM as a
+missing grant, so the script keeps the current values in that case). For the
+other secrets `set_key` never
 removes a key, so deleting one later also needs the matching lines removed
 from `.env` by hand. A Secret Manager error other than "absent" or "not
 readable" stops the script rather than switching a feature off.
