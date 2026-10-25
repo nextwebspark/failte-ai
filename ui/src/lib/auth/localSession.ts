@@ -3,9 +3,11 @@
  * leave the auth pages. Shared by every flow that ends in a logged-in user:
  * password login/signup, email verification, password reset, Google.
  *
- * Once the browser is navigating it never resolves, so the caller's button
- * keeps its busy label ("Signing you in...") until the next page paints
- * instead of flashing back to its idle label. It still rejects on failure.
+ * The sign-in page is replaced in history, so Back never returns to it (a
+ * Google callback or email link would re-submit a spent code). Once the
+ * browser is navigating it never resolves, so the caller's button keeps its
+ * busy label ("Signing you in...") until the next page paints instead of
+ * flashing back to its idle label. It still rejects on failure.
  */
 export async function startLocalSession(
   auth: { token: string; user: unknown },
@@ -19,16 +21,7 @@ export async function startLocalSession(
   if (!res.ok) {
     throw new Error("Could not start session");
   }
-  // Back from the next page restores this one from the back/forward cache,
-  // busy button included: reload it instead.
-  window.addEventListener(
-    "pageshow",
-    (event) => {
-      if (event.persisted) window.location.reload();
-    },
-    { once: true },
-  );
-  window.location.href = isSafeNextPath(nextPath) ? nextPath : "/after-sign-in";
+  window.location.replace(isSafeNextPath(nextPath) ? nextPath : "/after-sign-in");
   return new Promise<never>(() => {});
 }
 

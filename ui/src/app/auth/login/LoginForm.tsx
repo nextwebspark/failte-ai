@@ -112,7 +112,7 @@ export function LoginForm({
             required
           />
         </div>
-        <Button type="submit" className="w-full gap-2" disabled={loading}>
+        <Button type="submit" className="w-full" disabled={loading}>
           {loading && <Loader2 aria-hidden className="size-4 animate-spin" />}
           {loading ? "Signing you in..." : "Sign in"}
         </Button>

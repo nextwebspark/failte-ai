@@ -72,4 +72,15 @@ describe("GET /after-sign-in", () => {
     expect((await landing()).location).toBe("/superadmin");
     expect(mocks.redirectUrl).toHaveBeenCalledWith("stack-tok", [{ id: "admin" }]);
   });
+
+  it("falls back instead of failing when the Stack lookup throws", async () => {
+    mocks.provider.mockResolvedValue("stack");
+    mocks.user.mockResolvedValue({
+      getAuthJson: async () => ({ accessToken: "stack-tok" }),
+      listPermissions: async () => [],
+      selectedTeam: { id: "t" },
+    });
+    mocks.redirectUrl.mockRejectedValue(new Error("auth-user failed"));
+    expect(await landing()).toEqual({ status: 307, location: "/workflow/create" });
+  });
 });

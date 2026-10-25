@@ -23,19 +23,19 @@ export async function GET(): Promise<Response> {
 }
 
 async function afterSignInPath(): Promise<string> {
-    const authProvider = await getServerAuthProvider();
-    const user = await getServerUser();
-
-    if (authProvider === 'stack' && user && 'getAuthJson' in user) {
-        const token = await user.getAuthJson();
-        const permissions = 'listPermissions' in user && 'selectedTeam' in user
-            ? await user.listPermissions(user.selectedTeam!) ?? []
-            : [];
-        return getRedirectUrl(token?.accessToken ?? "", permissions);
-    }
-
-    // Local provider (or no Stack user): pick by role and existing agents.
     try {
+        const authProvider = await getServerAuthProvider();
+        const user = await getServerUser();
+
+        if (authProvider === 'stack' && user && 'getAuthJson' in user) {
+            const token = await user.getAuthJson();
+            const permissions = 'listPermissions' in user && 'selectedTeam' in user
+                ? await user.listPermissions(user.selectedTeam!) ?? []
+                : [];
+            return await getRedirectUrl(token?.accessToken ?? "", permissions);
+        }
+
+        // Local provider (or no Stack user): pick by role and existing agents.
         const accessToken = await getServerAccessToken();
         if (accessToken) {
             const headers = { Authorization: `Bearer ${accessToken}` };
@@ -50,7 +50,8 @@ async function afterSignInPath(): Promise<string> {
             }
         }
     } catch (error) {
-        logger.error('[after-sign-in] Error checking workflows:', error);
+        // An error answers with the default landing, never an empty 500.
+        logger.error('[after-sign-in] Error choosing the landing page:', error);
     }
     return '/workflow/create';
 }

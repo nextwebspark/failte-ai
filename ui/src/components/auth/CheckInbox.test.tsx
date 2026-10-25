@@ -34,7 +34,8 @@ describe("CheckInbox", () => {
     vi.clearAllMocks();
     mocks.verifyCode.mockResolvedValue({ data: session });
     mocks.resend.mockResolvedValue({ data: undefined });
-    mocks.startLocalSession.mockResolvedValue(undefined);
+    // Like the real one: never resolves once the browser is navigating.
+    mocks.startLocalSession.mockReturnValue(new Promise(() => {}));
   });
 
   it("keeps only the digits of a pasted code and verifies it", async () => {
