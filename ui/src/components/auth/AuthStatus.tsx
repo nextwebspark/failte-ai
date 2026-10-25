@@ -21,7 +21,8 @@ export function AuthStatus({
       {busy && <Loader2 aria-hidden className="mx-auto size-6 animate-spin text-muted-foreground" />}
       <div className="space-y-1.5">
         <h1 className="text-2xl font-semibold tracking-tight">{title}</h1>
-        <p className="text-sm text-muted-foreground" role={busy ? "status" : undefined}>
+        {/* Always a status region, so a busy card turning into an error is announced. */}
+        <p className="text-sm text-muted-foreground" role="status">
           {message}
         </p>
       </div>

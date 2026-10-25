@@ -37,7 +37,7 @@ export function VerifyEmail({ token }: { token: string | null }) {
           action={{ href: "/auth/login", label: "Back to sign in" }}
         />
       ) : (
-        <AuthStatus title="Verifying your email" message="One moment..." />
+        <AuthStatus busy title="Verifying your email" message="One moment..." />
       )}
     </LocalAuthShell>
   );

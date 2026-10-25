@@ -29,7 +29,7 @@ describe("isSafeNextPath", () => {
 describe("startLocalSession", () => {
   const auth = { token: "tok", user: { id: 1 } };
   const replace = vi.fn();
-  const realLocation = window.location;
+  const realLocation = Object.getOwnPropertyDescriptor(window, "location")!;
 
   beforeEach(() => {
     replace.mockReset();
@@ -37,7 +37,7 @@ describe("startLocalSession", () => {
   });
 
   afterEach(() => {
-    Object.defineProperty(window, "location", { configurable: true, value: realLocation });
+    Object.defineProperty(window, "location", realLocation);
     vi.unstubAllGlobals();
   });
 
