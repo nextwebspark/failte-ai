@@ -1,5 +1,6 @@
 "use client";
 
+import { Loader2 } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -111,8 +112,9 @@ export function LoginForm({
             required
           />
         </div>
-        <Button type="submit" className="w-full" disabled={loading}>
-          {loading ? "Signing in..." : "Sign in"}
+        <Button type="submit" className="w-full gap-2" disabled={loading}>
+          {loading && <Loader2 aria-hidden className="size-4 animate-spin" />}
+          {loading ? "Signing you in..." : "Sign in"}
         </Button>
       </form>
 
