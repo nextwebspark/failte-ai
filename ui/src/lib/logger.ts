@@ -86,7 +86,6 @@ function getCallerInfo(): string {
               // Use the function name as a hint
               const funcName = cleanMatch[1];
               if (funcName === 'Home') filePath = 'page.tsx';
-              else if (funcName === 'AfterSignInPage') filePath = 'after-sign-in/page.tsx';
               else if (funcName.includes('Page')) filePath = `${funcName.replace('Page', '').toLowerCase()}/page.tsx`;
               else filePath = `${funcName}.tsx`;
             }
