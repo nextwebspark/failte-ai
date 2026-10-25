@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { Loader2 } from "lucide-react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
 import { googleStartApiV1AuthGoogleStartGet } from "@/client/sdk.gen";
@@ -29,6 +30,16 @@ export function GoogleSignInButton({
 }) {
   const [loading, setLoading] = useState(false);
 
+  // Back from Google restores this page from the back/forward cache with the
+  // button still busy; make it usable again.
+  useEffect(() => {
+    const onPageShow = (event: PageTransitionEvent) => {
+      if (event.persisted) setLoading(false);
+    };
+    window.addEventListener("pageshow", onPageShow);
+    return () => window.removeEventListener("pageshow", onPageShow);
+  }, []);
+
   const start = async () => {
     setLoading(true);
     const res = await googleStartApiV1AuthGoogleStartGet({
@@ -50,8 +61,8 @@ export function GoogleSignInButton({
 
   return (
     <Button type="button" variant="outline" className="w-full gap-2" onClick={start} disabled={loading}>
-      <GoogleMark />
-      {loading ? "Redirecting..." : label}
+      {loading ? <Loader2 aria-hidden className="size-4 animate-spin" /> : <GoogleMark />}
+      {loading ? "Redirecting to Google..." : label}
     </Button>
   );
 }

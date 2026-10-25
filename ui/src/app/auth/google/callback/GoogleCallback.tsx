@@ -53,7 +53,7 @@ export function GoogleCallback({
           action={{ href: "/auth/login", label: "Back to sign in" }}
         />
       ) : (
-        <AuthStatus title="Signing you in" message="One moment..." />
+        <AuthStatus busy title="Signing you in" message="One moment..." />
       )}
     </LocalAuthShell>
   );
