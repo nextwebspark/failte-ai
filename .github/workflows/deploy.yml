@@ -120,15 +120,19 @@ jobs:
       # cloudsql.backupRuns.delete; see deploy/gcp/README.md) only warns.
       - name: Prune pre-deploy Cloud SQL backups older than 30 days
         continue-on-error: true
+        timeout-minutes: 10
         run: |
           ids=$(gcloud sql backups list --instance "$SQL_INSTANCE" --project "$GCP_PROJECT" \
-            --filter='type=ON_DEMAND AND startTime<-P30D AND description~^pre-deploy' \
-            --format='value(id)')
+            --filter="type=ON_DEMAND AND startTime<-P30D AND description~'^pre-deploy v[0-9]'" \
+            --format='value(id)') || {
+            echo "::warning::could not list Cloud SQL backups; old pre-deploy backups were not pruned"
+            exit 0
+          }
           for id in $ids; do
             if gcloud sql backups delete "$id" --instance "$SQL_INSTANCE" --project "$GCP_PROJECT" --quiet; then
               echo "deleted pre-deploy backup ${id}"
             else
-              echo "::warning::could not delete pre-deploy backup ${id}; the deploy service account needs cloudsql.backupRuns.delete (deploy/gcp/bootstrap.sh apply ci)"
+              echo "::warning::could not delete pre-deploy backup ${id} (see the error above; e.g. the deploy service account lacks cloudsql.backupRuns.delete: deploy/gcp/bootstrap.sh apply ci)"
             fi
           done
 
