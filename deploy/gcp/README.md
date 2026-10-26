@@ -295,9 +295,11 @@ the dry run; re-run with `DOGRAH_RETENTION_PURGE_DRY_RUN=false` to switch
 deletion back on.
 
 Database backups: automated backups 7 days, PITR 7 days, pre-deploy backups
-pruned after 30 days (`deploy.yml` deletes on-demand backups older than 30 days
-after taking a new one; re-run `bootstrap.sh apply ci` once so the deploy
-service account has `cloudsql.backupRuns.delete`).
+pruned after 30 days (`deploy.yml` deletes its own on-demand backups, the ones
+described `pre-deploy v…`, older than 30 days after taking a new one; re-run
+`bootstrap.sh apply ci` once so the deploy service account has
+`cloudsql.backupRuns.delete`, otherwise the prune only warns). On-demand
+backups taken by hand are not pruned: delete them yourself within 30 days.
 
 `bootstrap.sh apply storage` adds a bucket lifecycle rule as a backstop:
 objects under `transcripts/` are deleted after 365 days (the maximum setting).

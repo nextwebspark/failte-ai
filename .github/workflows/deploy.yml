@@ -112,15 +112,28 @@ jobs:
 
       # On-demand backups are kept until deleted, and they hold personal data.
       # The privacy policy promises backups go after 30 days, so prune the
-      # pre-deploy ones here. Automated backups (type AUTOMATED) age out on
-      # their own (retained-backups-count) and are never touched.
+      # pre-deploy ones here: only this workflow's, matched by the description
+      # the step above writes. Backups taken by hand are left for whoever made
+      # them. Automated backups (type AUTOMATED) age out on their own
+      # (retained-backups-count) and are never touched. Housekeeping must not
+      # block a deploy: a failure (e.g. the deploy service account lacking
+      # cloudsql.backupRuns.delete; see deploy/gcp/README.md) only warns.
       - name: Prune pre-deploy Cloud SQL backups older than 30 days
+        continue-on-error: true
+        timeout-minutes: 10
         run: |
           ids=$(gcloud sql backups list --instance "$SQL_INSTANCE" --project "$GCP_PROJECT" \
-            --filter='type=ON_DEMAND AND startTime<-P30D' --format='value(id)')
+            --filter="type=ON_DEMAND AND startTime<-P30D AND description~'^pre-deploy v[0-9]'" \
+            --format='value(id)') || {
+            echo "::warning::could not list Cloud SQL backups; old pre-deploy backups were not pruned"
+            exit 0
+          }
           for id in $ids; do
-            gcloud sql backups delete "$id" --instance "$SQL_INSTANCE" --project "$GCP_PROJECT" --quiet
-            echo "deleted on-demand backup ${id}"
+            if gcloud sql backups delete "$id" --instance "$SQL_INSTANCE" --project "$GCP_PROJECT" --quiet; then
+              echo "deleted pre-deploy backup ${id}"
+            else
+              echo "::warning::could not delete pre-deploy backup ${id} (see the error above; e.g. the deploy service account lacks cloudsql.backupRuns.delete: deploy/gcp/bootstrap.sh apply ci)"
+            fi
           done
 
       - name: SSH reachable (IAP)
