@@ -158,6 +158,10 @@ rm -f "$RUN_DIR/uvicorn.port" "$RUN_DIR/uvicorn_new.port" "$RUN_DIR/uvicorn_old.
 
 alembic -c "$BASE_DIR/api/alembic.ini" upgrade head
 
+# Starter agents for the Create agent gallery (see start_services_docker.sh).
+python -m scripts.sync_agent_templates \
+  || echo "WARNING: could not sync the starter agent templates; keeping the previous ones"
+
 ###############################################################################
 ### 6) Prepare logs
 ###############################################################################

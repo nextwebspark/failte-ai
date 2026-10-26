@@ -29,6 +29,12 @@ fi
 
 alembic -c "$BASE_DIR/api/alembic.ini" upgrade head
 
+# Starter agents for the Create agent gallery, upserted by name, so every
+# release ships its template changes. A failure keeps the previous templates
+# and must not stop calls from being answered.
+python -m scripts.sync_agent_templates \
+  || echo "WARNING: could not sync the starter agent templates; keeping the previous ones"
+
 ###############################################################################
 ### 3) Signal handling — forward TERM/INT to children for clean docker stop
 ###############################################################################

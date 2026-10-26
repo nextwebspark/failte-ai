@@ -1,6 +1,8 @@
 """Write the starter agents to the workflow_templates table.
 
-Run from the repo root with the api environment available:
+The api container runs this on every start, after the migrations
+(scripts/start_services_docker.sh; scripts/run_migrate.sh for Helm). By hand,
+from the repo root with the api environment available:
 
     python -m scripts.sync_agent_templates
 
