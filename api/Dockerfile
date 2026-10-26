@@ -148,6 +148,8 @@ COPY --chown=dograh:dograh ./api ./api
 #     lifecycle.preStop in deploy/helm/dograh/templates/web-deployment.yaml.
 #   reencrypt_credentials.py, sync_skill_library.py — operator one-offs, run
 #     as `docker compose exec api python -m scripts.<name>`.
+#   sync_agent_templates.py  — writes the starter agents (Create agent
+#     gallery); run by start_services_docker.sh and run_migrate.sh.
 COPY --chown=dograh:dograh \
      ./scripts/start_services_docker.sh \
      ./scripts/run_migrate.sh \
@@ -158,6 +160,7 @@ COPY --chown=dograh:dograh \
      ./scripts/drain_web.sh \
      ./scripts/reencrypt_credentials.py \
      ./scripts/sync_skill_library.py \
+     ./scripts/sync_agent_templates.py \
      ./scripts/
 
 # ts_validator Node deps (built in ts-deps stage with full node:22-slim image).
