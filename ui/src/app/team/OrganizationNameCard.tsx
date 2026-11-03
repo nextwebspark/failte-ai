@@ -1,11 +1,12 @@
 "use client";
 
+import { Building2 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
 import { renameCurrentOrganizationApiV1OrganizationsCurrentPatch } from "@/client/sdk.gen";
+import { SettingRow, SettingsSection } from "@/components/settings/SettingsLayout";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { useOrgConfig } from "@/context/OrgConfigContext";
 import { detailFromError } from "@/lib/apiError";
@@ -32,25 +33,30 @@ export function OrganizationNameCard() {
   };
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Workspace name</CardTitle>
-        <CardDescription>Shown to members and in invitation emails.</CardDescription>
-      </CardHeader>
-      <CardContent>
-        <form onSubmit={save} className="flex gap-2">
-          <Input
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="Acme Voice"
-            maxLength={100}
-            required
-          />
-          <Button type="submit" disabled={saving || !name.trim() || name.trim() === current}>
-            {saving ? "Saving..." : "Save"}
-          </Button>
-        </form>
-      </CardContent>
-    </Card>
+    <SettingsSection
+      id="workspace"
+      icon={Building2}
+      tone="brand"
+      title="Workspace"
+      description="Shown to members and in invitation emails."
+    >
+      <form onSubmit={save}>
+        <SettingRow label="Workspace name" htmlFor="settings-workspace-name">
+          <div className="flex gap-2">
+            <Input
+              id="settings-workspace-name"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Acme Voice"
+              maxLength={100}
+              required
+            />
+            <Button type="submit" disabled={saving || !name.trim() || name.trim() === current}>
+              {saving ? "Saving..." : "Save"}
+            </Button>
+          </div>
+        </SettingRow>
+      </form>
+    </SettingsSection>
   );
 }

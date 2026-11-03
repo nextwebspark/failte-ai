@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import React from "react";
 
 import { BrandLogo } from "@/components/BrandLogo";
+import { firstSettingsUrl, isSettingsRoute } from "@/components/settings/settingsNav";
 import ThemeToggle from "@/components/ThemeSwitcher";
 import {
   Sidebar,
@@ -154,6 +155,7 @@ export function AppSidebar({ docked = true }: { docked?: boolean }) {
   // the pathname is now /workflow/<id>/run/<runId>.
   const isWorkspaceRowActive = (url: string) =>
     pathname.startsWith(url) || Boolean(returnTo?.startsWith(url));
+  const settingsUrl = firstSettingsUrl(role === null ? null : can);
 
   const workspaceNav = NAV_SECTIONS.map((section) => ({
     ...section,
@@ -178,9 +180,9 @@ export function AppSidebar({ docked = true }: { docked?: boolean }) {
           <SidebarMenuItem key={item.title}>
             <SidebarLink
               title={item.title}
-              url={item.url}
+              url={item.settingsHub ? settingsUrl : item.url}
               icon={item.icon}
-              isActive={isWorkspaceRowActive(item.url)}
+              isActive={item.settingsHub ? isSettingsRoute(pathname) : isWorkspaceRowActive(item.url)}
               showWarningDot={item.showsTelephonyWarning && hasTelephonyWarning}
             />
           </SidebarMenuItem>

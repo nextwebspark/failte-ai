@@ -2,16 +2,13 @@
 
 import { PageActions } from "@/components/layout/PageActionsSlot";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useOrgConfig } from "@/context/OrgConfigContext";
 
 import { InvitationsCard } from "./InvitationsCard";
 import { InviteDialog } from "./InviteDialog";
 import { MembersCard } from "./MembersCard";
-import { OrganizationNameCard } from "./OrganizationNameCard";
 import { useTeam } from "./useTeam";
 
 export default function TeamPage() {
-  const { can } = useOrgConfig();
   const { members, invitations, loading, error, refresh, canManage } = useTeam();
 
   return (
@@ -21,8 +18,7 @@ export default function TeamPage() {
           <InviteDialog onInvited={() => void refresh()} />
         </PageActions>
       )}
-      <div className="w-full max-w-3xl space-y-6">
-        {can("org:manage") && <OrganizationNameCard />}
+      <div className="w-full space-y-6">
         {error ? (
           <p className="text-sm text-destructive">{error}</p>
         ) : loading ? (
