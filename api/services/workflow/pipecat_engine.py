@@ -2472,6 +2472,9 @@ class PipecatEngine:
     async def _open_mcp_sessions(self, agent: AgentRuntime | None = None) -> None:
         """Connect every MCP-category tool referenced by any workflow node.
         Failures degrade (session marked unavailable); never raises."""
+        from api.services.tool_integrations.call_context import (
+            tools_service_headers,
+        )
         from api.services.workflow.tools.mcp_tool import (
             McpDefinitionError,
             validate_mcp_definition,
@@ -2526,6 +2529,9 @@ class PipecatEngine:
                     tools_filter=cfg["tools_filter"],
                     timeout_secs=cfg["timeout_secs"],
                     sse_read_timeout_secs=cfg["sse_read_timeout_secs"],
+                    extra_headers=tools_service_headers(
+                        cfg["url"], self._call_context_vars
+                    ),
                 )
                 agent.mcp_sessions[tool.tool_uuid] = session
                 await session.start_managed()

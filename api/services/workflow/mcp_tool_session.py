@@ -10,6 +10,7 @@ dead MCP server.
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Mapping
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Set
 
 from loguru import logger
@@ -30,16 +31,16 @@ def build_streamable_http_params(
     credential: Optional["ExternalCredentialModel"],
     timeout_secs: int,
     sse_read_timeout_secs: int,
+    extra_headers: Mapping[str, str] | None = None,
 ) -> StreamableHttpParameters:
     """Build Pipecat/MCP streamable-HTTP params, injecting the auth header
-    from an ExternalCredentialModel (reuses the http_api credential path)."""
-    headers: Optional[Dict[str, str]] = None
-    if credential is not None:
-        auth = build_auth_header(credential)
-        headers = auth or None
+    from an ExternalCredentialModel (reuses the http_api credential path).
+    ``extra_headers`` never override the auth header."""
+    auth = build_auth_header(credential) if credential is not None else {}
+    headers = {**(extra_headers or {}), **auth}
     return StreamableHttpParameters(
         url=url,
-        headers=headers,
+        headers=headers or None,
         timeout=float(timeout_secs),
         sse_read_timeout=float(sse_read_timeout_secs),
     )
@@ -58,6 +59,7 @@ class McpToolSession:
         tools_filter: List[str],
         timeout_secs: int,
         sse_read_timeout_secs: int,
+        extra_headers: Mapping[str, str] | None = None,
     ) -> None:
         self._tool_uuid = tool_uuid
         self._tool_name = tool_name
@@ -69,6 +71,8 @@ class McpToolSession:
         self._tools_filter = tools_filter or None
         self._timeout_secs = timeout_secs
         self._sse_read_timeout_secs = sse_read_timeout_secs
+        # Per-call headers, e.g. call_context.tools_service_headers.
+        self._extra_headers = dict(extra_headers or {})
 
         self._client: Optional[MCPClient] = None
         self._session: Any = None  # mcp.ClientSession (read once after start)
@@ -132,6 +136,7 @@ class McpToolSession:
                 credential=self._credential,
                 timeout_secs=self._timeout_secs,
                 sse_read_timeout_secs=self._sse_read_timeout_secs,
+                extra_headers=self._extra_headers,
             )
             self._client = MCPClient(params, tools_filter=self._tools_filter)
             await self._client.start()
