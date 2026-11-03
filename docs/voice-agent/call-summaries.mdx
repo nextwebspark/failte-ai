@@ -1,0 +1,33 @@
+---
+title: "Call summary emails"
+description: "Email the business after each phone call where the agent took a message or booked or cancelled an appointment."
+---
+
+An agent can email a short summary after each phone call that leaves the team something to act on: the caller left a callback number, or the agent booked or cancelled an appointment in a connected [Google Calendar](/voice-agent/tools/integrations). Calls where the agent only answered a question send nothing.
+
+The **AI Receptionist** asks where to send them while you set it up (**Send call summaries to**, filled in with your own address). Leave it empty to turn summaries off.
+
+## Change who gets them
+
+Open the agent, go to **Advanced settings → Call summaries**, and turn on **Email call summaries**. Enter up to five addresses, separated by commas, then save and publish the agent.
+
+## What the email contains
+
+- The agent's name and when the call started, in your workspace's time zone (**Settings → Preferences**; UTC when none is set)
+- The caller's name, callback number and reason, when the agent captured them (the receptionist captures `caller_name`, `callback_number` and `call_reason`)
+- Each appointment booked or cancelled during the call
+- A link to the call in LightMove.ai
+
+The email never links to the recording or transcript. They stay behind sign-in on the call page.
+
+## When it is sent
+
+- Phone calls only. Web calls from the editor and from the website widget, and text chats, send no summary.
+- Once per call, after the call ends and its details are saved. A summary is never sent twice, even if post-call processing runs again.
+- A failed send is retried twice, a few seconds apart. It never affects the call itself.
+
+<Note>
+Self-hosting? Emails need an email provider (`EMAIL_PROVIDER=smtp` or `resend`). With `EMAIL_PROVIDER=none` summaries are skipped and their content is not written to the log.
+</Note>
+
+Need the call data in another system instead? Use a [Webhook](/voice-agent/webhook) node.

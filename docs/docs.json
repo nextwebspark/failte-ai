@@ -111,6 +111,7 @@
                   "voice-agent/webhook"
                 ]
               },
+              "voice-agent/call-summaries",
               "voice-agent/add-to-website"
             ]
           },
