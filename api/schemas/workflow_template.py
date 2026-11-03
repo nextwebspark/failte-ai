@@ -1,4 +1,5 @@
 from datetime import datetime
+from enum import StrEnum
 from typing import Literal
 
 from pydantic import BaseModel, Field
@@ -6,12 +7,26 @@ from pydantic import BaseModel, Field
 SETUP_VALUE_MAX_LENGTH = 2000
 
 
+class TemplateSetupPrefill(StrEnum):
+    """What an answer starts as before the user edits it."""
+
+    USER_EMAIL = "user_email"
+
+
+class TemplateSetupSetting(StrEnum):
+    """An agent setting an answer configures instead of filling placeholders."""
+
+    # Comma-separated addresses that receive call summaries.
+    CALL_SUMMARY_RECIPIENTS = "call_summary_recipients"
+
+
 class TemplateSetupField(BaseModel):
     """One question the Create agent dialog asks before copying a template.
 
     The answer replaces every ``{{key}}`` placeholder in the template. A
     placeholder may carry a fallback (``{{key | fallback:text}}``), which is
-    used when an optional field is left empty.
+    used when an optional field is left empty. A field with a ``setting``
+    configures that agent setting instead.
     """
 
     key: str = Field(pattern=r"^[a-z][a-z0-9_]*$", max_length=64)
@@ -21,6 +36,10 @@ class TemplateSetupField(BaseModel):
     placeholder: str | None = Field(default=None, max_length=300)
     required: bool = True
     max_length: int = Field(default=500, ge=1, le=SETUP_VALUE_MAX_LENGTH)
+    # The dialog starts the answer from this; the server uses it when the
+    # answer is not sent at all.
+    prefill: TemplateSetupPrefill | None = None
+    setting: TemplateSetupSetting | None = None
 
 
 class WorkflowTemplateResponse(BaseModel):

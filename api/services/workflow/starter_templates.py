@@ -9,7 +9,11 @@ business. ``python -m scripts.sync_agent_templates`` writes them to the
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
-from api.schemas.workflow_template import TemplateSetupField
+from api.schemas.workflow_template import (
+    TemplateSetupField,
+    TemplateSetupPrefill,
+    TemplateSetupSetting,
+)
 from api.services.workflow.agent_builder import (
     AgentSpec,
     CapturedFieldSpec,
@@ -178,6 +182,19 @@ STARTER_TEMPLATES: list[StarterTemplate] = [
                 placeholder="Free parking behind the building. We take card and cash.",
                 required=False,
                 max_length=1500,
+            ),
+            TemplateSetupField(
+                key="call_summary_email",
+                label="Send call summaries to",
+                type="email",
+                help=(
+                    "An email after each phone call where your agent takes a "
+                    "message or a booking. Separate several addresses with commas."
+                ),
+                placeholder="you@bloomdental.ie",
+                required=False,
+                prefill=TemplateSetupPrefill.USER_EMAIL,
+                setting=TemplateSetupSetting.CALL_SUMMARY_RECIPIENTS,
             ),
         ],
         definition=_with_integration_tools(

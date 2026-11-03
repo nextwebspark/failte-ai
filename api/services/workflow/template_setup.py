@@ -1,13 +1,24 @@
 """Fill a workflow template with the answers to its setup questions."""
 
 import re
+from collections.abc import Mapping
 from typing import Any
 
 from pydantic import TypeAdapter, ValidationError
 
-from api.schemas.workflow_template import TemplateSetupField
+from api.schemas.call_summary_email import (
+    CALL_SUMMARY_EMAIL_KEY,
+    MAX_CALL_SUMMARY_RECIPIENTS,
+    CallSummaryEmailConfiguration,
+)
+from api.schemas.workflow_template import (
+    TemplateSetupField,
+    TemplateSetupPrefill,
+    TemplateSetupSetting,
+)
 
 _FIELDS = TypeAdapter(list[TemplateSetupField])
+_ADDRESS_SEPARATORS = re.compile(r"[,;\s]+")
 
 
 class TemplateSetupError(ValueError):
@@ -69,7 +80,59 @@ def fill_template_values(
             return [fill(item) for item in node]
         return node
 
-    return fill(definition)
+    filled: dict[str, Any] = fill(definition)
+    return filled
+
+
+def setup_configurations(
+    fields: list[TemplateSetupField],
+    values: Mapping[str, str],
+    *,
+    user_email: str | None,
+) -> dict[str, Any]:
+    """The workflow configuration set by the answers to *fields* that have a
+    ``setting``.
+
+    An answer that was not sent at all falls back to the field's prefill; one
+    sent blank leaves the setting off. Raises TemplateSetupError for an answer
+    the setting rejects.
+    """
+    configurations: dict[str, Any] = {}
+    for field in fields:
+        if field.setting is None:
+            continue
+        if field.key in values:
+            answer = values[field.key].strip()
+        else:
+            answer = _prefill(field.prefill, user_email)
+        match field.setting:
+            case TemplateSetupSetting.CALL_SUMMARY_RECIPIENTS:
+                configurations[CALL_SUMMARY_EMAIL_KEY] = _call_summary_email(
+                    field, answer
+                )
+    return configurations
+
+
+def _prefill(prefill: TemplateSetupPrefill | None, user_email: str | None) -> str:
+    match prefill:
+        case TemplateSetupPrefill.USER_EMAIL:
+            return user_email or ""
+        case None:
+            return ""
+
+
+def _call_summary_email(field: TemplateSetupField, answer: str) -> dict[str, Any]:
+    recipients = [a for a in _ADDRESS_SEPARATORS.split(answer) if a]
+    try:
+        setting = CallSummaryEmailConfiguration(
+            enabled=bool(recipients), recipients=recipients
+        )
+    except ValidationError:
+        raise TemplateSetupError(
+            f"{field.label}: enter up to {MAX_CALL_SUMMARY_RECIPIENTS} email "
+            "addresses, separated by commas."
+        ) from None
+    return setting.model_dump(mode="json")
 
 
 INTEGRATION_TOOL_PREFIX = "integration:"

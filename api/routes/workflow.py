@@ -103,6 +103,7 @@ from api.services.workflow.template_setup import (
     attach_integration_tools,
     fill_template_values,
     parse_setup_fields,
+    setup_configurations,
 )
 from api.services.workflow.tool_name_validation import (
     validate_workflow_tool_name_collisions,
@@ -1609,10 +1610,12 @@ async def duplicate_workflow_template(
         )
 
     try:
+        setup_fields = parse_setup_fields(template.setup_fields)
         filled = fill_template_values(
-            template.template_json,
-            parse_setup_fields(template.setup_fields),
-            request.values,
+            template.template_json, setup_fields, request.values
+        )
+        workflow_configurations = setup_configurations(
+            setup_fields, request.values, user_email=user.email
         )
     except TemplateSetupError as e:
         raise HTTPException(status_code=422, detail=str(e))
@@ -1650,6 +1653,7 @@ async def duplicate_workflow_template(
         workflow_def,
         user.id,
         user.selected_organization_id,
+        workflow_configurations=workflow_configurations,
     )
 
     if trigger_paths:
