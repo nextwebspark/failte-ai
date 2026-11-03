@@ -1,9 +1,24 @@
 from datetime import datetime
+from enum import StrEnum
 from typing import Literal
 
 from pydantic import BaseModel, Field
 
+from api.schemas.appointment_hours import AppointmentHours
+
 SETUP_VALUE_MAX_LENGTH = 2000
+
+
+class SetupFieldType(StrEnum):
+    """How the Create agent dialog asks a setup question."""
+
+    TEXT = "text"
+    TEXTAREA = "textarea"
+    URL = "url"
+    EMAIL = "email"
+    PHONE = "phone"
+    # Answered with the request's structured ``appointment_hours``.
+    APPOINTMENT_HOURS = "appointment_hours"
 
 
 class TemplateSetupField(BaseModel):
@@ -12,11 +27,15 @@ class TemplateSetupField(BaseModel):
     The answer replaces every ``{{key}}`` placeholder in the template. A
     placeholder may carry a fallback (``{{key | fallback:text}}``), which is
     used when an optional field is left empty.
+
+    An ``appointment_hours`` field is answered with the request's structured
+    ``appointment_hours`` (not with ``values``); its placeholder becomes a
+    sentence describing those hours.
     """
 
     key: str = Field(pattern=r"^[a-z][a-z0-9_]*$", max_length=64)
     label: str = Field(min_length=1, max_length=120)
-    type: Literal["text", "textarea", "url", "email", "phone"] = "text"
+    type: SetupFieldType = SetupFieldType.TEXT
     help: str | None = Field(default=None, max_length=300)
     placeholder: str | None = Field(default=None, max_length=300)
     required: bool = True
@@ -47,3 +66,9 @@ class DuplicateTemplateRequest(BaseModel):
     # The tool to attach for each of the template's integrations, keyed by
     # provider, e.g. {"google-calendar": "<tool uuid>"}.
     integration_tools: dict[str, str] = Field(default_factory=dict)
+    appointment_hours: AppointmentHours | None = Field(
+        default=None,
+        description="Answer to the template's appointment_hours question. Goes "
+        "into the agent's prompt and, when Google Calendar is attached, becomes "
+        "that connection's booking hours.",
+    )

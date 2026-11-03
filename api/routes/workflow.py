@@ -25,6 +25,7 @@ from api.enums import (
     WorkflowStatus,
 )
 from api.schemas.ai_model_configuration import OrganizationAIModelConfigurationV2
+from api.schemas.appointment_hours import CalendarHoursStatus
 from api.schemas.privacy import DeleteWorkflowRunDataResponse
 from api.schemas.workflow import WorkflowRunResponseSchema
 from api.schemas.workflow_configurations import WorkflowConfigurationDefaults
@@ -33,7 +34,12 @@ from api.schemas.workflow_template import (
     WorkflowTemplateResponse,
 )
 from api.sdk_expose import sdk_expose
-from api.services.auth.depends import get_user, requires
+from api.services.auth.depends import (
+    OrgMembership,
+    get_org_membership,
+    get_user,
+    requires,
+)
 from api.services.auth.permissions import Permission
 from api.services.configuration.ai_model_configuration import (
     WORKFLOW_MODEL_CONFIGURATION_V2_OVERRIDE_KEY,
@@ -78,12 +84,17 @@ from api.services.privacy.call_erasure import (
 from api.services.rate_limit import RateLimiter, get_rate_limiter
 from api.services.reports import generate_workflow_report_csv
 from api.services.storage import storage_fs
+from api.services.tool_integrations import Actor
 from api.services.workflow.agent_builder import (
     AgentBuilderError,
     AgentBuilderRequest,
     AgentSpecGenerator,
     build_agent_workflow,
     default_agent_spec_generator,
+)
+from api.services.workflow.appointment_hours import (
+    update_calendar_booking_hours,
+    with_appointment_hours,
 )
 from api.services.workflow.configuration_policy import (
     ExternalPBXConfigurationDisabledError,
@@ -329,6 +340,17 @@ class WorkflowResponse(BaseModel):
     version_number: int | None = None
     version_status: str | None = None
     workflow_uuid: str | None = None
+
+
+class TemplateWorkflowResponse(WorkflowResponse):
+    """An agent created from a template."""
+
+    calendar_hours: CalendarHoursStatus | None = Field(
+        default=None,
+        description="Whether the appointment hours were saved as the attached "
+        "Google Calendar connection's booking hours; null when there was "
+        "nothing to save.",
+    )
 
 
 class WorkflowListResponse(BaseModel):
@@ -1587,17 +1609,21 @@ async def get_workflow_templates() -> List[WorkflowTemplateResponse]:
     dependencies=requires(Permission.AGENTS_WRITE),
 )
 async def duplicate_workflow_template(
-    request: DuplicateTemplateRequest, user: UserModel = Depends(get_user)
-) -> WorkflowResponse:
+    request: DuplicateTemplateRequest,
+    user: UserModel = Depends(get_user),
+    membership: OrgMembership = Depends(get_org_membership),
+) -> TemplateWorkflowResponse:
     """
     Duplicate a workflow template to create a new workflow for the user.
 
     Args:
         request: The duplicate template request
         user: The authenticated user
+        membership: The user's role, which decides whether the appointment
+            hours may also change the attached calendar's booking hours
 
     Returns:
-        The newly created workflow
+        The newly created workflow, and what happened to those booking hours
     """
     template_client = WorkflowTemplateClient()
     template = await template_client.get_workflow_template(request.template_id)
@@ -1609,10 +1635,11 @@ async def duplicate_workflow_template(
         )
 
     try:
+        fields = parse_setup_fields(template.setup_fields)
         filled = fill_template_values(
             template.template_json,
-            parse_setup_fields(template.setup_fields),
-            request.values,
+            fields,
+            with_appointment_hours(fields, request.values, request.appointment_hours),
         )
     except TemplateSetupError as e:
         raise HTTPException(status_code=422, detail=str(e))
@@ -1659,6 +1686,14 @@ async def duplicate_workflow_template(
             trigger_paths=trigger_paths,
         )
 
+    # After creating the agent: failing to save the hours must not lose it.
+    calendar_hours = await update_calendar_booking_hours(
+        request.appointment_hours,
+        request.integration_tools,
+        Actor(organization_id=membership.organization_id, user=membership.user),
+        may_change_settings=membership.can(Permission.INTEGRATIONS_WRITE),
+    )
+
     return {
         "id": workflow.id,
         "name": workflow.name,
@@ -1673,6 +1708,7 @@ async def duplicate_workflow_template(
         "workflow_configurations": mask_workflow_configurations(
             workflow.workflow_configurations, drop_secrets=secrets_hidden_for(user)
         ),
+        "calendar_hours": calendar_hours,
     }
 
 

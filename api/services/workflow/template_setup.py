@@ -73,6 +73,8 @@ def fill_template_values(
 
 
 INTEGRATION_TOOL_PREFIX = "integration:"
+# The tools-service provider id of Google Calendar.
+GOOGLE_CALENDAR = "google-calendar"
 
 
 def attach_integration_tools(

@@ -9,6 +9,7 @@ mypy --strict --follow-imports=silent \
   api/db/encrypted_json.py \
   api/errors/account.py \
   api/routes/auth.py \
+  api/schemas/appointment_hours.py \
   api/schemas/auth.py \
   api/services/auth/account_dependencies.py \
   api/services/auth/accounts.py \
@@ -40,6 +41,7 @@ mypy --strict --follow-imports=silent \
   api/services/skills \
   api/services/tool_integrations \
   api/services/workflow/agent_builder.py \
+  api/services/workflow/appointment_hours.py \
   api/services/workflow/pipecat_engine_skills.py \
   api/services/workflow/skill_ref_validation.py \
   api/utils/text.py \
