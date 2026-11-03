@@ -2,6 +2,7 @@ import type {
     AmbientNoiseConfigurationDefaults,
     CallDisclosureConfiguration as GeneratedCallDisclosureConfiguration,
     CallDispositionOption as GeneratedCallDispositionOption,
+    CallSummaryEmailConfiguration,
     OrganizationAiModelConfigurationV2,
     WorkflowConfigurationDefaults as GeneratedWorkflowConfigurationDefaults,
 } from "@/client/types.gen";
@@ -206,6 +207,7 @@ export type WorkflowConfigurations = WorkflowConfigurationBase & {
     text_chat_inactivity_timeout_seconds?: number;  // End inactive text chats after this many seconds
     external_pbx_field_mappings: ExternalPBXFieldMapping[];
     external_pbx_lead_headers: string[];  // Extra lead fields to capture from the inbound INVITE
+    call_summary_email?: CallSummaryEmailConfiguration;  // Who is emailed after calls with a message or booking
     model_overrides?: ModelOverrides;  // Per-workflow model configuration overrides
     model_configuration_v2_override?: OrganizationAiModelConfigurationV2;  // Full v2 model configuration override
     [key: string]: unknown;  // Allow additional properties for future configurations

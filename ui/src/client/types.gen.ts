@@ -1179,6 +1179,26 @@ export type CallEventsSettings = {
 };
 
 /**
+ * CallSummaryEmailConfiguration
+ *
+ * Who hears about calls where the agent took a message or a booking.
+ */
+export type CallSummaryEmailConfiguration = {
+    /**
+     * Enabled
+     *
+     * Email a summary after each phone call where the agent took a message or booked or cancelled an appointment.
+     */
+    enabled?: boolean;
+    /**
+     * Recipients
+     *
+     * Addresses that receive the summaries.
+     */
+    recipients?: Array<string>;
+};
+
+/**
  * CallType
  */
 export type CallType = 'inbound' | 'outbound';
@@ -9049,7 +9069,8 @@ export type TelnyxConfigurationRequest = {
  *
  * The answer replaces every ``{{key}}`` placeholder in the template. A
  * placeholder may carry a fallback (``{{key | fallback:text}}``), which is
- * used when an optional field is left empty.
+ * used when an optional field is left empty. A field with a ``setting``
+ * configures that agent setting instead.
  */
 export type TemplateSetupField = {
     /**
@@ -9080,7 +9101,23 @@ export type TemplateSetupField = {
      * Max Length
      */
     max_length?: number;
+    prefill?: TemplateSetupPrefill | null;
+    setting?: TemplateSetupSetting | null;
 };
+
+/**
+ * TemplateSetupPrefill
+ *
+ * What an answer starts as before the user edits it.
+ */
+export type TemplateSetupPrefill = 'user_email';
+
+/**
+ * TemplateSetupSetting
+ *
+ * An agent setting an answer configures instead of filling placeholders.
+ */
+export type TemplateSetupSetting = 'call_summary_recipients';
 
 /**
  * TextChatInactivityTimeoutConstraints
@@ -10665,6 +10702,10 @@ export type WorkflowConfigurationDefaults = {
      * External Pbx Lead Headers
      */
     external_pbx_lead_headers?: Array<string>;
+    /**
+     * Email the business after each phone call where the agent took a message or booked or cancelled an appointment.
+     */
+    call_summary_email?: CallSummaryEmailConfiguration;
     [key: string]: unknown;
 };
 

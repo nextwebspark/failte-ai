@@ -5,6 +5,7 @@ import type { IntegrationConnectionResponse, WorkflowTemplateResponse } from '@/
 import {
     agentNameFor,
     filterTemplates,
+    initialAnswers,
     missingAnswer,
     previewParts,
     sortTemplates,
@@ -65,6 +66,16 @@ describe('the gallery', () => {
 });
 
 describe('setting a template up', () => {
+    it('starts each answer from its prefill, else empty', () => {
+        const fields = [...FIELDS, { key: 'call_summary_email', label: 'Send to', prefill: 'user_email' as const }];
+        expect(initialAnswers(fields, { userEmail: 'owner@bloom.ie' })).toEqual({
+            business_name: '',
+            address: '',
+            call_summary_email: 'owner@bloom.ie',
+        });
+        expect(initialAnswers(fields, { userEmail: null }).call_summary_email).toBe('');
+    });
+
     it('finds the first unanswered required question', () => {
         expect(missingAnswer(FIELDS, { business_name: '  ', address: '' })?.key).toBe('business_name');
         expect(missingAnswer(FIELDS, { business_name: 'Bloom', address: '' })).toBeNull();
