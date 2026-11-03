@@ -1,9 +1,10 @@
 """Appointment hours of an agent created from a template.
 
-A template asks for them with an ``appointment_hours`` setup field. The
-answer (``AppointmentHours``) becomes a sentence in the agent's prompt and,
-when the agent is created with Google Calendar attached, the booking hours of
-that calendar connection, so the agent and the calendar offer the same times.
+A template asks for them with an ``appointment_hours`` setup field, answered
+only when the agent books with Google Calendar. The answer
+(``AppointmentHours``) becomes a sentence in the agent's prompt and, when the
+request says so (``apply_to_calendar``), the booking hours of that calendar
+connection, so the agent and the calendar offer the same times.
 """
 
 from __future__ import annotations
@@ -22,7 +23,11 @@ from api.schemas.appointment_hours import (
     Weekday,
 )
 from api.schemas.integrations import IntegrationConnectionResponse
-from api.schemas.workflow_template import SetupFieldType, TemplateSetupField
+from api.schemas.workflow_template import (
+    DuplicateTemplateRequest,
+    SetupFieldType,
+    TemplateSetupField,
+)
 from api.services.tool_integrations import Actor, get_integration_service
 from api.services.workflow.template_setup import GOOGLE_CALENDAR, TemplateSetupError
 
@@ -59,7 +64,7 @@ def _days_phrase(days: Sequence[Weekday]) -> str:
 
 
 def _clock(hour: int) -> str:
-    return "midnight" if hour in (0, 24) else f"{hour}:00"
+    return "midnight" if hour == 24 else f"{hour}:00"
 
 
 def _window(open_hour: int, close_hour: int) -> str:
@@ -86,20 +91,22 @@ def describe_appointment_hours(hours: AppointmentHours) -> str:
 
 
 def with_appointment_hours(
-    fields: Sequence[TemplateSetupField],
-    values: Mapping[str, str],
-    hours: AppointmentHours | None,
+    fields: Sequence[TemplateSetupField], request: DuplicateTemplateRequest
 ) -> dict[str, str]:
-    """*values* plus the answer to each ``appointment_hours`` field: the
-    sentence for *hours*, or nothing when none were given (old clients).
+    """The request's ``values`` plus the answer to each ``appointment_hours``
+    field: the sentence for its hours, or nothing when none were given.
 
-    Raises TemplateSetupError for hours the template doesn't ask for, or for
-    such a field answered as text in *values*.
+    Raises TemplateSetupError for hours the template doesn't ask for, hours
+    without Google Calendar attached (only bookings use them), or such a
+    field answered as text.
     """
+    hours = request.appointment_hours
     keys = [f.key for f in fields if f.type == SetupFieldType.APPOINTMENT_HOURS]
     if hours is not None and not keys:
         raise TemplateSetupError("This template doesn't ask for appointment hours.")
-    answers = dict(values)
+    if hours is not None and GOOGLE_CALENDAR not in request.integration_tools:
+        raise TemplateSetupError("Appointment hours need Google Calendar attached.")
+    answers = dict(request.values)
     for key in keys:
         if answers.get(key, "").strip():
             raise TemplateSetupError(
@@ -107,6 +114,16 @@ def with_appointment_hours(
             )
         answers[key] = describe_appointment_hours(hours) if hours else ""
     return answers
+
+
+def _books_in(
+    connection: IntegrationConnectionResponse, hours: AppointmentHours
+) -> bool:
+    """Whether the connection's stored settings already are *hours*."""
+    return all(
+        connection.config.get(key) == value
+        for key, value in calendar_config_patch(hours).items()
+    )
 
 
 def calendar_config_patch(hours: AppointmentHours) -> dict[str, JsonValue]:
@@ -151,46 +168,48 @@ async def _connection_of_tool(
 
 
 async def update_calendar_booking_hours(
-    hours: AppointmentHours | None,
-    integration_tools: Mapping[str, str],
+    request: DuplicateTemplateRequest,
     actor: Actor,
     *,
     may_change_settings: bool,
     calendar_settings: Callable[[], CalendarSettings] | None = None,
 ) -> CalendarHoursStatus | None:
-    """Make *hours* the booking hours of the Google Calendar connection whose
-    tool the new agent uses (``integration_tools``).
+    """Make the request's appointment hours the booking hours of the Google
+    Calendar connection whose tool the new agent uses, when it asks to
+    (``apply_to_calendar``).
 
-    Returns None when there is nothing to do (no hours, or no calendar
-    attached). The agent already exists, so a tools-service failure is
-    reported as ``FAILED`` (for the caller to point the user at
-    Integrations), not raised.
-    *may_change_settings* is whether the member's role allows changing
-    integration settings (as ``PATCH /integrations/connections/{id}`` does).
+    Returns None when there is nothing to do. Best-effort: the agent already
+    exists, so any failure is reported as ``FAILED`` (for the caller to point
+    the user at Integrations), never raised. *may_change_settings* is whether
+    the member's role allows changing integration settings (as
+    ``PATCH /integrations/connections/{id}`` does).
     """
-    tool_uuid = integration_tools.get(GOOGLE_CALENDAR)
-    if hours is None or not tool_uuid:
+    hours = request.appointment_hours
+    tool_uuid = request.integration_tools.get(GOOGLE_CALENDAR)
+    if not request.apply_to_calendar or hours is None or not tool_uuid:
         return None
     if not may_change_settings:
         return CalendarHoursStatus.NOT_ALLOWED
+    org = actor.organization_id
     try:
         settings = (calendar_settings or get_integration_service)()
         connection = await _connection_of_tool(settings, actor, tool_uuid)
         if connection is None:
             logger.warning(
                 f"No Google Calendar connection uses tool {tool_uuid} in org "
-                f"{actor.organization_id}; booking hours not saved"
+                f"{org}; booking hours not saved"
             )
             return CalendarHoursStatus.FAILED
+        if _books_in(connection, hours):
+            return CalendarHoursStatus.UPDATED
         await settings.update_config(actor, connection.id, calendar_config_patch(hours))
     except IntegrationError as exc:
         logger.warning(
-            f"Saving booking hours for org {actor.organization_id} failed: "
-            f"{type(exc).__name__}: {exc}"
+            f"Saving booking hours for org {org} failed: {type(exc).__name__}: {exc}"
         )
         return CalendarHoursStatus.FAILED
-    logger.info(
-        f"Saved booking hours of connection {connection.id} for org "
-        f"{actor.organization_id}"
-    )
+    except Exception:  # noqa: BLE001 - best-effort: the agent is already created
+        logger.exception(f"Saving booking hours for org {org} failed unexpectedly")
+        return CalendarHoursStatus.FAILED
+    logger.info(f"Saved booking hours of connection {connection.id} for org {org}")
     return CalendarHoursStatus.UPDATED

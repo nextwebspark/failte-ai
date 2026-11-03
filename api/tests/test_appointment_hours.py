@@ -26,7 +26,11 @@ from api.errors.integrations import (
 from api.routes.workflow import router
 from api.schemas.appointment_hours import AppointmentHours, CalendarHoursStatus
 from api.schemas.integrations import IntegrationConnectionResponse
-from api.schemas.workflow_template import SetupFieldType, TemplateSetupField
+from api.schemas.workflow_template import (
+    DuplicateTemplateRequest,
+    SetupFieldType,
+    TemplateSetupField,
+)
 from api.services.auth import depends as auth_depends
 from api.services.auth.depends import get_user
 from api.services.auth.permissions import Permission
@@ -142,6 +146,10 @@ def test_rejects_hours_the_calendar_cannot_take(overrides, message):
             {"booking_days": [3], "slot_minutes": 120},
             "Thursday, 9:00–17:00 (Europe/Dublin time), 2 hours",
         ),
+        (
+            {"booking_days": [6], "open_hour": 0, "close_hour": 6},
+            "Sunday, 0:00–6:00 (Europe/Dublin time), 30 minutes",
+        ),
     ],
 )
 def test_describes_the_hours_in_one_sentence(hours, when):
@@ -164,12 +172,31 @@ def test_calendar_patch_holds_only_the_booking_hours():
     }
 
 
+# -- the request ---------------------------------------------------------------
+
+
+def _request(**body: Any) -> DuplicateTemplateRequest:
+    return DuplicateTemplateRequest.model_validate(
+        {"template_id": 3, "workflow_name": "Reception", **body}
+    )
+
+
+def test_only_hours_can_be_applied_to_the_calendar():
+    with pytest.raises(ValidationError, match="apply_to_calendar needs"):
+        _request(apply_to_calendar=True, integration_tools={"google-calendar": TOOL})
+
+
 # -- filling the template ------------------------------------------------------
 
 
 def test_the_hours_field_is_answered_with_the_sentence():
     answers = with_appointment_hours(
-        FIELDS, {"business_name": "Bloom"}, AppointmentHours()
+        FIELDS,
+        _request(
+            values={"business_name": "Bloom"},
+            appointment_hours={},
+            integration_tools={"google-calendar": TOOL},
+        ),
     )
 
     assert answers == {
@@ -179,40 +206,70 @@ def test_the_hours_field_is_answered_with_the_sentence():
 
 
 def test_without_hours_the_field_stays_empty():
-    # An older client sends no hours (and maybe an empty text answer).
+    # No calendar, so no hours (and maybe an empty text answer).
     answers = with_appointment_hours(
-        FIELDS, {"business_name": "Bloom", "appointment_hours": " "}, None
+        FIELDS, _request(values={"business_name": "Bloom", "appointment_hours": " "})
     )
 
     assert answers["appointment_hours"] == ""
 
 
 @pytest.mark.parametrize(
-    ("fields", "values", "message"),
+    ("fields", "body", "message"),
     [
-        (FIELDS[:1], {}, "doesn't ask for appointment hours"),
-        (FIELDS, {"appointment_hours": "Mon-Fri 9-5"}, "not as text"),
+        (
+            FIELDS[:1],
+            {"integration_tools": {"google-calendar": TOOL}},
+            "doesn't ask for appointment hours",
+        ),
+        # Only bookings use the hours, and only Google Calendar books.
+        (FIELDS, {}, "need Google Calendar attached"),
+        (
+            FIELDS,
+            {
+                "values": {"appointment_hours": "Mon-Fri 9-5"},
+                "integration_tools": {"google-calendar": TOOL},
+            },
+            "not as text",
+        ),
     ],
 )
-def test_rejects_hours_sent_the_wrong_way(fields, values, message):
+def test_rejects_hours_sent_the_wrong_way(fields, body, message):
     with pytest.raises(TemplateSetupError, match=message):
-        with_appointment_hours(fields, values, AppointmentHours())
+        with_appointment_hours(fields, _request(appointment_hours={}, **body))
 
 
-def test_the_receptionist_tells_callers_its_appointment_hours():
+def _receptionist_prompt(**body: Any) -> str:
     (receptionist,) = [t for t in STARTER_TEMPLATES if t.name == "AI Receptionist"]
     fields = receptionist.setup_fields
     values = {f.key: f"Sample {f.key}" for f in fields if f.required}
-    hours = AppointmentHours.model_validate(WEEKEND_MORNINGS)
+    request = _request(values=values, **body)
 
     filled = fill_template_values(
-        receptionist.definition, fields, with_appointment_hours(fields, values, hours)
+        receptionist.definition, fields, with_appointment_hours(fields, request)
     )
-    agent = attach_integration_tools(filled, {"google-calendar": TOOL})
-
+    agent = attach_integration_tools(filled, request.integration_tools)
     validate_workflow_definition(agent)
-    assert describe_appointment_hours(hours) in json.dumps(agent, ensure_ascii=False)
-    assert "{{appointment_hours" not in json.dumps(agent)
+    return json.dumps(agent, ensure_ascii=False)
+
+
+def test_the_receptionist_tells_callers_its_appointment_hours():
+    hours = AppointmentHours.model_validate(WEEKEND_MORNINGS)
+
+    prompt = _receptionist_prompt(
+        appointment_hours=WEEKEND_MORNINGS,
+        integration_tools={"google-calendar": TOOL},
+    )
+
+    assert f"Sample opening_hours {describe_appointment_hours(hours)}\\n" in prompt
+    assert "{{appointment_hours" not in prompt
+
+
+def test_the_receptionist_without_a_calendar_has_no_hours_line():
+    prompt = _receptionist_prompt()
+
+    assert "Appointments can be booked" not in prompt
+    assert "Opening hours: Sample opening_hours \\nAddress" in prompt
 
 
 # -- saving the hours to the calendar connection -------------------------------
@@ -265,13 +322,19 @@ def _actor() -> Actor:
 async def _update(
     settings: FakeCalendarSettings,
     *,
-    hours: AppointmentHours | None = DEFAULT_HOURS,
-    tools: dict[str, str] | None = None,
     allowed: bool = True,
+    **body: Any,
 ) -> CalendarHoursStatus | None:
+    request = _request(
+        **{
+            "appointment_hours": {},
+            "apply_to_calendar": True,
+            "integration_tools": {"google-calendar": TOOL},
+            **body,
+        }
+    )
     return await update_calendar_booking_hours(
-        hours,
-        {"google-calendar": TOOL} if tools is None else tools,
+        request,
         _actor(),
         may_change_settings=allowed,
         calendar_settings=lambda: settings,
@@ -291,14 +354,27 @@ async def test_saves_the_hours_to_the_connection_of_the_attached_tool():
     assert config == calendar_config_patch(AppointmentHours())
 
 
+async def test_hours_the_connection_already_books_in_are_not_saved_again():
+    stored = {"calendar_id": "primary", **calendar_config_patch(DEFAULT_HOURS)}
+    settings = FakeCalendarSettings([_connection(config=stored)])
+
+    assert await _update(settings) is CalendarHoursStatus.UPDATED
+    assert settings.updates == []
+
+
 @pytest.mark.parametrize(
-    ("hours", "tools"),
-    [(None, {"google-calendar": TOOL}), (AppointmentHours(), {})],
+    "body",
+    [
+        # Reusing a connection without changing its hours.
+        {"apply_to_calendar": False},
+        {"appointment_hours": None, "apply_to_calendar": False},
+        {"integration_tools": {}},
+    ],
 )
-async def test_nothing_to_save_without_hours_or_calendar(hours, tools):
+async def test_nothing_to_save_unless_asked_with_a_calendar(body):
     settings = FakeCalendarSettings([_connection()])
 
-    assert await _update(settings, hours=hours, tools=tools) is None
+    assert await _update(settings, **body) is None
     assert settings.updates == []
 
 
@@ -322,17 +398,13 @@ async def test_a_role_that_cannot_change_integrations_leaves_the_calendar_alone(
         ),
         # The tools service is down.
         FakeCalendarSettings([_connection()], error=ToolsServiceUnavailableError()),
+        # A bug (or the database) after the agent was created: retrying would
+        # create the agent twice, so this is reported too.
+        FakeCalendarSettings([_connection()], error=KeyError("oops")),
     ],
 )
 async def test_a_failure_is_reported_not_raised(settings):
     assert await _update(settings) is CalendarHoursStatus.FAILED
-
-
-async def test_a_bug_is_not_reported_as_a_calendar_failure():
-    settings = FakeCalendarSettings([_connection()], error=KeyError("oops"))
-
-    with pytest.raises(KeyError):
-        await _update(settings)
 
 
 async def test_failed_when_the_tools_service_is_not_configured():
@@ -340,8 +412,11 @@ async def test_failed_when_the_tools_service_is_not_configured():
         raise ToolsServiceNotConfiguredError()
 
     status = await update_calendar_booking_hours(
-        AppointmentHours(),
-        {"google-calendar": TOOL},
+        _request(
+            appointment_hours={},
+            apply_to_calendar=True,
+            integration_tools={"google-calendar": TOOL},
+        ),
         _actor(),
         may_change_settings=True,
         calendar_settings=not_configured,
@@ -478,13 +553,17 @@ def _prompt(db: Any) -> str:
     return db.create_workflow.await_args.args[1]["nodes"][0]["data"]["prompt"]
 
 
+CALENDAR = {"google-calendar": TOOL}
+
+
 def test_route_puts_the_hours_in_the_prompt_and_the_calendar():
     stub = ToolsServiceStub()
 
     response, db = _duplicate(
         stub,
         appointment_hours=WEEKEND_MORNINGS,
-        integration_tools={"google-calendar": TOOL},
+        apply_to_calendar=True,
+        integration_tools=CALENDAR,
     )
 
     assert response.status_code == 200, response.text
@@ -503,10 +582,10 @@ def test_route_puts_the_hours_in_the_prompt_and_the_calendar():
     assert stub.config["open_hour"] == 8
 
 
-def test_route_without_a_calendar_only_sets_the_prompt():
+def test_route_tells_the_hours_of_a_reused_calendar_without_saving_them():
     stub = ToolsServiceStub()
 
-    response, db = _duplicate(stub, appointment_hours={})
+    response, db = _duplicate(stub, appointment_hours={}, integration_tools=CALENDAR)
 
     assert response.status_code == 200, response.text
     assert response.json()["calendar_hours"] is None
@@ -514,13 +593,23 @@ def test_route_without_a_calendar_only_sets_the_prompt():
     assert stub.requests == []
 
 
+def test_route_does_not_save_hours_the_calendar_already_books_in():
+    stub = ToolsServiceStub()
+    stub.config.update(calendar_config_patch(DEFAULT_HOURS))
+
+    response, _ = _duplicate(
+        stub, appointment_hours={}, apply_to_calendar=True, integration_tools=CALENDAR
+    )
+
+    assert response.json()["calendar_hours"] == "updated"
+    assert [r.method for r in stub.requests] == ["GET"]
+
+
 def test_route_keeps_the_agent_when_the_calendar_refuses_the_hours():
     stub = ToolsServiceStub(patch_status=422)
 
     response, db = _duplicate(
-        stub,
-        appointment_hours={},
-        integration_tools={"google-calendar": TOOL},
+        stub, appointment_hours={}, apply_to_calendar=True, integration_tools=CALENDAR
     )
 
     assert response.status_code == 200, response.text
@@ -541,9 +630,7 @@ def test_route_respects_a_role_that_cannot_change_integrations(monkeypatch):
     stub = ToolsServiceStub()
 
     response, _ = _duplicate(
-        stub,
-        appointment_hours={},
-        integration_tools={"google-calendar": TOOL},
+        stub, appointment_hours={}, apply_to_calendar=True, integration_tools=CALENDAR
     )
 
     assert response.status_code == 200, response.text
@@ -551,25 +638,39 @@ def test_route_respects_a_role_that_cannot_change_integrations(monkeypatch):
     assert stub.requests == []
 
 
-def test_route_rejects_bad_hours_before_creating_anything():
+@pytest.mark.parametrize(
+    ("body", "message"),
+    [
+        (
+            {"appointment_hours": {"timezone": "Not/AZone"}, "apply_to_calendar": True},
+            "Unknown time zone",
+        ),
+        ({"apply_to_calendar": True}, "apply_to_calendar needs"),
+    ],
+)
+def test_route_rejects_bad_hours_before_creating_anything(body, message):
     stub = ToolsServiceStub()
 
-    response, db = _duplicate(
-        stub,
-        appointment_hours={"timezone": "Not/AZone"},
-        integration_tools={"google-calendar": TOOL},
-    )
+    response, db = _duplicate(stub, integration_tools=CALENDAR, **body)
 
     assert response.status_code == 422
-    assert "Unknown time zone" in response.text
+    assert message in response.text
     db.create_workflow.assert_not_awaited()
     assert stub.requests == []
 
 
-def test_route_still_serves_clients_that_send_no_hours():
+def test_route_rejects_hours_without_a_calendar():
+    response, db = _duplicate(ToolsServiceStub(), appointment_hours={})
+
+    assert response.status_code == 422
+    assert "need Google Calendar attached" in response.text
+    db.create_workflow.assert_not_awaited()
+
+
+def test_route_without_hours_leaves_the_placeholder_empty():
     stub = ToolsServiceStub()
 
-    response, db = _duplicate(stub, integration_tools={"google-calendar": TOOL})
+    response, db = _duplicate(stub, integration_tools=CALENDAR)
 
     assert response.status_code == 200, response.text
     assert response.json()["calendar_hours"] is None

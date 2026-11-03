@@ -1,8 +1,8 @@
 from datetime import datetime
 from enum import StrEnum
-from typing import Literal
+from typing import Literal, Self
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from api.schemas.appointment_hours import AppointmentHours
 
@@ -68,7 +68,17 @@ class DuplicateTemplateRequest(BaseModel):
     integration_tools: dict[str, str] = Field(default_factory=dict)
     appointment_hours: AppointmentHours | None = Field(
         default=None,
-        description="Answer to the template's appointment_hours question. Goes "
-        "into the agent's prompt and, when Google Calendar is attached, becomes "
-        "that connection's booking hours.",
+        description="Answer to the template's appointment_hours question; "
+        "only with Google Calendar attached. Goes into the agent's prompt.",
     )
+    apply_to_calendar: bool = Field(
+        default=False,
+        description="Also make appointment_hours the attached Google Calendar "
+        "connection's booking hours (shared by every agent that books with it).",
+    )
+
+    @model_validator(mode="after")
+    def _hours_to_apply(self) -> Self:
+        if self.apply_to_calendar and self.appointment_hours is None:
+            raise ValueError("apply_to_calendar needs appointment_hours")
+        return self

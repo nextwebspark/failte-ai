@@ -98,6 +98,7 @@ class CalendarHoursStatus(StrEnum):
     """What happened to the Google Calendar connection's booking hours when an
     agent was created with appointment hours."""
 
+    # The connection books in these hours (saved now, or already did).
     UPDATED = "updated"
     # The member's role can't change integration settings.
     NOT_ALLOWED = "not_allowed"

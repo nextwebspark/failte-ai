@@ -1610,7 +1610,6 @@ async def get_workflow_templates() -> List[WorkflowTemplateResponse]:
 )
 async def duplicate_workflow_template(
     request: DuplicateTemplateRequest,
-    user: UserModel = Depends(get_user),
     membership: OrgMembership = Depends(get_org_membership),
 ) -> TemplateWorkflowResponse:
     """
@@ -1618,13 +1617,15 @@ async def duplicate_workflow_template(
 
     Args:
         request: The duplicate template request
-        user: The authenticated user
-        membership: The user's role, which decides whether the appointment
-            hours may also change the attached calendar's booking hours
+        membership: The user and their role in the selected organization,
+            which decides whether the appointment hours may also change the
+            attached calendar's booking hours
 
     Returns:
         The newly created workflow, and what happened to those booking hours
     """
+    user = membership.user
+    organization_id = membership.organization_id
     template_client = WorkflowTemplateClient()
     template = await template_client.get_workflow_template(request.template_id)
 
@@ -1639,7 +1640,7 @@ async def duplicate_workflow_template(
         filled = fill_template_values(
             template.template_json,
             fields,
-            with_appointment_hours(fields, request.values, request.appointment_hours),
+            with_appointment_hours(fields, request),
         )
     except TemplateSetupError as e:
         raise HTTPException(status_code=422, detail=str(e))
@@ -1652,9 +1653,7 @@ async def duplicate_workflow_template(
         )
     if request.integration_tools:
         tool_uuids = set(request.integration_tools.values())
-        tools = await db_client.get_tools_by_uuids(
-            list(tool_uuids), user.selected_organization_id
-        )
+        tools = await db_client.get_tools_by_uuids(list(tool_uuids), organization_id)
         if {tool.tool_uuid for tool in tools} != tool_uuids:
             raise HTTPException(status_code=404, detail="Connected tool not found")
     filled = attach_integration_tools(filled, request.integration_tools)
@@ -1676,21 +1675,20 @@ async def duplicate_workflow_template(
         request.workflow_name,
         workflow_def,
         user.id,
-        user.selected_organization_id,
+        organization_id,
     )
 
     if trigger_paths:
         await db_client.sync_triggers_for_workflow(
             workflow_id=workflow.id,
-            organization_id=user.selected_organization_id,
+            organization_id=organization_id,
             trigger_paths=trigger_paths,
         )
 
     # After creating the agent: failing to save the hours must not lose it.
     calendar_hours = await update_calendar_booking_hours(
-        request.appointment_hours,
-        request.integration_tools,
-        Actor(organization_id=membership.organization_id, user=membership.user),
+        request,
+        Actor(organization_id=organization_id, user=user),
         may_change_settings=membership.can(Permission.INTEGRATIONS_WRITE),
     )
 
