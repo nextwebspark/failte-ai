@@ -16,18 +16,17 @@ import {
 } from '@/lib/appointmentHours';
 import { cn } from '@/lib/utils';
 
-const SELECT_CLASS =
-    'h-9 w-full min-w-0 rounded-md border border-line bg-card px-2.5 text-[13.5px] text-ink outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/40';
+import type { HoursTarget } from './useAppointmentHours';
 
-/** Where the hours go, which the user should know before saving them. */
-export type HoursTarget = 'calendar' | 'calendar_admin_only' | 'prompt';
+const SELECT_CLASS =
+    'h-9 w-full min-w-0 rounded-md border border-line bg-card px-2.5 text-[13.5px] text-ink outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/40 disabled:cursor-not-allowed disabled:opacity-60';
 
 const TARGET_NOTE: Record<HoursTarget, string> = {
-    calendar:
-        'These become the booking hours of your Google Calendar connection, shared by every agent in this workspace that books with it.',
-    calendar_admin_only:
-        'Your agent tells callers these hours. Only a workspace admin can change the booking hours of your Google Calendar connection (Integrations → Google Calendar → Settings).',
-    prompt: 'Your agent tells callers these hours.',
+    new_calendar: 'These become the booking hours of your Google Calendar connection.',
+    shared_calendar:
+        'Your Google Calendar connection already books in these hours. Changing them changes them for every agent in this workspace that books with it.',
+    read_only:
+        'Your Google Calendar connection books in these hours. Only a workspace admin can change them (Integrations → Google Calendar → Settings).',
 };
 
 function SelectField({
@@ -36,19 +35,27 @@ function SelectField({
     value,
     options,
     onChange,
+    disabled,
 }: {
     id: string;
     label: string;
     value: string;
     options: { value: string; label: string }[];
     onChange: (value: string) => void;
+    disabled: boolean;
 }) {
     return (
         <div className="flex min-w-0 flex-col gap-1">
             <label htmlFor={id} className="text-[12px] font-medium text-ink-2">
                 {label}
             </label>
-            <select id={id} className={SELECT_CLASS} value={value} onChange={(e) => onChange(e.target.value)}>
+            <select
+                id={id}
+                className={SELECT_CLASS}
+                value={value}
+                disabled={disabled}
+                onChange={(e) => onChange(e.target.value)}
+            >
                 {options.map((option) => (
                     <option key={option.value} value={option.value}>
                         {option.label}
@@ -73,6 +80,7 @@ interface AppointmentHoursInputProps {
  */
 export function AppointmentHoursInput({ field, value, onChange, target }: AppointmentHoursInputProps) {
     const id = `setup-${field.key}`;
+    const disabled = target === 'read_only';
     const problem = bookingHoursProblem(value);
     const zones = useMemo(() => timeZoneOptions(value.timezone), [value.timezone]);
     const slots = SLOT_MINUTES.includes(value.slot_minutes)
@@ -109,9 +117,10 @@ export function AppointmentHoursInput({ field, value, onChange, target }: Appoin
                             type="button"
                             aria-pressed={on}
                             aria-label={day.long}
+                            disabled={disabled}
                             onClick={() => toggleDay(day.value)}
                             className={cn(
-                                'h-8 min-w-[44px] rounded-md border px-2 text-[12.5px] font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-ring',
+                                'h-8 min-w-[44px] rounded-md border px-2 text-[12.5px] font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-ring disabled:cursor-not-allowed disabled:opacity-60',
                                 on
                                     ? 'border-brand bg-brand-dim text-brand'
                                     : 'border-line bg-card text-ink-3 hover:bg-panel-2',
@@ -129,6 +138,7 @@ export function AppointmentHoursInput({ field, value, onChange, target }: Appoin
                     value={String(value.open_hour)}
                     options={OPEN_HOURS.map((hour) => ({ value: String(hour), label: hourLabel(hour) }))}
                     onChange={(hour) => set({ open_hour: Number(hour) })}
+                    disabled={disabled}
                 />
                 <SelectField
                     id={`${id}-close`}
@@ -136,6 +146,7 @@ export function AppointmentHoursInput({ field, value, onChange, target }: Appoin
                     value={String(value.close_hour)}
                     options={CLOSE_HOURS.map((hour) => ({ value: String(hour), label: hourLabel(hour) }))}
                     onChange={(hour) => set({ close_hour: Number(hour) })}
+                    disabled={disabled}
                 />
                 <div className="col-span-2">
                     <SelectField
@@ -144,6 +155,7 @@ export function AppointmentHoursInput({ field, value, onChange, target }: Appoin
                         value={String(value.slot_minutes)}
                         options={slots.map((minutes) => ({ value: String(minutes), label: slotLabel(minutes) }))}
                         onChange={(minutes) => set({ slot_minutes: Number(minutes) })}
+                        disabled={disabled}
                     />
                 </div>
             </div>
@@ -153,6 +165,7 @@ export function AppointmentHoursInput({ field, value, onChange, target }: Appoin
                 value={value.timezone}
                 options={zones.map((zone) => ({ value: zone, label: zone.replaceAll('_', ' ') }))}
                 onChange={(timezone) => set({ timezone })}
+                disabled={disabled}
             />
             {problem && (
                 <p role="alert" className="text-[12.5px] text-danger">

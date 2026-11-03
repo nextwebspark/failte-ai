@@ -24,20 +24,13 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { AgentReady, type ReadyItem } from '@/components/workflow/create/AgentReady';
-import type { HoursTarget } from '@/components/workflow/create/AppointmentHoursInput';
 import { TemplateGallery, TemplateIcon } from '@/components/workflow/create/TemplateGallery';
 import { TemplateSetup } from '@/components/workflow/create/TemplateSetup';
+import { useAppointmentHours } from '@/components/workflow/create/useAppointmentHours';
 import { useIntegrationConnect } from '@/components/workflow/create/useIntegrationConnect';
 import { useOrgConfig } from '@/context/OrgConfigContext';
 import { agentNameFor, emptyAnswers, GOOGLE_CALENDAR, missingAnswer } from '@/lib/agentTemplates';
 import { detailFromError } from '@/lib/apiError';
-import {
-    type BookingHours,
-    bookingHoursFromConfig,
-    bookingHoursProblem,
-    defaultBookingHours,
-    isAppointmentHoursField,
-} from '@/lib/appointmentHours';
 import { useAuth } from '@/lib/auth';
 import logger from '@/lib/logger';
 import { cn } from '@/lib/utils';
@@ -172,9 +165,6 @@ export function CreateAgentDialog({ open, onOpenChange, initialMode = 'template'
     const [answers, setAnswers] = useState<Record<string, string>>({});
     const [answerErrors, setAnswerErrors] = useState<Record<string, string>>({});
     const [useCalendar, setUseCalendar] = useState(true);
-    const [hours, setHours] = useState<BookingHours>(defaultBookingHours);
-    // Until the user edits them, the hours follow the connected calendar's.
-    const [hoursEdited, setHoursEdited] = useState(false);
     const [created, setCreated] = useState<{ id: number; items: ReadyItem[] } | null>(null);
     const [callType, setCallType] = useState<CallType>('inbound');
     const [description, setDescription] = useState('');
@@ -184,20 +174,11 @@ export function CreateAgentDialog({ open, onOpenChange, initialMode = 'template'
 
     const wantsCalendar = view === 'setup' && !!template?.integrations?.includes(GOOGLE_CALENDAR);
     const calendar = useIntegrationConnect(GOOGLE_CALENDAR, open && wantsCalendar && !!user);
-    const calendarInUse = wantsCalendar && useCalendar && calendar.status === 'connected';
-    const hoursTarget: HoursTarget = calendarInUse
-        ? can('integrations:write')
-            ? 'calendar'
-            : 'calendar_admin_only'
-        : 'prompt';
-
-    // Start from the hours the connected calendar already books in, so
-    // creating another agent doesn't quietly reset them.
-    const calendarConfig = calendar.status === 'connected' ? calendar.connection?.config : undefined;
-    useEffect(() => {
-        if (!calendarConfig || hoursEdited) return;
-        setHours(bookingHoursFromConfig(calendarConfig));
-    }, [calendarConfig, hoursEdited]);
+    const calendarTool =
+        wantsCalendar && useCalendar && calendar.status === 'connected'
+            ? calendar.connection?.tool_uuids?.[0]
+            : undefined;
+    const hours = useAppointmentHours(template, calendar, !!calendarTool, can('integrations:write'));
 
     useEffect(() => {
         if (!open) return;
@@ -235,8 +216,6 @@ export function CreateAgentDialog({ open, onOpenChange, initialMode = 'template'
             setTemplate(picked);
             setAnswers(emptyAnswers(picked.setup_fields ?? []));
             setUseCalendar(true);
-            setHours(defaultBookingHours());
-            setHoursEdited(false);
         }
         setAnswerErrors({});
         go('setup');
@@ -265,14 +244,12 @@ export function CreateAgentDialog({ open, onOpenChange, initialMode = 'template'
             document.getElementById(`setup-${missing.key}`)?.focus();
             return;
         }
-        const hoursField = fields.find(isAppointmentHoursField);
-        if (hoursField && bookingHoursProblem(hours)) {
+        if (hours.field && hours.problem) {
             // The hours input already says what is wrong.
-            document.getElementById(`setup-${hoursField.key}-open`)?.focus();
+            document.getElementById(`setup-${hours.field.key}-open`)?.focus();
             return;
         }
         setAnswerErrors({});
-        const calendarTool = calendarInUse ? calendar.connection?.tool_uuids?.[0] : undefined;
         setSubmitting(true);
         setError(null);
         try {
@@ -282,7 +259,7 @@ export function CreateAgentDialog({ open, onOpenChange, initialMode = 'template'
                     workflow_name: agentNameFor(template, answers),
                     values: Object.fromEntries(Object.entries(answers).map(([k, v]) => [k, v.trim()])),
                     integration_tools: calendarTool ? { [GOOGLE_CALENDAR]: calendarTool } : {},
-                    ...(hoursField ? { appointment_hours: hours } : {}),
+                    ...hours.request,
                 },
             });
             if (response.error || !response.data?.id) {
@@ -444,11 +421,6 @@ export function CreateAgentDialog({ open, onOpenChange, initialMode = 'template'
                         useCalendar={useCalendar}
                         onUseCalendarChange={setUseCalendar}
                         hours={hours}
-                        onHoursChange={(next) => {
-                            setHours(next);
-                            setHoursEdited(true);
-                        }}
-                        hoursTarget={hoursTarget}
                     />
                     {errorLine}
                 </div>

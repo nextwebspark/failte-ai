@@ -16,8 +16,10 @@ const mocks = vi.hoisted(() => ({
     providerApps: vi.fn(),
     startOAuth: vi.fn(),
     activate: vi.fn(),
+    warning: vi.fn(),
     canConnect: true,
 }));
+vi.mock('sonner', () => ({ toast: { warning: mocks.warning } }));
 vi.mock('next/navigation', () => ({ useRouter: () => ({ push: mocks.push, refresh: mocks.refresh }) }));
 vi.mock('@/lib/auth', () => ({
     useAuth: () => ({ user: { id: '1' }, getAccessToken: async () => 'token' }),
@@ -46,6 +48,7 @@ const RECEPTIONIST = {
     setup_fields: [
         { key: 'business_name', label: 'Business name' },
         { key: 'website', label: 'Website', type: 'url', required: false },
+        { key: 'appointment_hours', label: 'Appointment hours', type: 'appointment_hours', required: false },
     ],
     call_type: 'inbound',
     icon: 'phone',
@@ -93,7 +96,7 @@ it('opens on the ready-made agents, featured first', async () => {
     expect(screen.getByRole('heading', { name: 'What should your agent do?' })).toBeTruthy();
     const card = await screen.findByRole('button', { name: /AI Receptionist/ });
     expect(card.textContent).toContain('Most popular');
-    expect(card.textContent).toContain('Answers calls · Calendar · 2 min');
+    expect(card.textContent).toContain('Answers calls · Calendar · 3 min');
 });
 
 it('asks the template’s questions, previews the greeting, and creates the agent', async () => {
@@ -282,4 +285,172 @@ it('starts from scratch with a default name', async () => {
 
     await waitFor(() => expect(mocks.push).toHaveBeenCalledWith('/workflow/7?onboarding=web_call'));
     expect(mocks.blank.mock.calls[0][0].body.name).toBe('Untitled agent');
+});
+
+// -- appointment hours ----------------------------------------------------------
+
+/** A calendar other agents already book with, in its own hours. */
+const BOOKING_CALENDAR = {
+    ...CALENDAR,
+    config: {
+        calendar_id: 'primary',
+        booking_days: [1, 2, 3],
+        open_hour: 10,
+        close_hour: 16,
+        slot_minutes: 45,
+        timezone: 'America/New_York',
+    },
+};
+const BOOKING_HOURS = {
+    booking_days: [1, 2, 3],
+    open_hour: 10,
+    close_hour: 16,
+    slot_minutes: 45,
+    timezone: 'America/New_York',
+};
+
+function select(label: string): HTMLSelectElement {
+    return screen.getByLabelText(label) as HTMLSelectElement;
+}
+
+async function fillAndCreate() {
+    fireEvent.change(screen.getByLabelText('Business name'), { target: { value: 'Bloom Dental' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Create agent' }));
+}
+
+it('asks for appointment hours only when the agent books into a calendar', async () => {
+    mocks.duplicate.mockResolvedValue({ data: { id: 42 } });
+    renderDialog();
+    await openReceptionist();
+
+    expect(await screen.findByRole('button', { name: 'Connect Google Calendar' })).toBeTruthy();
+    expect(screen.queryByRole('group', { name: 'Appointment hours' })).toBeNull();
+    await fillAndCreate();
+
+    await waitFor(() => expect(mocks.duplicate).toHaveBeenCalled());
+    const body = mocks.duplicate.mock.calls[0][0].body;
+    expect(body).not.toHaveProperty('appointment_hours');
+    expect(body).not.toHaveProperty('apply_to_calendar');
+});
+
+it('shows a reused calendar’s hours and leaves them alone unless edited', async () => {
+    mocks.connections.mockResolvedValue({ data: { connections: [BOOKING_CALENDAR] } });
+    mocks.duplicate.mockResolvedValue({ data: { id: 7, calendar_hours: null } });
+    renderDialog();
+    await openReceptionist();
+
+    expect(await screen.findByRole('group', { name: 'Appointment hours' })).toBeTruthy();
+    await waitFor(() => expect(select('From').value).toBe('10'));
+    expect(select('To').value).toBe('16');
+    expect(select('Appointment length').value).toBe('45');
+    expect(select('Time zone').value).toBe('America/New_York');
+    expect(screen.getByText(/every agent in this workspace that books with it/)).toBeTruthy();
+    await fillAndCreate();
+
+    expect(await screen.findByRole('heading', { name: 'Your agent is ready' })).toBeTruthy();
+    const body = mocks.duplicate.mock.calls[0][0].body;
+    expect(body.appointment_hours).toEqual(BOOKING_HOURS);
+    expect(body.apply_to_calendar).toBe(false);
+    expect(screen.queryByText(/appointment hours/i)).toBeNull();
+});
+
+it('saves edited hours to a reused calendar, and keeps the edit', async () => {
+    mocks.connections.mockResolvedValue({ data: { connections: [BOOKING_CALENDAR] } });
+    mocks.duplicate.mockResolvedValue({ data: { id: 7, calendar_hours: 'updated' } });
+    renderDialog();
+    await openReceptionist();
+    await waitFor(() => expect(select('From').value).toBe('10'));
+
+    fireEvent.change(select('From'), { target: { value: '8' } });
+    // Switching the calendar off and on again doesn't bring its hours back.
+    fireEvent.click(screen.getByRole('checkbox'));
+    expect(screen.queryByRole('group', { name: 'Appointment hours' })).toBeNull();
+    fireEvent.click(screen.getByRole('checkbox'));
+    expect(select('From').value).toBe('8');
+    await fillAndCreate();
+
+    expect(await screen.findByText('Books only in your appointment hours')).toBeTruthy();
+    const body = mocks.duplicate.mock.calls[0][0].body;
+    expect(body.appointment_hours).toEqual({ ...BOOKING_HOURS, open_hour: 8 });
+    expect(body.apply_to_calendar).toBe(true);
+});
+
+it('starts a calendar connected here from the defaults in this browser’s time zone', async () => {
+    const popup = { location: { href: '' }, close: vi.fn() };
+    vi.spyOn(window, 'open').mockReturnValue(popup as unknown as Window);
+    vi.spyOn(window, 'close').mockImplementation(() => {});
+    mocks.startOAuth.mockResolvedValue({
+        data: { authorization_url: 'https://accounts.google.com/o/oauth2/auth?x=1', browser_nonce: 'nonce-1' },
+    });
+    // A new connection is saved with every default, Europe/Dublin included.
+    mocks.activate.mockResolvedValue({ data: { ...BOOKING_CALENDAR, config: { ...BOOKING_CALENDAR.config, timezone: 'Europe/Dublin' } } });
+    mocks.duplicate.mockResolvedValue({ data: { id: 7, calendar_hours: 'updated' } });
+    renderDialog();
+    await openReceptionist();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Connect Google Calendar' }));
+    await waitFor(() => expect(popup.location.href).toContain('accounts.google.com'));
+    window.history.replaceState(null, '', '/integrations?integration_result=success&connection_id=0b6f1f0e-1c1a-4d3e-9a55-5f6c7e8d9a0b&provider=google-calendar');
+    expect(handOffOAuthReturn()).toBe(true);
+    window.history.replaceState(null, '', '/');
+
+    expect(await screen.findByText('Google Calendar connected')).toBeTruthy();
+    expect(screen.getByText('These become the booking hours of your Google Calendar connection.')).toBeTruthy();
+    expect(select('From').value).toBe('9');
+    await fillAndCreate();
+
+    await waitFor(() => expect(mocks.duplicate).toHaveBeenCalled());
+    const body = mocks.duplicate.mock.calls[0][0].body;
+    expect(body.appointment_hours).toEqual({
+        booking_days: [0, 1, 2, 3, 4],
+        open_hour: 9,
+        close_hour: 17,
+        slot_minutes: 30,
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+    });
+    expect(body.apply_to_calendar).toBe(true);
+});
+
+it('shows, but doesn’t let change, hours only an admin may change', async () => {
+    mocks.canConnect = false;
+    mocks.connections.mockResolvedValue({ data: { connections: [BOOKING_CALENDAR] } });
+    renderDialog();
+    await openReceptionist();
+
+    await waitFor(() => expect(select('From').value).toBe('10'));
+    expect(select('From').disabled).toBe(true);
+    expect(screen.getByRole('button', { name: 'Monday' })).toHaveProperty('disabled', true);
+    expect(screen.getByText(/Only a workspace admin can change them/)).toBeTruthy();
+});
+
+it.each([
+    ['updated', 'Books only in your appointment hours', false],
+    ['not_allowed', 'An admin sets them in Integrations', false],
+    ['failed', 'Not saved: set them in Integrations', true],
+])('reports calendar hours that were %s', async (status, text, warns) => {
+    mocks.connections.mockResolvedValue({ data: { connections: [BOOKING_CALENDAR] } });
+    mocks.duplicate.mockResolvedValue({ data: { id: 7, calendar_hours: status } });
+    renderDialog();
+    await openReceptionist();
+    await waitFor(() => expect(select('From').value).toBe('10'));
+
+    fireEvent.change(select('To'), { target: { value: '18' } });
+    await fillAndCreate();
+
+    expect(await screen.findByText(text)).toBeTruthy();
+    expect(mocks.warning).toHaveBeenCalledTimes(warns ? 1 : 0);
+});
+
+it('points at the hours when they make no sense', async () => {
+    mocks.connections.mockResolvedValue({ data: { connections: [BOOKING_CALENDAR] } });
+    renderDialog();
+    await openReceptionist();
+    await waitFor(() => expect(select('From').value).toBe('10'));
+
+    fireEvent.change(select('From'), { target: { value: '17' } });
+    await fillAndCreate();
+
+    expect(screen.getByText('The closing time must be after the opening time.')).toBeTruthy();
+    expect(document.activeElement).toBe(select('From'));
+    expect(mocks.duplicate).not.toHaveBeenCalled();
 });

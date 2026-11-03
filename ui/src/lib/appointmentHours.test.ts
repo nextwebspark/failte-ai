@@ -65,11 +65,10 @@ describe('hours from a calendar connection', () => {
         ).toEqual({ booking_days: [5, 6], open_hour: 8, close_hour: 12, slot_minutes: 20, timezone: 'Asia/Kolkata' });
     });
 
-    it('keeps this browser’s time zone over the calendar’s default one', () => {
-        // A new connection saves every default, Europe/Dublin included.
+    it('keeps the time zone the connection books in', () => {
         browserZone('America/Chicago');
         expect(bookingHoursFromConfig({ calendar_id: 'primary', timezone: 'Europe/Dublin' }).timezone).toBe(
-            'America/Chicago',
+            'Europe/Dublin',
         );
     });
 

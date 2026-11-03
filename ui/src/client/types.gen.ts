@@ -3069,9 +3069,15 @@ export type DuplicateTemplateRequest = {
         [key: string]: string;
     };
     /**
-     * Answer to the template's appointment_hours question. Goes into the agent's prompt and, when Google Calendar is attached, becomes that connection's booking hours.
+     * Answer to the template's appointment_hours question; only with Google Calendar attached. Goes into the agent's prompt.
      */
     appointment_hours?: AppointmentHours | null;
+    /**
+     * Apply To Calendar
+     *
+     * Also make appointment_hours the attached Google Calendar connection's booking hours (shared by every agent that books with it).
+     */
+    apply_to_calendar?: boolean;
 };
 
 /**

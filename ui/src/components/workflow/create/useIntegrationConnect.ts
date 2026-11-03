@@ -45,6 +45,11 @@ export type ConnectStatus =
 export interface IntegrationConnect {
     status: ConnectStatus;
     connection: IntegrationConnectionResponse | null;
+    /**
+     * The connection was made while this screen was open (here, or on the
+     * Integrations page in another tab), not reused from before.
+     */
+    connectedHere: boolean;
     error: string | null;
     connect: () => void;
     /** Stops waiting for a sign-in the user abandoned. */
@@ -64,6 +69,7 @@ export function useIntegrationConnect(provider: string, enabled: boolean): Integ
     const canConnect = can('integrations:write') && can('agents:write');
     const [status, setStatus] = useState<ConnectStatus>('loading');
     const [connection, setConnection] = useState<IntegrationConnectionResponse | null>(null);
+    const [connectedHere, setConnectedHere] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [appId, setAppId] = useState<string | null>(null);
     const popupRef = useRef<Window | null>(null);
@@ -93,6 +99,7 @@ export function useIntegrationConnect(provider: string, enabled: boolean): Integ
         if (!enabled) return;
         let cancelled = false;
         setStatus('loading');
+        setConnectedHere(false);
         load()
             .then((next) => !cancelled && setStatus(next))
             .catch(() => !cancelled && setStatus('unavailable'));
@@ -107,7 +114,10 @@ export function useIntegrationConnect(provider: string, enabled: boolean): Integ
         if (!elsewhere) return;
         const onFocus = () => {
             load()
-                .then((next) => setStatus((current) => (current === 'in_integrations' ? next : current)))
+                .then((next) => {
+                    if (next === 'connected') setConnectedHere(true);
+                    setStatus((current) => (current === 'in_integrations' ? next : current));
+                })
                 .catch(() => {});
         };
         window.addEventListener('focus', onFocus);
@@ -138,6 +148,7 @@ export function useIntegrationConnect(provider: string, enabled: boolean): Integ
                 return;
             }
             setConnection(response.data);
+            setConnectedHere(true);
             setStatus('connected');
         });
         return () => {
@@ -192,5 +203,5 @@ export function useIntegrationConnect(provider: string, enabled: boolean): Integ
         });
     }, [appId, provider]);
 
-    return { status, connection, error, connect, cancel };
+    return { status, connection, connectedHere, error, connect, cancel };
 }

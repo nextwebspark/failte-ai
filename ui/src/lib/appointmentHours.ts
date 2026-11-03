@@ -6,10 +6,7 @@ export const APPOINTMENT_HOURS_TYPE: SetupFieldType = 'appointment_hours';
 /** Every field set: what the dialog edits and sends. */
 export type BookingHours = Required<AppointmentHours>;
 
-/**
- * The Google Calendar connection's default time zone, saved on every new
- * connection, and the fallback when this browser can't say its own.
- */
+/** The time zone when this browser can't say its own. */
 export const DEFAULT_TIMEZONE = 'Europe/Dublin';
 
 export const WEEKDAYS: { value: Weekday; short: string; long: string }[] = [
@@ -88,9 +85,8 @@ function wholeNumber(value: unknown, min: number, max: number): number | null {
 
 /**
  * The hours a Google Calendar connection already books in, from its stored
- * settings; a missing or invalid setting keeps the dialog's default. The
- * calendar's default time zone is saved on every new connection, so it says
- * nothing about the business: this browser's time zone is kept instead.
+ * settings (time zone included); a missing or invalid setting keeps the
+ * dialog's default.
  */
 export function bookingHoursFromConfig(config: Record<string, unknown> | undefined): BookingHours {
     const hours = defaultBookingHours();
@@ -103,9 +99,7 @@ export function bookingHoursFromConfig(config: Record<string, unknown> | undefin
     hours.open_hour = wholeNumber(config.open_hour, 0, 23) ?? hours.open_hour;
     hours.close_hour = wholeNumber(config.close_hour, 1, 24) ?? hours.close_hour;
     hours.slot_minutes = wholeNumber(config.slot_minutes, 5, 240) ?? hours.slot_minutes;
-    if (typeof config.timezone === 'string' && config.timezone && config.timezone !== DEFAULT_TIMEZONE) {
-        hours.timezone = config.timezone;
-    }
+    if (typeof config.timezone === 'string' && config.timezone) hours.timezone = config.timezone;
     return hours;
 }
 
