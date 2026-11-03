@@ -17,7 +17,8 @@ export const BRAND = {
   tagline: "Build, test and deploy voice AI agents",
   domain,
   appUrl: `https://app.${domain}`,
-  docsUrl: `https://docs.${domain}`,
+  /** Public docs are on the website (Starlight at /docs), not a docs.* subdomain. */
+  docsUrl: `https://${domain}/docs`,
   privacyUrl: `https://${domain}/privacy`,
   termsUrl: `https://${domain}/terms`,
   salesEmail: `sales@${domain}`,

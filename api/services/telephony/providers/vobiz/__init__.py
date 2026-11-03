@@ -7,6 +7,7 @@ import aiohttp
 from fastapi import HTTPException
 from loguru import logger
 
+from api.constants import BRAND_DOCS_URL
 from api.services.telephony.registry import (
     ProviderSpec,
     ProviderUIField,
@@ -108,7 +109,7 @@ async def _ensure_application_id(
 
 _UI_METADATA = ProviderUIMetadata(
     display_name="Vobiz",
-    docs_url="https://docs.lightmove.ai/integrations/telephony/vobiz",
+    docs_url=f"{BRAND_DOCS_URL}/integrations/telephony/vobiz",
     fields=[
         ProviderUIField(
             name="auth_id",

@@ -2,6 +2,7 @@
 
 from typing import Any, Dict
 
+from api.constants import BRAND_DOCS_URL
 from api.services.telephony.registry import (
     ProviderSpec,
     ProviderUIField,
@@ -25,7 +26,7 @@ def _config_loader(value: Dict[str, Any]) -> Dict[str, Any]:
 
 _UI_METADATA = ProviderUIMetadata(
     display_name="Twilio",
-    docs_url="https://docs.lightmove.ai/integrations/telephony/twilio",
+    docs_url=f"{BRAND_DOCS_URL}/integrations/telephony/twilio",
     fields=[
         ProviderUIField(
             name="account_sid",
