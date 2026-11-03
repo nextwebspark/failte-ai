@@ -42,3 +42,6 @@ class ResendEmailSender:
                     )
         except aiohttp.ClientError as exc:
             raise EmailDeliveryError(f"Resend request failed: {exc}") from exc
+        except TimeoutError as exc:
+            # The total timeout raises TimeoutError, not a ClientError.
+            raise EmailDeliveryError("Resend request timed out") from exc

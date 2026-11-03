@@ -1,19 +1,23 @@
 #!/usr/bin/env bash
 # Strict type check for modules held to full typing (team, roles, invitations,
-# email, local auth, skills and the skills runtime). The rest of api/ is checked non-strictly by scripts/lint.sh.
+# email, local auth, skills, the skills runtime and call summary emails). The
+# rest of api/ is checked non-strictly by scripts/lint.sh.
 set -euo pipefail
 
 mypy --strict --follow-imports=silent \
   api/db/account_client.py \
+  api/db/call_summary_client.py \
   api/db/credential_encryption_client.py \
   api/db/encrypted_json.py \
   api/errors/account.py \
   api/routes/auth.py \
   api/schemas/auth.py \
+  api/schemas/call_summary_email.py \
   api/services/auth/account_dependencies.py \
   api/services/auth/accounts.py \
   api/services/auth/oauth \
   api/services/auth/verification_codes.py \
+  api/services/call_summary \
   api/db/invitation_client.py \
   api/db/membership_client.py \
   api/db/skill_client.py \
@@ -42,6 +46,7 @@ mypy --strict --follow-imports=silent \
   api/services/workflow/agent_builder.py \
   api/services/workflow/pipecat_engine_skills.py \
   api/services/workflow/skill_ref_validation.py \
+  api/services/workflow/template_setup.py \
   api/utils/text.py \
   api/utils/trusted_origins.py \
   api/utils/clock.py \

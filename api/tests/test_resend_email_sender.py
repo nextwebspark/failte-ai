@@ -100,3 +100,18 @@ async def test_rejection_detail_is_truncated() -> None:
         await _sender().send(_MESSAGE)
 
     assert len(str(excinfo.value)) < 400
+
+
+async def test_a_timeout_is_a_delivery_error() -> None:
+    class _TimingOutSession(_FakeSession):
+        def post(self, url: str, **kwargs: Any) -> _FakeResponse:
+            raise TimeoutError
+
+    with (
+        patch(
+            "api.services.email.resend_sender.aiohttp.ClientSession",
+            _TimingOutSession,
+        ),
+        pytest.raises(EmailDeliveryError, match="timed out"),
+    ):
+        await _sender().send(_MESSAGE)
