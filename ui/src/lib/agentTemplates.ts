@@ -3,6 +3,7 @@ import type {
     TemplateSetupField,
     WorkflowTemplateResponse,
 } from '@/client/types.gen';
+import { isAppointmentHoursField } from '@/lib/appointmentHours';
 
 /** The integration providers the Create agent dialog can connect. */
 export const GOOGLE_CALENDAR = 'google-calendar';
@@ -61,17 +62,26 @@ export function templateMeta(template: WorkflowTemplateResponse): string {
     return parts.join(' · ');
 }
 
-/** The answers a template's questions start with: all empty. */
+/**
+ * The text answers a template's questions start with: all empty. Appointment
+ * hours are answered separately (see lib/appointmentHours.ts).
+ */
 export function emptyAnswers(fields: TemplateSetupField[]): Record<string, string> {
-    return Object.fromEntries(fields.map((field) => [field.key, '']));
+    return Object.fromEntries(
+        fields.filter((field) => !isAppointmentHoursField(field)).map((field) => [field.key, '']),
+    );
 }
 
-/** The first required question still unanswered, or null when all are. */
+/** The first required text question still unanswered, or null when all are. */
 export function missingAnswer(
     fields: TemplateSetupField[],
     answers: Record<string, string>,
 ): TemplateSetupField | null {
-    return fields.find((field) => (field.required ?? true) && !answers[field.key]?.trim()) ?? null;
+    return (
+        fields.find(
+            (field) => !isAppointmentHoursField(field) && (field.required ?? true) && !answers[field.key]?.trim(),
+        ) ?? null
+    );
 }
 
 /** "AI Receptionist · Bloom Dental", or just the template's name. */

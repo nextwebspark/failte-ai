@@ -379,6 +379,45 @@ export type ApplyLibraryUpdateRequest = {
 };
 
 /**
+ * AppointmentHours
+ *
+ * The days, hours, length and time zone of bookable appointments. One
+ * window for all booking days, in whole hours.
+ */
+export type AppointmentHours = {
+    /**
+     * Booking Days
+     *
+     * Weekdays appointments can be booked on (Monday=0 ... Sunday=6).
+     */
+    booking_days?: Array<Weekday>;
+    /**
+     * Open Hour
+     *
+     * First appointment starts at this hour.
+     */
+    open_hour?: number;
+    /**
+     * Close Hour
+     *
+     * Last appointment ends by this hour.
+     */
+    close_hour?: number;
+    /**
+     * Slot Minutes
+     *
+     * Length of one appointment.
+     */
+    slot_minutes?: number;
+    /**
+     * Timezone
+     *
+     * IANA time zone of the business, e.g. Europe/Dublin.
+     */
+    timezone?: string;
+};
+
+/**
  * AssemblyAI
  */
 export type AssemblyAisttConfiguration = {
@@ -1080,6 +1119,14 @@ export type CalculatorToolDefinition = {
      */
     type: 'calculator';
 };
+
+/**
+ * CalendarHoursStatus
+ *
+ * What happened to the Google Calendar connection's booking hours when an
+ * agent was created with appointment hours.
+ */
+export type CalendarHoursStatus = 'updated' | 'not_allowed' | 'failed';
 
 /**
  * CallDisclosureConfiguration
@@ -3021,6 +3068,10 @@ export type DuplicateTemplateRequest = {
     integration_tools?: {
         [key: string]: string;
     };
+    /**
+     * Answer to the template's appointment_hours question. Goes into the agent's prompt and, when Google Calendar is attached, becomes that connection's booking hours.
+     */
+    appointment_hours?: AppointmentHours | null;
 };
 
 /**
@@ -7601,6 +7652,13 @@ export type ServiceKeyResponse = {
 };
 
 /**
+ * SetupFieldType
+ *
+ * How the Create agent dialog asks a setup question.
+ */
+export type SetupFieldType = 'text' | 'textarea' | 'url' | 'email' | 'phone' | 'appointment_hours';
+
+/**
  * SetupStep
  *
  * One thing the customer must do before a configuration can carry calls.
@@ -9050,6 +9108,10 @@ export type TelnyxConfigurationRequest = {
  * The answer replaces every ``{{key}}`` placeholder in the template. A
  * placeholder may carry a fallback (``{{key | fallback:text}}``), which is
  * used when an optional field is left empty.
+ *
+ * An ``appointment_hours`` field is answered with the request's structured
+ * ``appointment_hours`` (not with ``values``); its placeholder becomes a
+ * sentence describing those hours.
  */
 export type TemplateSetupField = {
     /**
@@ -9060,10 +9122,7 @@ export type TemplateSetupField = {
      * Label
      */
     label: string;
-    /**
-     * Type
-     */
-    type?: 'text' | 'textarea' | 'url' | 'email' | 'phone';
+    type?: SetupFieldType;
     /**
      * Help
      */
@@ -9080,6 +9139,73 @@ export type TemplateSetupField = {
      * Max Length
      */
     max_length?: number;
+};
+
+/**
+ * TemplateWorkflowResponse
+ *
+ * An agent created from a template.
+ */
+export type TemplateWorkflowResponse = {
+    /**
+     * Id
+     */
+    id: number;
+    /**
+     * Name
+     */
+    name: string;
+    /**
+     * Status
+     */
+    status: string;
+    /**
+     * Created At
+     */
+    created_at: string;
+    /**
+     * Workflow Definition
+     */
+    workflow_definition: {
+        [key: string]: unknown;
+    };
+    /**
+     * Current Definition Id
+     */
+    current_definition_id: number | null;
+    /**
+     * Template Context Variables
+     */
+    template_context_variables?: {
+        [key: string]: unknown;
+    } | null;
+    call_disposition_codes?: CallDispositionCodes | null;
+    /**
+     * Total Runs
+     */
+    total_runs?: number | null;
+    /**
+     * Workflow Configurations
+     */
+    workflow_configurations?: {
+        [key: string]: unknown;
+    } | null;
+    /**
+     * Version Number
+     */
+    version_number?: number | null;
+    /**
+     * Version Status
+     */
+    version_status?: string | null;
+    /**
+     * Workflow Uuid
+     */
+    workflow_uuid?: string | null;
+    /**
+     * Whether the appointment hours were saved as the attached Google Calendar connection's booking hours; null when there was nothing to save.
+     */
+    calendar_hours?: CalendarHoursStatus | null;
 };
 
 /**
@@ -10489,6 +10615,13 @@ export type VonageConfigurationRequest = {
  * Webhook credential authentication types
  */
 export type WebhookCredentialType = 'none' | 'api_key' | 'bearer_token' | 'basic_auth' | 'custom_header';
+
+/**
+ * Weekday
+ *
+ * Day of the week, Monday=0 ... Sunday=6 (Python's ``date.weekday()``).
+ */
+export type Weekday = 0 | 1 | 2 | 3 | 4 | 5 | 6;
 
 /**
  * WidgetTexts
@@ -12802,7 +12935,7 @@ export type DuplicateWorkflowTemplateApiV1WorkflowTemplatesDuplicatePostResponse
     /**
      * Successful Response
      */
-    200: WorkflowResponse;
+    200: TemplateWorkflowResponse;
 };
 
 export type DuplicateWorkflowTemplateApiV1WorkflowTemplatesDuplicatePostResponse = DuplicateWorkflowTemplateApiV1WorkflowTemplatesDuplicatePostResponses[keyof DuplicateWorkflowTemplateApiV1WorkflowTemplatesDuplicatePostResponses];
