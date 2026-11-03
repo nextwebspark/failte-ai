@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import zoneinfo
+from collections.abc import Iterator
 from datetime import datetime
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -81,6 +83,26 @@ def test_speech() -> None:
 def test_calendar_config_rejects(changes: dict[str, Any]) -> None:
     with pytest.raises(ValidationError):
         CalendarConfig.model_validate({**calendar_config(), **changes})
+
+
+@pytest.fixture
+def without_system_tz_database() -> Iterator[None]:
+    """Like python:3.13-slim, whose trimmed tz database lacks legacy names:
+    zones then come only from the ``tzdata`` package."""
+    zoneinfo.reset_tzpath(to=[])
+    ZoneInfo.clear_cache()
+    yield
+    zoneinfo.reset_tzpath()
+    ZoneInfo.clear_cache()
+
+
+@pytest.mark.usefixtures("without_system_tz_database")
+@pytest.mark.parametrize(
+    "zone", ["Asia/Calcutta", "US/Eastern", "Europe/Kiev", "America/Buenos_Aires"]
+)
+def test_calendar_config_takes_legacy_zones_browsers_report(zone: str) -> None:
+    config = CalendarConfig.model_validate({**calendar_config(), "timezone": zone})
+    assert config.zone.key == zone
 
 
 def test_calendar_config_defaults_match_the_shim() -> None:
