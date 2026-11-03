@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pydantic import model_validator
 
+from api.constants import BRAND_DOCS_URL
 from api.services.integrations.base import IntegrationNodeRegistration
 from api.services.workflow.node_data import BaseNodeData
 from api.services.workflow.node_specs._base import (
@@ -25,7 +26,7 @@ from api.services.workflow.node_specs.model_spec import (
         "Paygent is a post-call usage-tracking and billing integration. "
         "It does not participate in the conversation graph and should not be connected to other nodes."
     ),
-    docs_url="https://docs.lightmove.ai/integrations/paygent",
+    docs_url=f"{BRAND_DOCS_URL}/integrations/paygent",
     category=NodeCategory.integration,
     icon="CreditCard",
     examples=[

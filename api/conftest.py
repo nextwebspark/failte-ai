@@ -22,6 +22,8 @@ from dotenv import load_dotenv
 
 # Load .env.test before importing api.constants (which reads DATABASE_URL at import time)
 env_path = Path(__file__).resolve().parent / ".env.test"
+# Tests check the published docs links, so a local docs override must not leak in.
+os.environ.pop("DOCS_BASE_URL", None)
 load_dotenv(env_path)
 
 import logging

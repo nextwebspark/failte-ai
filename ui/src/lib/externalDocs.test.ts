@@ -5,6 +5,12 @@ import { BRAND } from "@/config/brand";
 import { publicDocsHref } from "./externalDocs";
 
 describe("publicDocsHref", () => {
+  it("points our docs at the website, which publishes them", () => {
+    expect(BRAND.docsUrl).toBe("https://lightmove.ai/docs");
+    const ari = "https://lightmove.ai/docs/integrations/telephony/asterisk-ari";
+    expect(publicDocsHref(ari)).toBe(ari);
+  });
+
   it("accepts our own docs host", () => {
     const url = `${BRAND.docsUrl}/voice-agent/introduction`;
     expect(publicDocsHref(url)).toBe(url);
