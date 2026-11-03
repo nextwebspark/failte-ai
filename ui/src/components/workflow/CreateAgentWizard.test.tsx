@@ -3,7 +3,7 @@ import { beforeEach, expect, it, vi } from 'vitest';
 
 import { handOffOAuthReturn } from '@/app/integrations/oauthPopup';
 
-import { CreateAgentDialog, type CreateMode } from './CreateAgentDialog';
+import { CreateAgentWizard, type CreateMode } from './CreateAgentWizard';
 
 const mocks = vi.hoisted(() => ({
     push: vi.fn(),
@@ -16,11 +16,26 @@ const mocks = vi.hoisted(() => ({
     providerApps: vi.fn(),
     startOAuth: vi.fn(),
     activate: vi.fn(),
+    redirectToLogin: vi.fn(),
     canConnect: true,
+    user: { id: '1' } as { id: string } | null,
+    authLoading: false,
 }));
 vi.mock('next/navigation', () => ({ useRouter: () => ({ push: mocks.push, refresh: mocks.refresh }) }));
+vi.mock('next/link', () => ({
+    default: ({ href, children, ...rest }: { href: string; children: React.ReactNode }) => (
+        <a href={href} {...rest}>
+            {children}
+        </a>
+    ),
+}));
 vi.mock('@/lib/auth', () => ({
-    useAuth: () => ({ user: { id: '1' }, getAccessToken: async () => 'token' }),
+    useAuth: () => ({
+        user: mocks.user,
+        loading: mocks.authLoading,
+        redirectToLogin: mocks.redirectToLogin,
+        getAccessToken: async () => 'token',
+    }),
 }));
 vi.mock('@/context/OrgConfigContext', () => ({
     useOrgConfig: () => ({ can: () => mocks.canConnect }),
@@ -50,6 +65,7 @@ const RECEPTIONIST = {
     call_type: 'inbound',
     icon: 'phone',
     featured: true,
+    category: 'general',
     integrations: ['google-calendar'],
     created_at: '',
 };
@@ -69,6 +85,8 @@ beforeEach(() => {
     vi.clearAllMocks();
     vi.restoreAllMocks();
     mocks.canConnect = true;
+    mocks.user = { id: '1' };
+    mocks.authLoading = false;
     mocks.templates.mockResolvedValue({ data: [RECEPTIONIST] });
     mocks.connections.mockResolvedValue({ data: { connections: [] } });
     mocks.providerApps.mockResolvedValue({
@@ -76,21 +94,21 @@ beforeEach(() => {
     });
 });
 
-function renderDialog(initialMode?: CreateMode) {
-    const onOpenChange = vi.fn();
-    render(<CreateAgentDialog open onOpenChange={onOpenChange} initialMode={initialMode} />);
-    return { onOpenChange };
+function renderWizard(initialMode?: CreateMode) {
+    render(<CreateAgentWizard initialMode={initialMode} />);
 }
 
 async function openReceptionist() {
     fireEvent.click(await screen.findByRole('button', { name: /AI Receptionist/ }));
-    return screen.findByRole('heading', { name: 'Set up your AI Receptionist' });
+    fireEvent.click(screen.getByRole('button', { name: 'Use this template' }));
+    return screen.findByRole('heading', { name: 'Personalise your AI Receptionist' });
 }
 
 it('opens on the ready-made agents, featured first', async () => {
-    renderDialog();
+    renderWizard();
 
     expect(screen.getByRole('heading', { name: 'What should your agent do?' })).toBeTruthy();
+    expect(screen.getByText('Choose template')).toBeTruthy();
     const card = await screen.findByRole('button', { name: /AI Receptionist/ });
     expect(card.textContent).toContain('Most popular');
     expect(card.textContent).toContain('Answers calls · Calendar · 2 min');
@@ -98,17 +116,15 @@ it('opens on the ready-made agents, featured first', async () => {
 
 it('asks the template’s questions, previews the greeting, and creates the agent', async () => {
     mocks.duplicate.mockResolvedValue({ data: { id: 42 } });
-    renderDialog();
+    renderWizard();
     await openReceptionist();
 
-    // A required answer is missing.
     fireEvent.click(screen.getByRole('button', { name: 'Create agent' }));
     expect(screen.getByText('Please add business name.')).toBeTruthy();
     expect(mocks.duplicate).not.toHaveBeenCalled();
 
     fireEvent.change(screen.getByLabelText('Business name'), { target: { value: ' Bloom Dental ' } });
     expect(screen.getByLabelText('Preview').textContent).toContain('Hi, thanks for calling Bloom Dental.');
-    // No calendar yet: the agent takes a message instead.
     expect(await screen.findByRole('button', { name: 'Connect Google Calendar' })).toBeTruthy();
 
     fireEvent.click(screen.getByRole('button', { name: 'Create agent' }));
@@ -129,7 +145,7 @@ it('asks the template’s questions, previews the greeting, and creates the agen
 it('attaches the workspace’s Google Calendar when it is connected', async () => {
     mocks.connections.mockResolvedValue({ data: { connections: [CALENDAR] } });
     mocks.duplicate.mockResolvedValue({ data: { id: 7 } });
-    renderDialog();
+    renderWizard();
     await openReceptionist();
 
     expect(await screen.findByText('Google Calendar connected')).toBeTruthy();
@@ -141,7 +157,7 @@ it('attaches the workspace’s Google Calendar when it is connected', async () =
     expect(mocks.duplicate.mock.calls[0][0].body.integration_tools).toEqual({ 'google-calendar': 'cal-tool' });
 });
 
-it('connects Google Calendar in a pop-up without leaving the dialog', async () => {
+it('connects Google Calendar in a pop-up without leaving the wizard', async () => {
     const popup = { location: { href: '' }, close: vi.fn() };
     vi.spyOn(window, 'open').mockReturnValue(popup as unknown as Window);
     vi.spyOn(window, 'close').mockImplementation(() => {});
@@ -149,7 +165,7 @@ it('connects Google Calendar in a pop-up without leaving the dialog', async () =
         data: { authorization_url: 'https://accounts.google.com/o/oauth2/auth?x=1', browser_nonce: 'nonce-1' },
     });
     mocks.activate.mockResolvedValue({ data: CALENDAR });
-    renderDialog();
+    renderWizard();
     await openReceptionist();
     fireEvent.change(screen.getByLabelText('Business name'), { target: { value: 'Bloom Dental' } });
 
@@ -162,8 +178,11 @@ it('connects Google Calendar in a pop-up without leaving the dialog', async () =
         optional_scopes: [],
     });
 
-    // Google sends the pop-up back to /integrations, which hands over.
-    window.history.replaceState(null, '', `/integrations?integration_result=success&connection_id=${'0b6f1f0e-1c1a-4d3e-9a55-5f6c7e8d9a0b'}&provider=google-calendar`);
+    window.history.replaceState(
+        null,
+        '',
+        `/integrations?integration_result=success&connection_id=${'0b6f1f0e-1c1a-4d3e-9a55-5f6c7e8d9a0b'}&provider=google-calendar`,
+    );
     expect(handOffOAuthReturn()).toBe(true);
     window.history.replaceState(null, '', '/');
 
@@ -172,14 +191,13 @@ it('connects Google Calendar in a pop-up without leaving the dialog', async () =
         path: { connection_id: '0b6f1f0e-1c1a-4d3e-9a55-5f6c7e8d9a0b' },
         body: { browser_nonce: 'nonce-1' },
     });
-    // The answer typed before connecting is still there.
     expect((screen.getByLabelText('Business name') as HTMLInputElement).value).toBe('Bloom Dental');
 });
 
 it('leaves the calendar off when the user unticks it', async () => {
     mocks.connections.mockResolvedValue({ data: { connections: [CALENDAR] } });
     mocks.duplicate.mockResolvedValue({ data: { id: 7 } });
-    renderDialog();
+    renderWizard();
     await openReceptionist();
 
     fireEvent.click(await screen.findByRole('checkbox'));
@@ -192,7 +210,7 @@ it('leaves the calendar off when the user unticks it', async () => {
 
 it('sends a workspace with its own Google client to Integrations, and notices on return', async () => {
     mocks.providerApps.mockResolvedValue({ data: { provider_apps: [] } });
-    renderDialog();
+    renderWizard();
     await openReceptionist();
 
     const link = await screen.findByRole('link', { name: /Connect Google Calendar/ });
@@ -206,7 +224,7 @@ it('sends a workspace with its own Google client to Integrations, and notices on
 
 it('tells someone who can’t connect integrations to ask an admin', async () => {
     mocks.canConnect = false;
-    renderDialog();
+    renderWizard();
     await openReceptionist();
 
     expect(await screen.findByText(/Ask one to connect Google Calendar in Integrations/)).toBeTruthy();
@@ -216,7 +234,7 @@ it('tells someone who can’t connect integrations to ask an admin', async () =>
 
 it('says so when calendar connections are off on this server', async () => {
     mocks.connections.mockResolvedValue({ error: { code: 'tools_service_not_configured', detail: 'Not configured' } });
-    renderDialog();
+    renderWizard();
     await openReceptionist();
 
     expect(await screen.findByText(/aren’t switched on for this server yet/)).toBeTruthy();
@@ -225,26 +243,26 @@ it('says so when calendar connections are off on this server', async () => {
 
 it('shows the API error and stays on the questions', async () => {
     mocks.duplicate.mockResolvedValue({ error: { detail: 'Business name is required.' } });
-    renderDialog();
+    renderWizard();
     await openReceptionist();
 
     fireEvent.change(screen.getByLabelText('Business name'), { target: { value: 'Bloom' } });
     fireEvent.click(screen.getByRole('button', { name: 'Create agent' }));
 
     expect((await screen.findByRole('alert')).textContent).toBe('Business name is required.');
-    expect(screen.getByRole('heading', { name: 'Set up your AI Receptionist' })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Personalise your AI Receptionist' })).toBeTruthy();
 });
 
 it('says so when there are no ready-made agents yet', async () => {
     mocks.templates.mockResolvedValue({ data: [] });
-    renderDialog();
+    renderWizard();
 
     expect(await screen.findByText(/Ready-made agents are on their way/)).toBeTruthy();
 });
 
 it('builds an agent from a description', async () => {
     mocks.describe.mockResolvedValue({ data: { id: 42 } });
-    renderDialog();
+    renderWizard();
 
     fireEvent.click(screen.getByRole('button', { name: 'Describe it in your own words →' }));
     const build = screen.getByRole('button', { name: 'Build my agent' });
@@ -265,7 +283,7 @@ it('builds an agent from a description', async () => {
 });
 
 it('fills the description from an example', () => {
-    renderDialog('describe');
+    renderWizard('describe');
 
     fireEvent.click(screen.getByRole('button', { name: 'Ask customers for feedback' }));
 
@@ -275,11 +293,151 @@ it('fills the description from an example', () => {
 
 it('starts from scratch with a default name', async () => {
     mocks.blank.mockResolvedValue({ data: { id: 7 } });
-    renderDialog();
+    renderWizard();
 
     fireEvent.click(screen.getByRole('button', { name: 'Start from scratch' }));
     fireEvent.click(screen.getByRole('button', { name: 'Create and open' }));
 
     await waitFor(() => expect(mocks.push).toHaveBeenCalledWith('/workflow/7?onboarding=web_call'));
     expect(mocks.blank.mock.calls[0][0].body.name).toBe('Untitled agent');
+});
+
+const CLINIC = {
+    ...RECEPTIONIST,
+    id: 5,
+    template_name: 'Clinic receptionist',
+    template_description: 'Books clinic visits.',
+    template_json: {
+        nodes: [
+            { type: 'startCall', data: { name: 'Help the patient', greeting: 'Hello, {{business_name}}.' } },
+            { type: 'agentNode', data: { name: 'Take a message' } },
+            { type: 'endCall', data: { name: 'End Call' } },
+        ],
+    },
+    featured: false,
+    category: 'clinic',
+};
+
+const REMINDER = {
+    ...RECEPTIONIST,
+    id: 9,
+    template_name: 'Appointment reminder',
+    template_description: 'Calls ahead of a visit.',
+    call_type: 'outbound',
+    featured: false,
+    category: 'telephony',
+    integrations: [],
+};
+
+it('sends a signed-out visitor to sign in instead of loading templates', async () => {
+    mocks.user = null;
+    renderWizard();
+
+    await waitFor(() => expect(mocks.redirectToLogin).toHaveBeenCalled());
+    expect(mocks.templates).not.toHaveBeenCalled();
+});
+
+it('waits for sign-in to finish before deciding', () => {
+    mocks.user = null;
+    mocks.authLoading = true;
+    renderWizard();
+
+    expect(mocks.redirectToLogin).not.toHaveBeenCalled();
+});
+
+it('says when the templates could not load, and tries again', async () => {
+    mocks.templates.mockResolvedValueOnce({ error: { detail: 'Server error' } });
+    renderWizard();
+
+    expect((await screen.findByRole('alert')).textContent).toContain('Couldn’t load the ready-made agents');
+    expect(screen.queryByText(/Ready-made agents are on their way/)).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    expect(await screen.findByRole('button', { name: /AI Receptionist/ })).toBeTruthy();
+    expect(mocks.templates).toHaveBeenCalledTimes(2);
+});
+
+it('treats a network failure like a load error', async () => {
+    mocks.templates.mockRejectedValueOnce(new Error('offline'));
+    renderWizard();
+
+    expect(await screen.findByRole('button', { name: 'Try again' })).toBeTruthy();
+});
+
+it('previews the featured template first, then whichever card is picked', async () => {
+    mocks.templates.mockResolvedValue({ data: [CLINIC, RECEPTIONIST] });
+    renderWizard();
+
+    const preview = await screen.findByRole('complementary', { name: 'Template preview' });
+    await waitFor(() => expect(preview.textContent).toContain('AI Receptionist'));
+
+    fireEvent.click(screen.getByRole('button', { name: /Clinic receptionist/ }));
+    expect(preview.textContent).toContain('Clinics');
+    expect(preview.textContent).toContain('Help the patient');
+    // End nodes are not steps the caller hears.
+    expect(preview.textContent).not.toContain('End Call');
+    expect(preview.textContent).toContain('Hello, [business_name].');
+});
+
+it('filters by industry and keeps the preview on a visible card', async () => {
+    mocks.templates.mockResolvedValue({ data: [RECEPTIONIST, CLINIC, REMINDER] });
+    renderWizard();
+    await screen.findByRole('button', { name: /AI Receptionist/ });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Clinics' }));
+
+    expect(screen.queryByRole('button', { name: /AI Receptionist/ })).toBeNull();
+    const preview = screen.getByRole('complementary', { name: 'Template preview' });
+    expect(preview.textContent).toContain('Clinic receptionist');
+    fireEvent.click(screen.getByRole('button', { name: 'Use this template' }));
+    expect(await screen.findByRole('heading', { name: 'Personalise your Clinic receptionist' })).toBeTruthy();
+});
+
+it('says so when no template matches both filters', async () => {
+    mocks.templates.mockResolvedValue({ data: [RECEPTIONIST, CLINIC, REMINDER] });
+    renderWizard();
+    await screen.findByRole('button', { name: /AI Receptionist/ });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Clinics' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Call my customers' }));
+
+    expect(screen.getByText(/No agents match these filters/)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Use this template' })).toBeNull();
+});
+
+it('moves focus to each step’s heading', async () => {
+    mocks.duplicate.mockResolvedValue({ data: { id: 42 } });
+    renderWizard();
+    const heading = await openReceptionist();
+
+    expect(document.activeElement).toBe(heading);
+
+    fireEvent.change(screen.getByLabelText('Business name'), { target: { value: 'Bloom' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Create agent' }));
+    const ready = await screen.findByRole('heading', { name: 'Your agent is ready', level: 1 });
+    expect(document.activeElement).toBe(ready);
+});
+
+it('leaves focus alone on first load', async () => {
+    renderWizard();
+    await screen.findByRole('button', { name: /AI Receptionist/ });
+
+    expect(document.activeElement).toBe(document.body);
+});
+
+it('goes back to the gallery from the questions, keeping the choice', async () => {
+    renderWizard();
+    await openReceptionist();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Back' }));
+
+    expect(screen.getByRole('heading', { name: 'What should your agent do?' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /AI Receptionist/ }).getAttribute('aria-pressed')).toBe('true');
+});
+
+it('opens straight on a side path from the URL mode', () => {
+    renderWizard('blank');
+
+    expect(screen.getByRole('heading', { name: 'Start from scratch' })).toBeTruthy();
+    expect(screen.queryByText('Choose template')).toBeNull();
 });

@@ -34,6 +34,8 @@ class WorkflowTemplateResponse(BaseModel):
     icon: str | None = None
     featured: bool = False
     sample_audio_url: str | None = None
+    # Gallery filter group, e.g. "clinic", "trades", "restaurant", "estate".
+    category: str | None = None
     # Integration providers the dialog offers to connect, e.g. "google-calendar".
     integrations: list[str] = []
     created_at: datetime

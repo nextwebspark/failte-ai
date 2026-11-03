@@ -9,11 +9,14 @@ const mocks = vi.hoisted(() => ({
     auth: { user: { id: '1' }, loading: false, redirectToLogin: vi.fn() },
     workflow: vi.fn(),
     versions: vi.fn(),
+    replace: vi.fn(),
 }));
 
 vi.mock('next/navigation', () => ({
     useParams: () => ({ workflowId: '12' }),
     useSearchParams: () => new URLSearchParams(mocks.query),
+    usePathname: () => '/workflow/12',
+    useRouter: () => ({ replace: mocks.replace }),
 }));
 vi.mock('@/lib/auth', () => ({ useAuth: () => mocks.auth }));
 vi.mock('@/lib/logger', () => ({ default: { error: vi.fn() } }));
@@ -128,5 +131,34 @@ describe('workflow version links', () => {
         await screen.findByTestId('workflow');
         await act(async () => { resolveOld({ data: [version(3)] }); });
         expect(editorProps().initialSelectedVersion.id).toBe(101);
+    });
+});
+
+describe('arriving from the Create agent wizard', () => {
+    it('opens the tester once and drops the onboarding flag from the URL', async () => {
+        mocks.query = 'onboarding=web_call';
+        render(<WorkflowDetailPage />);
+        await screen.findByTestId('workflow');
+
+        expect(editorProps().openTesterOnLoad).toBe(true);
+        // A refresh or Back must not open the tester again.
+        expect(mocks.replace).toHaveBeenCalledWith('/workflow/12', { scroll: false });
+    });
+
+    it('keeps the other query parameters when it drops the flag', async () => {
+        mocks.query = 'version=3&onboarding=web_call';
+        render(<WorkflowDetailPage />);
+        await screen.findByTestId('workflow');
+
+        expect(mocks.replace).toHaveBeenCalledWith('/workflow/12?version=3', { scroll: false });
+    });
+
+    it('leaves the URL and the tester alone otherwise', async () => {
+        mocks.query = '';
+        render(<WorkflowDetailPage />);
+        await screen.findByTestId('workflow');
+
+        expect(editorProps().openTesterOnLoad).toBe(false);
+        expect(mocks.replace).not.toHaveBeenCalled();
     });
 });

@@ -50,8 +50,10 @@ class TunnelURLProvider:
             metrics_url = "http://cloudflared:2000/metrics"
 
             async with aiohttp.ClientSession() as session:
+                # total=1 keeps /health under the dashboard's 3s budget when
+                # the cloudflared hostname does not resolve (host-run dev).
                 async with session.get(
-                    metrics_url, timeout=aiohttp.ClientTimeout(total=5)
+                    metrics_url, timeout=aiohttp.ClientTimeout(total=1)
                 ) as response:
                     if response.status != 200:
                         logger.warning(

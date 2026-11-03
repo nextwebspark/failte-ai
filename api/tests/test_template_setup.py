@@ -1,5 +1,7 @@
+import re
 from datetime import datetime, timezone
 from types import SimpleNamespace
+from typing import get_args
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -10,8 +12,12 @@ from api.routes.workflow import router
 from api.schemas.workflow_template import TemplateSetupField
 from api.services.auth.depends import get_user
 from api.services.workflow.agent_builder import validate_workflow_definition
-from api.services.workflow.starter_templates import STARTER_TEMPLATES
+from api.services.workflow.starter_templates import (
+    STARTER_TEMPLATES,
+    TemplateCategory,
+)
 from api.services.workflow.template_setup import (
+    INTEGRATION_TOOL_PREFIX,
     TemplateSetupError,
     attach_integration_tools,
     fill_template_values,
@@ -109,7 +115,37 @@ def test_starter_templates_fill_into_valid_agents():
             assert "integration:" not in text, starter.name
             for key in keys:
                 assert "{{" + key not in text, (starter.name, key)
-        assert set(starter.row()) >= {"template_json", "setup_fields", "integrations"}
+        assert set(starter.row()) >= {
+            "template_json",
+            "setup_fields",
+            "integrations",
+            "category",
+        }
+
+
+def test_every_starter_question_is_used_by_its_agent():
+    # A question the agent never uses is wasted effort and data we don't need.
+    for starter in STARTER_TEMPLATES:
+        text = str(starter.definition)
+        for field in starter.setup_fields:
+            assert re.search(r"\{\{\s*" + field.key + r"\b", text), (
+                starter.name,
+                field.key,
+            )
+
+
+def test_starter_catalogue_is_consistent():
+    names = [starter.name for starter in STARTER_TEMPLATES]
+    # The sync upserts by name, so a duplicate would overwrite another starter.
+    assert len(names) == len(set(names))
+    assert [s.name for s in STARTER_TEMPLATES if s.featured] == ["AI Receptionist"]
+    categories = set(get_args(TemplateCategory))
+    for starter in STARTER_TEMPLATES:
+        assert starter.category in categories, starter.name
+        assert starter.row()["category"] == starter.category
+        # Templates that offer a calendar must carry the placeholder tool.
+        has_placeholder = INTEGRATION_TOOL_PREFIX in str(starter.definition)
+        assert has_placeholder == bool(starter.integrations), starter.name
 
 
 def _client() -> TestClient:
@@ -144,6 +180,7 @@ def _template():
         icon="phone",
         featured=True,
         sample_audio_url=None,
+        category="clinic",
         integrations=["google-calendar"],
         created_at=datetime(2026, 10, 1, tzinfo=timezone.utc),
     )
@@ -284,3 +321,4 @@ def test_templates_list_includes_setup_fields():
     assert template["integrations"] == ["google-calendar"]
     assert template["featured"] is True
     assert template["call_type"] == "inbound"
+    assert template["category"] == "clinic"

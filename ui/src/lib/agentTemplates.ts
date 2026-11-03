@@ -4,7 +4,7 @@ import type {
     WorkflowTemplateResponse,
 } from '@/client/types.gen';
 
-/** The integration providers the Create agent dialog can connect. */
+/** The integration providers the Create agent wizard can connect. */
 export const GOOGLE_CALENDAR = 'google-calendar';
 
 export const INTEGRATION_LABEL: Record<string, string> = {
@@ -16,12 +16,35 @@ export const INTEGRATION_AUTH_FAMILY: Record<string, string> = {
     [GOOGLE_CALENDAR]: 'google',
 };
 
-export type TemplateFilter = 'all' | 'inbound' | 'outbound';
+export type TemplateDirectionFilter = 'all' | 'inbound' | 'outbound';
 
-export const TEMPLATE_FILTER_LABEL: Record<TemplateFilter, string> = {
+/** @deprecated Prefer TemplateDirectionFilter; kept for older imports. */
+export type TemplateFilter = TemplateDirectionFilter;
+
+export const TEMPLATE_FILTER_LABEL: Record<TemplateDirectionFilter, string> = {
     all: 'All',
     inbound: 'Answer my calls',
     outbound: 'Call my customers',
+};
+
+export type TemplateCategory =
+    | 'all'
+    | 'general'
+    | 'telephony'
+    | 'clinic'
+    | 'trades'
+    | 'restaurant'
+    | 'estate'
+    | 'salon';
+
+export const TEMPLATE_CATEGORY_LABEL: Record<Exclude<TemplateCategory, 'all'>, string> = {
+    general: 'General',
+    telephony: 'Phone & VoIP',
+    clinic: 'Clinics',
+    trades: 'Trades',
+    restaurant: 'Restaurants',
+    estate: 'Estate agents',
+    salon: 'Salons',
 };
 
 /** Featured templates first, then by name. */
@@ -33,17 +56,35 @@ export function sortTemplates(templates: WorkflowTemplateResponse[]): WorkflowTe
     );
 }
 
-/** The filters worth showing: only when the templates span both directions. */
-export function templateFilters(templates: WorkflowTemplateResponse[]): TemplateFilter[] {
+/** The direction filters worth showing: only when the templates span both directions. */
+export function templateFilters(templates: WorkflowTemplateResponse[]): TemplateDirectionFilter[] {
     const types = new Set(templates.map((t) => t.call_type).filter(Boolean));
     return types.has('inbound') && types.has('outbound') ? ['all', 'inbound', 'outbound'] : [];
 }
 
+/** Category chips when more than one category is present. */
+export function templateCategories(templates: WorkflowTemplateResponse[]): TemplateCategory[] {
+    const cats = new Set(
+        templates.map((t) => t.category).filter((c): c is string => Boolean(c && c.trim())),
+    );
+    if (cats.size <= 1) return [];
+    const known = (Object.keys(TEMPLATE_CATEGORY_LABEL) as Exclude<TemplateCategory, 'all'>[]).filter(
+        (c) => cats.has(c),
+    );
+    const extra = [...cats].filter((c) => !(c in TEMPLATE_CATEGORY_LABEL)).sort();
+    return ['all', ...known, ...(extra as TemplateCategory[])];
+}
+
 export function filterTemplates(
     templates: WorkflowTemplateResponse[],
-    filter: TemplateFilter,
+    direction: TemplateDirectionFilter,
+    category: TemplateCategory = 'all',
 ): WorkflowTemplateResponse[] {
-    return filter === 'all' ? templates : templates.filter((t) => t.call_type === filter);
+    return templates.filter((t) => {
+        if (direction !== 'all' && t.call_type !== direction) return false;
+        if (category !== 'all' && (t.category || 'general') !== category) return false;
+        return true;
+    });
 }
 
 /** About a minute per two questions, plus one to try it. */
@@ -88,6 +129,45 @@ export function templateGreeting(template: WorkflowTemplateResponse): string | n
     return typeof greeting === 'string' && greeting.trim() ? greeting : null;
 }
 
+/** Conversation steps from the template graph (start + agent nodes), for the preview. */
+export function templateFlowSteps(template: WorkflowTemplateResponse): string[] {
+    const nodes = (
+        template.template_json as {
+            nodes?: { type?: string; data?: { name?: unknown; is_start?: boolean } }[];
+        }
+    ).nodes;
+    if (!nodes?.length) return [];
+    const steps: string[] = [];
+    for (const node of nodes) {
+        if (node.type !== 'startCall' && node.type !== 'agentNode') continue;
+        const name = typeof node.data?.name === 'string' ? node.data.name.trim() : '';
+        if (name) steps.push(name);
+    }
+    return steps;
+}
+
+/** Short capability bullets for the gallery preview pane. */
+export function templateHighlights(template: WorkflowTemplateResponse): string[] {
+    const highlights: string[] = [];
+    if (template.call_type === 'outbound') {
+        highlights.push('Calls your customers on a VoIP or phone line');
+        highlights.push('Introduces your business and follows a clear script');
+    } else {
+        highlights.push('Answers inbound calls on your VoIP or phone number');
+        highlights.push('Uses your business details for hours, location and FAQs');
+    }
+    if (template.integrations?.includes(GOOGLE_CALENDAR)) {
+        highlights.push('Can book into Google Calendar (optional)');
+    } else {
+        highlights.push('Takes a message when it cannot finish the request');
+    }
+    const fields = template.setup_fields?.length ?? 0;
+    if (fields > 0) {
+        highlights.push(`About ${setupMinutes(template)} minutes to personalise`);
+    }
+    return highlights;
+}
+
 export interface PreviewPart {
     text: string;
     /** True for text that came from (or stands in for) an answer. */
@@ -122,7 +202,7 @@ export function previewParts(
     return parts;
 }
 
-/** The connection the dialog can attach for *provider*: active and installed as a tool. */
+/** The connection the wizard can attach for *provider*: active and installed as a tool. */
 export function usableConnection(
     connections: IntegrationConnectionResponse[],
     provider: string,

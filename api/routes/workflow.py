@@ -1575,6 +1575,7 @@ async def get_workflow_templates() -> List[WorkflowTemplateResponse]:
             "icon": template.icon,
             "featured": bool(template.featured),
             "sample_audio_url": template.sample_audio_url,
+            "category": template.category,
             "integrations": template.integrations or [],
             "created_at": template.created_at,
         }

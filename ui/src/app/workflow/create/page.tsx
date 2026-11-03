@@ -1,10 +1,33 @@
-import { redirect } from 'next/navigation';
+'use client';
+
+import { useSearchParams } from 'next/navigation';
+import { Suspense } from 'react';
+
+import SpinLoader from '@/components/SpinLoader';
+import { CreateAgentWizard, type CreateMode } from '@/components/workflow/CreateAgentWizard';
+
+import WorkflowLayout from '../WorkflowLayout';
+
+const MODES: CreateMode[] = ['template', 'describe', 'blank'];
+
+function CreateWizardFromUrl() {
+    const searchParams = useSearchParams();
+    const raw = searchParams.get('mode') ?? searchParams.get('create');
+    const initialMode: CreateMode =
+        raw && MODES.includes(raw as CreateMode) ? (raw as CreateMode) : 'template';
+    return <CreateAgentWizard initialMode={initialMode} />;
+}
 
 /**
- * Agents are created in the Create agent dialog on the Voice agents page. This
- * route stays for sign-in redirects, impersonation and old links, and opens
- * that dialog.
+ * Full-page Create agent wizard. Deep links:
+ * `/workflow/create?mode=template|describe|blank` (also accepts legacy `?create=`).
  */
 export default function CreateWorkflowPage() {
-    redirect('/workflow?create=template');
+    return (
+        <WorkflowLayout showFeaturesNav={false}>
+            <Suspense fallback={<SpinLoader />}>
+                <CreateWizardFromUrl />
+            </Suspense>
+        </WorkflowLayout>
+    );
 }
