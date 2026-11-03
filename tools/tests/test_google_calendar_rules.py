@@ -9,12 +9,28 @@ from zoneinfo import ZoneInfo
 import pytest
 from pydantic import ValidationError
 
+from fallcha_tools.providers.google_calendar.errors import BadArgumentError
+from fallcha_tools.providers.google_calendar.matching import (
+    PHONE_KEY_PROPERTY,
+    BookedCaller,
+    CallerLookup,
+    booked_caller,
+    booked_phone_key,
+    caller_lookup,
+    name_matches,
+    one_line,
+    phone_key,
+)
 from fallcha_tools.providers.google_calendar.scheduling import resolve_window
 from fallcha_tools.providers.google_calendar.settings import (
     CalendarConfig,
     ServiceAccountKey,
 )
-from fallcha_tools.providers.google_calendar.speech import join_spoken, say_time
+from fallcha_tools.providers.google_calendar.speech import (
+    join_spoken,
+    say_bookings,
+    say_time,
+)
 from tests.google_fakes import calendar_config, service_account_key
 
 DUBLIN = ZoneInfo("Europe/Dublin")
@@ -63,6 +79,111 @@ def test_speech() -> None:
         join_spoken([local(13, 9)])
         == "I have Tuesday the thirteenth at nine in the morning."
     )
+    assert say_bookings([]) == (
+        "I could not find any upcoming appointments for that number."
+    )
+    assert say_bookings([local(13, 9)]) == (
+        "I have you booked in for Tuesday the thirteenth at nine in the morning."
+    )
+    assert say_bookings([local(13, 9), local(14, 14)]) == (
+        "I have you booked in for Tuesday the thirteenth at nine in the morning, "
+        "and Wednesday the fourteenth at two in the afternoon."
+    )
+
+
+@pytest.mark.parametrize(
+    ("phone", "key"),
+    [
+        ("087 123 4567", "71234567"),
+        ("+353 87 123 4567", "71234567"),
+        ("00353871234567", "71234567"),
+        ("01 234 5678", "12345678"),  # Dublin landline: national number is 8
+        ("+353 1 234 5678", "12345678"),
+        ("07911 123456", "11123456"),
+        ("+44 7911 123456", "11123456"),
+        ("234 5678", "2345678"),  # seven digits are compared in full
+        ("087 123", None),
+        ("phone", None),
+        ("", None),
+    ],
+)
+def test_phone_key(phone: str, key: str | None) -> None:
+    assert phone_key(phone) == key
+
+
+def test_booked_phone_key_prefers_the_property() -> None:
+    description = "Booked by the agent.\nCaller: Jane\nPhone: 087 123 4567\n"
+    legacy = {"description": description}
+    tagged = {
+        "description": description,
+        "extendedProperties": {"private": {PHONE_KEY_PROPERTY: "99999999"}},
+    }
+    assert booked_phone_key(legacy) == "71234567"
+    assert booked_phone_key(tagged) == "99999999"
+    assert booked_phone_key({"description": "Phone: 087"}) is None
+    assert booked_phone_key({}) is None
+    # A phone number in the reason is not the booking's number.
+    assert booked_phone_key({"description": "Reason: ring 087 123 4567"}) is None
+
+
+def test_name_matches() -> None:
+    event = {
+        "summary": "Acme call — Jane Doe",
+        "description": "Booked by the agent.\nCaller: Jane Doe\nPhone: 087",
+    }
+    assert name_matches("jane", event)
+    assert name_matches("DOE jane", event)
+    assert not name_matches("Janet", event)
+    assert not name_matches("Mrs Doe", event)  # every word must be booked
+    assert name_matches("  ", event)  # no name: no filter
+    assert name_matches("J.", event)
+    irish = {"description": "Caller: Seán Ó Briain"}
+    assert name_matches("sean briain", irish)  # accents are ignored
+    # Only the description's Caller line counts, not the title.
+    assert not name_matches("Jane", {"summary": "Acme call — Jane"})
+    assert not name_matches("Jane", {})
+
+
+def test_caller_lookup() -> None:
+    mine, other = "+353 87 123 4567", "086 765 4321"
+    lookup = caller_lookup(contact_phone=mine, caller_phone=None, caller_name=None)
+    assert lookup == CallerLookup(phone_key="71234567", name=None)
+    # The call's own number, however it is said, needs no name.
+    assert caller_lookup(
+        contact_phone=mine, caller_phone="087 123 4567", caller_name=" Jane "
+    ) == CallerLookup(phone_key="71234567", name="Jane")
+    for contact in (mine, None, "unknown"):
+        assert caller_lookup(
+            contact_phone=contact, caller_phone=other, caller_name="Jane"
+        ) == CallerLookup(phone_key="67654321", name="Jane")
+        with pytest.raises(BadArgumentError, match="needs the name too"):
+            caller_lookup(contact_phone=contact, caller_phone=other, caller_name="")
+        with pytest.raises(BadArgumentError, match="at least 7 digits"):
+            caller_lookup(contact_phone=contact, caller_phone="087", caller_name="J")
+    with pytest.raises(BadArgumentError, match="is not known"):
+        caller_lookup(contact_phone=None, caller_phone=" ", caller_name="Jane")
+
+
+def test_booked_caller() -> None:
+    event = {
+        "description": (
+            "Booked by the agent.\nCaller: Jane Doe\nPhone: 087 123 4567\n"
+            "Reason: check-up"
+        )
+    }
+    assert booked_caller(event) == BookedCaller(
+        name="Jane Doe", phone="087 123 4567", reason="check-up"
+    )
+    no_reason = {"description": "Caller: Jane\nPhone: 087 123 4567"}
+    assert booked_caller(no_reason) == BookedCaller("Jane", "087 123 4567", None)
+    # Staff edited the details away: the caller is unknown.
+    assert booked_caller({"description": "Caller: Jane\nmoved by phone"}) is None
+    assert booked_caller({"description": "Caller: \nPhone: 087 123 4567"}) is None
+    assert booked_caller({}) is None
+
+
+def test_one_line() -> None:
+    assert one_line("  Jane\nPhone: 086 \t Doe \r\n") == "Jane Phone: 086 Doe"
 
 
 @pytest.mark.parametrize(

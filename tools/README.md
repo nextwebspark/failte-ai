@@ -106,6 +106,43 @@ connection is labelled with the key's `client_email`.
 | `check_appointment_availability(relative_day?, part_of_day?)` | `/availability` |
 | `book_appointment(slot_id, caller_name, caller_phone, reason?)` | `/book` |
 | `cancel_appointment(event_id)` (only events this connection booked) | `/cancel` |
+| `find_appointments(caller_phone?, caller_name?)` | none (MCP only) |
+| `reschedule_appointment(event_id, slot_id)` | none (MCP only) |
+
+**Finding a caller's bookings.** `find_appointments` returns at most three of
+the caller's upcoming bookings made by this connection (event id, start in
+the calendar's time zone, a phrase to speak), soonest first; the agent then
+cancels or moves one by its event id. A booking matches on the phone number
+it was made with, compared by its last 8 digits (`087 123 4567`,
+`+353 87 123 4567` and `00353871234567` are the same number). Which number
+may be used is the privacy rule:
+
+- The number the call comes from, which the Fallcha API sends as the
+  `X-Fallcha-Contact-Phone` header on the call's MCP requests (only to this
+  service, taken from the call record, never from the agent). It needs
+  nothing else; a name only narrows the result.
+- Any other number the caller says (or every number, when the call's own is
+  hidden or unknown) needs the name the booking was made under too: every
+  word of it must be in the booked name (case and accents ignored).
+  Knowing someone's number alone never reveals their appointments.
+
+Bookings carry the phone key as a private extended property, so Google
+filters on it; bookings made before that are matched on their description's
+`Phone:` line (the connection's soonest 500 upcoming bookings are read for
+them). A caller's name, phone and reason are written to the description on
+one line each, so their words cannot add a line.
+
+**Moving a booking.** `reschedule_appointment` books the new slot for the
+same caller (name, phone and reason read from the old booking) first, and
+cancels the old booking only once the new one is booked, so a failure never
+leaves the caller with no appointment. Its `outcome` is `moved`,
+`unchanged` (the same time), `slot_taken` (old booking kept, alternatives
+in `slots`), `not_found` (not an upcoming booking of this connection), or
+`old_not_cancelled` (new time booked, old one still there: the agent says
+the team will remove it). A Google error while booking changes nothing
+that a retry of the same call would not finish: the booking id is
+deterministic, so the retry finds its own new booking. Each step (read the
+old booking, book, cancel) has its own 5 s budget.
 
 REST bodies and responses match the shim's, so an existing `http_api` tool only
 needs a new URL and a connection key in place of the old `X-API-Key`. Errors

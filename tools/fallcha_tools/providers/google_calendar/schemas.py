@@ -6,6 +6,7 @@ they are written for an LLM on a phone call.
 
 from __future__ import annotations
 
+from enum import StrEnum
 from typing import Annotated
 
 from pydantic import BaseModel, Field
@@ -68,7 +69,32 @@ EventId = Annotated[
     Field(
         min_length=1,
         max_length=1024,
-        description="The event_id returned by book_appointment for this booking.",
+        description=(
+            "The event_id of the appointment, from book_appointment or "
+            "find_appointments. Never make this up."
+        ),
+    ),
+]
+BookedPhone = Annotated[
+    str | None,
+    Field(
+        max_length=50,
+        description=(
+            "Leave empty to look up the number this call comes from. Only if "
+            "the caller booked with another number, or the tool asks for it: "
+            "that number, including the area code, as confirmed back to them."
+        ),
+    ),
+]
+BookedName = Annotated[
+    str | None,
+    Field(
+        max_length=200,
+        description=(
+            "The name the appointment was booked under. Needed with "
+            "caller_phone; otherwise optional, to tell apart people who booked "
+            "with the same number."
+        ),
     ),
 ]
 
@@ -96,6 +122,44 @@ class BookingResult(BaseModel):
 
 class CancelResult(BaseModel):
     cancelled: bool
+    say: str = Field(description="Read this to the caller word for word.")
+
+
+class FoundAppointment(BaseModel):
+    event_id: str = Field(
+        description="Pass to cancel_appointment or reschedule_appointment."
+    )
+    start: str = Field(description="Start time, ISO 8601 in the business's time zone.")
+    say: str = Field(description="How to say this appointment out loud.")
+
+
+class FindResult(BaseModel):
+    appointments: list[FoundAppointment] = Field(
+        description="The caller's upcoming appointments, soonest first."
+    )
+    say: str = Field(description="Read this to the caller word for word.")
+
+
+class RescheduleOutcome(StrEnum):
+    MOVED = "moved"
+    # The new time is the one already booked: nothing changed.
+    UNCHANGED = "unchanged"
+    # The new slot was taken: the old booking stands; ``slots`` has others.
+    SLOT_TAKEN = "slot_taken"
+    # No upcoming booking of this agent has that event_id: nothing changed.
+    NOT_FOUND = "not_found"
+    # The new time is booked but the old booking could not be cancelled.
+    OLD_NOT_CANCELLED = "old_not_cancelled"
+
+
+class RescheduleResult(BaseModel):
+    outcome: RescheduleOutcome
+    event_id: str | None = Field(
+        default=None, description="Id of the new booking, when one was made."
+    )
+    slots: list[Slot] | None = Field(
+        default=None, description="Alternatives, when the new slot was taken."
+    )
     say: str = Field(description="Read this to the caller word for word.")
 
 

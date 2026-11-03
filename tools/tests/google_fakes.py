@@ -98,6 +98,9 @@ class FakeGoogle:
         )
         events = f"{CALENDAR_API}/calendars/{CALENDAR_ID.replace('@', '%40')}/events"
         self.insert = router.post(events).mock(side_effect=self._insert)
+        self.list_events = router.get(url__regex=rf"^{events}(\?|$)").mock(
+            side_effect=self._list_events
+        )
         self.get_event = router.get(url__regex=rf"^{events}/[^/]+$").mock(
             side_effect=self._get_event
         )
@@ -151,6 +154,40 @@ class FakeGoogle:
             return httpx.Response(409, json={"error": {"code": 409}})
         self.events[event_id] = {**event, "id": event_id, "status": "confirmed"}
         return httpx.Response(200, json=self.events[event_id])
+
+    def _list_events(self, request: httpx.Request) -> httpx.Response:
+        """events.list like Google: private properties ANDed, cancelled events
+        hidden, ends after timeMin, starts before timeMax, soonest first,
+        paged; a partial response omits ``items`` when there are none."""
+        params = request.url.params
+        wanted = dict(
+            prop.split("=", 1) for prop in params.get_list("privateExtendedProperty")
+        )
+        lo = datetime.fromisoformat(params["timeMin"])
+        hi = datetime.fromisoformat(params["timeMax"])
+
+        def start(event: dict[str, Any]) -> datetime:
+            return datetime.fromisoformat(event["start"]["dateTime"])
+
+        def listed(event: dict[str, Any]) -> bool:
+            private = event.get("extendedProperties", {}).get("private", {})
+            return (
+                event.get("status") != "cancelled"
+                and "start" in event
+                and "end" in event
+                and wanted.items() <= private.items()
+                and datetime.fromisoformat(event["end"]["dateTime"]) > lo
+                and start(event) < hi
+            )
+
+        found = sorted(filter(listed, self.events.values()), key=start)
+        offset = int(params.get("pageToken", "0"))
+        size = int(params["maxResults"])
+        page = found[offset : offset + size]
+        body: dict[str, Any] = {"items": page} if page else {}
+        if offset + size < len(found):
+            body["nextPageToken"] = str(offset + size)
+        return httpx.Response(200, json=body)
 
     def _patch_event(self, request: httpx.Request) -> httpx.Response:
         event = self.events.get(self._event_id(request))
