@@ -82,8 +82,10 @@ _RECEPTIONIST = AgentSpec(
             "If they want an appointment and you have calendar tools: check "
             "availability for the day they ask about, offer at most two or three "
             "times, and book the one they choose with their name and phone "
-            "number. Confirm the day and time back to them. To cancel, look up "
-            "and cancel their booking.\n\n"
+            "number. Confirm the day and time back to them.\n\n"
+            "To cancel or move an appointment, look up their booking first. Read "
+            "back what you find and make sure it is the one they mean before you "
+            "cancel or move it. If you find none, say so: never guess a booking.\n\n"
             "If you have no calendar tools, or they need a callback or a person, "
             "explain that you will take a message for the team."
         ),

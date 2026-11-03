@@ -11,7 +11,7 @@ Open **Integrations** in the sidebar. **Available integrations** lists the catal
 
 | Integration | What the agent can do | Connect with |
 |---|---|---|
-| **Google Calendar** | Check free appointment slots, book a slot, cancel an event it booked | Service account key, or sign in with your Google account |
+| **Google Calendar** | Check free appointment slots, book a slot, find a caller's bookings, move or cancel an event it booked | Service account key, or sign in with your Google account |
 | **Google Sheets** | Find rows by a column value, read a row, add a row, look up an order with caller verification | Service account key, or sign in with your Google account |
 | **Website product catalogue** | Search your shop's products and describe one, with spoken prices and stock | Nothing: it reads your public website |
 
@@ -124,6 +124,8 @@ Each connection creates an agent tool named after the integration, such as "Goog
 2. Under **MCP**, the tool lists its functions, such as `check_appointment_availability` and `book_appointment`.
 3. Tick the functions this node should offer. A tool with no ticked functions is not available on that node.
 4. Describe in the node prompt when to use them, as with any tool.
+
+**A caller who rings back** about a Calendar booking is found by the number they are calling from. A booking made with another number, or a call whose number is hidden, also needs the name the booking was made under, so knowing someone's number is never enough to hear their appointments. The agent can only find, move or cancel bookings it made itself. Moving books the new time before it cancels the old one, so the caller is never left without an appointment.
 
 The functions run in the LightMove.ai tools service. Your agent reaches it over an authenticated [MCP](/voice-agent/tools/mcp-tool) session that opens when the call starts. If an integration is unreachable at that moment, the call continues without its functions.
 
