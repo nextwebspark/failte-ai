@@ -84,7 +84,7 @@ def _business_fields(
 ) -> list[TemplateSetupField]:
     """The business questions a starter asks. Agents that never mention the
     address leave it out, so nobody types in an answer that goes unused."""
-    fields = [
+    head = [
         TemplateSetupField(
             key="business_name",
             label="Business name",
@@ -103,6 +103,21 @@ def _business_fields(
             placeholder=hours_placeholder,
             max_length=300,
         ),
+    ]
+    address = (
+        [
+            TemplateSetupField(
+                key="address",
+                label="Address",
+                placeholder=address_placeholder,
+                required=False,
+                max_length=300,
+            )
+        ]
+        if ask_address
+        else []
+    )
+    tail = [
         TemplateSetupField(
             key="website",
             label="Website",
@@ -121,18 +136,7 @@ def _business_fields(
             max_length=1500,
         ),
     ]
-    if ask_address:
-        fields.insert(
-            3,
-            TemplateSetupField(
-                key="address",
-                label="Address",
-                placeholder=address_placeholder,
-                required=False,
-                max_length=300,
-            ),
-        )
-    return fields
+    return [*head, *address, *tail]
 
 
 def _message_stage() -> StageSpec:

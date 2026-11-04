@@ -1,3 +1,4 @@
+import json
 import re
 from datetime import datetime, timezone
 from types import SimpleNamespace
@@ -126,9 +127,9 @@ def test_starter_templates_fill_into_valid_agents():
 def test_every_starter_question_is_used_by_its_agent():
     # A question the agent never uses is wasted effort and data we don't need.
     for starter in STARTER_TEMPLATES:
-        text = str(starter.definition)
+        text = json.dumps(starter.definition)
         for field in starter.setup_fields:
-            assert re.search(r"\{\{\s*" + field.key + r"\b", text), (
+            assert re.search(r"\{\{\s*" + re.escape(field.key) + r"\b", text), (
                 starter.name,
                 field.key,
             )

@@ -1,4 +1,4 @@
-"""saas_add workflow template category
+"""saas_add_workflow_template_category
 
 Revision ID: a8f3c2e19b47
 Revises: 04b6af5b14b4
