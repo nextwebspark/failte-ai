@@ -408,14 +408,14 @@ it('says so when no template matches both filters', async () => {
 it('moves focus to each step’s heading', async () => {
     mocks.duplicate.mockResolvedValue({ data: { id: 42 } });
     renderWizard();
+    // Focus moves in an effect that can run after the heading is in the DOM.
     const heading = await openReceptionist();
-
-    expect(document.activeElement).toBe(heading);
+    await waitFor(() => expect(document.activeElement).toBe(heading));
 
     fireEvent.change(screen.getByLabelText('Business name'), { target: { value: 'Bloom' } });
     fireEvent.click(screen.getByRole('button', { name: 'Create agent' }));
     const ready = await screen.findByRole('heading', { name: 'Your agent is ready', level: 1 });
-    expect(document.activeElement).toBe(ready);
+    await waitFor(() => expect(document.activeElement).toBe(ready));
 });
 
 it('leaves focus alone on first load', async () => {
