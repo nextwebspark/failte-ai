@@ -124,7 +124,8 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
       !["/account", "/superadmin", "/impersonate"].some((p) => pathname.startsWith(p)));
   const closedForDeletion =
     Boolean(orgContext?.deletion?.pending) &&
-    !pathname.startsWith("/settings") &&
+    // General settings only: the other /settings screens call blocked APIs.
+    pathname !== "/settings" &&
     !pathname.startsWith("/account");
 
   // Always render a single SidebarProvider and branch INSIDE it, so the

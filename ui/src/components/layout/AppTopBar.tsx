@@ -8,6 +8,7 @@ import React from "react";
 import { BrandLogo } from "@/components/BrandLogo";
 import { LocalOrgSwitcher } from "@/components/layout/LocalOrgSwitcher";
 import { SidebarTeamSwitcher } from "@/components/layout/SidebarTeamSwitcher";
+import { firstSettingsUrl } from "@/components/settings/settingsNav";
 import { SupportLink } from "@/components/SupportLink";
 import { Button } from "@/components/ui/button";
 import {
@@ -236,12 +237,13 @@ export function AppTopBar({
               <Users className="mr-2 h-4 w-4" />
               Team
             </DropdownMenuItem>
-            {(role === null || can("integrations:read")) && (
-              <DropdownMenuItem onClick={() => router.push("/settings")} className="cursor-pointer">
-                <Settings className="mr-2 h-4 w-4" />
-                Workspace settings
-              </DropdownMenuItem>
-            )}
+            <DropdownMenuItem
+              onClick={() => router.push(firstSettingsUrl(role === null ? null : can))}
+              className="cursor-pointer"
+            >
+              <Settings className="mr-2 h-4 w-4" />
+              Settings
+            </DropdownMenuItem>
             <DropdownMenuItem onClick={() => logout()} className="cursor-pointer">
               <LogOut className="mr-2 h-4 w-4" />
               Sign out

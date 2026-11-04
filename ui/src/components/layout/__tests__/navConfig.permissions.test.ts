@@ -17,11 +17,14 @@ describe("getRequiredPermission", () => {
     ["/skills/abc-123", "agents:read"],
     ["/skills/library/abc-123", "agents:read"],
     ["/skills/new", "agents:write"],
+    ["/billing", "billing:read"],
+    ["/settings/compliance", "calls:read"],
+    ["/settings/developer", "integrations:read"],
   ])("%s requires %s", (path, permission) => {
     expect(getRequiredPermission(path)).toBe(permission);
   });
 
-  it.each(["/overview", "/after-sign-in", "/workflows-archive-lookalike"])(
+  it.each(["/overview", "/after-sign-in", "/workflows-archive-lookalike", "/settings", "/account"])(
     "%s is open to every member",
     (path) => {
       expect(getRequiredPermission(path)).toBeNull();
@@ -32,9 +35,12 @@ describe("getRequiredPermission", () => {
     expect(getRequiredPermission("/teams-of-agents")).toBeNull();
   });
 
-  it("lists Team for everyone and gates build tools", () => {
+  it("folds Team, Billing and Developers into one Settings row", () => {
     const items = NAV_SECTIONS.flatMap((section) => section.items);
-    expect(items.find((item) => item.url === "/team")?.requires).toBe("members:read");
+    expect(items.find((item) => item.settingsHub)?.url).toBe("/settings");
+    for (const moved of ["/team", "/billing", "/api-keys"]) {
+      expect(items.some((item) => item.url === moved)).toBe(false);
+    }
     expect(items.find((item) => item.url === "/tools")?.requires).toBe("agents:write");
   });
 });

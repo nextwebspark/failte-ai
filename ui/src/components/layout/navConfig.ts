@@ -1,23 +1,21 @@
 import {
   AudioLines,
   BookOpen,
-  CircleDollarSign,
   Cpu,
   Database,
   FileText,
   GitBranch,
   Home,
-  Key,
   type LucideIcon,
   Megaphone,
   Phone,
   Plug,
   Settings,
   TrendingUp,
-  Users,
   Wrench,
 } from "lucide-react";
 
+import { SETTINGS_ROUTE_PERMISSIONS } from "@/components/settings/settingsNav";
 import type { Permission } from "@/lib/auth/roles";
 
 /**
@@ -38,6 +36,11 @@ export type NavItem = {
   showsTelephonyWarning?: boolean;
   /** Hidden (and its route blocked) unless the caller's role grants this. */
   requires?: Permission;
+  /**
+   * The Settings row: it leads to the first settings screen the member can
+   * open and stays lit on all of them (components/settings/settingsNav.ts).
+   */
+  settingsHub?: boolean;
 };
 
 export type NavSection = {
@@ -67,17 +70,15 @@ export const NAV_SECTIONS: NavSection[] = [
       { title: "Skills", url: "/skills", icon: BookOpen, requires: "agents:read" },
       { title: "Files", url: "/files", icon: Database, requires: "agents:write" },
       { title: "Recordings", url: "/recordings", icon: AudioLines, requires: "agents:write" },
-      { title: "Developers", url: "/api-keys", icon: Key, requires: "api_keys:manage" },
     ],
   },
   {
     label: "MANAGE",
     items: [
       { title: "Agent runs", url: "/usage", icon: TrendingUp, requires: "reports:read" },
-      { title: "Billing", url: "/billing", icon: CircleDollarSign, requires: "billing:read" },
       { title: "Reports", url: "/reports", icon: FileText, requires: "reports:read" },
-      { title: "Team", url: "/team", icon: Users, requires: "members:read" },
-      { title: "Workspace settings", url: "/settings", icon: Settings, requires: "integrations:read" },
+      // Team, Billing, Developers and Compliance live under Settings.
+      { title: "Settings", url: "/settings", icon: Settings, settingsHub: true },
     ],
   },
 ];
@@ -106,13 +107,15 @@ const PAGE_META: Record<string, PageMeta> = {
   "/skills/library": { title: "Skill library", subtitle: "Platform skills shared with every workspace" },
   "/files": { title: "Files", subtitle: "Documents agents can reference" },
   "/recordings": { title: "Recordings", subtitle: "Shared audio for prompts and transitions" },
-  "/api-keys": { title: "Developers", subtitle: "API keys and integration details" },
   "/usage": { title: "Agent runs", subtitle: "Call history across every agent" },
-  "/billing": { title: "Billing", subtitle: "Balance, top-ups and invoices" },
   "/reports": { title: "Reports", subtitle: "Daily call outcomes" },
-  "/settings": { title: "Workspace settings", subtitle: "Platform configuration and integrations" },
-  "/team": { title: "Team", subtitle: "Members, roles and invitations" },
-  "/account": { title: "Your account", subtitle: "Export or delete your data" },
+  // Settings screens print their own title and description (SettingsShell),
+  // so the header only names the area.
+  "/settings": { title: "Settings" },
+  "/team": { title: "Settings" },
+  "/billing": { title: "Settings" },
+  "/api-keys": { title: "Settings" },
+  "/account": { title: "Settings" },
   "/automation": { title: "Automation", subtitle: "Scheduled and triggered runs" },
   "/superadmin": { title: "Superadmin", subtitle: "Cross-organisation administration" },
   "/impersonate": { title: "Impersonate", subtitle: "Act as another user" },
@@ -145,6 +148,7 @@ const ROUTE_PERMISSIONS: Record<string, Permission> = {
       .filter((item): item is NavItem & { requires: Permission } => Boolean(item.requires))
       .map((item) => [item.url, item.requires]),
   ),
+  ...SETTINGS_ROUTE_PERMISSIONS,
   "/workflow/create": "agents:write",
   "/campaigns/new": "campaigns:write",
   "/skills/new": "agents:write",

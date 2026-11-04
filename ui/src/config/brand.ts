@@ -22,6 +22,10 @@ export const BRAND = {
   termsUrl: `https://${domain}/terms`,
   salesEmail: `sales@${domain}`,
   supportEmail: `support@${domain}`,
+  /** The other legal pages, linked from Settings > Privacy & compliance. */
+  dpaUrl: `https://${domain}/dpa`,
+  subprocessorsUrl: `https://${domain}/subprocessors`,
+  cookiesUrl: `https://${domain}/cookies`,
   assets: {
     /** Square mark: green tile, white voice bars, orange spark. Reads on light and dark. */
     mark: "/brand/lightmove-mark.svg",
