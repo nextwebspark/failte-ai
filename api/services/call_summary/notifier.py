@@ -14,7 +14,7 @@ that saw an attempt that looked failed to us drops the retry.
 import asyncio
 import hashlib
 from collections.abc import Awaitable, Callable, Sequence
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from datetime import UTC, timedelta, tzinfo
 from enum import StrEnum
 from typing import assert_never
@@ -33,7 +33,12 @@ from api.services.call_summary.summary import (
     CallSummary,
     extract_call_summary,
 )
-from api.services.email.base import EmailDeliveryError, EmailMessage, EmailSender
+from api.services.email.base import (
+    EmailDeliveryError,
+    EmailFailure,
+    EmailMessage,
+    EmailSender,
+)
 from api.services.email.templates import call_summary_message
 from api.services.rate_limit import RateLimiter
 from api.utils.clock import Clock
@@ -41,12 +46,16 @@ from api.utils.clock import Clock
 _PHONE_MODES = frozenset(
     WORKFLOW_RUN_MODES_BY_CHANNEL[WorkflowRunChannel.TELEPHONY.value]
 )
-# Waits before the second and third attempt at one recipient, for failures
-# that clear up by themselves (a rate limit, a dropped connection).
+# Waits before the second and third attempt at one recipient. A transient
+# failure may use both, a provider error only the first (the idempotency key
+# makes that retry safe), a final one neither.
 DEFAULT_RETRY_DELAYS_SECONDS = (2.0, 8.0)
 # Bounds the whole send, retries included, so a slow provider cannot hold the
-# completion job (and with it the post-call marker) for long.
+# completion job (and with it the post-call marker) for long. Two 15s Resend
+# timeouts plus the first delay fit inside it.
 DEFAULT_SEND_TIMEOUT_SECONDS = 45.0
+# The daily count is a backstop: a slow Redis must not hold the send up.
+_LIMITER_TIMEOUT_SECONDS = 2.0
 _TIME_FORMAT = "%a %d %b %Y, %H:%M %Z"
 
 
@@ -96,6 +105,7 @@ class CallSummaryNotifier:
         app_url: str,
         retry_delays: Sequence[float] = DEFAULT_RETRY_DELAYS_SECONDS,
         send_timeout: float = DEFAULT_SEND_TIMEOUT_SECONDS,
+        limiter_timeout: float = _LIMITER_TIMEOUT_SECONDS,
         sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
     ) -> None:
         self._store = store
@@ -107,6 +117,7 @@ class CallSummaryNotifier:
         self._app_url = app_url.rstrip("/")
         self._retry_delays = tuple(retry_delays)
         self._send_timeout = send_timeout
+        self._limiter_timeout = limiter_timeout
         self._sleep = sleep
 
     async def notify(self, run_id: int) -> CallSummaryOutcome:
@@ -157,11 +168,17 @@ class CallSummaryNotifier:
         if organization_id is None:
             return True
         day = self._clock.now().astimezone(UTC).date().isoformat()
-        allowed = await self._limiter.allow(
-            f"call-summary:{organization_id}:{day}",
-            limit=self._daily_limit,
-            window=timedelta(days=1),
-        )
+        try:
+            async with asyncio.timeout(self._limiter_timeout):
+                allowed = await self._limiter.allow(
+                    f"call-summary:{organization_id}:{day}",
+                    limit=self._daily_limit,
+                    window=timedelta(days=1),
+                )
+        except TimeoutError:
+            # Fail open, like the limiter itself does on a Redis error.
+            logger.warning("Call summary daily limit unavailable; sending anyway")
+            return True
         if not allowed:
             logger.warning(
                 "Call summary daily limit of {} reached for organization {}",
@@ -171,33 +188,59 @@ class CallSummaryNotifier:
         return allowed
 
     async def _send_all(self, messages: Sequence[EmailMessage]) -> int:
-        """Send concurrently; the number delivered before the timeout."""
+        """Send concurrently; the number delivered before the timeout.
+
+        Every send is stopped before this returns or raises, so a cancelled
+        job (ARQ timeout, worker shutdown) leaves no email going out behind it.
+        """
         tasks = [asyncio.create_task(self._deliver(m)) for m in messages]
-        done, pending = await asyncio.wait(tasks, timeout=self._send_timeout)
-        if pending:
-            for task in pending:
+        try:
+            _, pending = await asyncio.wait(tasks, timeout=self._send_timeout)
+            if pending:
+                logger.warning(
+                    "Call summary sends still running after {}s were stopped",
+                    self._send_timeout,
+                )
+        finally:
+            for task in tasks:
                 task.cancel()
-            await asyncio.gather(*pending, return_exceptions=True)
-            logger.warning(
-                "Call summary sends still running after {}s were stopped",
-                self._send_timeout,
-            )
-        return sum(1 for task in done if task.result())
+            await asyncio.gather(*tasks, return_exceptions=True)
+        delivered = 0
+        for task in tasks:
+            if task.cancelled():
+                continue
+            if (error := task.exception()) is not None:
+                # One broken send must not lose the others' results.
+                logger.error(
+                    "Call summary send failed unexpectedly: {}", type(error).__name__
+                )
+            elif task.result():
+                delivered += 1
+        return delivered
 
     async def _deliver(self, message: EmailMessage) -> bool:
-        for attempt, delay in enumerate((0.0, *self._retry_delays), start=1):
-            if delay:
-                await self._sleep(delay)
+        attempt = 1
+        while True:
             try:
                 await self._email.send(message)
                 return True
             except EmailDeliveryError as exc:
                 logger.warning("Call summary email attempt {} failed: {}", attempt, exc)
-                # The provider is down or rejected this message: a retry
-                # would only hold the job longer.
-                if not exc.retryable:
+                if attempt > self._retries_for(exc.failure):
                     return False
-        return False
+                await self._sleep(self._retry_delays[attempt - 1])
+                attempt += 1
+
+    def _retries_for(self, failure: EmailFailure) -> int:
+        match failure:
+            case EmailFailure.TRANSIENT:
+                return len(self._retry_delays)
+            case EmailFailure.PROVIDER_ERROR:
+                return min(1, len(self._retry_delays))
+            case EmailFailure.FINAL:
+                return 0
+            case _:
+                assert_never(failure)
 
     async def _zone(self, organization_id: int | None) -> tzinfo | None:
         """The organization's timezone, or None when it set no usable one."""
@@ -240,17 +283,25 @@ _OLD_BOOKING_KEPT = (
 )
 
 
-def _wording(action: BookingAction) -> tuple[str, str, str]:
-    """What happened, the word before the time, and anything staff must do."""
+@dataclass(frozen=True, slots=True)
+class _Wording:
+    label: str
+    # The word before the appointment time.
+    preposition: str
+    # Anything staff must do about it.
+    todo: str = ""
+
+
+def _wording(action: BookingAction) -> _Wording:
     match action:
         case BookingAction.BOOKED:
-            return "Booked", "for", ""
+            return _Wording("Booked", "for")
         case BookingAction.CANCELLED:
-            return "Cancelled the appointment", "for", ""
+            return _Wording("Cancelled the appointment", "for")
         case BookingAction.MOVED:
-            return "Moved the appointment", "to", ""
+            return _Wording("Moved the appointment", "to")
         case BookingAction.MOVED_OLD_KEPT:
-            return "Moved the appointment", "to", _OLD_BOOKING_KEPT
+            return _Wording("Moved the appointment", "to", _OLD_BOOKING_KEPT)
         case _:
             assert_never(action)
 
@@ -262,11 +313,11 @@ def booking_line(change: BookingChange, zone: tzinfo | None) -> str:
     Without an organization timezone the appointment keeps the calendar's own
     offset, which is the business's local time.
     """
-    label, preposition, todo = _wording(change.action)
+    wording = _wording(change.action)
     when = ""
     if change.starts_at is not None:
         # astimezone(None) would mean the server's zone, not "keep it".
         starts_at = change.starts_at.astimezone(zone) if zone else change.starts_at
-        when = f" {preposition} {starts_at.strftime(_TIME_FORMAT)}"
+        when = f" {wording.preposition} {starts_at.strftime(_TIME_FORMAT)}"
     who = ", ".join(v for v in (change.caller_name, change.caller_phone) if v)
-    return f"{label}{when}{f' ({who})' if who else ''}{todo}"
+    return f"{wording.label}{when}{f' ({who})' if who else ''}{wording.todo}"

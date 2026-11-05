@@ -5,7 +5,7 @@ from unittest.mock import patch
 import pytest
 from pydantic import SecretStr
 
-from api.services.email.base import EmailDeliveryError, EmailMessage
+from api.services.email.base import EmailDeliveryError, EmailFailure, EmailMessage
 from api.services.email.resend_sender import ResendEmailSender
 
 _MESSAGE = EmailMessage(
@@ -89,12 +89,20 @@ async def test_rejection_includes_resend_explanation() -> None:
 
     assert "HTTP 403" in str(excinfo.value)
     assert "only send testing emails to your own email address" in str(excinfo.value)
-    assert excinfo.value.retryable is False
+    assert excinfo.value.failure is EmailFailure.FINAL
 
 
-@pytest.mark.parametrize(("status", "retryable"), [(429, True), (500, False)])
-async def test_only_a_rate_limit_is_worth_retrying(
-    status: int, retryable: bool
+@pytest.mark.parametrize(
+    ("status", "failure"),
+    [
+        (429, EmailFailure.TRANSIENT),
+        (500, EmailFailure.PROVIDER_ERROR),
+        (503, EmailFailure.PROVIDER_ERROR),
+        (422, EmailFailure.FINAL),
+    ],
+)
+async def test_failures_say_how_worthwhile_a_retry_is(
+    status: int, failure: EmailFailure
 ) -> None:
     _FakeSession.response = _FakeResponse(status, "{}")
     with (
@@ -103,7 +111,7 @@ async def test_only_a_rate_limit_is_worth_retrying(
     ):
         await _sender().send(_MESSAGE)
 
-    assert excinfo.value.retryable is retryable
+    assert excinfo.value.failure is failure
 
 
 async def test_an_idempotency_key_is_sent_as_a_header() -> None:
@@ -142,4 +150,4 @@ async def test_a_timeout_is_a_delivery_error() -> None:
     ):
         await _sender().send(_MESSAGE)
 
-    assert excinfo.value.retryable is False
+    assert excinfo.value.failure is EmailFailure.FINAL

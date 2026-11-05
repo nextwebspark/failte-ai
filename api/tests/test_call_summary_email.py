@@ -25,7 +25,7 @@ from api.services.call_summary.summary import (
     callback_number_of,
     extract_call_summary,
 )
-from api.services.email.base import EmailDeliveryError, EmailMessage
+from api.services.email.base import EmailDeliveryError, EmailFailure, EmailMessage
 from api.services.email.templates import call_summary_message
 from api.services.workflow.starter_templates import STARTER_TEMPLATES
 from api.tasks import workflow_completion
@@ -193,6 +193,20 @@ def test_a_flag_that_is_not_a_json_boolean_is_not_a_booking():
     assert booking_changes(events) == ()
 
 
+def test_an_older_tools_service_still_gives_the_booking_time():
+    # Transitional: book results from before starts_at; the slot id is the
+    # ISO start time there.
+    events = _call(
+        "mcp__cal__book_appointment",
+        "x",
+        {"slot_id": "2026-10-20T10:00:00+01:00"},
+        {"booked": True},
+    )
+
+    (change,) = booking_changes(events)
+    assert change.starts_at == datetime.fromisoformat("2026-10-20T10:00:00+01:00")
+
+
 def test_a_result_without_a_start_time_is_still_a_booking():
     events = _call("mcp__cal__book_appointment", "x", {}, {"booked": True})
 
@@ -351,13 +365,16 @@ class FakeSender:
         *,
         delivers: bool = True,
         failures: int = 0,
-        retryable: bool = True,
+        failure: EmailFailure = EmailFailure.TRANSIENT,
         hang: bool = False,
+        broken_for: str | None = None,
     ) -> None:
         self._delivers = delivers
         self.failures = failures
-        self.retryable = retryable
+        self.failure = failure
         self.hang = hang
+        self.broken_for = broken_for
+        self.started = asyncio.Event()
         self.sent: list[EmailMessage] = []
         self.attempts = 0
 
@@ -367,11 +384,14 @@ class FakeSender:
 
     async def send(self, message: EmailMessage) -> None:
         self.attempts += 1
+        self.started.set()
         if self.hang:
             await asyncio.Event().wait()
+        if message.to == self.broken_for:
+            raise RuntimeError("a bug in the transport")
         if self.failures:
             self.failures -= 1
-            raise EmailDeliveryError("Resend failed", retryable=self.retryable)
+            raise EmailDeliveryError("Resend failed", failure=self.failure)
         self.sent.append(message)
 
 
@@ -381,12 +401,15 @@ class FixedClock:
 
 
 class FakeLimiter:
-    def __init__(self, *, allowed: bool = True) -> None:
+    def __init__(self, *, allowed: bool = True, hang: bool = False) -> None:
         self.allowed = allowed
+        self.hang = hang
         self.calls: list[tuple[str, int, timedelta]] = []
 
     async def allow(self, key: str, *, limit: int, window: timedelta) -> bool:
         self.calls.append((key, limit, window))
+        if self.hang:
+            await asyncio.Event().wait()
         return self.allowed
 
 
@@ -415,6 +438,7 @@ def _notifier(
         daily_limit=200,
         app_url="https://app.example/",
         send_timeout=send_timeout,
+        limiter_timeout=0.05,
         sleep=sleep,
     )
     return notifier, sleeps
@@ -550,9 +574,9 @@ async def test_a_retryable_failure_is_retried_with_backoff():
     assert sender.attempts == 3
 
 
-async def test_a_provider_outage_is_not_retried():
+async def test_a_final_failure_is_not_retried():
     store = FakeStore(_run(workflow_configurations=_one_recipient()))
-    sender = FakeSender(failures=10, retryable=False)
+    sender = FakeSender(failures=10, failure=EmailFailure.FINAL)
     notifier, sleeps = _notifier(store, sender)
 
     assert await notifier.notify(77) is CallSummaryOutcome.FAILED
@@ -560,6 +584,50 @@ async def test_a_provider_outage_is_not_retried():
     assert sleeps == []
     # Still claimed: a re-run must not email a summary that may have landed.
     assert store.claims == [77]
+
+
+async def test_a_provider_error_is_retried_once():
+    store = FakeStore(_run(workflow_configurations=_one_recipient()))
+    sender = FakeSender(failures=10, failure=EmailFailure.PROVIDER_ERROR)
+    notifier, sleeps = _notifier(store, sender)
+
+    assert await notifier.notify(77) is CallSummaryOutcome.FAILED
+    assert sender.attempts == 2
+    assert sleeps == [2.0]
+
+
+async def test_a_broken_send_does_not_lose_the_others():
+    store = FakeStore(_run())
+    sender = FakeSender(broken_for="desk@bloom.ie")
+    notifier, _ = _notifier(store, sender)
+
+    assert await notifier.notify(77) is CallSummaryOutcome.SENT
+    assert [m.to for m in sender.sent] == ["owner@bloom.ie"]
+
+
+async def test_cancelling_the_job_stops_every_send():
+    store = FakeStore(_run())
+    sender = FakeSender(hang=True)
+    notifier, _ = _notifier(store, sender)
+
+    job = asyncio.create_task(notifier.notify(77))
+    await sender.started.wait()
+    await asyncio.sleep(0)
+    job.cancel()
+
+    with pytest.raises(asyncio.CancelledError):
+        await job
+    # No send outlives the job: only the test's own task is left running.
+    others = [t for t in asyncio.all_tasks() if t is not asyncio.current_task()]
+    assert not [t for t in others if "_deliver" in repr(t.get_coro())]
+
+
+async def test_a_hung_daily_limit_check_fails_open():
+    store = FakeStore(_run())
+    sender = FakeSender()
+    notifier, _ = _notifier(store, sender, limiter=FakeLimiter(hang=True))
+
+    assert await notifier.notify(77) is CallSummaryOutcome.SENT
 
 
 async def test_when_every_attempt_fails_the_outcome_is_failed():

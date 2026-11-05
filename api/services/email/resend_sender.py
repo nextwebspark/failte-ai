@@ -1,13 +1,23 @@
 import aiohttp
 from pydantic import SecretStr
 
-from api.services.email.base import EmailDeliveryError, EmailMessage
+from api.services.email.base import EmailDeliveryError, EmailFailure, EmailMessage
 from api.utils.text import strip_control_characters
 
 _RESEND_URL = "https://api.resend.com/emails"
 _TIMEOUT = aiohttp.ClientTimeout(total=15)
 _MAX_ERROR_DETAIL = 300
 _TOO_MANY_REQUESTS = 429
+_SERVER_ERROR = 500
+
+
+def _failure_for_status(status: int) -> EmailFailure:
+    if status == _TOO_MANY_REQUESTS:
+        return EmailFailure.TRANSIENT
+    if status >= _SERVER_ERROR:
+        return EmailFailure.PROVIDER_ERROR
+    # Any other 4xx rejects this message (bad key, unverified domain, ...).
+    return EmailFailure.FINAL
 
 
 class ResendEmailSender:
@@ -42,15 +52,13 @@ class ResendEmailSender:
                     raise EmailDeliveryError(
                         f"Resend rejected the message (HTTP {response.status}): "
                         f"{detail[:_MAX_ERROR_DETAIL]}",
-                        # Only a rate limit clears up by itself; a 5xx means
-                        # Resend is down, any other 4xx rejects this message.
-                        retryable=response.status == _TOO_MANY_REQUESTS,
+                        failure=_failure_for_status(response.status),
                     )
         # Before ClientError: aiohttp's ServerTimeoutError is both, and the
         # total timeout raises a bare TimeoutError.
         except TimeoutError as exc:
             raise EmailDeliveryError(
-                "Resend request timed out", retryable=False
+                "Resend request timed out", failure=EmailFailure.FINAL
             ) from exc
         except aiohttp.ClientError as exc:
             raise EmailDeliveryError(f"Resend request failed: {exc}") from exc

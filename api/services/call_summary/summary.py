@@ -32,6 +32,10 @@ class BookingTool:
     # values means. Any other value changed nothing in the calendar.
     result_field: str
     actions: Mapping[bool | str, BookingAction]
+    # Transitional, for a tools service deployed before results carried
+    # ``starts_at``: the argument holding the start time (book's slot id is
+    # its ISO start today). Drop once every tools deploy reports starts_at.
+    legacy_start_argument: str | None = None
 
     def action_for(self, result: Mapping[str, Any]) -> BookingAction | None:
         value = result.get(self.result_field)
@@ -44,7 +48,9 @@ class BookingTool:
 # Calendar tools by their MCP name. The agent sees them namespaced as
 # ``mcp__<tool>__<name>``. A new calendar action is one entry here.
 BOOKING_TOOLS: Mapping[str, BookingTool] = {
-    "book_appointment": BookingTool("booked", {True: BookingAction.BOOKED}),
+    "book_appointment": BookingTool(
+        "booked", {True: BookingAction.BOOKED}, legacy_start_argument="slot_id"
+    ),
     "cancel_appointment": BookingTool("cancelled", {True: BookingAction.CANCELLED}),
     "reschedule_appointment": BookingTool(
         "outcome",
@@ -148,12 +154,19 @@ def booking_changes(
                 changes.append(
                     BookingChange(
                         action=action,
-                        starts_at=_aware_datetime(result.get("starts_at")),
+                        starts_at=_aware_datetime(result.get("starts_at"))
+                        or _legacy_start(tool, arguments),
                         caller_name=_text(arguments.get("caller_name")),
                         caller_phone=_text(arguments.get("caller_phone")),
                     )
                 )
     return tuple(changes)
+
+
+def _legacy_start(tool: BookingTool, arguments: Mapping[str, Any]) -> datetime | None:
+    if tool.legacy_start_argument is None:
+        return None
+    return _aware_datetime(arguments.get(tool.legacy_start_argument))
 
 
 def _booking_tool(function_name: object) -> BookingTool | None:
