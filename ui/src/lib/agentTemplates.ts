@@ -4,6 +4,8 @@ import type {
     WorkflowTemplateResponse,
 } from '@/client/types.gen';
 
+import { isEmailAddress } from './emailAddress';
+
 /** The integration providers the Create agent dialog can connect. */
 export const GOOGLE_CALENDAR = 'google-calendar';
 
@@ -61,9 +63,16 @@ export function templateMeta(template: WorkflowTemplateResponse): string {
     return parts.join(' · ');
 }
 
-/** The answers a template's questions start with: all empty. */
-export function emptyAnswers(fields: TemplateSetupField[]): Record<string, string> {
-    return Object.fromEntries(fields.map((field) => [field.key, '']));
+/** What a question's prefill fills in, from what we know about the user. */
+export interface PrefillValues {
+    userEmail: string | null;
+}
+
+/** The answers a template's questions start with: their prefill, else empty.
+ * An address no email reaches (admin@localhost) is not offered. */
+export function initialAnswers(fields: TemplateSetupField[], prefill: PrefillValues): Record<string, string> {
+    const userEmail = prefill.userEmail && isEmailAddress(prefill.userEmail) ? prefill.userEmail : '';
+    return Object.fromEntries(fields.map((field) => [field.key, field.prefill === 'user_email' ? userEmail : '']));
 }
 
 /** The first required question still unanswered, or null when all are. */

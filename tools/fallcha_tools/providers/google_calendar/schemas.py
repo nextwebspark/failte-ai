@@ -92,11 +92,17 @@ class BookingResult(BaseModel):
         default=None, description="Alternatives, when the slot was taken."
     )
     say: str = Field(description="Read this to the caller word for word.")
+    starts_at: str | None = Field(
+        default=None, description="ISO start time in the calendar's zone, when booked."
+    )
 
 
 class CancelResult(BaseModel):
     cancelled: bool
     say: str = Field(description="Read this to the caller word for word.")
+    starts_at: str | None = Field(
+        default=None, description="ISO start time of the cancelled appointment."
+    )
 
 
 class AvailabilityRequest(BaseModel):

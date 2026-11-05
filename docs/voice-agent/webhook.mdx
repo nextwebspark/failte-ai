@@ -20,6 +20,10 @@ description: "Webhook node allow you to sync the result of Voice Agent runs to y
 You can have multiple Webhook Nodes for a single Voice Agent, if you want to sync the result of the call at multiple places.
 </Note>
 
+<Tip>
+Only want an email when a caller leaves a message or books an appointment? Turn on [call summary emails](/voice-agent/call-summaries) instead; no webhook needed.
+</Tip>
+
 ### Creating the Webhook Payload
 The payload can contain a valid JSON, and you can reference context variables while constructing it using double-brace syntax — for example `{{workflow_run_id}}`, [`{{initial_context.*}}`](/core-concepts/context-and-variables#initial_context), and [`{{gathered_context.*}}`](/core-concepts/context-and-variables#gathered_context), including the [final call outcome](../developer/call-dispositions) `{{gathered_context.call_disposition}}`.
 

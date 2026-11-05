@@ -26,9 +26,10 @@ import { AgentReady, type ReadyItem } from '@/components/workflow/create/AgentRe
 import { TemplateGallery, TemplateIcon } from '@/components/workflow/create/TemplateGallery';
 import { TemplateSetup } from '@/components/workflow/create/TemplateSetup';
 import { useIntegrationConnect } from '@/components/workflow/create/useIntegrationConnect';
-import { agentNameFor, emptyAnswers, GOOGLE_CALENDAR, missingAnswer } from '@/lib/agentTemplates';
+import { agentNameFor, GOOGLE_CALENDAR, initialAnswers, missingAnswer } from '@/lib/agentTemplates';
 import { detailFromError } from '@/lib/apiError';
 import { useAuth } from '@/lib/auth';
+import { signedInEmail } from '@/lib/auth/identity';
 import logger from '@/lib/logger';
 import { cn } from '@/lib/utils';
 
@@ -187,7 +188,7 @@ export function CreateAgentDialog({ open, onOpenChange, initialMode = 'template'
     const pickTemplate = (picked: WorkflowTemplateResponse) => {
         if (picked.id !== template?.id) {
             setTemplate(picked);
-            setAnswers(emptyAnswers(picked.setup_fields ?? []));
+            setAnswers(initialAnswers(picked.setup_fields ?? [], { userEmail: signedInEmail(user) }));
             setUseCalendar(true);
         }
         setAnswerErrors({});

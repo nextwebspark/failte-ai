@@ -7,7 +7,11 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from api.routes.workflow import router
-from api.schemas.workflow_template import TemplateSetupField
+from api.schemas.workflow_template import (
+    TemplateSetupField,
+    TemplateSetupPrefill,
+    TemplateSetupSetting,
+)
 from api.services.auth.depends import get_user
 from api.services.workflow.agent_builder import validate_workflow_definition
 from api.services.workflow.starter_templates import STARTER_TEMPLATES
@@ -15,6 +19,7 @@ from api.services.workflow.template_setup import (
     TemplateSetupError,
     attach_integration_tools,
     fill_template_values,
+    setup_configurations,
 )
 
 FIELDS = [
@@ -116,7 +121,7 @@ def _client() -> TestClient:
     app = FastAPI()
     app.include_router(router)
     app.dependency_overrides[get_user] = lambda: SimpleNamespace(
-        id=1, selected_organization_id=11
+        id=1, selected_organization_id=11, email="owner@bloom.ie"
     )
     return TestClient(app)
 
@@ -284,3 +289,149 @@ def test_templates_list_includes_setup_fields():
     assert template["integrations"] == ["google-calendar"]
     assert template["featured"] is True
     assert template["call_type"] == "inbound"
+
+
+SUMMARY_FIELD = TemplateSetupField(
+    key="call_summary_email",
+    label="Send call summaries to",
+    type="emails",
+    required=False,
+    prefill=TemplateSetupPrefill.USER_EMAIL,
+    setting=TemplateSetupSetting.CALL_SUMMARY_RECIPIENTS,
+)
+
+
+@pytest.mark.parametrize(
+    ("values", "expected"),
+    [
+        # Not sent at all: the prefill (the creating user's address) applies.
+        ({}, {"enabled": True, "recipients": ["owner@bloom.ie"]}),
+        (
+            {"call_summary_email": " a@bloom.ie, b@bloom.ie;a@bloom.ie "},
+            {"enabled": True, "recipients": ["a@bloom.ie", "b@bloom.ie"]},
+        ),
+        # Cleared on purpose: no summaries.
+        ({"call_summary_email": "  "}, {"enabled": False, "recipients": []}),
+    ],
+)
+def test_setup_configurations_set_the_call_summary_recipients(values, expected):
+    configurations = setup_configurations(
+        [*FIELDS, SUMMARY_FIELD], values, user_email="owner@bloom.ie"
+    )
+
+    assert configurations == {"call_summary_email": expected}
+
+
+def test_setup_configurations_without_a_user_email_leave_summaries_off():
+    assert setup_configurations([SUMMARY_FIELD], {}, user_email=None) == {
+        "call_summary_email": {"enabled": False, "recipients": []}
+    }
+
+
+def test_an_unusable_creator_address_leaves_summaries_off():
+    # A local install's admin has no deliverable address; creating the agent
+    # must not fail over a value the user never typed.
+    assert setup_configurations([SUMMARY_FIELD], {}, user_email="admin@localhost") == {
+        "call_summary_email": {"enabled": False, "recipients": []}
+    }
+
+
+def test_setup_configurations_reject_a_bad_address():
+    with pytest.raises(TemplateSetupError, match="Send call summaries to"):
+        setup_configurations(
+            [SUMMARY_FIELD], {"call_summary_email": "not-an-address"}, user_email=None
+        )
+
+
+def test_fields_without_a_setting_configure_nothing():
+    assert (
+        setup_configurations(FIELDS, {"business_name": "A"}, user_email="x@y.ie") == {}
+    )
+
+
+def test_the_receptionist_asks_where_to_send_call_summaries():
+    receptionist = next(t for t in STARTER_TEMPLATES if t.name == "AI Receptionist")
+    field = next(f for f in receptionist.setup_fields if f.setting is not None)
+
+    assert field.setting is TemplateSetupSetting.CALL_SUMMARY_RECIPIENTS
+    assert field.prefill is TemplateSetupPrefill.USER_EMAIL
+    assert field.required is False
+    stored = next(
+        f for f in receptionist.row()["setup_fields"] if f["key"] == field.key
+    )
+    assert stored["setting"] == "call_summary_recipients"
+
+
+def _summary_template():
+    template = _template()
+    template.setup_fields = [field.model_dump() for field in [*FIELDS, SUMMARY_FIELD]]
+    return template
+
+
+@pytest.mark.parametrize(
+    ("answer", "recipients"),
+    [
+        ({"call_summary_email": "desk@bloom.ie"}, ["desk@bloom.ie"]),
+        ({}, ["owner@bloom.ie"]),
+    ],
+)
+def test_duplicate_stores_where_call_summaries_go(answer, recipients):
+    with (
+        patch("api.routes.workflow.WorkflowTemplateClient") as templates,
+        patch("api.routes.workflow.db_client") as db,
+    ):
+        templates.return_value.get_workflow_template = AsyncMock(
+            return_value=_summary_template()
+        )
+        db.create_workflow = AsyncMock(return_value=_created_workflow())
+
+        response = _client().post(
+            "/workflow/templates/duplicate",
+            json={
+                "template_id": 3,
+                "workflow_name": "Reception",
+                "values": {"business_name": "Bloom Dental", **answer},
+            },
+        )
+
+    assert response.status_code == 200, response.text
+    assert db.create_workflow.await_args.kwargs["workflow_configurations"] == {
+        "call_summary_email": {"enabled": True, "recipients": recipients}
+    }
+
+
+def test_duplicate_rejects_a_bad_summary_address():
+    with (
+        patch("api.routes.workflow.WorkflowTemplateClient") as templates,
+        patch("api.routes.workflow.db_client") as db,
+    ):
+        templates.return_value.get_workflow_template = AsyncMock(
+            return_value=_summary_template()
+        )
+        db.create_workflow = AsyncMock()
+
+        response = _client().post(
+            "/workflow/templates/duplicate",
+            json={
+                "template_id": 3,
+                "workflow_name": "Reception",
+                "values": {"business_name": "A", "call_summary_email": "nope"},
+            },
+        )
+
+    assert response.status_code == 422
+    assert "Send call summaries to" in response.json()["detail"]
+    db.create_workflow.assert_not_awaited()
+
+
+def test_saving_settings_rejects_a_bad_summary_address():
+    response = _client().put(
+        "/workflow/5",
+        json={
+            "workflow_configurations": {
+                "call_summary_email": {"enabled": True, "recipients": ["nope"]}
+            }
+        },
+    )
+
+    assert response.status_code == 422

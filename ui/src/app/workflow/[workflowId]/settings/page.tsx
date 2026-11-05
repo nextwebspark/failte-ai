@@ -52,6 +52,7 @@ import {
     normalizeCallDispositions,
     validateCallDispositionRows,
 } from "./components/CallDispositionEditor";
+import { CallSummaryEmailSection } from "./components/CallSummaryEmailSection";
 import { SettingsSaveProvider, useSettingsSection } from "./SettingsSaveBar";
 
 // ---------------------------------------------------------------------------
@@ -65,6 +66,7 @@ const PUBLISH_WORKFLOW_REMINDER = "Publish the agent to apply the changes.";
 const NAV_ITEMS = [
     { id: "general", label: "General" },
     { id: "call", label: "Call behaviour" },
+    { id: "summaries", label: "Call summaries" },
     { id: "variables", label: "Variables" },
     { id: "dictionary", label: "Dictionary" },
     { id: "voicemail", label: "Voicemail and screening" },
@@ -1393,6 +1395,8 @@ function AdvancedSettings({ context }: { context: AgentSectionContext }) {
                             workflowName={workflowName}
                             workflowId={workflowId}
                         />
+
+                        <CallSummaryEmailSection saved={workflowConfigurations.call_summary_email} />
 
                         <TemplateVariablesSection
                             templateContextVariables={templateContextVariables}

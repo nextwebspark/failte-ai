@@ -16,6 +16,7 @@ from api.constants import (
     MIN_TEXT_CHAT_INACTIVITY_TIMEOUT_SECONDS,
     TEXT_CHAT_INACTIVITY_TIMEOUT_SECONDS,
 )
+from api.schemas.call_summary_email import CallSummaryEmailConfiguration
 
 DEFAULT_MAX_CALL_DURATION_SECONDS = 300
 # Hard ceiling on configurable call duration. Must stay <= the concurrency
@@ -267,6 +268,13 @@ class WorkflowConfigurationDefaults(BaseModel):
     external_pbx_lead_headers: list[ExternalPBXLeadHeader] = Field(
         default_factory=list,
         max_length=MAX_EXTERNAL_PBX_LEAD_HEADERS,
+    )
+    call_summary_email: CallSummaryEmailConfiguration = Field(
+        default_factory=CallSummaryEmailConfiguration,
+        description=(
+            "Email the business after each phone call where the agent took a "
+            "message or booked, moved or cancelled an appointment."
+        ),
     )
 
     @field_validator("turn_start_strategy", mode="before")

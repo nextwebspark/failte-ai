@@ -1,5 +1,6 @@
 """Transactional email bodies. Every interpolated value is HTML-escaped."""
 
+from collections.abc import Sequence
 from html import escape
 
 from api.constants import BRAND_NAME
@@ -161,4 +162,72 @@ def low_balance_message(
         subject=subject,
         text=text,
         html=_layout(heading, body, "Add credit", billing_url),
+    )
+
+
+# Each caller-supplied part of a subject, so it stays readable in an inbox.
+_SUBJECT_PART_MAX = 60
+
+
+def _shorten(text: str, limit: int) -> str:
+    return text if len(text) <= limit else text[: limit - 1].rstrip() + "…"
+
+
+def call_summary_message(
+    *,
+    to: str,
+    agent_name: str,
+    call_time: str,
+    caller_name: str | None,
+    callback_number: str | None,
+    reason: str | None,
+    booking_lines: Sequence[str],
+    run_url: str,
+) -> EmailMessage:
+    """What a call left for the business. No recording or transcript link:
+    the run page behind sign-in is the only way to the call itself."""
+    agent = _shorten(agent_name, _SUBJECT_PART_MAX)
+    subject = (
+        f"{_shorten(caller_name, _SUBJECT_PART_MAX)} called {agent}"
+        if caller_name
+        else f"New call to {agent}"
+    )
+    details = [
+        (label, value)
+        for label, value in (
+            ("Caller", caller_name),
+            ("Callback number", callback_number),
+            ("Reason", reason),
+        )
+        if value
+    ]
+    intro = f"{agent_name} handled a call on {call_time}."
+
+    text_parts = [intro, "\n".join(f"{label}: {value}" for label, value in details)]
+    if booking_lines:
+        text_parts.append(
+            "Appointments:\n" + "\n".join(f"- {line}" for line in booking_lines)
+        )
+    text_parts.append(f"See the call: {run_url}")
+    text = "\n\n".join(part for part in text_parts if part) + "\n"
+
+    rows = "".join(
+        f'<tr><td style="padding:4px 16px 4px 0;color:#666;white-space:nowrap">'
+        f'{escape(label)}</td><td style="padding:4px 0">{escape(value)}</td></tr>'
+        for label, value in details
+    )
+    body = f"<p>{escape(intro)}</p>"
+    if rows:
+        body += f'<table role="presentation" style="font-size:14px">{rows}</table>'
+    if booking_lines:
+        items = "".join(f"<li>{escape(line)}</li>" for line in booking_lines)
+        body += (
+            '<p style="margin:16px 0 4px;font-weight:600">Appointments</p>'
+            f'<ul style="margin:0;padding-left:20px">{items}</ul>'
+        )
+    return EmailMessage(
+        to=to,
+        subject=subject,
+        text=text,
+        html=_layout("Call summary", body, "See the call", run_url),
     )

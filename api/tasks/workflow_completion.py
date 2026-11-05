@@ -3,6 +3,7 @@ import asyncio
 from loguru import logger
 from pipecat.utils.run_context import set_current_run_id
 
+from api.services.call_summary.factory import get_call_summary_notifier
 from api.services.telephony.external_pbx_writeback import (
     sync_external_pbx_call_record,
 )
@@ -19,7 +20,8 @@ async def process_workflow_completion(
     _ctx,
     workflow_run_id: int,
 ):
-    """Process workflow completion: run integrations and report billing.
+    """Process workflow completion: run integrations, report billing, write
+    back to an external PBX and email the business a call summary.
 
     Recording/transcript uploads happen in the pipeline process itself
     (api/services/workflow_run_artifacts.py) before this job is enqueued,
@@ -64,7 +66,7 @@ async def _process_workflow_completion(_ctx, workflow_run_id: int) -> None:
             f"Error reporting platform usage for workflow {workflow_run_id}: {e}"
         )
 
-    # Deliberately last. The write-back reads the run's gathered context to
+    # Deliberately late. The write-back reads the run's gathered context to
     # resolve the workflow's mapped lead fields, and on an abrupt hangup the
     # final variable extraction can still be in flight when this job starts --
     # it is an LLM call on a dead socket. The steps above are themselves slow
@@ -76,6 +78,16 @@ async def _process_workflow_completion(_ctx, workflow_run_id: int) -> None:
     except Exception as e:
         logger.error(
             f"Error writing back to external PBX for workflow {workflow_run_id}: {e}"
+        )
+
+    # Last, for the same reason: the summary is built from the extracted
+    # variables. Still before the post-call marker, so erasure never races an
+    # email built from the call's content. No-ops unless the agent sends them.
+    try:
+        await get_call_summary_notifier().notify(workflow_run_id)
+    except Exception as e:
+        logger.error(
+            f"Error emailing the call summary for workflow {workflow_run_id}: {e}"
         )
 
     logger.info(f"Completed workflow completion processing for run {workflow_run_id}")

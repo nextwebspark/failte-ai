@@ -15,7 +15,8 @@ import {
     DialogTitle,
 } from "@/components/ui/dialog";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { type AuthUser, useAuth } from "@/lib/auth";
+import { useAuth } from "@/lib/auth";
+import { signedInEmail } from "@/lib/auth/identity";
 
 import { authModeLabel, credentialFamily, isEmail } from "./messages";
 import { NoAuthConnect } from "./NoAuthConnect";
@@ -59,12 +60,6 @@ export function familyConnections(
         found.push({ connectionId: c.id, label: c.account_label });
     }
     return found;
-}
-
-/** The signed-in user's address (Stack users have `primaryEmail`, local users `email`). */
-function signedInEmail(user: AuthUser | null): string | null {
-    if (!user) return null;
-    return "primaryEmail" in user ? user.primaryEmail : (user.email ?? null);
 }
 
 interface ConnectDialogProps {

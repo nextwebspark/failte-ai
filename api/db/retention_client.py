@@ -43,9 +43,17 @@ CAMPAIGN_PURGED_AT_KEY = "retention_purged_at"
 # Marker stamped into ``workflow_runs.extra`` once post-call processing (QA,
 # integrations, webhooks, billing) has finished writing to a run.
 WORKFLOW_RUN_POST_CALL_DONE_KEY = "post_call_done_at"
+# Marker stamped into ``workflow_runs.extra`` when a run's call summary email
+# is claimed for sending, so a re-run completion job never emails it twice.
+WORKFLOW_RUN_CALL_SUMMARY_EMAILED_KEY = "call_summary_emailed_at"
 
 WORKFLOW_RUN_EXTRA_KEPT_KEYS = frozenset(
-    {"use_draft", "campaign_traffic_split", WORKFLOW_RUN_POST_CALL_DONE_KEY}
+    {
+        "use_draft",
+        "campaign_traffic_split",
+        WORKFLOW_RUN_POST_CALL_DONE_KEY,
+        WORKFLOW_RUN_CALL_SUMMARY_EMAILED_KEY,
+    }
 )
 # ``gathered_context``: the call outcome labels that usage reports aggregate.
 WORKFLOW_RUN_GATHERED_CONTEXT_KEPT_KEYS = frozenset(
