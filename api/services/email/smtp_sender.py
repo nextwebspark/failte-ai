@@ -11,14 +11,16 @@ _PERMANENT_REPLY = 500
 
 
 def _failure_of(exc: Exception) -> EmailFailure:
-    """A 5xx reply, refused credentials or addresses, an unbuildable message or
-    a timeout fail the same way on the next attempt; a 4xx reply or a dropped
-    connection may not."""
+    """A 5xx reply, refused credentials or addresses, a server or certificate
+    that can't do TLS, an unbuildable message or a timeout fail the same way on
+    the next attempt; a 4xx reply or a dropped connection may not."""
     if isinstance(
         exc,
         smtplib.SMTPAuthenticationError
         | smtplib.SMTPRecipientsRefused
         | smtplib.SMTPSenderRefused
+        | smtplib.SMTPNotSupportedError
+        | ssl.SSLCertVerificationError
         | ValueError
         | TimeoutError,
     ):

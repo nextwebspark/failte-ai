@@ -1,6 +1,7 @@
 """SMTP failures say whether another attempt soon is worth making."""
 
 import smtplib
+import ssl
 from typing import Any
 from unittest.mock import patch
 
@@ -35,6 +36,8 @@ def _sender() -> SmtpEmailSender:
             smtplib.SMTPResponseException(550, b"mailbox unavailable"),
             EmailFailure.FINAL,
         ),
+        (smtplib.SMTPNotSupportedError("no STARTTLS"), EmailFailure.FINAL),
+        (ssl.SSLCertVerificationError("bad certificate"), EmailFailure.FINAL),
         (ValueError("bad header"), EmailFailure.FINAL),
         (TimeoutError(), EmailFailure.FINAL),
         (smtplib.SMTPResponseException(451, b"try later"), EmailFailure.TRANSIENT),

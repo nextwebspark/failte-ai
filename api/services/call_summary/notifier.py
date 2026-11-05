@@ -51,8 +51,8 @@ _PHONE_MODES = frozenset(
 # makes that retry safe), a final one neither.
 DEFAULT_RETRY_DELAYS_SECONDS = (2.0, 8.0)
 # Bounds the whole send, retries included, so a slow provider cannot hold the
-# completion job (and with it the post-call marker) for long. Two 15s Resend
-# timeouts plus the first delay fit inside it.
+# completion job (and with it the post-call marker) for long. Two 15s
+# provider-error attempts plus the first delay fit inside it.
 DEFAULT_SEND_TIMEOUT_SECONDS = 45.0
 # The daily count is a backstop: a slow Redis must not hold the send up.
 _LIMITER_TIMEOUT_SECONDS = 2.0
@@ -190,8 +190,10 @@ class CallSummaryNotifier:
     async def _send_all(self, messages: Sequence[EmailMessage]) -> int:
         """Send concurrently; the number delivered before the timeout.
 
-        Every send is stopped before this returns or raises, so a cancelled
-        job (ARQ timeout, worker shutdown) leaves no email going out behind it.
+        Every send task is stopped before this returns or raises, so none
+        outlives a cancelled job (ARQ timeout, worker shutdown). An SMTP send
+        already in its worker thread may still finish; the claim keeps that
+        from becoming a duplicate.
         """
         tasks = [asyncio.create_task(self._deliver(m)) for m in messages]
         try:
@@ -225,7 +227,10 @@ class CallSummaryNotifier:
                 await self._email.send(message)
                 return True
             except EmailDeliveryError as exc:
-                logger.warning("Call summary email attempt {} failed: {}", attempt, exc)
+                # The error text can echo recipient addresses: log the kind only.
+                logger.warning(
+                    "Call summary email attempt {} failed: {}", attempt, exc.failure
+                )
                 if attempt > self._retries_for(exc.failure):
                     return False
                 await self._sleep(self._retry_delays[attempt - 1])
