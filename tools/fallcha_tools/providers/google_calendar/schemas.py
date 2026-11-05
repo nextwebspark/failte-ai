@@ -91,9 +91,8 @@ BookedName = Annotated[
     Field(
         max_length=200,
         description=(
-            "The name the appointment was booked under. Needed with "
-            "caller_phone; otherwise optional, to tell apart people who booked "
-            "with the same number."
+            "The name the appointment was booked under, as the caller gives "
+            "it. Always needed."
         ),
     ),
 ]
@@ -148,6 +147,8 @@ class RescheduleOutcome(StrEnum):
     SLOT_TAKEN = "slot_taken"
     # No upcoming booking of this agent has that event_id: nothing changed.
     NOT_FOUND = "not_found"
+    # The booking's caller details were edited by staff: nothing changed.
+    DETAILS_EDITED = "details_edited"
     # The new time is booked but the old booking could not be cancelled.
     OLD_NOT_CANCELLED = "old_not_cancelled"
 

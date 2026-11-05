@@ -40,6 +40,7 @@ from tests.google_fakes import BOOKING_KEY, FakeClock, FakeGoogle, google_error
 from tests.test_google_calendar_service import make_service
 
 PHONE = "087 123 4567"
+NAME = "Jane Doe"
 CALLER_ID = "+353871234567"
 
 
@@ -119,7 +120,7 @@ def plant(google: FakeGoogle, *events: dict[str, Any]) -> None:
 
 
 async def found_ids(
-    service: CalendarService, phone: str | None = None, name: str | None = None
+    service: CalendarService, phone: str | None = None, name: str | None = NAME
 ) -> list[str]:
     return [a.event_id for a in (await service.find(phone, name)).appointments]
 
@@ -147,7 +148,7 @@ async def test_finds_a_booking_whatever_the_number_format(
     assert booked.event_id is not None
 
     # The number the call comes from, or one the caller says (with the name).
-    result = await dataclasses.replace(hidden, contact_phone=spoken).find()
+    result = await dataclasses.replace(hidden, contact_phone=spoken).find(None, NAME)
     assert result == await hidden.find(spoken, "jane doe")
 
     assert result.appointments == [
@@ -165,7 +166,7 @@ async def test_finds_a_booking_whatever_the_number_format(
 async def test_asks_google_for_this_connection_and_number_only(
     service: CalendarService, google: FakeGoogle, connection_id: uuid.UUID
 ) -> None:
-    await service.find()
+    await service.find(None, NAME)
 
     queries = [call.request.url.params for call in google.list_events.calls]
     marker = f"{BOOKING_MARKER}={connection_id}"
@@ -195,7 +196,7 @@ async def test_older_bookings_are_found_by_their_description(
             event_id="legacy",
         ),
     )
-    result = await service.find()
+    result = await service.find(None, NAME)
     assert [a.event_id for a in result.appointments] == ["legacy"]
     assert result.appointments[0].say == "Tuesday the thirteenth at nine in the morning"
 
@@ -256,12 +257,12 @@ async def test_other_connections_manual_and_cancelled_events_are_never_returned(
             200, json={"items": list(google.events.values())}
         )
     )
-    result = await service.find()
+    result = await service.find(None, NAME)
     assert result.appointments == []
     assert result.say == NO_BOOKINGS
 
 
-async def test_name_only_narrows_the_phone_matches(
+async def test_the_name_must_match_too(
     service: CalendarService, google: FakeGoogle, connection_id: uuid.UUID
 ) -> None:
     plant(
@@ -279,16 +280,30 @@ async def test_name_only_narrows_the_phone_matches(
             connection_id, "2026-10-13T11:00:00+01:00", "086 765 4321", event_id="x"
         ),
     )
-    assert await found_ids(service) == ["jane", "john"]
-    assert await found_ids(service, name="") == ["jane", "john"]
     assert await found_ids(service, name="jane") == ["jane"]
     assert await found_ids(service, name="smith") == ["john"]
-    assert await found_ids(service, name="Mary") == []
+    # A miss says the same whether or not the number has bookings.
+    missed = await service.find(None, "Mary")
+    assert missed.appointments == []
+    assert missed.say == NO_BOOKINGS
     # A name never stands in for the number.
     assert await found_ids(service, "086 999 9999", name="Jane Doe") == []
 
 
 # --- which number a caller may use ------------------------------------------
+
+
+async def test_the_callers_own_number_still_needs_the_name(
+    service: CalendarService, google: FakeGoogle
+) -> None:
+    # Caller ID can be spoofed: on its own it reveals nothing.
+    await service.book("2026-10-13T10:00:00+01:00", NAME, PHONE, None)
+    for name in (None, "", "  ", "J."):
+        with pytest.raises(BadArgumentError) as caught:
+            await service.find(None, name)
+        assert str(caught.value) == NEED_NAME
+    assert not google.list_events.called
+    assert len(await found_ids(service)) == 1
 
 
 async def test_another_number_needs_the_booked_name(
@@ -323,6 +338,69 @@ async def test_a_hidden_number_needs_a_spoken_one(
     assert not google.list_events.called
 
 
+# --- numbers that share the 8-digit key -------------------------------------
+
+
+async def test_numbers_sharing_the_key_are_told_apart_in_full(
+    hidden: CalendarService, google: FakeGoogle, connection_id: uuid.UUID
+) -> None:
+    dublin, cork = "01 412 3456", "021 412 3456"
+    assert phone_key(dublin) == phone_key(cork)
+    plant(
+        google,
+        booking(connection_id, "2026-10-13T09:00:00+01:00", dublin, event_id="d"),
+        booking(
+            connection_id,
+            "2026-10-13T10:00:00+01:00",
+            cork,
+            tagged=False,
+            event_id="c",
+        ),
+    )
+    # Europe/Dublin gives the region (IE) for numbers said without +353.
+    assert await found_ids(hidden, "+353 1 412 3456") == ["d"]
+    assert await found_ids(hidden, cork) == ["c"]
+    from_cork = dataclasses.replace(hidden, contact_phone="+353214123456")
+    assert await found_ids(from_cork) == ["c"]
+
+
+async def test_us_area_codes_with_a_configured_region(
+    provider: GoogleCalendarProvider,
+    http: httpx.AsyncClient,
+    connection_id: uuid.UUID,
+    google: FakeGoogle,
+) -> None:
+    new_york, chicago = "212 555 1234", "312 555 1234"
+    assert phone_key(new_york) == phone_key(chicago)
+    # A US business whose calendar runs on UTC: the region must be set.
+    service = make_service(
+        provider, http, connection_id, timezone="UTC", phone_region="us"
+    )
+    plant(
+        google,
+        booking(connection_id, "2026-10-13T09:00:00+01:00", new_york, event_id="ny"),
+        booking(connection_id, "2026-10-13T10:00:00+01:00", chicago, event_id="chi"),
+    )
+    assert await found_ids(service, "+1 212 555 1234") == ["ny"]
+    assert await found_ids(service, chicago) == ["chi"]
+
+
+async def test_numbers_that_do_not_parse_fall_back_to_the_key(
+    provider: GoogleCalendarProvider,
+    http: httpx.AsyncClient,
+    connection_id: uuid.UUID,
+    google: FakeGoogle,
+) -> None:
+    # No region (UTC is no country), so national numbers cannot be parsed.
+    service = make_service(provider, http, connection_id, timezone="UTC")
+    plant(
+        google,
+        booking(connection_id, "2026-10-13T09:00:00+01:00", PHONE, event_id="a"),
+    )
+    assert await found_ids(service, "+353 87 123 4567") == ["a"]
+    assert await found_ids(service, "0871234567") == ["a"]
+
+
 # --- window and limits -----------------------------------------------------
 
 
@@ -345,7 +423,7 @@ async def test_only_upcoming_bookings_soonest_first_at_most_three(
         booking(connection_id, "2026-10-12T06:45:00+01:00", PHONE, event_id="now"),
         booking(connection_id, "2026-10-09T09:00:00+01:00", PHONE, event_id="past"),
     )
-    result = await service.find()
+    result = await service.find(None, NAME)
     assert [a.event_id for a in result.appointments] == ["a", "b", "c"]
     assert result.say == (
         "I have you booked in for Monday the twelfth at ten in the morning, "
@@ -362,9 +440,9 @@ async def test_nothing_upcoming(
         booking(connection_id, "2026-10-09T09:00:00+01:00", PHONE, event_id="past"),
         booking(connection_id, "2026-12-14T09:00:00+00:00", PHONE, event_id="far"),
     )
-    result = await service.find()
+    result = await service.find(None, NAME)
     assert result.appointments == []
-    assert result.say == "I could not find any upcoming appointments for that number."
+    assert result.say == NO_BOOKINGS
 
 
 @pytest.mark.parametrize("phone", ["087", "123 456", "call me", "+353 87"])
@@ -461,13 +539,13 @@ async def test_google_failures_become_clear_errors(
         side_effect=None, return_value=google_error(404, "notFound")
     )
     with pytest.raises(GoogleApiError, match="the calendar was not found"):
-        await service.find()
+        await service.find(None, NAME)
 
     google.list_events.mock(
         return_value=httpx.Response(200, json={"items": {"id": "x"}})
     )
     with pytest.raises(GoogleApiError, match="unreadable event list"):
-        await service.find()
+        await service.find(None, NAME)
 
 
 # --- with cancel ------------------------------------------------------------
@@ -487,7 +565,7 @@ async def test_a_booking_from_an_earlier_call_can_be_cancelled(
     later_call = dataclasses.replace(
         make_service(provider, http, connection_id), contact_phone=CALLER_ID
     )
-    found = await later_call.find()
+    found = await later_call.find(None, NAME)
     assert [a.event_id for a in found.appointments] == [booked.event_id]
     cancelled = await later_call.cancel(found.appointments[0].event_id)
     assert cancelled.cancelled is True

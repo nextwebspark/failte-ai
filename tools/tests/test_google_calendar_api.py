@@ -344,7 +344,10 @@ async def test_mcp_finds_moves_and_cancels_a_booking_from_an_earlier_call(
         assert move.input_schema["required"] == ["event_id", "slot_id"]
         assert move.annotations is not None and move.annotations.destructive_hint
 
-        found = await mcp.call_tool("find_appointments", {})
+        # Caller ID alone is never enough: the name is always asked for.
+        with pytest.raises(ToolError, match="the name is needed"):
+            await mcp.call_tool("find_appointments", {})
+        found = await mcp.call_tool("find_appointments", {"caller_name": "Ann"})
         assert found.structured_content == {
             "appointments": [
                 {
@@ -370,14 +373,16 @@ async def test_mcp_finds_moves_and_cancels_a_booking_from_an_earlier_call(
         assert cancelled.structured_content["cancelled"] is True
 
         with pytest.raises(ToolError, match="at least 7 digits"):
-            await mcp.call_tool("find_appointments", {"caller_phone": "087"})
+            await mcp.call_tool(
+                "find_appointments", {"caller_phone": "087", "caller_name": "Ann"}
+            )
 
     # No number from the API (hidden caller id), or one that cannot be a phone
     # number: the tool asks for one.
     for headers in (None, {CONTACT_PHONE_HEADER: "0" * 51}):
         async with mcp_client(app, url, key, headers=headers) as mcp:
             with pytest.raises(ToolError, match="ask for the phone number"):
-                await mcp.call_tool("find_appointments", {})
+                await mcp.call_tool("find_appointments", {"caller_name": "Ann"})
 
 
 async def test_mcp_rejects_foreign_keys(

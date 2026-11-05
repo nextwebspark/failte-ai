@@ -112,42 +112,59 @@ connection is labelled with the key's `client_email`.
 **Finding a caller's bookings.** `find_appointments` returns at most three of
 the caller's upcoming bookings made by this connection (event id, start in
 the calendar's time zone, a phrase to speak), soonest first; the agent then
-cancels or moves one by its event id. A booking matches on the phone number
-it was made with, compared by its last 8 digits (`087 123 4567`,
-`+353 87 123 4567` and `00353871234567` are the same number). Which number
-may be used is the privacy rule:
+cancels or moves one by its event id. A booking matches only when **both**
+the phone number it was made with and the name it was booked under match;
+the name is always required:
 
-- The number the call comes from, which the Fallcha API sends as the
-  `X-Fallcha-Contact-Phone` header on the call's MCP requests (only to this
-  service, taken from the call record, never from the agent). It needs
-  nothing else; a name only narrows the result.
-- Any other number the caller says (or every number, when the call's own is
-  hidden or unknown) needs the name the booking was made under too: every
-  word of it must be in the booked name (case and accents ignored).
-  Knowing someone's number alone never reveals their appointments.
+- The number is the one the call comes from, which the Fallcha API sends as
+  the `X-Fallcha-Contact-Phone` header on the call's MCP requests (only to
+  this service, taken from the telephony call record, never from the agent
+  or from context variables), unless the caller says another number. When
+  the call's own number is hidden or unknown, the caller must say one.
+  Caller ID can be spoofed, so it only saves asking for the number: on its
+  own it reveals and changes nothing.
+- Every word of the name must be in the booked name (case, accents and
+  apostrophes ignored), or both run together must be equal (`Marykate` and
+  `Mary-Kate`). A miss gives the same answer whether or not the number has
+  bookings.
 
-Bookings carry the phone key as a private extended property, so Google
-filters on it; bookings made before that are matched on their description's
-`Phone:` line (the connection's soonest 500 upcoming bookings are read for
-them). A caller's name, phone and reason are written to the description on
-one line each, so their words cannot add a line.
+Numbers are first compared by their last 8 digits (`087 123 4567`,
+`+353 87 123 4567` and `00353871234567` are the same); bookings carry that
+key as a private extended property, so Google filters on it. Different
+numbers can share a key (Dublin `01 412 3456`, Cork `021 412 3456`), so when
+both numbers parse they must also be equal in E.164. Numbers said without a
+country code use the config's `phone_region` (ISO 3166, e.g. `IE`), else the
+country of `timezone` from the system's `zone.tab`; with neither (e.g.
+`UTC`), or a number that does not parse, the key alone decides. Bookings
+made before the key existed are matched on their description's `Phone:`
+line (the connection's soonest 500 upcoming bookings are read for them;
+drop that scan once they are all past). A caller's name, phone and reason
+are written to the description on one line each, so their words cannot add
+a line.
 
 **Moving a booking.** `reschedule_appointment` books the new slot for the
-same caller (name, phone and reason read from the old booking) first, and
-cancels the old booking only once the new one is booked, so a failure never
-leaves the caller with no appointment. Its `outcome` is `moved`,
-`unchanged` (the same time), `slot_taken` (old booking kept, alternatives
-in `slots`), `not_found` (not an upcoming booking of this connection), or
-`old_not_cancelled` (new time booked, old one still there: the agent says
-the team will remove it). A Google error while booking changes nothing
-that a retry of the same call would not finish: the booking id is
-deterministic, so the retry finds its own new booking. Each step (read the
-old booking, book, cancel) has its own 5 s budget.
+same caller (name, phone, reason and any lines staff added to the
+description, read from the old booking) first, and cancels the old booking
+only once the new one is booked, so a failure never leaves the caller with
+no appointment. Its result is `{outcome, event_id, slots, say}`; `outcome`
+is `moved` (`event_id` is the new booking), `unchanged` (the same time),
+`slot_taken` (old booking kept, alternatives in `slots`), `not_found` (not
+an upcoming booking of this connection), `details_edited` (staff removed
+its caller details; the team moves it) or `old_not_cancelled` (new time
+booked, old one still there: the agent says the team will remove it). A
+Google error while booking changes nothing that a retry of the same call
+would not finish: the booking id is deterministic, so the retry finds its
+own new booking, and a retry after the move finished reports `moved` again.
+The new slot must be free of the old booking too, so a slot overlapping it
+is `slot_taken` (availability never offers one anyway: freeBusy merges
+events, so the old one cannot be told apart from others there).
 
 REST bodies and responses match the shim's, so an existing `http_api` tool only
 needs a new URL and a connection key in place of the old `X-API-Key`. Errors
 are 400 (bad argument), 409 (not configured) or 502 (Google failure). Each
-Google request times out after 4 s, and each tool call after 5 s.
+Google request times out after 4 s. Each tool call has a 5 s budget, except
+`reschedule_appointment`, whose three steps (read the old booking, book,
+cancel) have 5 s each.
 
 Bookings use a deterministic event id (an HMAC of connection, slot and caller,
 keyed by a subkey derived from `TOOLS_INTERNAL_SECRET`), so retrying

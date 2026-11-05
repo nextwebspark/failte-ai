@@ -20,6 +20,12 @@ from fallcha_tools.providers.google_calendar.matching import (
     name_matches,
     one_line,
     phone_key,
+    phone_matches,
+)
+from fallcha_tools.providers.google_calendar.phone_numbers import (
+    e164,
+    region_for_timezone,
+    same_number,
 )
 from fallcha_tools.providers.google_calendar.scheduling import resolve_window
 from fallcha_tools.providers.google_calendar.settings import (
@@ -80,7 +86,7 @@ def test_speech() -> None:
         == "I have Tuesday the thirteenth at nine in the morning."
     )
     assert say_bookings([]) == (
-        "I could not find any upcoming appointments for that number."
+        "I could not find any upcoming appointments for those details."
     )
     assert say_bookings([local(13, 9)]) == (
         "I have you booked in for Tuesday the thirteenth at nine in the morning."
@@ -135,8 +141,8 @@ def test_name_matches() -> None:
     assert name_matches("DOE jane", event)
     assert not name_matches("Janet", event)
     assert not name_matches("Mrs Doe", event)  # every word must be booked
-    assert name_matches("  ", event)  # no name: no filter
-    assert name_matches("J.", event)
+    assert not name_matches("  ", event)  # no name matches nothing
+    assert not name_matches("J.", event)
     irish = {"description": "Caller: Seán Ó Briain"}
     assert name_matches("sean briain", irish)  # accents are ignored
     # Only the description's Caller line counts, not the title.
@@ -144,37 +150,107 @@ def test_name_matches() -> None:
     assert not name_matches("Jane", {})
 
 
+@pytest.mark.parametrize(
+    ("wanted", "booked"),
+    [
+        ("OBrien", "Mary O'Brien"),
+        ("o'brien", "Mary OBrien"),
+        ("O\u2019Brien", "O'Brien"),
+        ("O\u02bcbrien", "O\u2019Brien"),
+        ("Marykate Doe", "Mary-Kate Doe"),
+        ("Mary Kate Doe", "Marykate Doe"),
+        ("MacCarthy", "Mac Carthy"),
+        ("Mac Carthy", "MacCarthy"),
+    ],
+)
+def test_names_match_across_apostrophes_and_spacing(wanted: str, booked: str) -> None:
+    assert name_matches(wanted, {"description": f"Caller: {booked}"})
+
+
+def test_run_together_names_must_be_the_whole_name() -> None:
+    event = {"description": "Caller: Mary-Kate Doe"}
+    assert not name_matches("Marykate", event)
+    assert not name_matches("Marykatedoes", event)
+
+
 def test_caller_lookup() -> None:
     mine, other = "+353 87 123 4567", "086 765 4321"
-    lookup = caller_lookup(contact_phone=mine, caller_phone=None, caller_name=None)
-    assert lookup == CallerLookup(phone_key="71234567", name=None)
-    # The call's own number, however it is said, needs no name.
+    lookup = caller_lookup(contact_phone=mine, caller_phone=None, caller_name="Jane")
+    assert lookup == CallerLookup(phone=mine, phone_key="71234567", name="Jane")
+    # The call's own number, however it is said, is the call's own.
     assert caller_lookup(
         contact_phone=mine, caller_phone="087 123 4567", caller_name=" Jane "
-    ) == CallerLookup(phone_key="71234567", name="Jane")
+    ) == CallerLookup(phone=mine, phone_key="71234567", name="Jane")
     for contact in (mine, None, "unknown"):
         assert caller_lookup(
             contact_phone=contact, caller_phone=other, caller_name="Jane"
-        ) == CallerLookup(phone_key="67654321", name="Jane")
-        with pytest.raises(BadArgumentError, match="needs the name too"):
-            caller_lookup(contact_phone=contact, caller_phone=other, caller_name="")
+        ) == CallerLookup(phone=other, phone_key="67654321", name="Jane")
+        for name in (None, "", "J."):
+            with pytest.raises(BadArgumentError, match="the name is needed"):
+                caller_lookup(
+                    contact_phone=contact, caller_phone=other, caller_name=name
+                )
         with pytest.raises(BadArgumentError, match="at least 7 digits"):
             caller_lookup(contact_phone=contact, caller_phone="087", caller_name="J")
+    # Caller ID alone is never enough.
+    with pytest.raises(BadArgumentError, match="the name is needed"):
+        caller_lookup(contact_phone=mine, caller_phone=None, caller_name=None)
     with pytest.raises(BadArgumentError, match="is not known"):
         caller_lookup(contact_phone=None, caller_phone=" ", caller_name="Jane")
+
+
+def test_phone_matches_compares_full_numbers_when_they_parse() -> None:
+    dublin = {"description": "Caller: Jane\nPhone: 01 412 3456"}
+    lookup = CallerLookup(phone="021 412 3456", phone_key="14123456", name="Jane")
+    assert not phone_matches(dublin, lookup, "IE")
+    assert phone_matches(dublin, lookup, None)  # no region: the key decides
+    same = CallerLookup(phone="+35314123456", phone_key="14123456", name="Jane")
+    assert phone_matches(dublin, same, "IE")
+    # A tagged booking whose Phone line staff removed: the key decides.
+    tagged = {"extendedProperties": {"private": {PHONE_KEY_PROPERTY: "14123456"}}}
+    assert phone_matches(tagged, lookup, "IE")
+    other_key = CallerLookup(phone="086 765 4321", phone_key="67654321", name="J")
+    assert not phone_matches(dublin, other_key, "IE")
+
+
+def test_e164_and_regions() -> None:
+    assert e164("087 123 4567", "IE") == "+353871234567"
+    assert e164("+353 (0)87 123 4567", None) == "+353871234567"
+    assert e164("087 123 4567", None) is None
+    assert e164("087", "IE") is None
+    assert e164("call me", "IE") is None
+    assert same_number("212 555 1234", "312 555 1234", "US") is False
+    assert same_number("212 555 1234", "+1 (212) 555-1234", "US") is True
+    assert same_number("212 555 1234", "+1 212 555 1234", None) is None
+    assert region_for_timezone("Europe/Dublin") == "IE"
+    assert region_for_timezone("America/Chicago") == "US"
+    assert region_for_timezone("UTC") is None
+
+
+def test_phone_region_config() -> None:
+    assert CalendarConfig(calendar_id="c").default_phone_region == "IE"
+    assert CalendarConfig(calendar_id="c", phone_region="gb").phone_region == "GB"
+    config = CalendarConfig(calendar_id="c", timezone="UTC", phone_region="US")
+    assert config.default_phone_region == "US"
+    assert CalendarConfig(calendar_id="c", timezone="UTC").default_phone_region is None
+    with pytest.raises(ValidationError, match="unknown phone region"):
+        CalendarConfig(calendar_id="c", phone_region="ZZ")
 
 
 def test_booked_caller() -> None:
     event = {
         "description": (
             "Booked by the agent.\nCaller: Jane Doe\nPhone: 087 123 4567\n"
-            "Reason: check-up"
+            "Reason: check-up\nNeeds wheelchair access\n\nPaid deposit"
         )
     }
     assert booked_caller(event) == BookedCaller(
-        name="Jane Doe", phone="087 123 4567", reason="check-up"
+        name="Jane Doe",
+        phone="087 123 4567",
+        reason="check-up",
+        notes=("Needs wheelchair access", "Paid deposit"),
     )
-    no_reason = {"description": "Caller: Jane\nPhone: 087 123 4567"}
+    no_reason = {"description": "Booked.\nCaller: Jane\nPhone: 087 123 4567"}
     assert booked_caller(no_reason) == BookedCaller("Jane", "087 123 4567", None)
     # Staff edited the details away: the caller is unknown.
     assert booked_caller({"description": "Caller: Jane\nmoved by phone"}) is None

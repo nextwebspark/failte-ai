@@ -51,7 +51,8 @@ HOUR_WORDS = {
 }
 MINUTE_WORDS = {15: "fifteen", 30: "thirty", 45: "forty five"}
 NOTHING_FREE = "I have nothing free in that window."
-NO_BOOKINGS = "I could not find any upcoming appointments for that number."
+# The same whether or not the number has bookings: a miss reveals nothing.
+NO_BOOKINGS = "I could not find any upcoming appointments for those details."
 
 
 def say_time(slot: datetime) -> str:

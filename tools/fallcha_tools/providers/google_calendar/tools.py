@@ -98,13 +98,14 @@ def register_calendar_tools(
         caller_phone: BookedPhone = None, caller_name: BookedName = None
     ) -> FindResult:
         """Use when the caller wants to cancel, move or check an appointment they
-        booked on an earlier call. First call it with no arguments: it looks up
-        the number this call comes from. If that finds nothing and they booked
-        with another number, ask for that number (confirm it back) and the
-        name it was booked under, and call again with both. Returns their
-        upcoming appointments booked through this agent (at most three,
-        soonest first), each with its event_id. Read the "say" field to the
-        caller and confirm which appointment they mean; never guess one."""
+        booked on an earlier call. Always ask for the name the appointment was
+        booked under first and pass it as caller_name. Leave caller_phone empty
+        to use the number this call comes from; if that finds nothing and they
+        booked with another number, ask for that number (confirm it back) and
+        call again with it. Returns their upcoming appointments booked through
+        this agent (at most three, soonest first), each with its event_id. Read
+        the "say" field to the caller and confirm which appointment they mean;
+        never guess one. If none is found, offer to take a message."""
         svc = await service()
         return await _guard(svc.find(caller_phone, caller_name))
 
@@ -122,6 +123,7 @@ def register_calendar_tools(
         yourself. Read the "say" field to the caller. If "outcome" is
         "slot_taken", offer the alternatives in "slots"; if it is
         "old_not_cancelled", the new time is booked: take a message so the team
-        removes the old one. On an error, try the same call once more."""
+        removes the old one; if it is "details_edited", take a message so the
+        team moves it. On an error, try the same call once more."""
         svc = await service()
         return await _guard(svc.reschedule(event_id, slot_id))

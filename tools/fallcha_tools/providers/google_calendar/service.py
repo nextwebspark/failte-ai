@@ -31,11 +31,11 @@ from fallcha_tools.providers.google_calendar.matching import (
     BookedCaller,
     CallerLookup,
     booked_caller,
-    booked_phone_key,
     caller_lookup,
     name_matches,
     one_line,
     phone_key,
+    phone_matches,
     private_properties,
 )
 from fallcha_tools.providers.google_calendar.scheduling import (
@@ -81,6 +81,14 @@ UNCONFIRMED_BOOKING = (
     "Google did not confirm the booking in time; please try booking the same slot again"
 )
 MOVE_NOT_FOUND = "I could not find that appointment to move."
+DETAILS_EDITED = (
+    "The team has changed that appointment, so I cannot move it myself. I can "
+    "take a message for them."
+)
+_NOT_MOVED_SAY = {
+    RescheduleOutcome.NOT_FOUND: MOVE_NOT_FOUND,
+    RescheduleOutcome.DETAILS_EDITED: DETAILS_EDITED,
+}
 # A lookup names at most this many upcoming bookings, soonest first.
 MAX_FOUND = 3
 # A booking never starts more than the longest horizon after it was made, so
@@ -170,7 +178,11 @@ class CalendarService:
         caller_name: str,
         caller_phone: str,
         reason: str | None = None,
+        *,
+        notes: Sequence[str] = (),
     ) -> BookingResult:
+        """Book ``slot_id``. ``notes`` are extra description lines (the staff
+        notes of a booking being moved)."""
         cfg = self.config
         slot = self._parse_slot(slot_id)
         slot_end = slot + timedelta(minutes=cfg.slot_minutes)
@@ -204,7 +216,10 @@ class CalendarService:
         try:
             for candidate in candidate_ids:
                 event = self._event(
-                    candidate, slot, slot_end, caller_name, caller_phone, reason
+                    candidate,
+                    slot,
+                    slot_end,
+                    BookedCaller(caller_name, caller_phone, reason, tuple(notes)),
                 )
                 if await self._insert_or_confirm(event, budget):
                     return self._booked(candidate, slot)
@@ -282,11 +297,11 @@ class CalendarService:
         slot = self._parse_slot(slot_id)
         async with self._deadline():
             old = await self.client.get_event(self.config.calendar_id, event_id)
+            if old is not None and old.get("status") == "cancelled":
+                return await self._finished_move(old, slot)
         movable = self._movable(old)
-        if movable is None:
-            return RescheduleResult(
-                outcome=RescheduleOutcome.NOT_FOUND, say=MOVE_NOT_FOUND
-            )
+        if not isinstance(movable, tuple):
+            return RescheduleResult(outcome=movable, say=_NOT_MOVED_SAY[movable])
         start, caller = movable
         if slot == start:
             # Booking it again would find the old event and cancel it.
@@ -294,7 +309,9 @@ class CalendarService:
                 outcome=RescheduleOutcome.UNCHANGED,
                 say=f"You are already booked in for {say_time(start)}.",
             )
-        booking = await self.book(slot_id, caller.name, caller.phone, caller.reason)
+        booking = await self.book(
+            slot_id, caller.name, caller.phone, caller.reason, notes=caller.notes
+        )
         if not booking.booked or booking.event_id is None:
             return RescheduleResult(
                 outcome=RescheduleOutcome.SLOT_TAKEN,
@@ -306,16 +323,49 @@ class CalendarService:
 
     def _movable(
         self, event: Mapping[str, object] | None
-    ) -> tuple[datetime, BookedCaller] | None:
+    ) -> tuple[datetime, BookedCaller] | RescheduleOutcome:
         """Start and caller of ``event`` if it is an upcoming booking of ours
-        whose caller details are intact."""
-        if event is None or not self._is_ours(event):
-            return None
-        start = self._event_start(event)
+        whose caller details are intact, else why it cannot be moved."""
+        start = self._event_start(event) if event is not None else None
+        if (
+            event is None
+            or start is None
+            or start <= self._now()
+            or not self._is_ours(event)
+        ):
+            return RescheduleOutcome.NOT_FOUND
         caller = booked_caller(event)
-        if start is None or caller is None or start <= self._now():
-            return None
+        if caller is None:
+            return RescheduleOutcome.DETAILS_EDITED
         return start, caller
+
+    async def _finished_move(
+        self, old: Mapping[str, object], slot: datetime
+    ) -> RescheduleResult:
+        """A retry of a move whose reply was lost: ``old`` (ours, cancelled)
+        was moved if the booking ``reschedule`` makes for ``slot`` exists."""
+        start = self._event_start(old)
+        caller = booked_caller(old)
+        if (
+            not self._is_ours(old, include_cancelled=True)
+            or start is None
+            or not caller
+        ):
+            return RescheduleResult(
+                outcome=RescheduleOutcome.NOT_FOUND, say=MOVE_NOT_FOUND
+            )
+        new_id = booking_event_id(
+            self.booking_id_key, self.connection_id, slot, caller.name, caller.phone
+        )
+        for candidate in (new_id, new_id + SALTED_SUFFIX):
+            new = await self.client.get_event(self.config.calendar_id, candidate)
+            if (
+                new is not None
+                and self._is_ours(new)
+                and self._event_start(new) == slot
+            ):
+                return self._moved(candidate, start, slot)
+        return RescheduleResult(outcome=RescheduleOutcome.NOT_FOUND, say=MOVE_NOT_FOUND)
 
     async def _cancel_moved(
         self, old_id: str, old_start: datetime, new_id: str, new_start: datetime
@@ -339,6 +389,12 @@ class CalendarService:
                     "the team will need to remove it."
                 ),
             )
+        return self._moved(new_id, old_start, new_start)
+
+    @staticmethod
+    def _moved(
+        new_id: str, old_start: datetime, new_start: datetime
+    ) -> RescheduleResult:
         return RescheduleResult(
             outcome=RescheduleOutcome.MOVED,
             event_id=new_id,
@@ -375,6 +431,8 @@ class CalendarService:
                 # Bookings made before they carried the phone key. Once all of
                 # those are past (MAX_HORIZON_DAYS after that release), this
                 # only finds tagged bookings again and can be dropped.
+                # TODO(2027-02-01): drop this scan (and SCAN_*) if the release
+                # carrying the phone key shipped before 2026-12-01.
                 self._upcoming_events(
                     ours, now, budget, SCAN_PAGE_SIZE, max_pages=SCAN_MAX_PAGES
                 ),
@@ -430,8 +488,8 @@ class CalendarService:
                 and start is not None
                 and start > now
                 and self._is_ours(event)
-                and booked_phone_key(event) == lookup.phone_key
-                and (lookup.name is None or name_matches(lookup.name, event))
+                and phone_matches(event, lookup, self.config.default_phone_region)
+                and name_matches(lookup.name, event)
             ):
                 found[event_id] = start
         return sorted(found.items(), key=lambda item: item[1])[:MAX_FOUND]
@@ -473,18 +531,17 @@ class CalendarService:
         event_id: str,
         start: datetime,
         end: datetime,
-        caller_name: str,
-        caller_phone: str,
-        reason: str | None,
+        caller: BookedCaller,
     ) -> dict[str, JsonValue]:
         cfg = self.config
-        caller_name, caller_phone = one_line(caller_name), one_line(caller_phone)
+        caller_name, caller_phone = one_line(caller.name), one_line(caller.phone)
         description = "\n".join(
             [
                 cfg.booked_by_line,
                 f"{CALLER_PREFIX}{caller_name}",
                 f"{PHONE_PREFIX}{caller_phone}",
-                f"{REASON_PREFIX}{one_line(reason or '') or 'not given'}",
+                f"{REASON_PREFIX}{one_line(caller.reason or '') or 'not given'}",
+                *(one_line(note) for note in caller.notes),
             ]
         )
         private: dict[str, JsonValue] = {BOOKING_MARKER: str(self.connection_id)}

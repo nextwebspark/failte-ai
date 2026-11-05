@@ -23,6 +23,7 @@ from fallcha_tools.providers.google_calendar.schemas import (
     RescheduleResult,
 )
 from fallcha_tools.providers.google_calendar.service import (
+    DETAILS_EDITED,
     MOVE_NOT_FOUND,
     CalendarService,
 )
@@ -202,9 +203,7 @@ def _not_ours(connection_id: uuid.UUID) -> list[dict[str, Any]]:
     past = booking(connection_id, "2026-10-09T09:00:00+01:00", PHONE, event_id="p")
     cancelled = booking(connection_id, "2026-10-13T13:00:00+01:00", PHONE, event_id="c")
     cancelled["status"] = "cancelled"
-    edited = booking(connection_id, "2026-10-13T14:00:00+01:00", PHONE, event_id="e")
-    edited["description"] = "Moved to the afternoon by Mary"
-    return [other, manual, past, cancelled, edited]
+    return [other, manual, past, cancelled]
 
 
 async def test_only_upcoming_bookings_of_this_connection_can_be_moved(
@@ -228,3 +227,51 @@ async def test_a_bad_slot_id_is_refused_before_calling_google(
     with pytest.raises(BadArgumentError, match="ISO timestamp"):
         await service.reschedule("evt", "tomorrow at ten")
     assert not google.token.called
+
+
+async def test_a_booking_whose_details_staff_edited_is_left_to_the_team(
+    service: CalendarService, google: FakeGoogle, connection_id: uuid.UUID
+) -> None:
+    edited = booking(connection_id, "2026-10-13T14:00:00+01:00", PHONE, event_id="e")
+    edited["description"] = "Moved to the afternoon by Mary"
+    plant(google, edited)
+
+    result = await service.reschedule("e", NEW_SLOT)
+
+    assert result == RescheduleResult(
+        outcome=RescheduleOutcome.DETAILS_EDITED, say=DETAILS_EDITED
+    )
+    assert not google.insert.called
+
+
+async def test_a_retry_after_a_finished_move_reports_the_move(
+    service: CalendarService, google: FakeGoogle
+) -> None:
+    old_id = await book_old(service)
+    first = await service.reschedule(old_id, NEW_SLOT)
+    assert first.outcome == RescheduleOutcome.MOVED
+    inserts = google.insert.call_count
+
+    # The reply was lost and the agent tries the same call again.
+    again = await service.reschedule(old_id, NEW_SLOT)
+
+    assert again == first
+    assert google.insert.call_count == inserts
+    assert list(confirmed(google)) == [first.event_id]
+    # A cancelled booking that was not moved to that slot stays not found.
+    other = await service.reschedule(old_id, "2026-10-14T09:00:00+01:00")
+    assert other.outcome == RescheduleOutcome.NOT_FOUND
+
+
+async def test_staff_notes_move_with_the_booking(
+    service: CalendarService, google: FakeGoogle
+) -> None:
+    old_id = await book_old(service)
+    google.events[old_id]["description"] += "\nNeeds wheelchair access"
+
+    result = await service.reschedule(old_id, NEW_SLOT)
+
+    assert result.event_id is not None
+    assert google.events[result.event_id]["description"].endswith(
+        "Reason: Check-up\nNeeds wheelchair access"
+    )

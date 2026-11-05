@@ -15,6 +15,7 @@ dependencies = [
     "httpx>=0.28",
     "fastmcp>=4.0.10,<5",
     "loguru>=0.7",
+    "phonenumbers>=8.13,<10",
 ]
 
 [project.optional-dependencies]
