@@ -93,8 +93,8 @@ from api.services.workflow.agent_builder import (
     default_agent_spec_generator,
 )
 from api.services.workflow.appointment_hours import (
+    appointment_hours_answers,
     update_calendar_booking_hours,
-    with_appointment_hours,
 )
 from api.services.workflow.configuration_policy import (
     ExternalPBXConfigurationDisabledError,
@@ -1640,7 +1640,8 @@ async def duplicate_workflow_template(
         filled = fill_template_values(
             template.template_json,
             fields,
-            with_appointment_hours(fields, request),
+            request.values,
+            rendered=appointment_hours_answers(fields, request),
         )
     except TemplateSetupError as e:
         raise HTTPException(status_code=422, detail=str(e))

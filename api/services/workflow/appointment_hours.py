@@ -90,11 +90,13 @@ def describe_appointment_hours(hours: AppointmentHours) -> str:
     )
 
 
-def with_appointment_hours(
+def appointment_hours_answers(
     fields: Sequence[TemplateSetupField], request: DuplicateTemplateRequest
 ) -> dict[str, str]:
-    """The request's ``values`` plus the answer to each ``appointment_hours``
-    field: the sentence for its hours, or nothing when none were given.
+    """The answer to each ``appointment_hours`` field: a line with the
+    request's hours, or nothing when none were given. For
+    ``fill_template_values``'s *rendered*: the line ends with its own newline,
+    so a placeholder with no hours leaves no blank line.
 
     Raises TemplateSetupError for hours the template doesn't ask for, hours
     without Google Calendar attached (only bookings use them), or such a
@@ -106,14 +108,12 @@ def with_appointment_hours(
         raise TemplateSetupError("This template doesn't ask for appointment hours.")
     if hours is not None and GOOGLE_CALENDAR not in request.integration_tools:
         raise TemplateSetupError("Appointment hours need Google Calendar attached.")
-    answers = dict(request.values)
-    for key in keys:
-        if answers.get(key, "").strip():
-            raise TemplateSetupError(
-                "Send appointment hours as appointment_hours, not as text."
-            )
-        answers[key] = describe_appointment_hours(hours) if hours else ""
-    return answers
+    if any(request.values.get(key, "").strip() for key in keys):
+        raise TemplateSetupError(
+            "Send appointment hours as appointment_hours, not as text."
+        )
+    line = f"{describe_appointment_hours(hours)}\n" if hours else ""
+    return dict.fromkeys(keys, line)
 
 
 def _books_in(

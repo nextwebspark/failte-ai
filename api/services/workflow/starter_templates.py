@@ -65,7 +65,9 @@ _RECEPTIONIST = AgentSpec(
     persona=(
         "You are the friendly receptionist for {{business_name}}. "
         "About the business: {{business_description}}\n\n"
-        "Opening hours: {{opening_hours}} {{appointment_hours}}\n"
+        "Opening hours: {{opening_hours}}\n"
+        # Its answer is a whole line, newline included, or nothing.
+        "{{appointment_hours}}"
         "Address: {{address | fallback:not listed. Offer to take a message instead.}}\n"
         "Website: {{website | fallback:not listed.}}\n"
         "Other things callers often ask about: {{extra_info | fallback:nothing else.}}\n\n"

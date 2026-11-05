@@ -40,10 +40,10 @@ from api.services.tool_integrations.resources import LinkedCredential
 from api.services.workflow import appointment_hours as hours_module
 from api.services.workflow.agent_builder import validate_workflow_definition
 from api.services.workflow.appointment_hours import (
+    appointment_hours_answers,
     calendar_config_patch,
     describe_appointment_hours,
     update_calendar_booking_hours,
-    with_appointment_hours,
 )
 from api.services.workflow.starter_templates import STARTER_TEMPLATES
 from api.services.workflow.template_setup import (
@@ -189,8 +189,8 @@ def test_only_hours_can_be_applied_to_the_calendar():
 # -- filling the template ------------------------------------------------------
 
 
-def test_the_hours_field_is_answered_with_the_sentence():
-    answers = with_appointment_hours(
+def test_the_hours_field_is_answered_with_a_line():
+    answers = appointment_hours_answers(
         FIELDS,
         _request(
             values={"business_name": "Bloom"},
@@ -199,15 +199,13 @@ def test_the_hours_field_is_answered_with_the_sentence():
         ),
     )
 
-    assert answers == {
-        "business_name": "Bloom",
-        "appointment_hours": describe_appointment_hours(AppointmentHours()),
-    }
+    sentence = describe_appointment_hours(AppointmentHours())
+    assert answers == {"appointment_hours": f"{sentence}\n"}
 
 
 def test_without_hours_the_field_stays_empty():
     # No calendar, so no hours (and maybe an empty text answer).
-    answers = with_appointment_hours(
+    answers = appointment_hours_answers(
         FIELDS, _request(values={"business_name": "Bloom", "appointment_hours": " "})
     )
 
@@ -236,40 +234,50 @@ def test_without_hours_the_field_stays_empty():
 )
 def test_rejects_hours_sent_the_wrong_way(fields, body, message):
     with pytest.raises(TemplateSetupError, match=message):
-        with_appointment_hours(fields, _request(appointment_hours={}, **body))
+        appointment_hours_answers(fields, _request(appointment_hours={}, **body))
 
 
-def _receptionist_prompt(**body: Any) -> str:
+def _receptionist_facts(**body: Any) -> list[str]:
+    """The lines of the receptionist's prompt from its opening hours on."""
     (receptionist,) = [t for t in STARTER_TEMPLATES if t.name == "AI Receptionist"]
     fields = receptionist.setup_fields
     values = {f.key: f"Sample {f.key}" for f in fields if f.required}
     request = _request(values=values, **body)
 
     filled = fill_template_values(
-        receptionist.definition, fields, with_appointment_hours(fields, request)
+        receptionist.definition,
+        fields,
+        request.values,
+        rendered=appointment_hours_answers(fields, request),
     )
     agent = attach_integration_tools(filled, request.integration_tools)
     validate_workflow_definition(agent)
-    return json.dumps(agent, ensure_ascii=False)
+    assert "{{appointment_hours" not in json.dumps(agent)
+    (prompt,) = {
+        node["data"]["prompt"]
+        for node in agent["nodes"]
+        if "Opening hours:" in node["data"].get("prompt", "")
+    }
+    lines = prompt.splitlines()
+    return lines[lines.index("Opening hours: Sample opening_hours") :]
 
 
 def test_the_receptionist_tells_callers_its_appointment_hours():
     hours = AppointmentHours.model_validate(WEEKEND_MORNINGS)
 
-    prompt = _receptionist_prompt(
+    facts = _receptionist_facts(
         appointment_hours=WEEKEND_MORNINGS,
         integration_tools={"google-calendar": TOOL},
     )
 
-    assert f"Sample opening_hours {describe_appointment_hours(hours)}\\n" in prompt
-    assert "{{appointment_hours" not in prompt
+    assert facts[1] == describe_appointment_hours(hours)
+    assert facts[2].startswith("Address: ")
 
 
 def test_the_receptionist_without_a_calendar_has_no_hours_line():
-    prompt = _receptionist_prompt()
+    facts = _receptionist_facts()
 
-    assert "Appointments can be booked" not in prompt
-    assert "Opening hours: Sample opening_hours \\nAddress" in prompt
+    assert facts[1].startswith("Address: ")
 
 
 # -- saving the hours to the calendar connection -------------------------------
@@ -569,7 +577,7 @@ def test_route_puts_the_hours_in_the_prompt_and_the_calendar():
     assert response.status_code == 200, response.text
     assert response.json()["calendar_hours"] == "updated"
     hours = AppointmentHours.model_validate(WEEKEND_MORNINGS)
-    assert _prompt(db) == f"Hours: {describe_appointment_hours(hours)}"
+    assert _prompt(db) == f"Hours: {describe_appointment_hours(hours)}\n"
     (update,) = [r for r in stub.requests if r.method == "PATCH"]
     assert update.url.path == f"/internal/connections/{CONNECTION_ID}"
     # Org-scoped like every call to the tools service.
