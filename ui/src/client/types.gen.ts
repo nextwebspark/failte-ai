@@ -9084,7 +9084,7 @@ export type TemplateSetupField = {
     /**
      * Type
      */
-    type?: 'text' | 'textarea' | 'url' | 'email' | 'phone';
+    type?: 'text' | 'textarea' | 'url' | 'email' | 'emails' | 'phone';
     /**
      * Help
      */

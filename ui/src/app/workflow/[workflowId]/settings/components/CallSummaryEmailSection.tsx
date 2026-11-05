@@ -21,6 +21,14 @@ export function parseRecipients(text: string): string[] {
     return text.split(/[,;\s]+/).filter(Boolean);
 }
 
+/** What to save. While off, the box is hidden and its unchecked contents must
+ * not block the save, so only the usable addresses are kept. */
+export function savedRecipients(enabled: boolean, recipients: string[]): string[] {
+    return enabled
+        ? recipients
+        : recipients.filter((address) => ADDRESS.test(address)).slice(0, MAX_CALL_SUMMARY_RECIPIENTS);
+}
+
 /** Why the setting can't be saved as it is, or null when it can. */
 export function callSummaryProblem(enabled: boolean, recipients: string[]): string | null {
     if (!enabled) return null;
@@ -46,8 +54,10 @@ export function CallSummaryEmailSection({ saved }: { saved: CallSummaryEmailConf
         label: "Call summaries",
         dirty: isDirty,
         blocker: callSummaryProblem(enabled, recipients),
-        patch: () => ({ configurations: { call_summary_email: { enabled, recipients } } }),
-        afterSave: () => setText(recipients.join(", ")),
+        patch: () => ({
+            configurations: { call_summary_email: { enabled, recipients: savedRecipients(enabled, recipients) } },
+        }),
+        afterSave: () => setText(savedRecipients(enabled, recipients).join(", ")),
     });
 
     const toggle = (next: boolean) => {

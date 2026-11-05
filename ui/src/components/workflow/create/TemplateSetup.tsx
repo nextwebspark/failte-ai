@@ -15,6 +15,8 @@ import { cn } from '@/lib/utils';
 import type { ConnectStatus, IntegrationConnect } from './useIntegrationConnect';
 
 const INPUT_TYPE: Record<string, string> = { url: 'url', email: 'email', phone: 'tel', text: 'text' };
+// A comma-separated list is not one address: a plain text box with an email keyboard.
+const INPUT_MODE: Partial<Record<string, 'email'>> = { emails: 'email' };
 
 function GoogleMark() {
     return (
@@ -58,7 +60,12 @@ function SetupInput({
             {field.type === 'textarea' ? (
                 <Textarea {...common} rows={2} className="min-h-[64px]" onChange={(e) => onChange(e.target.value)} />
             ) : (
-                <Input {...common} type={INPUT_TYPE[field.type ?? 'text'] ?? 'text'} onChange={(e) => onChange(e.target.value)} />
+                <Input
+                    {...common}
+                    type={INPUT_TYPE[field.type ?? 'text'] ?? 'text'}
+                    inputMode={INPUT_MODE[field.type ?? 'text']}
+                    onChange={(e) => onChange(e.target.value)}
+                />
             )}
             {(error || field.help) && (
                 <p id={hintId} className={cn('text-[12.5px]', error ? 'text-danger' : 'text-ink-3')}>
