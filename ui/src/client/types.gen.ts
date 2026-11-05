@@ -292,6 +292,16 @@ export type ActiveCallsResponse = {
 };
 
 /**
+ * AiBookingRequest
+ */
+export type AiBookingRequest = {
+    /**
+     * Ai Booking Enabled
+     */
+    ai_booking_enabled: boolean;
+};
+
+/**
  * AmbientNoiseConfigurationDefaults
  */
 export type AmbientNoiseConfigurationDefaults = {
@@ -1111,14 +1121,6 @@ export type BookingCalendar = {
  * Bookings in the requested range across the workspace's calendars, in
  * start order, with cancelled ones marked.
  */
-export type AiBookingRequest = {
-    ai_booking_enabled: boolean;
-};
-
-export type UpdateBookingsAccessRequest = {
-    can_manage_bookings: boolean;
-};
-
 export type BookingListResponse = {
     /**
      * Calendars
@@ -9979,6 +9981,16 @@ export type UltravoxRealtimeLlmConfiguration = {
 };
 
 /**
+ * UpdateBookingsAccessRequest
+ */
+export type UpdateBookingsAccessRequest = {
+    /**
+     * Can Manage Bookings
+     */
+    can_manage_bookings: boolean;
+};
+
+/**
  * UpdateCampaignRequest
  */
 export type UpdateCampaignRequest = {
@@ -15597,6 +15609,50 @@ export type ListBookingsApiV1IntegrationsBookingsGetResponses = {
 
 export type ListBookingsApiV1IntegrationsBookingsGetResponse = ListBookingsApiV1IntegrationsBookingsGetResponses[keyof ListBookingsApiV1IntegrationsBookingsGetResponses];
 
+export type SetAiBookingApiV1IntegrationsBookingsCalendarsConnectionIdPutData = {
+    body: AiBookingRequest;
+    headers?: {
+        /**
+         * Authorization
+         */
+        authorization?: string | null;
+        /**
+         * X-Api-Key
+         */
+        'X-API-Key'?: string | null;
+    };
+    path: {
+        /**
+         * Connection Id
+         */
+        connection_id: string;
+    };
+    query?: never;
+    url: '/api/v1/integrations/bookings/calendars/{connection_id}';
+};
+
+export type SetAiBookingApiV1IntegrationsBookingsCalendarsConnectionIdPutErrors = {
+    /**
+     * Not found
+     */
+    404: unknown;
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type SetAiBookingApiV1IntegrationsBookingsCalendarsConnectionIdPutError = SetAiBookingApiV1IntegrationsBookingsCalendarsConnectionIdPutErrors[keyof SetAiBookingApiV1IntegrationsBookingsCalendarsConnectionIdPutErrors];
+
+export type SetAiBookingApiV1IntegrationsBookingsCalendarsConnectionIdPutResponses = {
+    /**
+     * Successful Response
+     */
+    200: BookingCalendar;
+};
+
+export type SetAiBookingApiV1IntegrationsBookingsCalendarsConnectionIdPutResponse = SetAiBookingApiV1IntegrationsBookingsCalendarsConnectionIdPutResponses[keyof SetAiBookingApiV1IntegrationsBookingsCalendarsConnectionIdPutResponses];
+
 export type ListConnectionsApiV1IntegrationsConnectionsGetData = {
     body?: never;
     headers?: {
@@ -17807,6 +17863,50 @@ export type UpdateMemberRoleApiV1OrganizationsMembersUserIdPatchResponses = {
 };
 
 export type UpdateMemberRoleApiV1OrganizationsMembersUserIdPatchResponse = UpdateMemberRoleApiV1OrganizationsMembersUserIdPatchResponses[keyof UpdateMemberRoleApiV1OrganizationsMembersUserIdPatchResponses];
+
+export type UpdateBookingsAccessApiV1OrganizationsMembersUserIdBookingsAccessPutData = {
+    body: UpdateBookingsAccessRequest;
+    headers?: {
+        /**
+         * Authorization
+         */
+        authorization?: string | null;
+        /**
+         * X-Api-Key
+         */
+        'X-API-Key'?: string | null;
+    };
+    path: {
+        /**
+         * User Id
+         */
+        user_id: number;
+    };
+    query?: never;
+    url: '/api/v1/organizations/members/{user_id}/bookings-access';
+};
+
+export type UpdateBookingsAccessApiV1OrganizationsMembersUserIdBookingsAccessPutErrors = {
+    /**
+     * Not found
+     */
+    404: unknown;
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type UpdateBookingsAccessApiV1OrganizationsMembersUserIdBookingsAccessPutError = UpdateBookingsAccessApiV1OrganizationsMembersUserIdBookingsAccessPutErrors[keyof UpdateBookingsAccessApiV1OrganizationsMembersUserIdBookingsAccessPutErrors];
+
+export type UpdateBookingsAccessApiV1OrganizationsMembersUserIdBookingsAccessPutResponses = {
+    /**
+     * Successful Response
+     */
+    204: void;
+};
+
+export type UpdateBookingsAccessApiV1OrganizationsMembersUserIdBookingsAccessPutResponse = UpdateBookingsAccessApiV1OrganizationsMembersUserIdBookingsAccessPutResponses[keyof UpdateBookingsAccessApiV1OrganizationsMembersUserIdBookingsAccessPutResponses];
 
 export type ListInvitationsApiV1OrganizationsInvitationsGetData = {
     body?: never;
