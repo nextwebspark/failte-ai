@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 
 import { SETTINGS_ROUTE_PERMISSIONS } from "@/components/settings/settingsNav";
+import { type Feature, isFeatureEnabled } from "@/config/features";
 import type { Permission } from "@/lib/auth/roles";
 
 /**
@@ -41,6 +42,8 @@ export type NavItem = {
    * open and stays lit on all of them (components/settings/settingsNav.ts).
    */
   settingsHub?: boolean;
+  /** Listed only while this product area is switched on (config/features.ts). */
+  feature?: Feature;
 };
 
 export type NavSection = {
@@ -48,7 +51,8 @@ export type NavSection = {
   items: NavItem[];
 };
 
-export const NAV_SECTIONS: NavSection[] = [
+/** Every workspace screen, switched-off areas included (route permissions). */
+const ALL_NAV_SECTIONS: NavSection[] = [
   {
     items: [{ title: "Overview", url: "/overview", icon: Home }],
   },
@@ -56,7 +60,7 @@ export const NAV_SECTIONS: NavSection[] = [
     label: "BUILD",
     items: [
       { title: "Voice agents", url: "/workflow", icon: GitBranch, requires: "agents:read" },
-      { title: "Campaigns", url: "/campaigns", icon: Megaphone, requires: "campaigns:read" },
+      { title: "Campaigns", url: "/campaigns", icon: Megaphone, requires: "campaigns:read", feature: "campaigns" },
       { title: "Models & voice", url: "/model-configurations", icon: Cpu, requires: "credentials:write" },
       {
         title: "Telephony",
@@ -67,7 +71,7 @@ export const NAV_SECTIONS: NavSection[] = [
       },
       { title: "Tools", url: "/tools", icon: Wrench, requires: "agents:write" },
       { title: "Integrations", url: "/integrations", icon: Plug, requires: "integrations:read" },
-      { title: "Skills", url: "/skills", icon: BookOpen, requires: "agents:read" },
+      { title: "Skills", url: "/skills", icon: BookOpen, requires: "agents:read", feature: "skills" },
       { title: "Files", url: "/files", icon: Database, requires: "agents:write" },
       { title: "Recordings", url: "/recordings", icon: AudioLines, requires: "agents:write" },
     ],
@@ -82,6 +86,12 @@ export const NAV_SECTIONS: NavSection[] = [
     ],
   },
 ];
+
+/** What the left nav lists: areas that are switched off are left out. */
+export const NAV_SECTIONS: NavSection[] = ALL_NAV_SECTIONS.map((section) => ({
+  ...section,
+  items: section.items.filter((item) => !item.feature || isFeatureEnabled(item.feature)),
+}));
 
 export type PageMeta = {
   title: string;
@@ -144,7 +154,7 @@ export function getPageMeta(pathname: string): PageMeta {
  */
 const ROUTE_PERMISSIONS: Record<string, Permission> = {
   ...Object.fromEntries(
-    NAV_SECTIONS.flatMap((section) => section.items)
+    ALL_NAV_SECTIONS.flatMap((section) => section.items)
       .filter((item): item is NavItem & { requires: Permission } => Boolean(item.requires))
       .map((item) => [item.url, item.requires]),
   ),

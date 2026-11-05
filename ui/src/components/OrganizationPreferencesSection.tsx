@@ -349,7 +349,7 @@ export function OrganizationPreferencesSection({
           </SettingRow>
           <SettingRow
             label="Timezone"
-            hint="Used for schedules, campaigns and the times in reports."
+            hint="Used for schedules and the times in reports."
           >
             <TimezoneSelect
               instanceId={timezoneSelectId}

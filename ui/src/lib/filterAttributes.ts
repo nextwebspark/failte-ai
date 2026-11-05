@@ -1,3 +1,4 @@
+import { isFeatureEnabled } from "@/config/features";
 import { FilterAttribute } from "@/types/filters";
 
 // Shared filter attribute definitions
@@ -216,7 +217,8 @@ export const usageFilterAttributes = createFilterAttributes(
     "calledNumber",
     "runId",
     "workflowId",
-    "campaignId",
+    // Campaign runs only exist while the Campaigns area is switched on.
+    ...(isFeatureEnabled("campaigns") ? ["campaignId"] : []),
   ],
   {
     runId: {

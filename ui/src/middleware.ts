@@ -1,6 +1,7 @@
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 
+import { isSwitchedOffRoute } from '@/config/features';
 import { getServerBackendUrl } from '@/lib/apiClient';
 import { OSS_TOKEN_COOKIE } from '@/lib/auth/cookies';
 import { isPublicPath } from '@/lib/auth/publicPaths';
@@ -37,6 +38,12 @@ async function fetchAuthProvider(): Promise<string> {
 }
 
 export async function middleware(request: NextRequest) {
+  // Areas switched off in config/features.ts: their pages, bookmarks included,
+  // land on Overview. Checked first, so it needs no call to the backend.
+  if (isSwitchedOffRoute(request.nextUrl.pathname)) {
+    return NextResponse.redirect(new URL('/overview', request.url));
+  }
+
   const authProvider = await fetchAuthProvider();
 
   // Only handle OSS mode
