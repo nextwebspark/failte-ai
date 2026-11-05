@@ -72,7 +72,7 @@ export function CallSummaryEmailSection({ saved }: { saved: CallSummaryEmailConf
             icon={Mail}
             tone="sky"
             title="Call summaries"
-            description="An email after each phone call where the agent takes a message or books or cancels an appointment."
+            description="An email after each phone call where the agent takes a message or books, moves or cancels an appointment."
         >
             <SettingRow
                 compact

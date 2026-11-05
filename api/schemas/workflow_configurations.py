@@ -273,7 +273,7 @@ class WorkflowConfigurationDefaults(BaseModel):
         default_factory=CallSummaryEmailConfiguration,
         description=(
             "Email the business after each phone call where the agent took a "
-            "message or booked or cancelled an appointment."
+            "message or booked, moved or cancelled an appointment."
         ),
     )
 

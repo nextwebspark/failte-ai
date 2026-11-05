@@ -21,27 +21,46 @@ MIN_CALLBACK_DIGITS = 6
 class BookingAction(StrEnum):
     BOOKED = "booked"
     CANCELLED = "cancelled"
+    MOVED = "moved"
+    # Moved, but the old booking could not be removed: staff must delete it.
+    MOVED_OLD_KEPT = "moved_old_kept"
 
 
 @dataclass(frozen=True, slots=True)
 class BookingTool:
-    action: BookingAction
-    # The result field that is true when the calendar actually changed.
-    changed_flag: str
+    # The result field that says what happened, and the action each of its
+    # values means. Any other value changed nothing in the calendar.
+    result_field: str
+    actions: Mapping[bool | str, BookingAction]
+
+    def action_for(self, result: Mapping[str, Any]) -> BookingAction | None:
+        value = result.get(self.result_field)
+        # Only JSON booleans and strings: 1 == True must not count as booked.
+        if not isinstance(value, bool | str):
+            return None
+        return self.actions.get(value)
 
 
 # Calendar tools by their MCP name. The agent sees them namespaced as
 # ``mcp__<tool>__<name>``. A new calendar action is one entry here.
 BOOKING_TOOLS: Mapping[str, BookingTool] = {
-    "book_appointment": BookingTool(BookingAction.BOOKED, "booked"),
-    "cancel_appointment": BookingTool(BookingAction.CANCELLED, "cancelled"),
+    "book_appointment": BookingTool("booked", {True: BookingAction.BOOKED}),
+    "cancel_appointment": BookingTool("cancelled", {True: BookingAction.CANCELLED}),
+    "reschedule_appointment": BookingTool(
+        "outcome",
+        {
+            "moved": BookingAction.MOVED,
+            "old_not_cancelled": BookingAction.MOVED_OLD_KEPT,
+        },
+    ),
 }
 
 
 @dataclass(frozen=True, slots=True)
 class BookingChange:
     action: BookingAction
-    # The appointment's start, when the calendar reported it.
+    # The appointment's start (the new one when moved), when the calendar
+    # reported it.
     starts_at: datetime | None
     caller_name: str | None
     caller_phone: str | None
@@ -94,10 +113,11 @@ def callback_number_of(value: object) -> str | None:
 def booking_changes(
     realtime_events: Sequence[Mapping[str, Any]],
 ) -> tuple[BookingChange, ...]:
-    """The bookings and cancellations the calendar confirmed, in call order.
+    """The bookings, moves and cancellations the calendar confirmed, in call
+    order.
 
-    Attempts the calendar refused (the slot had gone, nothing to cancel) are
-    left out: the caller was told and nothing changed.
+    Attempts the calendar refused (the slot had gone, nothing to cancel or
+    move) are left out: the caller was told and nothing changed.
     """
     pending: dict[str, tuple[BookingTool, Mapping[str, Any]]] = {}
     changes: list[BookingChange] = []
@@ -123,10 +143,11 @@ def booking_changes(
                 continue
             tool, arguments = started
             result = _json_object(payload.get("result"))
-            if result.get(tool.changed_flag) is True:
+            action = tool.action_for(result)
+            if action is not None:
                 changes.append(
                     BookingChange(
-                        action=tool.action,
+                        action=action,
                         starts_at=_aware_datetime(result.get("starts_at")),
                         caller_name=_text(arguments.get("caller_name")),
                         caller_phone=_text(arguments.get("caller_phone")),

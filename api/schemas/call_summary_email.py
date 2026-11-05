@@ -26,7 +26,7 @@ EmailAddress = Annotated[str, AfterValidator(_email_address)]
 
 
 class CallSummaryEmailConfiguration(BaseModel):
-    """Who hears about calls where the agent took a message or a booking."""
+    """Who hears about calls where the agent took a message or changed a booking."""
 
     model_config = ConfigDict(extra="ignore")
 
@@ -34,7 +34,7 @@ class CallSummaryEmailConfiguration(BaseModel):
         default=False,
         description=(
             "Email a summary after each phone call where the agent took a "
-            "message or booked or cancelled an appointment."
+            "message or booked, moved or cancelled an appointment."
         ),
     )
     recipients: list[EmailAddress] = Field(

@@ -75,6 +75,19 @@ CANCELLATION = _call(
     {"cancelled": True, "say": "Cancelled.", "starts_at": "2026-10-21T15:00:00+01:00"},
 )
 
+# Recorded shape of the reschedule tool's result (lands with the
+# find-booking work): an outcome string, and the new time when moved.
+
+
+def _reschedule(outcome: str, starts_at: str | None = "2026-10-22T11:30:00+01:00"):
+    return _call(
+        "mcp__google_calendar__reschedule_appointment",
+        "call-3",
+        {"event_id": "ev0", "slot_id": "opaque-2"},
+        {"outcome": outcome, "event_id": "ev2", "slots": None, "say": "-"}
+        | ({"starts_at": starts_at} if starts_at else {}),
+    )
+
 
 def _run(**changes: Any) -> CallSummaryRun:
     run = CallSummaryRun(
@@ -151,6 +164,33 @@ def test_confirmed_bookings_and_cancellations_are_reported_in_order():
     assert booked.starts_at == datetime.fromisoformat("2026-10-20T10:00:00+01:00")
     assert (booked.caller_name, booked.caller_phone) == ("Tom", "0861112222")
     assert cancelled.starts_at == datetime.fromisoformat("2026-10-21T15:00:00+01:00")
+
+
+@pytest.mark.parametrize(
+    ("outcome", "action"),
+    [
+        ("moved", BookingAction.MOVED),
+        ("old_not_cancelled", BookingAction.MOVED_OLD_KEPT),
+    ],
+)
+def test_a_reschedule_that_moved_the_booking_is_reported(outcome, action):
+    (change,) = booking_changes(_reschedule(outcome))
+
+    assert change.action is action
+    assert change.starts_at == datetime.fromisoformat("2026-10-22T11:30:00+01:00")
+
+
+@pytest.mark.parametrize(
+    "outcome", ["unchanged", "slot_taken", "not_found", "details_edited", ""]
+)
+def test_a_reschedule_that_changed_nothing_is_not_reported(outcome):
+    assert booking_changes(_reschedule(outcome)) == ()
+
+
+def test_a_flag_that_is_not_a_json_boolean_is_not_a_booking():
+    events = _call("mcp__cal__book_appointment", "x", {}, {"booked": 1})
+
+    assert booking_changes(events) == ()
 
 
 def test_a_result_without_a_start_time_is_still_a_booking():
@@ -420,6 +460,35 @@ async def test_without_an_organization_timezone_times_keep_their_own_offset():
     assert "on Wed 14 Oct 2026, 09:30 UTC" in text
     assert "- Cancelled the appointment for Wed 21 Oct 2026, 15:00 UTC+01:00" in text
     assert "- Booked for Tue 20 Oct 2026, 10:00 UTC+01:00" in text
+
+
+@pytest.mark.parametrize(
+    ("outcome", "starts_at", "line"),
+    [
+        (
+            "moved",
+            "2026-10-22T11:30:00+01:00",
+            "- Moved the appointment to Thu 22 Oct 2026, 11:30 IST\n",
+        ),
+        ("moved", None, "- Moved the appointment\n"),
+        (
+            "old_not_cancelled",
+            "2026-10-22T11:30:00+01:00",
+            (
+                "- Moved the appointment to Thu 22 Oct 2026, 11:30 IST. The old "
+                "booking could not be removed: delete it from the calendar.\n"
+            ),
+        ),
+    ],
+)
+async def test_a_moved_appointment_is_described(outcome, starts_at, line):
+    store = FakeStore(_run(), _reschedule(outcome, starts_at))
+    sender = FakeSender()
+    notifier, _ = _notifier(store, sender)
+
+    await notifier.notify(77)
+
+    assert line in sender.sent[0].text
 
 
 async def test_a_second_completion_does_not_send_again():

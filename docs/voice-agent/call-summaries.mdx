@@ -1,9 +1,9 @@
 ---
 title: "Call summary emails"
-description: "Email the business after each phone call where the agent took a message or booked or cancelled an appointment."
+description: "Email the business after each phone call where the agent took a message or booked, moved or cancelled an appointment."
 ---
 
-An agent can email a short summary after each phone call that leaves the team something to act on: the caller left a callback number (at least six digits), or the agent booked or cancelled an appointment in a connected [Google Calendar](/voice-agent/tools/integrations). Calls where the agent only answered a question send nothing.
+An agent can email a short summary after each phone call that leaves the team something to act on: the caller left a callback number (at least six digits), or the agent booked, moved or cancelled an appointment in a connected [Google Calendar](/voice-agent/tools/integrations). Calls where the agent only answered a question send nothing.
 
 The **AI Receptionist** asks where to send them while you set it up (**Send call summaries to**, filled in with your own address). Leave it empty to turn summaries off.
 
@@ -15,7 +15,7 @@ Open the agent, go to **Advanced settings → Call summaries**, and turn on **Em
 
 - The agent's name and when the call started, in your workspace's time zone (**Settings → Preferences**; UTC when none is set)
 - The caller's name, callback number and reason, when the agent captured them (the receptionist captures `caller_name`, `callback_number` and `call_reason`)
-- Each appointment booked or cancelled during the call
+- Each appointment booked, moved or cancelled during the call, and a reminder to delete the old booking when a move could not remove it
 - A link to the call in LightMove.ai
 
 The email never links to the recording or transcript. They stay behind sign-in on the call page.

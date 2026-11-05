@@ -235,12 +235,22 @@ class CallSummaryNotifier:
         return replace(message, idempotency_key=f"call-summary-{run.run_id}-{digest}")
 
 
-def _action_label(action: BookingAction) -> str:
+_OLD_BOOKING_KEPT = (
+    ". The old booking could not be removed: delete it from the calendar."
+)
+
+
+def _wording(action: BookingAction) -> tuple[str, str, str]:
+    """What happened, the word before the time, and anything staff must do."""
     match action:
         case BookingAction.BOOKED:
-            return "Booked"
+            return "Booked", "for", ""
         case BookingAction.CANCELLED:
-            return "Cancelled the appointment"
+            return "Cancelled the appointment", "for", ""
+        case BookingAction.MOVED:
+            return "Moved the appointment", "to", ""
+        case BookingAction.MOVED_OLD_KEPT:
+            return "Moved the appointment", "to", _OLD_BOOKING_KEPT
         case _:
             assert_never(action)
 
@@ -252,10 +262,11 @@ def booking_line(change: BookingChange, zone: tzinfo | None) -> str:
     Without an organization timezone the appointment keeps the calendar's own
     offset, which is the business's local time.
     """
+    label, preposition, todo = _wording(change.action)
     when = ""
     if change.starts_at is not None:
         # astimezone(None) would mean the server's zone, not "keep it".
         starts_at = change.starts_at.astimezone(zone) if zone else change.starts_at
-        when = f" for {starts_at.strftime(_TIME_FORMAT)}"
+        when = f" {preposition} {starts_at.strftime(_TIME_FORMAT)}"
     who = ", ".join(v for v in (change.caller_name, change.caller_phone) if v)
-    return f"{_action_label(change.action)}{when}{f' ({who})' if who else ''}"
+    return f"{label}{when}{f' ({who})' if who else ''}{todo}"

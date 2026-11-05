@@ -189,7 +189,8 @@ STARTER_TEMPLATES: list[StarterTemplate] = [
                 type="emails",
                 help=(
                     "An email after each phone call where your agent takes a "
-                    "message or a booking. Separate several addresses with commas."
+                    "message or books, moves or cancels an appointment. Separate "
+                    "several addresses with commas."
                 ),
                 placeholder="you@bloomdental.ie",
                 required=False,

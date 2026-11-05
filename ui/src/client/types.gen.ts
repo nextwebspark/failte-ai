@@ -1181,13 +1181,13 @@ export type CallEventsSettings = {
 /**
  * CallSummaryEmailConfiguration
  *
- * Who hears about calls where the agent took a message or a booking.
+ * Who hears about calls where the agent took a message or changed a booking.
  */
 export type CallSummaryEmailConfiguration = {
     /**
      * Enabled
      *
-     * Email a summary after each phone call where the agent took a message or booked or cancelled an appointment.
+     * Email a summary after each phone call where the agent took a message or booked, moved or cancelled an appointment.
      */
     enabled?: boolean;
     /**
@@ -10703,7 +10703,7 @@ export type WorkflowConfigurationDefaults = {
      */
     external_pbx_lead_headers?: Array<string>;
     /**
-     * Email the business after each phone call where the agent took a message or booked or cancelled an appointment.
+     * Email the business after each phone call where the agent took a message or booked, moved or cancelled an appointment.
      */
     call_summary_email?: CallSummaryEmailConfiguration;
     [key: string]: unknown;
