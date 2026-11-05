@@ -14,32 +14,37 @@ from pipecat.utils.enums import RealtimeFeedbackType
 CALLER_NAME_KEY = "caller_name"
 CALLBACK_NUMBER_KEY = "callback_number"
 CALL_REASON_KEY = "call_reason"
+# Fewer digits than this is a placeholder ("N/A", "unknown"), not a number.
+MIN_CALLBACK_DIGITS = 6
 
 
 class BookingAction(StrEnum):
-    # Each value is also the flag the calendar tool's result sets on success.
     BOOKED = "booked"
     CANCELLED = "cancelled"
 
 
+@dataclass(frozen=True, slots=True)
+class BookingTool:
+    action: BookingAction
+    # The result field that is true when the calendar actually changed.
+    changed_flag: str
+
+
 # Calendar tools by their MCP name. The agent sees them namespaced as
-# ``mcp__<tool>__<name>``.
-_BOOKING_TOOLS = {
-    "book_appointment": BookingAction.BOOKED,
-    "cancel_appointment": BookingAction.CANCELLED,
+# ``mcp__<tool>__<name>``. A new calendar action is one entry here.
+BOOKING_TOOLS: Mapping[str, BookingTool] = {
+    "book_appointment": BookingTool(BookingAction.BOOKED, "booked"),
+    "cancel_appointment": BookingTool(BookingAction.CANCELLED, "cancelled"),
 }
 
 
 @dataclass(frozen=True, slots=True)
 class BookingChange:
     action: BookingAction
-    # Known for bookings: the slot id is the appointment's ISO start time.
+    # The appointment's start, when the calendar reported it.
     starts_at: datetime | None
     caller_name: str | None
     caller_phone: str | None
-    # What the calendar told the caller, e.g. "Your appointment for ... is
-    # cancelled."; the only description a cancellation has.
-    confirmation: str | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -61,7 +66,7 @@ def extract_call_summary(
     """
     extracted = gathered_context.get("extracted_variables")
     captured = extracted if isinstance(extracted, Mapping) else {}
-    callback_number = _text(captured.get(CALLBACK_NUMBER_KEY))
+    callback_number = callback_number_of(captured.get(CALLBACK_NUMBER_KEY))
     changes = booking_changes(realtime_events)
     if callback_number is None and not changes:
         return None
@@ -76,6 +81,16 @@ def extract_call_summary(
     )
 
 
+def callback_number_of(value: object) -> str | None:
+    """The captured callback number, or None when it is not a phone number."""
+    if isinstance(value, int) and not isinstance(value, bool):
+        value = str(value)
+    text = _text(value)
+    if text is None or sum(c.isdigit() for c in text) < MIN_CALLBACK_DIGITS:
+        return None
+    return text
+
+
 def booking_changes(
     realtime_events: Sequence[Mapping[str, Any]],
 ) -> tuple[BookingChange, ...]:
@@ -84,7 +99,7 @@ def booking_changes(
     Attempts the calendar refused (the slot had gone, nothing to cancel) are
     left out: the caller was told and nothing changed.
     """
-    pending: dict[str, tuple[BookingAction, Mapping[str, Any]]] = {}
+    pending: dict[str, tuple[BookingTool, Mapping[str, Any]]] = {}
     changes: list[BookingChange] = []
     for event in realtime_events:
         payload = event.get("payload")
@@ -95,40 +110,35 @@ def booking_changes(
             continue
         kind = event.get("type")
         if kind == RealtimeFeedbackType.FUNCTION_CALL_START.value:
-            action = _booking_action(payload.get("function_name"))
+            tool = _booking_tool(payload.get("function_name"))
             arguments = payload.get("arguments")
-            if action is not None:
+            if tool is not None:
                 pending[call_id] = (
-                    action,
+                    tool,
                     arguments if isinstance(arguments, Mapping) else {},
                 )
         elif kind == RealtimeFeedbackType.FUNCTION_CALL_END.value:
             started = pending.pop(call_id, None)
             if started is None:
                 continue
-            action, arguments = started
+            tool, arguments = started
             result = _json_object(payload.get("result"))
-            if result.get(action.value) is True:
-                changes.append(_change(action, arguments, result))
+            if result.get(tool.changed_flag) is True:
+                changes.append(
+                    BookingChange(
+                        action=tool.action,
+                        starts_at=_aware_datetime(result.get("starts_at")),
+                        caller_name=_text(arguments.get("caller_name")),
+                        caller_phone=_text(arguments.get("caller_phone")),
+                    )
+                )
     return tuple(changes)
 
 
-def _booking_action(function_name: object) -> BookingAction | None:
+def _booking_tool(function_name: object) -> BookingTool | None:
     if not isinstance(function_name, str):
         return None
-    return _BOOKING_TOOLS.get(function_name.rsplit("__", 1)[-1])
-
-
-def _change(
-    action: BookingAction, arguments: Mapping[str, Any], result: Mapping[str, Any]
-) -> BookingChange:
-    return BookingChange(
-        action=action,
-        starts_at=_aware_datetime(arguments.get("slot_id")),
-        caller_name=_text(arguments.get("caller_name")),
-        caller_phone=_text(arguments.get("caller_phone")),
-        confirmation=_text(result.get("say")),
-    )
+    return BOOKING_TOOLS.get(function_name.rsplit("__", 1)[-1])
 
 
 def _json_object(value: object) -> Mapping[str, Any]:

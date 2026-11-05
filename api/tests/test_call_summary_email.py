@@ -1,8 +1,9 @@
 """The call summary emailed to the business after a receptionist call."""
 
+import asyncio
 import json
 from dataclasses import replace
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock
@@ -11,10 +12,8 @@ import pytest
 from pydantic import ValidationError
 
 from api.db.call_summary_client import CallSummaryRun
-from api.schemas.call_summary_email import (
-    CallSummaryEmailConfiguration,
-    resolve_call_summary_email,
-)
+from api.schemas.call_summary_email import CallSummaryEmailConfiguration
+from api.services.call_summary.configuration import resolve_call_summary_email
 from api.services.call_summary.notifier import (
     CallSummaryNotifier,
     CallSummaryOutcome,
@@ -23,6 +22,7 @@ from api.services.call_summary.notifier import (
 from api.services.call_summary.summary import (
     BookingAction,
     booking_changes,
+    callback_number_of,
     extract_call_summary,
 )
 from api.services.email.base import EmailDeliveryError, EmailMessage
@@ -64,18 +64,15 @@ def _call(name: str, call_id: str, arguments: dict[str, Any], result: object):
 BOOKING = _call(
     "mcp__google_calendar__book_appointment",
     "call-1",
-    {
-        "slot_id": "2026-10-20T10:00:00+01:00",
-        "caller_name": "Tom",
-        "caller_phone": "0861112222",
-    },
-    {"booked": True, "event_id": "ev1", "say": "That is booked in."},
+    # The slot id is opaque: the time comes from the calendar's result.
+    {"slot_id": "opaque-1", "caller_name": "Tom", "caller_phone": "0861112222"},
+    {"booked": True, "event_id": "ev1", "starts_at": "2026-10-20T10:00:00+01:00"},
 )
 CANCELLATION = _call(
     "mcp__google_calendar__cancel_appointment",
     "call-2",
     {"event_id": "ev0"},
-    {"cancelled": True, "say": "Your appointment for Tuesday is cancelled."},
+    {"cancelled": True, "say": "Cancelled.", "starts_at": "2026-10-21T15:00:00+01:00"},
 )
 
 
@@ -95,7 +92,6 @@ def _run(**changes: Any) -> CallSummaryRun:
             }
         },
         gathered_context=MESSAGE,
-        realtime_events=[],
     )
     return replace(run, **changes)
 
@@ -114,12 +110,29 @@ def test_a_callback_number_is_a_message():
 
 
 @pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        ("087 123 4567", "087 123 4567"),
+        (871234567, "871234567"),
+        ("N/A", None),
+        ("unknown", None),
+        ("12345", None),
+        (True, None),
+        (None, None),
+    ],
+)
+def test_only_a_real_number_counts_as_a_callback_number(value, expected):
+    assert callback_number_of(value) == expected
+
+
+@pytest.mark.parametrize(
     "gathered",
     [
         {},
         # A question answered: the caller gave a name and a reason, no number.
         {"extracted_variables": {"caller_name": "Mary", "call_reason": "Hours"}},
-        {"extracted_variables": {"callback_number": "   "}},
+        {"extracted_variables": {"callback_number": "N/A"}},
+        {"extracted_variables": {"callback_number": "unknown"}},
         {"extracted_variables": "not a mapping"},
     ],
 )
@@ -137,7 +150,14 @@ def test_confirmed_bookings_and_cancellations_are_reported_in_order():
     booked, cancelled = changes
     assert booked.starts_at == datetime.fromisoformat("2026-10-20T10:00:00+01:00")
     assert (booked.caller_name, booked.caller_phone) == ("Tom", "0861112222")
-    assert cancelled.confirmation == "Your appointment for Tuesday is cancelled."
+    assert cancelled.starts_at == datetime.fromisoformat("2026-10-21T15:00:00+01:00")
+
+
+def test_a_result_without_a_start_time_is_still_a_booking():
+    events = _call("mcp__cal__book_appointment", "x", {}, {"booked": True})
+
+    (change,) = booking_changes(events)
+    assert change.starts_at is None
 
 
 @pytest.mark.parametrize(
@@ -223,17 +243,22 @@ def test_an_invalid_stored_setting_reads_as_off():
 # --- the email ----------------------------------------------------------------------
 
 
+def _email(**changes: Any) -> EmailMessage:
+    fields: dict[str, Any] = {
+        "to": "owner@bloom.ie",
+        "agent_name": "Reception",
+        "call_time": "Wed 14 Oct 2026, 10:30 IST",
+        "caller_name": "<b>Mary</b>",
+        "callback_number": "087 123 4567",
+        "reason": None,
+        "booking_lines": ["Booked for Tue 20 Oct 2026, 10:00 IST"],
+        "run_url": "https://app.example/workflow/5/run/77",
+    }
+    return call_summary_message(**{**fields, **changes})
+
+
 def test_the_email_escapes_what_the_caller_said_and_links_only_the_run():
-    message = call_summary_message(
-        to="owner@bloom.ie",
-        agent_name="Reception",
-        call_time="Wed 14 Oct 2026, 10:30 IST",
-        caller_name="<b>Mary</b>",
-        callback_number="087 123 4567",
-        reason=None,
-        booking_lines=["Booked for Tue 20 Oct 2026, 10:00 IST"],
-        run_url="https://app.example/workflow/5/run/77",
-    )
+    message = _email()
 
     assert message.subject == "<b>Mary</b> called Reception"
     assert "&lt;b&gt;Mary&lt;/b&gt;" in message.html
@@ -244,16 +269,34 @@ def test_the_email_escapes_what_the_caller_said_and_links_only_the_run():
     assert "recording" not in (message.text + message.html).lower()
 
 
+def test_long_names_are_shortened_in_the_subject():
+    message = _email(caller_name="M" * 100, agent_name="A" * 100)
+
+    caller, agent = message.subject.split(" called ")
+    assert len(caller) == len(agent) == 60
+    assert caller.endswith("…")
+    # The body keeps the full name.
+    assert "M" * 100 in message.text
+
+
 # --- sending ------------------------------------------------------------------------
 
 
 class FakeStore:
-    def __init__(self, run: CallSummaryRun | None) -> None:
+    def __init__(
+        self, run: CallSummaryRun | None, events: list[dict[str, Any]] | None = None
+    ) -> None:
         self.run = run
+        self.events = events or []
         self.claims: list[int] = []
+        self.event_loads = 0
 
     async def get_call_summary_run(self, run_id: int) -> CallSummaryRun | None:
         return self.run
+
+    async def get_call_summary_events(self, run_id: int) -> list[dict[str, Any]]:
+        self.event_loads += 1
+        return self.events
 
     async def claim_call_summary_email(self, run_id: int, claimed_at: datetime) -> bool:
         if run_id in self.claims:
@@ -263,9 +306,18 @@ class FakeStore:
 
 
 class FakeSender:
-    def __init__(self, *, delivers: bool = True, failures: int = 0) -> None:
+    def __init__(
+        self,
+        *,
+        delivers: bool = True,
+        failures: int = 0,
+        retryable: bool = True,
+        hang: bool = False,
+    ) -> None:
         self._delivers = delivers
         self.failures = failures
+        self.retryable = retryable
+        self.hang = hang
         self.sent: list[EmailMessage] = []
         self.attempts = 0
 
@@ -275,9 +327,11 @@ class FakeSender:
 
     async def send(self, message: EmailMessage) -> None:
         self.attempts += 1
+        if self.hang:
+            await asyncio.Event().wait()
         if self.failures:
             self.failures -= 1
-            raise EmailDeliveryError("Resend rejected the message (HTTP 500)")
+            raise EmailDeliveryError("Resend failed", retryable=self.retryable)
         self.sent.append(message)
 
 
@@ -286,7 +340,24 @@ class FixedClock:
         return NOW
 
 
-def _notifier(store, sender, *, timezone: str | None = "Europe/Dublin"):
+class FakeLimiter:
+    def __init__(self, *, allowed: bool = True) -> None:
+        self.allowed = allowed
+        self.calls: list[tuple[str, int, timedelta]] = []
+
+    async def allow(self, key: str, *, limit: int, window: timedelta) -> bool:
+        self.calls.append((key, limit, window))
+        return self.allowed
+
+
+def _notifier(
+    store,
+    sender,
+    *,
+    timezone: str | None = "Europe/Dublin",
+    limiter: FakeLimiter | None = None,
+    send_timeout: float = 45.0,
+):
     sleeps: list[float] = []
 
     async def sleep(seconds: float) -> None:
@@ -300,21 +371,24 @@ def _notifier(store, sender, *, timezone: str | None = "Europe/Dublin"):
         email_sender=sender,
         clock=FixedClock(),
         timezone_of=timezone_of,
+        rate_limiter=limiter or FakeLimiter(),
+        daily_limit=200,
         app_url="https://app.example/",
+        send_timeout=send_timeout,
         sleep=sleep,
     )
     return notifier, sleeps
 
 
 async def test_sends_one_email_per_recipient_in_the_business_timezone():
-    store = FakeStore(_run(realtime_events=BOOKING))
+    store = FakeStore(_run(), BOOKING)
     sender = FakeSender()
     notifier, _ = _notifier(store, sender)
 
     assert await notifier.notify(77) is CallSummaryOutcome.SENT
 
-    assert [m.to for m in sender.sent] == ["owner@bloom.ie", "desk@bloom.ie"]
-    message = sender.sent[0]
+    assert sorted(m.to for m in sender.sent) == ["desk@bloom.ie", "owner@bloom.ie"]
+    message = next(m for m in sender.sent if m.to == "owner@bloom.ie")
     assert message.subject == "Mary Byrne called AI Receptionist · Bloom Dental"
     assert "on Wed 14 Oct 2026, 10:30 IST" in message.text
     assert "Callback number: 087 123 4567" in message.text
@@ -322,8 +396,21 @@ async def test_sends_one_email_per_recipient_in_the_business_timezone():
     assert "https://app.example/workflow/5/run/77" in message.text
 
 
+async def test_each_email_has_its_own_stable_idempotency_key():
+    store = FakeStore(_run())
+    sender = FakeSender()
+    notifier, _ = _notifier(store, sender)
+
+    await notifier.notify(77)
+
+    keys = {m.idempotency_key for m in sender.sent}
+    assert len(keys) == 2
+    assert all(k and k.startswith("call-summary-77-") for k in keys)
+    assert not any("bloom.ie" in (k or "") for k in keys)
+
+
 async def test_without_an_organization_timezone_times_keep_their_own_offset():
-    store = FakeStore(_run(realtime_events=CANCELLATION + BOOKING))
+    store = FakeStore(_run(), CANCELLATION + BOOKING)
     sender = FakeSender()
     notifier, _ = _notifier(store, sender, timezone=None)
 
@@ -331,8 +418,8 @@ async def test_without_an_organization_timezone_times_keep_their_own_offset():
 
     text = sender.sent[0].text
     assert "on Wed 14 Oct 2026, 09:30 UTC" in text
+    assert "- Cancelled the appointment for Wed 21 Oct 2026, 15:00 UTC+01:00" in text
     assert "- Booked for Tue 20 Oct 2026, 10:00 UTC+01:00" in text
-    assert '- Cancelled an appointment: "Your appointment for Tuesday' in text
 
 
 async def test_a_second_completion_does_not_send_again():
@@ -350,18 +437,27 @@ async def test_a_second_completion_does_not_send_again():
     ("run", "expected"),
     [
         (None, CallSummaryOutcome.RUN_NOT_FOUND),
-        (_run(gathered_context={}), CallSummaryOutcome.NOTHING_TO_REPORT),
+        (_run(workflow_configurations={}), CallSummaryOutcome.TURNED_OFF),
         (_run(mode="smallwebrtc"), CallSummaryOutcome.NOT_A_PHONE_CALL),
     ],
 )
-async def test_skipped_runs_are_never_claimed(run, expected):
+async def test_skipped_runs_never_load_the_call_or_claim_it(run, expected):
     store = FakeStore(run)
     sender = FakeSender()
     notifier, _ = _notifier(store, sender)
 
     assert await notifier.notify(77) is expected
+    assert store.event_loads == 0
     assert store.claims == []
     assert sender.attempts == 0
+
+
+async def test_a_call_with_nothing_to_report_is_not_claimed():
+    store = FakeStore(_run(gathered_context={}))
+    notifier, _ = _notifier(store, FakeSender())
+
+    assert await notifier.notify(77) is CallSummaryOutcome.NOTHING_TO_REPORT
+    assert store.claims == []
 
 
 async def test_with_no_email_provider_nothing_is_sent_or_logged():
@@ -375,7 +471,7 @@ async def test_with_no_email_provider_nothing_is_sent_or_logged():
     assert store.claims == []
 
 
-async def test_a_failed_send_is_retried_with_backoff():
+async def test_a_retryable_failure_is_retried_with_backoff():
     store = FakeStore(_run(workflow_configurations=_one_recipient()))
     sender = FakeSender(failures=2)
     notifier, sleeps = _notifier(store, sender)
@@ -385,6 +481,18 @@ async def test_a_failed_send_is_retried_with_backoff():
     assert sender.attempts == 3
 
 
+async def test_a_provider_outage_is_not_retried():
+    store = FakeStore(_run(workflow_configurations=_one_recipient()))
+    sender = FakeSender(failures=10, retryable=False)
+    notifier, sleeps = _notifier(store, sender)
+
+    assert await notifier.notify(77) is CallSummaryOutcome.FAILED
+    assert sender.attempts == 1
+    assert sleeps == []
+    # Still claimed: a re-run must not email a summary that may have landed.
+    assert store.claims == [77]
+
+
 async def test_when_every_attempt_fails_the_outcome_is_failed():
     store = FakeStore(_run(workflow_configurations=_one_recipient()))
     sender = FakeSender(failures=10)
@@ -392,8 +500,30 @@ async def test_when_every_attempt_fails_the_outcome_is_failed():
 
     assert await notifier.notify(77) is CallSummaryOutcome.FAILED
     assert sender.attempts == 3
-    # Still claimed: a re-run must not email a summary that may have landed.
-    assert store.claims == [77]
+
+
+async def test_a_hanging_provider_is_cut_off_by_the_send_timeout():
+    store = FakeStore(_run())
+    sender = FakeSender(hang=True)
+    notifier, _ = _notifier(store, sender, send_timeout=0.05)
+
+    assert await notifier.notify(77) is CallSummaryOutcome.FAILED
+    # Both recipients were attempted at once, not one after the other.
+    assert sender.attempts == 2
+
+
+async def test_the_daily_limit_stops_sending_after_the_claim():
+    store = FakeStore(_run())
+    sender = FakeSender()
+    limiter = FakeLimiter(allowed=False)
+    notifier, _ = _notifier(store, sender, limiter=limiter)
+
+    assert await notifier.notify(77) is CallSummaryOutcome.DAILY_LIMIT_REACHED
+    assert sender.attempts == 0
+    assert limiter.calls == [("call-summary:11:2026-10-14", 200, timedelta(days=1))]
+    # A duplicate completion is answered by the claim and costs no quota.
+    assert await notifier.notify(77) is CallSummaryOutcome.ALREADY_SENT
+    assert len(limiter.calls) == 1
 
 
 def _one_recipient() -> dict[str, Any]:

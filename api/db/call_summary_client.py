@@ -1,6 +1,6 @@
 """Data access for the call summary emailed to the business after a call."""
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
@@ -10,15 +10,16 @@ from sqlalchemy.future import select
 
 from api.db.base_client import BaseDBClient
 from api.db.models import WorkflowDefinitionModel, WorkflowModel, WorkflowRunModel
-
-# Marker stamped into ``workflow_runs.extra`` when a run's summary is claimed
-# for sending, so a re-run completion job never emails it twice.
-WORKFLOW_RUN_CALL_SUMMARY_EMAILED_KEY = "call_summary_emailed_at"
+from api.db.retention_client import (
+    WORKFLOW_RUN_CALL_SUMMARY_EMAILED_KEY,
+    WORKFLOW_RUN_PURGED_AT_KEY,
+)
 
 
 @dataclass(frozen=True, slots=True)
 class CallSummaryRun:
-    """What a finished run's summary is built from."""
+    """What decides whether a finished run gets a summary, and its content
+    apart from the recorded tool calls (loaded only when one is due)."""
 
     run_id: int
     workflow_id: int
@@ -30,7 +31,6 @@ class CallSummaryRun:
     # The configuration snapshot the run was pinned to.
     workflow_configurations: Mapping[str, Any]
     gathered_context: Mapping[str, Any]
-    realtime_events: Sequence[Mapping[str, Any]]
 
 
 def _mapping(value: object) -> dict[str, Any]:
@@ -49,7 +49,6 @@ class CallSummaryClient(BaseDBClient):
                         WorkflowRunModel.is_completed,
                         WorkflowRunModel.created_at,
                         WorkflowRunModel.gathered_context,
-                        WorkflowRunModel.logs,
                         WorkflowModel.name,
                         WorkflowModel.organization_id,
                         WorkflowDefinitionModel.workflow_configurations,
@@ -66,7 +65,6 @@ class CallSummaryClient(BaseDBClient):
             ).first()
         if row is None:
             return None
-        events = _mapping(row.logs).get("realtime_feedback_events")
         return CallSummaryRun(
             run_id=row.id,
             workflow_id=row.workflow_id,
@@ -77,13 +75,25 @@ class CallSummaryClient(BaseDBClient):
             started_at=row.created_at,
             workflow_configurations=_mapping(row.workflow_configurations),
             gathered_context=_mapping(row.gathered_context),
-            realtime_events=[e for e in events if isinstance(e, dict)]
-            if isinstance(events, list)
-            else [],
         )
 
+    async def get_call_summary_events(self, run_id: int) -> list[dict[str, Any]]:
+        """The run's recorded realtime events (transcript turns, tool calls)."""
+        async with self.async_session() as session:
+            events = (
+                await session.execute(
+                    select(WorkflowRunModel.logs["realtime_feedback_events"]).where(
+                        WorkflowRunModel.id == run_id
+                    )
+                )
+            ).scalar_one_or_none()
+        if not isinstance(events, list):
+            return []
+        return [event for event in events if isinstance(event, dict)]
+
     async def claim_call_summary_email(self, run_id: int, claimed_at: datetime) -> bool:
-        """Claim the run's summary for sending; False if it already was.
+        """Claim the run's summary for sending; False if it already was, or if
+        the retention purge has already removed the call's content.
 
         The row lock makes concurrent claims for one run serialise, so exactly
         one of them wins.
@@ -99,7 +109,10 @@ class CallSummaryClient(BaseDBClient):
             if row is None:
                 return False
             extra = _mapping(row.extra)
-            if WORKFLOW_RUN_CALL_SUMMARY_EMAILED_KEY in extra:
+            if (
+                WORKFLOW_RUN_CALL_SUMMARY_EMAILED_KEY in extra
+                or WORKFLOW_RUN_PURGED_AT_KEY in extra
+            ):
                 return False
             await session.execute(
                 update(WorkflowRunModel)

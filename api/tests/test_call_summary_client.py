@@ -3,9 +3,12 @@
 import uuid
 from datetime import UTC, datetime
 
-from api.db.call_summary_client import WORKFLOW_RUN_CALL_SUMMARY_EMAILED_KEY
 from api.db.models import OrganizationModel, UserModel, WorkflowRunModel
-from api.db.retention_client import WORKFLOW_RUN_EXTRA_KEPT_KEYS
+from api.db.retention_client import (
+    WORKFLOW_RUN_CALL_SUMMARY_EMAILED_KEY,
+    WORKFLOW_RUN_EXTRA_KEPT_KEYS,
+    WORKFLOW_RUN_PURGED_AT_KEY,
+)
 
 SETTING = {"call_summary_email": {"enabled": True, "recipients": ["o@bloom.ie"]}}
 EVENT = {"type": "rtf-bot-text", "payload": {"text": "Hi"}}
@@ -50,8 +53,14 @@ async def test_loads_the_run_with_its_pinned_configuration(db_session, async_ses
     assert loaded.mode == "twilio"
     assert loaded.workflow_configurations == SETTING
     assert loaded.gathered_context["extracted_variables"] == {"callback_number": "087"}
-    assert loaded.realtime_events == [EVENT]
     assert await db_session.get_call_summary_run(run.id + 10_000) is None
+
+
+async def test_loads_only_the_runs_event_objects(db_session, async_session):
+    run = await _run(db_session, async_session)
+
+    assert await db_session.get_call_summary_events(run.id) == [EVENT]
+    assert await db_session.get_call_summary_events(run.id + 10_000) == []
 
 
 async def test_a_run_is_claimed_once(db_session, async_session):
@@ -69,6 +78,16 @@ async def test_a_run_is_claimed_once(db_session, async_session):
     assert (
         await db_session.claim_call_summary_email(run.id + 10_000, claimed_at) is False
     )
+
+
+async def test_a_purged_run_is_never_claimed(db_session, async_session):
+    run = await _run(db_session, async_session)
+    stored = await async_session.get(WorkflowRunModel, run.id)
+    stored.extra = {**stored.extra, WORKFLOW_RUN_PURGED_AT_KEY: "2026-10-01"}
+    await async_session.flush()
+
+    claimed_at = datetime(2026, 10, 14, 9, 30, tzinfo=UTC)
+    assert await db_session.claim_call_summary_email(run.id, claimed_at) is False
 
 
 def test_the_marker_outlives_the_retention_purge():

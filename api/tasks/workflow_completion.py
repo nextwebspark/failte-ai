@@ -3,7 +3,7 @@ import asyncio
 from loguru import logger
 from pipecat.utils.run_context import set_current_run_id
 
-from api.services.call_summary import get_call_summary_notifier
+from api.services.call_summary.factory import get_call_summary_notifier
 from api.services.telephony.external_pbx_writeback import (
     sync_external_pbx_call_record,
 )

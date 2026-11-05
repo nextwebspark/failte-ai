@@ -379,6 +379,10 @@ DEFAULT_WEBHOOK_DELIVERY_CONFIG = {
     "timeout_seconds": int(os.getenv("WEBHOOK_DELIVERY_TIMEOUT_SECONDS", 30)),
 }
 
+# Call summary emails one organization may send per UTC day, a backstop against
+# a misconfigured agent (or abuse) mailing a recipient without end.
+CALL_SUMMARY_DAILY_LIMIT = int(os.getenv("CALL_SUMMARY_DAILY_LIMIT", "200"))
+
 # Text chats have no transport disconnect event, so a periodic worker closes
 # sessions that have stopped changing. Workflows can override this default.
 MIN_TEXT_CHAT_INACTIVITY_TIMEOUT_SECONDS = 60

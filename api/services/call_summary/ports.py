@@ -4,15 +4,19 @@
 fakes.
 """
 
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 from datetime import datetime
-from typing import Protocol
+from typing import Any, Protocol
 
 from api.db.call_summary_client import CallSummaryRun
 
 
 class CallSummaryStore(Protocol):
     async def get_call_summary_run(self, run_id: int) -> CallSummaryRun | None: ...
+
+    async def get_call_summary_events(
+        self, run_id: int
+    ) -> Sequence[Mapping[str, Any]]: ...
 
     async def claim_call_summary_email(
         self, run_id: int, claimed_at: datetime

@@ -1,15 +1,12 @@
 """Per-agent setting: email the business a summary after each useful call."""
 
-from collections.abc import Mapping
-from typing import Annotated, Any, Self
+from typing import Annotated, Self
 
-from loguru import logger
 from pydantic import (
     AfterValidator,
     BaseModel,
     ConfigDict,
     Field,
-    ValidationError,
     field_validator,
     model_validator,
 )
@@ -73,22 +70,3 @@ class CallSummaryEmailConfiguration(BaseModel):
         if self.enabled and not self.recipients:
             raise ValueError("call summaries need at least one email address")
         return self
-
-
-def resolve_call_summary_email(
-    workflow_configurations: Mapping[str, Any] | None,
-) -> CallSummaryEmailConfiguration:
-    """Read the setting from a stored configuration document.
-
-    Missing means off. A stored value that no longer validates also reads as
-    off: a summary is a convenience, so it is skipped rather than sent to an
-    address the agent's owner never confirmed.
-    """
-    raw = (workflow_configurations or {}).get(CALL_SUMMARY_EMAIL_KEY)
-    if raw is None:
-        return CallSummaryEmailConfiguration()
-    try:
-        return CallSummaryEmailConfiguration.model_validate(raw)
-    except ValidationError:
-        logger.warning("Invalid call_summary_email configuration; treating it as off")
-        return CallSummaryEmailConfiguration()

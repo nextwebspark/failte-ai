@@ -165,6 +165,14 @@ def low_balance_message(
     )
 
 
+# Each caller-supplied part of a subject, so it stays readable in an inbox.
+_SUBJECT_PART_MAX = 60
+
+
+def _shorten(text: str, limit: int) -> str:
+    return text if len(text) <= limit else text[: limit - 1].rstrip() + "…"
+
+
 def call_summary_message(
     *,
     to: str,
@@ -178,10 +186,11 @@ def call_summary_message(
 ) -> EmailMessage:
     """What a call left for the business. No recording or transcript link:
     the run page behind sign-in is the only way to the call itself."""
+    agent = _shorten(agent_name, _SUBJECT_PART_MAX)
     subject = (
-        f"{caller_name} called {agent_name}"
+        f"{_shorten(caller_name, _SUBJECT_PART_MAX)} called {agent}"
         if caller_name
-        else f"New call to {agent_name}"
+        else f"New call to {agent}"
     )
     details = [
         (label, value)

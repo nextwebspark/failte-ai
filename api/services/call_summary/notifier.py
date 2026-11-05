@@ -1,25 +1,31 @@
 """Email the business what a finished call left for it.
 
-Runs as the last step of the completion job. Sending is at most once per run:
-the run is claimed before the first email goes out, so a re-run job (worker
-restart, duplicate completion) never repeats it, and a crash between the claim
-and the send loses that summary rather than duplicating it.
+Runs as the last step of the completion job, before the post-call marker that
+call erasure waits for, so it is bounded: recipients are sent to concurrently
+under one overall timeout.
+
+Sending is at most once per run: the run is claimed before the first email
+goes out, so a re-run job (worker restart, duplicate completion) never repeats
+it, and a crash between the claim and the send loses that summary rather than
+duplicating it. Each email also carries an idempotency key, so a provider
+that saw an attempt that looked failed to us drops the retry.
 """
 
 import asyncio
+import hashlib
 from collections.abc import Awaitable, Callable, Sequence
-from datetime import UTC, tzinfo
+from dataclasses import replace
+from datetime import UTC, timedelta, tzinfo
 from enum import StrEnum
+from typing import assert_never
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from loguru import logger
 
 from api.db.call_summary_client import CallSummaryRun
 from api.enums import WORKFLOW_RUN_MODES_BY_CHANNEL, WorkflowRunChannel
-from api.schemas.call_summary_email import (
-    CallSummaryEmailConfiguration,
-    resolve_call_summary_email,
-)
+from api.schemas.call_summary_email import CallSummaryEmailConfiguration
+from api.services.call_summary.configuration import resolve_call_summary_email
 from api.services.call_summary.ports import CallSummaryStore, TimezoneLookup
 from api.services.call_summary.summary import (
     BookingAction,
@@ -29,14 +35,18 @@ from api.services.call_summary.summary import (
 )
 from api.services.email.base import EmailDeliveryError, EmailMessage, EmailSender
 from api.services.email.templates import call_summary_message
+from api.services.rate_limit import RateLimiter
 from api.utils.clock import Clock
 
 _PHONE_MODES = frozenset(
     WORKFLOW_RUN_MODES_BY_CHANNEL[WorkflowRunChannel.TELEPHONY.value]
 )
-# Waits before the second and third attempt at one recipient. Short: the job
-# holds a worker slot, and most failures (a rejected domain or key) persist.
+# Waits before the second and third attempt at one recipient, for failures
+# that clear up by themselves (a rate limit, a dropped connection).
 DEFAULT_RETRY_DELAYS_SECONDS = (2.0, 8.0)
+# Bounds the whole send, retries included, so a slow provider cannot hold the
+# completion job (and with it the post-call marker) for long.
+DEFAULT_SEND_TIMEOUT_SECONDS = 45.0
 _TIME_FORMAT = "%a %d %b %Y, %H:%M %Z"
 
 
@@ -45,6 +55,7 @@ class CallSummaryOutcome(StrEnum):
     # Claimed, but no recipient could be reached.
     FAILED = "failed"
     ALREADY_SENT = "already_sent"
+    DAILY_LIMIT_REACHED = "daily_limit_reached"
     RUN_NOT_FOUND = "run_not_found"
     TURNED_OFF = "turned_off"
     NOT_A_PHONE_CALL = "not_a_phone_call"
@@ -63,7 +74,7 @@ def skip_reason(
     in the builder, and from the run alone they cannot be told apart from a
     website visitor's call; text chats have no caller to call back.
     """
-    if not setting.enabled or not setting.recipients:
+    if not setting.enabled:
         return CallSummaryOutcome.TURNED_OFF
     if run.mode not in _PHONE_MODES:
         return CallSummaryOutcome.NOT_A_PHONE_CALL
@@ -80,16 +91,22 @@ class CallSummaryNotifier:
         email_sender: EmailSender,
         clock: Clock,
         timezone_of: TimezoneLookup,
+        rate_limiter: RateLimiter,
+        daily_limit: int,
         app_url: str,
         retry_delays: Sequence[float] = DEFAULT_RETRY_DELAYS_SECONDS,
+        send_timeout: float = DEFAULT_SEND_TIMEOUT_SECONDS,
         sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
     ) -> None:
         self._store = store
         self._email = email_sender
         self._clock = clock
         self._timezone_of = timezone_of
+        self._limiter = rate_limiter
+        self._daily_limit = daily_limit
         self._app_url = app_url.rstrip("/")
         self._retry_delays = tuple(retry_delays)
+        self._send_timeout = send_timeout
         self._sleep = sleep
 
     async def notify(self, run_id: int) -> CallSummaryOutcome:
@@ -106,7 +123,10 @@ class CallSummaryNotifier:
         skipped = skip_reason(run, setting)
         if skipped is not None:
             return skipped
-        summary = extract_call_summary(run.gathered_context, run.realtime_events)
+        # The call's events are the largest part of the run: load them only
+        # once a summary may be due.
+        events = await self._store.get_call_summary_events(run_id)
+        summary = extract_call_summary(run.gathered_context, events)
         if summary is None:
             return CallSummaryOutcome.NOTHING_TO_REPORT
         # The logging fallback would write the caller's details to the log.
@@ -115,19 +135,54 @@ class CallSummaryNotifier:
         zone = await self._zone(run.organization_id)
         if not await self._store.claim_call_summary_email(run_id, self._clock.now()):
             return CallSummaryOutcome.ALREADY_SENT
+        # Counted after the claim, so a duplicate completion uses none of it.
+        if not await self._within_daily_limit(run.organization_id):
+            return CallSummaryOutcome.DAILY_LIMIT_REACHED
 
-        delivered = 0
-        for recipient in setting.recipients:
-            if await self._deliver(self._message(recipient, run, summary, zone)):
-                delivered += 1
-        if delivered < len(setting.recipients):
+        messages = [
+            self._message(recipient, run, summary, zone)
+            for recipient in setting.recipients
+        ]
+        delivered = await self._send_all(messages)
+        if delivered < len(messages):
             logger.warning(
                 "Call summary for run {} reached {} of {} recipients",
                 run_id,
                 delivered,
-                len(setting.recipients),
+                len(messages),
             )
         return CallSummaryOutcome.SENT if delivered else CallSummaryOutcome.FAILED
+
+    async def _within_daily_limit(self, organization_id: int | None) -> bool:
+        if organization_id is None:
+            return True
+        day = self._clock.now().astimezone(UTC).date().isoformat()
+        allowed = await self._limiter.allow(
+            f"call-summary:{organization_id}:{day}",
+            limit=self._daily_limit,
+            window=timedelta(days=1),
+        )
+        if not allowed:
+            logger.warning(
+                "Call summary daily limit of {} reached for organization {}",
+                self._daily_limit,
+                organization_id,
+            )
+        return allowed
+
+    async def _send_all(self, messages: Sequence[EmailMessage]) -> int:
+        """Send concurrently; the number delivered before the timeout."""
+        tasks = [asyncio.create_task(self._deliver(m)) for m in messages]
+        done, pending = await asyncio.wait(tasks, timeout=self._send_timeout)
+        if pending:
+            for task in pending:
+                task.cancel()
+            await asyncio.gather(*pending, return_exceptions=True)
+            logger.warning(
+                "Call summary sends still running after {}s were stopped",
+                self._send_timeout,
+            )
+        return sum(1 for task in done if task.result())
 
     async def _deliver(self, message: EmailMessage) -> bool:
         for attempt, delay in enumerate((0.0, *self._retry_delays), start=1):
@@ -138,6 +193,10 @@ class CallSummaryNotifier:
                 return True
             except EmailDeliveryError as exc:
                 logger.warning("Call summary email attempt {} failed: {}", attempt, exc)
+                # The provider is down or rejected this message: a retry
+                # would only hold the job longer.
+                if not exc.retryable:
+                    return False
         return False
 
     async def _zone(self, organization_id: int | None) -> tzinfo | None:
@@ -161,7 +220,7 @@ class CallSummaryNotifier:
         zone: tzinfo | None,
     ) -> EmailMessage:
         started_at = run.started_at or self._clock.now()
-        return call_summary_message(
+        message = call_summary_message(
             to=recipient,
             agent_name=run.workflow_name,
             call_time=started_at.astimezone(zone or UTC).strftime(_TIME_FORMAT),
@@ -171,6 +230,19 @@ class CallSummaryNotifier:
             booking_lines=[booking_line(c, zone) for c in summary.booking_changes],
             run_url=f"{self._app_url}/workflow/{run.workflow_id}/run/{run.run_id}",
         )
+        # Hashed: the address would make the key long and put it in headers.
+        digest = hashlib.sha256(recipient.casefold().encode()).hexdigest()[:16]
+        return replace(message, idempotency_key=f"call-summary-{run.run_id}-{digest}")
+
+
+def _action_label(action: BookingAction) -> str:
+    match action:
+        case BookingAction.BOOKED:
+            return "Booked"
+        case BookingAction.CANCELLED:
+            return "Cancelled the appointment"
+        case _:
+            assert_never(action)
 
 
 def booking_line(change: BookingChange, zone: tzinfo | None) -> str:
@@ -180,15 +252,10 @@ def booking_line(change: BookingChange, zone: tzinfo | None) -> str:
     Without an organization timezone the appointment keeps the calendar's own
     offset, which is the business's local time.
     """
+    when = ""
+    if change.starts_at is not None:
+        # astimezone(None) would mean the server's zone, not "keep it".
+        starts_at = change.starts_at.astimezone(zone) if zone else change.starts_at
+        when = f" for {starts_at.strftime(_TIME_FORMAT)}"
     who = ", ".join(v for v in (change.caller_name, change.caller_phone) if v)
-    suffix = f" ({who})" if who else ""
-    match change.action:
-        case BookingAction.BOOKED:
-            if change.starts_at is None:
-                return f"Booked{suffix}"
-            # astimezone(None) would mean the server's zone, not "keep it".
-            starts_at = change.starts_at.astimezone(zone) if zone else change.starts_at
-            return f"Booked for {starts_at.strftime(_TIME_FORMAT)}{suffix}"
-        case BookingAction.CANCELLED:
-            told = f': "{change.confirmation}"' if change.confirmation else ""
-            return f"Cancelled an appointment{suffix}{told}"
+    return f"{_action_label(change.action)}{when}{f' ({who})' if who else ''}"

@@ -16,7 +16,6 @@ from sqlalchemy import Text, cast, event, exists, func, or_, select, update
 from sqlalchemy.orm import Session
 
 from api.db.base_client import BaseDBClient
-from api.db.call_summary_client import WORKFLOW_RUN_CALL_SUMMARY_EMAILED_KEY
 from api.db.models import (
     CampaignModel,
     EmbedSessionModel,
@@ -44,6 +43,9 @@ CAMPAIGN_PURGED_AT_KEY = "retention_purged_at"
 # Marker stamped into ``workflow_runs.extra`` once post-call processing (QA,
 # integrations, webhooks, billing) has finished writing to a run.
 WORKFLOW_RUN_POST_CALL_DONE_KEY = "post_call_done_at"
+# Marker stamped into ``workflow_runs.extra`` when a run's call summary email
+# is claimed for sending, so a re-run completion job never emails it twice.
+WORKFLOW_RUN_CALL_SUMMARY_EMAILED_KEY = "call_summary_emailed_at"
 
 WORKFLOW_RUN_EXTRA_KEPT_KEYS = frozenset(
     {
