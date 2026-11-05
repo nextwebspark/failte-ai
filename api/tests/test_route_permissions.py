@@ -307,10 +307,11 @@ async def test_viewer_cannot_open_test_call_signaling(monkeypatch):
 
     websocket = SimpleNamespace(close=AsyncMock())
     user = SimpleNamespace(id=7, selected_organization_id=3, is_superuser=False)
+    # Membership (role + bookings switch) is read in one query.
     monkeypatch.setattr(
         auth_depends.db_client,
-        "get_member_role",
-        AsyncMock(return_value=OrgRole.VIEWER),
+        "get_member_access",
+        AsyncMock(return_value=(OrgRole.VIEWER, False)),
     )
     get_run = AsyncMock()
     monkeypatch.setattr(webrtc_signaling.db_client, "get_workflow_run", get_run)
