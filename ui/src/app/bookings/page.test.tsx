@@ -24,7 +24,7 @@ vi.stubGlobal(
 
 vi.mock("@/client/sdk.gen", () => ({
     listBookingsApiV1IntegrationsBookingsGet: mocks.list,
-    updateConnectionConfigApiV1IntegrationsConnectionsConnectionIdPatch: mocks.update,
+    setAiBookingApiV1IntegrationsBookingsCalendarsConnectionIdPut: mocks.update,
 }));
 
 vi.mock("@/context/OrgConfigContext", () => ({
@@ -139,7 +139,7 @@ describe("BookingsPage", () => {
         await waitFor(() =>
             expect(mocks.update).toHaveBeenCalledWith({
                 path: { connection_id: CAL },
-                body: { config: { ai_booking_enabled: false } },
+                body: { ai_booking_enabled: false },
             }),
         );
         expect(await screen.findByText("Booking off")).toBeTruthy();
@@ -147,7 +147,7 @@ describe("BookingsPage", () => {
         expect(toast.success).toHaveBeenCalled();
     });
 
-    it("shows Client logins the bookings but not the switch", async () => {
+    it("shows staff the bookings but not the switch, unless allowed", async () => {
         mocks.can.mockImplementation((...perms: string[]) => perms.every((p) => p === "calls:read"));
         render(<BookingsPage />);
 

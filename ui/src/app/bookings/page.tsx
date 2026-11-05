@@ -11,7 +11,7 @@ import {
 } from "@/app/integrations/messages";
 import {
     listBookingsApiV1IntegrationsBookingsGet,
-    updateConnectionConfigApiV1IntegrationsConnectionsConnectionIdPatch,
+    setAiBookingApiV1IntegrationsBookingsCalendarsConnectionIdPut,
 } from "@/client/sdk.gen";
 import type { BookingCalendar, BookingListResponse, CalendarBooking } from "@/client/types.gen";
 import { NoAccess } from "@/components/auth/NoAccess";
@@ -53,7 +53,8 @@ function calendarName(calendar: BookingCalendar): string {
 
 function BookingsScreen() {
     const { can } = useOrgConfig();
-    const canManage = can("integrations:write");
+    // The owner, admins, and staff the owner allowed.
+    const canManage = can("bookings:manage");
     const canSeeIntegrations = can("integrations:read");
 
     const [range, setRange] = useState<RangeKey>("next7");
@@ -96,9 +97,9 @@ function BookingsScreen() {
     const setBookingOn = async (calendar: BookingCalendar, enabled: boolean) => {
         setSaving(calendar.connection_id);
         try {
-            const response = await updateConnectionConfigApiV1IntegrationsConnectionsConnectionIdPatch({
+            const response = await setAiBookingApiV1IntegrationsBookingsCalendarsConnectionIdPut({
                 path: { connection_id: calendar.connection_id },
-                body: { config: { ai_booking_enabled: enabled } },
+                body: { ai_booking_enabled: enabled },
             });
             if (response.error || !response.data) {
                 toast.error(integrationErrorMessage(response.error, "Couldn't change the setting"));

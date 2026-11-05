@@ -339,6 +339,12 @@ class BookingCalendar(BaseModel):
     )
 
 
+class AiBookingRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    ai_booking_enabled: bool
+
+
 class BookingListResponse(BaseModel):
     """Bookings in the requested range across the workspace's calendars, in
     start order, with cancelled ones marked."""

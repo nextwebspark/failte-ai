@@ -26,10 +26,17 @@ class MemberResponse(BaseModel):
     role: OrgRole
     joined_at: datetime | None
     is_current_user: bool
+    # Staff only: may switch AI booking on and off. Other roles have it
+    # (owner, admin) or not (developer) by role.
+    can_manage_bookings: bool = False
 
 
 class UpdateMemberRoleRequest(_Request):
     role: OrgRole
+
+
+class UpdateBookingsAccessRequest(_Request):
+    can_manage_bookings: bool
 
 
 class UserOrganizationResponse(BaseModel):

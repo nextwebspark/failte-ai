@@ -1111,6 +1111,14 @@ export type BookingCalendar = {
  * Bookings in the requested range across the workspace's calendars, in
  * start order, with cancelled ones marked.
  */
+export type AiBookingRequest = {
+    ai_booking_enabled: boolean;
+};
+
+export type UpdateBookingsAccessRequest = {
+    can_manage_bookings: boolean;
+};
+
 export type BookingListResponse = {
     /**
      * Calendars
@@ -5419,6 +5427,10 @@ export type MemberResponse = {
      * Is Current User
      */
     is_current_user: boolean;
+    /**
+     * Can Manage Bookings
+     */
+    can_manage_bookings?: boolean;
 };
 
 /**
@@ -5949,7 +5961,7 @@ export type OpenRouterLlmConfiguration = {
  *
  * Role a user holds within one organization (stored on the membership).
  */
-export type OrgRole = 'admin' | 'developer' | 'viewer';
+export type OrgRole = 'admin' | 'developer' | 'viewer' | 'staff';
 
 /**
  * OrganizationAIModelConfigurationResponse
@@ -6155,7 +6167,7 @@ export type OrganizationPreferencesResponse = {
 /**
  * Permission
  */
-export type Permission = 'org:manage' | 'members:read' | 'members:manage' | 'billing:read' | 'billing:manage' | 'agents:read' | 'agents:write' | 'campaigns:read' | 'campaigns:write' | 'telephony:read' | 'telephony:write' | 'integrations:read' | 'integrations:write' | 'credentials:write' | 'api_keys:manage' | 'calls:read' | 'reports:read';
+export type Permission = 'org:manage' | 'members:read' | 'members:manage' | 'billing:read' | 'billing:manage' | 'agents:read' | 'agents:write' | 'campaigns:read' | 'campaigns:write' | 'telephony:read' | 'telephony:write' | 'integrations:read' | 'integrations:write' | 'credentials:write' | 'api_keys:manage' | 'calls:read' | 'reports:read' | 'bookings:manage' | 'bookings:grant';
 
 /**
  * PhoneNumberCreateRequest

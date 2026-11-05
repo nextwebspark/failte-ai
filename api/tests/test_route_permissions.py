@@ -173,7 +173,11 @@ async def client_as(org):
     ("method", "path", "allowed"),
     [
         # Agents: everyone reads, developers+ write.
-        ("GET", "/api/v1/folder/", {OrgRole.VIEWER, OrgRole.DEVELOPER, OrgRole.ADMIN}),
+        (
+            "GET",
+            "/api/v1/folder/",
+            {OrgRole.STAFF, OrgRole.VIEWER, OrgRole.DEVELOPER, OrgRole.ADMIN},
+        ),
         ("POST", "/api/v1/folder/", {OrgRole.DEVELOPER, OrgRole.ADMIN}),
         # Telephony: hidden from viewers entirely.
         (
@@ -189,17 +193,34 @@ async def client_as(org):
         (
             "GET",
             "/api/v1/organizations/reports/workflows",
-            {OrgRole.VIEWER, OrgRole.DEVELOPER, OrgRole.ADMIN},
+            {OrgRole.STAFF, OrgRole.VIEWER, OrgRole.DEVELOPER, OrgRole.ADMIN},
         ),
         # Team management: admins only.
         ("GET", "/api/v1/organizations/invitations", {OrgRole.ADMIN}),
         # Skills: everyone reads (incl. the library), developers+ write.
-        ("GET", "/api/v1/skills", {OrgRole.VIEWER, OrgRole.DEVELOPER, OrgRole.ADMIN}),
+        (
+            "GET",
+            "/api/v1/skills",
+            {OrgRole.STAFF, OrgRole.VIEWER, OrgRole.DEVELOPER, OrgRole.ADMIN},
+        ),
         ("POST", "/api/v1/skills", {OrgRole.DEVELOPER, OrgRole.ADMIN}),
         (
             "GET",
             "/api/v1/skill-library",
-            {OrgRole.VIEWER, OrgRole.DEVELOPER, OrgRole.ADMIN},
+            {OrgRole.STAFF, OrgRole.VIEWER, OrgRole.DEVELOPER, OrgRole.ADMIN},
+        ),
+        # Bookings: everyone who sees calls reads them; switching AI booking
+        # is for the owner and admins (and staff the owner allows).
+        (
+            "PUT",
+            "/api/v1/integrations/bookings/calendars/00000000-0000-0000-0000-000000000000",
+            {OrgRole.VIEWER, OrgRole.ADMIN},
+        ),
+        # Who on the staff may manage bookings: owner and admins.
+        (
+            "PUT",
+            "/api/v1/organizations/members/999999/bookings-access",
+            {OrgRole.VIEWER, OrgRole.ADMIN},
         ),
         # Library writes: platform admins only, whatever the org role.
         ("POST", "/api/v1/skill-library", set()),

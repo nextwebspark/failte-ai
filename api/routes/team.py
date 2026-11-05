@@ -15,6 +15,7 @@ from api.schemas.team import (
     IssuedInvitationResponse,
     MemberResponse,
     RenameOrganizationRequest,
+    UpdateBookingsAccessRequest,
     UpdateMemberRoleRequest,
     UserOrganizationResponse,
 )
@@ -51,6 +52,9 @@ MembersReader = Annotated[
 ]
 MembersManager = Annotated[
     OrgMembership, Depends(require_permission(Permission.MEMBERS_MANAGE))
+]
+BookingsGranter = Annotated[
+    OrgMembership, Depends(require_permission(Permission.BOOKINGS_GRANT))
 ]
 Invitations = Annotated[InvitationService, Depends(get_invitation_service)]
 
@@ -166,6 +170,7 @@ async def list_members(membership: MembersReader) -> list[MemberResponse]:
             role=m.role,
             joined_at=m.joined_at,
             is_current_user=m.user_id == membership.user.id,
+            can_manage_bookings=m.can_manage_bookings,
         )
         for m in members
     ]
@@ -177,6 +182,30 @@ async def update_member_role(
 ) -> Response:
     await db_client.update_member_role(
         membership.organization_id, user_id, request.role
+    )
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.put(
+    "/members/{user_id}/bookings-access", status_code=status.HTTP_204_NO_CONTENT
+)
+async def update_bookings_access(
+    user_id: int, request: UpdateBookingsAccessRequest, membership: BookingsGranter
+) -> Response:
+    """Let a staff member switch AI booking on and off, or stop them. For the
+    owner and admins; other roles already have it (owner, admin) or never do
+    (developer), so only staff can be changed."""
+    members = await db_client.list_organization_members(membership.organization_id)
+    target = next((m for m in members if m.user_id == user_id), None)
+    if target is None:
+        raise HTTPException(status_code=404, detail="Member not found")
+    if target.role != OrgRole.STAFF:
+        raise HTTPException(
+            status_code=400,
+            detail="Only staff need this: owners and admins already manage bookings",
+        )
+    await db_client.set_member_bookings_access(
+        membership.organization_id, user_id, request.can_manage_bookings
     )
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 

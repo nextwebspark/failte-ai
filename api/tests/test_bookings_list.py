@@ -186,3 +186,45 @@ async def test_unexpected_errors_are_not_swallowed() -> None:
     tools = FakeTools([broken], {broken.id: RuntimeError("bug")})
     with pytest.raises(RuntimeError):
         await _service(tools).list_bookings(ACTOR, START, END)
+
+
+class SwitchTools(FakeTools):
+    def __init__(self, connection: IntegrationConnection) -> None:
+        super().__init__([connection], {})
+        self.connection = connection
+        self.patched: list[dict[str, Any]] = []
+
+    async def get_connection(
+        self, caller: Any, connection_id: uuid.UUID
+    ) -> IntegrationConnection:
+        assert connection_id == self.connection.id
+        return self.connection
+
+    async def update_config(
+        self, caller: Any, connection_id: uuid.UUID, config: dict[str, Any]
+    ) -> IntegrationConnection:
+        self.patched.append(dict(config))
+        return self.connection.model_copy(
+            update={"config": {**self.connection.config, **config}}
+        )
+
+
+async def test_switching_ai_booking_changes_only_that_setting() -> None:
+    calendar = _connection(config={"calendar_id": "c", "max_bookings_at_once": 5})
+    tools = SwitchTools(calendar)
+
+    result = await _service(tools).set_ai_booking(ACTOR, calendar.id, False)
+
+    assert tools.patched == [{"ai_booking_enabled": False}]
+    assert result.ai_booking_enabled is False
+    assert result.title == "Google Calendar"
+
+
+async def test_the_switch_refuses_connections_that_are_not_calendars() -> None:
+    from api.errors.integrations import IntegrationNotFoundError
+
+    sheet = _connection("google-sheets")
+    tools = SwitchTools(sheet)
+    with pytest.raises(IntegrationNotFoundError):
+        await _service(tools).set_ai_booking(ACTOR, sheet.id, False)
+    assert tools.patched == []

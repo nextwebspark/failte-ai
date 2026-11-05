@@ -10,7 +10,11 @@ from api.db import db_client
 from api.db.models import UserModel
 from api.enums import OrgRole, PostHogEvent
 from api.errors.domain import DomainError
-from api.services.auth.permissions import Permission, has_permissions
+from api.services.auth.permissions import (
+    Permission,
+    has_permissions,
+    member_grants,
+)
 from api.services.auth.stack_auth import stackauth
 from api.services.organization_bootstrap import ensure_organization_bootstrapped
 from api.services.posthog_client import (
@@ -270,9 +274,12 @@ class OrgMembership:
     user: UserModel
     organization_id: int
     role: OrgRole
+    # Beyond the role, e.g. a staff member allowed to manage bookings.
+    grants: frozenset[Permission] = frozenset()
 
     def can(self, *permissions: Permission) -> bool:
-        return has_permissions(self.role, *permissions)
+        missing = set(permissions) - self.grants
+        return has_permissions(self.role, *missing)
 
 
 async def get_org_membership(
@@ -307,15 +314,23 @@ async def _membership_in_selected_organization(user: UserModel) -> OrgMembership
     if user.selected_organization_id is None:
         raise HTTPException(status_code=400, detail="No organization selected")
     organization_id: int = user.selected_organization_id
-    role = await db_client.get_member_role(user.id, organization_id)
-    if role is None:
+    access = await db_client.get_member_access(user.id, organization_id)
+    if access is None:
         # Platform superusers may act in any organization (support access).
         if not user.is_superuser:
             raise HTTPException(
                 status_code=403, detail="You are not a member of this organization"
             )
-        role = OrgRole.ADMIN
-    return OrgMembership(user=user, organization_id=organization_id, role=role)
+        return OrgMembership(
+            user=user, organization_id=organization_id, role=OrgRole.ADMIN
+        )
+    role, can_manage_bookings = access
+    return OrgMembership(
+        user=user,
+        organization_id=organization_id,
+        role=role,
+        grants=member_grants(role, can_manage_bookings),
+    )
 
 
 def require_permission(

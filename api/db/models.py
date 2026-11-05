@@ -20,6 +20,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     and_,
+    false,
     func,
     text,
 )
@@ -74,8 +75,17 @@ organization_users_association = Table(
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True,
     ),
+    # Lets a staff member switch AI booking on and off; other roles ignore it.
+    Column(
+        "can_manage_bookings",
+        Boolean,
+        nullable=False,
+        default=False,
+        server_default=false(),
+    ),
     CheckConstraint(
-        "role IN ('admin', 'developer', 'viewer')", name="ck_organization_users_role"
+        "role IN ('admin', 'developer', 'viewer', 'staff')",
+        name="ck_organization_users_role",
     ),
     Index("ix_organization_users_organization_id_role", "organization_id", "role"),
 )
@@ -261,7 +271,7 @@ class OrganizationInvitationModel(Base):
 
     __table_args__ = (
         CheckConstraint(
-            "role IN ('admin', 'developer', 'viewer')",
+            "role IN ('admin', 'developer', 'viewer', 'staff')",
             name="ck_organization_invitations_role",
         ),
         # At most one open invitation per address per organization.

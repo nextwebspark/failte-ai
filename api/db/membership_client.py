@@ -36,6 +36,7 @@ class OrganizationMember:
     role: OrgRole
     joined_at: datetime | None
     invited_by: int | None
+    can_manage_bookings: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -116,6 +117,46 @@ class MembershipClient(BaseDBClient):
             role = result.scalar_one_or_none()
             return OrgRole(role) if role is not None else None
 
+    async def get_member_access(
+        self, user_id: int, organization_id: int
+    ) -> tuple[OrgRole, bool] | None:
+        """The member's role and bookings switch in one read, or None if the
+        user is not a member."""
+        async with self.async_session() as session:
+            row = (
+                await session.execute(
+                    select(_members.c.role, _members.c.can_manage_bookings).where(
+                        _members.c.user_id == user_id,
+                        _members.c.organization_id == organization_id,
+                    )
+                )
+            ).first()
+            return (OrgRole(row.role), bool(row.can_manage_bookings)) if row else None
+
+    async def set_member_bookings_access(
+        self, organization_id: int, user_id: int, allowed: bool
+    ) -> OrgRole:
+        """Set whether a member may manage bookings; returns their role.
+
+        Raises:
+            MemberNotFoundError: the user is not a member of the organization.
+        """
+        async with self.async_session() as session:
+            result = await session.execute(
+                update(_members)
+                .where(
+                    _members.c.organization_id == organization_id,
+                    _members.c.user_id == user_id,
+                )
+                .values(can_manage_bookings=allowed)
+                .returning(_members.c.role)
+            )
+            role = result.scalar_one_or_none()
+            if role is None:
+                raise MemberNotFoundError()
+            await session.commit()
+            return OrgRole(role)
+
     async def list_organization_members(
         self, organization_id: int
     ) -> list[OrganizationMember]:
@@ -128,6 +169,7 @@ class MembershipClient(BaseDBClient):
                     _members.c.role,
                     _members.c.created_at,
                     _members.c.invited_by,
+                    _members.c.can_manage_bookings,
                 )
                 .join(_members, _members.c.user_id == UserModel.id)
                 .where(_members.c.organization_id == organization_id)
@@ -141,6 +183,7 @@ class MembershipClient(BaseDBClient):
                     role=OrgRole(row.role),
                     joined_at=row.created_at,
                     invited_by=row.invited_by,
+                    can_manage_bookings=bool(row.can_manage_bookings),
                 )
                 for row in result.all()
             ]

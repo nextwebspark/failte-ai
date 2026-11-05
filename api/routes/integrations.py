@@ -25,6 +25,8 @@ from fastapi.routing import APIRoute
 from api.errors.integrations import IntegrationInvalidRequestError
 from api.schemas.integrations import (
     ActivateIntegrationRequest,
+    AiBookingRequest,
+    BookingCalendar,
     BookingListResponse,
     CreateProviderAppRequest,
     InstallIntegrationRequest,
@@ -90,9 +92,13 @@ Installer = Annotated[
 
 
 # Bookings come from calls, so anyone who can see calls can see them,
-# including Client (viewer) logins, who cannot see integrations.
+# including owner and staff logins, who cannot see integrations.
 CallReader = Annotated[
     OrgMembership, Depends(require_permission(Permission.CALLS_READ))
+]
+# The owner, admins, and staff the owner allowed (not developers).
+BookingsManager = Annotated[
+    OrgMembership, Depends(require_permission(Permission.BOOKINGS_MANAGE))
 ]
 MAX_BOOKINGS_SPAN = timedelta(days=62)
 
@@ -126,6 +132,20 @@ async def list_bookings(
             "Give a range of up to 62 days, with start before end"
         )
     return await integrations.list_bookings(_actor(membership), start, end)
+
+
+@router.put("/bookings/calendars/{connection_id}")
+async def set_ai_booking(
+    connection_id: uuid.UUID,
+    request: AiBookingRequest,
+    membership: BookingsManager,
+    integrations: Integrations,
+) -> BookingCalendar:
+    """Switch AI booking on or off for one connected calendar. Off, the agent
+    offers no times and passes callers to the team instead."""
+    return await integrations.set_ai_booking(
+        _actor(membership), connection_id, request.ai_booking_enabled
+    )
 
 
 @router.get("/connections")
