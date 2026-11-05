@@ -735,7 +735,8 @@ class CloudonixProvider(TelephonyProvider):
                     "cloudonix_stream_sid": stream_sid,
                 },
                 logs={
-                    "inbound_webhook": {
+                    # Only inbound_webhook is read back (SIP headers, tuner).
+                    f"{call_type.value}_webhook": {
                         "domain": domain_id,
                         "session": call_session,
                         "callSid": call_sid,
@@ -750,8 +751,9 @@ class CloudonixProvider(TelephonyProvider):
             )
 
             logger.info(
-                f"Cloudonix agent-stream connected for workflow_run "
-                f"{workflow_run_id} stream_sid={stream_sid} call_sid={call_sid} "
+                f"Cloudonix agent-stream ({call_type.value}) connected for "
+                f"workflow_run {workflow_run_id} stream_sid={stream_sid} "
+                f"call_sid={call_sid} "
                 f"session={call_session} "
                 f"telephony_configuration_id={config.id}"
             )

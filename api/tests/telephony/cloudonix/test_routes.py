@@ -311,6 +311,7 @@ async def test_agent_stream_marks_api_originated_calls_outbound():
         order.append("update")
         assert kwargs["call_type"] is CallType.OUTBOUND
         assert kwargs["initial_context"]["direction"] == "outbound"
+        assert list(kwargs["logs"]) == ["outbound_webhook"]
         # The snapshot the pipeline takes from the corrected row.
         assert (
             telephony_contact_phone(kwargs["call_type"], kwargs["initial_context"])

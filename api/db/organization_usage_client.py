@@ -228,7 +228,7 @@ class OrganizationUsageClient(BaseDBClient):
                 if run.call_type == "inbound":
                     phone_number = caller_number
                 else:
-                    phone_number = ic.get("phone_number")
+                    phone_number = ic.get("phone_number") or called_number
 
                 # Extract disposition from gathered_context
                 disposition = None
