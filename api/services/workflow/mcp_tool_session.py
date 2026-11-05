@@ -35,9 +35,16 @@ def build_streamable_http_params(
 ) -> StreamableHttpParameters:
     """Build Pipecat/MCP streamable-HTTP params, injecting the auth header
     from an ExternalCredentialModel (reuses the http_api credential path).
-    ``extra_headers`` never override the auth header."""
+    ``extra_headers`` can never set ``Authorization`` or any header the
+    credential sets, in any letter case."""
     auth = build_auth_header(credential) if credential is not None else {}
-    headers = {**(extra_headers or {}), **auth}
+    reserved = {"authorization", *(name.lower() for name in auth)}
+    extra = {
+        name: value
+        for name, value in (extra_headers or {}).items()
+        if name.lower() not in reserved
+    }
+    headers = {**extra, **auth}
     return StreamableHttpParameters(
         url=url,
         headers=headers or None,

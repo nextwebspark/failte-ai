@@ -5,18 +5,22 @@ from __future__ import annotations
 import pytest
 
 from api import constants
+from api.enums import CallType
 from api.services.tool_integrations.call_context import (
     CONTACT_PHONE_HEADER,
-    contact_phone,
+    telephony_contact_phone,
     tools_service_headers,
 )
 
 TOOLS_URL = "http://fallcha-tools:8000"
+CALLER = "+353 87 123 4567"
+BUSINESS = "+35315550000"
+# A run row as the inbound telephony code creates it.
 INBOUND = {
     "provider": "twilio",
     "direction": "inbound",
-    "caller_number": "+353 87 123 4567",
-    "called_number": "+35315550000",
+    "caller_number": CALLER,
+    "called_number": BUSINESS,
 }
 
 
@@ -25,35 +29,52 @@ def tools_service(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(constants, "TOOLS_SERVICE_URL", TOOLS_URL)
 
 
-def test_the_other_party_of_a_telephony_call() -> None:
-    assert contact_phone(INBOUND) == "+353 87 123 4567"
-    outbound = {**INBOUND, "direction": "outbound"}
-    assert contact_phone(outbound) == "+35315550000"
-    assert contact_phone({**INBOUND, "provider": "ari"}) == "+353 87 123 4567"
+def test_the_other_party_by_the_runs_call_type() -> None:
+    assert telephony_contact_phone(CallType.INBOUND, INBOUND) == CALLER
+    assert telephony_contact_phone("inbound", INBOUND) == CALLER
+    outbound = {"caller_number": BUSINESS, "called_number": CALLER}
+    assert telephony_contact_phone(CallType.OUTBOUND, outbound) == CALLER
+    assert telephony_contact_phone("outbound", outbound) == CALLER
+
+
+def test_a_direction_in_the_context_never_overrides_the_call_type() -> None:
+    # The public API lets the caller set "direction" in initial_context.
+    forged = {**INBOUND, "direction": "outbound", "called_number": "+3538600000"}
+    assert telephony_contact_phone(CallType.INBOUND, forged) == CALLER
+    assert telephony_contact_phone(None, INBOUND) is None
+    assert telephony_contact_phone("sideways", INBOUND) is None
 
 
 @pytest.mark.parametrize(
-    "context",
+    "number",
     [
-        # Web and chat runs take context variables from the visitor's page.
-        {**INBOUND, "provider": "smallwebrtc"},
-        {**INBOUND, "provider": "webrtc"},
-        {key: value for key, value in INBOUND.items() if key != "provider"},
-        {**INBOUND, "direction": None},
-        {**INBOUND, "direction": "sideways"},
-        {**INBOUND, "caller_number": None},
-        {**INBOUND, "caller_number": 353871234567},
-        {**INBOUND, "caller_number": "unknown"},
-        {**INBOUND, "caller_number": "anonymous"},
-        {**INBOUND, "caller_number": "sip:+353871234567@pbx.example"},
-        {**INBOUND, "caller_number": "+353871234567\r\nX-Evil: 1"},
-        {**INBOUND, "caller_number": "12"},
+        None,
+        353871234567,
+        "",
+        "unknown",
+        "anonymous",
+        "Restricted",
+        "sip:+353871234567@pbx.example",
+        "+353871234567\r\nX-Evil: 1",
+        "12",
+        # Twilio's keypad digits for ANONYMOUS, RESTRICTED, BLOCKED, UNKNOWN.
+        "+266696687",
+        "+7378742833",
+        "+2562533",
+        "+8656696",
     ],
 )
-def test_no_number_unless_the_call_record_has_a_usable_one(
-    context: dict[str, object],
-) -> None:
-    assert contact_phone(context) is None
+def test_hidden_withheld_or_unusable_numbers_are_none(number: object) -> None:
+    run = {**INBOUND, "caller_number": number}
+    assert telephony_contact_phone(CallType.INBOUND, run) is None
+
+
+@pytest.mark.parametrize("own", [BUSINESS, "01 555 0000", "+353 1 555 0000"])
+def test_the_businesss_own_number_is_treated_as_hidden(own: str) -> None:
+    inbound = {**INBOUND, "caller_number": own}
+    assert telephony_contact_phone(CallType.INBOUND, inbound) is None
+    outbound = {"caller_number": BUSINESS, "called_number": own}
+    assert telephony_contact_phone(CallType.OUTBOUND, outbound) is None
 
 
 @pytest.mark.parametrize(
@@ -65,9 +86,7 @@ def test_no_number_unless_the_call_record_has_a_usable_one(
     ],
 )
 def test_headers_go_to_the_tools_service_mcp(url: str) -> None:
-    assert tools_service_headers(url, INBOUND) == {
-        CONTACT_PHONE_HEADER: "+353 87 123 4567"
-    }
+    assert tools_service_headers(url, CALLER) == {CONTACT_PHONE_HEADER: CALLER}
 
 
 @pytest.mark.parametrize(
@@ -83,17 +102,15 @@ def test_headers_go_to_the_tools_service_mcp(url: str) -> None:
     ],
 )
 def test_no_headers_for_other_servers(url: str) -> None:
-    assert tools_service_headers(url, INBOUND) == {}
+    assert tools_service_headers(url, CALLER) == {}
 
 
 def test_a_tools_service_behind_a_path_prefix(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(constants, "TOOLS_SERVICE_URL", "https://app.example/tools/")
     good = "https://app.example/tools/mcp/google-calendar"
-    assert tools_service_headers(good, INBOUND) == {
-        CONTACT_PHONE_HEADER: "+353 87 123 4567"
-    }
+    assert tools_service_headers(good, CALLER) == {CONTACT_PHONE_HEADER: CALLER}
     assert (
-        tools_service_headers("https://app.example/mcp/google-calendar", INBOUND) == {}
+        tools_service_headers("https://app.example/mcp/google-calendar", CALLER) == {}
     )
 
 
@@ -101,6 +118,6 @@ def test_no_headers_without_a_number_or_a_tools_service(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     url = f"{TOOLS_URL}/mcp/google-calendar"
-    assert tools_service_headers(url, {**INBOUND, "provider": "smallwebrtc"}) == {}
+    assert tools_service_headers(url, None) == {}
     monkeypatch.setattr(constants, "TOOLS_SERVICE_URL", None)
-    assert tools_service_headers(url, INBOUND) == {}
+    assert tools_service_headers(url, CALLER) == {}
