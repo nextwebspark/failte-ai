@@ -304,6 +304,8 @@ services:
       SMTP_USERNAME: "${SMTP_USERNAME:-}"
       SMTP_PASSWORD: "${SMTP_PASSWORD:-}"
       SMTP_SECURITY: "${SMTP_SECURITY:-starttls}"
+      # Call summary emails an organization may send per UTC day.
+      CALL_SUMMARY_DAILY_LIMIT: "${CALL_SUMMARY_DAILY_LIMIT:-200}"
 
       # Billing. "stripe" turns on prepaid credit through Stripe Checkout; see
       # docs/deployment/stripe-billing.mdx. Empty keeps the mode default.
