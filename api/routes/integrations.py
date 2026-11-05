@@ -15,14 +15,17 @@ with ``connection_id``; then ``POST /connections/{id}/activate`` (with the
 
 import uuid
 from collections.abc import Callable, Coroutine
+from datetime import datetime, timedelta
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, Request, Response, status
+from fastapi import APIRouter, Depends, Query, Request, Response, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.routing import APIRoute
 
+from api.errors.integrations import IntegrationInvalidRequestError
 from api.schemas.integrations import (
     ActivateIntegrationRequest,
+    BookingListResponse,
     CreateProviderAppRequest,
     InstallIntegrationRequest,
     IntegrationCatalogResponse,
@@ -86,6 +89,14 @@ Installer = Annotated[
 ]
 
 
+# Bookings come from calls, so anyone who can see calls can see them,
+# including Client (viewer) logins, who cannot see integrations.
+CallReader = Annotated[
+    OrgMembership, Depends(require_permission(Permission.CALLS_READ))
+]
+MAX_BOOKINGS_SPAN = timedelta(days=62)
+
+
 def _actor(membership: OrgMembership) -> Actor:
     return Actor(organization_id=membership.organization_id, user=membership.user)
 
@@ -96,6 +107,25 @@ async def get_catalog(
 ) -> IntegrationCatalogResponse:
     """Providers available to every workspace."""
     return await integrations.catalog(_actor(membership))
+
+
+@router.get("/bookings")
+async def list_bookings(
+    start: Annotated[datetime, Query(description="Range start, ISO 8601 with offset.")],
+    end: Annotated[datetime, Query(description="Range end (exclusive).")],
+    membership: CallReader,
+    integrations: Integrations,
+) -> BookingListResponse:
+    """Bookings agents made on the workspace's connected calendars in
+    [start, end), at most 62 days, read live from each calendar. A calendar
+    that cannot be read is listed with ``ok`` false; the others still show."""
+    if start.tzinfo is None or end.tzinfo is None:
+        raise IntegrationInvalidRequestError("start and end need a time zone offset")
+    if end <= start or end - start > MAX_BOOKINGS_SPAN:
+        raise IntegrationInvalidRequestError(
+            "Give a range of up to 62 days, with start before end"
+        )
+    return await integrations.list_bookings(_actor(membership), start, end)
 
 
 @router.get("/connections")

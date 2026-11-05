@@ -302,3 +302,46 @@ class StartOAuthResponse(BaseModel):
         "to ``activate`` when the provider redirects back. It binds the new "
         "connection to the user and browser that started the flow."
     )
+
+
+class IntegrationBooking(BaseModel):
+    """One booking an agent made, read back from the calendar by the tools
+    service (providers with the ``bookings`` capability)."""
+
+    event_id: str
+    start: datetime
+    end: datetime
+    status: Literal["confirmed", "cancelled"]
+    caller_name: str | None = None
+    caller_phone: str | None = None
+    party_size: int | None = None
+    reason: str | None = None
+    created_at: datetime | None = None
+
+
+class CalendarBooking(IntegrationBooking):
+    connection_id: uuid.UUID = Field(description="The calendar it is on.")
+
+
+class BookingCalendar(BaseModel):
+    """A connected calendar the bookings were read from."""
+
+    connection_id: uuid.UUID
+    provider: str
+    title: str = Field(description="Provider name, e.g. Google Calendar.")
+    account_label: str | None = None
+    ai_booking_enabled: bool = Field(
+        description="Whether agents may book on it (the owner's switch)."
+    )
+    ok: bool = Field(description="False when its bookings could not be read.")
+    error: str | None = Field(
+        default=None, description="Why not, in words an admin can act on."
+    )
+
+
+class BookingListResponse(BaseModel):
+    """Bookings in the requested range across the workspace's calendars, in
+    start order, with cancelled ones marked."""
+
+    calendars: list[BookingCalendar]
+    bookings: list[CalendarBooking]

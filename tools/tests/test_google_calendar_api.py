@@ -264,6 +264,80 @@ async def test_connection_test_checks_calendar(
     assert f"shared with {SA_EMAIL}" in failed["message"]
 
 
+async def test_internal_bookings_lists_the_agents_bookings(
+    client: httpx.AsyncClient, google: FakeGoogle
+) -> None:
+    created = await create_connection(client, config=calendar_config())
+    connection_id = created.json()["id"]
+    google.events["booked1"] = {
+        "id": "booked1",
+        "status": "confirmed",
+        "summary": "Table for 4 — Mary Byrne",
+        "description": "\n".join(
+            [
+                "Booked by the LightMove.ai voice agent.",
+                "Caller: Mary Byrne",
+                "Phone: 0871234567",
+                "Party size: 4",
+                "Reason: Birthday",
+            ]
+        ),
+        "created": "2026-10-01T09:00:00Z",
+        "start": {"dateTime": "2026-10-15T19:00:00+01:00"},
+        "end": {"dateTime": "2026-10-15T20:30:00+01:00"},
+        "extendedProperties": {
+            "private": {
+                "fallcha_connection_id": connection_id,
+                "fallcha_party_size": "4",
+            }
+        },
+    }
+    url = f"/internal/connections/{connection_id}/bookings"
+    week = {"start": "2026-10-12T00:00:00+01:00", "end": "2026-10-19T00:00:00+01:00"}
+
+    response = await client.get(url, headers=internal_headers(), params=week)
+
+    assert response.status_code == 200, response.text
+    [booking] = response.json()["bookings"]
+    assert booking["event_id"] == "booked1"
+    assert booking["caller_name"] == "Mary Byrne"
+    assert booking["party_size"] == 4
+    assert booking["status"] == "confirmed"
+
+    # Another workspace cannot read them.
+    other = await client.get(url, headers=internal_headers(org_id=2), params=week)
+    assert other.status_code == 404
+    # Ranges must carry a zone and stay within 62 days.
+    naive = {"start": "2026-10-12T00:00:00", "end": "2026-10-19T00:00:00"}
+    assert (
+        await client.get(url, headers=internal_headers(), params=naive)
+    ).status_code == 422
+    long = {"start": "2026-10-01T00:00:00Z", "end": "2026-12-31T00:00:00Z"}
+    assert (
+        await client.get(url, headers=internal_headers(), params=long)
+    ).status_code == 422
+
+
+async def test_internal_bookings_needs_the_capability(
+    client: httpx.AsyncClient,
+) -> None:
+    echo_id = await create_echo_connection(client)
+    response = await client.get(
+        f"/internal/connections/{echo_id}/bookings",
+        headers=internal_headers(),
+        params={"start": "2026-10-12T00:00:00Z", "end": "2026-10-13T00:00:00Z"},
+    )
+    assert response.status_code == 409
+
+
+async def test_catalog_marks_calendar_as_listing_bookings(
+    client: httpx.AsyncClient,
+) -> None:
+    response = await client.get("/internal/catalog", headers=internal_headers())
+    providers = {p["id"]: p for p in response.json()["providers"]}
+    assert providers[PROVIDER]["capabilities"] == ["bookings"]
+
+
 # --- MCP ------------------------------------------------------------------
 
 

@@ -6,7 +6,8 @@ they are written for an LLM on a phone call.
 
 from __future__ import annotations
 
-from typing import Annotated
+from datetime import datetime
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, Field
 
@@ -25,7 +26,21 @@ PartOfDay = Annotated[
     str | None,
     Field(
         max_length=50,
-        description="'morning' or 'afternoon' if the caller said so, otherwise empty.",
+        description=(
+            "'morning', 'afternoon' or 'evening' if the caller said so, "
+            "otherwise empty."
+        ),
+    ),
+]
+PartySize = Annotated[
+    int | None,
+    Field(
+        ge=1,
+        le=1000,
+        description=(
+            "How many people the booking is for, as the caller said. Required "
+            "when the result asks for it; otherwise leave empty."
+        ),
     ),
 ]
 SlotId = Annotated[
@@ -73,6 +88,21 @@ EventId = Annotated[
 ]
 
 
+# Why the agent should pass the caller to a person instead of booking:
+# booking_off (the owner switched AI booking off), party_too_large /
+# party_too_small (outside the party sizes the agent may book), fully_booked
+# (nothing free in the whole booking horizon).
+Handoff = Literal["booking_off", "party_too_large", "party_too_small", "fully_booked"]
+HANDOFF_FIELD = Field(
+    default=None,
+    description=(
+        "Set when this request needs a person: read 'say', then transfer the "
+        "caller if you can, otherwise take their name, number and request so "
+        "the team can call back. Never book around it."
+    ),
+)
+
+
 class Slot(BaseModel):
     id: str = Field(description="Opaque slot id to pass to book_appointment.")
     say: str = Field(description="How to say this slot out loud.")
@@ -81,6 +111,11 @@ class Slot(BaseModel):
 class AvailabilityResult(BaseModel):
     slots: list[Slot]
     say: str = Field(description="Read this to the caller word for word.")
+    handoff: Handoff | None = HANDOFF_FIELD
+    needs_party_size: bool | None = Field(
+        default=None,
+        description="True: ask how many people, then check again with party_size.",
+    )
 
 
 class BookingResult(BaseModel):
@@ -92,6 +127,7 @@ class BookingResult(BaseModel):
         default=None, description="Alternatives, when the slot was taken."
     )
     say: str = Field(description="Read this to the caller word for word.")
+    handoff: Handoff | None = HANDOFF_FIELD
 
 
 class CancelResult(BaseModel):
@@ -102,6 +138,7 @@ class CancelResult(BaseModel):
 class AvailabilityRequest(BaseModel):
     relative_day: RelativeDay = None
     part_of_day: PartOfDay = None
+    party_size: PartySize = None
 
 
 class BookRequest(BaseModel):
@@ -109,7 +146,22 @@ class BookRequest(BaseModel):
     caller_name: CallerName
     caller_phone: CallerPhone
     reason: Reason = None
+    party_size: PartySize = None
 
 
 class CancelRequest(BaseModel):
     event_id: EventId
+
+
+class Booking(BaseModel):
+    """One booking the agent made, as read back from the calendar."""
+
+    event_id: str
+    start: datetime
+    end: datetime
+    status: Literal["confirmed", "cancelled"]
+    caller_name: str | None = None
+    caller_phone: str | None = None
+    party_size: int | None = None
+    reason: str | None = None
+    created_at: datetime | None = None

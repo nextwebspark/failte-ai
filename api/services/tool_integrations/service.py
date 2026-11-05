@@ -20,10 +20,12 @@ the original error re-raised.
 
 from __future__ import annotations
 
+import asyncio
 import secrets
 import uuid
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import Protocol
 
 from loguru import logger
@@ -33,10 +35,15 @@ from api.db.models import UserModel
 from api.errors.integrations import (
     IntegrationConflictError,
     IntegrationNotFoundError,
+    ToolsServiceUnavailableError,
 )
 from api.schemas.integrations import (
+    BookingCalendar,
+    BookingListResponse,
+    CalendarBooking,
     CreateProviderAppRequest,
     InstallIntegrationRequest,
+    IntegrationBooking,
     IntegrationCatalogResponse,
     IntegrationConnection,
     IntegrationConnectionResponse,
@@ -61,6 +68,11 @@ from api.services.tool_integrations.resources import (
 )
 
 _DEFAULT_ICON = "plug"
+# Catalog capability of providers that can list the bookings they made.
+BOOKINGS = "bookings"
+# Connections whose bookings are read: an "error" one may still be readable.
+_READABLE_STATUSES = frozenset({"active", "error"})
+CALENDAR_UNREADABLE = "This calendar could not be read just now"
 CONFIRM_IN_SAME_BROWSER = (
     "Finish connecting in the browser where you started, as the same user, "
     "within 10 minutes"
@@ -93,6 +105,14 @@ class ToolsServiceApi(Protocol):
     async def test_connection(
         self, caller: Caller, connection_id: uuid.UUID
     ) -> ConnectionTestResult: ...
+
+    async def list_bookings(
+        self,
+        caller: Caller,
+        connection_id: uuid.UUID,
+        start: datetime,
+        end: datetime,
+    ) -> list[IntegrationBooking]: ...
 
     async def start_sync(
         self, caller: Caller, connection_id: uuid.UUID
@@ -213,6 +233,56 @@ class IntegrationService:
         connections = await self._tools.list_connections(actor.caller)
         links = await self._links(actor.organization_id)
         return [links.response(c) for c in connections]
+
+    async def list_bookings(
+        self, actor: Actor, start: datetime, end: datetime
+    ) -> BookingListResponse:
+        """Bookings in [start, end) on every connected calendar that can list
+        them, read in parallel. One unreadable calendar does not hide the
+        others: it is reported with ``ok`` false and its error."""
+        caller = actor.caller
+        catalog = await self._tools.get_catalog(caller)
+        titles = {
+            p.id: p.title for p in catalog.providers if BOOKINGS in p.capabilities
+        }
+        calendars = [
+            c
+            for c in await self._tools.list_connections(caller)
+            if c.provider in titles and c.status in _READABLE_STATUSES
+        ]
+        results = await asyncio.gather(
+            *(self._tools.list_bookings(caller, c.id, start, end) for c in calendars),
+            return_exceptions=True,
+        )
+        sources: list[BookingCalendar] = []
+        bookings: list[CalendarBooking] = []
+        for connection, result in zip(calendars, results, strict=True):
+            error: str | None = None
+            if isinstance(result, IntegrationConflictError | IntegrationNotFoundError):
+                error = str(result) or CALENDAR_UNREADABLE
+            elif isinstance(result, ToolsServiceUnavailableError):
+                error = CALENDAR_UNREADABLE
+            elif isinstance(result, BaseException):
+                raise result
+            else:
+                bookings.extend(
+                    CalendarBooking(**b.model_dump(), connection_id=connection.id)
+                    for b in result
+                )
+            sources.append(
+                BookingCalendar(
+                    connection_id=connection.id,
+                    provider=connection.provider,
+                    title=titles[connection.provider],
+                    account_label=connection.account_label,
+                    ai_booking_enabled=connection.config.get("ai_booking_enabled")
+                    is not False,
+                    ok=error is None,
+                    error=error,
+                )
+            )
+        bookings.sort(key=lambda b: (b.start, b.connection_id.hex, b.event_id))
+        return BookingListResponse(calendars=sources, bookings=bookings)
 
     # -- writes ----------------------------------------------------------
 

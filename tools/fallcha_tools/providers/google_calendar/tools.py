@@ -18,6 +18,7 @@ from fallcha_tools.providers.google_calendar.schemas import (
     CancelResult,
     EventId,
     PartOfDay,
+    PartySize,
     Reason,
     RelativeDay,
     SlotId,
@@ -53,14 +54,19 @@ def register_calendar_tools(
 
     @mcp.tool(annotations=_READ_ONLY, title="Check free appointment slots")
     async def check_appointment_availability(
-        relative_day: RelativeDay = None, part_of_day: PartOfDay = None
+        relative_day: RelativeDay = None,
+        part_of_day: PartOfDay = None,
+        party_size: PartySize = None,
     ) -> AvailabilityResult:
-        """Use when the caller wants a call back, an appointment, an install visit
-        or a quote, to find free times. Returns real free slots from the company
-        calendar. Always call this before offering any time, and read the "say"
-        field out word for word; never invent a time."""
+        """Use when the caller wants a booking (a table, an appointment, a visit,
+        a call back) to find free times. Returns real free slots from the
+        business's calendar. Always call this before offering any time, and read
+        the "say" field out word for word; never invent a time. If
+        "needs_party_size" is true, ask how many people and call again with
+        party_size. If "handoff" is set, do not book: transfer the caller if you
+        can, otherwise take their details for the team."""
         svc = await service()
-        return await _guard(svc.availability(relative_day, part_of_day))
+        return await _guard(svc.availability(relative_day, part_of_day, party_size))
 
     @mcp.tool(annotations=_WRITES, title="Book an appointment")
     async def book_appointment(
@@ -68,13 +74,17 @@ def register_calendar_tools(
         caller_name: CallerName,
         caller_phone: CallerPhone,
         reason: Reason = None,
+        party_size: PartySize = None,
     ) -> BookingResult:
         """Use only after check_appointment_availability returned slots and the
-        caller picked one and gave their name and phone number. Books the
-        appointment on the company calendar. If "booked" is false, read the
-        "say" field (it lists alternatives) and try again with a new slot id."""
+        caller picked one and gave their name and phone number (and party size,
+        if you checked with one). Books it on the business's calendar. If
+        "booked" is false, read the "say" field: it lists alternatives to offer,
+        or, when "handoff" is set, transfer or take a message instead."""
         svc = await service()
-        return await _guard(svc.book(slot_id, caller_name, caller_phone, reason))
+        return await _guard(
+            svc.book(slot_id, caller_name, caller_phone, reason, party_size)
+        )
 
     @mcp.tool(
         annotations={**_WRITES, "destructiveHint": True},

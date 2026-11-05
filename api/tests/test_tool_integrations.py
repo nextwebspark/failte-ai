@@ -488,6 +488,49 @@ async def test_list_merges_installed_resources(client_as, org, tools_api):
     assert by_id[str(unlinked_id)]["tool_uuids"] == []
 
 
+async def test_bookings_are_listed_for_client_logins(client_as, org, tools_api):
+    connection_id = uuid.uuid4()
+    tools_api.routes["catalog"].respond(
+        json={"providers": [{**CATALOG["providers"][0], "capabilities": ["bookings"]}]}
+    )
+    tools_api.get("/internal/connections").respond(
+        json={"connections": [_connection(connection_id)]}
+    )
+    listed = tools_api.get(f"/internal/connections/{connection_id}/bookings").respond(
+        json={
+            "bookings": [
+                {
+                    "event_id": "evt1",
+                    "start": "2026-10-15T19:00:00+01:00",
+                    "end": "2026-10-15T20:30:00+01:00",
+                    "status": "confirmed",
+                    "caller_name": "Mary Byrne",
+                    "caller_phone": "0871234567",
+                    "party_size": 4,
+                }
+            ]
+        }
+    )
+    client = client_as(OrgRole.VIEWER)  # "Client": calls, but not integrations
+    week = {"start": "2026-10-12T00:00:00+01:00", "end": "2026-10-19T00:00:00+01:00"}
+
+    response = await client.get("/api/v1/integrations/bookings", params=week)
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert [b["caller_name"] for b in body["bookings"]] == ["Mary Byrne"]
+    assert body["bookings"][0]["connection_id"] == str(connection_id)
+    assert body["calendars"][0]["ok"] is True
+    assert body["calendars"][0]["ai_booking_enabled"] is True
+    assert listed.calls.last.request.url.params["start"] == "2026-10-12T00:00:00+01:00"
+
+    naive = {"start": "2026-10-12T00:00:00", "end": "2026-10-19T00:00:00"}
+    too_long = {"start": "2026-10-01T00:00:00Z", "end": "2026-12-31T00:00:00Z"}
+    for params in (naive, too_long):
+        refused = await client.get("/api/v1/integrations/bookings", params=params)
+        assert refused.status_code == 422, refused.text
+
+
 async def test_update_config_and_test_are_proxied(client_as, org, tools_api):
     client = client_as(OrgRole.DEVELOPER)
     installed = await _install(client)

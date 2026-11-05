@@ -82,6 +82,9 @@ class FakeGoogle:
         self.router = router
         self.busy: list[dict[str, str]] = []
         self.events: dict[str, dict[str, Any]] = {}
+        # Events someone else put on the calendar (only events.list sees them).
+        self.other_events: list[dict[str, Any]] = []
+        self._created = 0
         self.sheet_values: list[list[str]] = []
         self.token = router.post(GOOGLE_TOKEN_URL).mock(
             return_value=httpx.Response(
@@ -98,6 +101,9 @@ class FakeGoogle:
         )
         events = f"{CALENDAR_API}/calendars/{CALENDAR_ID.replace('@', '%40')}/events"
         self.insert = router.post(events).mock(side_effect=self._insert)
+        self.list_events = router.get(url__regex=rf"^{events}(\?.*)?$").mock(
+            side_effect=self._list_events
+        )
         self.get_event = router.get(url__regex=rf"^{events}/[^/]+$").mock(
             side_effect=self._get_event
         )
@@ -144,13 +150,57 @@ class FakeGoogle:
             200, json={"calendars": {CALENDAR_ID: {"busy": overlapping}}}
         )
 
+    def created_stamp(self) -> str:
+        """Increasing ``created`` times, like Google's."""
+        self._created += 1
+        return f"2026-10-01T00:00:{self._created:02d}.000Z"
+
     def _insert(self, request: httpx.Request) -> httpx.Response:
         event = json_body(request)
         event_id = event.get("id") or f"evt{len(self.events) + 1}"
         if event_id in self.events:
             return httpx.Response(409, json={"error": {"code": 409}})
-        self.events[event_id] = {**event, "id": event_id, "status": "confirmed"}
+        self.events[event_id] = {
+            **event,
+            "id": event_id,
+            "status": "confirmed",
+            "created": self.created_stamp(),
+        }
         return httpx.Response(200, json=self.events[event_id])
+
+    def _list_events(self, request: httpx.Request) -> httpx.Response:
+        params = request.url.params
+        lo = datetime.fromisoformat(params["timeMin"])
+        hi = datetime.fromisoformat(params["timeMax"])
+        show_deleted = params.get("showDeleted") == "true"
+        wanted = params.get("privateExtendedProperty")
+
+        def bounds(event: dict[str, Any]) -> tuple[datetime, datetime]:
+            start, end = event["start"], event["end"]
+            if "dateTime" in start:
+                return (
+                    datetime.fromisoformat(start["dateTime"]),
+                    datetime.fromisoformat(end["dateTime"]),
+                )
+            return (
+                datetime.fromisoformat(start["date"]).replace(tzinfo=lo.tzinfo),
+                datetime.fromisoformat(end["date"]).replace(tzinfo=lo.tzinfo),
+            )
+
+        def keep(event: dict[str, Any]) -> bool:
+            if event.get("status") == "cancelled" and not show_deleted:
+                return False
+            if wanted:
+                key, _, value = wanted.partition("=")
+                private = (event.get("extendedProperties") or {}).get("private") or {}
+                if private.get(key) != value:
+                    return False
+            start, end = bounds(event)
+            return start < hi and end > lo
+
+        items = [e for e in [*self.events.values(), *self.other_events] if keep(e)]
+        items.sort(key=lambda e: bounds(e)[0])
+        return httpx.Response(200, json={"items": items})
 
     def _patch_event(self, request: httpx.Request) -> httpx.Response:
         event = self.events.get(self._event_id(request))
