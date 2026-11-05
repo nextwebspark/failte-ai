@@ -7601,6 +7601,32 @@ export type ServiceKeyResponse = {
 };
 
 /**
+ * SetupOption
+ *
+ * One switch in a ``toggles`` question, e.g. "Party size".
+ */
+export type SetupOption = {
+    /**
+     * Value
+     */
+    value: string;
+    /**
+     * Label
+     */
+    label: string;
+    /**
+     * Prompt
+     *
+     * What the agent is told when it is on, e.g. 'how many people'.
+     */
+    prompt: string;
+    /**
+     * Default
+     */
+    default?: boolean;
+};
+
+/**
  * SetupStep
  *
  * One thing the customer must do before a configuration can carry calls.
@@ -9051,32 +9077,6 @@ export type TelnyxConfigurationRequest = {
  * placeholder may carry a fallback (``{{key | fallback:text}}``), which is
  * used when an optional field is left empty.
  */
-/**
- * SetupOption
- *
- * One switch in a ``toggles`` question, e.g. "Party size".
- */
-export type SetupOption = {
-    /**
-     * Value
-     */
-    value: string;
-    /**
-     * Label
-     */
-    label: string;
-    /**
-     * Prompt
-     *
-     * What the agent is told when it is on, e.g. 'how many people'.
-     */
-    prompt: string;
-    /**
-     * Default
-     */
-    default?: boolean;
-};
-
 export type TemplateSetupField = {
     /**
      * Key
