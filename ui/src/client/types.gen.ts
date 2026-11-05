@@ -1062,6 +1062,67 @@ export type BodyTranscribeAudioApiV1WorkflowRecordingsTranscribePost = {
 };
 
 /**
+ * BookingCalendar
+ *
+ * A connected calendar the bookings were read from.
+ */
+export type BookingCalendar = {
+    /**
+     * Connection Id
+     */
+    connection_id: string;
+    /**
+     * Provider
+     */
+    provider: string;
+    /**
+     * Title
+     *
+     * Provider name, e.g. Google Calendar.
+     */
+    title: string;
+    /**
+     * Account Label
+     */
+    account_label?: string | null;
+    /**
+     * Ai Booking Enabled
+     *
+     * Whether agents may book on it (the owner's switch).
+     */
+    ai_booking_enabled: boolean;
+    /**
+     * Ok
+     *
+     * False when its bookings could not be read.
+     */
+    ok: boolean;
+    /**
+     * Error
+     *
+     * Why not, in words an admin can act on.
+     */
+    error?: string | null;
+};
+
+/**
+ * BookingListResponse
+ *
+ * Bookings in the requested range across the workspace's calendars, in
+ * start order, with cancelled ones marked.
+ */
+export type BookingListResponse = {
+    /**
+     * Calendars
+     */
+    calendars: Array<BookingCalendar>;
+    /**
+     * Bookings
+     */
+    bookings: Array<CalendarBooking>;
+};
+
+/**
  * CalculatorToolDefinition
  *
  * Tool definition for Calculator tools.
@@ -1079,6 +1140,54 @@ export type CalculatorToolDefinition = {
      * Tool type.
      */
     type: 'calculator';
+};
+
+/**
+ * CalendarBooking
+ */
+export type CalendarBooking = {
+    /**
+     * Event Id
+     */
+    event_id: string;
+    /**
+     * Start
+     */
+    start: string;
+    /**
+     * End
+     */
+    end: string;
+    /**
+     * Status
+     */
+    status: 'confirmed' | 'cancelled';
+    /**
+     * Caller Name
+     */
+    caller_name?: string | null;
+    /**
+     * Caller Phone
+     */
+    caller_phone?: string | null;
+    /**
+     * Party Size
+     */
+    party_size?: number | null;
+    /**
+     * Reason
+     */
+    reason?: string | null;
+    /**
+     * Created At
+     */
+    created_at?: string | null;
+    /**
+     * Connection Id
+     *
+     * The calendar it is on.
+     */
+    connection_id: string;
 };
 
 /**
@@ -15424,6 +15533,58 @@ export type GetCatalogApiV1IntegrationsCatalogGetResponses = {
 
 export type GetCatalogApiV1IntegrationsCatalogGetResponse = GetCatalogApiV1IntegrationsCatalogGetResponses[keyof GetCatalogApiV1IntegrationsCatalogGetResponses];
 
+export type ListBookingsApiV1IntegrationsBookingsGetData = {
+    body?: never;
+    headers?: {
+        /**
+         * Authorization
+         */
+        authorization?: string | null;
+        /**
+         * X-Api-Key
+         */
+        'X-API-Key'?: string | null;
+    };
+    path?: never;
+    query: {
+        /**
+         * Start
+         *
+         * Range start, ISO 8601 with offset.
+         */
+        start: string;
+        /**
+         * End
+         *
+         * Range end (exclusive).
+         */
+        end: string;
+    };
+    url: '/api/v1/integrations/bookings';
+};
+
+export type ListBookingsApiV1IntegrationsBookingsGetErrors = {
+    /**
+     * Not found
+     */
+    404: unknown;
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ListBookingsApiV1IntegrationsBookingsGetError = ListBookingsApiV1IntegrationsBookingsGetErrors[keyof ListBookingsApiV1IntegrationsBookingsGetErrors];
+
+export type ListBookingsApiV1IntegrationsBookingsGetResponses = {
+    /**
+     * Successful Response
+     */
+    200: BookingListResponse;
+};
+
+export type ListBookingsApiV1IntegrationsBookingsGetResponse = ListBookingsApiV1IntegrationsBookingsGetResponses[keyof ListBookingsApiV1IntegrationsBookingsGetResponses];
+
 export type ListConnectionsApiV1IntegrationsConnectionsGetData = {
     body?: never;
     headers?: {
@@ -22058,164 +22219,3 @@ export type AutoscaleMetricApiV1HealthAutoscaleMetricGetResponses = {
 };
 
 export type AutoscaleMetricApiV1HealthAutoscaleMetricGetResponse = AutoscaleMetricApiV1HealthAutoscaleMetricGetResponses[keyof AutoscaleMetricApiV1HealthAutoscaleMetricGetResponses];
-
-/**
- * BookingCalendar
- *
- * A connected calendar the bookings were read from.
- */
-export type BookingCalendar = {
-    /**
-     * Connection Id
-     */
-    connection_id: string;
-    /**
-     * Provider
-     */
-    provider: string;
-    /**
-     * Title
-     *
-     * Provider name, e.g. Google Calendar.
-     */
-    title: string;
-    /**
-     * Account Label
-     */
-    account_label?: string | null;
-    /**
-     * Ai Booking Enabled
-     *
-     * Whether agents may book on it (the owner's switch).
-     */
-    ai_booking_enabled: boolean;
-    /**
-     * Ok
-     *
-     * False when its bookings could not be read.
-     */
-    ok: boolean;
-    /**
-     * Error
-     *
-     * Why not, in words an admin can act on.
-     */
-    error?: string | null;
-};
-
-/**
- * CalendarBooking
- */
-export type CalendarBooking = {
-    /**
-     * Event Id
-     */
-    event_id: string;
-    /**
-     * Start
-     */
-    start: string;
-    /**
-     * End
-     */
-    end: string;
-    /**
-     * Status
-     */
-    status: 'confirmed' | 'cancelled';
-    /**
-     * Caller Name
-     */
-    caller_name?: string | null;
-    /**
-     * Caller Phone
-     */
-    caller_phone?: string | null;
-    /**
-     * Party Size
-     */
-    party_size?: number | null;
-    /**
-     * Reason
-     */
-    reason?: string | null;
-    /**
-     * Created At
-     */
-    created_at?: string | null;
-    /**
-     * Connection Id
-     *
-     * The calendar it is on.
-     */
-    connection_id: string;
-};
-
-/**
- * BookingListResponse
- *
- * Bookings in the requested range across the workspace's calendars, in
- * start order, with cancelled ones marked.
- */
-export type BookingListResponse = {
-    /**
-     * Calendars
-     */
-    calendars: Array<BookingCalendar>;
-    /**
-     * Bookings
-     */
-    bookings: Array<CalendarBooking>;
-};
-
-export type ListBookingsApiV1IntegrationsBookingsGetData = {
-    body?: never;
-    headers?: {
-        /**
-         * Authorization
-         */
-        authorization?: string | null;
-        /**
-         * X-Api-Key
-         */
-        'X-API-Key'?: string | null;
-    };
-    path?: never;
-    query: {
-        /**
-         * Start
-         *
-         * Range start, ISO 8601 with offset.
-         */
-        start: string;
-        /**
-         * End
-         *
-         * Range end (exclusive).
-         */
-        end: string;
-    };
-    url: '/api/v1/integrations/bookings';
-};
-
-export type ListBookingsApiV1IntegrationsBookingsGetErrors = {
-    /**
-     * Not found
-     */
-    404: unknown;
-    /**
-     * Validation Error
-     */
-    422: HttpValidationError;
-};
-
-export type ListBookingsApiV1IntegrationsBookingsGetError = ListBookingsApiV1IntegrationsBookingsGetErrors[keyof ListBookingsApiV1IntegrationsBookingsGetErrors];
-
-export type ListBookingsApiV1IntegrationsBookingsGetResponses = {
-    /**
-     * Successful Response
-     */
-    200: BookingListResponse;
-};
-
-export type ListBookingsApiV1IntegrationsBookingsGetResponse = ListBookingsApiV1IntegrationsBookingsGetResponses[keyof ListBookingsApiV1IntegrationsBookingsGetResponses];
