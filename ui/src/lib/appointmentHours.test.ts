@@ -6,6 +6,7 @@ import {
     bookingHoursProblem,
     browserTimeZone,
     defaultBookingHours,
+    hasBookingHours,
     hourLabel,
     slotLabel,
     timeZoneOptions,
@@ -20,13 +21,17 @@ afterEach(() => {
     vi.restoreAllMocks();
 });
 
+const RealDateTimeFormat = Intl.DateTimeFormat;
+
+/** This browser reports *zone*; formatting in a given zone still works. */
 function browserZone(zone: string | (() => never)) {
-    vi.spyOn(Intl, 'DateTimeFormat').mockImplementation(
-        () =>
-            ({
-                resolvedOptions: () => ({ timeZone: typeof zone === 'string' ? zone : zone() }),
-            }) as unknown as Intl.DateTimeFormat,
-    );
+    // A function, not an arrow: the code under test also calls it with `new`.
+    vi.spyOn(Intl, 'DateTimeFormat').mockImplementation(function (locales, options) {
+        if (options?.timeZone) return new RealDateTimeFormat(locales, options);
+        return {
+            resolvedOptions: () => ({ timeZone: typeof zone === 'string' ? zone : zone() }),
+        } as unknown as Intl.DateTimeFormat;
+    });
 }
 
 describe('default hours', () => {
@@ -41,11 +46,15 @@ describe('default hours', () => {
         });
     });
 
-    it('fall back to Europe/Dublin for a zone the browser doesn’t know', () => {
-        browserZone('Etc/Unknown');
+    it.each(['Etc/Unknown', 'Not/AZone'])('fall back to Europe/Dublin for %s', (zone) => {
+        browserZone(zone);
         expect(browserTimeZone()).toBe('Europe/Dublin');
-        browserZone('UTC');
-        expect(browserTimeZone()).toBe('UTC');
+    });
+
+    // Aliases are missing from Intl.supportedValuesOf, which lists canonical names.
+    it.each(['UTC', 'Asia/Kolkata', 'Asia/Calcutta', 'US/Eastern'])('keep a real zone such as %s', (zone) => {
+        browserZone(zone);
+        expect(browserTimeZone()).toBe(zone);
     });
 
     it('fall back to Europe/Dublin when the browser can’t say', () => {
@@ -79,12 +88,21 @@ describe('hours from a calendar connection', () => {
         );
     });
 
-    it('uses the defaults for settings it never saved or that make no sense', () => {
+    it('uses the calendar’s defaults, not this browser’s zone, for settings it lacks', () => {
         browserZone('Europe/Berlin');
         expect(
             bookingHoursFromConfig({ calendar_id: 'primary', booking_days: [9, 'x'], open_hour: 9.5, close_hour: 30 }),
-        ).toEqual(defaultBookingHours());
-        expect(bookingHoursFromConfig(undefined).timezone).toBe('Europe/Berlin');
+        ).toEqual({ booking_days: [0, 1, 2, 3, 4], open_hour: 9, close_hour: 17, slot_minutes: 30, timezone: 'Europe/Dublin' });
+        expect(bookingHoursFromConfig({ calendar_id: 'primary', open_hour: 8 })).toMatchObject({
+            open_hour: 8,
+            timezone: 'Europe/Dublin',
+        });
+    });
+
+    it('knows whether the connection has booking hours at all', () => {
+        expect(hasBookingHours(undefined)).toBe(false);
+        expect(hasBookingHours({ calendar_id: 'primary' })).toBe(false);
+        expect(hasBookingHours({ calendar_id: 'primary', timezone: 'Europe/Dublin' })).toBe(true);
     });
 });
 

@@ -6,8 +6,14 @@ export const APPOINTMENT_HOURS_TYPE: SetupFieldType = 'appointment_hours';
 /** Every field set: what the dialog edits and sends. */
 export type BookingHours = Required<AppointmentHours>;
 
-/** The time zone when this browser can't say its own. */
+/**
+ * The Google Calendar connection's default time zone, and the one used when
+ * this browser can't say its own.
+ */
 export const DEFAULT_TIMEZONE = 'Europe/Dublin';
+
+/** The connection settings that hold its booking hours. */
+const BOOKING_KEYS = ['booking_days', 'open_hour', 'close_hour', 'slot_minutes', 'timezone'] as const;
 
 export const WEEKDAYS: { value: Weekday; short: string; long: string }[] = [
     { value: 0, short: 'Mon', long: 'Monday' },
@@ -52,20 +58,25 @@ function supportedTimeZones(): string[] | null {
     }
 }
 
-/**
- * This browser's time zone, else Europe/Dublin: also when it isn't a real
- * zone (e.g. "Etc/Unknown"). The browser's zone list leaves out UTC.
- */
-export function browserTimeZone(): string {
-    let zone: string;
+/** Whether *zone* is a real time zone (aliases included) this browser knows. */
+function isKnownTimeZone(zone: string): boolean {
+    if (!zone || zone === 'Etc/Unknown') return false;
     try {
-        zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+        new Intl.DateTimeFormat('en', { timeZone: zone });
+        return true;
+    } catch {
+        return false;
+    }
+}
+
+/** This browser's time zone, else Europe/Dublin (also for "Etc/Unknown"). */
+export function browserTimeZone(): string {
+    try {
+        const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+        return isKnownTimeZone(zone) ? zone : DEFAULT_TIMEZONE;
     } catch {
         return DEFAULT_TIMEZONE;
     }
-    const known = supportedTimeZones();
-    if (!zone || (known && zone !== 'UTC' && !known.includes(zone))) return DEFAULT_TIMEZONE;
-    return zone;
 }
 
 /** The time zones to choose from, always including *current*. */
@@ -74,15 +85,22 @@ export function timeZoneOptions(current: string): string[] {
     return zones.includes(current) ? zones : [current, ...zones];
 }
 
+/** Monday to Friday, 9:00–17:00, 30 minutes, in *timezone*. */
+function workingWeek(timezone: string): BookingHours {
+    return { booking_days: [0, 1, 2, 3, 4], open_hour: 9, close_hour: 17, slot_minutes: 30, timezone };
+}
+
 /** Monday to Friday, 9:00–17:00, 30 minutes, in this browser's time zone. */
 export function defaultBookingHours(): BookingHours {
-    return {
-        booking_days: [0, 1, 2, 3, 4],
-        open_hour: 9,
-        close_hour: 17,
-        slot_minutes: 30,
-        timezone: browserTimeZone(),
-    };
+    return workingWeek(browserTimeZone());
+}
+
+/**
+ * Whether a Google Calendar connection's stored settings say anything about
+ * its booking hours; one that doesn't books in the calendar's defaults.
+ */
+export function hasBookingHours(config: Record<string, unknown> | undefined): boolean {
+    return !!config && BOOKING_KEYS.some((key) => key in config);
 }
 
 function wholeNumber(value: unknown, min: number, max: number): number | null {
@@ -91,11 +109,12 @@ function wholeNumber(value: unknown, min: number, max: number): number | null {
 
 /**
  * The hours a Google Calendar connection already books in, from its stored
- * settings (time zone included); a missing or invalid setting keeps the
- * dialog's default.
+ * settings (time zone included). A missing or invalid setting is the
+ * calendar's own default, never this browser's time zone, so the agent says
+ * what the calendar does.
  */
 export function bookingHoursFromConfig(config: Record<string, unknown> | undefined): BookingHours {
-    const hours = defaultBookingHours();
+    const hours = workingWeek(DEFAULT_TIMEZONE);
     if (!config) return hours;
     const days = config.booking_days;
     if (Array.isArray(days)) {

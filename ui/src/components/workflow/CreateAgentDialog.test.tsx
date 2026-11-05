@@ -475,3 +475,25 @@ it('keeps the hours set on the Integrations page for a calendar connected there'
     expect(body.appointment_hours).toEqual(BOOKING_HOURS);
     expect(body.apply_to_calendar).toBe(false);
 });
+
+it('treats a calendar with no booking hours saved as new', async () => {
+    // Connected on the Integrations page, its settings closed without saving.
+    mocks.connections.mockResolvedValue({ data: { connections: [{ ...CALENDAR, config: { calendar_id: 'primary' } }] } });
+    mocks.duplicate.mockResolvedValue({ data: { id: 7, calendar_hours: 'updated' } });
+    renderDialog();
+    await openReceptionist();
+
+    expect(await screen.findByText('These become the booking hours of your Google Calendar connection.')).toBeTruthy();
+    await fillAndCreate();
+
+    await waitFor(() => expect(mocks.duplicate).toHaveBeenCalled());
+    const body = mocks.duplicate.mock.calls[0][0].body;
+    expect(body.appointment_hours).toEqual({
+        booking_days: [0, 1, 2, 3, 4],
+        open_hour: 9,
+        close_hour: 17,
+        slot_minutes: 30,
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+    });
+    expect(body.apply_to_calendar).toBe(true);
+});

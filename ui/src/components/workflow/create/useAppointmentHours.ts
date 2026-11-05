@@ -8,6 +8,7 @@ import {
     bookingHoursFromConfig,
     bookingHoursProblem,
     defaultBookingHours,
+    hasBookingHours,
     isAppointmentHoursField,
 } from '@/lib/appointmentHours';
 
@@ -33,11 +34,12 @@ export interface AppointmentHours {
 
 /**
  * The appointment hours of an agent that books with *calendar*. A calendar
- * connected in this dialog's sign-in pop-up starts from the defaults (in this
- * browser's time zone) and gets these hours. Any other calendar, including
- * one just connected on the Integrations page, shows the hours it already
- * books in, and only changes them when the user edits them, since every
- * agent booking with it shares them.
+ * connected in this dialog's sign-in pop-up, or one with no booking hours
+ * saved yet, starts from the defaults (in this browser's time zone) and gets
+ * these hours. Any other calendar, including one just set up on the
+ * Integrations page, shows the hours it already books in, and only changes
+ * them when the user edits them, since every agent booking with it shares
+ * them.
  */
 export function useAppointmentHours(
     template: WorkflowTemplateResponse | null,
@@ -50,8 +52,10 @@ export function useAppointmentHours(
 
     const templateField = template?.setup_fields?.find(isAppointmentHoursField) ?? null;
     const field = attached ? templateField : null;
-    const fresh = calendar.connectedHere;
     const config = attached ? calendar.connection?.config : undefined;
+    // Connected in the pop-up, or never given booking hours (e.g. its
+    // settings closed unsaved on the Integrations page).
+    const fresh = calendar.connectedHere || (!!config && !hasBookingHours(config));
 
     // A new template starts over.
     useEffect(() => {
