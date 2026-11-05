@@ -14,6 +14,32 @@ class TemplateSetupError(ValueError):
     """The answers don't fit the template's setup questions."""
 
 
+def _join(items: list[str]) -> str:
+    """ "a", "a and b", "a, b and c"."""
+    if len(items) <= 2:
+        return " and ".join(items)
+    return f"{', '.join(items[:-1])} and {items[-1]}"
+
+
+def toggles_answer(field: TemplateSetupField, raw: str | None) -> str:
+    """The instruction a ``toggles`` answer stands for.
+
+    ``raw`` is the chosen values, comma-separated; ``None`` (not answered,
+    e.g. an older client) means the defaults. Order follows the options.
+    """
+    if raw is None:
+        chosen = {o.value for o in field.options if o.default}
+    else:
+        chosen = {part.strip() for part in raw.split(",") if part.strip()}
+        unknown = sorted(chosen - {o.value for o in field.options})
+        if unknown:
+            raise TemplateSetupError(
+                f"{field.label}: unknown choice {', '.join(unknown)}."
+            )
+    prompts = [o.prompt for o in field.options if o.value in chosen]
+    return field.sentence.replace("{items}", _join(prompts)) if prompts else ""
+
+
 def parse_setup_fields(raw: Any) -> list[TemplateSetupField]:
     """Read a template's stored ``setup_fields``; raise on a malformed list."""
     try:
@@ -42,6 +68,10 @@ def fill_template_values(
 
     answers: dict[str, str] = {}
     for field in fields:
+        if field.type == "toggles":
+            # Our own wording, not the user's text: no placeholder check.
+            answers[field.key] = toggles_answer(field, values.get(field.key))
+            continue
         value = (values.get(field.key) or "").strip()
         if not value and field.required:
             raise TemplateSetupError(f"{field.label} is required.")

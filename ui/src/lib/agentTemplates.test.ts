@@ -4,6 +4,8 @@ import type { IntegrationConnectionResponse, WorkflowTemplateResponse } from '@/
 
 import {
     agentNameFor,
+    chosenToggles,
+    emptyAnswers,
     filterTemplates,
     missingAnswer,
     previewParts,
@@ -15,6 +17,7 @@ import {
     templateHighlights,
     templateMeta,
     usableConnection,
+    withToggle,
 } from './agentTemplates';
 
 const FIELDS = [
@@ -161,5 +164,31 @@ describe('setting a template up', () => {
         ] as IntegrationConnectionResponse[];
         expect(usableConnection(connections, 'google-calendar')?.id).toBe('c');
         expect(usableConnection(connections.slice(0, 2), 'google-calendar')).toBeNull();
+    });
+});
+
+describe('booking toggles', () => {
+    const field = {
+        key: 'booking_questions',
+        label: 'When someone books, also ask',
+        type: 'toggles' as const,
+        required: false,
+        options: [
+            { value: 'party_size', label: 'Party size', prompt: 'how many people', default: true },
+            { value: 'allergies', label: 'Allergies', prompt: 'about allergies', default: true },
+            { value: 'occasion', label: 'Special occasion', prompt: 'about an occasion' },
+        ],
+    };
+
+    it('start at their defaults, and are never "missing"', () => {
+        expect(emptyAnswers([field])).toEqual({ booking_questions: 'party_size,allergies' });
+        expect(missingAnswer([field], { booking_questions: '' })).toBeNull();
+    });
+
+    it('keep the options order whatever the click order', () => {
+        expect(withToggle(field, 'allergies', 'party_size', true)).toBe('party_size,allergies');
+        expect(withToggle(field, 'party_size,allergies', 'party_size', false)).toBe('allergies');
+        expect(withToggle(field, '', 'occasion', true)).toBe('occasion');
+        expect([...chosenToggles(' party_size , occasion ')]).toEqual(['party_size', 'occasion']);
     });
 });
