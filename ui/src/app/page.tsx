@@ -1,7 +1,5 @@
-import { isNextRouterError } from "next/dist/client/components/is-next-router-error";
 import { redirect } from "next/navigation";
 
-import { getWorkflowCountApiV1WorkflowCountGet } from "@/client/sdk.gen";
 import { getServerAccessToken,getServerAuthProvider,getServerUser } from "@/lib/auth/server";
 import logger from '@/lib/logger';
 import { getRedirectUrl } from "@/lib/utils";
@@ -13,45 +11,16 @@ export default async function Home() {
   const authProvider = await getServerAuthProvider();
   logger.debug('[HomePage] Auth provider:', authProvider);
 
-  // For local/OSS provider, check if user has workflows
+  // Local/OSS provider: /after-sign-in picks the landing page by role and
+  // agents, so this page and the sign-in flow can't disagree.
   if (authProvider === 'local') {
-    logger.debug('[HomePage] Local provider detected, checking for workflows');
-
+    let accessToken: string | null = null;
     try {
-      const accessToken = await getServerAccessToken();
-      if (accessToken) {
-        const countResponse = await getWorkflowCountApiV1WorkflowCountGet({
-          headers: {
-            Authorization: `Bearer ${accessToken}`,
-          },
-        });
-
-        logger.debug('[HomePage] Found workflows for local provider:', {
-          total: countResponse.data?.total,
-          active: countResponse.data?.active
-        });
-
-        if (countResponse.data && countResponse.data.active > 0) {
-          logger.debug('[HomePage] Redirecting to /workflow - user has workflows');
-          redirect('/workflow');
-        } else {
-          logger.debug('[HomePage] Redirecting to /workflow/create - no workflows found');
-          redirect('/workflow/create');
-        }
-      } else {
-        redirect('/auth/login');
-      }
+      accessToken = await getServerAccessToken();
     } catch (error) {
-      // Re-throw navigation errors (redirects, not found, etc.) - they're intentional
-      if (isNextRouterError(error)) {
-        throw error;
-      }
-
-      logger.error('[HomePage] Error checking workflows for local provider:', error);
-      // Default to /workflow/create on actual errors
-      logger.debug('[HomePage] Defaulting to /workflow/create due to error');
-      redirect('/workflow/create');
+      logger.error('[HomePage] Could not read the local session:', error);
     }
+    redirect(accessToken ? '/after-sign-in' : '/auth/login');
   }
 
   logger.debug('[HomePage] Getting server user...');

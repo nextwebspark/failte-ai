@@ -58,7 +58,7 @@ export function DurationChart({ data }: DurationChartProps) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Call Duration Distribution</CardTitle>
+        <CardTitle>Call length</CardTitle>
       </CardHeader>
       <CardContent>
         {data.length === 0 ? (

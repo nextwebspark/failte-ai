@@ -92,7 +92,7 @@ it('shows the recorded timeout for call 2796 instead of leaving the tool running
 
 it('offers to delete the call data only to organization admins', async () => {
     render(<WorkflowRunPage />);
-    await screen.findByText('Run 34');
+    await screen.findByText('Call 34');
     expect(screen.queryByRole('button', { name: 'Delete call data' })).toBeNull();
     cleanup();
 

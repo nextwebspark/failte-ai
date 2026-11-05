@@ -69,7 +69,7 @@ const NAV_ITEMS = [
     { id: "dictionary", label: "Dictionary" },
     { id: "voicemail", label: "Voicemail and screening" },
     { id: "identity", label: "Identity" },
-    { id: "recordings", label: "Recordings" },
+    { id: "recordings", label: "Prompt audio" },
     { id: "report", label: "Reporting" },
 ];
 
@@ -1411,7 +1411,7 @@ function AdvancedSettings({ context }: { context: AgentSectionContext }) {
                         <SettingsSection
                             id="recordings"
                             icon={Mic}
-                            title="Recordings"
+                            title="Prompt audio"
                             description={
                                 <>
                                     Shared by every agent in the workspace. Type{" "}

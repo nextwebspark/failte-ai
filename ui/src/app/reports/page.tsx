@@ -306,7 +306,7 @@ export default function ReportsPage() {
       {report && !loading && !error && (
         <>
           {/* Metrics Cards */}
-          <MetricsCards metrics={report.metrics} />
+          <MetricsCards metrics={report.metrics} isToday={isToday} />
 
           {/* Charts */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -318,7 +318,7 @@ export default function ReportsPage() {
           {report.metrics.total_runs === 0 && (
             <Card className="p-6">
               <p className="text-center text-muted-foreground">
-                No runs found for {format(selectedDate, 'MMMM dd, yyyy')}
+                No calls on {format(selectedDate, 'MMMM dd, yyyy')}
                 {selectedWorkflow !== 'all' && ' for the selected agent'}
               </p>
             </Card>

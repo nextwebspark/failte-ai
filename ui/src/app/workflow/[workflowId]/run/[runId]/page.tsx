@@ -555,7 +555,7 @@ function RunMetricsSection({
     return (
         <Card className="border-border">
             <CardHeader className="pb-3">
-                <CardTitle className="text-lg">Run Metrics</CardTitle>
+                <CardTitle className="text-lg">Call metrics</CardTitle>
             </CardHeader>
             <CardContent className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
                 <MetricCard label="Duration" value={formatDuration(costInfo?.call_duration_seconds)} />
@@ -708,7 +708,7 @@ export default function WorkflowRunPage() {
     const backHref = returnTo ?? `/workflow/${workflowId}/runs`;
     const backLabel = cameFromWorkspace && returnTo
         ? getPageMeta(returnTo).title
-        : agentSectionFor(returnTo ?? `/workflow/${workflowId}/runs`)?.title ?? 'Runs';
+        : agentSectionFor(returnTo ?? `/workflow/${workflowId}/runs`)?.title ?? 'Calls';
 
     if (isLoading) {
         returnValue = (
@@ -762,7 +762,7 @@ export default function WorkflowRunPage() {
                                 {isTextChatRun ? <FileText className="h-3.5 w-3.5" /> : <Check className="h-3.5 w-3.5" />}
                                 {isTextChatRun ? 'Text chat' : 'Completed'}
                             </span>
-                            <h1 className="text-lg font-semibold text-foreground">Run {runId}</h1>
+                            <h1 className="text-lg font-semibold text-foreground">Call {runId}</h1>
                             {workflowRun?.created_at && (
                                 <span className="flex items-center gap-1.5 text-sm text-muted-foreground">
                                     <Clock className="h-4 w-4" />
@@ -893,9 +893,9 @@ export default function WorkflowRunPage() {
             <div className="flex h-full items-center justify-center p-6">
                 <Card className="w-full max-w-xl border-border">
                     <CardHeader className="space-y-2">
-                        <CardTitle className="text-2xl">Run Details Unavailable</CardTitle>
+                        <CardTitle className="text-2xl">Call details unavailable</CardTitle>
                         <p className="text-sm text-muted-foreground">
-                            This run does not have a details view yet. Go back to the agent to continue testing or make changes.
+                            This call does not have a details view yet. Go back to the agent to continue testing or make changes.
                         </p>
                     </CardHeader>
                     <CardFooter className="gap-2">
