@@ -217,7 +217,7 @@ export function TemplateSetup({
             {greeting && (
                 <aside
                     aria-label="Preview"
-                    className="hidden w-[280px] shrink-0 flex-col gap-3 border-l border-line-soft bg-panel-2 p-5 md:flex"
+                    className="flex w-full shrink-0 flex-col gap-3 border-t border-line-soft bg-panel-2 p-5 md:w-[280px] md:border-t-0 md:border-l"
                 >
                     <span className="text-[10.5px] font-semibold uppercase tracking-[0.08em] text-ink-3">
                         How it will sound

@@ -8,8 +8,11 @@ import {
     missingAnswer,
     previewParts,
     sortTemplates,
+    templateCategories,
     templateFilters,
+    templateFlowSteps,
     templateGreeting,
+    templateHighlights,
     templateMeta,
     usableConnection,
 } from './agentTemplates';
@@ -56,11 +59,65 @@ describe('the gallery', () => {
         expect(filterTemplates([inbound, outbound], 'outbound')).toEqual([outbound]);
     });
 
+    it('offers category chips when more than one industry is present', () => {
+        const clinic = template({ id: 1, category: 'clinic' });
+        const trades = template({ id: 2, category: 'trades' });
+        expect(templateCategories([clinic])).toEqual([]);
+        expect(templateCategories([clinic, trades])).toEqual(['all', 'clinic', 'trades']);
+        expect(filterTemplates([clinic, trades], 'all', 'clinic')).toEqual([clinic]);
+    });
+
     it('describes a card in plain words', () => {
         expect(templateMeta(template({ integrations: ['google-calendar'] }))).toBe(
             'Answers calls · Calendar · 2 min',
         );
         expect(templateMeta(template({ call_type: 'outbound', setup_fields: [] }))).toBe('Makes calls · 1 min');
+    });
+
+    it('lists preview highlights and flow steps', () => {
+        const withCal = template({
+            integrations: ['google-calendar'],
+            template_json: {
+                nodes: [
+                    { type: 'startCall', data: { name: 'start call', greeting: 'Hi' } },
+                    { type: 'agentNode', data: { name: 'Take a message' } },
+                ],
+            },
+        });
+        expect(templateHighlights(withCal).some((h) => /calendar/i.test(h))).toBe(true);
+        expect(templateFlowSteps(withCal)).toEqual(['start call', 'Take a message']);
+    });
+
+    it('lists unknown categories after the known ones, and treats a missing one as general', () => {
+        const spa = template({ id: 1, category: 'spa' });
+        const salon = template({ id: 2, category: 'salon' });
+        const clinic = template({ id: 3, category: 'clinic' });
+        const uncategorised = template({ id: 4, category: null });
+        expect(templateCategories([spa, salon, clinic, uncategorised])).toEqual(['all', 'clinic', 'salon', 'spa']);
+        expect(filterTemplates([salon, uncategorised], 'all', 'general')).toEqual([uncategorised]);
+    });
+
+    it('combines the direction and industry filters', () => {
+        const inboundClinic = template({ id: 1, category: 'clinic' });
+        const outboundClinic = template({ id: 2, category: 'clinic', call_type: 'outbound' });
+        const outboundTrades = template({ id: 3, category: 'trades', call_type: 'outbound' });
+        const all = [inboundClinic, outboundClinic, outboundTrades];
+        expect(filterTemplates(all, 'outbound', 'clinic')).toEqual([outboundClinic]);
+        expect(filterTemplates(all, 'inbound', 'trades')).toEqual([]);
+    });
+
+    it('describes outbound agents and agents without a calendar honestly', () => {
+        const outbound = template({ call_type: 'outbound', integrations: [], setup_fields: [] });
+        const highlights = templateHighlights(outbound);
+        expect(highlights[0]).toMatch(/Calls your customers/);
+        expect(highlights.some((h) => /calendar/i.test(h))).toBe(false);
+        expect(highlights).toContain('Takes a message when it cannot finish the request');
+        // No questions, so no setup time is promised.
+        expect(highlights.some((h) => /minutes to personalise/.test(h))).toBe(false);
+    });
+
+    it('has no flow steps for a template without a graph', () => {
+        expect(templateFlowSteps(template({ template_json: {} }))).toEqual([]);
     });
 });
 

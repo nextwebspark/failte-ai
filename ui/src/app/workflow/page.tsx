@@ -16,7 +16,7 @@ import WorkflowLayout from "./WorkflowLayout";
 export const dynamic = 'force-dynamic';
 
 // The list couldn't load: keep Create / Import in the header so the page still
-// works (and the /workflow/create redirect's ?create= still opens the dialog).
+// works (and a leftover ?create= still routes to the full-page wizard).
 function WorkflowListError() {
     return (
         <>
