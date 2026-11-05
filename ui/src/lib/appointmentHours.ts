@@ -52,14 +52,20 @@ function supportedTimeZones(): string[] | null {
     }
 }
 
-/** This browser's time zone, else Europe/Dublin. */
+/**
+ * This browser's time zone, else Europe/Dublin: also when it isn't a real
+ * zone (e.g. "Etc/Unknown"). The browser's zone list leaves out UTC.
+ */
 export function browserTimeZone(): string {
+    let zone: string;
     try {
-        const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-        return zone || DEFAULT_TIMEZONE;
+        zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
     } catch {
         return DEFAULT_TIMEZONE;
     }
+    const known = supportedTimeZones();
+    if (!zone || (known && zone !== 'UTC' && !known.includes(zone))) return DEFAULT_TIMEZONE;
+    return zone;
 }
 
 /** The time zones to choose from, always including *current*. */

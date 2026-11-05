@@ -41,6 +41,13 @@ describe('default hours', () => {
         });
     });
 
+    it('fall back to Europe/Dublin for a zone the browser doesn’t know', () => {
+        browserZone('Etc/Unknown');
+        expect(browserTimeZone()).toBe('Europe/Dublin');
+        browserZone('UTC');
+        expect(browserTimeZone()).toBe('UTC');
+    });
+
     it('fall back to Europe/Dublin when the browser can’t say', () => {
         browserZone('');
         expect(browserTimeZone()).toBe('Europe/Dublin');

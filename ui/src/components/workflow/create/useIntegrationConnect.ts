@@ -46,8 +46,9 @@ export interface IntegrationConnect {
     status: ConnectStatus;
     connection: IntegrationConnectionResponse | null;
     /**
-     * The connection was made while this screen was open (here, or on the
-     * Integrations page in another tab), not reused from before.
+     * The connection was made here, in the sign-in pop-up, so it has only
+     * default settings. One made on the Integrations page (where its settings
+     * open right away) counts as reused.
      */
     connectedHere: boolean;
     error: string | null;
@@ -112,16 +113,19 @@ export function useIntegrationConnect(provider: string, enabled: boolean): Integ
     const elsewhere = enabled && status === 'in_integrations';
     useEffect(() => {
         if (!elsewhere) return;
+        let cancelled = false;
         const onFocus = () => {
             load()
                 .then((next) => {
-                    if (next === 'connected') setConnectedHere(true);
-                    setStatus((current) => (current === 'in_integrations' ? next : current));
+                    if (!cancelled) setStatus((current) => (current === 'in_integrations' ? next : current));
                 })
                 .catch(() => {});
         };
         window.addEventListener('focus', onFocus);
-        return () => window.removeEventListener('focus', onFocus);
+        return () => {
+            cancelled = true;
+            window.removeEventListener('focus', onFocus);
+        };
     }, [elsewhere, load]);
 
     // The pop-up hands the provider's return back here.

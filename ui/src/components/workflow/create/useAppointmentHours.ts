@@ -33,10 +33,11 @@ export interface AppointmentHours {
 
 /**
  * The appointment hours of an agent that books with *calendar*. A calendar
- * connected while setting the agent up starts from the defaults (in this
- * browser's time zone) and gets these hours. A calendar reused from before
- * shows the hours it already books in, and only changes them when the user
- * edits them, since every agent booking with it shares them.
+ * connected in this dialog's sign-in pop-up starts from the defaults (in this
+ * browser's time zone) and gets these hours. Any other calendar, including
+ * one just connected on the Integrations page, shows the hours it already
+ * books in, and only changes them when the user edits them, since every
+ * agent booking with it shares them.
  */
 export function useAppointmentHours(
     template: WorkflowTemplateResponse | null,

@@ -454,3 +454,24 @@ it('points at the hours when they make no sense', async () => {
     expect(document.activeElement).toBe(select('From'));
     expect(mocks.duplicate).not.toHaveBeenCalled();
 });
+
+it('keeps the hours set on the Integrations page for a calendar connected there', async () => {
+    mocks.providerApps.mockResolvedValue({ data: { provider_apps: [] } });
+    mocks.duplicate.mockResolvedValue({ data: { id: 7, calendar_hours: null } });
+    renderDialog();
+    await openReceptionist();
+    expect(await screen.findByRole('link', { name: /Connect Google Calendar/ })).toBeTruthy();
+
+    // Connected (and its hours set) in the Integrations tab, then back here.
+    mocks.connections.mockResolvedValue({ data: { connections: [BOOKING_CALENDAR] } });
+    fireEvent.focus(window);
+    expect(await screen.findByText('Google Calendar connected')).toBeTruthy();
+    await waitFor(() => expect(select('From').value).toBe('10'));
+    expect(select('Time zone').value).toBe('America/New_York');
+    await fillAndCreate();
+
+    await waitFor(() => expect(mocks.duplicate).toHaveBeenCalled());
+    const body = mocks.duplicate.mock.calls[0][0].body;
+    expect(body.appointment_hours).toEqual(BOOKING_HOURS);
+    expect(body.apply_to_calendar).toBe(false);
+});
