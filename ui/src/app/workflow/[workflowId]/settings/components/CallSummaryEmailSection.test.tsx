@@ -11,8 +11,10 @@ import {
     savedRecipients,
 } from "./CallSummaryEmailSection";
 
+const auth = vi.hoisted(() => ({ email: "owner@bloom.ie" }));
+
 vi.mock("@/lib/auth", () => ({
-    useAuth: () => ({ user: { id: "1", provider: "local", email: "owner@bloom.ie" } }),
+    useAuth: () => ({ user: { id: "1", provider: "local", email: auth.email } }),
 }));
 
 describe("call summary recipients", () => {
@@ -53,6 +55,16 @@ describe("CallSummaryEmailSection", () => {
         fireEvent.click(screen.getByRole("switch", { name: "Email call summaries" }));
 
         expect(screen.getByLabelText("Send to")).toHaveProperty("value", "owner@bloom.ie");
+    });
+
+    it("does not offer an address no email reaches", () => {
+        auth.email = "admin@localhost";
+        renderSection();
+
+        fireEvent.click(screen.getByRole("switch", { name: "Email call summaries" }));
+
+        expect(screen.getByLabelText("Send to")).toHaveProperty("value", "");
+        auth.email = "owner@bloom.ie";
     });
 
     it("keeps addresses already saved when switched back on", () => {

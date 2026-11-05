@@ -7,14 +7,13 @@ import { Switch } from "@/components/ui/switch";
 import { useUnsavedChanges } from "@/context/UnsavedChangesContext";
 import { useAuth } from "@/lib/auth";
 import { signedInEmail } from "@/lib/auth/identity";
+import { isEmailAddress } from "@/lib/emailAddress";
 
 import { SettingRow, SettingsSection } from "../SettingsLayout";
 import { useSettingsSection } from "../SettingsSaveBar";
 
 /** Mirrors MAX_CALL_SUMMARY_RECIPIENTS in api/schemas/call_summary_email.py. */
 export const MAX_CALL_SUMMARY_RECIPIENTS = 5;
-
-const ADDRESS = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 /** The addresses in a comma-separated list, without blanks. */
 export function parseRecipients(text: string): string[] {
@@ -26,7 +25,7 @@ export function parseRecipients(text: string): string[] {
 export function savedRecipients(enabled: boolean, recipients: string[]): string[] {
     return enabled
         ? recipients
-        : recipients.filter((address) => ADDRESS.test(address)).slice(0, MAX_CALL_SUMMARY_RECIPIENTS);
+        : recipients.filter(isEmailAddress).slice(0, MAX_CALL_SUMMARY_RECIPIENTS);
 }
 
 /** Why the setting can't be saved as it is, or null when it can. */
@@ -36,7 +35,7 @@ export function callSummaryProblem(enabled: boolean, recipients: string[]): stri
     if (recipients.length > MAX_CALL_SUMMARY_RECIPIENTS) {
         return `Send call summaries to at most ${MAX_CALL_SUMMARY_RECIPIENTS} addresses`;
     }
-    if (recipients.some((address) => !ADDRESS.test(address))) return "Check the call summary email addresses";
+    if (recipients.some((address) => !isEmailAddress(address))) return "Check the call summary email addresses";
     return null;
 }
 
@@ -62,8 +61,10 @@ export function CallSummaryEmailSection({ saved }: { saved: CallSummaryEmailConf
 
     const toggle = (next: boolean) => {
         setEnabled(next);
-        // Turning it on for the first time starts from the user's own address.
-        if (next && !text.trim()) setText(signedInEmail(user) ?? "");
+        // Turning it on for the first time starts from the user's own address,
+        // when it is one an email can reach.
+        const own = signedInEmail(user);
+        if (next && !text.trim() && own && isEmailAddress(own)) setText(own);
     };
 
     return (

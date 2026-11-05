@@ -74,6 +74,8 @@ describe('setting a template up', () => {
             call_summary_email: 'owner@bloom.ie',
         });
         expect(initialAnswers(fields, { userEmail: null }).call_summary_email).toBe('');
+        // A local install's admin has no address an email can reach.
+        expect(initialAnswers(fields, { userEmail: 'admin@localhost' }).call_summary_email).toBe('');
     });
 
     it('finds the first unanswered required question', () => {
