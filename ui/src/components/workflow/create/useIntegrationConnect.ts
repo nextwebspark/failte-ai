@@ -42,9 +42,22 @@ export type ConnectStatus =
     | 'needs_admin'
     | 'unavailable';
 
+/** What a load found; a field left out keeps its current value. */
+interface Loaded {
+    status: ConnectStatus;
+    connection?: IntegrationConnectionResponse | null;
+    appId?: string | null;
+}
+
 export interface IntegrationConnect {
     status: ConnectStatus;
     connection: IntegrationConnectionResponse | null;
+    /**
+     * The connection was made here, in the sign-in pop-up, so it has only
+     * default settings. One made on the Integrations page (where its settings
+     * open right away) counts as reused.
+     */
+    connectedHere: boolean;
     error: string | null;
     connect: () => void;
     /** Stops waiting for a sign-in the user abandoned. */
@@ -64,55 +77,73 @@ export function useIntegrationConnect(provider: string, enabled: boolean): Integ
     const canConnect = can('integrations:write') && can('agents:write');
     const [status, setStatus] = useState<ConnectStatus>('loading');
     const [connection, setConnection] = useState<IntegrationConnectionResponse | null>(null);
+    const [connectedHere, setConnectedHere] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [appId, setAppId] = useState<string | null>(null);
     const popupRef = useRef<Window | null>(null);
 
-    const load = useCallback(async (): Promise<ConnectStatus> => {
+    /** Fetches the state; the caller applies it unless it went stale meanwhile. */
+    const load = useCallback(async (): Promise<Loaded> => {
         const [connections, apps] = await Promise.all([
             listConnectionsApiV1IntegrationsConnectionsGet(),
             listProviderAppsApiV1IntegrationsProviderAppsGet(),
         ]);
         if (connections.error || !connections.data) {
-            if (isUnavailableError(connections.error)) return 'unavailable';
-            return canConnect ? 'unavailable' : 'needs_admin';
+            if (isUnavailableError(connections.error)) return { status: 'unavailable' };
+            return { status: canConnect ? 'unavailable' : 'needs_admin' };
         }
         const usable = usableConnection(connections.data.connections, provider);
-        setConnection(usable);
-        if (usable) return 'connected';
-        if (!canConnect) return 'needs_admin';
+        if (usable) return { status: 'connected', connection: usable };
+        if (!canConnect) return { status: 'needs_admin', connection: null };
         const family = INTEGRATION_AUTH_FAMILY[provider] ?? provider;
         const managed = (apps.data?.provider_apps ?? []).find(
             (app) => app.managed && (app.provider === provider || app.provider === family),
         );
-        setAppId(managed?.id ?? null);
-        return managed ? 'ready' : 'in_integrations';
+        return { status: managed ? 'ready' : 'in_integrations', connection: null, appId: managed?.id ?? null };
     }, [canConnect, provider]);
+
+    const apply = useCallback((loaded: Loaded) => {
+        if (loaded.connection !== undefined) setConnection(loaded.connection);
+        if (loaded.appId !== undefined) setAppId(loaded.appId);
+    }, []);
 
     useEffect(() => {
         if (!enabled) return;
         let cancelled = false;
         setStatus('loading');
+        setConnectedHere(false);
         load()
-            .then((next) => !cancelled && setStatus(next))
+            .then((loaded) => {
+                if (cancelled) return;
+                apply(loaded);
+                setStatus(loaded.status);
+            })
             .catch(() => !cancelled && setStatus('unavailable'));
         return () => {
             cancelled = true;
         };
-    }, [enabled, load]);
+    }, [enabled, load, apply]);
 
     // Connected on the Integrations page in another tab: notice on return.
     const elsewhere = enabled && status === 'in_integrations';
     useEffect(() => {
         if (!elsewhere) return;
+        let cancelled = false;
         const onFocus = () => {
             load()
-                .then((next) => setStatus((current) => (current === 'in_integrations' ? next : current)))
+                .then((loaded) => {
+                    if (cancelled) return;
+                    apply(loaded);
+                    setStatus((current) => (current === 'in_integrations' ? loaded.status : current));
+                })
                 .catch(() => {});
         };
         window.addEventListener('focus', onFocus);
-        return () => window.removeEventListener('focus', onFocus);
-    }, [elsewhere, load]);
+        return () => {
+            cancelled = true;
+            window.removeEventListener('focus', onFocus);
+        };
+    }, [elsewhere, load, apply]);
 
     // The pop-up hands the provider's return back here.
     const waiting = status === 'connecting';
@@ -138,6 +169,7 @@ export function useIntegrationConnect(provider: string, enabled: boolean): Integ
                 return;
             }
             setConnection(response.data);
+            setConnectedHere(true);
             setStatus('connected');
         });
         return () => {
@@ -192,5 +224,5 @@ export function useIntegrationConnect(provider: string, enabled: boolean): Integ
         });
     }, [appId, provider]);
 
-    return { status, connection, error, connect, cancel };
+    return { status, connection, connectedHere, error, connect, cancel };
 }

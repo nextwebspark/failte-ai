@@ -1,6 +1,7 @@
 """Fill a workflow template with the answers to its setup questions."""
 
 import re
+from collections.abc import Mapping
 from typing import Any
 
 from pydantic import TypeAdapter, ValidationError
@@ -26,8 +27,14 @@ def fill_template_values(
     definition: dict[str, Any],
     fields: list[TemplateSetupField],
     values: dict[str, str],
+    rendered: Mapping[str, str] | None = None,
 ) -> dict[str, Any]:
     """Return a copy of *definition* with each field's ``{{key}}`` replaced.
+
+    *values* are the user's answers, trimmed. *rendered* are answers the
+    server wrote for some fields; they take precedence and are not trimmed
+    (e.g. a line ending in a newline). Both are checked against the field
+    and made plain text alike.
 
     Raises TemplateSetupError for an unknown key, a missing required answer or
     an answer over the field's length limit. An empty optional answer uses the
@@ -42,8 +49,11 @@ def fill_template_values(
 
     answers: dict[str, str] = {}
     for field in fields:
-        value = (values.get(field.key) or "").strip()
-        if not value and field.required:
+        if rendered and field.key in rendered:
+            value = rendered[field.key]
+        else:
+            value = (values.get(field.key) or "").strip()
+        if not value.strip() and field.required:
             raise TemplateSetupError(f"{field.label} is required.")
         if len(value) > field.max_length:
             raise TemplateSetupError(
@@ -69,10 +79,13 @@ def fill_template_values(
             return [fill(item) for item in node]
         return node
 
-    return fill(definition)
+    filled: dict[str, Any] = {key: fill(value) for key, value in definition.items()}
+    return filled
 
 
 INTEGRATION_TOOL_PREFIX = "integration:"
+# The tools-service provider id of Google Calendar.
+GOOGLE_CALENDAR = "google-calendar"
 
 
 def attach_integration_tools(

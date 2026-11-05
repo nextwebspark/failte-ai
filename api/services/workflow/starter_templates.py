@@ -9,16 +9,17 @@ business. ``python -m scripts.sync_agent_templates`` writes them to the
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
-from api.schemas.workflow_template import TemplateSetupField
+from api.schemas.workflow_template import SetupFieldType, TemplateSetupField
 from api.services.workflow.agent_builder import (
     AgentSpec,
     CapturedFieldSpec,
     StageSpec,
     assemble_workflow_definition,
 )
-from api.services.workflow.template_setup import INTEGRATION_TOOL_PREFIX
-
-GOOGLE_CALENDAR = "google-calendar"
+from api.services.workflow.template_setup import (
+    GOOGLE_CALENDAR,
+    INTEGRATION_TOOL_PREFIX,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -38,7 +39,7 @@ class StarterTemplate:
             "template_description": self.description,
             "template_json": self.definition,
             "setup_fields": [
-                f.model_dump(exclude_none=True) for f in self.setup_fields
+                f.model_dump(mode="json", exclude_none=True) for f in self.setup_fields
             ],
             "call_type": self.call_type,
             "icon": self.icon,
@@ -65,6 +66,8 @@ _RECEPTIONIST = AgentSpec(
         "You are the friendly receptionist for {{business_name}}. "
         "About the business: {{business_description}}\n\n"
         "Opening hours: {{opening_hours}}\n"
+        # Its answer is a whole line, newline included, or nothing.
+        "{{appointment_hours}}"
         "Address: {{address | fallback:not listed. Offer to take a message instead.}}\n"
         "Website: {{website | fallback:not listed.}}\n"
         "Other things callers often ask about: {{extra_info | fallback:nothing else.}}\n\n"
@@ -143,7 +146,7 @@ STARTER_TEMPLATES: list[StarterTemplate] = [
             TemplateSetupField(
                 key="business_description",
                 label="What does your business do?",
-                type="textarea",
+                type=SetupFieldType.TEXTAREA,
                 placeholder=(
                     "Family dental practice in Dublin. Check-ups, cleaning, "
                     "whitening and emergency appointments."
@@ -152,8 +155,16 @@ STARTER_TEMPLATES: list[StarterTemplate] = [
             TemplateSetupField(
                 key="opening_hours",
                 label="Opening hours",
+                help="What your agent tells callers.",
                 placeholder="Mon–Fri 9am–6pm, Sat 10am–2pm, closed Sunday",
                 max_length=300,
+            ),
+            TemplateSetupField(
+                key="appointment_hours",
+                label="Appointment hours",
+                type=SetupFieldType.APPOINTMENT_HOURS,
+                help="When callers can book with Google Calendar.",
+                required=False,
             ),
             TemplateSetupField(
                 key="address",
@@ -165,7 +176,7 @@ STARTER_TEMPLATES: list[StarterTemplate] = [
             TemplateSetupField(
                 key="website",
                 label="Website",
-                type="url",
+                type=SetupFieldType.URL,
                 placeholder="https://bloomdental.ie",
                 required=False,
                 max_length=300,
@@ -173,7 +184,7 @@ STARTER_TEMPLATES: list[StarterTemplate] = [
             TemplateSetupField(
                 key="extra_info",
                 label="Anything else callers often ask?",
-                type="textarea",
+                type=SetupFieldType.TEXTAREA,
                 help="Parking, prices, payment options, languages you speak.",
                 placeholder="Free parking behind the building. We take card and cash.",
                 required=False,

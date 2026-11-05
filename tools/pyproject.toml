@@ -15,6 +15,9 @@ dependencies = [
     "httpx>=0.28",
     "fastmcp>=4.0.10,<5",
     "loguru>=0.7",
+    # IANA zones (incl. legacy names browsers report, e.g. Asia/Calcutta)
+    # that python:3.13-slim's trimmed system tz database lacks.
+    "tzdata>=2026.4",
 ]
 
 [project.optional-dependencies]

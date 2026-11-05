@@ -76,6 +76,27 @@ def test_rejects_bad_answers(values, message):
         fill_template_values(DEFINITION, FIELDS, values)
 
 
+def test_rendered_answers_are_used_as_given_but_still_plain_text():
+    filled = fill_template_values(
+        DEFINITION,
+        FIELDS,
+        {"business_name": "Bloom", "address": "typed by the user"},
+        rendered={"address": "{{secret}} Main St\n"},
+    )
+
+    # Over the typed answer, untrimmed, and unable to open a placeholder.
+    assert filled["nodes"][0]["data"]["prompt"].startswith(
+        "Address: {secret} Main St\n."
+    )
+
+
+def test_rendered_answers_are_length_checked():
+    with pytest.raises(TemplateSetupError, match="Notes is too long"):
+        fill_template_values(
+            DEFINITION, FIELDS, {"business_name": "A"}, rendered={"notes": "too long"}
+        )
+
+
 def test_attach_integration_tools_swaps_or_drops_placeholders():
     definition = {
         "nodes": [

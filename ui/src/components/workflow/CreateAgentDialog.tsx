@@ -3,6 +3,7 @@
 import { ChevronLeft, Loader2 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { type ReactNode, useEffect, useState } from 'react';
+import { toast } from 'sonner';
 
 import {
     createWorkflowApiV1WorkflowCreateDefinitionPost,
@@ -10,7 +11,7 @@ import {
     duplicateWorkflowTemplateApiV1WorkflowTemplatesDuplicatePost,
     getWorkflowTemplatesApiV1WorkflowTemplatesGet,
 } from '@/client/sdk.gen';
-import type { WorkflowTemplateResponse } from '@/client/types.gen';
+import type { CalendarHoursStatus, WorkflowTemplateResponse } from '@/client/types.gen';
 import { Button } from '@/components/ui/button';
 import {
     Dialog,
@@ -25,7 +26,9 @@ import { Textarea } from '@/components/ui/textarea';
 import { AgentReady, type ReadyItem } from '@/components/workflow/create/AgentReady';
 import { TemplateGallery, TemplateIcon } from '@/components/workflow/create/TemplateGallery';
 import { TemplateSetup } from '@/components/workflow/create/TemplateSetup';
+import { useAppointmentHours } from '@/components/workflow/create/useAppointmentHours';
 import { useIntegrationConnect } from '@/components/workflow/create/useIntegrationConnect';
+import { useOrgConfig } from '@/context/OrgConfigContext';
 import { agentNameFor, emptyAnswers, GOOGLE_CALENDAR, missingAnswer } from '@/lib/agentTemplates';
 import { detailFromError } from '@/lib/apiError';
 import { useAuth } from '@/lib/auth';
@@ -93,6 +96,24 @@ const WIDTH: Record<View, string> = {
     blank: 'sm:max-w-[560px]',
 };
 
+/** What happened to the Google Calendar connection's booking hours. */
+const CALENDAR_HOURS_ITEM: Record<CalendarHoursStatus, ReadyItem> = {
+    updated: { text: 'Books only in your appointment hours', done: true },
+    not_allowed: { text: 'Calendar booking hours', note: 'An admin sets them in Integrations', done: false },
+    failed: { text: 'Calendar booking hours', note: 'Not saved: set them in Integrations', done: false },
+};
+
+/** The agent exists; only saving the hours to the calendar failed. */
+function warnHoursNotSaved() {
+    toast.warning('Your agent is ready, but its appointment hours weren’t saved to Google Calendar.', {
+        description: 'Set them in Integrations → Google Calendar → Settings.',
+        action: {
+            label: 'Open Integrations',
+            onClick: () => window.open('/integrations', '_blank', 'noopener'),
+        },
+    });
+}
+
 /** The short name the agent builder needs: the description's first sentence. */
 function shortUseCase(description: string): string {
     const first = description.trim().split(/(?<=[.!?])\s/)[0] ?? '';
@@ -136,6 +157,7 @@ interface CreateAgentDialogProps {
 export function CreateAgentDialog({ open, onOpenChange, initialMode = 'template' }: CreateAgentDialogProps) {
     const router = useRouter();
     const { user } = useAuth();
+    const { can } = useOrgConfig();
 
     const [view, setView] = useState<View>('gallery');
     const [templates, setTemplates] = useState<WorkflowTemplateResponse[] | null>(null);
@@ -152,6 +174,11 @@ export function CreateAgentDialog({ open, onOpenChange, initialMode = 'template'
 
     const wantsCalendar = view === 'setup' && !!template?.integrations?.includes(GOOGLE_CALENDAR);
     const calendar = useIntegrationConnect(GOOGLE_CALENDAR, open && wantsCalendar && !!user);
+    const calendarTool =
+        wantsCalendar && useCalendar && calendar.status === 'connected'
+            ? calendar.connection?.tool_uuids?.[0]
+            : undefined;
+    const hours = useAppointmentHours(template, calendar, !!calendarTool, can('integrations:write'));
 
     useEffect(() => {
         if (!open) return;
@@ -217,11 +244,12 @@ export function CreateAgentDialog({ open, onOpenChange, initialMode = 'template'
             document.getElementById(`setup-${missing.key}`)?.focus();
             return;
         }
+        if (hours.field && hours.problem) {
+            // The hours input already says what is wrong.
+            document.getElementById(`setup-${hours.field.key}-open`)?.focus();
+            return;
+        }
         setAnswerErrors({});
-        const calendarTool =
-            wantsCalendar && useCalendar && calendar.status === 'connected'
-                ? calendar.connection?.tool_uuids?.[0]
-                : undefined;
         setSubmitting(true);
         setError(null);
         try {
@@ -231,6 +259,7 @@ export function CreateAgentDialog({ open, onOpenChange, initialMode = 'template'
                     workflow_name: agentNameFor(template, answers),
                     values: Object.fromEntries(Object.entries(answers).map(([k, v]) => [k, v.trim()])),
                     integration_tools: calendarTool ? { [GOOGLE_CALENDAR]: calendarTool } : {},
+                    ...hours.request,
                 },
             });
             if (response.error || !response.data?.id) {
@@ -244,6 +273,11 @@ export function CreateAgentDialog({ open, onOpenChange, initialMode = 'template'
                         ? { text: 'Books into Google Calendar', done: true }
                         : { text: 'Books appointments', note: 'Takes a message for now', done: false },
                 );
+            }
+            const calendarHours = response.data.calendar_hours;
+            if (calendarHours) {
+                items.push(CALENDAR_HOURS_ITEM[calendarHours]);
+                if (calendarHours === 'failed') warnHoursNotSaved();
             }
             items.push({ text: 'Ready for a test call', done: true });
             setCreated({ id: response.data.id, items });
@@ -386,6 +420,7 @@ export function CreateAgentDialog({ open, onOpenChange, initialMode = 'template'
                         calendar={wantsCalendar ? calendar : null}
                         useCalendar={useCalendar}
                         onUseCalendarChange={setUseCalendar}
+                        hours={hours}
                     />
                     {errorLine}
                 </div>
