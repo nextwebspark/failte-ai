@@ -383,6 +383,7 @@ class CalendarService:
             return RescheduleResult(
                 outcome=RescheduleOutcome.OLD_NOT_CANCELLED,
                 event_id=new_id,
+                starts_at=new_start.isoformat(),
                 say=(
                     f"You are booked in for {say_time(new_start)}, but I could "
                     f"not cancel your appointment for {say_time(old_start)}, so "
@@ -398,6 +399,7 @@ class CalendarService:
         return RescheduleResult(
             outcome=RescheduleOutcome.MOVED,
             event_id=new_id,
+            starts_at=new_start.isoformat(),
             say=(
                 f"Your appointment is moved from {say_time(old_start)} to "
                 f"{say_time(new_start)}."

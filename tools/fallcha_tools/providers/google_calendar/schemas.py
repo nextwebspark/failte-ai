@@ -92,7 +92,7 @@ BookedName = Annotated[
         max_length=200,
         description=(
             "The name the appointment was booked under, as the caller gives "
-            "it. Always needed."
+            "it, including the surname. Always needed."
         ),
     ),
 ]
@@ -157,6 +157,13 @@ class RescheduleResult(BaseModel):
     outcome: RescheduleOutcome
     event_id: str | None = Field(
         default=None, description="Id of the new booking, when one was made."
+    )
+    starts_at: str | None = Field(
+        default=None,
+        description=(
+            "Start of the new booking, ISO 8601 in the business's time zone, "
+            "when one was made."
+        ),
     )
     slots: list[Slot] | None = Field(
         default=None, description="Alternatives, when the new slot was taken."

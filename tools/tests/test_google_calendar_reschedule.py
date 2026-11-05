@@ -97,6 +97,7 @@ async def test_books_the_new_time_for_the_same_caller_then_cancels_the_old(
     result = await service.reschedule(old_id, NEW_SLOT)
 
     assert result.outcome == RescheduleOutcome.MOVED
+    assert result.starts_at == NEW_SLOT
     assert result.say == (
         "Your appointment is moved from Monday the twelfth at ten in the morning "
         "to Tuesday the thirteenth at nine in the morning."
@@ -138,6 +139,7 @@ async def test_a_taken_slot_keeps_the_old_booking(
 
     assert result.outcome == RescheduleOutcome.SLOT_TAKEN
     assert result.event_id is None
+    assert result.starts_at is None
     assert result.slots
     assert result.say.startswith("That one has just gone. I have ")
     assert result.say.endswith(
@@ -156,6 +158,7 @@ async def test_a_failed_cancel_keeps_both_and_says_so(
     result = await service.reschedule(old_id, NEW_SLOT)
 
     assert result.outcome == RescheduleOutcome.OLD_NOT_CANCELLED
+    assert result.starts_at == NEW_SLOT
     assert result.event_id is not None
     assert result.say == (
         "You are booked in for Tuesday the thirteenth at nine in the morning, "

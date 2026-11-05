@@ -196,16 +196,38 @@ def booked_caller(event: Mapping[str, object]) -> BookedCaller | None:
 
 def name_matches(wanted: str, event: Mapping[str, object]) -> bool:
     """Whether ``wanted`` names the booking's caller, ignoring case, accents
-    and apostrophes: every word of it is in the booked name ("jane" and
-    "Doe" match "Jane Doe", "Sean" matches "Seán", "OBrien" matches
-    "O'Brien"), or both run together are the same ("Marykate" matches
-    "Mary-Kate", "MacCarthy" matches "Mac Carthy"). A name with no words
-    matches nothing."""
+    and apostrophes ("Sean OBrien" matches "Seán O'Brien").
+
+    Every word given must be a booked word or booked words run together
+    ("Marykate" for "Mary-Kate", "MacCarthy" for "Mac Carthy"), and when the
+    booked name has two or more words the surname (its last word) must be
+    among them: "Souza" or "Maria Souza" match "Maria de Souza", "Maria" or
+    "de" alone do not. The whole name run together also matches ("Mary Kate
+    Doe" for "Marykate Doe"). A name with no words matches nothing.
+    """
     words = _word_list(wanted)
     booked = _word_list(_description_field(event, CALLER_PREFIX) or "")
     if not words or not booked:
         return False
-    return set(words) <= set(booked) or "".join(words) == "".join(booked)
+    if "".join(words) == "".join(booked):
+        return True
+    forms = _booked_forms(booked)
+    surnames = {form for form, ends_with_surname in forms.items() if ends_with_surname}
+    return set(words) <= forms.keys() and (
+        len(booked) == 1 or not surnames.isdisjoint(words)
+    )
+
+
+def _booked_forms(booked: list[str]) -> dict[str, bool]:
+    """Each booked word and each run of adjacent booked words joined, mapped
+    to whether it ends with the last word (the surname)."""
+    last = len(booked)
+    forms: dict[str, bool] = {}
+    for start in range(last):
+        for end in range(start + 1, last + 1):
+            form = "".join(booked[start:end])
+            forms[form] = forms.get(form, False) or end == last
+    return forms
 
 
 def one_line(text: str) -> str:

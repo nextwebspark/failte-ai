@@ -16,6 +16,7 @@ dependencies = [
     "fastmcp>=4.0.10,<5",
     "loguru>=0.7",
     "phonenumbers>=8.13,<10",
+    "tzdata>=2026.4",
 ]
 
 [project.optional-dependencies]

@@ -280,7 +280,10 @@ async def test_the_name_must_match_too(
             connection_id, "2026-10-13T11:00:00+01:00", "086 765 4321", event_id="x"
         ),
     )
-    assert await found_ids(service, name="jane") == ["jane"]
+    assert await found_ids(service, name="doe") == ["jane"]
+    assert await found_ids(service, name="Jane Doe") == ["jane"]
+    # A first name alone is not enough.
+    assert await found_ids(service, name="jane") == []
     assert await found_ids(service, name="smith") == ["john"]
     # A miss says the same whether or not the number has bookings.
     missed = await service.find(None, "Mary")

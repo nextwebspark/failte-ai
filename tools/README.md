@@ -123,10 +123,12 @@ the name is always required:
   the call's own number is hidden or unknown, the caller must say one.
   Caller ID can be spoofed, so it only saves asking for the number: on its
   own it reveals and changes nothing.
-- Every word of the name must be in the booked name (case, accents and
-  apostrophes ignored), or both run together must be equal (`Marykate` and
-  `Mary-Kate`). A miss gives the same answer whether or not the number has
-  bookings.
+- Every word of the name must be a booked word, or booked words run
+  together (`Marykate` for `Mary-Kate`, `MacCarthy` for `Mac Carthy`); case,
+  accents and apostrophes are ignored. When the booked name has two or more
+  words, its surname (last word) must be among them: `Souza` or
+  `Maria Souza` match `Maria de Souza`, `Maria` or `de` alone do not. A miss
+  gives the same answer whether or not the number has bookings.
 
 Numbers are first compared by their last 8 digits (`087 123 4567`,
 `+353 87 123 4567` and `00353871234567` are the same); bookings carry that
@@ -134,8 +136,11 @@ key as a private extended property, so Google filters on it. Different
 numbers can share a key (Dublin `01 412 3456`, Cork `021 412 3456`), so when
 both numbers parse they must also be equal in E.164. Numbers said without a
 country code use the config's `phone_region` (ISO 3166, e.g. `IE`), else the
-country of `timezone` from the system's `zone.tab`; with neither (e.g.
-`UTC`), or a number that does not parse, the key alone decides. Bookings
+country of `timezone` from `zone.tab` (legacy names such as `Asia/Calcutta`
+or `US/Eastern` are first resolved through `tzdata.zi`'s links; the `tzdata`
+package is read, else the system database). With neither (e.g. `UTC`, which
+logs a warning once), or a number that does not parse, the key alone
+decides. Bookings
 made before the key existed are matched on their description's `Phone:`
 line (the connection's soonest 500 upcoming bookings are read for them;
 drop that scan once they are all past). A caller's name, phone and reason
@@ -146,12 +151,14 @@ a line.
 same caller (name, phone, reason and any lines staff added to the
 description, read from the old booking) first, and cancels the old booking
 only once the new one is booked, so a failure never leaves the caller with
-no appointment. Its result is `{outcome, event_id, slots, say}`; `outcome`
-is `moved` (`event_id` is the new booking), `unchanged` (the same time),
+no appointment. Its result is `{outcome, event_id, starts_at, slots, say}`;
+`outcome` is `moved` (`event_id` and `starts_at` are the new booking's id
+and ISO start in the calendar's zone), `unchanged` (the same time),
 `slot_taken` (old booking kept, alternatives in `slots`), `not_found` (not
 an upcoming booking of this connection), `details_edited` (staff removed
 its caller details; the team moves it) or `old_not_cancelled` (new time
-booked, old one still there: the agent says the team will remove it). A
+booked, `event_id` and `starts_at` set, old one still there: the agent says
+the team will remove it). A
 Google error while booking changes nothing that a retry of the same call
 would not finish: the booking id is deterministic, so the retry finds its
 own new booking, and a retry after the move finished reports `moved` again.

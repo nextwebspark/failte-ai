@@ -2,13 +2,18 @@
 
 from __future__ import annotations
 
+import zoneinfo
+from collections.abc import Iterator
 from datetime import datetime
+from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
 
 import pytest
+from loguru import logger
 from pydantic import ValidationError
 
+from fallcha_tools.providers.google_calendar import phone_numbers
 from fallcha_tools.providers.google_calendar.errors import BadArgumentError
 from fallcha_tools.providers.google_calendar.matching import (
     PHONE_KEY_PROPERTY,
@@ -137,7 +142,8 @@ def test_name_matches() -> None:
         "summary": "Acme call — Jane Doe",
         "description": "Booked by the agent.\nCaller: Jane Doe\nPhone: 087",
     }
-    assert name_matches("jane", event)
+    assert not name_matches("jane", event)  # the surname is needed
+    assert name_matches("doe", event)
     assert name_matches("DOE jane", event)
     assert not name_matches("Janet", event)
     assert not name_matches("Mrs Doe", event)  # every word must be booked
@@ -165,6 +171,31 @@ def test_name_matches() -> None:
 )
 def test_names_match_across_apostrophes_and_spacing(wanted: str, booked: str) -> None:
     assert name_matches(wanted, {"description": f"Caller: {booked}"})
+
+
+@pytest.mark.parametrize(
+    ("wanted", "matches"),
+    [
+        ("de", False),  # a particle alone
+        ("Maria", False),  # a first name alone
+        ("Maria de", False),
+        ("Souza", True),  # the surname alone
+        ("Maria Souza", True),
+        ("Maria de Souza", True),
+        ("DeSouza", True),  # run together with its particle
+        ("Maria DeSouza", True),
+        ("Maria Souza Silva", False),  # a word that is not booked
+    ],
+)
+def test_the_booked_surname_is_needed(wanted: str, matches: bool) -> None:
+    event = {"description": "Caller: Maria de Souza"}
+    assert name_matches(wanted, event) is matches
+
+
+def test_a_one_word_booking_matches_that_word() -> None:
+    event = {"description": "Caller: Madonna"}
+    assert name_matches("madonna", event)
+    assert not name_matches("Madonna Ciccone", event)
 
 
 def test_run_together_names_must_be_the_whole_name() -> None:
@@ -225,6 +256,56 @@ def test_e164_and_regions() -> None:
     assert region_for_timezone("Europe/Dublin") == "IE"
     assert region_for_timezone("America/Chicago") == "US"
     assert region_for_timezone("UTC") is None
+    # Legacy names are links to canonical zones, which zone.tab lists.
+    assert region_for_timezone("Asia/Calcutta") == "IN"
+    assert region_for_timezone("US/Eastern") == "US"
+    assert region_for_timezone("Europe/Kiev") == "UA"
+    assert region_for_timezone("America/Buenos_Aires") == "AR"
+
+
+@pytest.fixture
+def fresh_region_cache() -> Iterator[None]:
+    region_for_timezone.cache_clear()
+    phone_numbers._time_zone_table.cache_clear()
+    yield
+    region_for_timezone.cache_clear()
+    phone_numbers._time_zone_table.cache_clear()
+
+
+@pytest.fixture
+def warnings() -> Iterator[list[str]]:
+    messages: list[str] = []
+    sink = logger.add(lambda m: messages.append(str(m)), level="WARNING")
+    yield messages
+    logger.remove(sink)
+
+
+@pytest.mark.usefixtures("fresh_region_cache")
+def test_a_zone_without_a_country_warns_once(warnings: list[str]) -> None:
+    assert region_for_timezone("UTC") is None
+    assert region_for_timezone("UTC") is None
+    assert len([m for m in warnings if "names no country" in m]) == 1
+
+
+@pytest.mark.usefixtures("fresh_region_cache")
+def test_no_time_zone_table_warns_once(
+    monkeypatch: pytest.MonkeyPatch, warnings: list[str]
+) -> None:
+    monkeypatch.setattr(phone_numbers, "_tzdb_directories", lambda: [])
+    assert region_for_timezone("Europe/Dublin") is None
+    assert region_for_timezone("Asia/Calcutta") is None
+    assert len([m for m in warnings if "no zone.tab found" in m]) == 1
+
+
+@pytest.mark.usefixtures("fresh_region_cache")
+def test_the_system_database_is_used_without_the_tzdata_package(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    system = [Path(directory) for directory in zoneinfo.TZPATH]
+    if not any((directory / "zone.tab").is_file() for directory in system):
+        pytest.skip("no system time-zone database")
+    monkeypatch.setattr(phone_numbers, "_tzdb_directories", lambda: system)
+    assert region_for_timezone("US/Eastern") == "US"
 
 
 def test_phone_region_config() -> None:

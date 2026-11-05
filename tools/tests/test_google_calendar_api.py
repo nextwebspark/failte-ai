@@ -347,7 +347,7 @@ async def test_mcp_finds_moves_and_cancels_a_booking_from_an_earlier_call(
         # Caller ID alone is never enough: the name is always asked for.
         with pytest.raises(ToolError, match="the name is needed"):
             await mcp.call_tool("find_appointments", {})
-        found = await mcp.call_tool("find_appointments", {"caller_name": "Ann"})
+        found = await mcp.call_tool("find_appointments", {"caller_name": "Ann Byrne"})
         assert found.structured_content == {
             "appointments": [
                 {
@@ -366,6 +366,7 @@ async def test_mcp_finds_moves_and_cancels_a_booking_from_an_earlier_call(
             {"event_id": event_id, "slot_id": "2026-10-14T10:00:00+01:00"},
         )
         assert moved.structured_content["outcome"] == "moved"
+        assert moved.structured_content["starts_at"] == "2026-10-14T10:00:00+01:00"
         new_id = moved.structured_content["event_id"]
         assert google.events[event_id]["status"] == "cancelled"
 
