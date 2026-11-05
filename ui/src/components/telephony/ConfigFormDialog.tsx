@@ -323,7 +323,7 @@ export function ConfigFormDialog({
               <div>
                 <Label className="text-sm">Set as default for outbound calls</Label>
                 <p className="text-xs text-muted-foreground">
-                  Used by test calls and campaigns when no specific config is selected.
+                  Used for outbound calls when no specific config is selected.
                   {suggestDefaultOutbound
                     ? " Your organization has no default yet."
                     : ""}

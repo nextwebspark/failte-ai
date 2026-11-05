@@ -1,6 +1,7 @@
 import { useCallback } from "react";
 
 import type { NodeSpec } from "@/client/types.gen";
+import { isFeatureEnabled } from "@/config/features";
 
 import { evaluateDisplayOptions } from "./displayOptions";
 import { PropertyInput, type RendererContext } from "./PropertyInput";
@@ -50,6 +51,8 @@ export function NodeEditForm({ spec, values, onChange, context }: NodeEditFormPr
         <div className="grid grid-cols-12 gap-3">
             {spec.properties
                 .filter((p) => evaluateDisplayOptions(p.display_options, values))
+                // Hidden, not cleared: saved skill choices stay on the step.
+                .filter((p) => p.type !== "skill_refs" || isFeatureEnabled("skills"))
                 .map((p) => {
                     const columnSpan = getPropertyColumnSpan(p.renderer_options);
                     return (
