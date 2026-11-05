@@ -44,6 +44,7 @@ mypy --strict --follow-imports=silent \
   api/services/workflow/appointment_hours.py \
   api/services/workflow/pipecat_engine_skills.py \
   api/services/workflow/skill_ref_validation.py \
+  api/services/workflow/template_setup.py \
   api/utils/text.py \
   api/utils/trusted_origins.py \
   api/utils/clock.py \
