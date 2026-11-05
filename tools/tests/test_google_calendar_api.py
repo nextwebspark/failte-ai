@@ -360,6 +360,7 @@ async def test_rest_compat_with_bearer_and_x_api_key(
         "booked": True,
         "event_id": event_id,
         "say": "That is booked in for Tuesday the thirteenth at nine in the morning.",
+        "starts_at": "2026-10-13T09:00:00+01:00",
     }
 
     cancel = await client.post(

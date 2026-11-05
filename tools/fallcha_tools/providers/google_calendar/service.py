@@ -210,6 +210,7 @@ class CalendarService:
             booked=True,
             event_id=event_id,
             say=f"That is booked in for {say_time(slot)}.",
+            starts_at=slot.isoformat(),
         )
 
     async def cancel(self, event_id: str) -> CancelResult:
@@ -227,7 +228,11 @@ class CalendarService:
             if when is not None
             else "Your appointment is cancelled."
         )
-        return CancelResult(cancelled=True, say=say)
+        return CancelResult(
+            cancelled=True,
+            say=say,
+            starts_at=when.isoformat() if when is not None else None,
+        )
 
     async def check_access(self) -> str:
         """Prove the calendar can be reached.
