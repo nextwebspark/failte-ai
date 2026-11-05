@@ -91,8 +91,8 @@ BookedName = Annotated[
     Field(
         max_length=200,
         description=(
-            "The name the appointment was booked under, as the caller gives "
-            "it, including the surname. Always needed."
+            "The full name the appointment was booked under, as the caller "
+            "gives it (at least the surname). Always needed."
         ),
     ),
 ]

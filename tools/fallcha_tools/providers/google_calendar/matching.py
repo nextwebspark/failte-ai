@@ -79,6 +79,18 @@ NEED_NAME = (
 )
 
 _WORD = re.compile(r"[^\W\d_]{2,}")
+# Notes in brackets ("Jane Doe (new patient)") are not part of the name.
+_BRACKETED = re.compile(r"\([^)]*\)")
+# Name words that never identify a caller on their own (after case, accent
+# and apostrophe folding).
+NAME_PARTICLES = frozenset(
+    {
+        "al", "bin", "da", "das", "de", "del", "della", "den", "der", "des",
+        "di", "do", "dos", "du", "el", "ibn", "la", "le", "mac", "mc", "st",
+        "ten", "ter", "van", "von",
+    }
+)  # fmt: skip
+NAME_SUFFIXES = frozenset({"jr", "sr", "ii", "iii", "iv", "phd", "md", "dds", "esq"})
 # Removed before splitting into words, so O'Brien is one word.
 _APOSTROPHES = str.maketrans("", "", "'\u2019\u02bc")
 
@@ -134,7 +146,7 @@ def caller_lookup(
     else:
         raise BadArgumentError(NEED_PHONE)
     name = (caller_name or "").strip()
-    if not _word_list(name):
+    if not _name_words(name):
         raise BadArgumentError(NEED_NAME)
     return CallerLookup(phone=phone, phone_key=key, name=name)
 
@@ -195,38 +207,61 @@ def booked_caller(event: Mapping[str, object]) -> BookedCaller | None:
 
 
 def name_matches(wanted: str, event: Mapping[str, object]) -> bool:
-    """Whether ``wanted`` names the booking's caller, ignoring case, accents
-    and apostrophes ("Sean OBrien" matches "Seán O'Brien").
+    """Whether ``wanted`` names the booking's caller, ignoring case, accents,
+    apostrophes, bracketed notes and trailing suffixes such as Jr.
 
-    Every word given must be a booked word or booked words run together
-    ("Marykate" for "Mary-Kate", "MacCarthy" for "Mac Carthy"), and when the
-    booked name has two or more words the surname (its last word) must be
-    among them: "Souza" or "Maria Souza" match "Maria de Souza", "Maria" or
-    "de" alone do not. The whole name run together also matches ("Mary Kate
-    Doe" for "Marykate Doe"). A name with no words matches nothing.
+    Every word given must be a booked word, or booked words run together
+    ("Marykate" for "Mary-Kate", "MacCarthy" for "Mac Carthy"). When the
+    booked name has two or more words, the words given must also include one
+    that is not the first booked word, a particle (de, van, ...) or a suffix:
+    "Smith" matches "John Smith Jr", "Garcia" matches "Maria Garcia Lopez",
+    but "Maria" or "de" alone do not match "Maria de Souza". Callers who say
+    their family name first ("Wang Wei") must give the full name. The whole
+    name run together also matches ("Mary Kate Doe" for "Marykate Doe").
     """
-    words = _word_list(wanted)
-    booked = _word_list(_description_field(event, CALLER_PREFIX) or "")
+    words = _name_words(wanted)
+    booked = _name_parts(_description_field(event, CALLER_PREFIX) or "")
     if not words or not booked:
         return False
-    if "".join(words) == "".join(booked):
+    if "".join(words) == "".join(word for word, _ in booked):
         return True
     forms = _booked_forms(booked)
-    surnames = {form for form, ends_with_surname in forms.items() if ends_with_surname}
     return set(words) <= forms.keys() and (
-        len(booked) == 1 or not surnames.isdisjoint(words)
+        len(booked) == 1 or any(forms[word] for word in words)
     )
 
 
-def _booked_forms(booked: list[str]) -> dict[str, bool]:
+def _name_words(text: str) -> list[str]:
+    """The words of a name, without bracketed notes or trailing suffixes."""
+    return [word for word, _ in _name_parts(text)]
+
+
+def _name_parts(text: str) -> list[tuple[str, int]]:
+    """(word, position) for each word of a name, where the position counts
+    whitespace-separated names, so "Mary-Kate" is one first name."""
+    parts = [
+        (word, position)
+        for position, token in enumerate(_BRACKETED.sub(" ", text).split())
+        for word in _word_list(token)
+    ]
+    while parts and parts[-1][0] in NAME_SUFFIXES:
+        parts.pop()
+    return parts
+
+
+def _booked_forms(booked: list[tuple[str, int]]) -> dict[str, bool]:
     """Each booked word and each run of adjacent booked words joined, mapped
-    to whether it ends with the last word (the surname)."""
-    last = len(booked)
+    to whether it covers an identifying word: one that is not part of the
+    first name and not a particle."""
+    first = booked[0][1]
+    identifying = [
+        position != first and word not in NAME_PARTICLES for word, position in booked
+    ]
     forms: dict[str, bool] = {}
-    for start in range(last):
-        for end in range(start + 1, last + 1):
-            form = "".join(booked[start:end])
-            forms[form] = forms.get(form, False) or end == last
+    for start in range(len(booked)):
+        for end in range(start + 1, len(booked) + 1):
+            form = "".join(word for word, _ in booked[start:end])
+            forms[form] = forms.get(form, False) or any(identifying[start:end])
     return forms
 
 

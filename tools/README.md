@@ -125,10 +125,14 @@ the name is always required:
   own it reveals and changes nothing.
 - Every word of the name must be a booked word, or booked words run
   together (`Marykate` for `Mary-Kate`, `MacCarthy` for `Mac Carthy`); case,
-  accents and apostrophes are ignored. When the booked name has two or more
-  words, its surname (last word) must be among them: `Souza` or
-  `Maria Souza` match `Maria de Souza`, `Maria` or `de` alone do not. A miss
-  gives the same answer whether or not the number has bookings.
+  accents, apostrophes, bracketed notes (`(new patient)`) and trailing
+  suffixes (`Jr`, `PhD`) are ignored. When the booked name has two or more
+  names, one of the words given must identify: not the first name, a
+  particle (`de`, `van`, `mac`, ...) or a suffix. `Smith` matches
+  `John Smith Jr` and `Souza` matches `Maria de Souza`; `Maria`, `de` or
+  `Jr` alone do not. Callers who say their family name first (`Wang Wei`)
+  must give the full name. A miss gives the same answer whether or not the
+  number has bookings.
 
 Numbers are first compared by their last 8 digits (`087 123 4567`,
 `+353 87 123 4567` and `00353871234567` are the same); bookings carry that
@@ -136,11 +140,15 @@ key as a private extended property, so Google filters on it. Different
 numbers can share a key (Dublin `01 412 3456`, Cork `021 412 3456`), so when
 both numbers parse they must also be equal in E.164. Numbers said without a
 country code use the config's `phone_region` (ISO 3166, e.g. `IE`), else the
-country of `timezone` from `zone.tab` (legacy names such as `Asia/Calcutta`
-or `US/Eastern` are first resolved through `tzdata.zi`'s links; the `tzdata`
-package is read, else the system database). With neither (e.g. `UTC`, which
-logs a warning once), or a number that does not parse, the key alone
-decides. Bookings
+country of `timezone`: looked up in `zone.tab` first; a name it does not
+list (`Asia/Calcutta`, `US/Eastern`) is followed through `tzdata.zi`'s
+links, and its target counts only if `zone1970.tab` gives it exactly one
+country. Many legacy names link across countries (`Iceland` to
+Africa/Abidjan, `Atlantic/Jan_Mayen` to Europe/Berlin), and rule zones
+(`CET`, `EET`, `EST5EDT`, ...) name no country, so those need
+`phone_region`. The `tzdata` package's database is read, else the
+system's. With no region (e.g. `UTC`, which logs a warning once), or a
+number that does not parse, the key alone decides. Bookings
 made before the key existed are matched on their description's `Phone:`
 line (the connection's soonest 500 upcoming bookings are read for them;
 drop that scan once they are all past). A caller's name, phone and reason

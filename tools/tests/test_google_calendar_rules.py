@@ -174,21 +174,41 @@ def test_names_match_across_apostrophes_and_spacing(wanted: str, booked: str) ->
 
 
 @pytest.mark.parametrize(
-    ("wanted", "matches"),
+    ("booked", "wanted", "matches"),
     [
-        ("de", False),  # a particle alone
-        ("Maria", False),  # a first name alone
-        ("Maria de", False),
-        ("Souza", True),  # the surname alone
-        ("Maria Souza", True),
-        ("Maria de Souza", True),
-        ("DeSouza", True),  # run together with its particle
-        ("Maria DeSouza", True),
-        ("Maria Souza Silva", False),  # a word that is not booked
+        ("John Smith Jr", "Smith", True),
+        ("John Smith Jr", "John Smith", True),
+        ("John Smith Jr", "John Smith Jr.", True),
+        ("John Smith Jr", "Jr", False),  # a suffix
+        ("John Smith Jr", "John", False),  # the first name alone
+        ("Maria Garcia Lopez", "Maria Garcia", True),
+        ("Maria Garcia Lopez", "Garcia", True),
+        ("Maria Garcia Lopez", "Maria", False),
+        ("Maria de Souza", "de", False),  # a particle
+        ("Maria de Souza", "Maria", False),
+        ("Maria de Souza", "Maria de", False),
+        ("Maria de Souza", "Souza", True),
+        ("Maria de Souza", "DeSouza", True),  # run together with its particle
+        ("Maria de Souza", "Maria Souza Silva", False),  # a word not booked
+        ("Jane Doe (new patient)", "Doe", True),  # bracketed notes are dropped
+        ("Jane Doe (new patient)", "patient", False),
+        ("Jane Doe (new patient)", "Jane", False),
+        # Family name first: the caller must give the full name.
+        ("Wang Wei", "Wang Wei", True),
+        ("Wang Wei", "Wang", False),
+        ("Mac Carthy", "MacCarthy", True),
+        ("Mac Carthy", "Mac", False),
+        # A hyphenated first name is one first name; a hyphenated surname
+        # identifies.
+        ("Mary-Kate Doe", "Kate", False),
+        ("Mary-Kate Doe", "Marykate Doe", True),
+        ("Maria Garcia-Lopez", "Lopez", True),
     ],
 )
-def test_the_booked_surname_is_needed(wanted: str, matches: bool) -> None:
-    event = {"description": "Caller: Maria de Souza"}
+def test_an_identifying_name_word_is_needed(
+    booked: str, wanted: str, matches: bool
+) -> None:
+    event = {"description": f"Caller: {booked}"}
     assert name_matches(wanted, event) is matches
 
 
@@ -263,6 +283,29 @@ def test_e164_and_regions() -> None:
     assert region_for_timezone("America/Buenos_Aires") == "AR"
 
 
+@pytest.mark.parametrize(
+    "timezone",
+    [
+        # Links whose target serves several countries (tzdata 2022b on).
+        "Iceland",
+        "Atlantic/Jan_Mayen",
+        "Africa/Asmera",
+        "Pacific/Truk",
+        "America/Coral_Harbour",
+        "Antarctica/South_Pole",
+        # Rule zones, even where they link to one country's zone (EET).
+        "CET",
+        "MET",
+        "EET",
+        "WET",
+        "EST",
+        "EST5EDT",
+    ],
+)
+def test_zones_naming_no_single_country(timezone: str) -> None:
+    assert region_for_timezone(timezone) is None
+
+
 @pytest.fixture
 def fresh_region_cache() -> Iterator[None]:
     region_for_timezone.cache_clear()
@@ -284,7 +327,7 @@ def warnings() -> Iterator[list[str]]:
 def test_a_zone_without_a_country_warns_once(warnings: list[str]) -> None:
     assert region_for_timezone("UTC") is None
     assert region_for_timezone("UTC") is None
-    assert len([m for m in warnings if "names no country" in m]) == 1
+    assert len([m for m in warnings if "names no single country" in m]) == 1
 
 
 @pytest.mark.usefixtures("fresh_region_cache")
@@ -301,11 +344,21 @@ def test_no_time_zone_table_warns_once(
 def test_the_system_database_is_used_without_the_tzdata_package(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    system = [Path(directory) for directory in zoneinfo.TZPATH]
-    if not any((directory / "zone.tab").is_file() for directory in system):
+    system = [
+        Path(directory)
+        for directory in zoneinfo.TZPATH
+        if (Path(directory) / "zone.tab").is_file()
+    ]
+    if not system:
         pytest.skip("no system time-zone database")
     monkeypatch.setattr(phone_numbers, "_tzdb_directories", lambda: system)
-    assert region_for_timezone("US/Eastern") == "US"
+    assert region_for_timezone("Europe/Dublin") == "IE"
+    # Links are only trusted where zone1970.tab can vouch for their target
+    # (macOS ships no zone1970.tab).
+    if all((system[0] / name).is_file() for name in ("tzdata.zi", "zone1970.tab")):
+        assert region_for_timezone("US/Eastern") == "US"
+    else:
+        assert region_for_timezone("US/Eastern") is None
 
 
 def test_phone_region_config() -> None:
@@ -398,3 +451,14 @@ def test_retired_order_keys_are_dropped() -> None:
     assert "orders_sheet_id" not in config.model_dump()
     with pytest.raises(ValidationError):
         CalendarConfig.model_validate({"calendar_id": "c", "surprise": 1})
+
+
+@pytest.mark.usefixtures("fresh_region_cache")
+def test_an_unreadable_time_zone_table_warns_once(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, warnings: list[str]
+) -> None:
+    (tmp_path / "zone.tab").write_bytes(b"\xff\xfe not utf-8")
+    monkeypatch.setattr(phone_numbers, "_tzdb_directories", lambda: [tmp_path])
+    assert region_for_timezone("Europe/Dublin") is None
+    assert region_for_timezone("Asia/Calcutta") is None
+    assert len([m for m in warnings if "unreadable" in m]) == 1

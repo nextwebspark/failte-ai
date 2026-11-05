@@ -99,13 +99,14 @@ def register_calendar_tools(
     ) -> FindResult:
         """Use when the caller wants to cancel, move or check an appointment they
         booked on an earlier call. Always ask for the full name the appointment
-        was booked under first and pass it as caller_name. Leave caller_phone empty
-        to use the number this call comes from; if that finds nothing and they
-        booked with another number, ask for that number (confirm it back) and
-        call again with it. Returns their upcoming appointments booked through
-        this agent (at most three, soonest first), each with its event_id. Read
-        the "say" field to the caller and confirm which appointment they mean;
-        never guess one. If none is found, offer to take a message."""
+        was booked under first (at least the surname) and pass it as
+        caller_name. Leave caller_phone empty to use the number this call comes
+        from; if that finds nothing and they booked with another number, ask
+        for that number (confirm it back) and call again with it. Returns their
+        upcoming appointments booked through this agent (at most three, soonest
+        first), each with its event_id. Read the "say" field to the caller and
+        confirm which appointment they mean; never guess one. If none is found,
+        offer to take a message."""
         svc = await service()
         return await _guard(svc.find(caller_phone, caller_name))
 

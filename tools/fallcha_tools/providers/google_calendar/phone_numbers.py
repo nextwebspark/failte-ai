@@ -47,36 +47,63 @@ def same_number(first: str, second: str, region: str | None) -> bool | None:
 
 # A link may point at another link; real chains are one or two long.
 MAX_LINK_HOPS = 5
+# Zones named after a rule, not a place (some are links to a city zone since
+# tzdata 2024b: CET to Europe/Brussels), so they name no country.
+RULE_ZONES = frozenset(
+    {
+        "CET",
+        "MET",
+        "EET",
+        "WET",
+        "EST",
+        "MST",
+        "HST",
+        "EST5EDT",
+        "CST6CDT",
+        "MST7MDT",
+        "PST8PDT",
+    }
+)
 
 
 @dataclass(frozen=True, slots=True)
 class _TimeZoneTable:
-    countries: Mapping[str, str]  # canonical zone -> ISO 3166 country
-    links: Mapping[str, str]  # legacy name -> target
+    countries: Mapping[str, str]  # zone.tab: zone -> its one country
+    shared: Mapping[str, tuple[str, ...]]  # zone1970.tab: zone -> countries
+    links: Mapping[str, str]  # tzdata.zi: legacy name -> target
 
     def country(self, timezone: str) -> str | None:
+        """The country of a zone listed in zone.tab. A legacy name counts
+        only if its target serves a single country (zone1970.tab): since
+        tzdata 2022b many link across countries (Iceland to Africa/Abidjan,
+        Atlantic/Jan_Mayen to Europe/Berlin)."""
+        if timezone in RULE_ZONES:
+            return None
+        if timezone in self.countries:
+            return self.countries[timezone]
         zone = timezone
         for _ in range(MAX_LINK_HOPS):
-            if zone in self.countries:
-                return self.countries[zone]
             target = self.links.get(zone)
             if target is None:
-                return None
+                break
             zone = target
-        return None
+        if zone == timezone:
+            return None
+        served = self.shared.get(zone, ())
+        return served[0] if len(served) == 1 else None
 
 
 @functools.cache
 def region_for_timezone(timezone: str) -> str | None:
     """The ISO 3166 country of an IANA time zone, legacy names included
-    (``Europe/Dublin`` and ``Eire`` are ``IE``); None if it names no country
-    or no time-zone table can be read. Warns once per zone."""
+    (``Europe/Dublin`` and ``Eire`` are ``IE``); None if it names no single
+    country or no time-zone table can be read. Warns once per zone."""
     table = _time_zone_table()
     region = table.country(timezone) if table is not None else None
     if region is None and table is not None:
         logger.warning(
-            "time zone {} names no country; national phone numbers are matched "
-            "on their last digits only unless phone_region is set",
+            "time zone {} names no single country; national phone numbers are "
+            "matched on their last digits only unless phone_region is set",
             timezone,
         )
     return region
@@ -84,20 +111,32 @@ def region_for_timezone(timezone: str) -> str | None:
 
 @functools.cache
 def _time_zone_table() -> _TimeZoneTable | None:
+    """The first readable database. A database is used whole, never mixed
+    with another: with the ``tzdata>=2026.4`` floor the package's is the one
+    in use, and the system's is only a fallback."""
     for directory in _tzdb_directories():
-        zone_tab = directory / "zone.tab"
-        if not zone_tab.is_file():
+        if not (directory / "zone.tab").is_file():
             continue
-        links = directory / "tzdata.zi"
-        return _TimeZoneTable(
-            countries=_zone_tab(zone_tab.read_text(encoding="utf-8")),
-            links=_links(links.read_text(encoding="utf-8")) if links.is_file() else {},
-        )
+        try:
+            return _TimeZoneTable(
+                countries=_zone_tab(_read(directory, "zone.tab")),
+                shared=_zone1970_tab(_read(directory, "zone1970.tab")),
+                links=_links(_read(directory, "tzdata.zi")),
+            )
+        except (OSError, UnicodeDecodeError) as exc:
+            logger.warning("time-zone database unreadable: {}", type(exc).__name__)
+            return None
     logger.warning(
         "no zone.tab found; set phone_region on calendar connections so national "
         "phone numbers are compared in full"
     )
     return None
+
+
+def _read(directory: Traversable, name: str) -> str:
+    """A database file's text; empty if this database lacks it."""
+    path = directory / name
+    return path.read_text(encoding="utf-8") if path.is_file() else ""
 
 
 def _tzdb_directories() -> list[Traversable]:
@@ -119,6 +158,18 @@ def _zone_tab(text: str) -> dict[str, str]:
         if line.startswith("#") or len(fields) < 3:
             continue
         zones[fields[2]] = fields[0]
+    return zones
+
+
+def _zone1970_tab(text: str) -> dict[str, tuple[str, ...]]:
+    """Zone name -> the countries it serves, from ``zone1970.tab``
+    (``CI,BF,GH  +0519-00402  Africa/Abidjan``)."""
+    zones: dict[str, tuple[str, ...]] = {}
+    for line in text.splitlines():
+        fields = line.split("\t")
+        if line.startswith("#") or len(fields) < 3:
+            continue
+        zones[fields[2]] = tuple(fields[0].split(","))
     return zones
 
 
