@@ -3,10 +3,15 @@
 Each registered provider gets its own FastMCP server guarded by a
 :class:`ConnectionKeyVerifier` bound to that provider. Servers run in
 stateless streamable-HTTP mode, so any replica can serve any request.
+
+The Fallcha API may add :data:`CONTACT_PHONE_HEADER` (the number of the
+person on the call) to a call's MCP requests; it reaches tools as
+``ConnectionContext.contact_phone``.
 """
 
 from __future__ import annotations
 
+import dataclasses
 import uuid
 from collections.abc import AsyncIterator, Mapping
 from contextlib import AsyncExitStack, asynccontextmanager
@@ -15,7 +20,7 @@ from typing import Any
 
 from fastmcp import FastMCP
 from fastmcp.exceptions import ToolError
-from fastmcp.server.dependencies import get_access_token
+from fastmcp.server.dependencies import get_access_token, get_http_headers
 from fastmcp.server.http import StarletteWithLifespan
 from starlette._utils import get_route_path
 from starlette.responses import JSONResponse
@@ -35,6 +40,12 @@ from fallcha_tools.core.provider import (
     ConnectionContextFactory,
     ProviderRegistry,
 )
+
+# Sent by the Fallcha API, which takes it from the call record. Lower case:
+# that is how ``get_http_headers`` returns names.
+CONTACT_PHONE_HEADER = "x-fallcha-contact-phone"
+# Longer values are not phone numbers and are ignored.
+MAX_CONTACT_PHONE_CHARS = 50
 
 
 @dataclass(frozen=True, slots=True)
@@ -57,9 +68,15 @@ class ConnectionResolver:
         org_id = int(claims[CLAIM_ORG_ID])
         connection_id = uuid.UUID(str(claims[CLAIM_CONNECTION_ID]))
         try:
-            return await self.loader.load(org_id, connection_id, provider_id)
+            ctx = await self.loader.load(org_id, connection_id, provider_id)
         except ToolsError as exc:
             raise ToolError(str(exc)) from exc
+        return dataclasses.replace(ctx, contact_phone=_contact_phone())
+
+
+def _contact_phone() -> str | None:
+    value = get_http_headers().get(CONTACT_PHONE_HEADER, "").strip()
+    return value if 0 < len(value) <= MAX_CONTACT_PHONE_CHARS else None
 
 
 class McpMounts:

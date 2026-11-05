@@ -35,6 +35,63 @@ def test_build_streamable_http_params_with_credential():
     assert params.sse_read_timeout == 300.0
 
 
+def test_build_streamable_http_params_extra_headers_never_replace_auth():
+    cred = MagicMock()
+    cred.credential_type = "bearer_token"
+    cred.credential_data = {"token": "abc"}
+    params = build_streamable_http_params(
+        url="https://acme.example.com/mcp",
+        credential=cred,
+        timeout_secs=30,
+        sse_read_timeout_secs=300,
+        extra_headers={"Authorization": "Bearer forged", "X-Call": "1"},
+    )
+    assert params.headers == {"Authorization": "Bearer abc", "X-Call": "1"}
+
+
+def test_build_streamable_http_params_extra_headers_ignore_letter_case():
+    cred = MagicMock()
+    cred.credential_type = "api_key"
+    cred.credential_data = {"header_name": "X-API-Key", "api_key": "real"}
+    params = build_streamable_http_params(
+        url="https://acme.example.com/mcp",
+        credential=cred,
+        timeout_secs=30,
+        sse_read_timeout_secs=300,
+        extra_headers={"x-api-key": "forged", "AUTHORIZATION": "Bearer x", "X-C": "1"},
+    )
+    assert params.headers == {"X-API-Key": "real", "X-C": "1"}
+    # Without a credential an extra header still cannot authenticate.
+    bare = build_streamable_http_params(
+        url="https://acme.example.com/mcp",
+        credential=None,
+        timeout_secs=30,
+        sse_read_timeout_secs=300,
+        extra_headers={"authorization": "Bearer x"},
+    )
+    assert bare.headers is None
+
+
+@pytest.mark.asyncio
+async def test_session_sends_extra_headers_to_real_server():
+    async with running_mcp_server(required_headers={"X-Call": "1"}) as base_url:
+        session = McpToolSession(
+            tool_uuid="uuid-extra",
+            tool_name="Call MCP",
+            url=base_url,
+            credential=None,
+            tools_filter=[],
+            timeout_secs=10,
+            sse_read_timeout_secs=20,
+            extra_headers={"X-Call": "1"},
+        )
+        await session.start()
+        try:
+            assert session.available is True
+        finally:
+            await session.close()
+
+
 def test_build_streamable_http_params_no_credential():
     params = build_streamable_http_params(
         url="https://acme.example.com/mcp",

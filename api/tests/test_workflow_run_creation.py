@@ -167,3 +167,31 @@ async def test_prepare_inputs_reports_the_callers_draft_intent(use_draft):
 
     assert run_inputs.use_draft is use_draft
     assert run_inputs.definition_id == 77
+
+
+@pytest.mark.asyncio
+async def test_template_context_cannot_supply_run_owned_keys():
+    draft = SimpleNamespace(
+        id=88,
+        template_context_variables={
+            "provider": "twilio",
+            "call_id": "forged",
+            "caller_number": "+353871234567",
+        },
+    )
+    workflow_client = SimpleNamespace(get_draft_version=AsyncMock(return_value=draft))
+
+    run_inputs = await prepare_workflow_run_inputs(
+        workflow_client,
+        _workflow(),
+        initial_context={"provider": "smallwebrtc"},
+        use_draft=True,
+        include_template_context=True,
+    )
+
+    # Prompt variables such as caller_number stay (browser tests preview
+    # them); run-owned keys come only from the code creating the run.
+    assert run_inputs.initial_context == {
+        "provider": "smallwebrtc",
+        "caller_number": "+353871234567",
+    }

@@ -16,6 +16,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from fallcha_tools.config import Settings
+from fallcha_tools.core.mcp import CONTACT_PHONE_HEADER
 from fallcha_tools.core.provider import ProviderRegistry
 from fallcha_tools.providers import build_registry
 from fallcha_tools.providers.google_calendar import (
@@ -44,6 +45,8 @@ TOOLS = {
     "check_appointment_availability",
     "book_appointment",
     "cancel_appointment",
+    "find_appointments",
+    "reschedule_appointment",
 }
 
 
@@ -311,6 +314,76 @@ async def test_mcp_lists_and_calls_tools(
         with pytest.raises(ToolError, match="not accessible") as caught:
             await mcp.call_tool("check_appointment_availability", {})
         assert SA_EMAIL not in str(caught.value)
+
+
+async def test_mcp_finds_moves_and_cancels_a_booking_from_an_earlier_call(
+    app: FastAPI, client: httpx.AsyncClient, google: FakeGoogle
+) -> None:
+    key = await connected_key(client)
+    url = f"http://tools/mcp/{PROVIDER}"
+
+    async with mcp_client(app, url, key) as mcp:
+        booked = await mcp.call_tool(
+            "book_appointment",
+            {
+                "slot_id": "2026-10-13T09:00:00+01:00",
+                "caller_name": "Ann Byrne",
+                "caller_phone": "0871234567",
+            },
+        )
+    event_id = booked.structured_content["event_id"]
+
+    # The caller rings back; the API names the number the call comes from.
+    calling = {CONTACT_PHONE_HEADER: "+353 87 123 4567"}
+    async with mcp_client(app, url, key, headers=calling) as mcp:
+        tools = {tool.name: tool for tool in await mcp.list_tools()}
+        find = tools["find_appointments"]
+        assert "required" not in find.input_schema
+        assert find.annotations is not None and find.annotations.read_only_hint
+        move = tools["reschedule_appointment"]
+        assert move.input_schema["required"] == ["event_id", "slot_id"]
+        assert move.annotations is not None and move.annotations.destructive_hint
+
+        # Caller ID alone is never enough: the name is always asked for.
+        with pytest.raises(ToolError, match="the name is needed"):
+            await mcp.call_tool("find_appointments", {})
+        found = await mcp.call_tool("find_appointments", {"caller_name": "Ann Byrne"})
+        assert found.structured_content == {
+            "appointments": [
+                {
+                    "event_id": event_id,
+                    "start": "2026-10-13T09:00:00+01:00",
+                    "say": "Tuesday the thirteenth at nine in the morning",
+                }
+            ],
+            "say": (
+                "I have you booked in for Tuesday the thirteenth at nine in the "
+                "morning."
+            ),
+        }
+        moved = await mcp.call_tool(
+            "reschedule_appointment",
+            {"event_id": event_id, "slot_id": "2026-10-14T10:00:00+01:00"},
+        )
+        assert moved.structured_content["outcome"] == "moved"
+        assert moved.structured_content["starts_at"] == "2026-10-14T10:00:00+01:00"
+        new_id = moved.structured_content["event_id"]
+        assert google.events[event_id]["status"] == "cancelled"
+
+        cancelled = await mcp.call_tool("cancel_appointment", {"event_id": new_id})
+        assert cancelled.structured_content["cancelled"] is True
+
+        with pytest.raises(ToolError, match="at least 7 digits"):
+            await mcp.call_tool(
+                "find_appointments", {"caller_phone": "087", "caller_name": "Ann"}
+            )
+
+    # No number from the API (hidden caller id), or one that cannot be a phone
+    # number: the tool asks for one.
+    for headers in (None, {CONTACT_PHONE_HEADER: "0" * 51}):
+        async with mcp_client(app, url, key, headers=headers) as mcp:
+            with pytest.raises(ToolError, match="ask for the phone number"):
+                await mcp.call_tool("find_appointments", {"caller_name": "Ann"})
 
 
 async def test_mcp_rejects_foreign_keys(

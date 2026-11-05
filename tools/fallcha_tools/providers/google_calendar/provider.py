@@ -83,7 +83,7 @@ def booking_id_key_from(internal_secret: str) -> bytes:
 
 @dataclass(frozen=True)
 class GoogleCalendarProvider:
-    """Check availability, book and cancel appointments.
+    """Check availability, book, find, move and cancel appointments.
 
     ``booking_id_key`` keys the HMAC behind booking event ids; it must be the
     same on every replica (see :func:`booking_id_key_from`).
@@ -107,8 +107,8 @@ class GoogleCalendarProvider:
     @property
     def description(self) -> str:
         return (
-            "Offer free appointment slots, and book and cancel appointments, "
-            "on a Google Calendar."
+            "Offer free appointment slots, and book, find, move and cancel "
+            "appointments, on a Google Calendar."
         )
 
     @property
@@ -176,6 +176,7 @@ class GoogleCalendarProvider:
             clock=self.clock,
             booking_id_key=self.booking_id_key,
             deadline_seconds=self.deadline_seconds,
+            contact_phone=ctx.contact_phone,
         )
 
     def _client(self, ctx: ConnectionContext) -> GoogleClient:

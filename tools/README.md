@@ -106,11 +106,83 @@ connection is labelled with the key's `client_email`.
 | `check_appointment_availability(relative_day?, part_of_day?)` | `/availability` |
 | `book_appointment(slot_id, caller_name, caller_phone, reason?)` | `/book` |
 | `cancel_appointment(event_id)` (only events this connection booked) | `/cancel` |
+| `find_appointments(caller_phone?, caller_name?)` | none (MCP only) |
+| `reschedule_appointment(event_id, slot_id)` | none (MCP only) |
+
+**Finding a caller's bookings.** `find_appointments` returns at most three of
+the caller's upcoming bookings made by this connection (event id, start in
+the calendar's time zone, a phrase to speak), soonest first; the agent then
+cancels or moves one by its event id. A booking matches only when **both**
+the phone number it was made with and the name it was booked under match;
+the name is always required:
+
+- The number is the one the call comes from, which the Fallcha API sends as
+  the `X-Fallcha-Contact-Phone` header on the call's MCP requests (only to
+  this service, taken from the telephony call record, never from the agent
+  or from context variables), unless the caller says another number. When
+  the call's own number is hidden or unknown, the caller must say one.
+  Caller ID can be spoofed, so it only saves asking for the number: on its
+  own it reveals and changes nothing.
+- Every word of the name must be a booked word, or booked words run
+  together (`Marykate` for `Mary-Kate`, `MacCarthy` for `Mac Carthy`); case,
+  accents, apostrophes, bracketed notes (`(new patient)`), leading titles
+  (`Dr`, `Mrs`) and trailing suffixes (`Jr`, `PhD`) are ignored. When the booked name has two or more
+  names, one of the words given must identify: not the first name, a
+  particle (`de`, `van`, `mac`, ...) or a suffix. `Smith` matches
+  `John Smith Jr` and `Souza` matches `Maria de Souza`; `Maria`, `de` or
+  `Jr` alone do not. Callers who say their family name first (`Wang Wei`)
+  must give the full name; `Wei` alone still matches `Wang Wei`. A booking
+  whose only name besides a suffix is a first name (`John Jr`) matches on
+  that name, and a short surname that is also a particle (`Le`, `Do`, `La`,
+  `Da`) needs the full name. A miss gives the same answer whether or not the
+  number has bookings.
+
+Numbers are first compared by their last 8 digits (`087 123 4567`,
+`+353 87 123 4567` and `00353871234567` are the same); bookings carry that
+key as a private extended property, so Google filters on it. Different
+numbers can share a key (Dublin `01 412 3456`, Cork `021 412 3456`), so when
+both numbers parse they must also be equal in E.164. Numbers said without a
+country code use the config's `phone_region` (ISO 3166, e.g. `IE`), else the
+country of `timezone`: looked up in `zone.tab` first; a name it does not
+list (`Asia/Calcutta`, `US/Eastern`) is followed through `tzdata.zi`'s
+links, and its target counts only if `zone1970.tab` gives it exactly one
+country. Many legacy names link across countries (`Iceland` to
+Africa/Abidjan, `Atlantic/Jan_Mayen` to Europe/Berlin), and rule zones
+(`CET`, `EET`, `EST5EDT`, ...) name no country, so those need
+`phone_region`. The `tzdata` package's database is read, else the
+system's. With no region (e.g. `UTC`, which logs a warning once), or a
+number that does not parse, the key alone decides. Bookings
+made before the key existed are matched on their description's `Phone:`
+line (the connection's soonest 500 upcoming bookings are read for them;
+drop that scan once they are all past). A caller's name, phone and reason
+are written to the description on one line each, so their words cannot add
+a line.
+
+**Moving a booking.** `reschedule_appointment` books the new slot for the
+same caller (name, phone, reason and any lines staff added to the
+description, read from the old booking) first, and cancels the old booking
+only once the new one is booked, so a failure never leaves the caller with
+no appointment. Its result is `{outcome, event_id, starts_at, slots, say}`;
+`outcome` is `moved` (`event_id` and `starts_at` are the new booking's id
+and ISO start in the calendar's zone), `unchanged` (the same time),
+`slot_taken` (old booking kept, alternatives in `slots`), `not_found` (not
+an upcoming booking of this connection), `details_edited` (staff removed
+its caller details; the team moves it) or `old_not_cancelled` (new time
+booked, `event_id` and `starts_at` set, old one still there: the agent says
+the team will remove it). A
+Google error while booking changes nothing that a retry of the same call
+would not finish: the booking id is deterministic, so the retry finds its
+own new booking, and a retry after the move finished reports `moved` again.
+The new slot must be free of the old booking too, so a slot overlapping it
+is `slot_taken` (availability never offers one anyway: freeBusy merges
+events, so the old one cannot be told apart from others there).
 
 REST bodies and responses match the shim's, so an existing `http_api` tool only
 needs a new URL and a connection key in place of the old `X-API-Key`. Errors
 are 400 (bad argument), 409 (not configured) or 502 (Google failure). Each
-Google request times out after 4 s, and each tool call after 5 s.
+Google request times out after 4 s. Each tool call has a 5 s budget, except
+`reschedule_appointment`, whose three steps (read the old booking, book,
+cancel) have 5 s each.
 
 Bookings use a deterministic event id (an HMAC of connection, slot and caller,
 keyed by a subkey derived from `TOOLS_INTERNAL_SECRET`), so retrying

@@ -13,9 +13,10 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from starlette.requests import Request
 
-from api.enums import TelephonyCallStatus
+from api.enums import CallType, TelephonyCallStatus
 from api.services.telephony.providers.cloudonix.provider import CloudonixProvider
 from api.services.telephony.providers.cloudonix.routes import handle_cloudonix_cdr
+from api.services.tool_integrations.call_context import telephony_contact_phone
 
 
 def _json_request(body: bytes) -> Request:
@@ -104,6 +105,7 @@ async def test_agent_stream_reads_call_metadata_from_start_message():
     )
     db_client.update_workflow_run.assert_awaited_once_with(
         run_id=303,
+        call_type=CallType.INBOUND,
         initial_context={
             "caller_number": "+15551230001",
             "called_number": "+15551230002",
@@ -273,3 +275,68 @@ async def test_agent_stream_handshake_timeout_closes_socket(monkeypatch):
     )
 
     websocket.close.assert_awaited_once_with(code=4408, reason="Handshake timeout")
+
+
+@pytest.mark.asyncio
+async def test_agent_stream_marks_api_originated_calls_outbound():
+    """An outbound-api start fixes the run's call_type before the pipeline
+    reads it, so the call's tools see the person called, not the DID."""
+    provider = CloudonixProvider({})
+    websocket = _FakeWebSocket(
+        json.dumps({"event": "connected"}),
+        json.dumps(
+            {
+                "event": "start",
+                "start": {
+                    "streamSid": "stream-9",
+                    "callSid": "call-9",
+                    "session": "session-9",
+                    "accountSid": "acme",
+                    "from": "+15551230001",
+                    "to": "+15559870002",
+                    "context": "outbound-api",
+                },
+            }
+        ),
+    )
+    config = SimpleNamespace(
+        id=7,
+        credentials={"domain_id": "acme.cloudonix.net", "bearer_token": "t"},
+    )
+    provider._find_config_by_domain = AsyncMock(return_value=config)
+    provider._validate_session = AsyncMock(return_value=True)
+    order: list[str] = []
+
+    async def update(**kwargs):
+        order.append("update")
+        assert kwargs["call_type"] is CallType.OUTBOUND
+        assert kwargs["initial_context"]["direction"] == "outbound"
+        assert list(kwargs["logs"]) == ["outbound_webhook"]
+        # The snapshot the pipeline takes from the corrected row.
+        assert (
+            telephony_contact_phone(kwargs["call_type"], kwargs["initial_context"])
+            == "+15559870002"
+        )
+
+    async def pipeline(*args, **kwargs):
+        order.append("pipeline")
+
+    with (
+        patch(
+            "api.services.telephony.providers.cloudonix.provider.db_client"
+        ) as db_client,
+        patch(
+            "api.services.pipecat.run_pipeline.run_pipeline_telephony",
+            side_effect=pipeline,
+        ),
+    ):
+        db_client.update_workflow_run = AsyncMock(side_effect=update)
+        await provider.handle_external_websocket(
+            websocket,
+            organization_id=44,
+            workflow_id=101,
+            workflow_run_id=303,
+            params={},
+        )
+
+    assert order == ["update", "pipeline"]

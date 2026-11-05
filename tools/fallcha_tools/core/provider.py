@@ -100,6 +100,10 @@ class ConnectionContext:
     # The service's database, for providers that keep per-connection data
     # (every query must filter on ``org_id`` and ``connection_id``).
     db: Database | None = None
+    # The phone number of the person on the call, as the platform's call
+    # record has it (MCP only; never set from tool arguments). Untrusted
+    # text: providers must validate it before use.
+    contact_phone: str | None = None
 
 
 ConnectionContextFactory = Callable[[], Awaitable[ConnectionContext]]

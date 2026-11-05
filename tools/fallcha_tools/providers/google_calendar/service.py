@@ -7,11 +7,13 @@ import base64
 import hashlib
 import hmac
 import uuid
-from collections.abc import AsyncIterator, Callable, Mapping, Sequence
+from collections.abc import AsyncIterator, Callable, Iterable, Mapping, Sequence
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+from typing import Any
 
+from loguru import logger
 from pydantic import JsonValue
 
 from fallcha_tools.core.provider import ConnectionContext
@@ -20,6 +22,21 @@ from fallcha_tools.providers.google_calendar.credentials import Clock
 from fallcha_tools.providers.google_calendar.errors import (
     BadArgumentError,
     GoogleApiError,
+)
+from fallcha_tools.providers.google_calendar.matching import (
+    CALLER_PREFIX,
+    PHONE_KEY_PROPERTY,
+    PHONE_PREFIX,
+    REASON_PREFIX,
+    BookedCaller,
+    CallerLookup,
+    booked_caller,
+    caller_lookup,
+    name_matches,
+    one_line,
+    phone_key,
+    phone_matches,
+    private_properties,
 )
 from fallcha_tools.providers.google_calendar.scheduling import (
     Busy,
@@ -32,13 +49,24 @@ from fallcha_tools.providers.google_calendar.schemas import (
     AvailabilityResult,
     BookingResult,
     CancelResult,
+    FindResult,
+    FoundAppointment,
+    RescheduleOutcome,
+    RescheduleResult,
     Slot,
 )
-from fallcha_tools.providers.google_calendar.settings import CalendarConfig
-from fallcha_tools.providers.google_calendar.speech import join_spoken, say_time
+from fallcha_tools.providers.google_calendar.settings import (
+    MAX_HORIZON_DAYS,
+    CalendarConfig,
+)
+from fallcha_tools.providers.google_calendar.speech import (
+    join_spoken,
+    say_bookings,
+    say_time,
+)
 
-# Events this service books carry the connection id here; cancel only
-# touches events whose marker matches the calling connection.
+# Events this service books carry the connection id here; cancel, find and
+# reschedule only touch events whose marker matches the calling connection.
 BOOKING_MARKER = "fallcha_connection_id"
 # Busy lookups for windows closer together than this share one freeBusy call.
 MAX_FREEBUSY_SPAN = timedelta(days=60)
@@ -52,6 +80,28 @@ BAD_SLOT_ID = (
 UNCONFIRMED_BOOKING = (
     "Google did not confirm the booking in time; please try booking the same slot again"
 )
+MOVE_NOT_FOUND = "I could not find that appointment to move."
+DETAILS_EDITED = (
+    "The team has changed that appointment, so I cannot move it myself. I can "
+    "take a message for them."
+)
+_NOT_MOVED_SAY = {
+    RescheduleOutcome.NOT_FOUND: MOVE_NOT_FOUND,
+    RescheduleOutcome.DETAILS_EDITED: DETAILS_EDITED,
+}
+# A lookup names at most this many upcoming bookings, soonest first.
+MAX_FOUND = 3
+# A booking never starts more than the longest horizon after it was made, so
+# this window holds every upcoming booking, whatever the horizon is now.
+LOOKUP_WINDOW = timedelta(days=MAX_HORIZON_DAYS)
+# Bookings tagged with the caller's phone key: one page covers any caller.
+CALLER_PAGE_SIZE = 25
+# Older bookings carry no phone key; their descriptions are read from the
+# connection's soonest SCAN_PAGE_SIZE * SCAN_MAX_PAGES upcoming bookings.
+SCAN_PAGE_SIZE = 250
+SCAN_MAX_PAGES = 2
+# Another page of a lookup is only requested with at least this much time left.
+DEFAULT_MIN_PAGE_SECONDS = 1.0
 
 
 # Appended to a booking's id for the one re-insert allowed when Google says
@@ -95,6 +145,10 @@ class CalendarService:
     booking_id_key: bytes
     deadline_seconds: float = DEFAULT_DEADLINE_SECONDS
     min_insert_seconds: float = DEFAULT_MIN_INSERT_SECONDS
+    min_page_seconds: float = DEFAULT_MIN_PAGE_SECONDS
+    # The number of the person on the call, from the call record (see
+    # ConnectionContext.contact_phone); None when hidden or unknown.
+    contact_phone: str | None = None
 
     async def availability(
         self, relative_day: str | None, part_of_day: str | None
@@ -124,7 +178,11 @@ class CalendarService:
         caller_name: str,
         caller_phone: str,
         reason: str | None = None,
+        *,
+        notes: Sequence[str] = (),
     ) -> BookingResult:
+        """Book ``slot_id``. ``notes`` are extra description lines (the staff
+        notes of a booking being moved)."""
         cfg = self.config
         slot = self._parse_slot(slot_id)
         slot_end = slot + timedelta(minutes=cfg.slot_minutes)
@@ -158,7 +216,10 @@ class CalendarService:
         try:
             for candidate in candidate_ids:
                 event = self._event(
-                    candidate, slot, slot_end, caller_name, caller_phone, reason
+                    candidate,
+                    slot,
+                    slot_end,
+                    BookedCaller(caller_name, caller_phone, reason, tuple(notes)),
                 )
                 if await self._insert_or_confirm(event, budget):
                     return self._booked(candidate, slot)
@@ -229,6 +290,212 @@ class CalendarService:
         )
         return CancelResult(cancelled=True, say=say)
 
+    async def reschedule(self, event_id: str, slot_id: str) -> RescheduleResult:
+        """Move a booking to ``slot_id``: book the new time for the same
+        caller first, then cancel the old booking, so a failure never leaves
+        the caller without an appointment."""
+        slot = self._parse_slot(slot_id)
+        async with self._deadline():
+            old = await self.client.get_event(self.config.calendar_id, event_id)
+            if old is not None and old.get("status") == "cancelled":
+                return await self._finished_move(old, slot)
+        movable = self._movable(old)
+        if not isinstance(movable, tuple):
+            return RescheduleResult(outcome=movable, say=_NOT_MOVED_SAY[movable])
+        start, caller = movable
+        if slot == start:
+            # Booking it again would find the old event and cancel it.
+            return RescheduleResult(
+                outcome=RescheduleOutcome.UNCHANGED,
+                say=f"You are already booked in for {say_time(start)}.",
+            )
+        booking = await self.book(
+            slot_id, caller.name, caller.phone, caller.reason, notes=caller.notes
+        )
+        if not booking.booked or booking.event_id is None:
+            return RescheduleResult(
+                outcome=RescheduleOutcome.SLOT_TAKEN,
+                slots=booking.slots,
+                say=f"{booking.say} Your appointment for {say_time(start)} "
+                "is still booked.",
+            )
+        return await self._cancel_moved(event_id, start, booking.event_id, slot)
+
+    def _movable(
+        self, event: Mapping[str, object] | None
+    ) -> tuple[datetime, BookedCaller] | RescheduleOutcome:
+        """Start and caller of ``event`` if it is an upcoming booking of ours
+        whose caller details are intact, else why it cannot be moved."""
+        start = self._event_start(event) if event is not None else None
+        if (
+            event is None
+            or start is None
+            or start <= self._now()
+            or not self._is_ours(event)
+        ):
+            return RescheduleOutcome.NOT_FOUND
+        caller = booked_caller(event)
+        if caller is None:
+            return RescheduleOutcome.DETAILS_EDITED
+        return start, caller
+
+    async def _finished_move(
+        self, old: Mapping[str, object], slot: datetime
+    ) -> RescheduleResult:
+        """A retry of a move whose reply was lost: ``old`` (ours, cancelled)
+        was moved if the booking ``reschedule`` makes for ``slot`` exists."""
+        start = self._event_start(old)
+        caller = booked_caller(old)
+        if (
+            not self._is_ours(old, include_cancelled=True)
+            or start is None
+            or not caller
+        ):
+            return RescheduleResult(
+                outcome=RescheduleOutcome.NOT_FOUND, say=MOVE_NOT_FOUND
+            )
+        new_id = booking_event_id(
+            self.booking_id_key, self.connection_id, slot, caller.name, caller.phone
+        )
+        for candidate in (new_id, new_id + SALTED_SUFFIX):
+            new = await self.client.get_event(self.config.calendar_id, candidate)
+            if (
+                new is not None
+                and self._is_ours(new)
+                and self._event_start(new) == slot
+            ):
+                return self._moved(candidate, start, slot)
+        return RescheduleResult(outcome=RescheduleOutcome.NOT_FOUND, say=MOVE_NOT_FOUND)
+
+    async def _cancel_moved(
+        self, old_id: str, old_start: datetime, new_id: str, new_start: datetime
+    ) -> RescheduleResult:
+        """Cancel the booking that ``new_id`` replaces (gone already is fine)."""
+        try:
+            async with self._deadline():
+                await self.client.delete_event(self.config.calendar_id, old_id)
+        except GoogleApiError as exc:
+            logger.warning(
+                "calendar reschedule for connection {} kept the old booking: {}",
+                self.connection_id,
+                exc,
+            )
+            return RescheduleResult(
+                outcome=RescheduleOutcome.OLD_NOT_CANCELLED,
+                event_id=new_id,
+                starts_at=new_start.isoformat(),
+                say=(
+                    f"You are booked in for {say_time(new_start)}, but I could "
+                    f"not cancel your appointment for {say_time(old_start)}, so "
+                    "the team will need to remove it."
+                ),
+            )
+        return self._moved(new_id, old_start, new_start)
+
+    @staticmethod
+    def _moved(
+        new_id: str, old_start: datetime, new_start: datetime
+    ) -> RescheduleResult:
+        return RescheduleResult(
+            outcome=RescheduleOutcome.MOVED,
+            event_id=new_id,
+            starts_at=new_start.isoformat(),
+            say=(
+                f"Your appointment is moved from {say_time(old_start)} to "
+                f"{say_time(new_start)}."
+            ),
+        )
+
+    async def find(
+        self, caller_phone: str | None = None, caller_name: str | None = None
+    ) -> FindResult:
+        """The caller's upcoming bookings by this connection, soonest first.
+
+        Bookings are matched by phone number (see ``matching.caller_lookup``
+        for which number a caller may use); ``caller_name`` never widens them.
+        """
+        lookup = caller_lookup(
+            contact_phone=self.contact_phone,
+            caller_phone=caller_phone,
+            caller_name=caller_name,
+        )
+        key = lookup.phone_key
+        budget = Budget.starting_now(
+            self.deadline_seconds, min_seconds=self.min_page_seconds
+        )
+        async with self._deadline():
+            now = self._now()
+            ours = {BOOKING_MARKER: str(self.connection_id)}
+            tagged, scanned = await asyncio.gather(
+                self._upcoming_events(
+                    {**ours, PHONE_KEY_PROPERTY: key}, now, budget, CALLER_PAGE_SIZE
+                ),
+                # Bookings made before they carried the phone key. Once all of
+                # those are past (MAX_HORIZON_DAYS after that release), this
+                # only finds tagged bookings again and can be dropped.
+                # TODO(2027-02-01): drop this scan (and SCAN_*) if the release
+                # carrying the phone key shipped before 2026-12-01.
+                self._upcoming_events(
+                    ours, now, budget, SCAN_PAGE_SIZE, max_pages=SCAN_MAX_PAGES
+                ),
+            )
+        found = self._callers([*tagged, *scanned], lookup=lookup, now=now)
+        return FindResult(
+            appointments=[
+                FoundAppointment(
+                    event_id=event_id, start=start.isoformat(), say=say_time(start)
+                )
+                for event_id, start in found
+            ],
+            say=say_bookings([start for _, start in found]),
+        )
+
+    async def _upcoming_events(
+        self,
+        properties: Mapping[str, str],
+        now: datetime,
+        budget: Budget,
+        page_size: int,
+        *,
+        max_pages: int = 1,
+    ) -> list[dict[str, Any]]:
+        return await self.client.list_events(
+            self.config.calendar_id,
+            private_properties=properties,
+            time_min=now,
+            time_max=now + LOOKUP_WINDOW,
+            page_size=page_size,
+            max_pages=max_pages,
+            budget=budget,
+        )
+
+    def _callers(
+        self,
+        events: Iterable[Mapping[str, object]],
+        *,
+        lookup: CallerLookup,
+        now: datetime,
+    ) -> list[tuple[str, datetime]]:
+        """(event id, start) of the caller's bookings among ``events``.
+
+        Every event is checked here, whatever Google filtered on: a booking
+        is returned only if it is ours, not started and matches ``lookup``.
+        """
+        found: dict[str, datetime] = {}
+        for event in events:
+            event_id = event.get("id")
+            start = self._event_start(event)
+            if (
+                isinstance(event_id, str)
+                and start is not None
+                and start > now
+                and self._is_ours(event)
+                and phone_matches(event, lookup, self.config.default_phone_region)
+                and name_matches(lookup.name, event)
+            ):
+                found[event_id] = start
+        return sorted(found.items(), key=lambda item: item[1])[:MAX_FOUND]
+
     async def check_access(self) -> str:
         """Prove the calendar can be reached.
 
@@ -266,28 +533,31 @@ class CalendarService:
         event_id: str,
         start: datetime,
         end: datetime,
-        caller_name: str,
-        caller_phone: str,
-        reason: str | None,
+        caller: BookedCaller,
     ) -> dict[str, JsonValue]:
         cfg = self.config
+        caller_name, caller_phone = one_line(caller.name), one_line(caller.phone)
         description = "\n".join(
             [
                 cfg.booked_by_line,
-                f"Caller: {caller_name}",
-                f"Phone: {caller_phone}",
-                f"Reason: {reason or 'not given'}",
+                f"{CALLER_PREFIX}{caller_name}",
+                f"{PHONE_PREFIX}{caller_phone}",
+                f"{REASON_PREFIX}{one_line(caller.reason or '') or 'not given'}",
+                *(one_line(note) for note in caller.notes),
             ]
         )
+        private: dict[str, JsonValue] = {BOOKING_MARKER: str(self.connection_id)}
+        key = phone_key(caller_phone)
+        if key is not None:
+            # Lets find_appointments ask Google for the caller's bookings only.
+            private[PHONE_KEY_PROPERTY] = key
         return {
             "id": event_id,
             "summary": f"{cfg.event_summary_prefix} — {caller_name}",
             "description": description,
             "start": {"dateTime": start.isoformat(), "timeZone": cfg.timezone},
             "end": {"dateTime": end.isoformat(), "timeZone": cfg.timezone},
-            "extendedProperties": {
-                "private": {BOOKING_MARKER: str(self.connection_id)}
-            },
+            "extendedProperties": {"private": private},
         }
 
     def _is_ours(
@@ -295,13 +565,10 @@ class CalendarService:
     ) -> bool:
         if event.get("status") == "cancelled" and not include_cancelled:
             return False
-        props = event.get("extendedProperties")
-        private = props.get("private") if isinstance(props, dict) else None
-        return isinstance(private, dict) and private.get(BOOKING_MARKER) == str(
-            self.connection_id
-        )
+        marker = private_properties(event).get(BOOKING_MARKER)
+        return marker == str(self.connection_id)
 
-    def _event_start(self, event: dict[str, object]) -> datetime | None:
+    def _event_start(self, event: Mapping[str, object]) -> datetime | None:
         start = event.get("start")
         raw = start.get("dateTime") if isinstance(start, dict) else None
         if not isinstance(raw, str):
