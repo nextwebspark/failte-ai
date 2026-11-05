@@ -95,20 +95,21 @@ def setup_configurations(
 
     An answer that was not sent at all falls back to the field's prefill; one
     sent blank leaves the setting off. Raises TemplateSetupError for an answer
-    the setting rejects.
+    the user gave that the setting rejects; a prefill it rejects (a creator
+    address such as admin@localhost) leaves the setting off instead.
     """
     configurations: dict[str, Any] = {}
     for field in fields:
         if field.setting is None:
             continue
-        if field.key in values:
-            answer = values[field.key].strip()
-        else:
-            answer = _prefill(field.prefill, user_email)
+        typed = field.key in values
+        answer = (
+            values[field.key].strip() if typed else _prefill(field.prefill, user_email)
+        )
         match field.setting:
             case TemplateSetupSetting.CALL_SUMMARY_RECIPIENTS:
                 configurations[CALL_SUMMARY_EMAIL_KEY] = _call_summary_email(
-                    field, answer
+                    field, answer, typed=typed
                 )
     return configurations
 
@@ -121,13 +122,17 @@ def _prefill(prefill: TemplateSetupPrefill | None, user_email: str | None) -> st
             return ""
 
 
-def _call_summary_email(field: TemplateSetupField, answer: str) -> dict[str, Any]:
+def _call_summary_email(
+    field: TemplateSetupField, answer: str, *, typed: bool
+) -> dict[str, Any]:
     recipients = [a for a in _ADDRESS_SEPARATORS.split(answer) if a]
     try:
         setting = CallSummaryEmailConfiguration(
             enabled=bool(recipients), recipients=recipients
         )
     except ValidationError:
+        if not typed:
+            return CallSummaryEmailConfiguration().model_dump(mode="json")
         raise TemplateSetupError(
             f"{field.label}: enter up to {MAX_CALL_SUMMARY_RECIPIENTS} email "
             "addresses, separated by commas."

@@ -294,7 +294,7 @@ def test_templates_list_includes_setup_fields():
 SUMMARY_FIELD = TemplateSetupField(
     key="call_summary_email",
     label="Send call summaries to",
-    type="email",
+    type="emails",
     required=False,
     prefill=TemplateSetupPrefill.USER_EMAIL,
     setting=TemplateSetupSetting.CALL_SUMMARY_RECIPIENTS,
@@ -324,6 +324,14 @@ def test_setup_configurations_set_the_call_summary_recipients(values, expected):
 
 def test_setup_configurations_without_a_user_email_leave_summaries_off():
     assert setup_configurations([SUMMARY_FIELD], {}, user_email=None) == {
+        "call_summary_email": {"enabled": False, "recipients": []}
+    }
+
+
+def test_an_unusable_creator_address_leaves_summaries_off():
+    # A local install's admin has no deliverable address; creating the agent
+    # must not fail over a value the user never typed.
+    assert setup_configurations([SUMMARY_FIELD], {}, user_email="admin@localhost") == {
         "call_summary_email": {"enabled": False, "recipients": []}
     }
 

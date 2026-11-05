@@ -31,7 +31,8 @@ class TemplateSetupField(BaseModel):
 
     key: str = Field(pattern=r"^[a-z][a-z0-9_]*$", max_length=64)
     label: str = Field(min_length=1, max_length=120)
-    type: Literal["text", "textarea", "url", "email", "phone"] = "text"
+    # "emails": a comma-separated list of addresses.
+    type: Literal["text", "textarea", "url", "email", "emails", "phone"] = "text"
     help: str | None = Field(default=None, max_length=300)
     placeholder: str | None = Field(default=None, max_length=300)
     required: bool = True

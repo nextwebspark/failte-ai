@@ -186,7 +186,7 @@ STARTER_TEMPLATES: list[StarterTemplate] = [
             TemplateSetupField(
                 key="call_summary_email",
                 label="Send call summaries to",
-                type="email",
+                type="emails",
                 help=(
                     "An email after each phone call where your agent takes a "
                     "message or a booking. Separate several addresses with commas."
