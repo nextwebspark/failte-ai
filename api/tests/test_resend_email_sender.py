@@ -89,6 +89,32 @@ async def test_rejection_includes_resend_explanation() -> None:
 
     assert "HTTP 403" in str(excinfo.value)
     assert "only send testing emails to your own email address" in str(excinfo.value)
+    assert excinfo.value.retryable is False
+
+
+@pytest.mark.parametrize(("status", "retryable"), [(429, True), (500, False)])
+async def test_only_a_rate_limit_is_worth_retrying(
+    status: int, retryable: bool
+) -> None:
+    _FakeSession.response = _FakeResponse(status, "{}")
+    with (
+        patch("api.services.email.resend_sender.aiohttp.ClientSession", _FakeSession),
+        pytest.raises(EmailDeliveryError) as excinfo,
+    ):
+        await _sender().send(_MESSAGE)
+
+    assert excinfo.value.retryable is retryable
+
+
+async def test_an_idempotency_key_is_sent_as_a_header() -> None:
+    _FakeSession.response = _FakeResponse(200, "{}")
+    message = EmailMessage(
+        to="o@example.com", subject="Hi", text="-", html="-", idempotency_key="k-1"
+    )
+    with patch("api.services.email.resend_sender.aiohttp.ClientSession", _FakeSession):
+        await _sender().send(message)
+
+    assert _FakeSession.last_request["headers"]["Idempotency-Key"] == "k-1"
 
 
 async def test_rejection_detail_is_truncated() -> None:
@@ -112,6 +138,8 @@ async def test_a_timeout_is_a_delivery_error() -> None:
             "api.services.email.resend_sender.aiohttp.ClientSession",
             _TimingOutSession,
         ),
-        pytest.raises(EmailDeliveryError, match="timed out"),
+        pytest.raises(EmailDeliveryError, match="timed out") as excinfo,
     ):
         await _sender().send(_MESSAGE)
+
+    assert excinfo.value.retryable is False
