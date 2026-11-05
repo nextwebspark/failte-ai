@@ -40,8 +40,10 @@ _NUMBER_KEYS: Mapping[CallType, tuple[str, str]] = MappingProxyType(
 _PHONE = re.compile(r"\+?[0-9][0-9 ()\-]{5,30}")
 # Twilio turns a withheld caller ID's placeholder word into keypad digits
 # for From (support.twilio.com, "Why am I getting calls from these strange
-# numbers?"): ANONYMOUS, RESTRICTED, BLOCKED, UNKNOWN.
-_WITHHELD_DIGITS = frozenset({"266696687", "7378742833", "2562533", "8656696"})
+# numbers?"): ANONYMOUS, RESTRICTED, BLOCKED, UNKNOWN, UNAVAILABLE.
+_WITHHELD_DIGITS = frozenset(
+    {"266696687", "7378742833", "2562533", "8656696", "86282452253"}
+)
 # Numbers agreeing in this many trailing digits are the same line (formats
 # differ: +353 1 555 0000 and 01 555 0000).
 _SAME_LINE_DIGITS = 8

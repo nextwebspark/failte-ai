@@ -57,11 +57,13 @@ def test_a_direction_in_the_context_never_overrides_the_call_type() -> None:
         "sip:+353871234567@pbx.example",
         "+353871234567\r\nX-Evil: 1",
         "12",
-        # Twilio's keypad digits for ANONYMOUS, RESTRICTED, BLOCKED, UNKNOWN.
+        # Twilio's keypad digits for ANONYMOUS, RESTRICTED, BLOCKED, UNKNOWN,
+        # UNAVAILABLE.
         "+266696687",
         "+7378742833",
         "+2562533",
         "+8656696",
+        "+86282452253",
     ],
 )
 def test_hidden_withheld_or_unusable_numbers_are_none(number: object) -> None:
