@@ -11,6 +11,7 @@ import {
     getAmbientNoiseUploadUrlApiV1WorkflowAmbientNoiseUploadUrlPost,
 } from "@/client/sdk.gen";
 import { LLMConfigSelector } from "@/components/LLMConfigSelector";
+import { SettingBlock, SettingRow, SettingsSection } from "@/components/settings/SettingsLayout";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import { Input } from "@/components/ui/input";
@@ -52,7 +53,6 @@ import {
     validateCallDispositionRows,
 } from "./components/CallDispositionEditor";
 import { CallSummaryEmailSection } from "./components/CallSummaryEmailSection";
-import { SettingBlock, SettingRow, SettingsSection } from "./SettingsLayout";
 import { SettingsSaveProvider, useSettingsSection } from "./SettingsSaveBar";
 
 // ---------------------------------------------------------------------------

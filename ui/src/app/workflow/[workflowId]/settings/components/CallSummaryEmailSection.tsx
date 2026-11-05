@@ -2,6 +2,7 @@ import { Mail } from "lucide-react";
 import { useState } from "react";
 
 import type { CallSummaryEmailConfiguration } from "@/client/types.gen";
+import { SettingRow, SettingsSection } from "@/components/settings/SettingsLayout";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { useUnsavedChanges } from "@/context/UnsavedChangesContext";
@@ -9,7 +10,6 @@ import { useAuth } from "@/lib/auth";
 import { signedInEmail } from "@/lib/auth/identity";
 import { isEmailAddress } from "@/lib/emailAddress";
 
-import { SettingRow, SettingsSection } from "../SettingsLayout";
 import { useSettingsSection } from "../SettingsSaveBar";
 
 /** Mirrors MAX_CALL_SUMMARY_RECIPIENTS in api/schemas/call_summary_email.py. */

@@ -11,6 +11,7 @@ import {
 } from "@/client/sdk.gen";
 import type { OrganizationPreferences } from "@/client/types.gen";
 import { DispositionMappingDialog } from "@/components/DispositionMappingDialog";
+import { SettingRow } from "@/components/settings/SettingsLayout";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -23,7 +24,6 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { BRAND } from "@/config/brand";
 import { useUserConfig } from "@/context/UserConfigContext";
@@ -135,7 +135,18 @@ function getTimezoneValue(tz: ITimezoneOption | string): string {
   return typeof tz === "string" ? tz : tz.value;
 }
 
-export function OrganizationPreferencesSection() {
+/**
+ * The organization's preferences as setting rows, for a SettingsSection card.
+ * `show` picks the rows: General settings shows the defaults, Privacy &
+ * compliance the retention period. Each save sends only what was loaded plus
+ * the edits, and the period only when it changed, so either screen leaves the
+ * other's values alone.
+ */
+export function OrganizationPreferencesSection({
+  show = "all",
+}: {
+  show?: "all" | "general" | "retention";
+} = {}) {
   const { user, loading: authLoading } = useAuth();
   const { refreshConfig } = useUserConfig();
   const timezoneSelectId = useId();
@@ -302,143 +313,141 @@ export function OrganizationPreferencesSection() {
   }
 
   if (loading) {
-    return <p className="text-sm text-muted-foreground">Loading...</p>;
+    return <p className="px-[18px] py-3.5 text-sm text-muted-foreground">Loading...</p>;
   }
 
   const mappingCount = Object.keys(preferences.disposition_mapping ?? {}).length;
+  const showGeneral = show !== "retention";
+  const showRetention = show !== "general";
 
   return (
-    <form onSubmit={handleSave} className="space-y-4">
-      <p className="text-sm text-muted-foreground">
-        Set organization-wide defaults used by testing and scheduling flows.
-      </p>
+    <form onSubmit={handleSave} className="divide-y divide-line-soft">
       {loadFailed && (
-        <p role="alert" className="text-sm text-destructive">
+        <p role="alert" className="px-[18px] py-3.5 text-sm text-destructive">
           Preferences could not be loaded. Reload the page before changing
           them.
         </p>
       )}
-      <div className="grid gap-4 sm:grid-cols-2">
-        <div className="space-y-2">
-          <Label htmlFor="settings-test-phone-number">Test Phone Number</Label>
-          <Input
-            id="settings-test-phone-number"
-            value={preferences.test_phone_number || ""}
-            onChange={(event) =>
-              setPreferences({
-                ...preferences,
-                test_phone_number: event.target.value,
-              })
-            }
-            placeholder="+15551234567"
-          />
-        </div>
-        <div className="space-y-2">
-          <Label>Timezone</Label>
-          <TimezoneSelect
-            instanceId={timezoneSelectId}
-            value={timezone}
-            onChange={setTimezone}
-            styles={timezoneSelectStyles}
-          />
-        </div>
-      </div>
-      <div className="space-y-2">
-        <Label htmlFor="settings-call-data-retention">
-          Call data retention (days)
-        </Label>
-        <Input
-          id="settings-call-data-retention"
-          type="number"
-          inputMode="numeric"
-          min={MIN_RETENTION_DAYS}
-          max={MAX_RETENTION_DAYS}
-          step={1}
-          className="sm:max-w-[12rem]"
-          value={retentionDays}
-          onChange={(event) => setRetentionDays(event.target.value)}
-          aria-describedby="settings-call-data-retention-help"
-        />
-        <p
-          id="settings-call-data-retention-help"
-          className="text-xs text-muted-foreground"
-        >
-          Recordings, transcripts and call details are permanently deleted
-          after this many days ({MIN_RETENTION_DAYS}–{MAX_RETENTION_DAYS}).
-        </p>
-      </div>
-      <div className="flex items-start justify-between gap-4 rounded-lg border p-4">
-        <div className="space-y-1">
-          <Label htmlFor="settings-external-pbx-integrations">
-            External PBX integrations
-          </Label>
-          <p className="text-xs text-muted-foreground">
-            Show and enable advanced external-PBX configuration for Asterisk,
-            transfer tools, and workflows. Existing configuration is preserved
-            when this is disabled.
-          </p>
-        </div>
-        <Switch
-          id="settings-external-pbx-integrations"
-          checked={preferences.external_pbx_integrations_enabled ?? false}
-          onCheckedChange={(checked) =>
-            setPreferences({
-              ...preferences,
-              external_pbx_integrations_enabled: checked,
-            })
-          }
-        />
-      </div>
-      <div className="space-y-3 rounded-lg border p-4">
-        <div className="flex items-start justify-between gap-4">
-          <div className="space-y-1">
-            <Label htmlFor="settings-disposition-mapping">
-              Disposition mapping
-            </Label>
-            <p className="text-xs text-muted-foreground">
-              Report call outcomes using your own disposition codes instead of{" "}
-              {BRAND.name}&apos;s. Applies to webhooks, run filters, reports, and
-              external PBX write-backs. Configuration is preserved when this is
-              disabled.
-            </p>
-          </div>
-          <Switch
-            id="settings-disposition-mapping"
-            checked={preferences.disposition_mapping_enabled ?? false}
-            onCheckedChange={(checked) =>
-              setPreferences({
-                ...preferences,
-                disposition_mapping_enabled: checked,
-              })
-            }
-          />
-        </div>
-        {preferences.disposition_mapping_enabled && (
-          <div className="flex items-center gap-3">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              disabled={loadFailed}
-              onClick={() => setMappingDialogOpen(true)}
-            >
-              <SlidersHorizontal className="mr-2 h-3.5 w-3.5" />
-              Configure mapping
-            </Button>
-            <span className="text-xs text-muted-foreground">
-              {mappingCount === 0
-                ? "No overrides yet"
-                : `${mappingCount} disposition${mappingCount === 1 ? "" : "s"} mapped`}
+      {showGeneral && (
+        <>
+          <SettingRow
+            label="Test phone number"
+            htmlFor="settings-test-phone-number"
+            hint="The number test calls ring when you don't enter one."
+          >
+            <Input
+              id="settings-test-phone-number"
+              value={preferences.test_phone_number || ""}
+              onChange={(event) =>
+                setPreferences({
+                  ...preferences,
+                  test_phone_number: event.target.value,
+                })
+              }
+              placeholder="+353851234567"
+            />
+          </SettingRow>
+          <SettingRow
+            label="Timezone"
+            hint="Used for schedules, campaigns and the times in reports."
+          >
+            <TimezoneSelect
+              instanceId={timezoneSelectId}
+              value={timezone}
+              onChange={setTimezone}
+              styles={timezoneSelectStyles}
+            />
+          </SettingRow>
+        </>
+      )}
+      {showRetention && (
+        <SettingRow
+          label="Call data retention (days)"
+          htmlFor="settings-call-data-retention"
+          hint={
+            <span id="settings-call-data-retention-help">
+              Recordings, transcripts and call details are permanently deleted
+              after this many days ({MIN_RETENTION_DAYS}–{MAX_RETENTION_DAYS}).
+              Billing details (duration, cost, status) are kept.
             </span>
-          </div>
-        )}
-      </div>
-      <DispositionMappingDialog
-        open={mappingDialogOpen}
-        onOpenChange={setMappingDialogOpen}
-        mapping={preferences.disposition_mapping ?? {}}
-        onSave={handleDispositionMappingSave}
-      />
+          }
+        >
+          <Input
+            id="settings-call-data-retention"
+            type="number"
+            inputMode="numeric"
+            min={MIN_RETENTION_DAYS}
+            max={MAX_RETENTION_DAYS}
+            step={1}
+            value={retentionDays}
+            onChange={(event) => setRetentionDays(event.target.value)}
+            aria-describedby="settings-call-data-retention-help"
+          />
+        </SettingRow>
+      )}
+      {showGeneral && (
+        <>
+          <SettingRow
+            label="External PBX integrations"
+            htmlFor="settings-external-pbx-integrations"
+            hint="Show and enable advanced external-PBX configuration for Asterisk, transfer tools, and agents. Existing configuration is preserved when this is off."
+            compact
+          >
+            <Switch
+              id="settings-external-pbx-integrations"
+              checked={preferences.external_pbx_integrations_enabled ?? false}
+              onCheckedChange={(checked) =>
+                setPreferences({
+                  ...preferences,
+                  external_pbx_integrations_enabled: checked,
+                })
+              }
+            />
+          </SettingRow>
+          <SettingRow
+            label="Disposition mapping"
+            htmlFor="settings-disposition-mapping"
+            hint={`Report call outcomes using your own disposition codes instead of ${BRAND.name}'s. Applies to webhooks, run filters, reports, and external PBX write-backs. Configuration is preserved when this is off.`}
+            compact
+          >
+            <Switch
+              id="settings-disposition-mapping"
+              checked={preferences.disposition_mapping_enabled ?? false}
+              onCheckedChange={(checked) =>
+                setPreferences({
+                  ...preferences,
+                  disposition_mapping_enabled: checked,
+                })
+              }
+            />
+          </SettingRow>
+          {preferences.disposition_mapping_enabled && (
+            <div className="flex items-center gap-3 px-[18px] py-3.5">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={loadFailed}
+                onClick={() => setMappingDialogOpen(true)}
+              >
+                <SlidersHorizontal className="mr-2 h-3.5 w-3.5" />
+                Configure mapping
+              </Button>
+              <span className="text-xs text-muted-foreground">
+                {mappingCount === 0
+                  ? "No overrides yet"
+                  : `${mappingCount} disposition${mappingCount === 1 ? "" : "s"} mapped`}
+              </span>
+            </div>
+          )}
+          <DispositionMappingDialog
+            open={mappingDialogOpen}
+            onOpenChange={setMappingDialogOpen}
+            mapping={preferences.disposition_mapping ?? {}}
+            onSave={handleDispositionMappingSave}
+          />
+        </>
+      )}
       <AlertDialog
         open={pendingShorterRetention !== null}
         onOpenChange={(open) => {
@@ -462,10 +471,12 @@ export function OrganizationPreferencesSection() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-      <Button type="submit" disabled={saving || loadFailed}>
-        <Save className="mr-2 h-4 w-4" />
-        {saving ? "Saving..." : "Save"}
-      </Button>
+      <div className="flex justify-end bg-panel-2/60 px-[18px] py-3">
+        <Button type="submit" disabled={saving || loadFailed}>
+          <Save className="mr-2 h-4 w-4" />
+          {saving ? "Saving..." : "Save"}
+        </Button>
+      </div>
     </form>
   );
 }

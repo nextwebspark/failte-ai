@@ -264,3 +264,58 @@ describe("OrganizationPreferencesSection call data retention", () => {
     expect(mocks.savePreferences).not.toHaveBeenCalled();
   });
 });
+
+describe("OrganizationPreferencesSection show modes", () => {
+  const stored: OrganizationPreferences = {
+    test_phone_number: "+353851234567",
+    timezone: "Europe/Dublin",
+    external_pbx_integrations_enabled: true,
+    call_data_retention_days: 90,
+    disposition_mapping_enabled: false,
+    disposition_mapping: {},
+  };
+
+  beforeEach(() => {
+    mocks.getPreferences.mockReset();
+    mocks.getPreferences.mockResolvedValue({ data: stored });
+    mocks.savePreferences.mockReset();
+    mocks.savePreferences.mockImplementation(async ({ body }) => ({
+      data: { ...stored, ...body },
+    }));
+    mocks.refreshConfig.mockReset();
+    mocks.refreshConfig.mockResolvedValue(undefined);
+  });
+
+  it("shows only the retention period on Privacy & compliance, and keeps the rest as stored", async () => {
+    render(<OrganizationPreferencesSection show="retention" />);
+
+    const input = await screen.findByLabelText("Call data retention (days)");
+    expect(screen.queryByLabelText("Test phone number")).toBeNull();
+    expect(screen.queryByLabelText("External PBX integrations")).toBeNull();
+
+    fireEvent.change(input, { target: { value: "120" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() => expect(mocks.savePreferences).toHaveBeenCalledTimes(1));
+    const { body } = mocks.savePreferences.mock.calls[0][0];
+    expect(body.call_data_retention_days).toBe(120);
+    expect(body.test_phone_number).toBe("+353851234567");
+    expect(body.timezone).toBe("Europe/Dublin");
+    expect(body.external_pbx_integrations_enabled).toBe(true);
+  });
+
+  it("leaves the retention period out of General's saves", async () => {
+    render(<OrganizationPreferencesSection show="general" />);
+
+    const phone = await screen.findByLabelText("Test phone number");
+    expect(screen.queryByLabelText("Call data retention (days)")).toBeNull();
+
+    fireEvent.change(phone, { target: { value: "+353861234567" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() => expect(mocks.savePreferences).toHaveBeenCalledTimes(1));
+    const { body } = mocks.savePreferences.mock.calls[0][0];
+    expect(body).not.toHaveProperty("call_data_retention_days");
+    expect(body.test_phone_number).toBe("+353861234567");
+  });
+});
