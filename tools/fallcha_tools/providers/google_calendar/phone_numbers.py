@@ -2,11 +2,13 @@
 
 A number said in national form (``087 123 4567``) only has a country once a
 region is known: the connection's ``phone_region``, else the country of its
-time zone. That comes from the time-zone database's ``zone.tab``, after
-legacy names (``Asia/Calcutta``, ``US/Eastern``) are resolved to their
-canonical zone through the ``L target link`` lines of ``tzdata.zi``. The
-``tzdata`` package is read first (so the base image does not matter), then
-the system's ``zoneinfo.TZPATH``.
+time zone. A zone ``zone.tab`` lists gives its country. Any other name
+(``Asia/Calcutta``, ``US/Eastern``) is followed through the ``L target link``
+lines of ``tzdata.zi`` and counts only if ``zone1970.tab`` gives the target
+exactly one country: many legacy names link to a zone several countries
+share (``Iceland`` to Africa/Abidjan). Rule zones (``CET``, ``EST5EDT``)
+name no country. The ``tzdata`` package is read first (so the base image
+does not matter), then the system's ``zoneinfo.TZPATH``.
 """
 
 from __future__ import annotations

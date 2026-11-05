@@ -125,13 +125,16 @@ the name is always required:
   own it reveals and changes nothing.
 - Every word of the name must be a booked word, or booked words run
   together (`Marykate` for `Mary-Kate`, `MacCarthy` for `Mac Carthy`); case,
-  accents, apostrophes, bracketed notes (`(new patient)`) and trailing
-  suffixes (`Jr`, `PhD`) are ignored. When the booked name has two or more
+  accents, apostrophes, bracketed notes (`(new patient)`), leading titles
+  (`Dr`, `Mrs`) and trailing suffixes (`Jr`, `PhD`) are ignored. When the booked name has two or more
   names, one of the words given must identify: not the first name, a
   particle (`de`, `van`, `mac`, ...) or a suffix. `Smith` matches
   `John Smith Jr` and `Souza` matches `Maria de Souza`; `Maria`, `de` or
   `Jr` alone do not. Callers who say their family name first (`Wang Wei`)
-  must give the full name. A miss gives the same answer whether or not the
+  must give the full name; `Wei` alone still matches `Wang Wei`. A booking
+  whose only name besides a suffix is a first name (`John Jr`) matches on
+  that name, and a short surname that is also a particle (`Le`, `Do`, `La`,
+  `Da`) needs the full name. A miss gives the same answer whether or not the
   number has bookings.
 
 Numbers are first compared by their last 8 digits (`087 123 4567`,

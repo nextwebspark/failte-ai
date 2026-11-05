@@ -146,7 +146,8 @@ def test_name_matches() -> None:
     assert name_matches("doe", event)
     assert name_matches("DOE jane", event)
     assert not name_matches("Janet", event)
-    assert not name_matches("Mrs Doe", event)  # every word must be booked
+    assert not name_matches("Janet Doe", event)  # every word must be booked
+    assert name_matches("Mrs Doe", event)  # titles are ignored
     assert not name_matches("  ", event)  # no name matches nothing
     assert not name_matches("J.", event)
     irish = {"description": "Caller: Seán Ó Briain"}
@@ -196,6 +197,22 @@ def test_names_match_across_apostrophes_and_spacing(wanted: str, booked: str) ->
         # Family name first: the caller must give the full name.
         ("Wang Wei", "Wang Wei", True),
         ("Wang Wei", "Wang", False),
+        ("Wang Wei", "Wei", True),  # the given name, as the second word
+        ("Maria de Souza", "Maria de Souza", True),
+        ("Maria de Souza", "Maria DeSouza", True),
+        # Titles are dropped on both sides.
+        ("Dr John Smith", "John", False),
+        ("Dr John Smith", "Smith", True),
+        ("Dr John Smith", "Dr Smith", True),
+        ("Mary Murphy", "Mrs Murphy", True),
+        ("Mary Murphy", "Mrs Mary", False),
+        # Only a first name besides the suffix: that name matches.
+        ("John Jr", "John", True),
+        # A short surname that is also a particle needs the full name.
+        ("Anh Le", "Le", False),
+        ("Anh Le", "Anh Le", True),
+        ("Jane Doe (new patient", "Doe", True),  # an unclosed note
+        ("Jane Doe (new patient", "patient", False),
         ("Mac Carthy", "MacCarthy", True),
         ("Mac Carthy", "Mac", False),
         # A hyphenated first name is one first name; a hyphenated surname

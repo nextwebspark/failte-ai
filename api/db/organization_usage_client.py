@@ -224,7 +224,9 @@ class OrganizationUsageClient(BaseDBClient):
                 # DEPRECATED: phone_number — use caller_number/called_number.
                 # Inbound runs only have caller_number/called_number; the
                 # caller_number is the customer. Outbound runs use the
-                # phone_number key written by the dispatchers.
+                # phone_number key written by the dispatchers, else the
+                # called_number (Cloudonix agent-stream outbound runs have no
+                # phone_number).
                 if run.call_type == "inbound":
                     phone_number = caller_number
                 else:

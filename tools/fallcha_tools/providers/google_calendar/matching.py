@@ -79,8 +79,9 @@ NEED_NAME = (
 )
 
 _WORD = re.compile(r"[^\W\d_]{2,}")
-# Notes in brackets ("Jane Doe (new patient)") are not part of the name.
-_BRACKETED = re.compile(r"\([^)]*\)")
+# Notes in brackets ("Jane Doe (new patient)", or an unclosed trailing
+# "(new") are not part of the name.
+_BRACKETED = re.compile(r"\([^)]*(?:\)|$)")
 # Name words that never identify a caller on their own (after case, accent
 # and apostrophe folding).
 NAME_PARTICLES = frozenset(
@@ -91,6 +92,10 @@ NAME_PARTICLES = frozenset(
     }
 )  # fmt: skip
 NAME_SUFFIXES = frozenset({"jr", "sr", "ii", "iii", "iv", "phd", "md", "dds", "esq"})
+# Leading honorifics, dropped like trailing suffixes.
+NAME_TITLES = frozenset(
+    {"mr", "mrs", "ms", "miss", "mx", "dr", "prof", "sir", "dame", "fr", "rev"}
+)
 # Removed before splitting into words, so O'Brien is one word.
 _APOSTROPHES = str.maketrans("", "", "'\u2019\u02bc")
 
@@ -208,7 +213,8 @@ def booked_caller(event: Mapping[str, object]) -> BookedCaller | None:
 
 def name_matches(wanted: str, event: Mapping[str, object]) -> bool:
     """Whether ``wanted`` names the booking's caller, ignoring case, accents,
-    apostrophes, bracketed notes and trailing suffixes such as Jr.
+    apostrophes, bracketed notes, leading titles (Dr, Mrs) and trailing
+    suffixes (Jr).
 
     Every word given must be a booked word, or booked words run together
     ("Marykate" for "Mary-Kate", "MacCarthy" for "Mac Carthy"). When the
@@ -232,12 +238,13 @@ def name_matches(wanted: str, event: Mapping[str, object]) -> bool:
 
 
 def _name_words(text: str) -> list[str]:
-    """The words of a name, without bracketed notes or trailing suffixes."""
+    """The words of a name (see :func:`_name_parts`)."""
     return [word for word, _ in _name_parts(text)]
 
 
 def _name_parts(text: str) -> list[tuple[str, int]]:
-    """(word, position) for each word of a name, where the position counts
+    """(word, position) for each word of a name, without bracketed notes,
+    leading titles (Dr, Mrs) or trailing suffixes (Jr). The position counts
     whitespace-separated names, so "Mary-Kate" is one first name."""
     parts = [
         (word, position)
@@ -246,6 +253,8 @@ def _name_parts(text: str) -> list[tuple[str, int]]:
     ]
     while parts and parts[-1][0] in NAME_SUFFIXES:
         parts.pop()
+    while parts and parts[0][0] in NAME_TITLES:
+        parts.pop(0)
     return parts
 
 
