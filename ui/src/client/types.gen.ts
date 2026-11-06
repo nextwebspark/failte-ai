@@ -1062,6 +1062,54 @@ export type BodyTranscribeAudioApiV1WorkflowRecordingsTranscribePost = {
 };
 
 /**
+ * BusinessFact
+ */
+export type BusinessFact = {
+    /**
+     * Key
+     */
+    key: string;
+    /**
+     * Label
+     */
+    label: string;
+    /**
+     * Type
+     */
+    type: string;
+    /**
+     * Help
+     */
+    help?: string | null;
+    /**
+     * Placeholder
+     */
+    placeholder?: string | null;
+    /**
+     * Required
+     */
+    required: boolean;
+    /**
+     * Max Length
+     */
+    max_length: number;
+    /**
+     * Value
+     */
+    value: string;
+};
+
+/**
+ * BusinessFactsResponse
+ */
+export type BusinessFactsResponse = {
+    /**
+     * Facts
+     */
+    facts: Array<BusinessFact>;
+};
+
+/**
  * CalculatorToolDefinition
  *
  * Tool definition for Calculator tools.
@@ -9107,6 +9155,10 @@ export type TemplateSetupField = {
      */
     max_length?: number;
     /**
+     * Stored
+     */
+    stored?: boolean;
+    /**
      * Options
      */
     options?: Array<SetupOption>;
@@ -9889,6 +9941,18 @@ export type UltravoxRealtimeLlmConfiguration = {
      * Sampling temperature. Lower values give more predictable responses.
      */
     temperature?: number;
+};
+
+/**
+ * UpdateBusinessFactsRequest
+ */
+export type UpdateBusinessFactsRequest = {
+    /**
+     * Facts
+     */
+    facts: {
+        [key: string]: string | null;
+    };
 };
 
 /**
@@ -13205,6 +13269,94 @@ export type GetAmbientNoiseUploadUrlApiV1WorkflowAmbientNoiseUploadUrlPostRespon
 };
 
 export type GetAmbientNoiseUploadUrlApiV1WorkflowAmbientNoiseUploadUrlPostResponse = GetAmbientNoiseUploadUrlApiV1WorkflowAmbientNoiseUploadUrlPostResponses[keyof GetAmbientNoiseUploadUrlApiV1WorkflowAmbientNoiseUploadUrlPostResponses];
+
+export type GetBusinessFactsApiV1WorkflowWorkflowIdBusinessFactsGetData = {
+    body?: never;
+    headers?: {
+        /**
+         * Authorization
+         */
+        authorization?: string | null;
+        /**
+         * X-Api-Key
+         */
+        'X-API-Key'?: string | null;
+    };
+    path: {
+        /**
+         * Workflow Id
+         */
+        workflow_id: number;
+    };
+    query?: never;
+    url: '/api/v1/workflow/{workflow_id}/business-facts';
+};
+
+export type GetBusinessFactsApiV1WorkflowWorkflowIdBusinessFactsGetErrors = {
+    /**
+     * Not found
+     */
+    404: unknown;
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type GetBusinessFactsApiV1WorkflowWorkflowIdBusinessFactsGetError = GetBusinessFactsApiV1WorkflowWorkflowIdBusinessFactsGetErrors[keyof GetBusinessFactsApiV1WorkflowWorkflowIdBusinessFactsGetErrors];
+
+export type GetBusinessFactsApiV1WorkflowWorkflowIdBusinessFactsGetResponses = {
+    /**
+     * Successful Response
+     */
+    200: BusinessFactsResponse;
+};
+
+export type GetBusinessFactsApiV1WorkflowWorkflowIdBusinessFactsGetResponse = GetBusinessFactsApiV1WorkflowWorkflowIdBusinessFactsGetResponses[keyof GetBusinessFactsApiV1WorkflowWorkflowIdBusinessFactsGetResponses];
+
+export type UpdateBusinessFactsApiV1WorkflowWorkflowIdBusinessFactsPutData = {
+    body: UpdateBusinessFactsRequest;
+    headers?: {
+        /**
+         * Authorization
+         */
+        authorization?: string | null;
+        /**
+         * X-Api-Key
+         */
+        'X-API-Key'?: string | null;
+    };
+    path: {
+        /**
+         * Workflow Id
+         */
+        workflow_id: number;
+    };
+    query?: never;
+    url: '/api/v1/workflow/{workflow_id}/business-facts';
+};
+
+export type UpdateBusinessFactsApiV1WorkflowWorkflowIdBusinessFactsPutErrors = {
+    /**
+     * Not found
+     */
+    404: unknown;
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type UpdateBusinessFactsApiV1WorkflowWorkflowIdBusinessFactsPutError = UpdateBusinessFactsApiV1WorkflowWorkflowIdBusinessFactsPutErrors[keyof UpdateBusinessFactsApiV1WorkflowWorkflowIdBusinessFactsPutErrors];
+
+export type UpdateBusinessFactsApiV1WorkflowWorkflowIdBusinessFactsPutResponses = {
+    /**
+     * Successful Response
+     */
+    200: BusinessFactsResponse;
+};
+
+export type UpdateBusinessFactsApiV1WorkflowWorkflowIdBusinessFactsPutResponse = UpdateBusinessFactsApiV1WorkflowWorkflowIdBusinessFactsPutResponses[keyof UpdateBusinessFactsApiV1WorkflowWorkflowIdBusinessFactsPutResponses];
 
 export type CreateTextChatSessionApiV1WorkflowWorkflowIdTextChatSessionsPostData = {
     body: CreateTextChatSessionRequest;
@@ -22096,59 +22248,3 @@ export type AutoscaleMetricApiV1HealthAutoscaleMetricGetResponses = {
 };
 
 export type AutoscaleMetricApiV1HealthAutoscaleMetricGetResponse = AutoscaleMetricApiV1HealthAutoscaleMetricGetResponses[keyof AutoscaleMetricApiV1HealthAutoscaleMetricGetResponses];
-
-/**
- * BusinessFact
- */
-export type BusinessFact = {
-    key: string;
-    label: string;
-    type: string;
-    help?: string | null;
-    placeholder?: string | null;
-    required: boolean;
-    max_length: number;
-    value: string;
-};
-
-/**
- * BusinessFactsResponse
- */
-export type BusinessFactsResponse = {
-    facts: Array<BusinessFact>;
-};
-
-/**
- * UpdateBusinessFactsRequest
- */
-export type UpdateBusinessFactsRequest = {
-    facts: {
-        [key: string]: string | null;
-    };
-};
-
-export type GetBusinessFactsApiV1WorkflowWorkflowIdBusinessFactsGetData = {
-    body?: never;
-    path: {
-        workflow_id: number;
-    };
-    query?: never;
-    url: '/api/v1/workflow/{workflow_id}/business-facts';
-};
-
-export type GetBusinessFactsApiV1WorkflowWorkflowIdBusinessFactsGetResponses = {
-    200: BusinessFactsResponse;
-};
-
-export type UpdateBusinessFactsApiV1WorkflowWorkflowIdBusinessFactsPutData = {
-    body: UpdateBusinessFactsRequest;
-    path: {
-        workflow_id: number;
-    };
-    query?: never;
-    url: '/api/v1/workflow/{workflow_id}/business-facts';
-};
-
-export type UpdateBusinessFactsApiV1WorkflowWorkflowIdBusinessFactsPutResponses = {
-    200: BusinessFactsResponse;
-};
