@@ -15,6 +15,7 @@ import { ToolBadges } from "@/components/flow/ToolBadges";
 import { FlowNodeData } from "@/components/flow/types";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { isFeatureEnabled } from "@/config/features";
 import { useAppConfig } from "@/context/AppConfigContext";
 import { copyTextToClipboard } from "@/lib/clipboard";
 import { publicDocsHref } from "@/lib/externalDocs";
@@ -285,7 +286,8 @@ function CanvasPreview({
     // Default: prompt preview, then one row of chips for what the step uses.
     const hasToolRefs = spec.properties.some((p) => p.type === "tool_refs");
     const hasDocRefs = spec.properties.some((p) => p.type === "document_refs");
-    const hasSkillRefs = spec.properties.some((p) => p.type === "skill_refs");
+    const hasSkillRefs =
+        isFeatureEnabled("skills") && spec.properties.some((p) => p.type === "skill_refs");
     const showTools = hasToolRefs && (data.tool_uuids?.length ?? 0) > 0;
     const showDocuments = hasDocRefs && (data.document_uuids?.length ?? 0) > 0;
     const showSkills =

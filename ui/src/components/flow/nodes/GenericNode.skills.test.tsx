@@ -15,7 +15,12 @@ import { GenericNode } from "./GenericNode";
  * `skill_uuids` means different things when absent, `[]` or a list.
  */
 
-const mocks = vi.hoisted(() => ({ refreshSkills: vi.fn(async () => {}) }));
+const mocks = vi.hoisted(() => ({ refreshSkills: vi.fn(async () => {}), skillsOn: true }));
+
+// The Skills area is switched off in the product; these tests cover both states.
+vi.mock("@/config/features", () => ({
+    isFeatureEnabled: (feature: string) => feature === "skills" && mocks.skillsOn,
+}));
 
 vi.mock("@xyflow/react", () => ({
     NodeToolbar: ({ children }: { children: ReactNode }) => <div>{children}</div>,
@@ -118,6 +123,7 @@ async function savedJson(): Promise<Record<string, unknown>> {
 
 beforeEach(() => {
     vi.clearAllMocks();
+    mocks.skillsOn = true;
 });
 
 describe("GenericNode skill_uuids persistence", () => {
@@ -148,5 +154,27 @@ describe("GenericNode skill_uuids persistence", () => {
     it("refreshes the skills list when the editor opens", () => {
         renderNode({ name: "Support", prompt: "Help" } as FlowNodeData);
         expect(mocks.refreshSkills).toHaveBeenCalled();
+    });
+});
+
+describe("GenericNode with the Skills area switched off", () => {
+    it("hides both skill pickers", () => {
+        mocks.skillsOn = false;
+        renderNode({ name: "Support", prompt: "Help" } as FlowNodeData);
+        expect(screen.queryByRole("radio", { name: /All skills/ })).toBeNull();
+        expect(screen.queryByRole("group", { name: "Preloaded Skills" })).toBeNull();
+    });
+
+    it("keeps the skills a step already had when it is saved", async () => {
+        mocks.skillsOn = false;
+        renderNode({
+            name: "Support",
+            prompt: "Help",
+            skill_uuids: ["s-1"],
+            preload_skill_uuids: ["s-2"],
+        } as FlowNodeData);
+        const saved = await savedJson();
+        expect(saved.skill_uuids).toEqual(["s-1"]);
+        expect(saved.preload_skill_uuids).toEqual(["s-2"]);
     });
 });

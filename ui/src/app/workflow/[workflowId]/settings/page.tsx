@@ -21,6 +21,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
+import { isFeatureEnabled } from "@/config/features";
 import { useAppConfig } from "@/context/AppConfigContext";
 import { useOrgConfig } from "@/context/OrgConfigContext";
 import { useUnsavedChanges, useUnsavedChangesContext } from "@/context/UnsavedChangesContext";
@@ -737,14 +738,17 @@ function GeneralSection({
                         onCheckedChange={setContextCompactionEnabled}
                     />
                 </SettingRow>
-                <SettingRow
-                    compact
-                    label="Skills"
-                    htmlFor="skills-enabled"
-                    hint="Adds a short skills list and two tools to each step. Turn off for latency-critical agents."
-                >
-                    <Switch id="skills-enabled" checked={skillsEnabled} onCheckedChange={setSkillsEnabled} />
-                </SettingRow>
+                {/* Hidden with the Skills area; the saved value is kept as it is. */}
+                {isFeatureEnabled("skills") && (
+                    <SettingRow
+                        compact
+                        label="Skills"
+                        htmlFor="skills-enabled"
+                        hint="Adds a short skills list and two tools to each step. Turn off for latency-critical agents."
+                    >
+                        <Switch id="skills-enabled" checked={skillsEnabled} onCheckedChange={setSkillsEnabled} />
+                    </SettingRow>
+                )}
                 <SettingRow
                     compact
                     label="Speech caching"
@@ -964,7 +968,7 @@ function TemplateVariablesSection({
             description={
                 <>
                     Values prompts can use as <code className="font-mono text-[11.5px] text-ink-2">{"{{name}}"}</code>.
-                    Campaigns and the API can override them per call.
+                    {isFeatureEnabled("campaigns") ? "Campaigns and the API" : "The API"} can override them per call.
                 </>
             }
         >

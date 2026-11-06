@@ -13,6 +13,7 @@ import { createWorkflowDraftApiV1WorkflowWorkflowIdCreateDraftPost, getWorkflowV
 import type { DocumentResponseSchema, RecordingResponseSchema, SkillSummaryResponse, ToolResponse, WorkflowVersionResponse } from '@/client/types.gen';
 import { useNodeSpecs } from "@/components/flow/renderer";
 import { FlowEdge, FlowNode, NodeType } from "@/components/flow/types";
+import { isFeatureEnabled } from '@/config/features';
 import { useAgentShell } from '@/context/AgentShellContext';
 import { useUnsavedChanges } from '@/context/UnsavedChangesContext';
 import { detailFromError } from '@/lib/apiError';
@@ -107,8 +108,13 @@ function RenderWorkflow({
     const [skillsError, setSkillsError] = useState(false);
 
     // Workspace skills for the node pickers; refreshed when a node editor
-    // opens, since skills are edited on another page.
+    // opens, since skills are edited on another page. Not fetched while the
+    // Skills area is switched off: the pickers are hidden then.
     const refreshSkills = useCallback(async () => {
+        if (!isFeatureEnabled("skills")) {
+            setSkills([]);
+            return;
+        }
         try {
             const skillsResponse = await listSkillsApiV1SkillsGet();
             if (skillsResponse.error || !skillsResponse.data) {

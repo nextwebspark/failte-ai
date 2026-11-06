@@ -48,6 +48,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { isFeatureEnabled } from "@/config/features";
 import { useTelephonyConfigWarnings } from "@/context/TelephonyConfigWarningsContext";
 import { detailFromError } from "@/lib/apiError";
 import { useAuth } from "@/lib/auth";
@@ -190,7 +191,7 @@ export default function TelephonyConfigurationsPage() {
         </PageActions>
 
         <p className="mb-6 max-w-3xl text-sm text-ink-2">
-          Connect one or more telephony provider accounts. Each campaign uses one
+          Connect one or more telephony provider accounts. Each outbound call uses one
           configuration; inbound calls are routed to the right one by account ID.
         </p>
 
@@ -397,9 +398,9 @@ export default function TelephonyConfigurationsPage() {
           <AlertDialogHeader>
             <AlertDialogTitle>Delete configuration?</AlertDialogTitle>
             <AlertDialogDescription>
-              {deleteTarget?.name} and all of its phone numbers will be removed. Any
-              campaigns that reference this configuration will block the deletion until
-              they are reassigned.
+              {deleteTarget?.name} and all of its phone numbers will be removed.
+              {isFeatureEnabled("campaigns") &&
+                " Any campaigns that reference this configuration will block the deletion until they are reassigned."}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
