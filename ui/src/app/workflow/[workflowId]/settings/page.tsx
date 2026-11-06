@@ -1360,7 +1360,7 @@ function AdvancedSettings({ context }: { context: AgentSectionContext }) {
         >
             <div className="page-body @container">
                 <header className="mb-5 flex flex-col gap-1">
-                    <h1 className="text-xl font-bold tracking-[-0.01em] text-foreground">Advanced settings</h1>
+                    <h2 className="text-xl font-bold tracking-[-0.01em] text-foreground">Advanced settings</h2>
                     <p className="text-[13.5px] text-ink-2">
                         Behaviour, variables, dictionary and diagnostics for this agent. Changes apply once you publish.
                     </p>

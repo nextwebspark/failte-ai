@@ -1,8 +1,11 @@
+import { AlertCircle, RotateCw } from 'lucide-react';
+import Link from 'next/link';
 import { Suspense } from 'react';
 
 import { getWorkflowsApiV1WorkflowFetchGet, listFoldersApiV1FolderGet } from '@/client/sdk.gen';
 import type { FolderResponse, WorkflowListResponse } from '@/client/types.gen';
 import { PageActions } from '@/components/layout/PageActionsSlot';
+import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { AgentList } from '@/components/workflow/AgentList';
@@ -24,10 +27,31 @@ function WorkflowListError() {
                 <UploadWorkflowButton />
                 <CreateWorkflowButton openFromUrl size="toolbar" />
             </PageActions>
-            <div className="font-mono text-sm text-danger">
-                Couldn&apos;t load your agents. Please try again later.
-            </div>
+            <ListMessage
+                title={"We couldn't load your agents"}
+                body="Please check your connection and try again."
+            />
         </>
+    );
+}
+
+// A calm "couldn't load" in the Calls page's shape. "Try again" is a plain
+// link back to this page, so it works without any client script.
+function ListMessage({ title, body }: { title: string; body: string }) {
+    return (
+        <div role="alert" className="flex flex-col items-center gap-2 rounded-xl border border-line bg-panel px-6 py-12 text-center">
+            <span className="grid size-11 place-items-center rounded-full bg-danger-dim text-danger" aria-hidden>
+                <AlertCircle className="size-5" />
+            </span>
+            <p className="font-semibold text-foreground">{title}</p>
+            <p className="max-w-sm text-sm text-ink-3">{body}</p>
+            <Button asChild variant="outline" className="mt-2 min-h-10">
+                <Link href="/workflow" prefetch={false}>
+                    <RotateCw className="size-4" aria-hidden />
+                    Try again
+                </Link>
+            </Button>
+        </div>
     );
 }
 
@@ -44,9 +68,10 @@ async function WorkflowList() {
         } else {
             // For OSS mode, this shouldn't happen as token is auto-generated
             return (
-                <div className="font-mono text-sm text-danger">
-                    Authentication required. Please refresh the page.
-                </div>
+                <ListMessage
+                    title="Please sign in again"
+                    body="Your session has ended. Reloading the page will take you to sign in."
+                />
             );
         }
     }

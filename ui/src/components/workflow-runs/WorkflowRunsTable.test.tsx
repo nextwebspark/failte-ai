@@ -115,9 +115,24 @@ describe("WorkflowRunsTable", () => {
         expect(screen.queryByRole("link")).toBeNull();
     });
 
-    it("shows an error as an alert", () => {
-        render(<WorkflowRunsTable {...props({ error: "Couldn't load calls" })} />);
-        expect(screen.getByRole("alert").textContent).toBe("Couldn't load calls");
+    it("shows a friendly error as an alert, without the raw text, and retries", () => {
+        const onReload = vi.fn();
+        render(<WorkflowRunsTable {...props({ error: "Failed to fetch runs: 500", onReload })} />);
+        const alert = screen.getByRole("alert");
+        expect(alert.textContent).toContain("We couldn't load these calls");
+        expect(alert.textContent).not.toContain("500");
+        fireEvent.click(screen.getByRole("button", { name: /try again/i }));
+        expect(onReload).toHaveBeenCalled();
+    });
+
+    it("offers one next step when there are no calls", () => {
+        render(
+            <WorkflowRunsTable
+                {...props({ runs: [], emptyMessage: "No calls yet", emptyHint: "Test calls count too.", emptyAction: <button>Talk to your agent</button> })}
+            />,
+        );
+        expect(screen.getByText("Test calls count too.")).toBeTruthy();
+        expect(screen.getByRole("button", { name: "Talk to your agent" })).toBeTruthy();
     });
 
     it("pages forward and back, and disables the ends", () => {
