@@ -1,4 +1,5 @@
 import {
+  Bell,
   CircleDollarSign,
   Key,
   type LucideIcon,
@@ -50,6 +51,13 @@ export const SETTINGS_SECTIONS: SettingsNavSection[] = [
         icon: Users,
         description: "Who can use this workspace, their roles and pending invitations.",
         requires: "members:read",
+      },
+      {
+        title: "Notifications",
+        url: "/settings/notifications",
+        icon: Bell,
+        description: "Who gets an email after calls, and texting callers their booking.",
+        requires: "notifications:manage",
       },
       {
         title: "Billing",

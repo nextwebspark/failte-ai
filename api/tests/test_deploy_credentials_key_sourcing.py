@@ -203,6 +203,51 @@ def test_generated_key_kept_in_env_when_secret_cannot_be_created(gcp):
     assert not (gcp.sm / SECRET).exists()
 
 
+# -- texts (Twilio SMS) are opt-in like email --------------------------------------
+
+
+def _env_values(gcp: Env) -> dict[str, str]:
+    return dict(
+        line.split("=", 1)
+        for line in gcp.env_file.read_text().splitlines()
+        if "=" in line
+    )
+
+
+def test_sms_stays_off_without_its_secrets(gcp):
+    gcp.sm_key(SM_KEY)
+    _ok(gcp.run(DOGRAH_SMS_FROM="LightMove"))
+    values = _env_values(gcp)
+    assert "SMS_PROVIDER" not in values
+    assert "TWILIO_SMS_AUTH_TOKEN" not in values
+
+
+def test_sms_turns_on_with_both_secrets_and_a_sender(gcp):
+    gcp.sm_key(SM_KEY)
+    (gcp.sm / "dograh-twilio-sms-account-sid").write_text("AC123")
+    (gcp.sm / "dograh-twilio-sms-auth-token").write_text("tok")
+    _ok(gcp.run(DOGRAH_SMS_FROM="+35315550100"))
+    values = _env_values(gcp)
+    assert values["SMS_PROVIDER"] == "twilio"
+    assert values["TWILIO_SMS_ACCOUNT_SID"] == "AC123"
+    assert values["TWILIO_SMS_AUTH_TOKEN"] == "tok"
+    assert values["SMS_FROM"] == "+35315550100"
+
+    # A later Deploy (no variables) keeps the sender.
+    _ok(gcp.run())
+    assert _env_values(gcp)["SMS_FROM"] == "+35315550100"
+
+
+def test_sms_without_a_sender_stays_off_and_the_deploy_carries_on(gcp):
+    gcp.sm_key(SM_KEY)
+    (gcp.sm / "dograh-twilio-sms-account-sid").write_text("AC123")
+    (gcp.sm / "dograh-twilio-sms-auth-token").write_text("tok")
+    result = gcp.run()
+    _ok(result)
+    assert "SMS_PROVIDER" not in _env_values(gcp)
+    assert "set DOGRAH_SMS_FROM" in result.stderr
+
+
 # -- scripts/lib/setup_common.sh (OSS remote installs) -----------------------------
 
 

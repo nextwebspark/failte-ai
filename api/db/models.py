@@ -1834,6 +1834,50 @@ class KnowledgeBaseChunkModel(Base):
     )
 
 
+class CallNotificationModel(Base):
+    """One after-call notification per run and channel (business email,
+    caller text). The row is claimed before sending, so a retried completion
+    job never sends twice. Holds no message content or addresses: those stay
+    on the run, and the row goes with it (ON DELETE CASCADE).
+    """
+
+    __tablename__ = "call_notifications"
+
+    id = Column(Integer, primary_key=True)
+    workflow_run_id = Column(
+        Integer,
+        ForeignKey("workflow_runs.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    # "email" (to the business) or "sms" (to the caller).
+    channel = Column(String(16), nullable=False)
+    # booking_made | message_taken | missed_call
+    event = Column(String(32), nullable=False)
+    # sending (claimed) | sent | partial | failed | logged (no provider)
+    status = Column(String(16), nullable=False)
+    recipient_count = Column(Integer, nullable=False, default=0, server_default="0")
+    error = Column(Text, nullable=True)
+    created_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(UTC),
+        server_default=func.now(),
+    )
+    updated_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(UTC),
+        server_default=func.now(),
+        onupdate=lambda: datetime.now(UTC),
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "workflow_run_id", "channel", name="uq_call_notifications_run_channel"
+        ),
+    )
+
+
 # Fallcha: agent skill tables live in a fork-owned module; importing it here
 # registers them on Base.metadata wherever the models are loaded.
 # Platform admin tables (feature switches, audit log), registered the same way.

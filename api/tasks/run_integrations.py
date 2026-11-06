@@ -22,6 +22,7 @@ from api.errors.failure import (
     classify_exception,
     log_failure,
 )
+from api.services.call_notifications import send_call_notifications
 from api.services.integrations import (
     IntegrationCompletionContext,
     has_completion_handlers,
@@ -200,6 +201,9 @@ async def run_integrations_post_workflow_run(
     When run as its own job (a call that never connected, a failed run) it
     also marks post-call processing done; ``process_workflow_completion``
     passes ``mark_done=False`` and marks the run once its later steps finish.
+    As its own job it also sends the after-call notifications (a call that
+    never reached the agent can be a missed call); connected calls are
+    notified from ``process_workflow_completion`` instead.
     """
     try:
         await _run_integrations_post_workflow_run(_ctx, workflow_run_id)
@@ -211,9 +215,11 @@ async def run_integrations_post_workflow_run(
         raise
     except Exception:
         if mark_done:
+            await send_call_notifications(workflow_run_id)
             await mark_post_call_done(workflow_run_id)
         raise
     if mark_done:
+        await send_call_notifications(workflow_run_id)
         await mark_post_call_done(workflow_run_id)
 
 

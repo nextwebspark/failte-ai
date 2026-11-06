@@ -36,6 +36,8 @@ class Permission(StrEnum):
     BOOKINGS_GRANT = "bookings:grant"
     # Edit an agent's business facts (hours, address, FAQ) but nothing else.
     AGENTS_FACTS = "agents:facts"
+    # Choose who is emailed or texted after calls.
+    NOTIFICATIONS_MANAGE = "notifications:manage"
 
 
 # What every member of a business can see.
@@ -54,12 +56,13 @@ _READ: frozenset[Permission] = _STAFF | {
 }
 
 # The business owner: reads everything and runs bookings, including who
-# on their staff may switch AI booking.
+# on their staff may switch AI booking, and decides who hears about calls.
 _VIEWER: frozenset[Permission] = _READ | {
     Permission.BOOKINGS_MANAGE,
     Permission.BOOKINGS_GRANT,
     # The owner keeps what the agent says about the business up to date.
     Permission.AGENTS_FACTS,
+    Permission.NOTIFICATIONS_MANAGE,
 }
 
 # Builds agents; booking decisions stay with the owner and admins.

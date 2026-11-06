@@ -43,11 +43,16 @@ def test_roles_nest_except_bookings():
     admin = ROLE_PERMISSIONS[OrgRole.ADMIN]
     assert staff < owner < admin
     assert staff < developer < admin
-    # The owner runs bookings, which developers (who build agents) don't;
-    # apart from that, a developer can do everything an owner can.
-    bookings = {Permission.BOOKINGS_MANAGE, Permission.BOOKINGS_GRANT}
-    assert owner - developer == bookings
-    assert not bookings & developer
+    # The owner runs bookings and decides who hears about calls, which
+    # developers (who build agents) don't; apart from that, a developer can
+    # do everything an owner can.
+    owner_only = {
+        Permission.BOOKINGS_MANAGE,
+        Permission.BOOKINGS_GRANT,
+        Permission.NOTIFICATIONS_MANAGE,
+    }
+    assert owner - developer == owner_only
+    assert not owner_only & developer
 
 
 @pytest.mark.parametrize(

@@ -182,6 +182,7 @@ class OrganizationConfigurationKey(Enum):
     PLATFORM_MODEL_POLICY = (
         "PLATFORM_MODEL_POLICY"  # Superuser-set platform model access and region
     )
+    CALL_NOTIFICATIONS = "CALL_NOTIFICATIONS"  # Who is emailed or texted after calls
 
 
 class UserConfigurationKey(Enum):
