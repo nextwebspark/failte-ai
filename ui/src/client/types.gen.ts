@@ -292,6 +292,28 @@ export type ActiveCallsResponse = {
 };
 
 /**
+ * AddRecipientRequest
+ */
+export type AddRecipientRequest = {
+    /**
+     * Email
+     */
+    email: string;
+};
+
+/**
+ * AddRecipientResponse
+ */
+export type AddRecipientResponse = {
+    recipient: ReportRecipientView;
+    /**
+     * Confirmation Sent
+     */
+    confirmation_sent: boolean;
+    settings: EmailReportSettingsResponse;
+};
+
+/**
  * AiBookingRequest
  *
  * The owner's switches and booking rules for one calendar; omitted
@@ -3730,6 +3752,96 @@ export type ElevenlabsTtsConfiguration = {
 };
 
 /**
+ * EmailReportSettingsResponse
+ */
+export type EmailReportSettingsResponse = {
+    /**
+     * Daily
+     */
+    daily: boolean;
+    /**
+     * Weekly
+     */
+    weekly: boolean;
+    /**
+     * Monthly
+     */
+    monthly: boolean;
+    /**
+     * Daily Send Time
+     */
+    daily_send_time: string;
+    /**
+     * Workflow Id
+     */
+    workflow_id: number | null;
+    /**
+     * Recipients
+     */
+    recipients: Array<ReportRecipientView>;
+    /**
+     * Max Recipients
+     */
+    max_recipients: number;
+    /**
+     * Timezone
+     */
+    timezone: string;
+    /**
+     * Agents
+     */
+    agents: Array<ReportAgent>;
+    /**
+     * Own Email
+     */
+    own_email: string | null;
+    /**
+     * Your Email
+     */
+    your_email: string | null;
+    /**
+     * Can Edit
+     */
+    can_edit: boolean;
+    /**
+     * Email Available
+     */
+    email_available: boolean;
+    /**
+     * Last Sent
+     */
+    last_sent: {
+        [key: string]: string;
+    };
+};
+
+/**
+ * EmailReportSettingsUpdate
+ */
+export type EmailReportSettingsUpdate = {
+    /**
+     * Daily
+     */
+    daily: boolean;
+    /**
+     * Weekly
+     */
+    weekly: boolean;
+    /**
+     * Monthly
+     */
+    monthly: boolean;
+    /**
+     * Daily Send Time
+     */
+    daily_send_time: string;
+    /**
+     * Workflow Id
+     */
+    workflow_id?: number | null;
+};
+
+/**
  * EmailRequest
  */
 export type EmailRequest = {
@@ -4192,6 +4304,11 @@ export type FollowUpWeek = {
      */
     median_wait_minutes: number | null;
 };
+
+/**
+ * Frequency
+ */
+export type Frequency = 'daily' | 'weekly' | 'monthly';
 
 /**
  * Gladia
@@ -5768,6 +5885,20 @@ export type LibrarySkillSummaryResponse = {
 };
 
 /**
+ * LinkResult
+ */
+export type LinkResult = {
+    /**
+     * Status
+     */
+    status: 'confirmed' | 'already' | 'removed' | 'invalid';
+    /**
+     * Business Name
+     */
+    business_name: string | null;
+};
+
+/**
  * LMNT
  *
  * Stored LMNT configurations remain readable after the provider's retirement.
@@ -6836,7 +6967,7 @@ export type OrganizationPreferencesResponse = {
 /**
  * Permission
  */
-export type Permission = 'org:manage' | 'members:read' | 'members:manage' | 'billing:read' | 'billing:manage' | 'agents:read' | 'agents:write' | 'campaigns:read' | 'campaigns:write' | 'telephony:read' | 'telephony:write' | 'integrations:read' | 'integrations:write' | 'credentials:write' | 'api_keys:manage' | 'calls:read' | 'reports:read' | 'bookings:manage' | 'bookings:grant' | 'agents:facts' | 'notifications:manage' | 'followups:manage';
+export type Permission = 'org:manage' | 'members:read' | 'members:manage' | 'billing:read' | 'billing:manage' | 'agents:read' | 'agents:write' | 'campaigns:read' | 'campaigns:write' | 'telephony:read' | 'telephony:write' | 'integrations:read' | 'integrations:write' | 'credentials:write' | 'api_keys:manage' | 'calls:read' | 'reports:read' | 'bookings:manage' | 'bookings:grant' | 'agents:facts' | 'notifications:manage' | 'followups:manage' | 'reports:schedule';
 
 /**
  * PhoneNumberCreateRequest
@@ -7992,6 +8123,54 @@ export type RenameOrganizationRequest = {
      * Name
      */
     name: string;
+};
+
+/**
+ * ReportAgent
+ */
+export type ReportAgent = {
+    /**
+     * Id
+     */
+    id: number;
+    /**
+     * Name
+     */
+    name: string;
+};
+
+/**
+ * ReportRecipientView
+ */
+export type ReportRecipientView = {
+    /**
+     * Id
+     */
+    id: string;
+    /**
+     * Email
+     */
+    email: string;
+    /**
+     * Status
+     */
+    status: 'active' | 'pending';
+    /**
+     * Verified Via
+     */
+    verified_via: 'account' | 'link' | null;
+    /**
+     * Added At
+     */
+    added_at: string;
+    /**
+     * Confirmed At
+     */
+    confirmed_at: string | null;
+    /**
+     * Confirm Sent At
+     */
+    confirm_sent_at: string | null;
 };
 
 /**
@@ -9983,6 +10162,23 @@ export type TemplateWorkflowResponse = {
      * Whether the appointment hours were saved as the attached Google Calendar connection's booking hours; null when there was nothing to save.
      */
     calendar_hours?: CalendarHoursStatus | null;
+};
+
+/**
+ * TestReportRequest
+ */
+export type TestReportRequest = {
+    frequency: Frequency;
+};
+
+/**
+ * TestReportResponse
+ */
+export type TestReportResponse = {
+    /**
+     * Sent To
+     */
+    sent_to: string;
 };
 
 /**
@@ -14191,6 +14387,55 @@ export type UpdateBusinessFactsApiV1WorkflowWorkflowIdBusinessFactsPutResponses 
 };
 
 export type UpdateBusinessFactsApiV1WorkflowWorkflowIdBusinessFactsPutResponse = UpdateBusinessFactsApiV1WorkflowWorkflowIdBusinessFactsPutResponses[keyof UpdateBusinessFactsApiV1WorkflowWorkflowIdBusinessFactsPutResponses];
+
+export type PreviewAgentVoiceApiV1WorkflowWorkflowIdVoicePreviewGetData = {
+    body?: never;
+    headers?: {
+        /**
+         * Authorization
+         */
+        authorization?: string | null;
+        /**
+         * X-Api-Key
+         */
+        'X-API-Key'?: string | null;
+    };
+    path: {
+        /**
+         * Workflow Id
+         */
+        workflow_id: number;
+    };
+    query: {
+        /**
+         * Voice Id
+         */
+        voice_id: string;
+    };
+    url: '/api/v1/workflow/{workflow_id}/voice-preview';
+};
+
+export type PreviewAgentVoiceApiV1WorkflowWorkflowIdVoicePreviewGetErrors = {
+    /**
+     * Not found
+     */
+    404: unknown;
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type PreviewAgentVoiceApiV1WorkflowWorkflowIdVoicePreviewGetError = PreviewAgentVoiceApiV1WorkflowWorkflowIdVoicePreviewGetErrors[keyof PreviewAgentVoiceApiV1WorkflowWorkflowIdVoicePreviewGetErrors];
+
+export type PreviewAgentVoiceApiV1WorkflowWorkflowIdVoicePreviewGetResponses = {
+    /**
+     * Successful Response
+     */
+    200: Blob | File;
+};
+
+export type PreviewAgentVoiceApiV1WorkflowWorkflowIdVoicePreviewGetResponse = PreviewAgentVoiceApiV1WorkflowWorkflowIdVoicePreviewGetResponses[keyof PreviewAgentVoiceApiV1WorkflowWorkflowIdVoicePreviewGetResponses];
 
 export type CreateTextChatSessionApiV1WorkflowWorkflowIdTextChatSessionsPostData = {
     body: CreateTextChatSessionRequest;
@@ -20327,6 +20572,359 @@ export type MarkFollowUpDoneApiV1FollowUpsRunIdDonePostResponses = {
 };
 
 export type MarkFollowUpDoneApiV1FollowUpsRunIdDonePostResponse = MarkFollowUpDoneApiV1FollowUpsRunIdDonePostResponses[keyof MarkFollowUpDoneApiV1FollowUpsRunIdDonePostResponses];
+
+export type GetEmailReportSettingsApiV1OrganizationsEmailReportsGetData = {
+    body?: never;
+    headers?: {
+        /**
+         * Authorization
+         */
+        authorization?: string | null;
+        /**
+         * X-Api-Key
+         */
+        'X-API-Key'?: string | null;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/v1/organizations/email-reports';
+};
+
+export type GetEmailReportSettingsApiV1OrganizationsEmailReportsGetErrors = {
+    /**
+     * Not found
+     */
+    404: unknown;
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type GetEmailReportSettingsApiV1OrganizationsEmailReportsGetError = GetEmailReportSettingsApiV1OrganizationsEmailReportsGetErrors[keyof GetEmailReportSettingsApiV1OrganizationsEmailReportsGetErrors];
+
+export type GetEmailReportSettingsApiV1OrganizationsEmailReportsGetResponses = {
+    /**
+     * Successful Response
+     */
+    200: EmailReportSettingsResponse;
+};
+
+export type GetEmailReportSettingsApiV1OrganizationsEmailReportsGetResponse = GetEmailReportSettingsApiV1OrganizationsEmailReportsGetResponses[keyof GetEmailReportSettingsApiV1OrganizationsEmailReportsGetResponses];
+
+export type UpdateEmailReportSettingsApiV1OrganizationsEmailReportsPutData = {
+    body: EmailReportSettingsUpdate;
+    headers?: {
+        /**
+         * Authorization
+         */
+        authorization?: string | null;
+        /**
+         * X-Api-Key
+         */
+        'X-API-Key'?: string | null;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/v1/organizations/email-reports';
+};
+
+export type UpdateEmailReportSettingsApiV1OrganizationsEmailReportsPutErrors = {
+    /**
+     * Not found
+     */
+    404: unknown;
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type UpdateEmailReportSettingsApiV1OrganizationsEmailReportsPutError = UpdateEmailReportSettingsApiV1OrganizationsEmailReportsPutErrors[keyof UpdateEmailReportSettingsApiV1OrganizationsEmailReportsPutErrors];
+
+export type UpdateEmailReportSettingsApiV1OrganizationsEmailReportsPutResponses = {
+    /**
+     * Successful Response
+     */
+    200: EmailReportSettingsResponse;
+};
+
+export type UpdateEmailReportSettingsApiV1OrganizationsEmailReportsPutResponse = UpdateEmailReportSettingsApiV1OrganizationsEmailReportsPutResponses[keyof UpdateEmailReportSettingsApiV1OrganizationsEmailReportsPutResponses];
+
+export type AddEmailReportRecipientApiV1OrganizationsEmailReportsRecipientsPostData = {
+    body: AddRecipientRequest;
+    headers?: {
+        /**
+         * Authorization
+         */
+        authorization?: string | null;
+        /**
+         * X-Api-Key
+         */
+        'X-API-Key'?: string | null;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/v1/organizations/email-reports/recipients';
+};
+
+export type AddEmailReportRecipientApiV1OrganizationsEmailReportsRecipientsPostErrors = {
+    /**
+     * Not found
+     */
+    404: unknown;
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type AddEmailReportRecipientApiV1OrganizationsEmailReportsRecipientsPostError = AddEmailReportRecipientApiV1OrganizationsEmailReportsRecipientsPostErrors[keyof AddEmailReportRecipientApiV1OrganizationsEmailReportsRecipientsPostErrors];
+
+export type AddEmailReportRecipientApiV1OrganizationsEmailReportsRecipientsPostResponses = {
+    /**
+     * Successful Response
+     */
+    200: AddRecipientResponse;
+};
+
+export type AddEmailReportRecipientApiV1OrganizationsEmailReportsRecipientsPostResponse = AddEmailReportRecipientApiV1OrganizationsEmailReportsRecipientsPostResponses[keyof AddEmailReportRecipientApiV1OrganizationsEmailReportsRecipientsPostResponses];
+
+export type ResendEmailReportConfirmationApiV1OrganizationsEmailReportsRecipientsRecipientIdResendPostData = {
+    body?: never;
+    headers?: {
+        /**
+         * Authorization
+         */
+        authorization?: string | null;
+        /**
+         * X-Api-Key
+         */
+        'X-API-Key'?: string | null;
+    };
+    path: {
+        /**
+         * Recipient Id
+         */
+        recipient_id: string;
+    };
+    query?: never;
+    url: '/api/v1/organizations/email-reports/recipients/{recipient_id}/resend';
+};
+
+export type ResendEmailReportConfirmationApiV1OrganizationsEmailReportsRecipientsRecipientIdResendPostErrors = {
+    /**
+     * Not found
+     */
+    404: unknown;
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ResendEmailReportConfirmationApiV1OrganizationsEmailReportsRecipientsRecipientIdResendPostError = ResendEmailReportConfirmationApiV1OrganizationsEmailReportsRecipientsRecipientIdResendPostErrors[keyof ResendEmailReportConfirmationApiV1OrganizationsEmailReportsRecipientsRecipientIdResendPostErrors];
+
+export type ResendEmailReportConfirmationApiV1OrganizationsEmailReportsRecipientsRecipientIdResendPostResponses = {
+    /**
+     * Successful Response
+     */
+    200: EmailReportSettingsResponse;
+};
+
+export type ResendEmailReportConfirmationApiV1OrganizationsEmailReportsRecipientsRecipientIdResendPostResponse = ResendEmailReportConfirmationApiV1OrganizationsEmailReportsRecipientsRecipientIdResendPostResponses[keyof ResendEmailReportConfirmationApiV1OrganizationsEmailReportsRecipientsRecipientIdResendPostResponses];
+
+export type RemoveEmailReportRecipientApiV1OrganizationsEmailReportsRecipientsRecipientIdDeleteData = {
+    body?: never;
+    headers?: {
+        /**
+         * Authorization
+         */
+        authorization?: string | null;
+        /**
+         * X-Api-Key
+         */
+        'X-API-Key'?: string | null;
+    };
+    path: {
+        /**
+         * Recipient Id
+         */
+        recipient_id: string;
+    };
+    query?: never;
+    url: '/api/v1/organizations/email-reports/recipients/{recipient_id}';
+};
+
+export type RemoveEmailReportRecipientApiV1OrganizationsEmailReportsRecipientsRecipientIdDeleteErrors = {
+    /**
+     * Not found
+     */
+    404: unknown;
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type RemoveEmailReportRecipientApiV1OrganizationsEmailReportsRecipientsRecipientIdDeleteError = RemoveEmailReportRecipientApiV1OrganizationsEmailReportsRecipientsRecipientIdDeleteErrors[keyof RemoveEmailReportRecipientApiV1OrganizationsEmailReportsRecipientsRecipientIdDeleteErrors];
+
+export type RemoveEmailReportRecipientApiV1OrganizationsEmailReportsRecipientsRecipientIdDeleteResponses = {
+    /**
+     * Successful Response
+     */
+    200: EmailReportSettingsResponse;
+};
+
+export type RemoveEmailReportRecipientApiV1OrganizationsEmailReportsRecipientsRecipientIdDeleteResponse = RemoveEmailReportRecipientApiV1OrganizationsEmailReportsRecipientsRecipientIdDeleteResponses[keyof RemoveEmailReportRecipientApiV1OrganizationsEmailReportsRecipientsRecipientIdDeleteResponses];
+
+export type PreviewEmailReportApiV1OrganizationsEmailReportsPreviewGetData = {
+    body?: never;
+    headers?: {
+        /**
+         * Authorization
+         */
+        authorization?: string | null;
+        /**
+         * X-Api-Key
+         */
+        'X-API-Key'?: string | null;
+    };
+    path?: never;
+    query?: {
+        frequency?: Frequency;
+    };
+    url: '/api/v1/organizations/email-reports/preview';
+};
+
+export type PreviewEmailReportApiV1OrganizationsEmailReportsPreviewGetErrors = {
+    /**
+     * Not found
+     */
+    404: unknown;
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type PreviewEmailReportApiV1OrganizationsEmailReportsPreviewGetError = PreviewEmailReportApiV1OrganizationsEmailReportsPreviewGetErrors[keyof PreviewEmailReportApiV1OrganizationsEmailReportsPreviewGetErrors];
+
+export type PreviewEmailReportApiV1OrganizationsEmailReportsPreviewGetResponses = {
+    /**
+     * Successful Response
+     */
+    200: string;
+};
+
+export type PreviewEmailReportApiV1OrganizationsEmailReportsPreviewGetResponse = PreviewEmailReportApiV1OrganizationsEmailReportsPreviewGetResponses[keyof PreviewEmailReportApiV1OrganizationsEmailReportsPreviewGetResponses];
+
+export type SendTestEmailReportApiV1OrganizationsEmailReportsTestPostData = {
+    body: TestReportRequest;
+    headers?: {
+        /**
+         * Authorization
+         */
+        authorization?: string | null;
+        /**
+         * X-Api-Key
+         */
+        'X-API-Key'?: string | null;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/v1/organizations/email-reports/test';
+};
+
+export type SendTestEmailReportApiV1OrganizationsEmailReportsTestPostErrors = {
+    /**
+     * Not found
+     */
+    404: unknown;
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type SendTestEmailReportApiV1OrganizationsEmailReportsTestPostError = SendTestEmailReportApiV1OrganizationsEmailReportsTestPostErrors[keyof SendTestEmailReportApiV1OrganizationsEmailReportsTestPostErrors];
+
+export type SendTestEmailReportApiV1OrganizationsEmailReportsTestPostResponses = {
+    /**
+     * Successful Response
+     */
+    200: TestReportResponse;
+};
+
+export type SendTestEmailReportApiV1OrganizationsEmailReportsTestPostResponse = SendTestEmailReportApiV1OrganizationsEmailReportsTestPostResponses[keyof SendTestEmailReportApiV1OrganizationsEmailReportsTestPostResponses];
+
+export type ConfirmEmailReportRecipientApiV1PublicEmailReportsConfirmTokenPostData = {
+    body?: never;
+    path: {
+        /**
+         * Token
+         */
+        token: string;
+    };
+    query?: never;
+    url: '/api/v1/public/email-reports/confirm/{token}';
+};
+
+export type ConfirmEmailReportRecipientApiV1PublicEmailReportsConfirmTokenPostErrors = {
+    /**
+     * Not found
+     */
+    404: unknown;
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ConfirmEmailReportRecipientApiV1PublicEmailReportsConfirmTokenPostError = ConfirmEmailReportRecipientApiV1PublicEmailReportsConfirmTokenPostErrors[keyof ConfirmEmailReportRecipientApiV1PublicEmailReportsConfirmTokenPostErrors];
+
+export type ConfirmEmailReportRecipientApiV1PublicEmailReportsConfirmTokenPostResponses = {
+    /**
+     * Successful Response
+     */
+    200: LinkResult;
+};
+
+export type ConfirmEmailReportRecipientApiV1PublicEmailReportsConfirmTokenPostResponse = ConfirmEmailReportRecipientApiV1PublicEmailReportsConfirmTokenPostResponses[keyof ConfirmEmailReportRecipientApiV1PublicEmailReportsConfirmTokenPostResponses];
+
+export type UnsubscribeEmailReportRecipientApiV1PublicEmailReportsUnsubscribeTokenPostData = {
+    body?: never;
+    path: {
+        /**
+         * Token
+         */
+        token: string;
+    };
+    query?: never;
+    url: '/api/v1/public/email-reports/unsubscribe/{token}';
+};
+
+export type UnsubscribeEmailReportRecipientApiV1PublicEmailReportsUnsubscribeTokenPostErrors = {
+    /**
+     * Not found
+     */
+    404: unknown;
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type UnsubscribeEmailReportRecipientApiV1PublicEmailReportsUnsubscribeTokenPostError = UnsubscribeEmailReportRecipientApiV1PublicEmailReportsUnsubscribeTokenPostErrors[keyof UnsubscribeEmailReportRecipientApiV1PublicEmailReportsUnsubscribeTokenPostErrors];
+
+export type UnsubscribeEmailReportRecipientApiV1PublicEmailReportsUnsubscribeTokenPostResponses = {
+    /**
+     * Successful Response
+     */
+    200: LinkResult;
+};
+
+export type UnsubscribeEmailReportRecipientApiV1PublicEmailReportsUnsubscribeTokenPostResponse = UnsubscribeEmailReportRecipientApiV1PublicEmailReportsUnsubscribeTokenPostResponses[keyof UnsubscribeEmailReportRecipientApiV1PublicEmailReportsUnsubscribeTokenPostResponses];
 
 export type GetTurnCredentialsApiV1TurnCredentialsGetData = {
     body?: never;
