@@ -353,7 +353,7 @@ export default function ReportsPage() {
               </Button>
             }
           >
-            Something went wrong on our side. Your calls are safe; try again in a moment.
+            Something went wrong on our side. Please try again in a moment.
           </EmptyState>
         ) : report && hasCalls ? (
           <>
