@@ -12,15 +12,18 @@ export function RoleSelect({
   onChange,
   disabled,
   id,
+  "aria-label": ariaLabel,
 }: {
   value: OrgRole;
   onChange: (role: OrgRole) => void;
   disabled?: boolean;
   id?: string;
+  /** Names the picker when there is no visible label, e.g. "Role for Ada". */
+  "aria-label"?: string;
 }) {
   return (
     <Select value={value} onValueChange={(v) => onChange(v as OrgRole)} disabled={disabled}>
-      <SelectTrigger id={id} className="h-8 w-[140px]">
+      <SelectTrigger id={id} aria-label={ariaLabel} className="h-8 w-[140px]">
         {/* Items carry a description; the trigger shows just the role name. */}
         <SelectValue>{ROLE_LABELS[value]}</SelectValue>
       </SelectTrigger>

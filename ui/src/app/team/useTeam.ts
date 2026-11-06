@@ -11,6 +11,8 @@ import { useOrgConfig } from "@/context/OrgConfigContext";
 import { detailFromError } from "@/lib/apiError";
 import { useAuth } from "@/lib/auth";
 
+const LOAD_FAILED = "Couldn't load your team. Please try again.";
+
 /** Members (everyone) and open invitations (admins only) of the current org. */
 export function useTeam() {
   const { user, loading: authLoading } = useAuth();
@@ -24,20 +26,26 @@ export function useTeam() {
 
   const refresh = useCallback(async () => {
     setLoading(true);
-    const [membersRes, invitationsRes] = await Promise.all([
-      listMembersApiV1OrganizationsMembersGet(),
-      canManage ? listInvitationsApiV1OrganizationsInvitationsGet() : Promise.resolve(null),
-    ]);
-    if (membersRes.error) {
-      setError(detailFromError(membersRes.error, "Failed to load members"));
-    } else {
-      setMembers(membersRes.data ?? []);
-      setError(null);
+    try {
+      const [membersRes, invitationsRes] = await Promise.all([
+        listMembersApiV1OrganizationsMembersGet(),
+        canManage ? listInvitationsApiV1OrganizationsInvitationsGet() : Promise.resolve(null),
+      ]);
+      if (membersRes.error) {
+        setError(detailFromError(membersRes.error, LOAD_FAILED));
+      } else {
+        setMembers(membersRes.data ?? []);
+        setError(null);
+      }
+      if (invitationsRes && !invitationsRes.error) {
+        setInvitations(invitationsRes.data ?? []);
+      }
+    } catch {
+      // A network failure: the generated client throws rather than resolving.
+      setError(LOAD_FAILED);
+    } finally {
+      setLoading(false);
     }
-    if (invitationsRes && !invitationsRes.error) {
-      setInvitations(invitationsRes.data ?? []);
-    }
-    setLoading(false);
   }, [canManage]);
 
   useEffect(() => {
