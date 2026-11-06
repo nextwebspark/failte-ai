@@ -24,6 +24,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { BRAND } from "@/config/brand";
 import { useUserConfig } from "@/context/UserConfigContext";
@@ -313,7 +314,20 @@ export function OrganizationPreferencesSection({
   }
 
   if (loading) {
-    return <p className="px-[18px] py-3.5 text-sm text-muted-foreground">Loading...</p>;
+    // Rows shaped like the settings below, so nothing jumps when they load.
+    return (
+      <div aria-busy="true" aria-label="Loading settings" className="divide-y divide-line-soft">
+        {Array.from({ length: show === "retention" ? 1 : 2 }, (_, i) => (
+          <div key={i} className="flex items-center justify-between gap-4 px-[18px] py-4">
+            <div className="space-y-2">
+              <Skeleton className="h-3.5 w-36" />
+              <Skeleton className="h-3 w-56 max-w-full" />
+            </div>
+            <Skeleton className="h-9 w-40 max-w-[40%]" />
+          </div>
+        ))}
+      </div>
+    );
   }
 
   const mappingCount = Object.keys(preferences.disposition_mapping ?? {}).length;
@@ -387,10 +401,20 @@ export function OrganizationPreferencesSection({
       )}
       {showGeneral && (
         <>
+          {/* Most businesses never need these two: they are for workspaces
+              that run their own phone system or reporting codes. */}
+          <div className="bg-panel-2/60 px-[18px] pb-2 pt-3">
+            <h3 className="text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-3">
+              Advanced
+            </h3>
+            <p className="mt-0.5 text-xs text-ink-3">
+              Most businesses can leave these off.
+            </p>
+          </div>
           <SettingRow
-            label="External PBX integrations"
+            label="Your own phone system (PBX)"
             htmlFor="settings-external-pbx-integrations"
-            hint="Show and enable advanced external-PBX configuration for Asterisk, transfer tools, and agents. Existing configuration is preserved when this is off."
+            hint="Turn on only if your business already runs its own phone system, such as Asterisk, and wants calls passed to it. Your set-up is kept if you turn this off."
             compact
           >
             <Switch
@@ -405,9 +429,9 @@ export function OrganizationPreferencesSection({
             />
           </SettingRow>
           <SettingRow
-            label="Disposition mapping"
+            label="Your own call outcome codes"
             htmlFor="settings-disposition-mapping"
-            hint={`Report call outcomes using your own disposition codes instead of ${BRAND.name}'s. Applies to webhooks, run filters, reports, and external PBX write-backs. Configuration is preserved when this is off.`}
+            hint={`Show call outcomes (like "booked" or "call back") using the codes your business already uses, instead of ${BRAND.name}'s, in reports and the data sent to other systems. Your codes are kept if you turn this off.`}
             compact
           >
             <Switch

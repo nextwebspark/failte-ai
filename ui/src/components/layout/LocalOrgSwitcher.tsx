@@ -33,6 +33,7 @@ import { useOrgConfig } from "@/context/OrgConfigContext";
 import { detailFromError } from "@/lib/apiError";
 import { ROLE_LABELS } from "@/lib/auth/roles";
 import { cn } from "@/lib/utils";
+import { workspaceDisplayName } from "@/lib/workspaceName";
 
 /** Reload into the newly selected organization so every screen refetches. */
 function enterWorkspace() {
@@ -50,7 +51,7 @@ export function LocalOrgSwitcher({ className }: { className?: string }) {
   const [newName, setNewName] = useState("");
   const [busy, setBusy] = useState(false);
 
-  const currentName = orgContext?.organization_name || "My workspace";
+  const currentName = workspaceDisplayName(orgContext?.organization_name);
 
   const load = async () => {
     const res = await listMyOrganizationsApiV1OrganizationsMineGet();
