@@ -41,6 +41,7 @@ from loguru import logger
 
 from api.constants import BRAND_APP_URL, BRAND_NAME, PUBLIC_BASE_URL, REDIS_URL
 from api.errors.domain import DomainError
+from api.errors.failure import add_failure_listener
 from api.errors.mps import (
     MPS_NOT_CONFIGURED_PUBLIC_MESSAGE,
     MPS_UNAVAILABLE_PUBLIC_MESSAGE,
@@ -50,11 +51,13 @@ from api.errors.mps import (
 from api.mcp_server import mcp
 from api.routes.main import router as main_router
 from api.services.credential_encryption import verify_credential_encryption
+from api.services.failure_alerts import on_failure
 from api.services.pipecat.tracing_config import (
     handle_langfuse_sync,
     load_all_org_langfuse_credentials,
 )
 from api.services.pipecat.tts_cache.runtime import close_speech_cache
+from api.services.production_readiness import check_production_config
 from api.services.skills import sync_seed_library_on_startup
 from api.services.storage import secure_legacy_minio_bucket
 from api.services.tool_integrations.client import close_shared_http_client
@@ -76,6 +79,11 @@ async def lifespan(app: FastAPI):
     # Fallcha: refuse to start with unreadable or (outside OSS) plaintext
     # credential storage. See api/services/credential_encryption.py.
     await verify_credential_encryption()
+    # Refuse a production start that would quietly fail customers (no email,
+    # free calls, localhost links). See api/services/production_readiness.py.
+    check_production_config()
+    # Alert people about critical failures (api/services/failure_alerts.py).
+    add_failure_listener(on_failure)
     # Fallcha: sync seed skills (api/skills_library) into the library.
     await sync_seed_library_on_startup()
     # Close the old public MinIO bucket even when S3/GCS is the primary backend.

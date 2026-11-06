@@ -57,6 +57,14 @@ class UserClient(BaseDBClient):
                 raise ValueError(error_msg)
         return user, was_created
 
+    async def list_platform_admins(self) -> list[UserModel]:
+        """Users with platform-admin rights (``is_superuser``)."""
+        async with self.async_session() as session:
+            result = await session.execute(
+                select(UserModel).where(UserModel.is_superuser.is_(True))
+            )
+            return list(result.scalars().all())
+
     async def get_user_by_id(self, user_id: int) -> UserModel | None:
         """Fetch a user by their internal ID."""
         async with self.async_session() as session:
