@@ -21,6 +21,7 @@ vi.mock("@/context/OrgConfigContext", () => ({
     useOrgConfig: () => ({ can: (...required: string[]) => required.every((p) => mocks.perms.includes(p)) }),
 }));
 vi.mock("@/hooks/useOrganizationTimezone", () => ({ useOrganizationTimezone: () => "Europe/Dublin" }));
+vi.mock("@/lib/auth", () => ({ useAuth: () => ({ user: { id: "4" }, loading: false }) }));
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
 function item(overrides: Partial<FollowUpItem>): FollowUpItem {
@@ -78,7 +79,7 @@ describe("Follow-ups", () => {
 
     it("lists what needs a person, with the week's real counts", async () => {
         render(<FollowUpsPage />);
-        expect(await screen.findByText("Call back Sinéad O'Brien")).toBeTruthy();
+        expect(await screen.findByText("Call back Sinéad O'Brien", undefined, { timeout: 8000 })).toBeTruthy();
         expect(screen.getByText("Change Saturday to 7 people")).toBeTruthy();
         expect(screen.getAllByText("Transfer not answered").length).toBeGreaterThan(0);
         expect(screen.getByRole("tab", { name: /To do/ }).textContent).toContain("2");

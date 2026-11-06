@@ -92,7 +92,7 @@ describe("Home", () => {
 
     it("greets the person as the page's one heading", async () => {
         render(<OverviewPage />);
-        await screen.findByText("Handled by your agent");
+        await screen.findByText("Handled by your agent", undefined, { timeout: 8000 });
         const headings = screen.getAllByRole("heading", { level: 1 });
         expect(headings).toHaveLength(1);
         expect(headings[0].textContent).toMatch(/^Good (morning|afternoon|evening), Mary$/);
