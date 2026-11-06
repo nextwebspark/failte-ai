@@ -135,18 +135,10 @@ _NEVER_REVIEWED = frozenset({CallResult.IN_PROGRESS, CallResult.NOT_CONNECTED})
 
 
 def _percents(counts: Sequence[int]) -> list[int]:
-    """Whole percents that add up to 100 (largest remainder)."""
+    """Each count's whole percent of the total. Rounded on their own, so
+    equal counts always show the same percent (the sum may be 99 or 101)."""
     total = sum(counts)
-    if not total:
-        return [0 for _ in counts]
-    exact = [c * 100 / total for c in counts]
-    whole = [int(e) for e in exact]
-    by_remainder = sorted(
-        range(len(counts)), key=lambda i: exact[i] - whole[i], reverse=True
-    )
-    for i in by_remainder[: 100 - sum(whole)]:
-        whole[i] += 1
-    return whole
+    return [round(c * 100 / total) if total else 0 for c in counts]
 
 
 def callers_wanted(calls: Iterable[CallView]) -> list[dict[str, Any]]:

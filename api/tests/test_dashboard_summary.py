@@ -392,13 +392,13 @@ def test_callers_wanted_without_unreviewed_calls_invents_nothing():
     assert callers_wanted([]) == []
 
 
-def test_callers_wanted_percents_add_up_to_100():
+def test_callers_wanted_equal_counts_show_equal_percents():
     calls = _views(
-        *[_row(i, review=_reason("a", "A")) for i in range(1)],
-        *[_row(10 + i, review=_reason("b", "B")) for i in range(1)],
-        *[_row(20 + i, review=_reason("c", "C")) for i in range(1)],
+        _row(1, review=_reason("a", "A")),
+        _row(2, review=_reason("b", "B")),
+        _row(3, review=_reason("c", "C")),
     )
-    assert sum(r["percent"] for r in callers_wanted(calls)) == 100
+    assert [r["percent"] for r in callers_wanted(calls)] == [33, 33, 33]
 
 
 def test_recent_calls_carry_the_summary():
