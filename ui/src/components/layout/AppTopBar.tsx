@@ -2,7 +2,7 @@
 
 import { ArrowUpCircle, Bot, LogOut, Menu, Settings, UserRound, Users } from "lucide-react";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import React from "react";
 
 import { BrandLogo } from "@/components/BrandLogo";
@@ -27,11 +27,39 @@ import { useOrgConfig } from "@/context/OrgConfigContext";
 import { useLatestReleaseVersion } from "@/hooks/useLatestReleaseVersion";
 import type { LocalUser } from "@/lib/auth";
 import { useAuth } from "@/lib/auth";
-import { ROLE_LABELS } from "@/lib/auth/roles";
+import { type Permission, ROLE_LABELS } from "@/lib/auth/roles";
 
 import { agentSectionFor } from "./agentNav";
 import { getPageMeta } from "./navConfig";
 import { useShellChrome } from "./shellContext";
+
+type AccountLink = { href: string; label: string; icon: typeof Settings };
+
+/**
+ * The account menu's links, minus the ones the caller's role can't open.
+ * `can` is null while the role loads: only the always-open links show then.
+ */
+export function accountMenuLinks(
+  provider: string | undefined,
+  can: ((...permissions: Permission[]) => boolean) | null,
+): AccountLink[] {
+  const links: AccountLink[] = [];
+  if (provider === "stack") {
+    links.push({ href: "/handler/account-settings", label: "Account settings", icon: Settings });
+  }
+  links.push({ href: "/account", label: "Your account", icon: UserRound });
+  if (can?.("members:read")) {
+    links.push({ href: "/team", label: "Team", icon: Users });
+  }
+  if (can) {
+    const settings = firstSettingsUrl(can);
+    // With no settings screen to open, Settings would only repeat "Your account".
+    if (settings !== "/account") {
+      links.push({ href: settings, label: "Settings", icon: Settings });
+    }
+  }
+  return links;
+}
 
 /**
  * The canvas's 46px app header (app-doc/claude-design/Failte AI v2.dc.html):
@@ -48,7 +76,6 @@ export function AppTopBar({
   actionsSlotRef: (node: HTMLDivElement | null) => void;
 }) {
   const pathname = usePathname();
-  const router = useRouter();
   const { provider, logout, user } = useAuth();
   const { config } = useAppConfig();
   const { toggleSidebar } = useSidebar();
@@ -77,6 +104,8 @@ export function AppTopBar({
   });
 
   const { role, can } = useOrgConfig();
+
+  const accountLinks = accountMenuLinks(provider, role === null ? null : can);
 
   const displayIdentity =
     user?.displayName ||
@@ -193,7 +222,7 @@ export function AppTopBar({
             <button
               type="button"
               aria-label="Account menu"
-              className="grid h-[26px] w-[26px] shrink-0 cursor-pointer place-items-center rounded-full border border-line bg-brand-dim font-mono text-[10px] font-semibold text-brand"
+              className="grid h-[26px] w-[26px] shrink-0 cursor-pointer place-items-center rounded-full border border-line bg-brand-dim font-mono text-[10px] font-semibold text-brand outline-none focus-visible:ring-[3px] focus-visible:ring-ring/60 focus-visible:ring-offset-1 focus-visible:ring-offset-background"
             >
               {userInitials}
             </button>
@@ -220,32 +249,16 @@ export function AppTopBar({
               </div>
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
-            {provider === "stack" && (
-              <DropdownMenuItem
-                onClick={() => router.push("/handler/account-settings")}
-                className="cursor-pointer"
-              >
-                <Settings className="mr-2 h-4 w-4" />
-                Account settings
+            {accountLinks.map(({ href, label, icon: Icon }) => (
+              <DropdownMenuItem key={href} asChild className="cursor-pointer">
+                <Link href={href}>
+                  <Icon className="mr-2 h-4 w-4" aria-hidden />
+                  {label}
+                </Link>
               </DropdownMenuItem>
-            )}
-            <DropdownMenuItem onClick={() => router.push("/account")} className="cursor-pointer">
-              <UserRound className="mr-2 h-4 w-4" />
-              Your account
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => router.push("/team")} className="cursor-pointer">
-              <Users className="mr-2 h-4 w-4" />
-              Team
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              onClick={() => router.push(firstSettingsUrl(role === null ? null : can))}
-              className="cursor-pointer"
-            >
-              <Settings className="mr-2 h-4 w-4" />
-              Settings
-            </DropdownMenuItem>
+            ))}
             <DropdownMenuItem onClick={() => logout()} className="cursor-pointer">
-              <LogOut className="mr-2 h-4 w-4" />
+              <LogOut className="mr-2 h-4 w-4" aria-hidden />
               Sign out
             </DropdownMenuItem>
           </DropdownMenuContent>
