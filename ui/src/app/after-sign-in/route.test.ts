@@ -38,8 +38,8 @@ describe("GET /after-sign-in", () => {
     mocks.count.mockResolvedValue({ data: { total: 2, active: 1 } });
   });
 
-  it("answers with a plain relative 307 to the calls list for a member with agents", async () => {
-    expect(await landing()).toEqual({ status: 307, location: "/usage" });
+  it("answers with a plain relative 307 to Home for a member with agents", async () => {
+    expect(await landing()).toEqual({ status: 307, location: "/overview" });
   });
 
   it("sends a user without active agents to create one", async () => {
@@ -47,9 +47,9 @@ describe("GET /after-sign-in", () => {
     expect((await landing()).location).toBe("/workflow/create");
   });
 
-  it("sends a viewer to call history", async () => {
-    mocks.context.mockResolvedValue({ data: { role: "viewer" } });
-    expect((await landing()).location).toBe("/usage");
+  it.each(["viewer", "staff"])("sends a %s (who can't build agents) to Home", async (role) => {
+    mocks.context.mockResolvedValue({ data: { role } });
+    expect((await landing()).location).toBe("/overview");
     expect(mocks.count).not.toHaveBeenCalled();
   });
 

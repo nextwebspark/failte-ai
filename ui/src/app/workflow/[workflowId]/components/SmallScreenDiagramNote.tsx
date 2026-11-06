@@ -66,7 +66,7 @@ export function SmallScreenDiagramNote({
                 <div className="mt-5 flex w-full max-w-xs flex-col gap-2.5">
                     <Button asChild size="lg" className="h-11">
                         <Link href={agentFactsHref(workflowId)}>
-                            Go to Business facts
+                            Go to What your agent knows
                             <ArrowRight className="size-4" aria-hidden />
                         </Link>
                     </Button>

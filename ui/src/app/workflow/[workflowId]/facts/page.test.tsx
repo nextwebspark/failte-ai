@@ -2,7 +2,8 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { toast } from "sonner";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import BusinessFactsPage from "./page";
+import WhatYourAgentKnowsPage from "./page";
+import type { AgentKnowledge } from "./useAgentKnowledge";
 
 const mocks = vi.hoisted(() => ({
     get: vi.fn(),
@@ -11,6 +12,9 @@ const mocks = vi.hoisted(() => ({
     query: "",
     replace: vi.fn(),
     openTester: vi.fn(),
+    setRailOpen: vi.fn(),
+    setAiBooking: vi.fn(),
+    knowledge: null as unknown as AgentKnowledge,
 }));
 
 vi.mock("next/navigation", () => ({
@@ -19,26 +23,43 @@ vi.mock("next/navigation", () => ({
     usePathname: () => "/workflow/12/facts",
     useRouter: () => ({ replace: mocks.replace }),
 }));
-vi.mock("@/context/AgentShellContext", () => ({ useAgentShell: () => ({ openTester: mocks.openTester }) }));
-// The summary has its own tests; here it only needs to be on the page.
-vi.mock("../components/AgentHomeSummary", () => ({
-    AgentHomeSummary: ({ workflowId }: { workflowId: number }) => <div data-testid="summary">agent {workflowId}</div>,
+vi.mock("@/context/AgentShellContext", () => ({
+    useAgentShell: () => ({ openTester: mocks.openTester, setRailOpen: mocks.setRailOpen }),
 }));
 vi.mock("@/client/sdk.gen", () => ({
     getBusinessFactsApiV1WorkflowWorkflowIdBusinessFactsGet: mocks.get,
     updateBusinessFactsApiV1WorkflowWorkflowIdBusinessFactsPut: mocks.put,
+    setAiBookingApiV1IntegrationsBookingsCalendarsConnectionIdPut: mocks.setAiBooking,
 }));
+vi.mock("@/components/layout/pageHeading", () => ({ useOwnsPageHeading: () => {} }));
+vi.mock("./useAgentKnowledge", () => ({ useAgentKnowledge: () => mocks.knowledge }));
 vi.mock("@/context/OrgConfigContext", () => ({ useOrgConfig: () => ({ can: mocks.can }) }));
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
+
+// Radix measures the switch; jsdom has no ResizeObserver.
+globalThis.ResizeObserver ??= class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+} as unknown as typeof ResizeObserver;
 
 const FACTS = [
     { key: "opening_hours", label: "Opening hours", type: "text", required: true, max_length: 300, value: "Tue-Sun 12-22" },
     { key: "extra_info", label: "Anything else callers often ask?", type: "textarea", required: false, max_length: 1500, value: "" },
 ];
 
-describe("Business facts", () => {
+const HIDDEN: AgentKnowledge = {
+    greeting: { state: "hidden" },
+    voice: { state: "hidden" },
+    calendar: { state: "none" },
+    phone: { state: "hidden" },
+    setCalendar: vi.fn(),
+};
+
+describe("What your agent knows", () => {
     beforeEach(() => {
         vi.clearAllMocks();
+        mocks.knowledge = HIDDEN;
         mocks.query = "";
         mocks.can.mockImplementation(() => true);
         mocks.get.mockResolvedValue({ data: { facts: FACTS } });
@@ -47,31 +68,114 @@ describe("Business facts", () => {
         }));
     });
 
-    it("puts the agent summary above the facts", async () => {
-        render(<BusinessFactsPage />);
-        const summary = screen.getByTestId("summary");
-        expect(summary.textContent).toBe("agent 12");
-        const heading = await screen.findByRole("heading", { name: "Business facts" });
-        expect(summary.compareDocumentPosition(heading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    it("has one main heading and the mock's panels, in plain words", async () => {
+        render(<WhatYourAgentKnowsPage />);
+        await screen.findByLabelText("Opening hours");
+        expect(screen.getAllByRole("heading", { level: 1 }).map((h) => h.textContent)).toEqual(["What your agent knows"]);
+        expect(screen.getByText("Change these any time. Your agent uses them on the next call.")).toBeTruthy();
+        for (const name of ["Your business", "Answers to common questions", "How it sounds", "Ready to take calls"]) {
+            expect(screen.getByRole("heading", { level: 2, name })).toBeTruthy();
+        }
+        expect(screen.queryByText(/business facts/i)).toBeNull();
+        // Nothing that isn't built, and no counts with no data behind them.
+        expect(screen.queryByText(/text confirmation/i)).toBeNull();
+        expect(screen.queryByText(/asked twice/i)).toBeNull();
+        expect(screen.queryByText(/add a question/i)).toBeNull();
+    });
+
+    it("leaves the test rail closed here and open again for other screens", () => {
+        const { unmount } = render(<WhatYourAgentKnowsPage />);
+        expect(mocks.setRailOpen).toHaveBeenLastCalledWith(false);
+        unmount();
+        expect(mocks.setRailOpen).toHaveBeenLastCalledWith(true);
+    });
+
+    it("Try your agent opens the test panel in place", async () => {
+        render(<WhatYourAgentKnowsPage />);
+        const link = await screen.findByRole("link", { name: "Try your agent" });
+        fireEvent.click(link);
+        expect(mocks.openTester).toHaveBeenCalledTimes(1);
+    });
+
+    it("shows the greeting with the business's own words filled in, as they are typed", async () => {
+        mocks.knowledge = {
+            ...HIDDEN,
+            greeting: { state: "ready", greeting: { kind: "text", text: "Hello, {{initial_context.business_name}}." } },
+        };
+        mocks.get.mockResolvedValue({
+            data: {
+                facts: [
+                    { key: "business_name", label: "Business name", type: "text", required: true, max_length: 120, value: "Bia Bistro" },
+                ],
+            },
+        });
+        render(<WhatYourAgentKnowsPage />);
+        expect(await screen.findByText("Hello, Bia Bistro.")).toBeTruthy();
+        fireEvent.change(screen.getByLabelText("Business name"), { target: { value: "Café Rua" } });
+        expect(screen.getByText("Hello, Café Rua.")).toBeTruthy();
+    });
+
+    it("offers bookings only when the agent books, with a working switch and booking times by day", async () => {
+        mocks.knowledge = {
+            ...HIDDEN,
+            calendar: {
+                state: "ready",
+                connected: true,
+                aiBooking: true,
+                connectionId: "c1",
+                rules: { service_periods: [{ days: [1, 2], first_start: "17:00", last_start: "21:30" }] },
+            },
+        };
+        mocks.setAiBooking.mockResolvedValue({ data: {} });
+        render(<WhatYourAgentKnowsPage />);
+        await screen.findByLabelText("Opening hours");
+        expect(screen.getByText("Connected")).toBeTruthy();
+        expect(screen.getByText("Calendar connected")).toBeTruthy();
+        const days = screen.getByRole("list", { name: "Booking times by day" });
+        expect(days.textContent).toContain("Tue5 pm–9:30 pm");
+        expect(days.textContent).toContain("MonNo bookings");
+        fireEvent.click(screen.getByRole("switch", { name: "Take bookings" }));
+        await waitFor(() =>
+            expect(mocks.setAiBooking).toHaveBeenCalledWith({
+                path: { connection_id: "c1" },
+                body: { ai_booking_enabled: false },
+            }),
+        );
+    });
+
+    it("has no bookings row or switch for an agent that doesn't book", async () => {
+        render(<WhatYourAgentKnowsPage />);
+        await screen.findByLabelText("Opening hours");
+        expect(screen.queryByText("Take bookings")).toBeNull();
+        expect(screen.queryByRole("switch")).toBeNull();
+    });
+
+    it("lists what is ready from real data, and says when no phone number rings the agent", async () => {
+        mocks.knowledge = { ...HIDDEN, phone: { state: "ready", numbers: [] } };
+        render(<WhatYourAgentKnowsPage />);
+        expect(await screen.findByText("No phone number linked yet")).toBeTruthy();
+        expect(screen.getByText("Business details added")).toBeTruthy();
+        expect(screen.getByText("Done:")).toBeTruthy();
+        expect(screen.getByText("To do:")).toBeTruthy();
     });
 
     it("opens the test panel once when arriving from the Create agent wizard", async () => {
         mocks.query = "onboarding=web_call";
-        render(<BusinessFactsPage />);
+        render(<WhatYourAgentKnowsPage />);
         await screen.findByLabelText("Opening hours");
         expect(mocks.openTester).toHaveBeenCalledTimes(1);
         expect(mocks.replace).toHaveBeenCalledWith("/workflow/12/facts", { scroll: false });
     });
 
     it("leaves the test panel alone on a normal visit", async () => {
-        render(<BusinessFactsPage />);
+        render(<WhatYourAgentKnowsPage />);
         await screen.findByLabelText("Opening hours");
         expect(mocks.openTester).not.toHaveBeenCalled();
         expect(mocks.replace).not.toHaveBeenCalled();
     });
 
     it("lets the owner change what the agent tells callers", async () => {
-        render(<BusinessFactsPage />);
+        render(<WhatYourAgentKnowsPage />);
         const hours = await screen.findByLabelText("Opening hours");
         expect((hours as HTMLInputElement).value).toBe("Tue-Sun 12-22");
         const save = screen.getByRole("button", { name: "Save changes" });
@@ -90,24 +194,26 @@ describe("Business facts", () => {
 
     it("is read-only for people who can't edit facts", async () => {
         mocks.can.mockImplementation(() => false);
-        render(<BusinessFactsPage />);
+        render(<WhatYourAgentKnowsPage />);
         const hours = await screen.findByLabelText("Opening hours");
         expect(hours.hasAttribute("disabled")).toBe(true);
         expect(screen.queryByRole("button", { name: "Save changes" })).toBeNull();
         expect(screen.getByText("Only the owner or an admin can change these.")).toBeTruthy();
+        // The builder link is for people who may edit the agent.
+        expect(screen.queryByRole("link", { name: "Open advanced setup" })).toBeNull();
     });
 
     it("explains agents without facts", async () => {
         mocks.get.mockResolvedValue({ data: { facts: [] } });
-        render(<BusinessFactsPage />);
-        expect(await screen.findByText("This agent has no business facts to edit here.")).toBeTruthy();
+        render(<WhatYourAgentKnowsPage />);
+        expect(await screen.findByText("This agent has no business details to edit here.")).toBeTruthy();
     });
 
     it("shows a load error with Try again, then recovers", async () => {
         mocks.get.mockResolvedValueOnce({ error: { detail: "Agent not found" } });
-        render(<BusinessFactsPage />);
+        render(<WhatYourAgentKnowsPage />);
         const alert = await screen.findByRole("alert");
-        expect(alert.textContent).toContain("We couldn't load your business facts");
+        expect(alert.textContent).toContain("We couldn't load what your agent knows");
         expect(alert.textContent).not.toContain("Agent not found");
         fireEvent.click(screen.getByRole("button", { name: "Try again" }));
         expect(await screen.findByLabelText("Opening hours")).toBeTruthy();
@@ -116,13 +222,13 @@ describe("Business facts", () => {
 
     it("handles a network failure while loading", async () => {
         mocks.get.mockRejectedValueOnce(new TypeError("Failed to fetch"));
-        render(<BusinessFactsPage />);
-        expect((await screen.findByRole("alert")).textContent).toContain("We couldn't load your business facts");
+        render(<WhatYourAgentKnowsPage />);
+        expect((await screen.findByRole("alert")).textContent).toContain("We couldn't load what your agent knows");
         expect(screen.queryByText(/Failed to fetch/)).toBeNull();
     });
 
     it("won't save a required answer left blank, and says which", async () => {
-        render(<BusinessFactsPage />);
+        render(<WhatYourAgentKnowsPage />);
         const hours = await screen.findByLabelText("Opening hours");
         expect(hours.hasAttribute("required")).toBe(true);
         fireEvent.change(hours, { target: { value: "   " } });
@@ -142,7 +248,7 @@ describe("Business facts", () => {
     });
 
     it("lets an optional answer be blank", async () => {
-        render(<BusinessFactsPage />);
+        render(<WhatYourAgentKnowsPage />);
         const extra = await screen.findByLabelText(/Anything else callers often ask/);
         fireEvent.change(extra, { target: { value: "Parking at the back" } });
         fireEvent.change(extra, { target: { value: "" } });
@@ -159,7 +265,7 @@ describe("Business facts", () => {
     it("sends only one save on a double click", async () => {
         let resolve: (value: unknown) => void = () => {};
         mocks.put.mockReturnValue(new Promise((r) => (resolve = r)));
-        render(<BusinessFactsPage />);
+        render(<WhatYourAgentKnowsPage />);
         fireEvent.change(await screen.findByLabelText("Opening hours"), { target: { value: "Mon-Fri 9-5" } });
         const save = screen.getByRole("button", { name: "Save changes" });
         fireEvent.click(save);
@@ -172,7 +278,7 @@ describe("Business facts", () => {
 
     it("keeps the owner's typing when the save is refused", async () => {
         mocks.put.mockResolvedValue({ error: { detail: "Opening hours is too long." } });
-        render(<BusinessFactsPage />);
+        render(<WhatYourAgentKnowsPage />);
         const hours = await screen.findByLabelText("Opening hours");
         fireEvent.change(hours, { target: { value: "Mon-Fri 9-5" } });
         fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
@@ -183,19 +289,22 @@ describe("Business facts", () => {
 
     it("handles a network failure while saving", async () => {
         mocks.put.mockRejectedValue(new TypeError("Failed to fetch"));
-        render(<BusinessFactsPage />);
+        render(<WhatYourAgentKnowsPage />);
         fireEvent.change(await screen.findByLabelText("Opening hours"), { target: { value: "Mon-Fri 9-5" } });
         fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
         await waitFor(() => expect(toast.error).toHaveBeenCalledWith("Couldn't save. Please try again."));
         expect(screen.getByRole("button", { name: "Save changes" }).hasAttribute("disabled")).toBe(false);
     });
 
-    it("Undo puts the saved answers back", async () => {
-        render(<BusinessFactsPage />);
+    it("Discard puts the saved answers back", async () => {
+        render(<WhatYourAgentKnowsPage />);
         const hours = await screen.findByLabelText("Opening hours");
+        const discard = screen.getByRole("button", { name: "Discard" });
+        expect(discard.hasAttribute("disabled")).toBe(true);
         fireEvent.change(hours, { target: { value: "Closed" } });
-        fireEvent.click(screen.getByRole("button", { name: "Undo" }));
+        expect(screen.getByText("1 unsaved change")).toBeTruthy();
+        fireEvent.click(discard);
         expect((hours as HTMLInputElement).value).toBe("Tue-Sun 12-22");
-        expect(screen.queryByRole("button", { name: "Undo" })).toBeNull();
+        expect(discard.hasAttribute("disabled")).toBe(true);
     });
 });

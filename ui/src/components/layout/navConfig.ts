@@ -1,18 +1,21 @@
 import {
   AudioLines,
   BookOpen,
-  CalendarCheck,
+  Bot,
+  CalendarDays,
+  ChartLine,
   Cpu,
   Database,
-  FileText,
   GitBranch,
   Home,
+  ListChecks,
   type LucideIcon,
   Megaphone,
   Phone,
+  PhoneForwarded,
   Plug,
   Settings,
-  TrendingUp,
+  Smartphone,
   Wrench,
 } from "lucide-react";
 
@@ -24,11 +27,16 @@ import type { Permission } from "@/lib/auth/roles";
  * Single source of truth for the workspace ("org level") shell: what the left
  * nav lists, and what the top bar prints in the breadcrumb for each route.
  *
- * The design canvas (app-doc/claude-design/Failte AI v2.dc.html) carries the
- * page name and its one-line strapline in the HEADER, not in the page body —
- * `title` / `subtitle` below are the same strings the canvas uses, so the
- * screens themselves no longer repeat them.
+ * The layout follows the 5 November redesign (Home mock): the screens an
+ * owner uses every day first, then "Your agent", then every builder screen
+ * folded under one collapsed "Advanced setup" row.
  */
+
+/**
+ * A "Your agent" row whose address depends on the workspace's agents: with
+ * exactly one agent it goes straight to that agent (see `agentRowHref`).
+ */
+export type AgentRowKind = "facts" | "phone";
 
 export type NavItem = {
   title: string;
@@ -45,30 +53,53 @@ export type NavItem = {
   settingsHub?: boolean;
   /** Listed only while this product area is switched on (config/features.ts). */
   feature?: Feature;
+  /**
+   * A count shown at the end of the row (e.g. open follow-ups). Nothing is
+   * shown when it is unset or 0.
+   */
+  badge?: number;
+  /** `url` is only the fallback: the real address comes from `agentRowHref`. */
+  agentRow?: AgentRowKind;
 };
 
 export type NavSection = {
+  /** Stable key (also the remembered open/closed state of a collapsible group). */
+  id: "main" | "agent" | "advanced";
   label?: string;
   items: NavItem[];
+  /** Shown as one row that opens and closes ("Advanced setup"). */
+  collapsible?: boolean;
 };
+
+/** The Follow-ups row; its open count is set as `badge` by the sidebar. */
+export const FOLLOW_UPS_URL = "/follow-ups";
 
 /** Every workspace screen, switched-off areas included (route permissions). */
 const ALL_NAV_SECTIONS: NavSection[] = [
   {
-    items: [{ title: "Overview", url: "/overview", icon: Home }],
+    id: "main",
+    items: [
+      { title: "Home", url: "/overview", icon: Home },
+      { title: "Calls", url: "/usage", icon: Phone, requires: "reports:read" },
+      { title: "Follow-ups", url: FOLLOW_UPS_URL, icon: ListChecks, requires: "calls:read" },
+      { title: "Bookings", url: "/bookings", icon: CalendarDays, requires: "calls:read" },
+      { title: "Reports", url: "/reports", icon: ChartLine, requires: "reports:read" },
+    ],
   },
   {
-    label: "YOUR BUSINESS",
+    id: "agent",
+    label: "Your agent",
     items: [
-      { title: "Calls", url: "/usage", icon: TrendingUp, requires: "reports:read" },
-      { title: "Bookings", url: "/bookings", icon: CalendarCheck, requires: "calls:read" },
-      { title: "Reports", url: "/reports", icon: FileText, requires: "reports:read" },
+      { title: "What your agent knows", url: "/workflow", icon: Bot, agentRow: "facts", requires: "agents:read" },
+      { title: "Phone number", url: "/telephony-configurations", icon: Smartphone, agentRow: "phone" },
       // Team, Billing, Developers and Compliance live under Settings.
       { title: "Settings", url: "/settings", icon: Settings, settingsHub: true },
     ],
   },
   {
-    label: "SET UP",
+    id: "advanced",
+    label: "Advanced setup",
+    collapsible: true,
     items: [
       { title: "Voice agents", url: "/workflow", icon: GitBranch, requires: "agents:read" },
       { title: "Campaigns", url: "/campaigns", icon: Megaphone, requires: "campaigns:read", feature: "campaigns" },
@@ -76,7 +107,7 @@ const ALL_NAV_SECTIONS: NavSection[] = [
       {
         title: "Telephony",
         url: "/telephony-configurations",
-        icon: Phone,
+        icon: PhoneForwarded,
         showsTelephonyWarning: true,
         requires: "telephony:read",
       },
@@ -88,6 +119,33 @@ const ALL_NAV_SECTIONS: NavSection[] = [
     ],
   },
 ];
+
+/** The workspace's agents as the "Your agent" rows need them; null while loading. */
+export type WorkspaceAgents = readonly { id: number }[] | null;
+
+/**
+ * Where a "Your agent" row goes. "Your agent" is singular, but a workspace
+ * may have none or several:
+ *   - What your agent knows: the one agent's facts; with none, create one
+ *     (or the agents list for someone who can't); with several, the list.
+ *   - Phone number: the one agent's number; otherwise the phone accounts for
+ *     someone who may open them, else the agents list.
+ */
+export function agentRowHref(
+  kind: AgentRowKind,
+  agents: WorkspaceAgents,
+  can: ((permission: Permission) => boolean) | null,
+): string {
+  const only = agents?.length === 1 ? agents[0] : null;
+  if (kind === "facts") {
+    if (only) return `/workflow/${only.id}/facts`;
+    if (agents?.length === 0 && (!can || can("agents:write"))) return "/workflow/create";
+    return "/workflow";
+  }
+  if (only) return `/workflow/${only.id}/deployment#phone`;
+  if (!can || can("telephony:read")) return "/telephony-configurations";
+  return "/workflow";
+}
 
 /** What the left nav lists: areas that are switched off are left out. */
 export function getNavSections(flags: FeatureFlags): NavSection[] {
@@ -125,8 +183,7 @@ export type PageMeta = {
  * route (/campaigns/12) inherits its section's title until it declares its own.
  */
 const PAGE_META: Record<string, PageMeta> = {
-  "/overview": { title: "Home", subtitle: "How your phone agent did today" },
-  "/follow-ups": { title: "Follow-ups", subtitle: "Calls that need a person" },
+  "/overview": { title: "Home", subtitle: "How your phone agent is doing" },
   "/workflow": { title: "Voice agents", subtitle: "The agents that answer your calls" },
   "/workflow/create": { title: "New voice agent", subtitle: "Pick a ready-made agent" },
   "/campaigns": { title: "Campaigns", subtitle: "Bulk runs across contact lists" },
@@ -141,6 +198,7 @@ const PAGE_META: Record<string, PageMeta> = {
   "/files": { title: "Files", subtitle: "Documents your agents can look things up in" },
   "/recordings": { title: "Prompt audio", subtitle: "Recorded greetings and messages your agents can play" },
   "/usage": { title: "Calls", subtitle: "Every call your agents answered or made" },
+  "/follow-ups": { title: "Follow-ups", subtitle: "Calls that need a person" },
   "/bookings": { title: "Bookings", subtitle: "Tables and appointments your agent booked" },
   "/reports": { title: "Reports", subtitle: "Daily call outcomes" },
   // Settings screens print their own title and description (SettingsShell),
@@ -179,7 +237,8 @@ export function getPageMeta(pathname: string): PageMeta {
 const ROUTE_PERMISSIONS: Record<string, Permission> = {
   ...Object.fromEntries(
     ALL_NAV_SECTIONS.flatMap((section) => section.items)
-      .filter((item): item is NavItem & { requires: Permission } => Boolean(item.requires))
+      // A "Your agent" row's url is only a fallback address, not its screen.
+      .filter((item): item is NavItem & { requires: Permission } => Boolean(item.requires) && !item.agentRow)
       .map((item) => [item.url, item.requires]),
   ),
   ...SETTINGS_ROUTE_PERMISSIONS,

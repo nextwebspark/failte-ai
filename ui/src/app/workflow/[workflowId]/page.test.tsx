@@ -191,7 +191,7 @@ describe('on a phone', () => {
 
         expect(await screen.findByRole('heading', { name: /easier on a bigger screen/i })).toBeTruthy();
         expect(screen.queryByTestId('workflow')).toBeNull();
-        expect(screen.getByRole('link', { name: /go to business facts/i }).getAttribute('href')).toBe('/workflow/12/facts');
+        expect(screen.getByRole('link', { name: /go to what your agent knows/i }).getAttribute('href')).toBe('/workflow/12/facts');
 
         fireEvent.click(screen.getByRole('button', { name: /talk to your agent/i }));
         expect(mocks.openTester).toHaveBeenCalled();
