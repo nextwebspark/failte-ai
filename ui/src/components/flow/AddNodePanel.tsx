@@ -19,8 +19,8 @@ type AddNodePanelProps = {
 // specs in the API, but are displayed in their own sections in this panel.
 const SECTIONS: Array<{ title: string; matches: (spec: NodeSpec) => boolean }> = [
     { title: 'Triggers', matches: (spec) => spec.category === 'trigger' },
-    { title: 'Agent Nodes', matches: (spec) => spec.category === 'call_node' },
-    { title: 'Global Nodes', matches: (spec) => spec.category === 'global_node' },
+    { title: 'Conversation steps', matches: (spec) => spec.category === 'call_node' },
+    { title: 'Always applies', matches: (spec) => spec.category === 'global_node' },
     { title: 'Webhook', matches: (spec) => spec.name === 'webhook' },
     { title: 'QA', matches: (spec) => spec.name === 'qa' },
     {

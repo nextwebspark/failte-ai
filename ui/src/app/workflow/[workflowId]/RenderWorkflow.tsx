@@ -31,6 +31,7 @@ import { WorkflowVersionDiffDialog } from './components/WorkflowVersionDiffDialo
 import { WorkflowProvider } from "./contexts/WorkflowContext";
 import { useWorkflowState } from "./hooks/useWorkflowState";
 import { layoutNodes } from './utils/layoutNodes';
+import { versionLabel } from './utils/versionLabel';
 
 const edgeTypes = {
     custom: CustomEdge,
@@ -403,14 +404,12 @@ function RenderWorkflow({
             const v = versions.find((ver) => ver.id === activeVersionId)
                 ?? (initialSelectedVersion?.id === activeVersionId ? initialSelectedVersion : undefined);
             if (v) {
-                const statusSuffix = v.status === "draft" ? " (Draft)" : v.status === "published" ? " (Published)" : "";
-                return `v${v.version_number}${statusSuffix}`;
+                return versionLabel(v.version_number, v.status);
             }
         }
         // Otherwise use the immediately-available version info from save responses
         if (currentVersionNumber != null) {
-            const statusSuffix = currentVersionStatus === "draft" ? " (Draft)" : currentVersionStatus === "published" ? " (Published)" : "";
-            return `v${currentVersionNumber}${statusSuffix}`;
+            return versionLabel(currentVersionNumber, currentVersionStatus);
         }
         return undefined;
     }, [activeVersionId, versions, currentVersionNumber, currentVersionStatus, initialSelectedVersion]);
@@ -667,6 +666,7 @@ function RenderWorkflow({
                                 edgesReconnectable={!isViewingHistoricalVersion}
                                 zoomOnDoubleClick={false}
                                 deleteKeyCode={isViewingHistoricalVersion ? null : "Backspace"}
+                                proOptions={{ hideAttribution: true }}
                             >
                                 <Background
                                     variant={BackgroundVariant.Dots}

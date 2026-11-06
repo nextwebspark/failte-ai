@@ -162,7 +162,7 @@ export function getKindForSpec(
         case "end":
             return { label: "End", tone: "danger" };
         case "global":
-            return { label: "Global", tone: "amber" };
+            return { label: "Always applies", tone: "amber" };
         case "trigger":
             return { label: "API trigger", tone: "mute" };
         case "webhook":
@@ -325,7 +325,7 @@ function CanvasPreview({
                         />
                     )}
                     {extracted > 0 && (
-                        <NodeChip>{extracted === 1 ? "extracts 1 field" : `extracts ${extracted} fields`}</NodeChip>
+                        <NodeChip>{extracted === 1 ? "Saves 1 detail" : `Saves ${extracted} details`}</NodeChip>
                     )}
                 </div>
             )}
@@ -641,6 +641,12 @@ export const GenericNode = memo(({ data, selected, id, type }: GenericNodeProps)
     // "Edit Webhook" wording — display_name is "Webhook" so it works out.
     const dialogTitle = spec ? `Edit ${spec.display_name}` : "Edit Node";
     const fallbackTitle = spec?.display_name ?? "Node";
+    // The global step keeps its default name ("Global Node") in the saved
+    // graph; owners see what it means instead. A name they typed is shown as is.
+    const displayTitle =
+        styleVariant === "global" && (!data.name || data.name === "Global Node")
+            ? "Instructions for the whole call"
+            : data.name || fallbackTitle;
 
     return (
         <>
@@ -651,7 +657,7 @@ export const GenericNode = memo(({ data, selected, id, type }: GenericNodeProps)
                 selected_through_edge={data.selected_through_edge}
                 hovered_through_edge={data.hovered_through_edge}
                 runtimeActive={data.runtime_active}
-                title={data.name || fallbackTitle}
+                title={displayTitle}
                 icon={<Icon />}
                 tone={kind.tone}
                 kindLabel={kind.label}
