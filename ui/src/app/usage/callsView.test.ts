@@ -15,6 +15,7 @@ import {
     formatLength,
     formatLengthWords,
     formatPhone,
+    isDialable,
     outcomeLabel,
     pageList,
     tabFilter,
@@ -163,6 +164,12 @@ describe("one call in plain words", () => {
                 .label,
         ).toBe("Caller hung up");
         expect(callOutcome({ disposition: null, gathered_context: null }).label).toBe("Not recorded");
+    });
+
+    it("knows a withheld number can't be rung", () => {
+        expect(isDialable("+353871234567")).toBe(true);
+        expect(isDialable("anonymous")).toBe(false);
+        expect(isDialable(null)).toBe(false);
     });
 
     it("formats an Irish mobile number", () => {

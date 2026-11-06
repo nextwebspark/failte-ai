@@ -187,7 +187,6 @@ export default function UsagePage() {
     const effectiveTimezone = timezoneValue || localTimezone;
 
     const expertKey = JSON.stringify(expertApiFilters(appliedExpert));
-    const listQuery = useMemo(() => ({ ...query }), [query]);
 
     // The list, the tab totals, and (when the list is empty) whether there are any calls at all.
     useEffect(() => {
@@ -195,7 +194,7 @@ export default function UsagePage() {
         let cancelled = false;
         const now = new Date();
         const expert = JSON.parse(expertKey) as ApiFilter[];
-        const shared = [...chipFilters(listQuery), ...expert];
+        const shared = [...chipFilters(query), ...expert];
         const withTab = (tab: CallsTab) => {
             const filter = tabFilter(tab);
             return filter ? [filter, ...shared] : shared;
@@ -206,7 +205,7 @@ export default function UsagePage() {
         const load = async () => {
             try {
                 const response = await getUsageHistoryApiV1OrganizationsUsageRunsGet({
-                    query: { page: listQuery.page, limit: PAGE_SIZE, ...requestQuery(listQuery, withTab(listQuery.tab), now) },
+                    query: { page: query.page, limit: PAGE_SIZE, ...requestQuery(query, withTab(query.tab), now) },
                 });
                 if (cancelled) return;
                 if (!response.data) {
@@ -221,7 +220,7 @@ export default function UsagePage() {
                 }
                 if (cancelled) return;
                 setList({ state: 'ready', runs, total, anyCalls });
-                setCounts(current => ({ ...current, [listQuery.tab]: total }));
+                setCounts(current => ({ ...current, [query.tab]: total }));
             } catch (error) {
                 console.error('Failed to fetch calls:', error);
                 if (!cancelled) setList({ state: 'error' });
@@ -230,9 +229,9 @@ export default function UsagePage() {
 
         // Each tab's total is a one-row request with the same filters.
         const loadCounts = () => {
-            CALLS_TABS.filter(({ value }) => value !== listQuery.tab).forEach(({ value }) => {
+            CALLS_TABS.filter(({ value }) => value !== query.tab).forEach(({ value }) => {
                 getUsageHistoryApiV1OrganizationsUsageRunsGet({
-                    query: { page: 1, limit: 1, ...requestQuery(listQuery, withTab(value), now) },
+                    query: { page: 1, limit: 1, ...requestQuery(query, withTab(value), now) },
                 })
                     .then(response => {
                         if (!cancelled && response.data) {
@@ -248,7 +247,7 @@ export default function UsagePage() {
         return () => {
             cancelled = true;
         };
-    }, [auth.isAuthenticated, listQuery, expertKey, reloadKey]);
+    }, [auth.isAuthenticated, query, expertKey, reloadKey]);
 
     const runs = useMemo(() => (list.state === 'ready' ? list.runs : []), [list]);
 

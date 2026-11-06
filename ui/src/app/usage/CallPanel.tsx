@@ -40,6 +40,7 @@ import {
     formatCallWhen,
     formatLengthWords,
     formatPhone,
+    isDialable,
 } from "./callsView";
 
 /** A recording usually lands within a minute or two of the call ending. */
@@ -150,7 +151,7 @@ export function CallPanel({ run, timezone, autoplay, focusOnOpen, layout, isPhon
     useEffect(() => {
         let cancelled = false;
         setTimesBefore(null);
-        if (run.call_type !== "inbound" || !run.caller_number || isTest) return;
+        if (run.call_type !== "inbound" || !isDialable(run.caller_number) || isTest) return;
         const before = new Date(new Date(run.created_at).getTime() - 1).toISOString();
         getUsageHistoryApiV1OrganizationsUsageRunsGet({
             query: {
@@ -187,7 +188,8 @@ export function CallPanel({ run, timezone, autoplay, focusOnOpen, layout, isPhon
         () => (record.state === "ready" ? linesFrom(record.data.events, record.data.gathered_context?.tool_results) : []),
         [record],
     );
-    const callbackNumber = (capturedValues(gathered).callback_number as string | undefined)?.trim() || rawNumber;
+    const captured = capturedValues(gathered).callback_number;
+    const callbackNumber = [typeof captured === "string" ? captured.trim() : null, rawNumber].find(isDialable) ?? null;
 
     const stillGoing =
         record.state === "ready" &&

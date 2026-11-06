@@ -15,6 +15,7 @@ import {
     formatCallWhen,
     formatLength,
     formatPhone,
+    isDialable,
     spokenLength,
     whatHappened,
 } from "./callsView";
@@ -41,7 +42,7 @@ export function callerLines(run: WorkflowRunUsageResponse): { name: string; numb
             : "Unknown caller";
     return {
         name: name ?? fallback,
-        number: number ? formatPhone(number) : null,
+        number: isDialable(number) ? formatPhone(number) : number ? "Number withheld" : null,
     };
 }
 

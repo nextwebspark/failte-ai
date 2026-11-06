@@ -262,6 +262,11 @@ export function callNumberOf(run: {
     return (run.call_type === "inbound" ? run.caller_number : run.called_number) || null;
 }
 
+/** A number that can be rung: carriers send "anonymous" or "restricted" for a withheld one. */
+export function isDialable(number: string | null | undefined): number is string {
+    return typeof number === "string" && (number.match(/\d/g)?.length ?? 0) >= 6;
+}
+
 /** "+353871234567" → "+353 87 123 4567"; anything else as stored. */
 export function formatPhone(number: string): string {
     const irish = /^\+353(\d{2})(\d{3})(\d{3,4})$/.exec(number);
