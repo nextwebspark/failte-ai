@@ -27,6 +27,7 @@ from api.routes.platform_admin_area import router as platform_admin_area_router
 from api.routes.privacy import router as privacy_router
 from api.routes.public_agent import router as public_agent_router
 from api.routes.public_download import router as public_download_router
+from api.routes.recording_shares import router as recording_shares_router
 from api.routes.public_embed import router as public_embed_router
 from api.routes.public_embed_chat import router as public_embed_chat_router
 from api.routes.reports import router as reports_router
@@ -78,6 +79,7 @@ router.include_router(public_embed_router)
 router.include_router(public_embed_chat_router)
 router.include_router(public_agent_router)
 router.include_router(public_download_router)
+router.include_router(recording_shares_router)
 router.include_router(workflow_embed_router)
 router.include_router(knowledge_base_router)
 router.include_router(workflow_recording_router)
