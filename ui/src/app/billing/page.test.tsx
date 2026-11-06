@@ -111,7 +111,8 @@ describe("billing ledger filters", () => {
     it("shows filter failures instead of an empty or stale result", async () => {
         mocks.getCredits.mockResolvedValue({ error: { detail: "Invalid billing date range or timezone" } });
         render(<BillingPage />);
-        await waitFor(() => expect(screen.getByRole("alert").textContent).toBe("Invalid billing date range or timezone"));
+        await waitFor(() => expect(screen.getByRole("alert").textContent).toContain("Invalid billing date range or timezone"));
+        expect(screen.getByRole("button", { name: "Try again" })).toBeTruthy();
         expect(screen.queryByText("No entries match these filters.")).toBeNull();
     });
 

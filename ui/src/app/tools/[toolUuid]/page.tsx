@@ -1,6 +1,7 @@
 "use client";
 
-import { ArrowLeft, Code, FlaskConical, Loader2, Save } from "lucide-react";
+import { ArrowLeft, Code, FlaskConical, Loader2, Save, Wrench } from "lucide-react";
+import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 
@@ -28,6 +29,7 @@ import {
     type ToolParameter,
     validateUrl,
 } from "@/components/http";
+import { useOwnsPageHeading } from "@/components/layout/pageHeading";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -37,9 +39,10 @@ import {
     DialogHeader,
     DialogTitle,
 } from "@/components/ui/dialog";
+import { EmptyState } from "@/components/ui/empty-state";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Skeleton } from "@/components/ui/skeleton";
+import { PageSkeleton } from "@/components/ui/page-skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { detailFromError } from "@/lib/apiError";
@@ -95,6 +98,8 @@ function headersToRows(headers: Record<string, string> | undefined | null): KeyV
 export default function ToolDetailPage() {
     const { toolUuid } = useParams<{ toolUuid: string }>();
     const { user, getAccessToken, redirectToLogin, loading } = useAuth();
+    // The tool's name is this screen's h1; the header keeps "Tools" as text.
+    useOwnsPageHeading();
     const router = useRouter();
 
     const [tool, setTool] = useState<ToolResponse | null>(null);
@@ -871,40 +876,31 @@ const data = await response.json();`;
     };
 
     if (loading || !user) {
-        return (
-            <div className="min-h-full flex items-center justify-center">
-                <div className="space-y-4">
-                    <Skeleton className="h-12 w-64" />
-                    <Skeleton className="h-64 w-96" />
-                </div>
-            </div>
-        );
+        return <PageSkeleton variant="detail" />;
     }
 
     if (isLoading) {
-        return (
-            <div className="min-h-full">
-                <div className="container mx-auto px-4 py-8">
-                    <div className="max-w-4xl mx-auto space-y-6">
-                        <Skeleton className="h-8 w-48" />
-                        <Skeleton className="h-64 w-full" />
-                    </div>
-                </div>
-            </div>
-        );
+        return <PageSkeleton variant="detail" />;
     }
 
     if (!tool) {
         return (
-            <div className="min-h-full">
-                <div className="container mx-auto px-4 py-8">
-                    <div className="max-w-4xl mx-auto text-center">
-                        <h1 className="text-2xl font-bold mb-4">Tool not found</h1>
-                        <Button onClick={() => router.push("/tools")}>
-                            <ArrowLeft className="w-4 h-4 mr-2" />
-                            Back to Tools
-                        </Button>
-                    </div>
+            <div className="page-body">
+                <div className="mx-auto max-w-4xl">
+                    <EmptyState
+                        icon={Wrench}
+                        titleAs="h1"
+                        title="We couldn't find that tool"
+                        description="It may have been deleted, or the link may be old."
+                        action={
+                            <Button asChild variant="outline">
+                                <Link href="/tools">
+                                    <ArrowLeft aria-hidden />
+                                    Back to Tools
+                                </Link>
+                            </Button>
+                        }
+                    />
                 </div>
             </div>
         );

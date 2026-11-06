@@ -1,5 +1,6 @@
 "use client";
 
+import { RotateCcw } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
@@ -20,6 +21,8 @@ import {
 } from "@/components/AIModelConfigurationV2Editor";
 import { CurrentSetupCard } from "@/components/platform/CurrentSetupCard";
 import { PlatformModelEditor } from "@/components/platform/PlatformModelEditor";
+import { Button } from "@/components/ui/button";
+import { PageHeader } from "@/components/ui/page-header";
 import { Skeleton } from "@/components/ui/skeleton";
 import { BRAND } from "@/config/brand";
 import { useAppConfig } from "@/context/AppConfigContext";
@@ -36,6 +39,8 @@ export default function ModelConfigurationV2() {
     const { config: appConfig } = useAppConfig();
     const { can } = useOrgConfig();
     const hasFetched = useRef(false);
+    // Bumped by "Try again" to load everything afresh.
+    const [attempt, setAttempt] = useState(0);
 
     const [defaults, setDefaults] = useState<ModelConfigurationV2Defaults | null>(null);
     const [response, setResponse] = useState<OrganizationAiModelConfigurationResponse | null>(null);
@@ -83,7 +88,12 @@ export default function ModelConfigurationV2() {
 
         load();
 
-    }, [auth.loading, auth.user]);
+    }, [auth.loading, auth.user, attempt]);
+
+    const retry = () => {
+        hasFetched.current = false;
+        setAttempt((n) => n + 1);
+    };
 
     // The catalog reports whether this server runs platform models; the app
     // flag covers the moment before it loads.
@@ -117,10 +127,22 @@ export default function ModelConfigurationV2() {
         }
     };
 
+    const header = (
+        <PageHeader
+            className="mb-0"
+            title="Models & voice"
+            description={
+                platformModels
+                    ? `Choose how your agents listen, think and speak. Everything runs on ${BRAND.shortName}'s managed models in the EU, no API keys needed.`
+                    : "Choose the speech and AI models your agents use."
+            }
+        />
+    );
+
     if (loading) {
         return (
-            <div className="w-full max-w-4xl mx-auto space-y-6">
-                <Skeleton className="h-10 w-80" />
+            <div className="w-full max-w-4xl space-y-6">
+                {header}
                 <Skeleton className="h-28 w-full" />
                 <Skeleton className="h-96 w-full" />
             </div>
@@ -128,28 +150,23 @@ export default function ModelConfigurationV2() {
     }
 
     return (
-        <div className="w-full max-w-4xl mx-auto space-y-6">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                <div>
-                    <h1 className="text-3xl font-bold">
-                        {platformModels ? "Models & voice" : "AI Models Configuration"}
-                    </h1>
-                    <p className="mt-2 text-sm text-muted-foreground">
-                        {platformModels
-                            ? `Choose how your agents listen, think and speak. Everything runs on ${BRAND.shortName}'s managed models in the EU, no API keys needed.`
-                            : "Organization-scoped model settings."}
-                    </p>
-                </div>
-            </div>
+        <div className="w-full max-w-4xl space-y-6">
+            {header}
 
-            {missingLegacyDefaults && !error && (
-                <div className="rounded-md border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-                    Failed to load model configuration
-                </div>
-            )}
-            {error && (
-                <div className="rounded-md border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-                    {error}
+            {(error || missingLegacyDefaults) && (
+                <div
+                    role="alert"
+                    className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-danger/30 bg-danger-dim px-4 py-3"
+                >
+                    <div className="min-w-0">
+                        <p className="text-sm font-medium text-foreground">Your model settings couldn&apos;t be loaded.</p>
+                        {/* The API's reason, kept small, for the person who has to fix it. */}
+                        {error && <p className="mt-0.5 text-xs text-ink-3">{error}</p>}
+                    </div>
+                    <Button size="sm" variant="outline" onClick={retry}>
+                        <RotateCcw aria-hidden />
+                        Try again
+                    </Button>
                 </div>
             )}
             {notice && (

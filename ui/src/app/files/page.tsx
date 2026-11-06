@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 
 import { PageActions } from "@/components/layout/PageActionsSlot";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import {
     Dialog,
     DialogContent,
@@ -13,7 +13,8 @@ import {
     DialogHeader,
     DialogTitle,
 } from "@/components/ui/dialog";
-import { Skeleton } from "@/components/ui/skeleton";
+import { PageHeader } from "@/components/ui/page-header";
+import { PageSkeleton } from "@/components/ui/page-skeleton";
 import { useAppConfig } from "@/context/AppConfigContext";
 import { useAuth } from "@/lib/auth";
 
@@ -42,20 +43,16 @@ export default function FilesPage() {
     };
 
     if (loading || !user) {
-        return (
-            <div className="page-body">
-                <div className="space-y-4">
-                    <Skeleton className="h-12 w-64" />
-                    <Skeleton className="h-64 w-full" />
-                </div>
-            </div>
-        );
+        return <PageSkeleton variant="list" />;
     }
 
     return (
         <div className="page-body">
-            {/* Screen name, strapline and primary action are rendered by the
-                app header (AppTopBar) — see PageActions. */}
+            <PageHeader
+                title="Files"
+                description="Documents your agents can look things up in, like a menu, price list or FAQs. Every agent can use them."
+            />
+            {/* The primary action sits in the app header — see PageActions. */}
             {processingAvailable && (
                 <PageActions>
                     <Button size="toolbar" onClick={() => setIsUploadOpen(true)}>
@@ -66,9 +63,9 @@ export default function FilesPage() {
             )}
 
             {config && !processingAvailable && (
-                <div className="mb-6 flex gap-3 rounded-lg border border-border bg-muted/40 p-4">
-                    <Info className="mt-0.5 h-4 w-4 flex-shrink-0 text-muted-foreground" />
-                    <p className="text-sm text-muted-foreground">
+                <div className="mb-6 flex gap-3 rounded-lg border border-line bg-panel-2 p-4">
+                    <Info className="mt-0.5 h-4 w-4 flex-shrink-0 text-ink-3" aria-hidden />
+                    <p className="text-sm text-ink-2">
                         Document processing isn&apos;t available yet, so new documents
                         can&apos;t be uploaded.
                     </p>
@@ -76,23 +73,20 @@ export default function FilesPage() {
             )}
 
             <Card>
-                <CardHeader>
-                    <CardTitle>Your Documents</CardTitle>
-                    <CardDescription>
-                        Documents shared across all agents in your organization
-                    </CardDescription>
-                </CardHeader>
-                <CardContent>
-                    <DocumentList refreshTrigger={refreshKey} />
+                <CardContent className="p-4 sm:p-6">
+                    <DocumentList
+                        refreshTrigger={refreshKey}
+                        onUploadClick={processingAvailable ? () => setIsUploadOpen(true) : undefined}
+                    />
                 </CardContent>
             </Card>
 
             <Dialog open={processingAvailable && isUploadOpen} onOpenChange={setIsUploadOpen}>
                 <DialogContent>
                     <DialogHeader>
-                        <DialogTitle>Upload Document</DialogTitle>
+                        <DialogTitle>Upload a document</DialogTitle>
                         <DialogDescription>
-                            Upload a PDF or document file to add to your knowledge base
+                            Add a PDF or document your agents can look things up in.
                         </DialogDescription>
                     </DialogHeader>
                     <DocumentUpload onUploadSuccess={handleUploadSuccess} />

@@ -7,6 +7,8 @@ import {
     CreditCard,
     Info,
     RefreshCw,
+    RotateCcw,
+    TriangleAlert,
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -21,6 +23,7 @@ import { SUPPORT_MAILTO } from "@/components/SupportLink";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { EmptyState } from "@/components/ui/empty-state";
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -343,7 +346,19 @@ function MpsBillingPage() {
                         {loading ? (
                             <Skeleton className="h-64 w-full" />
                         ) : fetchError ? (
-                            <p role="alert" className="py-8 text-center text-destructive">{fetchError}</p>
+                            <EmptyState
+                                tone="danger"
+                                icon={TriangleAlert}
+                                title="Your billing history couldn't be loaded"
+                                // Usually a filter the server can't use (a date range); say which.
+                                description={fetchError}
+                                action={
+                                    <Button variant="outline" onClick={handleRefresh}>
+                                        <RotateCcw aria-hidden />
+                                        Try again
+                                    </Button>
+                                }
+                            />
                         ) : ledgerEntries.length > 0 ? (
                             <div className="bg-card border rounded-lg overflow-x-auto shadow-sm">
                                 <Table>
