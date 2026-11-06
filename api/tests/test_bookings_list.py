@@ -241,7 +241,7 @@ async def test_owner_switches_cannot_change_other_calendar_settings() -> None:
     result = await _service(tools).set_ai_booking(
         ACTOR,
         calendar.id,
-        {"ai_changes_enabled": True, "max_bookings_at_once": 500},
+        {"ai_changes_enabled": True, "calendar_id": "someone-elses"},
     )
 
     assert tools.patched == [{"ai_changes_enabled": True}]
@@ -261,3 +261,55 @@ def test_the_request_needs_at_least_one_switch() -> None:
     assert AiBookingRequest(ai_changes_enabled=False).changes() == {
         "ai_changes_enabled": False
     }
+
+
+async def test_owner_booking_rules_are_saved_and_returned() -> None:
+    from api.schemas.integrations import AiBookingRequest
+
+    calendar = _connection()
+    tools = SwitchTools(calendar)
+    request = AiBookingRequest.model_validate(
+        {
+            "rules": {
+                "service_periods": [
+                    {"days": [3, 4, 5], "first_start": "17:00", "last_start": "21:00"}
+                ],
+                "booking_minutes": 90,
+                "max_bookings_at_once": 5,
+                "max_party_size": 8,
+            }
+        }
+    )
+
+    result = await _service(tools).set_ai_booking(ACTOR, calendar.id, request.changes())
+
+    assert tools.patched == [
+        {
+            "service_periods": [
+                {"days": [3, 4, 5], "first_start": "17:00", "last_start": "21:00"}
+            ],
+            "booking_minutes": 90,
+            "max_bookings_at_once": 5,
+            "max_party_size": 8,
+        }
+    ]
+    assert result.rules["max_bookings_at_once"] == 5
+    assert "calendar_id" not in result.rules  # only owner-editable rules
+
+
+def test_rules_are_bounded_before_they_reach_the_calendar() -> None:
+    from pydantic import ValidationError
+
+    from api.schemas.integrations import AiBookingRequest
+
+    for bad in (
+        {"max_bookings_at_once": 5000},
+        {
+            "service_periods": [
+                {"days": [1], "first_start": "5pm", "last_start": "21:00"}
+            ]
+        },
+        {"calendar_id": "someone-elses"},
+    ):
+        with pytest.raises(ValidationError):
+            AiBookingRequest.model_validate({"rules": bad})

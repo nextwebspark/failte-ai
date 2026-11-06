@@ -186,6 +186,18 @@ calendar after it is written:
 - **Errors:** a calendar that can't be read shows why (e.g. "make sure it is
   shared with …"), and the others still load.
 
+### Booking rules panel
+Each calendar on the Bookings page has **Booking rules**:
+- everyone sees a one-line summary ("5 bookings at the same time · 90 min each · groups up to 8");
+- the owner (or an admin, or staff allowed to manage bookings) can edit:
+  - start from a preset (**Appointments** or **Restaurant tables**);
+  - set opening times as day buttons with first and last booking times;
+  - adjust bookings at the same time, largest group, most guests, booking length, gap between start times, reset time, minimum notice and days ahead.
+
+Saving goes through the same narrow endpoint as the switches. It accepts
+only these rule keys, never the calendar id, and the tools service checks the
+combination.
+
 ## 5. Where things live
 
 | Part | Code |
@@ -200,9 +212,8 @@ calendar after it is written:
 
 ## 6. Known gaps
 
-- `service_periods` (lunch and dinner times) can't be edited in the
-  integration settings dialog yet: the form can't show a list of time
-  ranges. Plan: a simple "Booking rules" panel on the Bookings page.
+- Clearing an optional limit (largest group, most guests) back to "no limit"
+  from the Booking rules panel isn't possible yet; the field keeps its value.
 - No booking confirmation by text or email yet. Email can be sent today
   (Resend); texts need an SMS provider and the LightMove number.
 - Choosing a particular stylist or practitioner, and appointment types of

@@ -24,6 +24,7 @@ import { StatusPill } from "@/components/ui/status-pill";
 import { Switch } from "@/components/ui/switch";
 import { useOrgConfig } from "@/context/OrgConfigContext";
 
+import { BookingRulesEditor, type Rules, summarize } from "./BookingRules";
 import {
     groupByDay,
     isoWithOffset,
@@ -121,6 +122,34 @@ function BookingsScreen() {
         }
     };
 
+    const saveRules = async (calendar: BookingCalendar, rules: Rules) => {
+        setSaving(calendar.connection_id);
+        try {
+            const response = await setAiBookingApiV1IntegrationsBookingsCalendarsConnectionIdPut({
+                path: { connection_id: calendar.connection_id },
+                body: { rules: rules as Record<string, unknown> },
+            });
+            if (response.error || !response.data) {
+                toast.error(integrationErrorMessage(response.error, "Couldn't save the booking rules"));
+                return;
+            }
+            const saved = response.data;
+            setData((current) =>
+                current && {
+                    ...current,
+                    calendars: current.calendars.map((c) =>
+                        c.connection_id === calendar.connection_id ? { ...c, rules: saved.rules } : c,
+                    ),
+                },
+            );
+            toast.success("Booking rules saved. Your agent uses them from the next call.");
+        } catch {
+            toast.error("Couldn't save the booking rules. Please try again.");
+        } finally {
+            setSaving(null);
+        }
+    };
+
     const now = useMemo(() => new Date(), [data]); // eslint-disable-line react-hooks/exhaustive-deps
     const bookings = data?.bookings ?? [];
     const calendars = data?.calendars ?? [];
@@ -178,6 +207,7 @@ function BookingsScreen() {
                                 canSeeIntegrations={canSeeIntegrations}
                                 saving={saving === calendar.connection_id}
                                 onChange={(key, enabled) => void setSwitch(calendar, key, enabled)}
+                                onSaveRules={(rules) => void saveRules(calendar, rules)}
                             />
                         ))}
                     </section>
@@ -273,13 +303,17 @@ function CalendarRow({
     canSeeIntegrations,
     saving,
     onChange,
+    onSaveRules,
 }: {
     calendar: BookingCalendar;
     canManage: boolean;
     canSeeIntegrations: boolean;
     saving: boolean;
     onChange: (key: OwnerSwitch, enabled: boolean) => void;
+    onSaveRules: (rules: Rules) => void;
 }) {
+    const [editingRules, setEditingRules] = useState(false);
+    const rules = (calendar.rules ?? {}) as Rules;
     const name = calendarName(calendar);
     const switchId = `booking-on-${calendar.connection_id}`;
     const changesId = `changes-on-${calendar.connection_id}`;
@@ -334,6 +368,30 @@ function CalendarRow({
                         your team or a message is taken.
                     </p>
                 </div>
+            </div>
+            <div className="mt-3 border-t border-line-soft pt-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="min-w-0">
+                        <span className="text-sm font-medium">Booking rules</span>
+                        <p className="text-[12.5px] text-ink-3">{summarize(rules)}</p>
+                    </div>
+                    {canManage && (
+                        <Button size="sm" variant="outline" onClick={() => setEditingRules((v) => !v)}>
+                            {editingRules ? "Close" : "Edit booking rules"}
+                        </Button>
+                    )}
+                </div>
+                {canManage && editingRules && (
+                    <div className="mt-3">
+                        <BookingRulesEditor
+                            initial={rules}
+                            saving={saving}
+                            onSave={(next) => {
+                                onSaveRules(next);
+                            }}
+                        />
+                    </div>
+                )}
             </div>
             {!calendar.ai_booking_enabled && (
                 <p className="mt-2 text-sm text-ink-2">

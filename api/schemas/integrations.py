@@ -338,28 +338,78 @@ class BookingCalendar(BaseModel):
         description="Whether agents may cancel or move bookings made on an "
         "earlier call, after checking the caller's details.",
     )
+    rules: dict[str, JsonValue] = Field(
+        default_factory=dict,
+        description="The calendar's current booking rules (owner-editable "
+        "keys only; missing ones use the defaults).",
+    )
     ok: bool = Field(description="False when its bookings could not be read.")
     error: str | None = Field(
         default=None, description="Why not, in words an admin can act on."
     )
 
 
+class BookingServicePeriod(BaseModel):
+    """When bookings may start on some weekdays, e.g. dinner Thu-Sat."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    days: list[int] = Field(min_length=1, description="Monday=0 ... Sunday=6.")
+    first_start: str = Field(pattern=r"^([01]\d|2[0-3]):[0-5]\d$")
+    last_start: str = Field(pattern=r"^([01]\d|2[0-3]):[0-5]\d$")
+
+
+class BookingRules(BaseModel):
+    """The booking rules an owner sets in plain terms. Omitted rules are
+    kept; the tools service checks the combination (e.g. a party limit above
+    the covers limit) and answers 422 with the reason."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    service_periods: list[BookingServicePeriod] | None = Field(
+        default=None, max_length=21
+    )
+    slot_minutes: int | None = Field(default=None, ge=5, le=240)
+    booking_minutes: int | None = Field(default=None, ge=5, le=720)
+    buffer_minutes: int | None = Field(default=None, ge=0, le=240)
+    max_bookings_at_once: int | None = Field(default=None, ge=1, le=500)
+    max_guests_at_once: int | None = Field(default=None, ge=1, le=10000)
+    max_party_size: int | None = Field(default=None, ge=1, le=100)
+    min_lead_hours: int | None = Field(default=None, ge=0, le=168)
+    horizon_days: int | None = Field(default=None, ge=1, le=60)
+
+
+# Calendar settings the owner (bookings:manage) may change.
+OWNER_RULE_KEYS = frozenset(BookingRules.model_fields)
+
+
 class AiBookingRequest(BaseModel):
-    """The owner's switches for one calendar; omitted ones are kept."""
+    """The owner's switches and booking rules for one calendar; omitted
+    ones are kept."""
 
     model_config = ConfigDict(extra="forbid")
 
     ai_booking_enabled: bool | None = None
     ai_changes_enabled: bool | None = None
+    rules: BookingRules | None = None
 
     @model_validator(mode="after")
     def _something(self) -> Self:
-        if self.ai_booking_enabled is None and self.ai_changes_enabled is None:
-            raise ValueError("give ai_booking_enabled or ai_changes_enabled")
+        if (
+            self.ai_booking_enabled is None
+            and self.ai_changes_enabled is None
+            and not (self.rules and self.rules.model_dump(exclude_none=True))
+        ):
+            raise ValueError("give ai_booking_enabled, ai_changes_enabled or rules")
         return self
 
     def changes(self) -> dict[str, JsonValue]:
-        return self.model_dump(exclude_none=True)
+        changes: dict[str, JsonValue] = self.model_dump(
+            exclude_none=True, exclude={"rules"}
+        )
+        if self.rules:
+            changes.update(self.rules.model_dump(exclude_none=True))
+        return changes
 
 
 class BookingListResponse(BaseModel):

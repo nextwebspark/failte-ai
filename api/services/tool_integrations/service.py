@@ -38,6 +38,7 @@ from api.errors.integrations import (
     ToolsServiceUnavailableError,
 )
 from api.schemas.integrations import (
+    OWNER_RULE_KEYS,
     BookingCalendar,
     BookingListResponse,
     CalendarBooking,
@@ -75,6 +76,8 @@ _READABLE_STATUSES = frozenset({"active", "error"})
 CALENDAR_UNREADABLE = "This calendar could not be read just now"
 # Calendar settings the owner (bookings:manage) may change.
 OWNER_SWITCHES = frozenset({"ai_booking_enabled", "ai_changes_enabled"})
+# Plus the booking rules an owner may set (BookingRules).
+OWNER_SETTINGS = OWNER_SWITCHES | OWNER_RULE_KEYS
 CONFIRM_IN_SAME_BROWSER = (
     "Finish connecting in the browser where you started, as the same user, "
     "within 10 minutes"
@@ -202,6 +205,10 @@ def _credential_name(provider: IntegrationProvider, connection_id: uuid.UUID) ->
     )
 
 
+def _owner_rules(config: Mapping[str, JsonValue]) -> dict[str, JsonValue]:
+    return {k: v for k, v in config.items() if k in OWNER_RULE_KEYS}
+
+
 def _icon(provider: IntegrationProvider) -> str:
     icon = provider.icon.strip()
     return icon if icon and len(icon) <= _MAX_ICON_CHARS else _DEFAULT_ICON
@@ -281,6 +288,7 @@ class IntegrationService:
                     is not False,
                     ai_changes_enabled=connection.config.get("ai_changes_enabled")
                     is True,
+                    rules=_owner_rules(connection.config),
                     ok=error is None,
                     error=error,
                 )
@@ -309,7 +317,7 @@ class IntegrationService:
         updated = await self._tools.update_config(
             caller,
             connection_id,
-            {k: v for k, v in switches.items() if k in OWNER_SWITCHES},
+            {k: v for k, v in switches.items() if k in OWNER_SETTINGS},
         )
         return BookingCalendar(
             connection_id=updated.id,
@@ -318,6 +326,7 @@ class IntegrationService:
             account_label=updated.account_label,
             ai_booking_enabled=updated.config.get("ai_booking_enabled") is not False,
             ai_changes_enabled=updated.config.get("ai_changes_enabled") is True,
+            rules=_owner_rules(updated.config),
             ok=True,
         )
 

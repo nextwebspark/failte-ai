@@ -305,6 +305,12 @@ export type AiBookingRequest = {
      * Ai Changes Enabled
      */
     ai_changes_enabled?: boolean | null;
+    /**
+     * Rules
+     */
+    rules?: {
+        [key: string]: unknown;
+    } | null;
 };
 
 /**
@@ -1125,6 +1131,14 @@ export type BookingCalendar = {
      * Why not, in words an admin can act on.
      */
     error?: string | null;
+    /**
+     * Rules
+     *
+     * The calendar's current booking rules (owner-editable keys only; missing ones use the defaults).
+     */
+    rules?: {
+        [key: string]: unknown;
+    };
 };
 
 /**
