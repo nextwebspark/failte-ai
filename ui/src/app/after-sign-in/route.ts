@@ -8,6 +8,9 @@ import { getRedirectUrl } from "@/lib/utils";
 
 export const dynamic = 'force-dynamic';
 
+/** The dashboard every member with an agent starts on. */
+const HOME = '/overview';
+
 /**
  * Where a user lands after signing in. A route handler, not a page: a page
  * streams the root loading UI (an empty screen) before its redirect, while
@@ -39,16 +42,18 @@ async function afterSignInPath(): Promise<string> {
         const accessToken = await getServerAccessToken();
         if (accessToken) {
             const headers = { Authorization: `Bearer ${accessToken}` };
-            // Clients (viewer role) can't build agents; land them on call history.
+            // Owners (viewer role) and staff can't build agents: they always
+            // start on Home, which explains a workspace with no agent yet.
             const contextResponse = await getCurrentOrganizationContextApiV1OrganizationsContextGet({ headers });
-            if (contextResponse.data?.role === 'viewer') {
-                return '/usage';
+            const role = contextResponse.data?.role;
+            if (role === 'viewer' || role === 'staff') {
+                return HOME;
             }
-            // Everyone else lands on their calls once an agent is live;
-            // building an agent is where a new workspace starts.
+            // Everyone else lands on Home once there is an agent; building
+            // one is where a new workspace starts.
             const countResponse = await getWorkflowCountApiV1WorkflowCountGet({ headers });
             if (countResponse.data && countResponse.data.active > 0) {
-                return '/usage';
+                return HOME;
             }
         }
     } catch (error) {

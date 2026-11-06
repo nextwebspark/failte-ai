@@ -64,11 +64,10 @@ export async function getRedirectUrl(token: string, permissions: { id: string }[
     const hasAdminPermission = permissions.some(p => p.id === 'admin');
     console.log('[getRedirectUrl] Admin permission check:', { hasAdminPermission });
 
-  // If the user doesn't have admin permissions, redirect them to
-  // usage page
+  // Members who can't build agents start on Home.
   if (!hasAdminPermission) {
-    console.log('[getRedirectUrl] No admin permission, redirecting to /usage');
-    return "/usage";
+    console.log('[getRedirectUrl] No admin permission, redirecting to /overview');
+    return "/overview";
   }
 
   // Check if user has any workflows
@@ -86,9 +85,9 @@ export async function getRedirectUrl(token: string, permissions: { id: string }[
     });
 
     if (countResponse.data && countResponse.data.active > 0) {
-      // Owners check their calls far more often than they build agents.
-      console.log('[getRedirectUrl] User has workflows, redirecting to /usage');
-      return "/usage";
+      // Home: what happened with their calls and what needs them.
+      console.log('[getRedirectUrl] User has workflows, redirecting to /overview');
+      return "/overview";
     } else {
       console.log('[getRedirectUrl] No workflows found, redirecting to /workflow/create');
       return "/workflow/create";
