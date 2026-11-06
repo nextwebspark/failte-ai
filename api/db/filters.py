@@ -1,9 +1,10 @@
 """Common filter utilities for database queries."""
 
+import re
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from sqlalchemy import Float, Text, and_, cast, func
+from sqlalchemy import Float, Text, and_, cast, func, not_, or_
 from sqlalchemy.dialects.postgresql import JSONB
 
 from api.db.models import WorkflowRunModel
@@ -55,7 +56,69 @@ ATTRIBUTE_FIELD_MAPPING = {
     "calledNumber": "initial_context.called_number",
     "callDirection": "call_type",
     "callChannel": "mode",
+    "callerSearch": "caller",
+    "handledBy": "handled_by",
+    "bookingOutcome": "gathered_context.booking_outcome",
 }
+
+# How the engine records a call that was handed to a person (the same rule
+# as api/services/reports/daily_report.py's is_transferred): call_status
+# "transfer_call" / "call_transferred", or an organization's "XFER" mapping.
+_TRANSFERRED_CALL_STATUSES = ("transfer_call", "call_transferred")
+
+
+def _gathered(key: str):
+    """``gathered_context ->> key`` as text, '' when missing."""
+    return func.coalesce(
+        cast(WorkflowRunModel.gathered_context, JSONB).op("->>")(key), ""
+    )
+
+
+def _initial(key: str):
+    return cast(
+        cast(WorkflowRunModel.initial_context, JSONB).op("->>")(key),
+        Text,
+    )
+
+
+def _passed_to_team():
+    return or_(
+        _gathered("call_status").in_(_TRANSFERRED_CALL_STATUSES),
+        _gathered("mapped_call_disposition") == "XFER",
+    )
+
+
+def search_digits(text: str) -> str:
+    """The digits to look for in a stored number: "087 123 4567" and
+    "+353 87 123 4567" are stored as "+353871234567", so drop the spacing,
+    an international "00" and the leading trunk zero."""
+    digits = re.sub(r"\D", "", text)
+    if digits.startswith("00"):
+        return digits[2:]
+    return digits.lstrip("0")
+
+
+def _caller_search(text: str):
+    """The caller's name (as the agent captured it) or their number: the
+    number the list shows, the caller's on inbound calls and the number
+    called on outbound ones."""
+    escaped = re.sub(r"([\\%_])", r"\\\1", text)
+    conditions = [_gathered("caller_name").ilike(f"%{escaped}%", escape="\\")]
+    digits = search_digits(text)
+    if digits:
+        conditions.append(
+            and_(
+                WorkflowRunModel.call_type == CallType.INBOUND.value,
+                _initial("caller_number").contains(digits),
+            )
+        )
+        conditions.append(
+            and_(
+                WorkflowRunModel.call_type != CallType.INBOUND.value,
+                _initial("called_number").contains(digits),
+            )
+        )
+    return or_(*conditions)
 
 
 def apply_workflow_run_filters(
@@ -78,6 +141,9 @@ def apply_workflow_run_filters(
     - calledNumber: Filter by initial_context.called_number (text search)
     - callDirection: Filter by call_type (inbound / outbound)
     - callChannel: Filter by mode, grouped into telephony / web / chat
+    - callerSearch: the caller's captured name or their number (text)
+    - handledBy: "agent" or "team" (passed to a person), as a radio value
+    - bookingOutcome: gathered_context.booking_outcome, any of the codes
 
     Args:
         base_query: The base SQLAlchemy query to apply filters to
@@ -221,6 +287,34 @@ def apply_workflow_run_filters(
                             ),
                             Text,
                         ).contains(phone)
+                    )
+
+            elif filter_type == "text" and field == "caller":
+                text = str(value.get("value") or "").strip()
+                if text:
+                    filter_conditions.append(_caller_search(text))
+
+            elif filter_type == "radio" and field == "handled_by":
+                # "agent": the agent dealt with the call itself; "team": it
+                # was passed to a person. Anything else matches all.
+                who = value.get("status")
+                if who == "team":
+                    filter_conditions.append(_passed_to_team())
+                elif who == "agent":
+                    filter_conditions.append(not_(_passed_to_team()))
+
+            elif (
+                filter_type == "multiSelect"
+                and field == "gathered_context.booking_outcome"
+            ):
+                outcomes = [
+                    str(code).strip().lower()
+                    for code in value.get("codes", [])
+                    if str(code).strip()
+                ]
+                if outcomes:
+                    filter_conditions.append(
+                        func.lower(_gathered("booking_outcome")).in_(outcomes)
                     )
 
             elif filter_type == "numberRange":

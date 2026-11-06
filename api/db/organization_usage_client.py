@@ -36,6 +36,9 @@ USAGE_ALLOWED_FILTERS = frozenset(
         "campaignId",
         "callDirection",
         "callChannel",
+        "callerSearch",
+        "handledBy",
+        "bookingOutcome",
     }
 )
 
