@@ -6,6 +6,7 @@ import type { ActiveFilter, DateRangeValue } from "@/types/filters";
 import {
     applyQuickSearch,
     EMPTY_QUICK_SEARCH,
+    formatCallTime,
     formatDuration,
     hasAdvancedFilters,
     outcomeLabel,
@@ -82,5 +83,16 @@ describe("labels", () => {
         expect(formatDuration(45)).toBe("45s");
         expect(formatDuration(120)).toBe("2m");
         expect(formatDuration(185)).toBe("3m 5s");
+    });
+});
+
+describe("formatCallTime", () => {
+    it("reads Irish-style in the workspace's zone, with a 24-hour clock", () => {
+        expect(formatCallTime("2026-07-06T12:12:00Z", "Europe/Dublin")).toBe("Mon 6 Jul 2026, 13:12");
+        expect(formatCallTime("2026-11-06T13:12:00Z", "Europe/Dublin")).toBe("Fri 6 Nov 2026, 13:12");
+    });
+
+    it("survives an unknown zone name", () => {
+        expect(formatCallTime("2026-11-06T13:12:00Z", "Not/AZone")).toMatch(/6 Nov 2026/);
     });
 });
