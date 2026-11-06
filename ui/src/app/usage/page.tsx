@@ -1,9 +1,9 @@
 "use client";
 
-import { ArrowDown, ArrowUp, ArrowUpDown, ChevronLeft, ChevronRight, Download, Globe, PhoneCall } from 'lucide-react';
+import { ArrowDown, ArrowUp, ArrowUpDown, ChevronDown, ChevronLeft, ChevronRight, Download, Globe, PhoneCall, PhoneOff, RefreshCw, Search, ShieldCheck, SlidersHorizontal, X } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { useCallback, useEffect, useId, useMemo, useState } from 'react';
+import { type ComponentProps, type FormEvent, useCallback, useEffect, useId, useMemo, useState } from 'react';
 import TimezoneSelect, { type ITimezoneOption } from 'react-timezone-select';
 import { toast } from 'sonner';
 
@@ -14,10 +14,14 @@ import { DailyUsageTable } from '@/components/DailyUsageTable';
 import { FilterBuilder } from '@/components/filters/FilterBuilder';
 import { runDetailHref } from '@/components/layout/shellContext';
 import { MediaPreviewButton, MediaPreviewDialog } from '@/components/MediaPreviewDialog';
+import { EmptyState } from '@/components/page-states/EmptyState';
 import { CallerDataRequestDialog } from '@/components/privacy/CallerDataRequestDialog';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Skeleton } from '@/components/ui/skeleton';
 import {
     Table,
     TableBody,
@@ -28,6 +32,7 @@ import {
 } from '@/components/ui/table';
 import { useAppConfig } from '@/context/AppConfigContext';
 import { useUserConfig } from '@/context/UserConfigContext';
+import { useIsMobile } from '@/hooks/use-mobile';
 import { useDispositionCodes } from '@/hooks/useDispositionCodes';
 import { useFeatureEnabled } from '@/hooks/useFeatureFlags';
 import { detailFromError } from '@/lib/apiError';
@@ -37,6 +42,19 @@ import { getUsageFilterAttributes, withDispositionCodeOptions } from '@/lib/filt
 import { decodeFiltersFromURL, encodeFiltersToURL } from '@/lib/filters';
 import { ROW_LINK } from '@/lib/rowLink';
 import type { ActiveFilter, DateRangeValue, FilterAttribute, NumberFilterOption } from '@/types/filters';
+
+import { CallCards } from './CallCards';
+import {
+    applyQuickSearch,
+    EMPTY_QUICK_SEARCH,
+    formatDuration,
+    hasAdvancedFilters,
+    outcomeLabel,
+    type QuickSearch,
+    quickSearchFrom,
+    type QuickWhen,
+    WHEN_OPTIONS,
+} from './callsView';
 
 const buildUsageFilterAttributes = (
     agentOptions: NumberFilterOption[] | null,
@@ -79,7 +97,10 @@ export default function UsagePage() {
 
     // Usage history state
     const [usageHistory, setUsageHistory] = useState<UsageHistoryResponse | null>(null);
-    const [isLoadingHistory, setIsLoadingHistory] = useState(false);
+    // Starts true so the first paint is the list's skeleton, not "No calls yet".
+    const [isLoadingHistory, setIsLoadingHistory] = useState(true);
+    const [historyFailed, setHistoryFailed] = useState(false);
+    const isMobile = useIsMobile();
     const [currentPage, setCurrentPage] = useState(() => {
         const pageParam = searchParams.get('page');
         return pageParam ? parseInt(pageParam, 10) : 1;
@@ -117,6 +138,14 @@ export default function UsagePage() {
     const [appliedFilters, setAppliedFilters] = useState<ActiveFilter[]>(() => {
         return decodeFiltersFromURL(searchParams, availableUsageFilterAttributes);
     });
+
+    // The simple search (phone, when, outcome) and the More panel, where the
+    // expert tools live: full filters, time zone, caller data requests.
+    const [quick, setQuick] = useState<QuickSearch>(() => quickSearchFrom(appliedFilters));
+    const [moreOpen, setMoreOpen] = useState(() => hasAdvancedFilters(appliedFilters));
+    useEffect(() => {
+        setQuick(quickSearchFrom(appliedFilters));
+    }, [appliedFilters]);
 
     // Media preview dialog
     const mediaPreview = MediaPreviewDialog();
@@ -185,9 +214,13 @@ export default function UsagePage() {
 
             if (response.data) {
                 setUsageHistory(response.data);
+                setHistoryFailed(false);
+            } else {
+                setHistoryFailed(true);
             }
         } catch (error) {
             console.error('Failed to fetch usage history:', error);
+            setHistoryFailed(true);
         } finally {
             setIsLoadingHistory(false);
         }
@@ -392,14 +425,21 @@ export default function UsagePage() {
         router.push(`/usage?${newParams.toString()}`);
     }, [router]);
 
-    const handleApplyFilters = useCallback(async () => {
+    const handleApplyFilters = useCallback(async (override?: ActiveFilter[]) => {
+        const filters = override ?? activeFilters;
         setIsExecutingFilters(true);
         setCurrentPage(1); // Reset to first page when applying filters
-        setAppliedFilters(activeFilters);
-        updateUrlParams({ page: 1, filters: activeFilters, sortBy, sortOrder });
-        await fetchUsageHistory(1, activeFilters, sortBy, sortOrder);
+        setActiveFilters(filters);
+        setAppliedFilters(filters);
+        updateUrlParams({ page: 1, filters, sortBy, sortOrder });
+        await fetchUsageHistory(1, filters, sortBy, sortOrder);
         setIsExecutingFilters(false);
     }, [activeFilters, fetchUsageHistory, updateUrlParams, sortBy, sortOrder]);
+
+    const handleQuickSearch = (event: FormEvent) => {
+        event.preventDefault();
+        void handleApplyFilters(applyQuickSearch(activeFilters, quick, availableUsageFilterAttributes, new Date()));
+    };
 
     const handleFiltersChange = useCallback((filters: ActiveFilter[]) => {
         setActiveFilters(filters);
@@ -443,321 +483,449 @@ export default function UsagePage() {
     const timezoneValue = typeof selectedTimezone === 'string' ? selectedTimezone : selectedTimezone.value;
     const effectiveTimezone = timezoneValue || localTimezone;
 
-    // Format duration for display
-    const formatDuration = (seconds: number) => {
-        const minutes = Math.floor(seconds / 60);
-        const remainingSeconds = seconds % 60;
-        if (minutes === 0) return `${remainingSeconds}s`;
-        if (remainingSeconds === 0) return `${minutes}m`;
-        return `${minutes}m ${remainingSeconds}s`;
-    };
+    const quickActive = appliedFilters.length > 0;
+    const runs = usageHistory?.runs ?? [];
+    const outcomeOptions = dispositionCodes.includes(quick.outcome) || quick.outcome === 'any'
+        ? dispositionCodes
+        : [...dispositionCodes, quick.outcome];
 
     return (
-        <div className="page-body space-y-6">
-            <div>
-                {/* The screen name lives in the app header (AppTopBar); the row
-                    below is the timezone control that used to sit beside it. */}
-                <div className="flex flex-wrap justify-end items-start gap-3">
-                        {/* Callers' access and erasure requests (GDPR) are admin-only. */}
-                        {can('org:manage') && <CallerDataRequestDialog />}
-                        <div className="flex items-center gap-2">
-                            <Globe className="h-4 w-4 text-muted-foreground" />
-                            <div className="w-[300px]">
-                                <TimezoneSelect
-                                    instanceId={timezoneSelectId}
-                                    value={selectedTimezone}
-                                    onChange={handleTimezoneChange}
-                                    isDisabled={savingTimezone || preferencesLoading}
-                                    placeholder={preferencesLoading ? "Loading..." : "Select timezone"}
-                                    styles={{
-                                        control: (base, state) => ({
-                                            ...base,
-                                            minHeight: '36px',
-                                            fontSize: '14px',
-                                            backgroundColor: 'var(--background)',
-                                            borderColor: state.isFocused ? 'var(--ring)' : 'var(--border)',
-                                            boxShadow: state.isFocused ? '0 0 0 2px color-mix(in srgb, var(--ring) 20%, transparent)' : 'none',
-                                            '&:hover': {
-                                                borderColor: 'var(--border)',
-                                            },
-                                        }),
-                                        menu: (base) => ({
-                                            ...base,
-                                            zIndex: 9999,
-                                            backgroundColor: 'var(--popover)',
-                                            border: '1px solid var(--border)',
-                                            boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)',
-                                        }),
-                                        menuList: (base) => ({
-                                            ...base,
-                                            backgroundColor: 'var(--popover)',
-                                            padding: 0,
-                                        }),
-                                        option: (base, state) => ({
-                                            ...base,
-                                            backgroundColor: state.isSelected
-                                                ? 'var(--accent)'
-                                                : state.isFocused
-                                                ? 'var(--accent)'
-                                                : 'var(--popover)',
-                                            color: 'var(--foreground)',
-                                            cursor: 'pointer',
-                                            '&:active': {
-                                                backgroundColor: 'var(--accent)',
-                                            },
-                                        }),
-                                        singleValue: (base) => ({
-                                            ...base,
-                                            color: 'var(--foreground)',
-                                        }),
-                                        input: (base) => ({
-                                            ...base,
-                                            color: 'var(--foreground)',
-                                        }),
-                                        placeholder: (base) => ({
-                                            ...base,
-                                            color: 'var(--muted-foreground)',
-                                        }),
-                                        indicatorSeparator: (base) => ({
-                                            ...base,
-                                            backgroundColor: 'var(--border)',
-                                        }),
-                                        dropdownIndicator: (base) => ({
-                                            ...base,
-                                            color: 'var(--muted-foreground)',
-                                            '&:hover': {
-                                                color: 'var(--foreground)',
-                                            },
-                                        }),
-                                    }}
-                                />
-                            </div>
+        <div className="page-body">
+            <div className="mx-auto flex max-w-6xl flex-col gap-6">
+                {/* Everyday search first: a number, a time, an outcome. */}
+                <form
+                    role="search"
+                    aria-label="Find calls"
+                    onSubmit={handleQuickSearch}
+                    className="rounded-xl border border-line bg-gradient-to-br from-brand-dim via-panel to-panel px-5 py-5 sm:px-6"
+                >
+                    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_minmax(0,1fr)_auto] lg:items-end">
+                        <div className="flex flex-col gap-1.5 sm:col-span-2 lg:col-span-1">
+                            <Label htmlFor="calls-phone">Phone number</Label>
+                            <Input
+                                id="calls-phone"
+                                type="search"
+                                inputMode="tel"
+                                autoComplete="off"
+                                placeholder="e.g. 087 123 4567"
+                                value={quick.phone}
+                                onChange={(event) => setQuick({ ...quick, phone: event.target.value })}
+                                className="h-10 bg-panel font-mono"
+                            />
                         </div>
-                    </div>
-                </div>
-
-                {/* Daily Usage Table - Only for paid organizations */}
-                {organizationPricing?.price_per_second_usd && (
-                    <div className="mb-6">
-                        <DailyUsageTable
-                            data={dailyUsage}
-                            isLoading={isLoadingDaily}
-                        />
-                    </div>
-                )}
-
-                {/* Filter Builder */}
-                <div className="mb-6 space-y-3">
-                    <FilterBuilder
-                        availableAttributes={availableUsageFilterAttributes}
-                        activeFilters={activeFilters}
-                        onFiltersChange={handleFiltersChange}
-                        onApplyFilters={handleApplyFilters}
-                        onClearFilters={handleClearFilters}
-                        isExecuting={isExecutingFilters}
-                    />
-                    {appliedFilters.length > 0 && (
-                        <div className="flex justify-end">
-                            <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={handleDownloadReport}
-                                disabled={isDownloadingReport}
+                        <div className="flex flex-col gap-1.5">
+                            <Label htmlFor="calls-when">When</Label>
+                            <Select
+                                value={quick.when}
+                                onValueChange={(value) => setQuick({ ...quick, when: value as QuickWhen })}
                             >
-                                <Download className="h-4 w-4 mr-2" />
-                                {isDownloadingReport ? 'Preparing...' : 'Download Filtered Results'}
-                            </Button>
+                                <SelectTrigger id="calls-when" className="h-10 w-full bg-panel">
+                                    <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {WHEN_OPTIONS.map((option) => (
+                                        <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+                                    ))}
+                                    {quick.when === 'custom' && <SelectItem value="custom">Dates set under More</SelectItem>}
+                                </SelectContent>
+                            </Select>
                         </div>
-                    )}
-                </div>
-
-                {/* Usage History */}
-                <Card>
-                    <CardHeader>
-                        <div className="flex justify-between items-start">
-                            <div className="space-y-1.5">
-                                <CardTitle>All calls</CardTitle>
-                                <CardDescription>
-                                    Every call across your agents, with how long it lasted and how it ended
-                                </CardDescription>
-                            </div>
+                        <div className="flex flex-col gap-1.5">
+                            <Label htmlFor="calls-outcome">Outcome</Label>
+                            <Select value={quick.outcome} onValueChange={(value) => setQuick({ ...quick, outcome: value })}>
+                                <SelectTrigger id="calls-outcome" className="h-10 w-full bg-panel">
+                                    <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="any">Any outcome</SelectItem>
+                                    {outcomeOptions.map((code) => (
+                                        <SelectItem key={code} value={code}>{outcomeLabel(code)}</SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
                         </div>
-                    </CardHeader>
-                    <CardContent>
-                        {isLoadingHistory ? (
-                            <div className="animate-pulse space-y-3">
-                                {[...Array(5)].map((_, i) => (
-                                    <div key={i} className="h-12 bg-muted rounded"></div>
-                                ))}
-                            </div>
-                        ) : usageHistory && usageHistory.runs.length > 0 ? (
-                            <>
-                                <div className="bg-card border rounded-lg overflow-hidden shadow-sm">
-                                    <Table>
-                                        <TableHeader>
-                                            <TableRow className="bg-muted/50">
-                                                <TableHead className="font-semibold">Call</TableHead>
-                                                <TableHead className="font-semibold">Agent name</TableHead>
-                                                <TableHead className="font-semibold">Call type</TableHead>
-                                                <TableHead className="font-semibold">Phone Number</TableHead>
-                                                <TableHead className="font-semibold">Outcome</TableHead>
-                                                <TableHead className="font-semibold">Date</TableHead>
-                                                <TableHead
-                                                    className="font-semibold text-right"
-                                                    aria-sort={sortBy === 'duration' ? (sortOrder === 'asc' ? 'ascending' : 'descending') : undefined}
-                                                >
-                                                    <button
-                                                        type="button"
-                                                        className="ml-auto flex items-center justify-end gap-1 rounded px-1 outline-none hover:bg-muted/50 focus-visible:ring-[3px] focus-visible:ring-ring/40"
-                                                        onClick={() => handleSort('duration')}
-                                                    >
-                                                        Duration
-                                                        {sortBy === 'duration' ? (
-                                                            sortOrder === 'asc' ? <ArrowUp className="h-4 w-4" aria-hidden /> : <ArrowDown className="h-4 w-4" aria-hidden />
-                                                        ) : (
-                                                            <ArrowUpDown className="h-4 w-4 text-muted-foreground" aria-hidden />
-                                                        )}
-                                                        <span className="sr-only">, sort</span>
-                                                    </button>
-                                                </TableHead>
-                                                {organizationPricing?.price_per_second_usd && (
-                                                    <TableHead className="font-semibold text-right">Cost (USD)</TableHead>
-                                                )}
-                                                {showEurCharge && (
-                                                    <TableHead className="font-semibold text-right">Cost (EUR)</TableHead>
-                                                )}
-                                                <TableHead className="font-semibold">Actions</TableHead>
-                                            </TableRow>
-                                        </TableHeader>
-                                        <TableBody>
-                                            {usageHistory.runs.map((run) => (
-                                                <TableRow
-                                                    key={run.id}
-                                                    // The call number is a real link stretched over the row.
-                                                    className="relative hover:bg-muted/50 focus-within:bg-muted/50"
-                                                >
-                                                    <TableCell className="font-mono text-sm">
-                                                        <Link
-                                                            href={runHref(run)}
-                                                            aria-label={`Open call #${run.id}`}
-                                                            className={ROW_LINK}
-                                                        >
-                                                            #{run.id}
-                                                        </Link>
-                                                    </TableCell>
-                                                    <TableCell>{run.workflow_name || 'Unknown'}</TableCell>
-                                                    <TableCell>
-                                                        <CallTypeCell mode={run.mode} callType={run.call_type} />
-                                                    </TableCell>
-                                                    <TableCell className="text-sm">
-                                                        {(run.call_type === 'inbound'
-                                                            ? run.caller_number
-                                                            : run.called_number) || '-'}
-                                                    </TableCell>
-                                                    <TableCell>
-                                                        {run.disposition ? (
-                                                            <Badge variant="default">
-                                                                {run.disposition}
-                                                            </Badge>
-                                                        ) : (
-                                                            <span className="text-sm text-muted-foreground">-</span>
-                                                        )}
-                                                    </TableCell>
-                                                    <TableCell>{formatDateTime(run.created_at, effectiveTimezone)}</TableCell>
-                                                    <TableCell className="text-right">
-                                                        {formatDuration(run.call_duration_seconds)}
-                                                    </TableCell>
-                                                    {organizationPricing?.price_per_second_usd && (
-                                                        <TableCell className="text-right font-medium">
-                                                            {run.charge_usd !== undefined && run.charge_usd !== null
-                                                                ? `$${run.charge_usd.toFixed(2)}`
-                                                                : '-'
-                                                            }
-                                                        </TableCell>
-                                                    )}
-                                                    {showEurCharge && (
-                                                        <TableCell className="text-right font-medium">
-                                                            {run.charge_eur !== undefined && run.charge_eur !== null
-                                                                ? new Intl.NumberFormat('en-IE', { style: 'currency', currency: 'EUR', maximumFractionDigits: 4 }).format(run.charge_eur)
-                                                                : '-'
-                                                            }
-                                                        </TableCell>
-                                                    )}
-                                                    <TableCell className="relative z-10">
-                                                        <MediaPreviewButton
-                                                            recordingUrl={run.recording_url}
-                                                            transcriptUrl={run.transcript_url}
-                                                            runId={run.id}
-                                                            onOpenPreview={mediaPreview.openPreview}
-                                                        />
-                                                    </TableCell>
-                                                </TableRow>
-                                            ))}
-                                        </TableBody>
-                                    </Table>
-                                </div>
+                        <Button type="submit" className="h-10 sm:col-span-2 lg:col-span-1" disabled={isExecutingFilters}>
+                            <Search aria-hidden />
+                            Search
+                        </Button>
+                    </div>
+                    <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+                        <div className="flex flex-wrap items-center gap-2">
+                            {quickActive && (
+                                <Button
+                                    type="button"
+                                    variant="ghost"
+                                    className="h-10 sm:h-8"
+                                    onClick={() => {
+                                        setQuick(EMPTY_QUICK_SEARCH);
+                                        void handleClearFilters();
+                                    }}
+                                >
+                                    <X aria-hidden />
+                                    Clear search
+                                </Button>
+                            )}
+                        </div>
+                        <Button
+                            type="button"
+                            variant="outline"
+                            className="h-10 bg-panel sm:h-8"
+                            aria-expanded={moreOpen}
+                            aria-controls="calls-more"
+                            onClick={() => setMoreOpen((open) => !open)}
+                        >
+                            <SlidersHorizontal aria-hidden />
+                            More
+                            <ChevronDown
+                                aria-hidden
+                                className={moreOpen ? 'rotate-180 transition-transform motion-reduce:transition-none' : 'transition-transform motion-reduce:transition-none'}
+                            />
+                        </Button>
+                    </div>
+                </form>
 
-                                {/* Summary */}
-                                {appliedFilters.length > 0 && (
-                                    <div className="mt-4 p-3 bg-muted rounded-md">
-                                        <p className="text-sm text-muted-foreground">
-                                            Total for filtered period: <span className="font-semibold text-foreground">
-                                                {usageHistory.total_dograh_tokens.toLocaleString()} Credits
-                                            </span>
-                                            {' • '}
-                                            <span className="font-semibold text-foreground">
-                                                {formatDuration(usageHistory.total_duration_seconds)}
-                                            </span>
-                                        </p>
-                                    </div>
-                                )}
-
-                                {/* Pagination */}
-                                {usageHistory.total_pages > 1 && (
-                                    <div className="flex items-center justify-between mt-6">
-                                        <p className="text-sm text-muted-foreground">
-                                            Page {usageHistory.page} of {usageHistory.total_pages} ({usageHistory.total_count} total runs)
-                                        </p>
-                                        <div className="flex gap-2">
-                                            <Button
-                                                variant="outline"
-                                                size="sm"
-                                                onClick={() => handlePageChange(currentPage - 1)}
-                                                disabled={currentPage === 1}
-                                            >
-                                                <ChevronLeft className="h-4 w-4" />
-                                                Previous
-                                            </Button>
-                                            <Button
-                                                variant="outline"
-                                                size="sm"
-                                                onClick={() => handlePageChange(currentPage + 1)}
-                                                disabled={currentPage === usageHistory.total_pages}
-                                            >
-                                                Next
-                                                <ChevronRight className="h-4 w-4" />
-                                            </Button>
-                                        </div>
-                                    </div>
-                                )}
-                            </>
-                        ) : (
-                            <div className="flex flex-col items-center gap-2 py-12 text-center">
-                                <span className="grid size-11 place-items-center rounded-full bg-brand-dim text-brand" aria-hidden>
-                                    <PhoneCall className="size-5" />
-                                </span>
-                                <p className="font-medium text-foreground">No calls yet</p>
-                                <p className="max-w-sm text-sm text-ink-3">
-                                    When your agent answers or makes a call, it shows up here with how it went.
-                                    Try a test call from your agent&apos;s page.
+                {moreOpen && (
+                    <section
+                        id="calls-more"
+                        aria-label="More options"
+                        className="flex flex-col gap-5 rounded-xl border border-line bg-panel px-5 py-5 sm:px-6"
+                    >
+                        <div className="flex flex-col gap-3">
+                            <div>
+                                <h2 className="text-[14.5px] font-semibold">More filters</h2>
+                                <p className="text-[13px] text-ink-3">
+                                    Narrow the list by call length, direction, agent and more. Choose a filter, then Apply.
                                 </p>
                             </div>
-                        )}
-                    </CardContent>
-                </Card>
+                            <FilterBuilder
+                                availableAttributes={availableUsageFilterAttributes}
+                                activeFilters={activeFilters}
+                                onFiltersChange={handleFiltersChange}
+                                onApplyFilters={() => void handleApplyFilters()}
+                                onClearFilters={handleClearFilters}
+                                isExecuting={isExecutingFilters}
+                            />
+                        </div>
 
-                {/* Media Preview Dialog */}
+                        <div className="grid gap-5 border-t border-line-soft pt-5 md:grid-cols-2">
+                            <div className="flex flex-col gap-2">
+                                <h2 className="text-[14.5px] font-semibold">
+                                    <label htmlFor={`${timezoneSelectId}-input`} className="inline-flex items-center gap-1.5">
+                                        <Globe className="size-4 text-ink-3" aria-hidden />
+                                        Time zone for call times
+                                    </label>
+                                </h2>
+                                <div className="w-full max-w-sm">
+                                    <TimezoneSelect
+                                        instanceId={timezoneSelectId}
+                                        inputId={`${timezoneSelectId}-input`}
+                                        value={selectedTimezone}
+                                        onChange={handleTimezoneChange}
+                                        isDisabled={savingTimezone || preferencesLoading}
+                                        placeholder={preferencesLoading ? 'Loading…' : 'Choose a time zone'}
+                                        styles={TIMEZONE_STYLES}
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="flex flex-col gap-2">
+                                <h2 className="text-[14.5px] font-semibold">Download</h2>
+                                <p className="text-[13px] text-ink-3">
+                                    A spreadsheet (CSV) of the calls that match your search.
+                                </p>
+                                <div>
+                                    <Button
+                                        variant="outline"
+                                        className="h-10 sm:h-9"
+                                        onClick={handleDownloadReport}
+                                        disabled={isDownloadingReport || runs.length === 0}
+                                    >
+                                        <Download aria-hidden />
+                                        {isDownloadingReport ? 'Preparing…' : 'Download calls'}
+                                    </Button>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Callers' access and erasure requests (GDPR) are admin-only. */}
+                        {can('org:manage') && (
+                            <div className="flex flex-col gap-2 border-t border-line-soft pt-5 sm:flex-row sm:items-center sm:justify-between">
+                                <div className="flex items-start gap-3">
+                                    <ShieldCheck className="mt-0.5 size-5 flex-none text-ink-3" aria-hidden />
+                                    <div>
+                                        <h2 className="text-[14.5px] font-semibold">A caller wants their data</h2>
+                                        <p className="text-[13px] text-ink-3">
+                                            If someone asks for a copy of their calls, or for them to be deleted, start here.
+                                        </p>
+                                    </div>
+                                </div>
+                                <CallerDataRequestDialog />
+                            </div>
+                        )}
+                    </section>
+                )}
+
+                <section aria-labelledby="calls-heading" className="flex flex-col gap-3">
+                    <div className="flex flex-wrap items-baseline justify-between gap-2">
+                        <h2 id="calls-heading" className="text-base font-bold">
+                            {quickActive ? 'Matching calls' : 'All calls'}
+                        </h2>
+                        {usageHistory && !isLoadingHistory && !historyFailed && runs.length > 0 && (
+                            <span className="text-[13px] text-ink-3">
+                                {usageHistory.total_count.toLocaleString('en-IE')} {usageHistory.total_count === 1 ? 'call' : 'calls'}
+                                {' · '}
+                                {formatDuration(usageHistory.total_duration_seconds)} in total
+                            </span>
+                        )}
+                    </div>
+
+                    {isLoadingHistory ? (
+                        <div className="flex flex-col gap-2" aria-busy="true" aria-label="Loading calls">
+                            {[...Array(5)].map((_, i) => (
+                                <Skeleton key={i} className="h-[60px] w-full rounded-lg" />
+                            ))}
+                        </div>
+                    ) : historyFailed ? (
+                        <EmptyState
+                            tone="amber"
+                            icon={PhoneOff}
+                            as="h3"
+                            role="alert"
+                            title="We couldn't load your calls"
+                            action={
+                                <Button
+                                    className="h-10 sm:h-9"
+                                    onClick={() => void fetchUsageHistory(currentPage, appliedFilters, sortBy, sortOrder)}
+                                >
+                                    <RefreshCw aria-hidden />
+                                    Try again
+                                </Button>
+                            }
+                        >
+                            Something went wrong on our side. Your calls are safe; try again in a moment.
+                        </EmptyState>
+                    ) : runs.length === 0 ? (
+                        quickActive ? (
+                            <EmptyState
+                                icon={Search}
+                                as="h3"
+                                title="No calls match your search"
+                                action={
+                                    <Button
+                                        variant="outline"
+                                        className="h-10 sm:h-9"
+                                        onClick={() => {
+                                            setQuick(EMPTY_QUICK_SEARCH);
+                                            void handleClearFilters();
+                                        }}
+                                    >
+                                        Show all calls
+                                    </Button>
+                                }
+                            >
+                                Try a shorter part of the number, or a longer time.
+                            </EmptyState>
+                        ) : (
+                            <EmptyState icon={PhoneCall} as="h3" title="No calls yet">
+                                When your agent answers or makes a call, it shows up here with how it went.
+                                Try a test call from your agent&apos;s page.
+                            </EmptyState>
+                        )
+                    ) : isMobile ? (
+                        <CallCards
+                            runs={runs}
+                            timezone={effectiveTimezone}
+                            hrefFor={runHref}
+                            onOpenPreview={mediaPreview.openPreview}
+                        />
+                    ) : (
+                        <div className="overflow-x-auto rounded-lg border border-line bg-panel">
+                            <Table>
+                                <TableHeader>
+                                    <TableRow className="bg-panel-2">
+                                        <TableHead className="font-semibold">Call</TableHead>
+                                        <TableHead className="font-semibold">When</TableHead>
+                                        <TableHead className="font-semibold">Phone number</TableHead>
+                                        <TableHead className="font-semibold">Outcome</TableHead>
+                                        <TableHead
+                                            className="font-semibold text-right"
+                                            aria-sort={sortBy === 'duration' ? (sortOrder === 'asc' ? 'ascending' : 'descending') : undefined}
+                                        >
+                                            <button
+                                                type="button"
+                                                className="ml-auto flex items-center justify-end gap-1 rounded px-1 outline-none hover:bg-muted/50 focus-visible:ring-[3px] focus-visible:ring-ring/40"
+                                                onClick={() => handleSort('duration')}
+                                            >
+                                                Length
+                                                {sortBy === 'duration' ? (
+                                                    sortOrder === 'asc' ? <ArrowUp className="h-4 w-4" aria-hidden /> : <ArrowDown className="h-4 w-4" aria-hidden />
+                                                ) : (
+                                                    <ArrowUpDown className="h-4 w-4 text-muted-foreground" aria-hidden />
+                                                )}
+                                                <span className="sr-only">, sort by call length</span>
+                                            </button>
+                                        </TableHead>
+                                        <TableHead className="font-semibold">Agent</TableHead>
+                                        <TableHead className="font-semibold">Type</TableHead>
+                                        {organizationPricing?.price_per_second_usd && (
+                                            <TableHead className="font-semibold text-right">Cost (USD)</TableHead>
+                                        )}
+                                        {showEurCharge && (
+                                            <TableHead className="font-semibold text-right">Cost (EUR)</TableHead>
+                                        )}
+                                        <TableHead className="font-semibold"><span className="sr-only">Recording</span></TableHead>
+                                    </TableRow>
+                                </TableHeader>
+                                <TableBody>
+                                    {runs.map((run) => (
+                                        <TableRow
+                                            key={run.id}
+                                            // The call number is a real link stretched over the row.
+                                            className="relative hover:bg-brand-dim/40 focus-within:bg-brand-dim/40"
+                                        >
+                                            <TableCell className="font-mono text-sm">
+                                                <Link
+                                                    href={runHref(run)}
+                                                    aria-label={`Open call #${run.id}`}
+                                                    className={ROW_LINK}
+                                                >
+                                                    #{run.id}
+                                                </Link>
+                                            </TableCell>
+                                            <TableCell className="whitespace-nowrap text-sm">{formatDateTime(run.created_at, effectiveTimezone)}</TableCell>
+                                            <TableCell className="whitespace-nowrap font-mono text-sm">
+                                                {(run.call_type === 'inbound'
+                                                    ? run.caller_number
+                                                    : run.called_number) || <span className="font-sans text-ink-3">Not known</span>}
+                                            </TableCell>
+                                            <TableCell>
+                                                {run.disposition ? (
+                                                    <Badge variant="secondary">{outcomeLabel(run.disposition)}</Badge>
+                                                ) : (
+                                                    <span className="text-sm text-ink-3">Not recorded</span>
+                                                )}
+                                            </TableCell>
+                                            <TableCell className="text-right font-mono text-sm tabular-nums">
+                                                {formatDuration(run.call_duration_seconds)}
+                                            </TableCell>
+                                            <TableCell className="text-sm">{run.workflow_name || 'Unknown'}</TableCell>
+                                            <TableCell>
+                                                <CallTypeCell mode={run.mode} callType={run.call_type} />
+                                            </TableCell>
+                                            {organizationPricing?.price_per_second_usd && (
+                                                <TableCell className="text-right font-mono text-sm">
+                                                    {run.charge_usd !== undefined && run.charge_usd !== null
+                                                        ? `$${run.charge_usd.toFixed(2)}`
+                                                        : '-'
+                                                    }
+                                                </TableCell>
+                                            )}
+                                            {showEurCharge && (
+                                                <TableCell className="text-right font-mono text-sm">
+                                                    {run.charge_eur !== undefined && run.charge_eur !== null
+                                                        ? new Intl.NumberFormat('en-IE', { style: 'currency', currency: 'EUR', maximumFractionDigits: 4 }).format(run.charge_eur)
+                                                        : '-'
+                                                    }
+                                                </TableCell>
+                                            )}
+                                            <TableCell className="relative z-10">
+                                                <MediaPreviewButton
+                                                    recordingUrl={run.recording_url}
+                                                    transcriptUrl={run.transcript_url}
+                                                    runId={run.id}
+                                                    onOpenPreview={mediaPreview.openPreview}
+                                                />
+                                            </TableCell>
+                                        </TableRow>
+                                    ))}
+                                </TableBody>
+                            </Table>
+                        </div>
+                    )}
+
+                    {/* Pagination */}
+                    {!isLoadingHistory && !historyFailed && usageHistory && usageHistory.total_pages > 1 && (
+                        <nav aria-label="Pages of calls" className="mt-2 flex flex-wrap items-center justify-between gap-3">
+                            <p className="text-sm text-ink-3">
+                                Page {usageHistory.page} of {usageHistory.total_pages}
+                            </p>
+                            <div className="flex gap-2">
+                                <Button
+                                    variant="outline"
+                                    className="h-10 sm:h-8"
+                                    onClick={() => handlePageChange(currentPage - 1)}
+                                    disabled={currentPage === 1}
+                                >
+                                    <ChevronLeft aria-hidden />
+                                    Previous
+                                </Button>
+                                <Button
+                                    variant="outline"
+                                    className="h-10 sm:h-8"
+                                    onClick={() => handlePageChange(currentPage + 1)}
+                                    disabled={currentPage === usageHistory.total_pages}
+                                >
+                                    Next
+                                    <ChevronRight aria-hidden />
+                                </Button>
+                            </div>
+                        </nav>
+                    )}
+                </section>
+
+                {/* Daily usage and cost: only for organisations on per-second pricing. */}
+                {organizationPricing?.price_per_second_usd && (
+                    <DailyUsageTable data={dailyUsage} isLoading={isLoadingDaily} />
+                )}
+
                 {mediaPreview.dialog}
+            </div>
         </div>
     );
 }
+
+type TimezoneStyles = NonNullable<ComponentProps<typeof TimezoneSelect>['styles']>;
+
+const TIMEZONE_STYLES: TimezoneStyles = {
+    control: (base, state) => ({
+        ...base,
+        minHeight: '40px',
+        fontSize: '14px',
+        backgroundColor: 'var(--background)',
+        borderColor: state.isFocused ? 'var(--ring)' : 'var(--border)',
+        boxShadow: state.isFocused ? '0 0 0 2px color-mix(in srgb, var(--ring) 20%, transparent)' : 'none',
+        '&:hover': {
+            borderColor: 'var(--border)',
+        },
+    }),
+    menu: (base) => ({
+        ...base,
+        zIndex: 9999,
+        backgroundColor: 'var(--popover)',
+        border: '1px solid var(--border)',
+        boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)',
+    }),
+    menuList: (base) => ({
+        ...base,
+        backgroundColor: 'var(--popover)',
+        padding: 0,
+    }),
+    option: (base, state) => ({
+        ...base,
+        backgroundColor: state.isSelected || state.isFocused ? 'var(--accent)' : 'var(--popover)',
+        color: 'var(--foreground)',
+        cursor: 'pointer',
+        '&:active': {
+            backgroundColor: 'var(--accent)',
+        },
+    }),
+    singleValue: (base) => ({ ...base, color: 'var(--foreground)' }),
+    input: (base) => ({ ...base, color: 'var(--foreground)' }),
+    placeholder: (base) => ({ ...base, color: 'var(--muted-foreground)' }),
+    indicatorSeparator: (base) => ({ ...base, backgroundColor: 'var(--border)' }),
+    dropdownIndicator: (base) => ({
+        ...base,
+        color: 'var(--muted-foreground)',
+        '&:hover': { color: 'var(--foreground)' },
+    }),
+};
