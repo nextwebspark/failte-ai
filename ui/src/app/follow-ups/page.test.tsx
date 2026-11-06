@@ -41,12 +41,14 @@ function item(overrides: Partial<FollowUpItem>): FollowUpItem {
         first_call_at: null,
         done_at: null,
         done_by: null,
+        summary: null,
+        questions: [],
         ...overrides,
     };
 }
 
 function response(items: FollowUpItem[], status: "open" | "done" = "open"): FollowUpListResponse {
-    const counts = { callback: 0, transfer_not_answered: 0, repeat_caller: 0 };
+    const counts = { callback: 0, transfer_not_answered: 0, repeat_caller: 0, unanswered_question: 0, time_was_full: 0 };
     for (const i of items) counts[i.kind] += 1;
     return {
         status,
@@ -55,6 +57,7 @@ function response(items: FollowUpItem[], status: "open" | "done" = "open"): Foll
         open_count: status === "open" ? items.length : 0,
         done_count: status === "done" ? items.length : 1,
         week: { raised: 5, sorted: 3, median_wait_minutes: 100 },
+        has_calls: true,
     };
 }
 

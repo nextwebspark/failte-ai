@@ -44,6 +44,7 @@ function summary(overrides: Partial<DashboardSummaryResponse> = {}): DashboardSu
             callbacks_requested: 0,
             in_progress: 0,
             average_call_seconds: 95,
+            bookings_taken: 1,
         },
         previous_calls: 2,
         calls_change: null,
@@ -58,8 +59,16 @@ function summary(overrides: Partial<DashboardSummaryResponse> = {}): DashboardSu
                 result: "booking_made",
                 duration_seconds: 101,
                 has_recording: true,
+                summary: "Booked a table for 4 tonight at 7:00 pm.",
+                reason_label: "Reservations",
             },
         ],
+        callers_wanted: [
+            { key: "reservations", label: "Reservations", count: 3, percent: 75 },
+            { key: "other", label: "Other", count: 1, percent: 25 },
+        ],
+        wording: { template: "restaurant", bookings_label: "bookings taken" },
+        has_calls: true,
         agent_status: {
             answering: true,
             reason: null,
@@ -79,6 +88,7 @@ const NO_FOLLOW_UPS: FollowUpListResponse = {
     open_count: 0,
     done_count: 0,
     week: { raised: 0, sorted: 0, median_wait_minutes: null },
+    has_calls: true,
 };
 
 describe("Home", () => {
@@ -88,6 +98,7 @@ describe("Home", () => {
         mocks.followUps.mockReset();
         mocks.summary.mockResolvedValue({ data: summary() });
         mocks.followUps.mockResolvedValue({ data: NO_FOLLOW_UPS });
+        window.localStorage.clear();
     });
 
     it("greets the person as the page's one heading", async () => {
@@ -143,18 +154,90 @@ describe("Home", () => {
         expect(within(alert).getByRole("link", { name: "Top up credit" }).getAttribute("href")).toBe("/billing");
     });
 
-    it("gives a brand-new business a checklist and a first call to make", async () => {
-        mocks.summary.mockResolvedValue({
-            data: summary({
-                tiles: { ...summary().tiles, calls: 0, handled: 0, handled_percent: null },
-                recent_calls: [],
-                agent_status: { answering: true, reason: null, phone_numbers: ["+35315550142"], last_call_at: null },
-            }),
+    const BRAND_NEW = () =>
+        summary({
+            tiles: { ...summary().tiles, calls: 0, handled: 0, handled_percent: null },
+            recent_calls: [],
+            callers_wanted: [],
+            has_calls: false,
+            agent_status: { answering: true, reason: null, phone_numbers: ["+35315550142"], last_call_at: null },
         });
+
+    it("gives a brand-new business a checklist, then the sample day, clearly labelled", async () => {
+        mocks.summary.mockResolvedValue({ data: BRAND_NEW() });
         render(<OverviewPage />);
         expect(await screen.findByText("Ring your number now")).toBeTruthy();
         expect(screen.getByText("Take your first call")).toBeTruthy();
-        expect(screen.queryByText("Handled by your agent")).toBeNull();
+        const banner = screen.getByRole("region", { name: "Sample data" });
+        expect(banner.textContent).toMatch(/These calls are made up/);
+        // The sample day: 46 calls, the restaurant's reasons, made-up callers.
+        expect(screen.getByText("Handled by your agent")).toBeTruthy();
+        expect(screen.getAllByText("Reservations").length).toBeGreaterThan(0);
+        expect(screen.getAllByText("Declan Murphy").length).toBeGreaterThan(0);
+        // Nothing on a sample call does anything.
+        expect(screen.queryAllByRole("link", { name: /listen to the call/i })).toHaveLength(0);
+        expect(screen.getAllByText("Sample call").length).toBeGreaterThan(0);
+        for (const button of screen.getAllByRole("button", { name: /call back|mark done|add answer/i })) {
+            expect((button as HTMLButtonElement).disabled).toBe(true);
+        }
+        // No range to switch on a made-up day.
+        expect(screen.queryByRole("button", { name: "7 days" })).toBeNull();
+    });
+
+    it("hidden sample data leaves just the checklist", async () => {
+        mocks.summary.mockResolvedValue({ data: BRAND_NEW() });
+        render(<OverviewPage />);
+        fireEvent.click(await screen.findByRole("button", { name: /hide sample data/i }));
+        await waitFor(() => expect(screen.queryByText("Handled by your agent")).toBeNull());
+        expect(screen.getByText("Take your first call")).toBeTruthy();
+        expect(screen.getByRole("button", { name: "Show sample data" })).toBeTruthy();
+    });
+
+    it("shows what callers wanted, with counts and percents, and the bookings taken", async () => {
+        render(<OverviewPage />);
+        const card = within((await screen.findByText("What callers wanted")).closest("section") as HTMLElement);
+        expect(card.getByLabelText("Reservations: 3 calls, 75%")).toBeTruthy();
+        expect(card.getByLabelText("Other: 1 call, 25%")).toBeTruthy();
+        expect(card.getByText("bookings taken")).toBeTruthy();
+        expect(card.getByText("average call")).toBeTruthy();
+        expect(screen.getAllByText("Booked a table for 4 tonight at 7:00 pm.").length).toBeGreaterThan(0);
+    });
+
+    it("lists a question the agent couldn't answer with Add answer", async () => {
+        mocks.perms = [...mocks.perms, "followups:manage", "agents:facts"];
+        mocks.followUps.mockResolvedValue({
+            data: {
+                ...NO_FOLLOW_UPS,
+                items: [
+                    {
+                        run_id: 7,
+                        workflow_id: 14,
+                        workflow_name: "Bia Bistro bookings",
+                        kind: "unanswered_question",
+                        created_at: "2026-11-05T12:00:00Z",
+                        caller_number: "+353871234567",
+                        caller_name: null,
+                        callback_number: null,
+                        call_reason: null,
+                        duration_seconds: 40,
+                        has_recording: true,
+                        repeat_count: null,
+                        first_call_at: null,
+                        done_at: null,
+                        done_by: null,
+                        summary: "Asked about gluten-free pasta.",
+                        questions: ["Do you have gluten-free pasta?"],
+                    },
+                ],
+                open_count: 1,
+            },
+        });
+        render(<OverviewPage />);
+        expect(await screen.findByText("Your agent couldn't answer")).toBeTruthy();
+        expect(screen.getByText("Add an answer")).toBeTruthy();
+        fireEvent.click(screen.getByRole("button", { name: /add answer/i }));
+        expect(await screen.findByRole("dialog")).toBeTruthy();
+        expect(within(screen.getByRole("dialog")).getByText("Do you have gluten-free pasta?")).toBeTruthy();
     });
 
     it("offers to try again when the numbers can't load", async () => {
