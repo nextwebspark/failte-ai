@@ -2,7 +2,8 @@
 
 import { addDays, format, subDays } from 'date-fns';
 import { Calendar, ChevronLeft, ChevronRight, Download } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { toast } from 'sonner';
 
 import {
   getDailyReportApiV1OrganizationsReportsDailyGet,
@@ -22,6 +23,9 @@ import { useAuth } from '@/lib/auth';
 import { DispositionChart } from './components/DispositionChart';
 import { DurationChart } from './components/DurationChart';
 import { MetricsCards } from './components/MetricsCards';
+import { CSV_HEADERS, csvCell } from './csv';
+
+const LOAD_FAILED = "Couldn't load the report. Please try again.";
 
 interface WorkflowOption {
   id: number;
@@ -58,6 +62,11 @@ export default function ReportsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [timezone, setTimezone] = useState('America/New_York');
+  // Bumped by "Try again" to fetch the same report again.
+  const [attempt, setAttempt] = useState(0);
+  const [downloading, setDownloading] = useState(false);
+  // Guards against a double click before the disabled state renders.
+  const downloadingRef = useRef(false);
   const auth = useAuth();
 
   // Fetch workflows on mount
@@ -116,17 +125,21 @@ export default function ReportsPage() {
 
         if (response.data) {
           setReport(response.data as DailyReport);
+        } else {
+          setReport(null);
+          setError(LOAD_FAILED);
         }
       } catch (err) {
         console.error('Failed to fetch report:', err);
-        setError('Failed to load report data');
+        setReport(null);
+        setError(LOAD_FAILED);
       } finally {
         setLoading(false);
       }
     };
 
     fetchReport();
-  }, [selectedDate, selectedWorkflow, timezone, auth.isAuthenticated]);
+  }, [selectedDate, selectedWorkflow, timezone, auth.isAuthenticated, attempt]);
 
   const handlePreviousDay = () => {
     setSelectedDate(subDays(selectedDate, 1));
@@ -137,8 +150,10 @@ export default function ReportsPage() {
   };
 
   const handleDownloadCSV = async () => {
-    if (!auth.isAuthenticated) return;
+    if (!auth.isAuthenticated || downloadingRef.current) return;
 
+    downloadingRef.current = true;
+    setDownloading(true);
     try {
       const dateStr = format(selectedDate, 'yyyy-MM-dd');
       const workflowId = selectedWorkflow === 'all' ? undefined : parseInt(selectedWorkflow);
@@ -152,9 +167,11 @@ export default function ReportsPage() {
         },
       });
 
+      if (response.error) {
+        toast.error("Couldn't download the calls. Please try again.");
+        return;
+      }
       if (response.data && response.data.length > 0) {
-        // Prepare CSV content
-        const headers = ['Phone Number', 'Disposition', 'Duration (seconds)', 'Workflow Run URL'];
         const rows = response.data.map((run: WorkflowRunDetail) => {
           const url = `${window.location.origin}/workflow/${run.workflow_id}/run/${run.run_id}`;
           return [
@@ -167,8 +184,8 @@ export default function ReportsPage() {
 
         // Create CSV content
         const csvContent = [
-          headers.join(','),
-          ...rows.map((row: string[]) => row.map((cell: string) => `"${cell}"`).join(','))
+          CSV_HEADERS.map(csvCell).join(','),
+          ...rows.map((row: string[]) => row.map(csvCell).join(','))
         ].join('\n');
 
         // Create blob and download
@@ -177,21 +194,26 @@ export default function ReportsPage() {
         const url = URL.createObjectURL(blob);
 
         const workflowName = selectedWorkflow === 'all'
-          ? 'all_workflows'
-          : workflows.find(w => w.id.toString() === selectedWorkflow)?.name?.replace(/\s+/g, '_') || 'workflow';
+          ? 'all_agents'
+          : workflows.find(w => w.id.toString() === selectedWorkflow)?.name?.replace(/\s+/g, '_') || 'agent';
 
         link.setAttribute('href', url);
-        link.setAttribute('download', `workflow_runs_${dateStr}_${workflowName}.csv`);
+        link.setAttribute('download', `calls_${dateStr}_${workflowName}.csv`);
         link.style.visibility = 'hidden';
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+        toast.success('Your calls are downloading.');
       } else {
-        alert('No data available for download');
+        toast.info('There are no calls to download for this day.');
       }
     } catch (err) {
       console.error('Failed to download CSV:', err);
-      alert('Failed to download CSV data');
+      toast.error("Couldn't download the calls. Please try again.");
+    } finally {
+      downloadingRef.current = false;
+      setDownloading(false);
     }
   };
 
@@ -206,7 +228,7 @@ export default function ReportsPage() {
         <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center">
           {/* Workflow Selector */}
           <Select value={selectedWorkflow} onValueChange={setSelectedWorkflow}>
-            <SelectTrigger className="w-[200px]">
+            <SelectTrigger className="w-[200px]" aria-label="Agent">
               <SelectValue placeholder="Select agent" />
             </SelectTrigger>
             <SelectContent>
@@ -225,14 +247,15 @@ export default function ReportsPage() {
               variant="outline"
               size="icon"
               onClick={handlePreviousDay}
+              aria-label="Previous day"
             >
-              <ChevronLeft className="h-4 w-4" />
+              <ChevronLeft className="h-4 w-4" aria-hidden />
             </Button>
 
             <Popover>
               <PopoverTrigger asChild>
-                <Button variant="outline" className="w-[200px]">
-                  <Calendar className="mr-2 h-4 w-4" />
+                <Button variant="outline" className="w-[200px]" aria-label={`Pick a day, showing ${format(selectedDate, 'MMMM d, yyyy')}`}>
+                  <Calendar className="mr-2 h-4 w-4" aria-hidden />
                   {format(selectedDate, 'MMM dd, yyyy')}
                 </Button>
               </PopoverTrigger>
@@ -251,8 +274,9 @@ export default function ReportsPage() {
               size="icon"
               onClick={handleNextDay}
               disabled={isToday}
+              aria-label="Next day"
             >
-              <ChevronRight className="h-4 w-4" />
+              <ChevronRight className="h-4 w-4" aria-hidden />
             </Button>
           </div>
         </div>
@@ -261,7 +285,7 @@ export default function ReportsPage() {
       {/* Timezone Display and Download Button */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
         <div className="text-sm text-muted-foreground">
-          Showing data for {timezone} timezone
+          Times shown in {timezone}
           {selectedWorkflow !== 'all' && (
             <span> • Filtered by: {workflows.find(w => w.id.toString() === selectedWorkflow)?.name}</span>
           )}
@@ -273,10 +297,11 @@ export default function ReportsPage() {
             variant="outline"
             size="sm"
             onClick={handleDownloadCSV}
+            disabled={downloading}
             className="flex items-center gap-2"
           >
-            <Download className="h-4 w-4" />
-            Download CSV
+            <Download className="h-4 w-4" aria-hidden />
+            {downloading ? 'Preparing…' : 'Download calls (CSV)'}
           </Button>
         )}
       </div>
@@ -297,8 +322,11 @@ export default function ReportsPage() {
 
       {/* Error State */}
       {error && !loading && (
-        <Card className="p-6">
+        <Card className="flex flex-col items-center gap-3 p-6" role="alert">
           <p className="text-center text-danger">{error}</p>
+          <Button size="sm" variant="outline" onClick={() => setAttempt((n) => n + 1)}>
+            Try again
+          </Button>
         </Card>
       )}
 
