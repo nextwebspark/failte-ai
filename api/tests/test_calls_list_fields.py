@@ -31,7 +31,13 @@ def test_review_fields_from_a_stored_review():
 
 @pytest.mark.parametrize(
     "annotations",
-    [None, {}, {"call_review": None}, {"call_review": "oops"}, {"call_review": {"summary": 5}}],
+    [
+        None,
+        {},
+        {"call_review": None},
+        {"call_review": "oops"},
+        {"call_review": {"summary": 5}},
+    ],
 )
 def test_older_calls_without_a_review_have_empty_fields(annotations):
     assert call_review_fields(annotations) == {
@@ -147,7 +153,8 @@ def test_csv_uses_plain_headers():
         public_access_token=None,
     )
     header, values = [
-        row.split(",") for row in run_report.build_run_report_csv([run]).getvalue().splitlines()
+        row.split(",")
+        for row in run_report.build_run_report_csv([run]).getvalue().splitlines()
     ]
     assert header[0] == "Call ID" and values[0] == "1"
     assert values[header.index("Outcome")] == "booking_made"

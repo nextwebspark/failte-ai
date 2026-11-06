@@ -16,7 +16,9 @@ class RecordingShareClient(BaseDBClient):
         self,
         organization_id: int,
         run_id: int,
-        change: Callable[[dict[str, Any], list[dict[str, Any]]], list[dict[str, Any]] | None],
+        change: Callable[
+            [dict[str, Any], list[dict[str, Any]]], list[dict[str, Any]] | None
+        ],
     ) -> list[dict[str, Any]] | None:
         """Apply ``change(call, shares)`` to one of the organization's calls,
         under a row lock, and store the list it returns. ``call`` has the
@@ -54,7 +56,9 @@ class RecordingShareClient(BaseDBClient):
             row = (
                 await session.execute(
                     select(WorkflowRunModel.recording_url, WorkflowRunModel.annotations)
-                    .join(WorkflowModel, WorkflowRunModel.workflow_id == WorkflowModel.id)
+                    .join(
+                        WorkflowModel, WorkflowRunModel.workflow_id == WorkflowModel.id
+                    )
                     .where(
                         WorkflowModel.organization_id == organization_id,
                         WorkflowRunModel.id == run_id,
@@ -84,7 +88,9 @@ class RecordingShareClient(BaseDBClient):
                         WorkflowModel.template_context_variables,
                         OrganizationModel.name.label("organization_name"),
                     )
-                    .join(WorkflowModel, WorkflowRunModel.workflow_id == WorkflowModel.id)
+                    .join(
+                        WorkflowModel, WorkflowRunModel.workflow_id == WorkflowModel.id
+                    )
                     .join(
                         OrganizationModel,
                         WorkflowModel.organization_id == OrganizationModel.id,

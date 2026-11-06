@@ -10,10 +10,11 @@ import secrets
 from datetime import UTC, datetime, timedelta
 from typing import Any, Literal
 
-from api.enums import OrganizationConfigurationKey
-from api.services.email_reports.periods import Frequency, parse_clock
 from loguru import logger
 from pydantic import BaseModel, Field, ValidationError, field_validator
+
+from api.enums import OrganizationConfigurationKey
+from api.services.email_reports.periods import Frequency, parse_clock
 
 SETTINGS_KEY = OrganizationConfigurationKey.EMAIL_REPORTS.value
 SENT_KEY = OrganizationConfigurationKey.EMAIL_REPORTS_SENT.value

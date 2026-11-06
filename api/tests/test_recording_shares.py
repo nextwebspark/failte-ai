@@ -56,7 +56,16 @@ def test_token_carries_the_call_id_and_a_long_random_secret():
 
 @pytest.mark.parametrize(
     "bad",
-    ["", "abc", "123", "123.", "x.AAAA", "123.short", "-1." + "A" * 43, "1." + "A" * 42 + "!"],
+    [
+        "",
+        "abc",
+        "123",
+        "123.",
+        "x.AAAA",
+        "123.short",
+        "-1." + "A" * 43,
+        "1." + "A" * 42 + "!",
+    ],
 )
 def test_malformed_tokens_are_rejected(bad):
     assert parse_token(bad) is None
@@ -90,7 +99,12 @@ def test_expiry_choices_and_states():
 
 def test_created_by_falls_back_to_the_email_name():
     share = new_share(
-        token_hash="h", expiry=ShareExpiry.DAY, user_id=1, name=" ", email="sean@x.ie", now=NOW
+        token_hash="h",
+        expiry=ShareExpiry.DAY,
+        user_id=1,
+        name=" ",
+        email="sean@x.ie",
+        now=NOW,
     )
     assert share["created_by"] == "sean"
     assert share["revoked_at"] is None
@@ -116,7 +130,10 @@ def test_revoke_turns_one_link_off_and_keeps_the_rest():
     assert [s["id"] for s in active_shares(result, later)] == [b["id"]]
     assert revoke([a, b], "nope", later) is None
     # Revoking again keeps the first time.
-    assert revoke(result, a["id"], later + timedelta(hours=1))[0]["revoked_at"] == later.isoformat()
+    assert (
+        revoke(result, a["id"], later + timedelta(hours=1))[0]["revoked_at"]
+        == later.isoformat()
+    )
 
 
 def test_active_list_hides_hashes_and_ended_links():
@@ -182,7 +199,9 @@ class FakeDB:
     async def get_recording_shares(self, organization_id, run_id):
         if organization_id != 3 or run_id != 42:
             return None
-        return {"recording_url": self.call["recording_url"]}, self.call["annotations"].get("shares", [])
+        return {"recording_url": self.call["recording_url"]}, self.call[
+            "annotations"
+        ].get("shares", [])
 
     async def get_shared_call(self, run_id):
         return dict(self.call) if run_id == 42 else None
@@ -249,7 +268,7 @@ async def test_share_round_trip(fake):
     redirect = await routes.play_shared_recording(token)
     assert redirect.status_code == 302
     assert redirect.headers["location"].startswith("https://storage.example/")
-    (_path, expiration, inline), = fake.storage.asked
+    ((_path, expiration, inline),) = fake.storage.asked
     assert expiration <= MAX_SIGNED_URL_SECONDS and inline is True
 
 

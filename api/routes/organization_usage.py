@@ -512,8 +512,7 @@ async def resolve_follow_up_filter(
     from the Follow-ups service itself so the tab and Follow-ups agree. Any
     ids the request carried are replaced."""
     if not isinstance(filters, list) or not any(
-        isinstance(f, dict) and f.get("attribute") == "needsFollowUp"
-        for f in filters
+        isinstance(f, dict) and f.get("attribute") == "needsFollowUp" for f in filters
     ):
         return filters
     # Imported here: the dashboard service pulls in the billing stack.

@@ -89,7 +89,10 @@ def share_url(token: str) -> str:
     "/calls/{run_id}/recording-shares",
     response_model=CreatedRecordingShare,
     status_code=201,
-    responses={404: {"description": "No such call"}, 409: {"description": "No recording"}},
+    responses={
+        404: {"description": "No such call"},
+        409: {"description": "No recording"},
+    },
 )
 async def create_recording_share(
     run_id: int,
@@ -121,7 +124,9 @@ async def create_recording_share(
         membership.organization_id, run_id, change
     )
     if no_recording:
-        raise HTTPException(status_code=409, detail="This call has no recording to share.")
+        raise HTTPException(
+            status_code=409, detail="This call has no recording to share."
+        )
     if stored is None:
         raise HTTPException(status_code=404, detail="Call not found")
     logger.info(f"Recording share {share['id']} made for run {run_id}")
@@ -135,7 +140,9 @@ async def create_recording_share(
 
 
 @router.get("/calls/{run_id}/recording-shares", response_model=RecordingShareList)
-async def list_recording_shares(run_id: int, membership: CallsReader) -> RecordingShareList:
+async def list_recording_shares(
+    run_id: int, membership: CallsReader
+) -> RecordingShareList:
     """The links to this call's recording that still work."""
     found = await db_client.get_recording_shares(membership.organization_id, run_id)
     if found is None:
@@ -209,7 +216,9 @@ async def shared_recording_info(token: str, response: Response) -> SharedRecordi
         # Also a purged call: retention clears its links with the rest of it.
         # Saying so would tell anyone holding a made-up token that the call
         # existed, so it reads the same as an unknown link.
-        raise HTTPException(status_code=404, detail="This link isn't valid.", headers=_PRIVATE_HEADERS)
+        raise HTTPException(
+            status_code=404, detail="This link isn't valid.", headers=_PRIVATE_HEADERS
+        )
     now = datetime.now(UTC)
     state = share_state(share, now)
     if state == ShareState.REVOKED:
@@ -224,7 +233,9 @@ async def shared_recording_info(token: str, response: Response) -> SharedRecordi
         business_name=_business_name(call),
         called_at=call["created_at"],
         timezone=await _timezone(call["organization_id"]),
-        duration_seconds=int(round(duration)) if isinstance(duration, (int, float)) else None,
+        duration_seconds=int(round(duration))
+        if isinstance(duration, (int, float))
+        else None,
         expires_at=share.get("expires_at"),
     )
 
@@ -234,7 +245,9 @@ async def shared_recording_info(token: str, response: Response) -> SharedRecordi
     responses={
         302: {"description": "To a short-lived signed URL for the recording"},
         404: {"description": "Not a link we know"},
-        410: {"description": "The link expired or was turned off, or the recording is gone"},
+        410: {
+            "description": "The link expired or was turned off, or the recording is gone"
+        },
     },
 )
 async def play_shared_recording(token: str):
@@ -243,13 +256,21 @@ async def play_shared_recording(token: str):
     at most, and never past the link's expiry."""
     call, share = await _shared_call(token)
     if share is None:
-        raise HTTPException(status_code=404, detail="This link isn't valid.", headers=_PRIVATE_HEADERS)
+        raise HTTPException(
+            status_code=404, detail="This link isn't valid.", headers=_PRIVATE_HEADERS
+        )
     now = datetime.now(UTC)
     if share_state(share, now) != ShareState.ACTIVE:
-        raise HTTPException(status_code=410, detail="This link no longer works.", headers=_PRIVATE_HEADERS)
+        raise HTTPException(
+            status_code=410,
+            detail="This link no longer works.",
+            headers=_PRIVATE_HEADERS,
+        )
     if not call.get("recording_url"):
         raise HTTPException(
-            status_code=410, detail="This recording is no longer available.", headers=_PRIVATE_HEADERS
+            status_code=410,
+            detail="This recording is no longer available.",
+            headers=_PRIVATE_HEADERS,
         )
     try:
         storage = get_storage_for_backend(call.get("storage_backend"))
@@ -259,8 +280,14 @@ async def play_shared_recording(token: str):
             force_inline=True,
         )
     except Exception as exc:  # noqa: BLE001 - logged; the listener gets a plain 502
-        logger.error(f"Signed URL for shared recording on run {call['id']} failed: {exc}")
+        logger.error(
+            f"Signed URL for shared recording on run {call['id']} failed: {exc}"
+        )
         signed = None
     if not signed:
-        raise HTTPException(status_code=502, detail="We couldn't load the recording.", headers=_PRIVATE_HEADERS)
+        raise HTTPException(
+            status_code=502,
+            detail="We couldn't load the recording.",
+            headers=_PRIVATE_HEADERS,
+        )
     return RedirectResponse(url=signed, status_code=302, headers=_PRIVATE_HEADERS)

@@ -20,6 +20,8 @@ from datetime import UTC, datetime, time
 from typing import Any
 from zoneinfo import ZoneInfo
 
+from loguru import logger
+
 from api.constants import BACKEND_API_ENDPOINT, OSS_JWT_SECRET, UI_APP_URL
 from api.db import db_client
 from api.services.auth.permissions import Permission, has_permissions
@@ -50,7 +52,6 @@ from api.services.email_reports.settings import (
     parse_settings,
     record_change,
 )
-from loguru import logger
 
 CONFIRM_HOURS = int(tokens.CONFIRM_TTL.total_seconds() // 3600)
 # Confirmation emails per workspace per day, so the form can't be used to
