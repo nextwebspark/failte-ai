@@ -35,13 +35,13 @@ def build_run_report_csv(runs: List[Any]) -> io.StringIO:
     writer = csv.writer(output)
 
     pre_headers = [
-        "Run ID",
+        "Call ID",
         "Campaign ID",
         "Agent ID",
         "Agent Definition ID",
         "Created At",
         "Phone Number",
-        "Call Disposition",
+        "Outcome",
         "Call Duration (s)",
     ]
     include_charge = BILLING_PROVIDER == "stripe"
