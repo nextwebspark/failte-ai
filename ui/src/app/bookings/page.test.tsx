@@ -147,6 +147,23 @@ describe("BookingsPage", () => {
         expect(toast.success).toHaveBeenCalled();
     });
 
+    it("lets the owner allow cancelling and moving after checking the caller", async () => {
+        render(<BookingsPage />);
+        const toggle = await screen.findByRole("switch", { name: "Let the agent cancel or move bookings" });
+        expect(toggle.getAttribute("aria-checked")).toBe("false");
+        expect(screen.getByText(/phone number the booking was made under/)).toBeTruthy();
+
+        fireEvent.click(toggle);
+
+        await waitFor(() =>
+            expect(mocks.update).toHaveBeenCalledWith({
+                path: { connection_id: CAL },
+                body: { ai_changes_enabled: true },
+            }),
+        );
+        await waitFor(() => expect(toggle.getAttribute("aria-checked")).toBe("true"));
+    });
+
     it("shows staff the bookings but not the switch, unless allowed", async () => {
         mocks.can.mockImplementation((...perms: string[]) => perms.every((p) => p === "calls:read"));
         render(<BookingsPage />);

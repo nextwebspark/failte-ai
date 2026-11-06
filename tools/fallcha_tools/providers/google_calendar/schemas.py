@@ -92,7 +92,17 @@ EventId = Annotated[
 # booking_off (the owner switched AI booking off), party_too_large /
 # party_too_small (outside the party sizes the agent may book), fully_booked
 # (nothing free in the whole booking horizon).
-Handoff = Literal["booking_off", "party_too_large", "party_too_small", "fully_booked"]
+# changes_off (the owner hasn't let the agent cancel or move bookings) and
+# booking_not_found (no booking matched the caller's details) are for
+# cancelling or moving an earlier booking.
+Handoff = Literal[
+    "booking_off",
+    "party_too_large",
+    "party_too_small",
+    "fully_booked",
+    "changes_off",
+    "booking_not_found",
+]
 HANDOFF_FIELD = Field(
     default=None,
     description=(
@@ -133,6 +143,48 @@ class BookingResult(BaseModel):
 class CancelResult(BaseModel):
     cancelled: bool
     say: str = Field(description="Read this to the caller word for word.")
+    handoff: Handoff | None = HANDOFF_FIELD
+
+
+BookingPhone = Annotated[
+    str,
+    Field(
+        min_length=1,
+        max_length=50,
+        description=(
+            "The phone number the booking was made under, as the caller says it "
+            "and you read it back."
+        ),
+    ),
+]
+BookingName = Annotated[
+    str | None,
+    Field(
+        max_length=200,
+        description="The name the booking is under, if the caller gave it.",
+    ),
+]
+BookingDay = Annotated[
+    str | None,
+    Field(
+        max_length=100,
+        description=(
+            "The day of the booking in the caller's words ('friday', "
+            "'tomorrow', 2026-11-14), if they gave it."
+        ),
+    ),
+]
+
+
+class FoundBooking(BaseModel):
+    event_id: str = Field(description="Pass to cancel_appointment or move_appointment.")
+    say: str = Field(description="How to describe this booking out loud.")
+
+
+class FindBookingResult(BaseModel):
+    bookings: list[FoundBooking]
+    say: str = Field(description="Read this to the caller word for word.")
+    handoff: Handoff | None = HANDOFF_FIELD
 
 
 class AvailabilityRequest(BaseModel):

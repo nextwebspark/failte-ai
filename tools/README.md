@@ -106,6 +106,8 @@ connection is labelled with the key's `client_email`.
 | `check_appointment_availability(relative_day?, part_of_day?, party_size?)` | `/availability` |
 | `book_appointment(slot_id, caller_name, caller_phone, reason?, party_size?)` | `/book` |
 | `cancel_appointment(event_id)` (only events this connection booked) | `/cancel` |
+| `find_booking(caller_phone, caller_name?, booking_day?)` (needs `ai_changes_enabled`) | — |
+| `move_appointment(event_id, slot_id)` (needs `ai_changes_enabled`; books the new time, then removes the old) | — |
 
 REST bodies and responses match the shim's, so an existing `http_api` tool only
 needs a new URL and a connection key in place of the old `X-API-Key`. Errors
@@ -167,6 +169,12 @@ and a warning is logged.
 `fully_booked`) with a `say` line instead of booking. The agent should then
 transfer the caller if it can, or take their details for the team.
 `needs_party_size: true` means ask how many people and check again.
+
+**Changing an earlier booking.** With `ai_changes_enabled` (off by default),
+`find_booking` returns upcoming bookings this connection made whose phone
+matches (last 9 digits) and whose name (any shared word) or day matches; a
+number alone is refused. Then `cancel_appointment` or `move_appointment`.
+Off, or no match: `handoff` `changes_off` / `booking_not_found`.
 
 **Listing.** `GET /internal/connections/{id}/bookings?start=&end=` (ISO
 times with an offset, at most 62 days) returns the bookings this connection

@@ -94,12 +94,12 @@ function BookingsScreen() {
         void load();
     }, [load]);
 
-    const setBookingOn = async (calendar: BookingCalendar, enabled: boolean) => {
+    const setSwitch = async (calendar: BookingCalendar, key: OwnerSwitch, enabled: boolean) => {
         setSaving(calendar.connection_id);
         try {
             const response = await setAiBookingApiV1IntegrationsBookingsCalendarsConnectionIdPut({
                 path: { connection_id: calendar.connection_id },
-                body: { ai_booking_enabled: enabled },
+                body: { [key]: enabled },
             });
             if (response.error || !response.data) {
                 toast.error(integrationErrorMessage(response.error, "Couldn't change the setting"));
@@ -109,15 +109,11 @@ function BookingsScreen() {
                 current && {
                     ...current,
                     calendars: current.calendars.map((c) =>
-                        c.connection_id === calendar.connection_id ? { ...c, ai_booking_enabled: enabled } : c,
+                        c.connection_id === calendar.connection_id ? { ...c, [key]: enabled } : c,
                     ),
                 },
             );
-            toast.success(
-                enabled
-                    ? "Your agent can take bookings again"
-                    : "Booking is off: your agent will take details for your team instead",
-            );
+            toast.success(SWITCH_TOASTS[key][enabled ? "on" : "off"]);
         } catch {
             toast.error("Couldn't change the setting. Please try again.");
         } finally {
@@ -181,7 +177,7 @@ function BookingsScreen() {
                                 canManage={canManage}
                                 canSeeIntegrations={canSeeIntegrations}
                                 saving={saving === calendar.connection_id}
-                                onChange={(enabled) => void setBookingOn(calendar, enabled)}
+                                onChange={(key, enabled) => void setSwitch(calendar, key, enabled)}
                             />
                         ))}
                     </section>
@@ -258,6 +254,19 @@ function NoCalendar({ canManage }: { canManage: boolean }) {
     );
 }
 
+type OwnerSwitch = "ai_booking_enabled" | "ai_changes_enabled";
+
+const SWITCH_TOASTS: Record<OwnerSwitch, { on: string; off: string }> = {
+    ai_booking_enabled: {
+        on: "Your agent can take bookings again",
+        off: "Booking is off: your agent will take details for your team instead",
+    },
+    ai_changes_enabled: {
+        on: "Your agent can now cancel or move bookings after checking the caller",
+        off: "Changes are off: your agent will take a message instead",
+    },
+};
+
 function CalendarRow({
     calendar,
     canManage,
@@ -269,10 +278,12 @@ function CalendarRow({
     canManage: boolean;
     canSeeIntegrations: boolean;
     saving: boolean;
-    onChange: (enabled: boolean) => void;
+    onChange: (key: OwnerSwitch, enabled: boolean) => void;
 }) {
     const name = calendarName(calendar);
     const switchId = `booking-on-${calendar.connection_id}`;
+    const changesId = `changes-on-${calendar.connection_id}`;
+    const changesOn = calendar.ai_changes_enabled ?? false;
     return (
         <Panel accent={calendar.ok ? (calendar.ai_booking_enabled ? "brand" : "amber") : "danger"}>
             <div className="flex flex-wrap items-center justify-between gap-3">
@@ -293,13 +304,35 @@ function CalendarRow({
                                 id={switchId}
                                 checked={calendar.ai_booking_enabled}
                                 disabled={saving}
-                                onCheckedChange={onChange}
+                                onCheckedChange={(enabled) => onChange("ai_booking_enabled", enabled)}
                             />
                             <Label htmlFor={switchId} className="text-sm">
                                 Let the agent book
                             </Label>
                         </div>
                     )}
+                </div>
+            </div>
+            <div className="mt-3 flex flex-wrap items-start gap-2 border-t border-line-soft pt-3">
+                {canManage ? (
+                    <Switch
+                        id={changesId}
+                        checked={changesOn}
+                        disabled={saving}
+                        onCheckedChange={(enabled) => onChange("ai_changes_enabled", enabled)}
+                    />
+                ) : (
+                    <StatusPill tone={changesOn ? "ok" : "mute"}>{changesOn ? "On" : "Off"}</StatusPill>
+                )}
+                <div className="min-w-0 flex-1">
+                    <Label htmlFor={changesId} className="text-sm">
+                        Let the agent cancel or move bookings
+                    </Label>
+                    <p className="text-[12.5px] text-ink-3">
+                        Only after the caller gives the phone number the booking was made under, plus their name or
+                        the day of the booking. If anything doesn&apos;t match, or this is off, the caller is passed to
+                        your team or a message is taken.
+                    </p>
                 </div>
             </div>
             {!calendar.ai_booking_enabled && (

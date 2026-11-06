@@ -213,7 +213,9 @@ async def test_switching_ai_booking_changes_only_that_setting() -> None:
     calendar = _connection(config={"calendar_id": "c", "max_bookings_at_once": 5})
     tools = SwitchTools(calendar)
 
-    result = await _service(tools).set_ai_booking(ACTOR, calendar.id, False)
+    result = await _service(tools).set_ai_booking(
+        ACTOR, calendar.id, {"ai_booking_enabled": False}
+    )
 
     assert tools.patched == [{"ai_booking_enabled": False}]
     assert result.ai_booking_enabled is False
@@ -226,5 +228,36 @@ async def test_the_switch_refuses_connections_that_are_not_calendars() -> None:
     sheet = _connection("google-sheets")
     tools = SwitchTools(sheet)
     with pytest.raises(IntegrationNotFoundError):
-        await _service(tools).set_ai_booking(ACTOR, sheet.id, False)
+        await _service(tools).set_ai_booking(
+            ACTOR, sheet.id, {"ai_booking_enabled": False}
+        )
     assert tools.patched == []
+
+
+async def test_owner_switches_cannot_change_other_calendar_settings() -> None:
+    calendar = _connection()
+    tools = SwitchTools(calendar)
+
+    result = await _service(tools).set_ai_booking(
+        ACTOR,
+        calendar.id,
+        {"ai_changes_enabled": True, "max_bookings_at_once": 500},
+    )
+
+    assert tools.patched == [{"ai_changes_enabled": True}]
+    assert result.ai_changes_enabled is True
+    assert result.ai_booking_enabled is True
+
+
+def test_the_request_needs_at_least_one_switch() -> None:
+    from pydantic import ValidationError
+
+    from api.schemas.integrations import AiBookingRequest
+
+    with pytest.raises(ValidationError):
+        AiBookingRequest.model_validate({})
+    with pytest.raises(ValidationError):
+        AiBookingRequest.model_validate({"max_bookings_at_once": 5})
+    assert AiBookingRequest(ai_changes_enabled=False).changes() == {
+        "ai_changes_enabled": False
+    }

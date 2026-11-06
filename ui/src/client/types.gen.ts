@@ -298,7 +298,11 @@ export type AiBookingRequest = {
     /**
      * Ai Booking Enabled
      */
-    ai_booking_enabled: boolean;
+    ai_booking_enabled?: boolean | null;
+    /**
+     * Ai Changes Enabled
+     */
+    ai_changes_enabled?: boolean | null;
 };
 
 /**
@@ -1101,6 +1105,12 @@ export type BookingCalendar = {
      * Whether agents may book on it (the owner's switch).
      */
     ai_booking_enabled: boolean;
+    /**
+     * Ai Changes Enabled
+     *
+     * Whether agents may cancel or move bookings made on an earlier call, after checking the caller's details.
+     */
+    ai_changes_enabled?: boolean;
     /**
      * Ok
      *

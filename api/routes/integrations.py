@@ -141,10 +141,11 @@ async def set_ai_booking(
     membership: BookingsManager,
     integrations: Integrations,
 ) -> BookingCalendar:
-    """Switch AI booking on or off for one connected calendar. Off, the agent
-    offers no times and passes callers to the team instead."""
+    """The owner's switches for one connected calendar: AI booking (off,
+    the agent offers no times and passes callers to the team) and letting
+    the agent cancel or move earlier bookings after checking the caller."""
     return await integrations.set_ai_booking(
-        _actor(membership), connection_id, request.ai_booking_enabled
+        _actor(membership), connection_id, request.changes()
     )
 
 

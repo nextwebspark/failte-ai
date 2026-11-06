@@ -40,6 +40,8 @@ from fallcha_tools.providers.google_calendar.schemas import (
     Booking,
     BookingResult,
     CancelResult,
+    FindBookingResult,
+    FoundBooking,
     Handoff,
     Slot,
 )
@@ -72,6 +74,41 @@ SAY_BOOKING_OFF = (
     "will get back to you to confirm."
 )
 SAY_ASK_PARTY = "How many people is the booking for?"
+SAY_CHANGES_OFF = (
+    "I can't change bookings on this call, but I can take your details and "
+    "the team will sort it out for you."
+)
+SAY_NOT_FOUND = (
+    "I couldn't find a booking under those details. I can take a message so "
+    "the team can sort it out."
+)
+NEED_NAME_OR_DAY = (
+    "ask for the name the booking is under or the day of the booking, then "
+    "call find_booking again"
+)
+MAX_FOUND_BOOKINGS = 3
+
+
+def _digits(value: str | None) -> str:
+    return "".join(ch for ch in value or "" if ch.isdigit())
+
+
+def _same_phone(given: str, stored: str | None) -> bool:
+    """Same number written differently ("087 123 4567", "+353871234567"):
+    compare the last 9 digits; too short to tell never matches."""
+    a, b = _digits(given), _digits(stored)
+    if len(a) < 7 or len(b) < 7:
+        return False
+    return a[-9:] == b[-9:]
+
+
+def _same_name(given: str, stored: str | None) -> bool:
+    """Any shared word of 2+ letters, ignoring case: "Byrne" matches
+    "Mary Byrne"."""
+    words = {w for w in re.findall(r"[a-z']+", given.lower()) if len(w) >= 2}
+    stored_words = set(re.findall(r"[a-z']+", (stored or "").lower()))
+    return bool(words & stored_words)
+
 
 # Words that make a calendar event someone else added count as a booking of
 # that many people rather than closing the time: "Table for 4 - Byrne",
@@ -446,6 +483,127 @@ class CalendarService:
             event_id=event_id,
             say=f"That is booked in for {say_time(slot)}.",
         )
+
+    async def find_booking(
+        self, caller_phone: str, caller_name: str | None, booking_day: str | None
+    ) -> FindBookingResult:
+        """Upcoming bookings this connection made that match the caller.
+
+        Verification: the phone number the booking was made under must match
+        (last 9 digits, so "087…" and "+353 87…" agree), and so must either
+        the name (any shared word, so a surname alone is enough) or the day.
+        Off unless the owner allowed changes; nothing found hands off.
+        """
+        cfg = self.config
+        if not cfg.ai_changes_enabled:
+            return FindBookingResult(
+                bookings=[], say=SAY_CHANGES_OFF, handoff="changes_off"
+            )
+        name = (caller_name or "").strip()
+        day = (booking_day or "").strip()
+        if not name and not day:
+            raise BadArgumentError(NEED_NAME_OR_DAY)
+        async with self._deadline():
+            now = self._now()
+            end = now + timedelta(days=cfg.horizon_days)
+            events = await self.client.list_events(
+                cfg.calendar_id,
+                now,
+                end,
+                private_property=f"{BOOKING_MARKER}={self.connection_id}",
+            )
+        day_window = (
+            resolve_window(day, now, cfg.model_copy(update={"min_lead_hours": 0}))
+            if day
+            else None
+        )
+        matches: list[Booking] = []
+        for event in events:
+            booking = self._booking(event)
+            if booking is None or booking.status != "confirmed":
+                continue
+            if booking.start < now or not _same_phone(
+                caller_phone, booking.caller_phone
+            ):
+                continue
+            name_ok = bool(name) and _same_name(name, booking.caller_name)
+            day_ok = day_window is not None and (
+                day_window[0] <= booking.start < day_window[1]
+            )
+            if name_ok or day_ok:
+                matches.append(booking)
+        matches = matches[:MAX_FOUND_BOOKINGS]
+        if not matches:
+            return FindBookingResult(
+                bookings=[], say=SAY_NOT_FOUND, handoff="booking_not_found"
+            )
+        found = [
+            FoundBooking(event_id=b.event_id, say=self._describe(b)) for b in matches
+        ]
+        if len(found) == 1:
+            say = f"I have your booking for {found[0].say}. Is that the one?"
+        else:
+            listed = ", ".join(f.say for f in found[:-1])
+            say = f"I have bookings for {listed}, and {found[-1].say}. Which one?"
+        return FindBookingResult(bookings=found, say=say)
+
+    async def move(self, event_id: str, slot_id: str) -> BookingResult:
+        """Move a booking: book the new time with the same details first, and
+        only then remove the old one, so a failure never leaves the caller
+        with no booking."""
+        cfg = self.config
+        if not cfg.ai_changes_enabled:
+            return BookingResult(
+                booked=False, say=SAY_CHANGES_OFF, handoff="changes_off"
+            )
+        async with self._deadline():
+            event = await self.client.get_event(cfg.calendar_id, event_id)
+        old = self._booking(event) if event and self._is_ours(event) else None
+        if old is None or old.status != "confirmed":
+            return BookingResult(
+                booked=False, say=SAY_NOT_FOUND, handoff="booking_not_found"
+            )
+        if self._parse_slot(slot_id) == old.start:
+            return BookingResult(
+                booked=False,
+                say=f"That is the time you already have, {say_time(old.start)}.",
+            )
+        result = await self.book(
+            slot_id,
+            old.caller_name or "Caller",
+            old.caller_phone or "",
+            old.reason,
+            old.party_size,
+        )
+        if not result.booked or not result.event_id:
+            return result
+        new_start = self._parse_slot(slot_id)
+        try:
+            await self.client.delete_event(cfg.calendar_id, event_id)
+        except GoogleApiError:
+            logger.warning(
+                "moved booking {} to {} on connection {}; the old one was not removed",
+                event_id,
+                result.event_id,
+                self.connection_id,
+            )
+            return BookingResult(
+                booked=True,
+                event_id=result.event_id,
+                say=(
+                    f"Your new time is booked for {say_time(new_start)}. The team "
+                    "will remove the old booking."
+                ),
+            )
+        return BookingResult(
+            booked=True,
+            event_id=result.event_id,
+            say=f"Done. Your booking is moved to {say_time(new_start)}.",
+        )
+
+    def _describe(self, booking: Booking) -> str:
+        party = f", for {booking.party_size}" if booking.party_size is not None else ""
+        return f"{say_time(booking.start)}{party}"
 
     async def cancel(self, event_id: str) -> CancelResult:
         cfg = self.config

@@ -73,6 +73,8 @@ BOOKINGS = "bookings"
 # Connections whose bookings are read: an "error" one may still be readable.
 _READABLE_STATUSES = frozenset({"active", "error"})
 CALENDAR_UNREADABLE = "This calendar could not be read just now"
+# Calendar settings the owner (bookings:manage) may change.
+OWNER_SWITCHES = frozenset({"ai_booking_enabled", "ai_changes_enabled"})
 CONFIRM_IN_SAME_BROWSER = (
     "Finish connecting in the browser where you started, as the same user, "
     "within 10 minutes"
@@ -277,6 +279,8 @@ class IntegrationService:
                     account_label=connection.account_label,
                     ai_booking_enabled=connection.config.get("ai_booking_enabled")
                     is not False,
+                    ai_changes_enabled=connection.config.get("ai_changes_enabled")
+                    is True,
                     ok=error is None,
                     error=error,
                 )
@@ -285,9 +289,13 @@ class IntegrationService:
         return BookingListResponse(calendars=sources, bookings=bookings)
 
     async def set_ai_booking(
-        self, actor: Actor, connection_id: uuid.UUID, enabled: bool
+        self,
+        actor: Actor,
+        connection_id: uuid.UUID,
+        switches: Mapping[str, JsonValue],
     ) -> BookingCalendar:
-        """Change only ``ai_booking_enabled``, and only on a calendar that
+        """Change only the owner's switches (``ai_booking_enabled``,
+        ``ai_changes_enabled``), and only on a calendar that
         takes bookings: any other connection is "not found" here, so this
         narrow permission can't reconfigure other integrations."""
         caller = actor.caller
@@ -299,7 +307,9 @@ class IntegrationService:
         if current.provider not in titles:
             raise IntegrationNotFoundError("That calendar was not found")
         updated = await self._tools.update_config(
-            caller, connection_id, {"ai_booking_enabled": enabled}
+            caller,
+            connection_id,
+            {k: v for k, v in switches.items() if k in OWNER_SWITCHES},
         )
         return BookingCalendar(
             connection_id=updated.id,
@@ -307,6 +317,7 @@ class IntegrationService:
             title=titles[updated.provider],
             account_label=updated.account_label,
             ai_booking_enabled=updated.config.get("ai_booking_enabled") is not False,
+            ai_changes_enabled=updated.config.get("ai_changes_enabled") is True,
             ok=True,
         )
 

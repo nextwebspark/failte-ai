@@ -44,6 +44,8 @@ TOOLS = {
     "check_appointment_availability",
     "book_appointment",
     "cancel_appointment",
+    "find_booking",
+    "move_appointment",
 }
 
 

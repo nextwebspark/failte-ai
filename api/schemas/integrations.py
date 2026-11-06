@@ -333,6 +333,11 @@ class BookingCalendar(BaseModel):
     ai_booking_enabled: bool = Field(
         description="Whether agents may book on it (the owner's switch)."
     )
+    ai_changes_enabled: bool = Field(
+        default=False,
+        description="Whether agents may cancel or move bookings made on an "
+        "earlier call, after checking the caller's details.",
+    )
     ok: bool = Field(description="False when its bookings could not be read.")
     error: str | None = Field(
         default=None, description="Why not, in words an admin can act on."
@@ -340,9 +345,21 @@ class BookingCalendar(BaseModel):
 
 
 class AiBookingRequest(BaseModel):
+    """The owner's switches for one calendar; omitted ones are kept."""
+
     model_config = ConfigDict(extra="forbid")
 
-    ai_booking_enabled: bool
+    ai_booking_enabled: bool | None = None
+    ai_changes_enabled: bool | None = None
+
+    @model_validator(mode="after")
+    def _something(self) -> Self:
+        if self.ai_booking_enabled is None and self.ai_changes_enabled is None:
+            raise ValueError("give ai_booking_enabled or ai_changes_enabled")
+        return self
+
+    def changes(self) -> dict[str, JsonValue]:
+        return self.model_dump(exclude_none=True)
 
 
 class BookingListResponse(BaseModel):

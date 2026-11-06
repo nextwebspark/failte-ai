@@ -119,6 +119,12 @@ class CalendarConfig(BaseModel):
         description="Off: the agent offers no times and books nothing; it takes "
         "the caller's details for the team instead.",
     )
+    ai_changes_enabled: bool = Field(
+        default=False,
+        description="Let the agent cancel or move a booking made on an earlier "
+        "call, once the caller gives the phone number it was made under plus "
+        "their name or the booking's day. Off: it takes a message for the team.",
+    )
     service_periods: tuple[ServicePeriod, ...] = Field(
         default=(),
         max_length=21,
