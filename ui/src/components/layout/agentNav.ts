@@ -1,10 +1,11 @@
 import {
-  BookOpenText,
+  Bot,
+  LayoutDashboard,
   type LucideIcon,
   MessageSquare,
+  Phone,
   Settings2,
   SlidersHorizontal,
-  TrendingUp,
   Zap,
 } from "lucide-react";
 
@@ -15,8 +16,8 @@ import {
  * The canvas swaps the whole nav panel when you open an agent: a "back to the
  * workspace" row and the agent's identity sit on top, then grouped sections
  * that only ever change the CENTRE panel — the header, the nav and the test
- * rail stay put. These are the same groups the canvas uses (Configure /
- * Connect / Analyse), narrowed to the sections this app actually has.
+ * rail stay put. An owner's screens come first (Dashboard, What your agent
+ * knows, Calls); the builder screens sit under "Advanced setup".
  */
 
 /** `/workflow/123`, `/workflow/123/settings`, … — every agent-level screen. */
@@ -50,25 +51,43 @@ export type AgentNavSection = {
 
 export const AGENT_NAV_SECTIONS: AgentNavSection[] = [
   {
-    label: "CONFIGURE",
     items: [
       {
-        title: "Business facts",
+        title: "Dashboard",
+        segment: "/home",
+        icon: LayoutDashboard,
+        subtitle: "How this agent is doing",
+      },
+      {
+        title: "What your agent knows",
         segment: "/facts",
-        icon: BookOpenText,
+        icon: Bot,
         subtitle: "Opening hours, address and answers your agent gives",
       },
+      {
+        title: "Calls",
+        segment: "/runs",
+        icon: Phone,
+        subtitle: "Every call this agent has taken",
+        // A single call's detail page lives at /run/<id> — same section.
+        altSegments: ["/run"],
+      },
+    ],
+  },
+  {
+    label: "Advanced setup",
+    items: [
       {
         title: "Conversation",
         segment: "",
         icon: MessageSquare,
-        subtitle: "The call flow this agent follows",
+        subtitle: "The steps a call follows",
       },
       {
         title: "Model and voice",
         segment: "/model",
         icon: SlidersHorizontal,
-        subtitle: "Per-agent LLM, speech and transcription overrides",
+        subtitle: "The voice and language this agent uses",
       },
       {
         title: "Advanced settings",
@@ -76,29 +95,11 @@ export const AGENT_NAV_SECTIONS: AgentNavSection[] = [
         icon: Settings2,
         subtitle: "Behaviour, variables, dictionary and diagnostics",
       },
-    ],
-  },
-  {
-    label: "CONNECT",
-    items: [
       {
         title: "Deployment",
         segment: "/deployment",
         icon: Zap,
         subtitle: "Put this agent on a phone number or your website",
-      },
-    ],
-  },
-  {
-    label: "ANALYSE",
-    items: [
-      {
-        title: "Calls",
-        segment: "/runs",
-        icon: TrendingUp,
-        subtitle: "Every call this agent has taken",
-        // A single run's detail page lives at /run/<id> — same section.
-        altSegments: ["/run"],
       },
     ],
   },

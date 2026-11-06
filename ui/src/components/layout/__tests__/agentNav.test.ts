@@ -29,6 +29,23 @@ describe("agentSectionFor", () => {
     expect(agentSectionFor("/workflow/12")?.title).toBe("Conversation");
   });
 
+  it("puts the dashboard and what the agent knows first, the builder under Advanced setup", () => {
+    expect(AGENT_NAV_SECTIONS[0].items.map((item) => item.title)).toEqual([
+      "Dashboard",
+      "What your agent knows",
+      "Calls",
+    ]);
+    expect(AGENT_NAV_SECTIONS[1].label).toBe("Advanced setup");
+    expect(AGENT_NAV_SECTIONS[1].items.map((item) => item.title)).toEqual([
+      "Conversation",
+      "Model and voice",
+      "Advanced settings",
+      "Deployment",
+    ]);
+    expect(agentSectionFor("/workflow/12/home")?.title).toBe("Dashboard");
+    expect(agentSectionFor("/workflow/12/facts")?.title).toBe("What your agent knows");
+  });
+
   it("resolves each declared section", () => {
     expect(agentSectionFor("/workflow/12/model")?.title).toBe("Model and voice");
     expect(agentSectionFor("/workflow/12/settings")?.title).toBe("Advanced settings");
