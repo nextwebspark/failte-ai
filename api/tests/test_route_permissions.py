@@ -221,6 +221,23 @@ async def client_as(org):
             "/api/v1/organizations/reports/workflows",
             {OrgRole.STAFF, OrgRole.VIEWER, OrgRole.DEVELOPER, OrgRole.ADMIN},
         ),
+        # Home and Follow-ups: every member, staff included, and anyone may
+        # mark a follow-up done.
+        (
+            "GET",
+            "/api/v1/dashboard/summary",
+            {OrgRole.STAFF, OrgRole.VIEWER, OrgRole.DEVELOPER, OrgRole.ADMIN},
+        ),
+        (
+            "GET",
+            "/api/v1/follow-ups",
+            {OrgRole.STAFF, OrgRole.VIEWER, OrgRole.DEVELOPER, OrgRole.ADMIN},
+        ),
+        (
+            "POST",
+            "/api/v1/follow-ups/999999/done",
+            {OrgRole.STAFF, OrgRole.VIEWER, OrgRole.DEVELOPER, OrgRole.ADMIN},
+        ),
         # Team management: admins only.
         ("GET", "/api/v1/organizations/invitations", {OrgRole.ADMIN}),
         # Skills: everyone reads (incl. the library), developers+ write.
