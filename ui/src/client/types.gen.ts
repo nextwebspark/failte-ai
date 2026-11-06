@@ -293,6 +293,8 @@ export type ActiveCallsResponse = {
 
 /**
  * AiBookingRequest
+ *
+ * The owner's switches for one calendar; omitted ones are kept.
  */
 export type AiBookingRequest = {
     /**

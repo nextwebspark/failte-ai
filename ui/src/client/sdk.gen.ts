@@ -1136,8 +1136,9 @@ export const listBookingsApiV1IntegrationsBookingsGet = <ThrowOnError extends bo
 /**
  * Set Ai Booking
  *
- * Switch AI booking on or off for one connected calendar. Off, the agent
- * offers no times and passes callers to the team instead.
+ * The owner's switches for one connected calendar: AI booking (off,
+ * the agent offers no times and passes callers to the team) and letting
+ * the agent cancel or move earlier bookings after checking the caller.
  */
 export const setAiBookingApiV1IntegrationsBookingsCalendarsConnectionIdPut = <ThrowOnError extends boolean = false>(options: Options<SetAiBookingApiV1IntegrationsBookingsCalendarsConnectionIdPutData, ThrowOnError>): RequestResult<SetAiBookingApiV1IntegrationsBookingsCalendarsConnectionIdPutResponses, SetAiBookingApiV1IntegrationsBookingsCalendarsConnectionIdPutErrors, ThrowOnError> => (options.client ?? client).put<SetAiBookingApiV1IntegrationsBookingsCalendarsConnectionIdPutResponses, SetAiBookingApiV1IntegrationsBookingsCalendarsConnectionIdPutErrors, ThrowOnError>({
     url: '/api/v1/integrations/bookings/calendars/{connection_id}',
