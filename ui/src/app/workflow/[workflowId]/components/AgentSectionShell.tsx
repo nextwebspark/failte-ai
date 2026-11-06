@@ -74,8 +74,6 @@ export function AgentSectionShell({
         let ignore = false;
         const fetchWorkflow = async () => {
             if (!user) return;
-            setLoading(true);
-            setError(null);
             try {
                 const response = await getWorkflowApiV1WorkflowFetchWorkflowIdGet({
                     path: { workflow_id: Number(params.workflowId) },
@@ -86,6 +84,7 @@ export function AgentSectionShell({
                     return;
                 }
                 setWorkflow(response.data);
+                setError(null);
             } catch (err) {
                 if (!ignore) setError("failed");
                 logger.error(`Error fetching agent section: ${err}`);
@@ -97,9 +96,12 @@ export function AgentSectionShell({
         return () => {
             ignore = true;
         };
-    }, [params.workflowId, user, attempt]);
+    // Keyed on the user id, not the object: a fresh user object must not refetch
+    // and remount the section under the owner's feet.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [params.workflowId, user?.id, attempt]);
 
-    if (loading || authLoading) return <SectionSkeleton />;
+    if ((loading || authLoading) && !workflow) return <SectionSkeleton />;
 
     if (error || !workflow) {
         return (
@@ -107,7 +109,11 @@ export function AgentSectionShell({
                 {error === "failed" ? (
                     <SectionError
                         title="We couldn't load this agent"
-                        onRetry={() => setAttempt((n) => n + 1)}
+                        onRetry={() => {
+                            setError(null);
+                            setLoading(true);
+                            setAttempt((n) => n + 1);
+                        }}
                     />
                 ) : (
                     <SectionError
