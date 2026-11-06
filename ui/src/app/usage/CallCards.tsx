@@ -1,75 +1,82 @@
 import { ChevronRight } from "lucide-react";
 import Link from "next/link";
 
-import type { WorkflowRunUsageResponse } from "@/client/types.gen";
-import { MediaPreviewButton } from "@/components/MediaPreviewDialog";
-import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
 import { ROW_LINK, ROW_LINK_CONTAINER } from "@/lib/rowLink";
 import { cn } from "@/lib/utils";
 
-import { formatCallTime, formatDuration, outcomeLabel } from "./callsView";
+import { callerLines, type CallRowProps, OutcomeChip, PlayButton } from "./CallsTable";
+import { callOutcome, formatCallWhen, formatLength, spokenLength, whatHappened } from "./callsView";
 
 /**
  * The calls list on a phone: one card per call instead of a wide table. The
- * number is a real link stretched over the card; the recording button sits
- * above it so it can be tapped on its own.
+ * caller is a real link stretched over the card; the play button sits above
+ * it so it can be tapped on its own.
  */
-export function CallCards({
-    runs,
-    timezone,
-    hrefFor,
-    onOpenPreview,
-}: {
-    runs: WorkflowRunUsageResponse[];
-    timezone: string;
-    hrefFor: (run: WorkflowRunUsageResponse) => string;
-    onOpenPreview: (recordingUrl: string | null, transcriptUrl: string | null, runId: number) => void;
-}) {
+export function CallCards({ runs, timezone, selectedId, hrefFor, onPlay, onOpen }: CallRowProps) {
     return (
-        <ul className="flex flex-col gap-2" aria-label="Calls">
+        <ul className="flex flex-col divide-y divide-line-soft" aria-label="Calls">
             {runs.map((run) => {
-                const number = run.call_type === "inbound" ? run.caller_number : run.called_number;
+                const { name, number } = callerLines(run);
+                const outcome = callOutcome(run);
+                const what = whatHappened(run.gathered_context);
+                const when = formatCallWhen(run.created_at, timezone);
+                const selected = run.id === selectedId;
                 return (
                     <li
                         key={run.id}
                         className={cn(
                             ROW_LINK_CONTAINER,
-                            "flex items-center gap-3 rounded-lg border border-line bg-panel px-4 py-3 transition-colors hover:border-brand/50 motion-reduce:transition-none",
+                            "flex items-start gap-3 px-4 py-3.5 transition-colors hover:bg-brand-dim/60 motion-reduce:transition-none",
+                            selected && "bg-brand-dim",
                         )}
                     >
+                        <PlayButton run={run} label={`${name}, ${when}`} onPlay={onPlay} className="mt-0.5 size-10" />
                         <div className="min-w-0 flex-1">
                             <div className="flex items-baseline justify-between gap-2">
-                                <Link href={hrefFor(run)} aria-label={`Open call #${run.id}`} className={ROW_LINK}>
-                                    <span className={cn("font-mono text-[15px] font-semibold", !number && "font-sans text-ink-3")}>
-                                        {number || "Number not known"}
-                                    </span>
+                                <Link
+                                    href={hrefFor(run)}
+                                    scroll={false}
+                                    onClick={() => onOpen?.(run)}
+                                    aria-current={selected ? "true" : undefined}
+                                    className={cn(ROW_LINK, "min-w-0 truncate text-[15px] font-semibold text-foreground")}
+                                >
+                                    {name}
+                                    <span className="sr-only">, {when}</span>
                                 </Link>
-                                <span className="flex-none font-mono text-sm tabular-nums text-ink-2">
-                                    {formatDuration(run.call_duration_seconds)}
+                                <span className="flex-none text-[13px] text-ink-3">{when}</span>
+                            </div>
+                            {number && <div className="truncate text-[13px] tabular-nums text-ink-3">{number}</div>}
+                            {what && <p className="mt-1 line-clamp-2 text-sm text-ink-2">{what}</p>}
+                            <div className="mt-2 flex items-center gap-2">
+                                <OutcomeChip label={outcome.label} tone={outcome.tone} />
+                                <span className="text-[13px] tabular-nums text-ink-3">
+                                    <span aria-hidden>{formatLength(run.call_duration_seconds)}</span>
+                                    <span className="sr-only">{spokenLength(run.call_duration_seconds)}</span>
                                 </span>
                             </div>
-                            <div className="mt-1 text-[13px] text-ink-3">{formatCallTime(run.created_at, timezone)}</div>
-                            <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1">
-                                {run.disposition ? (
-                                    <Badge variant="secondary">{outcomeLabel(run.disposition)}</Badge>
-                                ) : (
-                                    <span className="text-[13px] text-ink-3">Outcome not recorded</span>
-                                )}
-                                {run.workflow_name && <span className="text-[13px] text-ink-3">· {run.workflow_name}</span>}
-                            </div>
                         </div>
-                        <div className="relative z-10 flex-none [&>button]:size-10">
-                            <MediaPreviewButton
-                                recordingUrl={run.recording_url}
-                                transcriptUrl={run.transcript_url}
-                                runId={run.id}
-                                onOpenPreview={onOpenPreview}
-                            />
-                        </div>
-                        <ChevronRight className="size-4 flex-none text-ink-3" aria-hidden />
+                        <ChevronRight className="mt-3 size-4 flex-none text-ink-3" aria-hidden />
                     </li>
                 );
             })}
         </ul>
+    );
+}
+
+export function CallCardsSkeleton({ rows = 5 }: { rows?: number }) {
+    return (
+        <div aria-hidden className="divide-y divide-line-soft">
+            {Array.from({ length: rows }, (_, i) => (
+                <div key={i} className="flex items-start gap-3 px-4 py-4">
+                    <Skeleton className="size-10 rounded-full" />
+                    <div className="flex flex-1 flex-col gap-2">
+                        <Skeleton className="h-4 w-2/3" />
+                        <Skeleton className="h-3 w-1/3" />
+                        <Skeleton className="h-6 w-28 rounded-full" />
+                    </div>
+                </div>
+            ))}
+        </div>
     );
 }
