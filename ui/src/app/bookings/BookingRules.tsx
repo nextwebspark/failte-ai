@@ -78,15 +78,15 @@ export const DEFAULTS: Required<Omit<Rules, "service_periods" | "max_guests_at_o
 
 type NumberKey = Exclude<keyof Rules, "service_periods">;
 
-const NUMBER_FIELDS: { key: NumberKey; label: string; help: string; optional?: boolean }[] = [
-    { key: "max_bookings_at_once", label: "Bookings at the same time", help: "e.g. the tables you keep for phone bookings. 1 for a one-person diary." },
-    { key: "max_party_size", label: "Largest group the agent may book", help: "Bigger groups are passed to your team.", optional: true },
-    { key: "max_guests_at_once", label: "Most guests at the same time", help: "Seats in use at once, across bookings.", optional: true },
-    { key: "booking_minutes", label: "How long a booking lasts (minutes)", help: "e.g. 90 for a dinner table." },
-    { key: "slot_minutes", label: "Gap between start times (minutes)", help: "15 offers 7:00, 7:15, 7:30…" },
-    { key: "buffer_minutes", label: "Reset time between bookings (minutes)", help: "Clearing a table or tidying a room." },
-    { key: "min_lead_hours", label: "Minimum notice (hours)", help: "No bookings sooner than this." },
-    { key: "horizon_days", label: "Book up to (days ahead)", help: "How far ahead callers can book." },
+const NUMBER_FIELDS: { key: NumberKey; label: string; help: string; optional?: boolean; min: number }[] = [
+    { key: "max_bookings_at_once", label: "Bookings at the same time", help: "e.g. the tables you keep for phone bookings. 1 for a one-person diary.", min: 1 },
+    { key: "max_party_size", label: "Largest group the agent may book", help: "Bigger groups are passed to your team.", optional: true, min: 1 },
+    { key: "max_guests_at_once", label: "Most guests at the same time", help: "Seats in use at once, across bookings.", optional: true, min: 1 },
+    { key: "booking_minutes", label: "How long a booking lasts (minutes)", help: "e.g. 90 for a dinner table.", min: 1 },
+    { key: "slot_minutes", label: "Gap between start times (minutes)", help: "15 offers 7:00, 7:15, 7:30…", min: 1 },
+    { key: "buffer_minutes", label: "Reset time between bookings (minutes)", help: "Clearing a table or tidying a room.", min: 0 },
+    { key: "min_lead_hours", label: "Minimum notice (hours)", help: "No bookings sooner than this.", min: 0 },
+    { key: "horizon_days", label: "Book up to (days ahead)", help: "How far ahead callers can book.", min: 1 },
 ];
 
 export function describePeriod(period: ServicePeriod): string {
@@ -119,6 +119,17 @@ export function problems(rules: Rules): string[] {
         if (p.days.length === 0) found.push(`Opening times ${i + 1}: pick at least one day.`);
         if (p.first_start > p.last_start) found.push(`Opening times ${i + 1}: the first booking is after the last.`);
     });
+    NUMBER_FIELDS.forEach((field) => {
+        const value = rules[field.key];
+        if (value === undefined) return;
+        if (!Number.isInteger(value) || value < field.min) {
+            found.push(
+                field.min === 0
+                    ? `${field.label}: use a whole number, 0 or more.`
+                    : `${field.label}: use a whole number, 1 or more.`,
+            );
+        }
+    });
     if (rules.max_party_size && rules.max_guests_at_once && rules.max_party_size > rules.max_guests_at_once) {
         found.push("The largest group can't be bigger than the most guests at the same time.");
     }
@@ -126,10 +137,13 @@ export function problems(rules: Rules): string[] {
 }
 
 export function BookingRulesEditor({
+    idPrefix = "rules",
     initial,
     saving,
     onSave,
 }: {
+    /** Keeps input ids unique when several calendars show an editor. */
+    idPrefix?: string;
     initial: Rules;
     saving: boolean;
     onSave: (rules: Rules) => void;
@@ -145,20 +159,28 @@ export function BookingRulesEditor({
         <div className="flex flex-col gap-5">
             <div className="flex flex-col gap-2">
                 <span className="text-[13px] font-semibold">Start from</span>
-                <div className="flex flex-wrap gap-2">
-                    {PRESETS.map((preset) => (
-                        <Button
-                            key={preset.id}
-                            type="button"
-                            size="sm"
-                            variant="outline"
-                            title={preset.help}
-                            onClick={() => setRules({ ...preset.rules })}
-                        >
-                            {preset.label}
-                        </Button>
-                    ))}
+                <div className="grid gap-2 sm:grid-cols-2">
+                    {PRESETS.map((preset) => {
+                        const helpId = `${idPrefix}-preset-${preset.id}-help`;
+                        return (
+                            <div key={preset.id} className="flex flex-col items-start gap-1">
+                                <Button
+                                    type="button"
+                                    size="sm"
+                                    variant="outline"
+                                    aria-describedby={helpId}
+                                    onClick={() => setRules({ ...preset.rules })}
+                                >
+                                    {preset.label}
+                                </Button>
+                                <p id={helpId} className="text-[12px] text-ink-3">
+                                    {preset.help}
+                                </p>
+                            </div>
+                        );
+                    })}
                 </div>
+                <p className="text-[12px] text-ink-3">Picking one replaces the rules below. You can change them after.</p>
             </div>
 
             <div className="flex flex-col gap-2">
@@ -179,11 +201,11 @@ export function BookingRulesEditor({
                                         onClick={() =>
                                             setPeriod(index, {
                                                 ...period,
-                                                days: on ? period.days.filter((d) => d !== day) : [...period.days, day].sort(),
+                                                days: on ? period.days.filter((d) => d !== day) : [...period.days, day].sort((a, b) => a - b),
                                             })
                                         }
                                         className={cn(
-                                            "inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs",
+                                            "inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-1",
                                             on ? "border-brand bg-brand/10 font-medium" : "border-line text-ink-2",
                                         )}
                                     >
@@ -220,7 +242,7 @@ export function BookingRulesEditor({
                                 setRules((r) => ({ ...r, service_periods: periods.filter((_, i) => i !== index) }))
                             }
                         >
-                            <Trash2 className="size-4" />
+                            <Trash2 className="size-4" aria-hidden />
                         </Button>
                     </div>
                 ))}
@@ -236,13 +258,13 @@ export function BookingRulesEditor({
                         }))
                     }
                 >
-                    <Plus className="size-4" /> Add opening times
+                    <Plus className="size-4" aria-hidden /> Add opening times
                 </Button>
             </div>
 
             <div className="grid gap-4 sm:grid-cols-2">
                 {NUMBER_FIELDS.map((field) => {
-                    const id = `rule-${field.key}`;
+                    const id = `${idPrefix}-rule-${field.key}`;
                     const value = rules[field.key];
                     return (
                         <div key={field.key} className="flex flex-col gap-1">
@@ -253,7 +275,9 @@ export function BookingRulesEditor({
                             <Input
                                 id={id}
                                 type="number"
-                                min={0}
+                                min={field.min}
+                                step={1}
+                                inputMode="numeric"
                                 value={value ?? ""}
                                 placeholder={
                                     field.key in DEFAULTS ? String(DEFAULTS[field.key as keyof typeof DEFAULTS]) : "No limit"
