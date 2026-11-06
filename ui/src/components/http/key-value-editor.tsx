@@ -61,6 +61,7 @@ export function KeyValueEditor({
                         disabled={disabled}
                     />
                     <Button
+                        aria-label={`Remove row ${index + 1}`}
                         variant="outline"
                         size="icon"
                         onClick={() => removeItem(index)}

@@ -182,6 +182,7 @@ export default function RecordingsList({ refreshKey }: { refreshKey?: number }) 
                     />
                 </div>
                 <Button
+                    aria-label="Reload recordings"
                     variant="outline"
                     size="icon"
                     onClick={() => { stopPlayback(); fetchRecordings(); }}

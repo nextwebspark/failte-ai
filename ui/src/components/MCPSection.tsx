@@ -77,6 +77,7 @@ export function MCPSection() {
                   {url}
                 </code>
                 <Button
+                  aria-label={copiedKey === key ? "Copied" : "Copy address"}
                   variant="outline"
                   size="icon"
                   className="shrink-0"

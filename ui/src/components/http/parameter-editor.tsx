@@ -81,6 +81,7 @@ export function ParameterEditor({
                             Parameter {index + 1}
                         </span>
                         <Button
+                            aria-label={`Remove parameter ${index + 1}`}
                             variant="ghost"
                             size="icon"
                             onClick={() => removeParameter(index)}
@@ -226,6 +227,7 @@ export function PresetParameterEditor({
                             Preset Parameter {index + 1}
                         </span>
                         <Button
+                            aria-label={`Remove preset parameter ${index + 1}`}
                             variant="ghost"
                             size="icon"
                             onClick={() => removeParameter(index)}

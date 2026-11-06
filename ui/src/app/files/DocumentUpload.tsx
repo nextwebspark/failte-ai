@@ -174,7 +174,7 @@ export default function DocumentUpload({ onUploadSuccess }: DocumentUploadProps)
               {(selectedFile.size / 1024).toFixed(1)} KB
             </p>
           </div>
-          <Button variant="ghost" size="icon" onClick={clearSelectedFile}>
+          <Button variant="ghost" size="icon" onClick={clearSelectedFile} aria-label="Remove the selected file">
             <X className="w-4 h-4" />
           </Button>
         </div>

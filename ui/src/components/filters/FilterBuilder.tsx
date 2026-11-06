@@ -422,6 +422,7 @@ export const FilterBuilder: React.FC<FilterBuilderProps> = ({
                           </span>
                         )}
                         <Button
+                          aria-label="Remove filter"
                           variant="ghost"
                           size="icon"
                           className="h-8 w-8"
