@@ -304,5 +304,7 @@ class DashboardClient(BaseDBClient):
             else:
                 annotations[FOLLOW_UP_ANNOTATION] = mark
             run.annotations = annotations
+            # Read before the commit, which expires the row.
+            saved_id = run.id
             await session.commit()
-            return {"id": run.id, "annotations": annotations}
+            return {"id": saved_id, "annotations": annotations}
