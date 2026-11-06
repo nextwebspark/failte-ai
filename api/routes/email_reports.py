@@ -67,6 +67,8 @@ class EmailReportSettingsResponse(BaseModel):
     # The signed-in member's own verified address (added without a link),
     # or None when it isn't verified.
     own_email: str | None
+    # Where "Send me a test now" goes.
+    your_email: str | None
     can_edit: bool
     email_available: bool
     # Last period each report went out for ("2026-11-06", "2026-W45", "2026-10").
@@ -140,6 +142,7 @@ async def _response(
         timezone=tz.key,
         agents=[ReportAgent(id=a["id"], name=a["name"]) for a in agents],
         own_email=service.own_verified_email(membership.user),
+        your_email=membership.user.email,
         can_edit=membership.can(Permission.REPORTS_SCHEDULE),
         email_available=_delivers(),
         last_sent=await service.last_sent(membership.organization_id),
