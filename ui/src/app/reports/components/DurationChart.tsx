@@ -78,6 +78,7 @@ export function DurationChart({ data }: DurationChartProps) {
                 tick={{ fontSize: 12, fill: 'var(--ink-3)' }}
               />
               <YAxis
+                allowDecimals={false}
                 tick={{ fontSize: 12, fill: 'var(--ink-3)' }}
               />
               <Tooltip content={<CustomTooltip />} cursor={{ fill: 'var(--brand-dim)' }} />

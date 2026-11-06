@@ -66,26 +66,28 @@ export function DispositionChart({ data }: DispositionChartProps) {
             No call outcomes for this day
           </div>
         ) : (
-          <ResponsiveContainer width="100%" height={300}>
+          // Bars run sideways so each outcome's name reads in full, even on a phone.
+          <ResponsiveContainer width="100%" height={Math.max(160, chartData.length * 44 + 40)}>
             <BarChart
               data={chartData}
-              layout="horizontal"
-              margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
+              layout="vertical"
+              margin={{ top: 5, right: 24, left: 8, bottom: 5 }}
             >
-              <CartesianGrid strokeDasharray="3 3" stroke="var(--line)" />
+              <CartesianGrid strokeDasharray="3 3" stroke="var(--line)" horizontal={false} />
               <XAxis
-                dataKey="label"
-                angle={-45}
-                textAnchor="end"
-                height={80}
-                interval={0}
+                type="number"
+                allowDecimals={false}
                 tick={{ fontSize: 12, fill: 'var(--ink-3)' }}
               />
               <YAxis
-                tick={{ fontSize: 12, fill: 'var(--ink-3)' }}
+                type="category"
+                dataKey="label"
+                width={120}
+                interval={0}
+                tick={{ fontSize: 12, fill: 'var(--ink-2)' }}
               />
               <Tooltip content={<CustomTooltip />} cursor={{ fill: 'var(--brand-dim)' }} />
-              <Bar dataKey="count" radius={[4, 4, 0, 0]}>
+              <Bar dataKey="count" radius={[0, 4, 4, 0]} maxBarSize={28}>
                 {chartData.map((entry, index) => (
                   <Cell key={`cell-${index}`} fill={entry.fill} />
                 ))}

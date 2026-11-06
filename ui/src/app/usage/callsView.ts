@@ -128,3 +128,27 @@ export function formatDuration(seconds: number): string {
     if (rest === 0) return `${minutes}m`;
     return `${minutes}m ${rest}s`;
 }
+
+/**
+ * "Fri 6 Nov 2026, 13:12" in the workspace's time zone: Irish/UK order and a
+ * 24-hour clock, as an owner reads a call log.
+ */
+export function formatCallTime(value: string, timezone?: string | null): string {
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return value;
+    const options: Intl.DateTimeFormatOptions = {
+        weekday: "short",
+        day: "numeric",
+        month: "short",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+        hourCycle: "h23",
+    };
+    try {
+        return date.toLocaleString("en-IE", { ...options, timeZone: timezone || undefined });
+    } catch {
+        // An unknown zone name: the browser's own zone is better than nothing.
+        return date.toLocaleString("en-IE", options);
+    }
+}

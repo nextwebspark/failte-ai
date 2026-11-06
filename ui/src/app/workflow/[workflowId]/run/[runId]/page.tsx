@@ -21,7 +21,7 @@ import posthog from 'posthog-js';
 import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 
-import { outcomeLabel } from '@/app/usage/callsView';
+import { formatCallTime, outcomeLabel } from '@/app/usage/callsView';
 import {
     getWorkflowApiV1WorkflowFetchWorkflowIdGet,
     getWorkflowRunApiV1WorkflowWorkflowIdRunsRunIdGet,
@@ -44,7 +44,6 @@ import { useIsMobile } from '@/hooks/use-mobile';
 import { useOrganizationTimezone } from '@/hooks/useOrganizationTimezone';
 import { useAuth } from '@/lib/auth';
 import { copyTextToClipboard } from '@/lib/clipboard';
-import { formatDateTime } from '@/lib/dateTime';
 import { downloadFile, getSignedUrl } from '@/lib/files';
 import { cn } from '@/lib/utils';
 
@@ -779,22 +778,27 @@ export default function WorkflowRunPage() {
                                 <Link
                                     ref={agentLinkRef}
                                     href={`/workflow/${workflowId}`}
-                                    className="inline-flex min-w-0 items-center gap-1.5 rounded-md border border-line bg-panel px-2 py-1 text-sm text-ink-2 transition-colors hover:border-brand/50 hover:text-brand focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/40"
+                                    className="inline-flex min-h-10 min-w-0 items-center gap-1.5 rounded-md border border-line bg-panel px-2 py-1 text-sm text-ink-2 transition-colors sm:min-h-0 hover:border-brand/50 hover:text-brand focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/40"
                                 >
                                     <Bot className="h-3.5 w-3.5 shrink-0" aria-hidden />
                                     <span className="truncate">{workflowName}</span>
                                 </Link>
                             )}
                         </div>
-                        <h2 id="call-title" className="mt-3 text-[22px] font-bold tracking-tight">
-                            {callerNumber
-                                ? <>Call from <span className="font-mono">{callerNumber}</span></>
-                                : `Call #${runId}`}
+                        <h2 id="call-title" className="mt-3 font-bold tracking-tight">
+                            {callerNumber ? (
+                                <>
+                                    <span className="block text-sm font-medium text-ink-3">Call from</span>{' '}
+                                    <span className="block font-mono text-xl sm:text-[22px]">{callerNumber}</span>
+                                </>
+                            ) : (
+                                <span className="text-[22px]">{`Call #${runId}`}</span>
+                            )}
                         </h2>
                         {workflowRun?.created_at && (
                             <p className="mt-1 flex items-center gap-1.5 text-sm text-ink-2">
                                 <Clock className="h-4 w-4 text-ink-3" aria-hidden />
-                                {formatDateTime(workflowRun.created_at, organizationTimezone)}
+                                {formatCallTime(workflowRun.created_at, organizationTimezone)}
                             </p>
                         )}
 

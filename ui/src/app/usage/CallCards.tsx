@@ -4,11 +4,10 @@ import Link from "next/link";
 import type { WorkflowRunUsageResponse } from "@/client/types.gen";
 import { MediaPreviewButton } from "@/components/MediaPreviewDialog";
 import { Badge } from "@/components/ui/badge";
-import { formatDateTime } from "@/lib/dateTime";
 import { ROW_LINK, ROW_LINK_CONTAINER } from "@/lib/rowLink";
 import { cn } from "@/lib/utils";
 
-import { formatDuration, outcomeLabel } from "./callsView";
+import { formatCallTime, formatDuration, outcomeLabel } from "./callsView";
 
 /**
  * The calls list on a phone: one card per call instead of a wide table. The
@@ -49,7 +48,7 @@ export function CallCards({
                                     {formatDuration(run.call_duration_seconds)}
                                 </span>
                             </div>
-                            <div className="mt-1 text-[13px] text-ink-3">{formatDateTime(run.created_at, timezone)}</div>
+                            <div className="mt-1 text-[13px] text-ink-3">{formatCallTime(run.created_at, timezone)}</div>
                             <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1">
                                 {run.disposition ? (
                                     <Badge variant="secondary">{outcomeLabel(run.disposition)}</Badge>

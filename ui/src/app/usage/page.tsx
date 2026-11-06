@@ -37,7 +37,7 @@ import { useDispositionCodes } from '@/hooks/useDispositionCodes';
 import { useFeatureEnabled } from '@/hooks/useFeatureFlags';
 import { detailFromError } from '@/lib/apiError';
 import { useAuth } from '@/lib/auth';
-import { formatDateTime, getLocalTimezone } from '@/lib/dateTime';
+import { getLocalTimezone } from '@/lib/dateTime';
 import { getUsageFilterAttributes, withDispositionCodeOptions } from '@/lib/filterAttributes';
 import { decodeFiltersFromURL, encodeFiltersToURL } from '@/lib/filters';
 import { ROW_LINK } from '@/lib/rowLink';
@@ -47,6 +47,7 @@ import { CallCards } from './CallCards';
 import {
     applyQuickSearch,
     EMPTY_QUICK_SEARCH,
+    formatCallTime,
     formatDuration,
     hasAdvancedFilters,
     outcomeLabel,
@@ -519,7 +520,7 @@ export default function UsagePage() {
                                 value={quick.when}
                                 onValueChange={(value) => setQuick({ ...quick, when: value as QuickWhen })}
                             >
-                                <SelectTrigger id="calls-when" className="h-10 w-full bg-panel">
+                                <SelectTrigger id="calls-when" className="h-10 w-full bg-panel data-[size=default]:h-10">
                                     <SelectValue />
                                 </SelectTrigger>
                                 <SelectContent>
@@ -533,7 +534,7 @@ export default function UsagePage() {
                         <div className="flex flex-col gap-1.5">
                             <Label htmlFor="calls-outcome">Outcome</Label>
                             <Select value={quick.outcome} onValueChange={(value) => setQuick({ ...quick, outcome: value })}>
-                                <SelectTrigger id="calls-outcome" className="h-10 w-full bg-panel">
+                                <SelectTrigger id="calls-outcome" className="h-10 w-full bg-panel data-[size=default]:h-10">
                                     <SelectValue />
                                 </SelectTrigger>
                                 <SelectContent>
@@ -753,7 +754,7 @@ export default function UsagePage() {
                                         >
                                             <button
                                                 type="button"
-                                                className="ml-auto flex items-center justify-end gap-1 rounded px-1 outline-none hover:bg-muted/50 focus-visible:ring-[3px] focus-visible:ring-ring/40"
+                                                className="ml-auto flex items-center justify-end gap-1 rounded px-1 uppercase tracking-[inherit] outline-none hover:bg-muted/50 focus-visible:ring-[3px] focus-visible:ring-ring/40"
                                                 onClick={() => handleSort('duration')}
                                             >
                                                 Length
@@ -792,7 +793,7 @@ export default function UsagePage() {
                                                     #{run.id}
                                                 </Link>
                                             </TableCell>
-                                            <TableCell className="whitespace-nowrap text-sm">{formatDateTime(run.created_at, effectiveTimezone)}</TableCell>
+                                            <TableCell className="whitespace-nowrap text-sm">{formatCallTime(run.created_at, effectiveTimezone)}</TableCell>
                                             <TableCell className="whitespace-nowrap font-mono text-sm">
                                                 {(run.call_type === 'inbound'
                                                     ? run.caller_number

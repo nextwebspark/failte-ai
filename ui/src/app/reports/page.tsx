@@ -251,7 +251,7 @@ export default function ReportsPage() {
 
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
               <Select value={selectedWorkflow} onValueChange={setSelectedWorkflow}>
-                <SelectTrigger className="h-10 w-full bg-panel sm:w-[200px]" aria-label="Agent">
+                <SelectTrigger className="w-full bg-panel data-[size=default]:h-10 sm:w-[200px]" aria-label="Agent">
                   <SelectValue placeholder="All agents" />
                 </SelectTrigger>
                 <SelectContent>

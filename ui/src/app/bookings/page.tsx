@@ -244,6 +244,7 @@ function BookingsScreen() {
                             <div className="flex min-h-10 flex-none items-center gap-2">
                                 <Switch
                                     id="show-cancelled"
+                                    className={SWITCH_HIT_AREA}
                                     checked={showCancelled}
                                     onCheckedChange={setShowCancelled}
                                 />
@@ -342,6 +343,9 @@ function NoCalendar({ canConnect }: { canConnect: boolean }) {
     );
 }
 
+/** A 40px tap area around the small switch, without changing how it looks. */
+const SWITCH_HIT_AREA = "relative after:absolute after:-inset-[11px] after:content-['']";
+
 type OwnerSwitch = "ai_booking_enabled" | "ai_changes_enabled";
 
 const SWITCH_TOASTS: Record<OwnerSwitch, { on: string; off: string }> = {
@@ -394,6 +398,7 @@ function CalendarRow({
                         <div className="flex items-center gap-2">
                             <Switch
                                 id={switchId}
+                                className={SWITCH_HIT_AREA}
                                 checked={calendar.ai_booking_enabled}
                                 disabled={saving}
                                 onCheckedChange={(enabled) => onChange("ai_booking_enabled", enabled)}
@@ -409,6 +414,7 @@ function CalendarRow({
                 {canManage ? (
                     <Switch
                         id={changesId}
+                        className={SWITCH_HIT_AREA}
                         checked={changesOn}
                         disabled={saving}
                         onCheckedChange={(enabled) => onChange("ai_changes_enabled", enabled)}
@@ -434,7 +440,7 @@ function CalendarRow({
                         <p className="text-[12.5px] text-ink-3">{summarize(rules)}</p>
                     </div>
                     {canManage && (
-                        <Button size="sm" variant="outline" onClick={() => setEditingRules((v) => !v)}>
+                        <Button size="sm" variant="outline" className="h-10 sm:h-8" onClick={() => setEditingRules((v) => !v)}>
                             {editingRules ? "Close" : "Edit booking rules"}
                         </Button>
                     )}
