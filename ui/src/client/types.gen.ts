@@ -293,6 +293,8 @@ export type ActiveCallsResponse = {
 
 /**
  * AiBookingRequest
+ *
+ * The owner's switches for one calendar; omitted ones are kept.
  */
 export type AiBookingRequest = {
     /**
@@ -1305,6 +1307,122 @@ export type CallEventsSettings = {
     config?: {
         [key: string]: unknown;
     };
+};
+
+/**
+ * CallNotificationSettings
+ *
+ * Who hears about a workspace's calls. Stored per organization.
+ */
+export type CallNotificationSettings = {
+    /**
+     * Email Enabled
+     *
+     * Email the business after calls at all.
+     */
+    email_enabled?: boolean;
+    /**
+     * Email On Booking
+     *
+     * Email when the agent books someone in.
+     */
+    email_on_booking?: boolean;
+    /**
+     * Email On Message
+     *
+     * Email when the agent takes a message.
+     */
+    email_on_message?: boolean;
+    /**
+     * Email On Missed Call
+     *
+     * Email when a caller couldn't be helped.
+     */
+    email_on_missed_call?: boolean;
+    /**
+     * Email Members
+     *
+     * Send the emails to the workspace's owners and admins.
+     */
+    email_members?: boolean;
+    /**
+     * Extra Recipients
+     *
+     * More addresses that get the same emails.
+     */
+    extra_recipients?: Array<string>;
+    /**
+     * Text Caller Booking Confirmation
+     *
+     * Text the caller when the calendar confirms their booking. Only sent once a text provider is set up for this install.
+     */
+    text_caller_booking_confirmation?: boolean;
+};
+
+/**
+ * CallNotificationSettingsResponse
+ */
+export type CallNotificationSettingsResponse = {
+    /**
+     * Email Enabled
+     *
+     * Email the business after calls at all.
+     */
+    email_enabled?: boolean;
+    /**
+     * Email On Booking
+     *
+     * Email when the agent books someone in.
+     */
+    email_on_booking?: boolean;
+    /**
+     * Email On Message
+     *
+     * Email when the agent takes a message.
+     */
+    email_on_message?: boolean;
+    /**
+     * Email On Missed Call
+     *
+     * Email when a caller couldn't be helped.
+     */
+    email_on_missed_call?: boolean;
+    /**
+     * Email Members
+     *
+     * Send the emails to the workspace's owners and admins.
+     */
+    email_members?: boolean;
+    /**
+     * Extra Recipients
+     *
+     * More addresses that get the same emails.
+     */
+    extra_recipients?: Array<string>;
+    /**
+     * Text Caller Booking Confirmation
+     *
+     * Text the caller when the calendar confirms their booking. Only sent once a text provider is set up for this install.
+     */
+    text_caller_booking_confirmation?: boolean;
+    /**
+     * Member Recipients
+     *
+     * The owners' and admins' addresses (used when email_members).
+     */
+    member_recipients?: Array<string>;
+    /**
+     * Email Available
+     *
+     * An email provider is set up, so emails actually go out.
+     */
+    email_available: boolean;
+    /**
+     * Sms Available
+     *
+     * A text provider is set up, so caller texts actually go out.
+     */
+    sms_available: boolean;
 };
 
 /**
@@ -6179,7 +6297,7 @@ export type OrganizationPreferencesResponse = {
 /**
  * Permission
  */
-export type Permission = 'org:manage' | 'members:read' | 'members:manage' | 'billing:read' | 'billing:manage' | 'agents:read' | 'agents:write' | 'campaigns:read' | 'campaigns:write' | 'telephony:read' | 'telephony:write' | 'integrations:read' | 'integrations:write' | 'credentials:write' | 'api_keys:manage' | 'calls:read' | 'reports:read' | 'bookings:manage' | 'bookings:grant';
+export type Permission = 'org:manage' | 'members:read' | 'members:manage' | 'billing:read' | 'billing:manage' | 'agents:read' | 'agents:write' | 'campaigns:read' | 'campaigns:write' | 'telephony:read' | 'telephony:write' | 'integrations:read' | 'integrations:write' | 'credentials:write' | 'api_keys:manage' | 'calls:read' | 'reports:read' | 'bookings:manage' | 'bookings:grant' | 'notifications:manage';
 
 /**
  * PhoneNumberCreateRequest
@@ -18085,6 +18203,84 @@ export type RevokeInvitationApiV1OrganizationsInvitationsInvitationIdDeleteRespo
 };
 
 export type RevokeInvitationApiV1OrganizationsInvitationsInvitationIdDeleteResponse = RevokeInvitationApiV1OrganizationsInvitationsInvitationIdDeleteResponses[keyof RevokeInvitationApiV1OrganizationsInvitationsInvitationIdDeleteResponses];
+
+export type GetNotificationSettingsApiV1OrganizationsNotificationsGetData = {
+    body?: never;
+    headers?: {
+        /**
+         * Authorization
+         */
+        authorization?: string | null;
+        /**
+         * X-Api-Key
+         */
+        'X-API-Key'?: string | null;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/v1/organizations/notifications';
+};
+
+export type GetNotificationSettingsApiV1OrganizationsNotificationsGetErrors = {
+    /**
+     * Not found
+     */
+    404: unknown;
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type GetNotificationSettingsApiV1OrganizationsNotificationsGetError = GetNotificationSettingsApiV1OrganizationsNotificationsGetErrors[keyof GetNotificationSettingsApiV1OrganizationsNotificationsGetErrors];
+
+export type GetNotificationSettingsApiV1OrganizationsNotificationsGetResponses = {
+    /**
+     * Successful Response
+     */
+    200: CallNotificationSettingsResponse;
+};
+
+export type GetNotificationSettingsApiV1OrganizationsNotificationsGetResponse = GetNotificationSettingsApiV1OrganizationsNotificationsGetResponses[keyof GetNotificationSettingsApiV1OrganizationsNotificationsGetResponses];
+
+export type UpdateNotificationSettingsApiV1OrganizationsNotificationsPutData = {
+    body: CallNotificationSettings;
+    headers?: {
+        /**
+         * Authorization
+         */
+        authorization?: string | null;
+        /**
+         * X-Api-Key
+         */
+        'X-API-Key'?: string | null;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/v1/organizations/notifications';
+};
+
+export type UpdateNotificationSettingsApiV1OrganizationsNotificationsPutErrors = {
+    /**
+     * Not found
+     */
+    404: unknown;
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type UpdateNotificationSettingsApiV1OrganizationsNotificationsPutError = UpdateNotificationSettingsApiV1OrganizationsNotificationsPutErrors[keyof UpdateNotificationSettingsApiV1OrganizationsNotificationsPutErrors];
+
+export type UpdateNotificationSettingsApiV1OrganizationsNotificationsPutResponses = {
+    /**
+     * Successful Response
+     */
+    200: CallNotificationSettingsResponse;
+};
+
+export type UpdateNotificationSettingsApiV1OrganizationsNotificationsPutResponse = UpdateNotificationSettingsApiV1OrganizationsNotificationsPutResponses[keyof UpdateNotificationSettingsApiV1OrganizationsNotificationsPutResponses];
 
 export type PreviewInvitationApiV1InvitationsLookupGetData = {
     body?: never;

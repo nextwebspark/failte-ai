@@ -31,6 +31,7 @@ def stub_completion_steps(monkeypatch):
         "report_completed_workflow_run_platform_usage",
         AsyncMock(),
     )
+    monkeypatch.setattr(workflow_completion, "send_call_notifications", AsyncMock())
     return write_back
 
 

@@ -2,6 +2,7 @@ from api.db.account_client import AccountClient
 from api.db.agent_trigger_client import AgentTriggerClient
 from api.db.api_key_client import APIKeyClient
 from api.db.billing_client import BillingClient
+from api.db.call_notification_client import CallNotificationClient
 from api.db.campaign_client import CampaignClient
 from api.db.data_export_client import DataExportClient
 from api.db.embed_token_client import EmbedTokenClient
@@ -57,6 +58,7 @@ class DBClient(
     AgentTriggerClient,
     WebhookCredentialClient,
     WebhookDeliveryClient,
+    CallNotificationClient,
     ToolClient,
     KnowledgeBaseClient,
     WorkflowRecordingClient,

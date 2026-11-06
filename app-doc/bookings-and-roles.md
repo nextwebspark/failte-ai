@@ -14,7 +14,7 @@ the app shows the label.
 |---|---|---|---|
 | `admin` | Admin | LightMove team, or a technical admin | Everything, including members, billing and workspace settings |
 | `developer` | Developer | Whoever builds the agents | Build and configure agents, telephony, integrations and API keys. **Not** booking decisions |
-| `viewer` | **Owner** | The business owner | See everything (calls, bookings, reports, billing, members); switch AI booking on and off; decide which staff may too |
+| `viewer` | **Owner** | The business owner | See everything (calls, bookings, reports, billing, members); switch AI booking on and off; decide which staff may too; choose who is emailed after calls |
 | `staff` | **Staff** | The business's team | View only: calls, bookings, reports. The owner can let them manage bookings |
 
 Notes:
@@ -48,6 +48,9 @@ Team page:
   permissions are:
   - `bookings:manage`: switch AI booking on a calendar;
   - `bookings:grant`: change a staff member's "Can manage bookings".
+
+  Owners and admins also hold `notifications:manage` (Settings →
+  Notifications, see `app-doc/notifications.md`).
 - **The switch as a permission.** `member_grants()` turns a staff member's
   switch into `bookings:manage`. The membership is read once per request,
   with the role (`get_member_access`), and `OrgMembership.can()` checks the
@@ -203,8 +206,9 @@ calendar after it is written:
 - `service_periods` (lunch and dinner times) can't be edited in the
   integration settings dialog yet: the form can't show a list of time
   ranges. Plan: a simple "Booking rules" panel on the Bookings page.
-- No booking confirmation by text or email yet. Email can be sent today
-  (Resend); texts need an SMS provider and the LightMove number.
+- Booking confirmations by text are built but wait for an SMS provider and
+  the LightMove number; the business is emailed after calls today. See
+  `app-doc/notifications.md`.
 - Choosing a particular stylist or practitioner, and appointment types of
   different lengths, are not supported. "Bookings at once" covers several
   chairs or rooms without choosing who.
