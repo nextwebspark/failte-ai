@@ -5,7 +5,7 @@ import uuid
 from datetime import datetime, timedelta
 from typing import Annotated, List, Literal, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from fastapi.responses import StreamingResponse
 from httpx import HTTPStatusError, RequestError
 from loguru import logger
@@ -25,6 +25,7 @@ from api.enums import (
     WorkflowRunMode,
     WorkflowStatus,
 )
+from api.errors.failure import ErrorSource, classify_exception, log_failure
 from api.schemas.ai_model_configuration import OrganizationAIModelConfigurationV2
 from api.schemas.appointment_hours import CalendarHoursStatus
 from api.schemas.privacy import DeleteWorkflowRunDataResponse
@@ -111,6 +112,10 @@ from api.services.workflow.configuration_policy import (
 from api.services.workflow.dto import ReactFlowDTO, sanitize_workflow_definition
 from api.services.workflow.duplicate import duplicate_workflow
 from api.services.workflow.errors import ItemKind, WorkflowError
+from api.services.workflow.greeting_preview import (
+    greeting_preview_text,
+    is_preview_voice,
+)
 from api.services.workflow.run_creation import prepare_workflow_run_inputs
 from api.services.workflow.run_usage_response import (
     format_public_cost_info,
@@ -2216,4 +2221,91 @@ async def update_business_facts(
     _, fields = await _agent_facts(workflow_id, organization_id)
     return BusinessFactsResponse(
         facts=[BusinessFact(**field.__dict__) for field in fields]
+    )
+
+
+# Fresh greeting previews (cache misses) one workspace may generate a day.
+# Each is one short Google synthesis; replaying a cached one is free.
+VOICE_PREVIEWS_PER_DAY = 40
+
+
+@router.get(
+    "/{workflow_id}/voice-preview",
+    response_class=Response,
+    responses={
+        200: {
+            "content": {
+                "audio/mpeg": {"schema": {"type": "string", "format": "binary"}}
+            }
+        }
+    },
+    dependencies=requires(Permission.AGENTS_READ),
+)
+async def preview_agent_voice(
+    workflow_id: int,
+    voice_id: Annotated[str, Query(max_length=64)],
+    user: UserModel = Depends(get_user),
+    limiter: RateLimiter = Depends(get_rate_limiter),
+) -> Response:
+    """The agent's greeting read in one of the platform voices.
+
+    The words come from the agent as published (its draft before the first
+    publish), with its business facts filled in; the browser can't choose
+    them. A spoken greeting that is missing, or a recorded one, falls back to
+    a fixed sample sentence (``X-Preview-Text: sample``). Each greeting and
+    voice pair is synthesised once and then served from disk.
+    """
+    # Imported here: the user routes pull in the voice catalogue stack.
+    from api.routes.user import _google_tts_credentials
+    from api.saas.voice_catalog import google_voices
+
+    if not is_preview_voice(voice_id):
+        raise HTTPException(status_code=400, detail="invalid voice id")
+    organization_id = user.selected_organization_id
+    workflow = await db_client.get_workflow(
+        workflow_id, organization_id=organization_id
+    )
+    if workflow is None:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    released = workflow.released_definition
+    definition = released.workflow_json if released else workflow.workflow_definition
+    greeting = greeting_preview_text(definition, workflow.template_context_variables)
+    text = greeting or google_voices.PREVIEW_TEXT
+
+    audio = await google_voices.cached_preview(voice_id, text)
+    if audio is None:
+        if not await limiter.allow(
+            f"voice-preview:{organization_id}",
+            limit=VOICE_PREVIEWS_PER_DAY,
+            window=timedelta(days=1),
+        ):
+            raise HTTPException(
+                status_code=429,
+                detail="That's a lot of voice samples for one day. Try again tomorrow.",
+            )
+        try:
+            audio = await google_voices.preview_audio(
+                voice_id,
+                text=text,
+                credentials_json=await _google_tts_credentials(user),
+            )
+        except Exception as e:
+            log_failure(
+                classify_exception(
+                    e, source=ErrorSource.TTS, provider="google", error_owner="user"
+                ),
+                organization_id=organization_id,
+                operation="agent_voice_preview",
+            )
+            logger.exception("Failed to synthesise an agent voice preview")
+            raise HTTPException(status_code=502, detail="Preview unavailable") from e
+
+    return Response(
+        content=audio,
+        media_type="audio/mpeg",
+        headers={
+            # The greeting can change; the browser keeps it only briefly.
+            "Cache-Control": "private, max-age=300",
+            "X-Preview-Text": "greeting" if greeting else "sample",
+        },
     )
