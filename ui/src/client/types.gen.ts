@@ -5358,6 +5358,10 @@ export type MemberResponse = {
      * Is Current User
      */
     is_current_user: boolean;
+    /**
+     * Can Manage Bookings
+     */
+    can_manage_bookings?: boolean;
 };
 
 /**
@@ -5888,7 +5892,7 @@ export type OpenRouterLlmConfiguration = {
  *
  * Role a user holds within one organization (stored on the membership).
  */
-export type OrgRole = 'admin' | 'developer' | 'viewer';
+export type OrgRole = 'admin' | 'developer' | 'viewer' | 'staff';
 
 /**
  * OrganizationAIModelConfigurationResponse
@@ -6094,7 +6098,7 @@ export type OrganizationPreferencesResponse = {
 /**
  * Permission
  */
-export type Permission = 'org:manage' | 'members:read' | 'members:manage' | 'billing:read' | 'billing:manage' | 'agents:read' | 'agents:write' | 'campaigns:read' | 'campaigns:write' | 'telephony:read' | 'telephony:write' | 'integrations:read' | 'integrations:write' | 'credentials:write' | 'api_keys:manage' | 'calls:read' | 'reports:read' | 'agents:facts';
+export type Permission = 'org:manage' | 'members:read' | 'members:manage' | 'billing:read' | 'billing:manage' | 'agents:read' | 'agents:write' | 'campaigns:read' | 'campaigns:write' | 'telephony:read' | 'telephony:write' | 'integrations:read' | 'integrations:write' | 'credentials:write' | 'api_keys:manage' | 'calls:read' | 'reports:read' | 'agents:facts' | 'bookings:manage' | 'bookings:grant';
 
 /**
  * PhoneNumberCreateRequest
@@ -11471,6 +11475,153 @@ export type XaittsConfiguration = {
      * BCP-47 language code for synthesis (e.g. 'en', 'fr', 'de'), or 'auto' for automatic language detection.
      */
     language?: string;
+};
+
+/**
+ * AiBookingRequest
+ *
+ * The owner's switches for one calendar; omitted ones are kept.
+ */
+export type AiBookingRequest = {
+    /**
+     * Ai Booking Enabled
+     */
+    ai_booking_enabled?: boolean | null;
+    /**
+     * Ai Changes Enabled
+     */
+    ai_changes_enabled?: boolean | null;
+    rules?: {
+        [key: string]: unknown;
+    } | null;
+};
+
+/**
+ * BookingCalendar
+ *
+ * A connected calendar the bookings were read from.
+ */
+export type BookingCalendar = {
+    /**
+     * Connection Id
+     */
+    connection_id: string;
+    /**
+     * Provider
+     */
+    provider: string;
+    /**
+     * Title
+     *
+     * Provider name, e.g. Google Calendar.
+     */
+    title: string;
+    /**
+     * Account Label
+     */
+    account_label?: string | null;
+    /**
+     * Ai Booking Enabled
+     *
+     * Whether agents may book on it (the owner's switch).
+     */
+    ai_booking_enabled: boolean;
+    /**
+     * Ai Changes Enabled
+     *
+     * Whether agents may cancel or move bookings made on an earlier call, after checking the caller's details.
+     */
+    ai_changes_enabled?: boolean;
+    /**
+     * Ok
+     *
+     * False when its bookings could not be read.
+     */
+    ok: boolean;
+    /**
+     * Error
+     *
+     * Why not, in words an admin can act on.
+     */
+    error?: string | null;
+    rules?: {
+        [key: string]: unknown;
+    } | null;
+};
+
+/**
+ * BookingListResponse
+ *
+ * Bookings in the requested range across the workspace's calendars, in
+ * start order, with cancelled ones marked.
+ */
+export type BookingListResponse = {
+    /**
+     * Calendars
+     */
+    calendars: Array<BookingCalendar>;
+    /**
+     * Bookings
+     */
+    bookings: Array<CalendarBooking>;
+};
+
+/**
+ * CalendarBooking
+ */
+export type CalendarBooking = {
+    /**
+     * Event Id
+     */
+    event_id: string;
+    /**
+     * Start
+     */
+    start: string;
+    /**
+     * End
+     */
+    end: string;
+    /**
+     * Status
+     */
+    status: 'confirmed' | 'cancelled';
+    /**
+     * Caller Name
+     */
+    caller_name?: string | null;
+    /**
+     * Caller Phone
+     */
+    caller_phone?: string | null;
+    /**
+     * Party Size
+     */
+    party_size?: number | null;
+    /**
+     * Reason
+     */
+    reason?: string | null;
+    /**
+     * Created At
+     */
+    created_at?: string | null;
+    /**
+     * Connection Id
+     *
+     * The calendar it is on.
+     */
+    connection_id: string;
+};
+
+/**
+ * UpdateBookingsAccessRequest
+ */
+export type UpdateBookingsAccessRequest = {
+    /**
+     * Can Manage Bookings
+     */
+    can_manage_bookings: boolean;
 };
 
 /**
@@ -22248,3 +22399,143 @@ export type AutoscaleMetricApiV1HealthAutoscaleMetricGetResponses = {
 };
 
 export type AutoscaleMetricApiV1HealthAutoscaleMetricGetResponse = AutoscaleMetricApiV1HealthAutoscaleMetricGetResponses[keyof AutoscaleMetricApiV1HealthAutoscaleMetricGetResponses];
+
+export type ListBookingsApiV1IntegrationsBookingsGetData = {
+    body?: never;
+    headers?: {
+        /**
+         * Authorization
+         */
+        authorization?: string | null;
+        /**
+         * X-Api-Key
+         */
+        'X-API-Key'?: string | null;
+    };
+    path?: never;
+    query: {
+        /**
+         * Start
+         *
+         * Range start, ISO 8601 with offset.
+         */
+        start: string;
+        /**
+         * End
+         *
+         * Range end (exclusive).
+         */
+        end: string;
+    };
+    url: '/api/v1/integrations/bookings';
+};
+
+export type ListBookingsApiV1IntegrationsBookingsGetErrors = {
+    /**
+     * Not found
+     */
+    404: unknown;
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ListBookingsApiV1IntegrationsBookingsGetError = ListBookingsApiV1IntegrationsBookingsGetErrors[keyof ListBookingsApiV1IntegrationsBookingsGetErrors];
+
+export type ListBookingsApiV1IntegrationsBookingsGetResponses = {
+    /**
+     * Successful Response
+     */
+    200: BookingListResponse;
+};
+
+export type ListBookingsApiV1IntegrationsBookingsGetResponse = ListBookingsApiV1IntegrationsBookingsGetResponses[keyof ListBookingsApiV1IntegrationsBookingsGetResponses];
+
+export type SetAiBookingApiV1IntegrationsBookingsCalendarsConnectionIdPutData = {
+    body: AiBookingRequest;
+    headers?: {
+        /**
+         * Authorization
+         */
+        authorization?: string | null;
+        /**
+         * X-Api-Key
+         */
+        'X-API-Key'?: string | null;
+    };
+    path: {
+        /**
+         * Connection Id
+         */
+        connection_id: string;
+    };
+    query?: never;
+    url: '/api/v1/integrations/bookings/calendars/{connection_id}';
+};
+
+export type SetAiBookingApiV1IntegrationsBookingsCalendarsConnectionIdPutErrors = {
+    /**
+     * Not found
+     */
+    404: unknown;
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type SetAiBookingApiV1IntegrationsBookingsCalendarsConnectionIdPutError = SetAiBookingApiV1IntegrationsBookingsCalendarsConnectionIdPutErrors[keyof SetAiBookingApiV1IntegrationsBookingsCalendarsConnectionIdPutErrors];
+
+export type SetAiBookingApiV1IntegrationsBookingsCalendarsConnectionIdPutResponses = {
+    /**
+     * Successful Response
+     */
+    200: BookingCalendar;
+};
+
+export type SetAiBookingApiV1IntegrationsBookingsCalendarsConnectionIdPutResponse = SetAiBookingApiV1IntegrationsBookingsCalendarsConnectionIdPutResponses[keyof SetAiBookingApiV1IntegrationsBookingsCalendarsConnectionIdPutResponses];
+
+export type UpdateBookingsAccessApiV1OrganizationsMembersUserIdBookingsAccessPutData = {
+    body: UpdateBookingsAccessRequest;
+    headers?: {
+        /**
+         * Authorization
+         */
+        authorization?: string | null;
+        /**
+         * X-Api-Key
+         */
+        'X-API-Key'?: string | null;
+    };
+    path: {
+        /**
+         * User Id
+         */
+        user_id: number;
+    };
+    query?: never;
+    url: '/api/v1/organizations/members/{user_id}/bookings-access';
+};
+
+export type UpdateBookingsAccessApiV1OrganizationsMembersUserIdBookingsAccessPutErrors = {
+    /**
+     * Not found
+     */
+    404: unknown;
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type UpdateBookingsAccessApiV1OrganizationsMembersUserIdBookingsAccessPutError = UpdateBookingsAccessApiV1OrganizationsMembersUserIdBookingsAccessPutErrors[keyof UpdateBookingsAccessApiV1OrganizationsMembersUserIdBookingsAccessPutErrors];
+
+export type UpdateBookingsAccessApiV1OrganizationsMembersUserIdBookingsAccessPutResponses = {
+    /**
+     * Successful Response
+     */
+    204: void;
+};
+
+export type UpdateBookingsAccessApiV1OrganizationsMembersUserIdBookingsAccessPutResponse = UpdateBookingsAccessApiV1OrganizationsMembersUserIdBookingsAccessPutResponses[keyof UpdateBookingsAccessApiV1OrganizationsMembersUserIdBookingsAccessPutResponses];

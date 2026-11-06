@@ -275,8 +275,13 @@ class OrgRole(StrEnum):
 
     ADMIN = "admin"
     DEVELOPER = "developer"
-    # Business-owner / client persona; read-only on configuration.
+    # The business owner (shown as "Owner"): reads everything, runs
+    # bookings and decides which staff may too; no agent or telephony
+    # configuration.
     VIEWER = "viewer"
+    # The business's team: view-only. The owner or an admin may let one
+    # manage bookings (organization_users.can_manage_bookings).
+    STAFF = "staff"
 
 
 class InvitationStatus(StrEnum):

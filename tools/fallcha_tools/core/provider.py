@@ -16,7 +16,14 @@ from __future__ import annotations
 
 import re
 import uuid
-from collections.abc import Awaitable, Callable, Iterable, Iterator, Mapping
+from collections.abc import (
+    Awaitable,
+    Callable,
+    Iterable,
+    Iterator,
+    Mapping,
+    Sequence,
+)
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Protocol, runtime_checkable
@@ -216,8 +223,33 @@ class SyncableProvider(Protocol):
         ...
 
 
+@runtime_checkable
+class BookingListProvider(Protocol):
+    """Optional capability: the provider can list the bookings its tools made
+    (``GET /internal/connections/{id}/bookings``). Listed in the catalog as
+    the ``bookings`` capability."""
+
+    async def list_bookings(
+        self, ctx: ConnectionContext, start: datetime, end: datetime
+    ) -> Sequence[BaseModel]:
+        """Bookings overlapping [start, end), as models whose fields match
+        ``schemas.BookingOut``. Raise ``BookingListFailed`` with an admin-safe
+        message when the provider cannot be read."""
+        ...
+
+
+class BookingListFailed(Exception):
+    """The bookings could not be read. The message is shown to the admin, so
+    it must be safe (no secrets, no raw upstream bodies)."""
+
+
 def provider_capabilities(provider: Provider) -> list[str]:
-    return ["sync"] if isinstance(provider, SyncableProvider) else []
+    capabilities = []
+    if isinstance(provider, SyncableProvider):
+        capabilities.append("sync")
+    if isinstance(provider, BookingListProvider):
+        capabilities.append("bookings")
+    return capabilities
 
 
 def credential_family(provider: Provider) -> str:

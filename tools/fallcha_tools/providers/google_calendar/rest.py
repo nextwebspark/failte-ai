@@ -63,7 +63,9 @@ def build_rest_router(
         return await _run(
             ctx,
             service_for,
-            lambda svc: svc.availability(body.relative_day, body.part_of_day),
+            lambda svc: svc.availability(
+                body.relative_day, body.part_of_day, body.party_size
+            ),
         )
 
     @router.post("/book", response_model_exclude_none=True)
@@ -72,7 +74,11 @@ def build_rest_router(
             ctx,
             service_for,
             lambda svc: svc.book(
-                body.slot_id, body.caller_name, body.caller_phone, body.reason
+                body.slot_id,
+                body.caller_name,
+                body.caller_phone,
+                body.reason,
+                body.party_size,
             ),
         )
 

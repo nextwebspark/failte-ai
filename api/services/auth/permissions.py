@@ -30,25 +30,41 @@ class Permission(StrEnum):
     API_KEYS_MANAGE = "api_keys:manage"
     CALLS_READ = "calls:read"
     REPORTS_READ = "reports:read"
+    # Switch AI booking on or off on a calendar.
+    BOOKINGS_MANAGE = "bookings:manage"
+    # Let a staff member manage bookings too.
+    BOOKINGS_GRANT = "bookings:grant"
     # Edit an agent's business facts (hours, address, FAQ) but nothing else.
     AGENTS_FACTS = "agents:facts"
 
 
-_VIEWER: frozenset[Permission] = frozenset(
+# What every member of a business can see.
+_STAFF: frozenset[Permission] = frozenset(
     {
-        Permission.MEMBERS_READ,
-        Permission.BILLING_READ,
         Permission.AGENTS_READ,
-        Permission.CAMPAIGNS_READ,
         Permission.CALLS_READ,
         Permission.REPORTS_READ,
-        # The business owner keeps what the agent says about the business
-        # up to date.
-        Permission.AGENTS_FACTS,
     }
 )
 
-_DEVELOPER: frozenset[Permission] = _VIEWER | {
+_READ: frozenset[Permission] = _STAFF | {
+    Permission.MEMBERS_READ,
+    Permission.BILLING_READ,
+    Permission.CAMPAIGNS_READ,
+}
+
+# The business owner: reads everything and runs bookings, including who
+# on their staff may switch AI booking.
+_VIEWER: frozenset[Permission] = _READ | {
+    Permission.BOOKINGS_MANAGE,
+    Permission.BOOKINGS_GRANT,
+    # The owner keeps what the agent says about the business up to date.
+    Permission.AGENTS_FACTS,
+}
+
+# Builds agents; booking decisions stay with the owner and admins.
+_DEVELOPER: frozenset[Permission] = _READ | {
+    Permission.AGENTS_FACTS,
     Permission.AGENTS_WRITE,
     Permission.CAMPAIGNS_WRITE,
     Permission.TELEPHONY_READ,
@@ -65,6 +81,7 @@ ROLE_PERMISSIONS: Mapping[OrgRole, frozenset[Permission]] = {
     OrgRole.ADMIN: _ADMIN,
     OrgRole.DEVELOPER: _DEVELOPER,
     OrgRole.VIEWER: _VIEWER,
+    OrgRole.STAFF: _STAFF,
 }
 
 
@@ -76,9 +93,18 @@ def has_permissions(role: OrgRole, *required: Permission) -> bool:
     return permissions_for(role).issuperset(required)
 
 
+def member_grants(role: OrgRole, can_manage_bookings: bool) -> frozenset[Permission]:
+    """Extra permissions one member holds beyond their role: today only a
+    staff member the owner or an admin let manage bookings."""
+    if role == OrgRole.STAFF and can_manage_bookings:
+        return frozenset({Permission.BOOKINGS_MANAGE})
+    return frozenset()
+
+
 # Display names; the stored values never change when these do.
 ROLE_LABELS: Mapping[OrgRole, str] = {
     OrgRole.ADMIN: "Admin",
     OrgRole.DEVELOPER: "Developer",
-    OrgRole.VIEWER: "Client",
+    OrgRole.VIEWER: "Owner",
+    OrgRole.STAFF: "Staff",
 }

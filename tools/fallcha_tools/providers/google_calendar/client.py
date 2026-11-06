@@ -50,6 +50,9 @@ class Resource(StrEnum):
 
 
 Busy = tuple[datetime, datetime]
+# events.list pages; a busy restaurant fortnight is a few hundred events.
+EVENTS_PAGE_SIZE = 250
+MAX_EVENT_PAGES = 8
 
 
 @dataclass(frozen=True, slots=True)
@@ -91,6 +94,49 @@ class GoogleClient(GoogleHttp):
             ]
         except (KeyError, TypeError, ValueError):
             raise GoogleApiError("Google returned unreadable free/busy data") from None
+
+    async def list_events(
+        self,
+        calendar_id: str,
+        start: datetime,
+        end: datetime,
+        *,
+        show_deleted: bool = False,
+        private_property: str | None = None,
+        budget: Budget | None = None,
+    ) -> list[dict[str, Any]]:
+        """Events overlapping [start, end), recurring ones expanded, oldest
+        first. ``private_property`` ("key=value") keeps only events carrying
+        that private extended property. Stops after ``MAX_EVENT_PAGES`` pages
+        and raises, rather than counting capacity from a partial list."""
+        url = f"{CALENDAR_API}/calendars/{path_segment(calendar_id)}/events"
+        params: dict[str, str] = {
+            "timeMin": start.isoformat(),
+            "timeMax": end.isoformat(),
+            "singleEvents": "true",
+            "orderBy": "startTime",
+            "maxResults": str(EVENTS_PAGE_SIZE),
+            "showDeleted": "true" if show_deleted else "false",
+        }
+        if private_property:
+            params["privateExtendedProperty"] = private_property
+        events: list[dict[str, Any]] = []
+        for _ in range(MAX_EVENT_PAGES):
+            body = await self._json(
+                "GET",
+                url,
+                (CALENDAR_SCOPE,),
+                Resource.CALENDAR,
+                params=params,
+                budget=budget,
+            )
+            items = body.get("items") or []
+            events.extend(item for item in items if isinstance(item, dict))
+            token = body.get("nextPageToken")
+            if not isinstance(token, str) or not token:
+                return events
+            params["pageToken"] = token
+        raise GoogleApiError("The calendar has too many events in that range to read")
 
     async def insert_event(
         self,

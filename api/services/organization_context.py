@@ -6,7 +6,11 @@ from api.db import db_client
 from api.db.models import UserModel
 from api.enums import OrgRole
 from api.schemas.privacy import OrganizationDeletionStatus
-from api.services.auth.permissions import Permission, permissions_for
+from api.services.auth.permissions import (
+    Permission,
+    member_grants,
+    permissions_for,
+)
 from api.services.configuration.ai_model_configuration import (
     get_resolved_ai_model_configuration,
 )
@@ -41,11 +45,13 @@ async def get_organization_context(user: UserModel) -> OrganizationContextRespon
         else None
     )
 
-    role = (
-        await db_client.get_member_role(user.id, organization_id)
+    access = (
+        await db_client.get_member_access(user.id, organization_id)
         if organization_id
         else None
     )
+    role = access[0] if access else None
+    grants = member_grants(*access) if access else frozenset()
     if role is None and organization_id and user.is_superuser:
         role = OrgRole.ADMIN
 
@@ -68,7 +74,7 @@ async def get_organization_context(user: UserModel) -> OrganizationContextRespon
         organization_provider_id=organization.provider_id if organization else None,
         organization_name=organization.name if organization else None,
         role=role,
-        permissions=sorted(permissions_for(role)) if role else [],
+        permissions=sorted(permissions_for(role) | grants) if role else [],
         model_services=OrganizationModelServicesContext(
             config_source=resolved.source,
             has_model_configuration_v2=resolved.source == "organization_v2",

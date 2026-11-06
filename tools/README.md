@@ -103,9 +103,11 @@ connection is labelled with the key's `client_email`.
 
 | MCP tool | REST (`POST /v1/google-calendar/...`) |
 |---|---|
-| `check_appointment_availability(relative_day?, part_of_day?)` | `/availability` |
-| `book_appointment(slot_id, caller_name, caller_phone, reason?)` | `/book` |
+| `check_appointment_availability(relative_day?, part_of_day?, party_size?)` | `/availability` |
+| `book_appointment(slot_id, caller_name, caller_phone, reason?, party_size?)` | `/book` |
 | `cancel_appointment(event_id)` (only events this connection booked) | `/cancel` |
+| `find_booking(caller_phone, caller_name?, booking_day?)` (needs `ai_changes_enabled`) | — |
+| `move_appointment(event_id, slot_id)` (needs `ai_changes_enabled`; books the new time, then removes the old) | — |
 
 REST bodies and responses match the shim's, so an existing `http_api` tool only
 needs a new URL and a connection key in place of the old `X-API-Key`. Errors
@@ -118,6 +120,66 @@ a booking whose reply was lost never creates a duplicate. Only slots between
 the lead time and the horizon can be booked. Caller-facing errors never name
 the service account; the connection test does, so admins know whom to share
 the calendar with.
+
+### Booking rules
+
+The defaults keep a one-person diary: one booking at a time, decided by
+Google's free/busy, so any Busy event blocks its time. Settings that let
+several bookings share a time (restaurant tables, chairs, rooms) switch to
+counting the calendar's events instead.
+
+| Config | Default | |
+|---|---|---|
+| `ai_booking_enabled` | `true` | Off: no times are offered and nothing is booked; the tools answer with `handoff: "booking_off"` |
+| `service_periods` | none | When bookings may start, e.g. `[{"days": [3,4,5], "first_start": "17:00", "last_start": "21:00"}]`; several per day for lunch and dinner. Replaces `booking_days`/`open_hour`/`close_hour` |
+| `booking_minutes` | `slot_minutes` | How long one booking holds a table or slot (a 90-minute dinner); `slot_minutes` stays the gap between start times |
+| `max_bookings_at_once` | 1 | Bookings held at the same moment: the tables released for phone bookings (5 of 20, the rest kept for walk-ins). Capped at 500 |
+| `max_guests_at_once` | none | Covers seated at the same moment |
+| `max_guests_per_start` | none | Covers arriving at one start time (kitchen pacing) |
+| `ask_party_size` | `false` | Require a party size; implied by any guest limit or `max_party_size` |
+| `min_party_size` / `max_party_size` | 1 / none | Outside these, the tools answer `handoff: "party_too_small"` / `"party_too_large"` |
+| `party_summary` | `Table for {n}` | Event title start when a party size is given: "Table for 4 — Mary Byrne" |
+
+**Counting** (any of `max_bookings_at_once` > 1 or a guest limit): the
+calendar's events around the time are read (`events.list`) and sorted:
+
+- this connection's bookings count with their stored party size
+  (`fallcha_party_size`);
+- another timed event whose title names a party size ("Table for 4",
+  "Party of 6", "Murphy 3 pax", "8 guests") counts as a booking of that many
+  people, so staff can add phone or walk-in bookings by hand;
+- any other Busy event (a staff meeting, "Private party") closes its time;
+- events shown as Free are ignored, except an all-day event whose title
+  says "closed", which closes the day (Google makes all-day events Free by
+  default).
+
+A booking fits when, at the busiest moment of its stay (plus
+`buffer_minutes` reset time), the bookings and covers stay within the limits.
+A table freed at 18:30 can be sold again at 18:30.
+
+**The last table.** Bookings for one connection are serialised within a
+process. Across replicas, each booking re-reads the calendar after its
+insert. If bookings created earlier (by Google's `created`, then id) already
+fill the time, it deletes itself and offers other times, so two calls can
+never both keep the last table. If the re-read fails, the booking is kept
+and a warning is logged.
+
+**Hand-offs.** `check_appointment_availability` and `book_appointment` return
+`handoff` (`booking_off`, `party_too_large`, `party_too_small`,
+`fully_booked`) with a `say` line instead of booking. The agent should then
+transfer the caller if it can, or take their details for the team.
+`needs_party_size: true` means ask how many people and check again.
+
+**Changing an earlier booking.** With `ai_changes_enabled` (off by default),
+`find_booking` returns upcoming bookings this connection made whose phone
+matches (last 9 digits) and whose name (any shared word) or day matches; a
+number alone is refused. Then `cancel_appointment` or `move_appointment`.
+Off, or no match: `handoff` `changes_off` / `booking_not_found`.
+
+**Listing.** `GET /internal/connections/{id}/bookings?start=&end=` (ISO
+times with an offset, at most 62 days) returns the bookings this connection
+made, including cancelled ones, read from the calendar. Providers that can
+do this have the `bookings` capability in the catalog.
 
 **Cutover from the shim:** `cancel_appointment` only cancels events this
 connection booked (they carry a private marker). Events booked by the old

@@ -1,6 +1,7 @@
 import {
   AudioLines,
   BookOpen,
+  CalendarCheck,
   Cpu,
   Database,
   FileText,
@@ -80,6 +81,7 @@ const ALL_NAV_SECTIONS: NavSection[] = [
     label: "MANAGE",
     items: [
       { title: "Calls", url: "/usage", icon: TrendingUp, requires: "reports:read" },
+      { title: "Bookings", url: "/bookings", icon: CalendarCheck, requires: "calls:read" },
       { title: "Reports", url: "/reports", icon: FileText, requires: "reports:read" },
       // Team, Billing, Developers and Compliance live under Settings.
       { title: "Settings", url: "/settings", icon: Settings, settingsHub: true },
@@ -123,6 +125,7 @@ const PAGE_META: Record<string, PageMeta> = {
   "/files": { title: "Files", subtitle: "Documents agents can reference" },
   "/recordings": { title: "Prompt audio", subtitle: "Recorded greetings and messages your agents can play" },
   "/usage": { title: "Calls", subtitle: "Every call your agents answered or made" },
+  "/bookings": { title: "Bookings", subtitle: "Tables and appointments your agent booked" },
   "/reports": { title: "Reports", subtitle: "Daily call outcomes" },
   // Settings screens print their own title and description (SettingsShell),
   // so the header only names the area.
