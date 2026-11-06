@@ -78,11 +78,11 @@ async def impersonate(
     """Impersonate a user as a super-admin.
     Internally, Stack Auth requires the **provider user ID** (a UUID-ish string)
     to create an impersonation session.
-
-    Stack Auth only: with local sign-in there is no impersonation session to
-    create, so the request is refused (501) before anything is looked up.
-    Each session created is written to the platform admin audit log.
     """
+    # Stack Auth only: with local sign-in there is no impersonation session to
+    # create, so the request is refused (501) before anything is looked up.
+    # Each session created is written to the platform admin audit log. (Kept
+    # out of the docstring, which is the route's published description.)
     if constants.AUTH_PROVIDER == "local":
         raise HTTPException(
             status_code=status.HTTP_501_NOT_IMPLEMENTED,
