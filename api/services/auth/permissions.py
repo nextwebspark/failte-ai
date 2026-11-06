@@ -30,6 +30,8 @@ class Permission(StrEnum):
     API_KEYS_MANAGE = "api_keys:manage"
     CALLS_READ = "calls:read"
     REPORTS_READ = "reports:read"
+    # Edit an agent's business facts (hours, address, FAQ) but nothing else.
+    AGENTS_FACTS = "agents:facts"
 
 
 _VIEWER: frozenset[Permission] = frozenset(
@@ -40,6 +42,9 @@ _VIEWER: frozenset[Permission] = frozenset(
         Permission.CAMPAIGNS_READ,
         Permission.CALLS_READ,
         Permission.REPORTS_READ,
+        # The business owner keeps what the agent says about the business
+        # up to date.
+        Permission.AGENTS_FACTS,
     }
 )
 

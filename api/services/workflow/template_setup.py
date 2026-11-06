@@ -14,6 +14,32 @@ class TemplateSetupError(ValueError):
     """The answers don't fit the template's setup questions."""
 
 
+def _join(items: list[str]) -> str:
+    """ "a", "a and b", "a, b and c"."""
+    if len(items) <= 2:
+        return " and ".join(items)
+    return f"{', '.join(items[:-1])} and {items[-1]}"
+
+
+def toggles_answer(field: TemplateSetupField, raw: str | None) -> str:
+    """The instruction a ``toggles`` answer stands for.
+
+    ``raw`` is the chosen values, comma-separated; ``None`` (not answered,
+    e.g. an older client) means the defaults. Order follows the options.
+    """
+    if raw is None:
+        chosen = {o.value for o in field.options if o.default}
+    else:
+        chosen = {part.strip() for part in raw.split(",") if part.strip()}
+        unknown = sorted(chosen - {o.value for o in field.options})
+        if unknown:
+            raise TemplateSetupError(
+                f"{field.label}: unknown choice {', '.join(unknown)}."
+            )
+    prompts = [o.prompt for o in field.options if o.value in chosen]
+    return field.sentence.replace("{items}", _join(prompts)) if prompts else ""
+
+
 def parse_setup_fields(raw: Any) -> list[TemplateSetupField]:
     """Read a template's stored ``setup_fields``; raise on a malformed list."""
     try:
@@ -42,6 +68,10 @@ def fill_template_values(
 
     answers: dict[str, str] = {}
     for field in fields:
+        if field.type == "toggles":
+            # Our own wording, not the user's text: no placeholder check.
+            answers[field.key] = toggles_answer(field, values.get(field.key))
+            continue
         value = (values.get(field.key) or "").strip()
         if not value and field.required:
             raise TemplateSetupError(f"{field.label} is required.")
@@ -72,7 +102,78 @@ def fill_template_values(
     return fill(definition)
 
 
+def fill_template(
+    definition: dict[str, Any],
+    fields: list[TemplateSetupField],
+    values: dict[str, str],
+) -> tuple[dict[str, Any], dict[str, str]]:
+    """Like ``fill_template_values``, but ``stored`` fields are not written
+    into the prompts: each of their placeholders becomes
+    ``{{initial_context.<key>}}`` (fallback kept), and the answers are
+    returned as the agent's facts, to save as its template context variables.
+    Answers are checked the same way for every field."""
+    fill_template_values(definition, fields, values)  # validates every answer
+    stored = [f for f in fields if f.stored and f.type != "toggles"]
+    facts = {
+        f.key: (values.get(f.key) or "").strip()
+        for f in stored
+        if (values.get(f.key) or "").strip()
+    }
+    if stored:
+        keys = "|".join(re.escape(f.key) for f in stored)
+        pattern = re.compile(r"\{\{\s*(" + keys + r")(\s*(?:\|[^}]*)?)\}\}")
+
+        def relabel(node: Any) -> Any:
+            if isinstance(node, str):
+                return pattern.sub(
+                    lambda m: "{{initial_context." + m.group(1) + m.group(2) + "}}",
+                    node,
+                )
+            if isinstance(node, dict):
+                return {key: relabel(value) for key, value in node.items()}
+            if isinstance(node, list):
+                return [relabel(item) for item in node]
+            return node
+
+        definition = relabel(definition)
+    baked = [f for f in fields if not (f.stored and f.type != "toggles")]
+    remaining = {k: v for k, v in values.items() if k in {f.key for f in baked}}
+    return fill_template_values(definition, baked, remaining), facts
+
+
 INTEGRATION_TOOL_PREFIX = "integration:"
+# A tool the platform creates for each agent made from the template (not an
+# integration the user connects): today the "put through to a person" tool.
+BUILTIN_TRANSFER_TOOL = "builtin:transfer-call"
+# Where the transfer tool sends the call: the agent's transfer_number fact,
+# which the owner edits on the Business facts screen.
+TRANSFER_DESTINATION = "{{initial_context.transfer_number}}"
+
+
+def uses_tool_placeholder(definition: dict[str, Any], placeholder: str) -> bool:
+    return any(
+        placeholder in ((node.get("data") or {}).get("tool_uuids") or [])
+        for node in definition.get("nodes", [])
+    )
+
+
+def attach_tool_placeholder(
+    definition: dict[str, Any], placeholder: str, tool_uuid: str | None
+) -> dict[str, Any]:
+    """Swap *placeholder* in every node's tools for *tool_uuid*, or drop it."""
+    nodes = []
+    for node in definition.get("nodes", []):
+        data = node.get("data") or {}
+        uuids = data.get("tool_uuids")
+        if uuids and placeholder in uuids:
+            resolved: list[Any] = []
+            for uuid in uuids:
+                value = tool_uuid if uuid == placeholder else uuid
+                if value and value not in resolved:
+                    resolved.append(value)
+            node = {**node, "data": {**data, "tool_uuids": resolved}}
+        nodes.append(node)
+    return {**definition, "nodes": nodes}
 
 
 def attach_integration_tools(

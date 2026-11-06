@@ -316,7 +316,12 @@ def default_agent_spec_generator() -> AgentSpecGenerator:
 # --- Deterministic assembly ---------------------------------------------------
 
 
-def assemble_workflow_definition(spec: AgentSpec, call_type: str) -> dict[str, Any]:
+def assemble_workflow_definition(
+    spec: AgentSpec,
+    call_type: str,
+    *,
+    max_captured_fields: int = MAX_CAPTURED_FIELDS,
+) -> dict[str, Any]:
     """Turn an :class:`AgentSpec` into a ReactFlow workflow definition.
 
     Layout: Start -> stage 1 -> ... -> stage N -> End, each step advancing on
@@ -325,6 +330,10 @@ def assemble_workflow_definition(spec: AgentSpec, call_type: str) -> dict[str, A
     never reuses the success summary. The captured fields are extracted on
     every prompted node, because the engine extracts on leaving a node and on
     the node the call ends in: wherever the call stops, they are recorded.
+
+    ``max_captured_fields`` caps the recorded fields. Generated agents keep
+    the default; hand-written starter templates may record a few more
+    (a table booking needs day, time and party size).
 
     Raises AgentBuilderError when the spec is unusable (e.g. empty text).
     """
@@ -339,7 +348,7 @@ def assemble_workflow_definition(spec: AgentSpec, call_type: str) -> dict[str, A
         if outbound
         else "This is an INBOUND call: the customer called you."
     )
-    extraction = _extraction(spec.captured_fields)
+    extraction = _extraction(spec.captured_fields, max_captured_fields)
 
     start_id, end_id, early_id, global_id = "start", "end", "end_early", "global"
     stage_ids = [f"stage_{index}" for index in range(1, len(stages) + 1)]
@@ -559,7 +568,9 @@ def _transition_label(stage_name: str, step: int) -> str:
     return prefix + name.rstrip()
 
 
-def _extraction(fields: list[CapturedFieldSpec]) -> dict[str, Any]:
+def _extraction(
+    fields: list[CapturedFieldSpec], limit: int = MAX_CAPTURED_FIELDS
+) -> dict[str, Any]:
     variables: list[dict[str, str]] = []
     seen: set[str] = set()
     for field in fields:
@@ -570,7 +581,7 @@ def _extraction(fields: list[CapturedFieldSpec]) -> dict[str, Any]:
         variables.append(
             {"name": name, "type": "string", "prompt": field.description.strip()}
         )
-        if len(variables) == MAX_CAPTURED_FIELDS:
+        if len(variables) == limit:
             break
     if not variables:
         return {"extraction_enabled": False}

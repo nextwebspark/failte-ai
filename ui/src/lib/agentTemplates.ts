@@ -102,9 +102,32 @@ export function templateMeta(template: WorkflowTemplateResponse): string {
     return parts.join(' · ');
 }
 
-/** The answers a template's questions start with: all empty. */
+/** The answers a template's questions start with: empty, and toggles at their defaults. */
 export function emptyAnswers(fields: TemplateSetupField[]): Record<string, string> {
-    return Object.fromEntries(fields.map((field) => [field.key, '']));
+    return Object.fromEntries(
+        fields.map((field) => [
+            field.key,
+            field.type === 'toggles'
+                ? (field.options ?? []).filter((option) => option.default).map((option) => option.value).join(',')
+                : '',
+        ]),
+    );
+}
+
+/** The chosen values of a toggles answer ("party_size,allergies"). */
+export function chosenToggles(answer: string): Set<string> {
+    return new Set(answer.split(',').map((part) => part.trim()).filter(Boolean));
+}
+
+/** Turn one toggle on or off; the answer keeps the options' order. */
+export function withToggle(field: TemplateSetupField, answer: string, value: string, on: boolean): string {
+    const chosen = chosenToggles(answer);
+    if (on) chosen.add(value);
+    else chosen.delete(value);
+    return (field.options ?? [])
+        .map((option) => option.value)
+        .filter((v) => chosen.has(v))
+        .join(',');
 }
 
 /** The first required question still unanswered, or null when all are. */
@@ -112,7 +135,11 @@ export function missingAnswer(
     fields: TemplateSetupField[],
     answers: Record<string, string>,
 ): TemplateSetupField | null {
-    return fields.find((field) => (field.required ?? true) && !answers[field.key]?.trim()) ?? null;
+    return (
+        fields.find(
+            (field) => field.type !== 'toggles' && (field.required ?? true) && !answers[field.key]?.trim(),
+        ) ?? null
+    );
 }
 
 /** "AI Receptionist · Bloom Dental", or just the template's name. */
