@@ -2249,9 +2249,8 @@ async def preview_agent_voice(
 ) -> Response:
     """The agent's greeting read in one of the platform voices.
 
-    The words come from the agent as published (its draft before the first
-    publish), with its business facts filled in; the browser can't choose
-    them. A spoken greeting that is missing, or a recorded one, falls back to
+    The words are the greeting the page shows (the draft's, if there is
+    one), with the business facts filled in; the browser can't choose them. A spoken greeting that is missing, or a recorded one, falls back to
     a fixed sample sentence (``X-Preview-Text: sample``). Each greeting and
     voice pair is synthesised once and then served from disk.
     """
@@ -2267,8 +2266,12 @@ async def preview_agent_voice(
     )
     if workflow is None:
         raise HTTPException(status_code=404, detail="Agent not found")
-    released = workflow.released_definition
-    definition = released.workflow_json if released else workflow.workflow_definition
+    # The version the page shows (the draft, if there is one), so the voice
+    # reads the greeting printed under it.
+    shown = await db_client.get_draft_version(workflow_id) or (
+        workflow.released_definition
+    )
+    definition = shown.workflow_json if shown else workflow.workflow_definition
     greeting = greeting_preview_text(definition, workflow.template_context_variables)
     text = greeting or google_voices.PREVIEW_TEXT
 
