@@ -142,6 +142,38 @@ def fill_template(
 
 
 INTEGRATION_TOOL_PREFIX = "integration:"
+# A tool the platform creates for each agent made from the template (not an
+# integration the user connects): today the "put through to a person" tool.
+BUILTIN_TRANSFER_TOOL = "builtin:transfer-call"
+# Where the transfer tool sends the call: the agent's transfer_number fact,
+# which the owner edits on the Business facts screen.
+TRANSFER_DESTINATION = "{{initial_context.transfer_number}}"
+
+
+def uses_tool_placeholder(definition: dict[str, Any], placeholder: str) -> bool:
+    return any(
+        placeholder in ((node.get("data") or {}).get("tool_uuids") or [])
+        for node in definition.get("nodes", [])
+    )
+
+
+def attach_tool_placeholder(
+    definition: dict[str, Any], placeholder: str, tool_uuid: str | None
+) -> dict[str, Any]:
+    """Swap *placeholder* in every node's tools for *tool_uuid*, or drop it."""
+    nodes = []
+    for node in definition.get("nodes", []):
+        data = node.get("data") or {}
+        uuids = data.get("tool_uuids")
+        if uuids and placeholder in uuids:
+            resolved: list[Any] = []
+            for uuid in uuids:
+                value = tool_uuid if uuid == placeholder else uuid
+                if value and value not in resolved:
+                    resolved.append(value)
+            node = {**node, "data": {**data, "tool_uuids": resolved}}
+        nodes.append(node)
+    return {**definition, "nodes": nodes}
 
 
 def attach_integration_tools(

@@ -21,11 +21,13 @@ from api.enums import (
     CallType,
     PostHogEvent,
     StorageBackend,
+    ToolCategory,
     WorkflowRunMode,
     WorkflowStatus,
 )
 from api.schemas.ai_model_configuration import OrganizationAIModelConfigurationV2
 from api.schemas.privacy import DeleteWorkflowRunDataResponse
+from api.schemas.tool import TransferCallConfig, TransferCallToolDefinition
 from api.schemas.workflow import WorkflowRunResponseSchema
 from api.schemas.workflow_configurations import WorkflowConfigurationDefaults
 from api.schemas.workflow_template import (
@@ -104,10 +106,14 @@ from api.services.workflow.run_usage_response import (
     format_public_usage_info,
 )
 from api.services.workflow.template_setup import (
+    BUILTIN_TRANSFER_TOOL,
+    TRANSFER_DESTINATION,
     TemplateSetupError,
     attach_integration_tools,
+    attach_tool_placeholder,
     fill_template,
     parse_setup_fields,
+    uses_tool_placeholder,
 )
 from api.services.workflow.tool_name_validation import (
     validate_workflow_tool_name_collisions,
@@ -1639,6 +1645,28 @@ async def duplicate_workflow_template(
         if {tool.tool_uuid for tool in tools} != tool_uuids:
             raise HTTPException(status_code=404, detail="Connected tool not found")
     filled = attach_integration_tools(filled, request.integration_tools)
+    if uses_tool_placeholder(filled, BUILTIN_TRANSFER_TOOL):
+        # One "put through to a person" tool per agent, sending calls to the
+        # agent's transfer_number fact (empty: the transfer fails and the
+        # agent takes a message, as its instructions say).
+        transfer_tool = await db_client.create_tool(
+            organization_id=user.selected_organization_id,
+            user_id=user.id,
+            name=f"Put through to the team ({request.workflow_name})"[:255],
+            definition=TransferCallToolDefinition(
+                type="transfer_call",
+                config=TransferCallConfig(
+                    destination=TRANSFER_DESTINATION,
+                    messageType="custom",
+                    customMessage="One moment, I'm putting you through.",
+                ),
+            ).model_dump(),
+            category=ToolCategory.TRANSFER_CALL.value,
+            description="Puts the caller through to the number on Business facts.",
+        )
+        filled = attach_tool_placeholder(
+            filled, BUILTIN_TRANSFER_TOOL, transfer_tool.tool_uuid
+        )
 
     # Create a new workflow from the template
     # Regenerate trigger UUIDs to avoid conflicts with existing triggers

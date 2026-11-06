@@ -6,7 +6,8 @@ business. ``python -m scripts.sync_agent_templates`` writes them to the
 ``workflow_templates`` table.
 """
 
-from dataclasses import dataclass, field
+import copy
+from dataclasses import dataclass, field, replace
 from typing import Any, Literal
 
 from api.schemas.workflow_template import SetupOption, TemplateSetupField
@@ -16,7 +17,10 @@ from api.services.workflow.agent_builder import (
     StageSpec,
     assemble_workflow_definition,
 )
-from api.services.workflow.template_setup import INTEGRATION_TOOL_PREFIX
+from api.services.workflow.template_setup import (
+    BUILTIN_TRANSFER_TOOL,
+    INTEGRATION_TOOL_PREFIX,
+)
 
 GOOGLE_CALENDAR = "google-calendar"
 
@@ -1058,4 +1062,52 @@ STARTER_TEMPLATES: list[StarterTemplate] = [
         icon="message",
         category="general",
     ),
+]
+
+
+# Inbound agents can put a caller through to a person. The number is a
+# business fact (editable later); without one, the agent takes a message.
+_TRANSFER_FIELD = TemplateSetupField(
+    key="transfer_number",
+    label="Number to put callers through to a person",
+    type="phone",
+    help=(
+        "Your mobile or front desk. Leave it empty and your agent takes a "
+        "message instead."
+    ),
+    placeholder="+353 87 123 4567",
+    required=False,
+    max_length=40,
+    stored=True,
+)
+_TRANSFER_RULE = (
+    "\n\nPutting callers through to a person: "
+    "{{transfer_number | fallback:not available}}. If the caller asks for a "
+    "person, or a tool says to hand them over, and putting through is "
+    "available, tell them you're connecting them and use the transfer tool. "
+    "Never read that number out. If it isn't available or the transfer "
+    "doesn't connect, take a message for the team."
+)
+
+
+def _with_transfer(starter: StarterTemplate) -> StarterTemplate:
+    definition = copy.deepcopy(starter.definition)
+    for node in definition["nodes"]:
+        data = node["data"]
+        if node["type"] in ("startCall", "agentNode"):
+            data["tool_uuids"] = [
+                *(data.get("tool_uuids") or []),
+                BUILTIN_TRANSFER_TOOL,
+            ]
+        if node["id"] == "global":
+            data["prompt"] = data["prompt"] + _TRANSFER_RULE
+    return replace(
+        starter,
+        definition=definition,
+        setup_fields=[*starter.setup_fields, _TRANSFER_FIELD],
+    )
+
+
+STARTER_TEMPLATES = [
+    _with_transfer(s) if s.call_type == "inbound" else s for s in STARTER_TEMPLATES
 ]

@@ -116,3 +116,122 @@ def test_owner_edits_are_checked():
         checked_updates(fields, {"website": "x" * 21})
     with pytest.raises(BusinessFactsError, match="no fact: caller_number"):
         checked_updates(fields, {"caller_number": "123"})
+
+
+def test_inbound_templates_can_put_callers_through_to_a_person():
+    from api.services.workflow.template_setup import BUILTIN_TRANSFER_TOOL
+
+    for starter in STARTER_TEMPLATES:
+        has_question = any(f.key == "transfer_number" for f in starter.setup_fields)
+        assert has_question is (starter.call_type == "inbound"), starter.name
+        if starter.call_type == "inbound":
+            assert BUILTIN_TRANSFER_TOOL in str(starter.definition), starter.name
+
+    starter = _restaurant()
+    definition, facts = fill_template(
+        starter.definition,
+        starter.setup_fields,
+        {**_answers(starter), "transfer_number": "+353 87 123 4567"},
+    )
+    assert facts["transfer_number"] == "+353 87 123 4567"
+    persona = next(n for n in definition["nodes"] if n["id"] == "global")["data"][
+        "prompt"
+    ]
+    on = render_template(persona, facts)
+    off = render_template(
+        persona, {k: v for k, v in facts.items() if k != "transfer_number"}
+    )
+    assert "Never read that number out" in on
+    assert "Putting callers through to a person: not available." in off
+
+
+def test_the_placeholder_becomes_the_agents_transfer_tool():
+    from api.services.workflow.template_setup import (
+        BUILTIN_TRANSFER_TOOL,
+        attach_tool_placeholder,
+        uses_tool_placeholder,
+    )
+
+    definition = {
+        "nodes": [
+            {"id": "a", "data": {"tool_uuids": ["cal", BUILTIN_TRANSFER_TOOL]}},
+            {"id": "b", "data": {}},
+        ]
+    }
+    assert uses_tool_placeholder(definition, BUILTIN_TRANSFER_TOOL)
+    swapped = attach_tool_placeholder(definition, BUILTIN_TRANSFER_TOOL, "t-1")
+    assert swapped["nodes"][0]["data"]["tool_uuids"] == ["cal", "t-1"]
+    dropped = attach_tool_placeholder(definition, BUILTIN_TRANSFER_TOOL, None)
+    assert dropped["nodes"][0]["data"]["tool_uuids"] == ["cal"]
+    assert not uses_tool_placeholder(swapped, BUILTIN_TRANSFER_TOOL)
+
+
+def test_duplicating_creates_one_transfer_tool_for_the_agent():
+    from datetime import datetime, timezone
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock, patch
+
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    from api.routes.workflow import router
+    from api.services.auth.depends import get_user
+
+    starter = _restaurant()
+    template = SimpleNamespace(
+        id=5,
+        template_name=starter.name,
+        template_description=starter.description,
+        template_json=starter.definition,
+        setup_fields=[f.model_dump() for f in starter.setup_fields],
+        call_type="inbound",
+        icon="utensils",
+        featured=False,
+        sample_audio_url=None,
+        category="restaurant",
+        integrations=starter.integrations,
+        created_at=datetime(2026, 11, 1, tzinfo=timezone.utc),
+    )
+    created = SimpleNamespace(
+        id=42,
+        name="Harbour Kitchen",
+        status="active",
+        created_at=datetime(2026, 11, 1, tzinfo=timezone.utc),
+        current_definition_id=7,
+        template_context_variables={},
+        call_disposition_codes=None,
+        workflow_configurations={},
+    )
+    app = FastAPI()
+    app.include_router(router)
+    app.dependency_overrides[get_user] = lambda: SimpleNamespace(
+        id=1, selected_organization_id=11
+    )
+    with (
+        patch("api.routes.workflow.WorkflowTemplateClient") as templates,
+        patch("api.routes.workflow.db_client") as db,
+    ):
+        templates.return_value.get_workflow_template = AsyncMock(return_value=template)
+        db.create_tool = AsyncMock(return_value=SimpleNamespace(tool_uuid="transfer-1"))
+        db.create_workflow = AsyncMock(return_value=created)
+        response = TestClient(app).post(
+            "/workflow/templates/duplicate",
+            json={
+                "template_id": 5,
+                "workflow_name": "Harbour Kitchen",
+                "values": {**_answers(starter), "transfer_number": "+353871234567"},
+            },
+        )
+
+    assert response.status_code == 200, response.text
+    kwargs = db.create_tool.await_args.kwargs
+    assert kwargs["category"] == "transfer_call"
+    assert kwargs["definition"]["config"]["destination"] == (
+        "{{initial_context.transfer_number}}"
+    )
+    definition = db.create_workflow.await_args.args[1]
+    start = next(n for n in definition["nodes"] if n["id"] == "start")
+    assert "transfer-1" in start["data"]["tool_uuids"]
+    facts = db.create_workflow.await_args.kwargs["template_context_variables"]
+    assert facts["transfer_number"] == "+353871234567"
+    assert facts["opening_hours"] == "Tue-Sun 12-22"

@@ -26,6 +26,22 @@ time, with no agent editor.
   without publishing a developer's unfinished changes. Clearing an optional
   fact brings back the prompt's fallback (e.g. "not listed").
 
+## Putting callers through to a person
+Every inbound template asks for an optional **"Number to put callers
+through to a person"**. It's a stored fact like the others, so it can be set
+or changed later on Business facts.
+
+- **Creation.** One transfer tool is created for the agent. Its destination
+  is `{{initial_context.transfer_number}}`, and every conversation step can
+  use it (placeholder `builtin:transfer-call`, swapped in
+  `attach_tool_placeholder`).
+- **Instructions.** The agent's global prompt says to transfer only when a
+  number is set, never to read the number out, and to take a message if
+  the transfer doesn't connect (or no number is set).
+- **Carriers.** Transfers work on Asterisk/ARI, Twilio, Telnyx, Plivo and
+  Cloudonix, but not on Vonage, Vobiz or Exotel; there the tool fails and
+  the agent takes a message.
+
 ## Who can edit
 `agents:facts`: Owner, Developer and Admin. Owners still can't open the
 agent editor (`agents:write`). Anyone who can see the agent can read the
