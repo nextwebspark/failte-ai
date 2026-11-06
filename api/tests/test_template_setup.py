@@ -507,13 +507,17 @@ def test_every_booking_starter_offers_toggles():
 
 
 def test_agents_check_the_caller_before_changing_a_booking():
-    # Earlier bookings are found with find_booking (phone number plus name or
-    # day; the owner must allow changes). Without a match, nothing changes.
+    # Earlier bookings are found with find_appointments: the booked name is
+    # always asked, the number comes from caller ID or the caller (the owner
+    # must allow changes). Without a match, nothing changes.
     for starter in STARTER_TEMPLATES:
         text = json.dumps(starter.definition)
+        assert "find_booking" not in text and "move_appointment" not in text
         if "{{booking_questions}}" in text:
-            assert "find_booking" in text, starter.name
-            assert "phone number the booking was made under" in text, starter.name
+            assert "find_appointments" in text, starter.name
+            assert "reschedule_appointment" in text, starter.name
+            assert "full name the booking was made under" in text, starter.name
+            assert "Never guess a booking" in text, starter.name
             assert "Never say a booking is moved or cancelled" in text, starter.name
         assert "update the booking" not in text, starter.name
         assert "reschedule via calendar tools" not in text, starter.name

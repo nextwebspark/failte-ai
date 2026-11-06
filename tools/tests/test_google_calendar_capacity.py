@@ -20,6 +20,7 @@ from fallcha_tools.core.provider import BookingListProvider, ConnectionContext
 from fallcha_tools.providers.google_calendar import GoogleCalendarProvider
 from fallcha_tools.providers.google_calendar.credentials import TokenCache
 from fallcha_tools.providers.google_calendar.errors import BadArgumentError
+from fallcha_tools.providers.google_calendar.matching import PHONE_KEY_PROPERTY
 from fallcha_tools.providers.google_calendar.scheduling import (
     Booked,
     candidate_slots,
@@ -318,6 +319,7 @@ async def test_booking_writes_the_party_size(
     assert "Party size: 4" in event["description"]
     assert event["extendedProperties"]["private"] == {
         BOOKING_MARKER: str(connection_id),
+        PHONE_KEY_PROPERTY: "71234567",
         PARTY_SIZE_PROP: "4",
     }
     end = datetime.fromisoformat(event["end"]["dateTime"])

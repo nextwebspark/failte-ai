@@ -11,7 +11,7 @@ Open **Integrations** in the sidebar. **Available integrations** lists the catal
 
 | Integration | What the agent can do | Connect with |
 |---|---|---|
-| **Google Calendar** | Check free appointment slots, book a slot, cancel an event it booked | Service account key, or sign in with your Google account |
+| **Google Calendar** | Check free appointment slots, book a slot, find a caller's bookings, move or cancel an event it booked | Service account key, or sign in with your Google account |
 | **Google Sheets** | Find rows by a column value, read a row, add a row, look up an order with caller verification | Service account key, or sign in with your Google account |
 | **Website product catalogue** | Search your shop's products and describe one, with spoken prices and stock | Nothing: it reads your public website |
 
@@ -124,6 +124,8 @@ Each connection creates an agent tool named after the integration, such as "Goog
 2. Under **MCP**, the tool lists its functions, such as `check_appointment_availability` and `book_appointment`.
 3. Tick the functions this node should offer. A tool with no ticked functions is not available on that node.
 4. Describe in the node prompt when to use them, as with any tool.
+
+**A caller who rings back** about a Calendar booking is always asked for the name it was booked under. The number they are calling from saves asking for the number; a booking made with another number, or a call whose number is hidden, needs that number too. Caller ID can be spoofed, so the number alone never reveals or changes a booking. If nothing matches, the agent says so the same way whether or not the number has bookings, and offers to take a message. The agent can only find, move or cancel bookings it made itself. Moving books the new time before it cancels the old one, so the caller is never left without an appointment. The caller must give the full name, or at least the surname: a first name, a particle such as "de" or a suffix such as "Jr" alone does not find a booking, and callers who say their family name first should give the full name. Titles such as "Dr" or "Mrs" are ignored. A booking whose only name besides a suffix is a first name ("John Jr") is found by that name, and short surnames that are also particles (Le, Do, La, Da) need the full name. Numbers said without a country code are read in the country of the calendar's time zone. If the zone names no single country (for example `UTC`, `CET`, or older names whose zone several countries share, for example `Iceland`, `GB`, `Japan`), set **Phone region** (for example `IE`) in the connection's settings, or such numbers are only compared by their last eight digits.
 
 The functions run in the LightMove.ai tools service. Your agent reaches it over an authenticated [MCP](/voice-agent/tools/mcp-tool) session that opens when the call starts. If an integration is unreachable at that moment, the call continues without its functions.
 

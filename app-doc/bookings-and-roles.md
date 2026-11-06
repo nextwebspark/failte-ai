@@ -98,27 +98,42 @@ Caller ──► Voice agent (failte-ai API, pipecat)
    | `booking_off` | The owner switched AI booking off for that calendar |
    | `party_too_large` / `party_too_small` | Outside the party sizes the agent may book |
    | `fully_booked` | Nothing free in the whole booking window |
-   | `changes_off` | The owner hasn't let the agent cancel or move bookings |
-   | `booking_not_found` | No upcoming booking matched the caller's number and name/day |
+   | `changes_off` | The owner hasn't let the agent find, cancel or move bookings made on an earlier call |
 
    If the tool says `needs_party_size`, the agent asks how many people and
    checks again.
 5. **Cancelling or moving a booking made on an earlier call.** This only
    happens if the owner switched on **"Let the agent cancel or move bookings"**
    for that calendar (off by default):
-   1. The agent asks for the phone number the booking was made under, plus
-      the name or the day of the booking.
-   2. `find_booking` returns only upcoming bookings this agent made where the
-      number matches (last 9 digits, so "087…" and "+353 87…" agree) and so
-      does the name (any shared word) or the day.
+   1. The agent always asks for the full name the booking was made under
+      (at least the surname). The number is the one the call comes from
+      (caller ID, passed by the platform, never by the agent). If that finds
+      nothing and the caller booked with another number, the agent asks for
+      that number, reads it back and looks again. Caller ID alone is never
+      enough, because it can be spoofed.
+   2. `find_appointments` returns at most three upcoming bookings this agent
+      made where the number matches (last 8 digits, then the full number in
+      international form, so "087…" and "+353 87…" agree but Dublin and Cork
+      numbers sharing 8 digits do not) **and** the name matches (titles,
+      accents and bracketed notes are ignored; a surname is enough, a first
+      name alone is not). A miss always gives the same reply, so it never
+      reveals whether a number has bookings.
    3. The agent reads the booking back and gets a yes, then calls
-      `cancel_appointment` or `move_appointment`. Moving books the new time
-      before removing the old one.
+      `cancel_appointment` or `reschedule_appointment`. Moving books the new
+      time first and only then cancels the old one; it keeps the party
+      size, reason and any notes staff added, and the capacity rules apply
+      to the new time (the booking being moved doesn't count against it).
+      `reschedule_appointment` answers with an `outcome`: `moved`,
+      `unchanged`, `slot_taken`, `not_found`, `details_edited`,
+      `old_not_cancelled` or `handed_off` (with a `handoff`).
 
-   If the switch is off (`changes_off`) or nothing matches
-   (`booking_not_found`), the agent changes nothing and transfers the
-   caller or takes a message. A booking made earlier on the same call can
-   always be cancelled.
+   If the switch is off, `find_appointments` and `reschedule_appointment`
+   answer `changes_off` without reading or changing the calendar. A booking
+   made earlier on the same call can still be cancelled; an older one gets
+   `changes_off`. (The tools service keeps no call state, so "the same call"
+   means Google created the booking at most 30 minutes ago; a call lasts at
+   most 20.) If nothing matches, the agent changes nothing and transfers
+   the caller or takes a message.
 6. **Afterwards.** The booking is an event on the calendar ("Table for 4 —
    Mary Byrne", with the caller's number and party size). Each call also
    records `booking_outcome`, `booking_date`, `booking_time` and the
@@ -135,7 +150,8 @@ Setting any capacity rule switches the calendar to **counting** its events:
 | Setting | What it means | Example |
 |---|---|---|
 | `ai_booking_enabled` | Owner's on/off switch | Off on a bank holiday |
-| `ai_changes_enabled` | Owner's switch: may the agent cancel or move earlier bookings (after checking the caller) | Off by default |
+| `ai_changes_enabled` | Owner's switch: may the agent find, cancel or move earlier bookings (after checking the caller's name and number) | Off by default |
+| `phone_region` | Country (`IE`, `US`…) for numbers said without a country code (connection config only, not in the Booking rules panel) | The time zone's country |
 | `service_periods` | When bookings may start, per weekday | Lunch 12:00–14:00, dinner 17:00–21:00, Thu–Sat |
 | `slot_minutes` | Gap between start times | 15 or 30 |
 | `booking_minutes` | How long a booking holds a table | 90 for dinner |
@@ -209,7 +225,7 @@ combination.
 | Membership storage | `organization_users` (`role`, `can_manage_bookings`); migration `b7c1d2e3f4a5` |
 | Team page switch | `api/routes/team.py` (`PUT /organizations/members/{id}/bookings-access`), `ui/src/app/team/MembersCard.tsx` |
 | Booking rules and counting | `tools/fallcha_tools/providers/google_calendar/` (`settings.py`, `scheduling.py`, `service.py`); see `tools/README.md` "Booking rules" |
-| Agent tools | `tools/fallcha_tools/providers/google_calendar/tools.py` (`check_appointment_availability`, `book_appointment`, `find_booking`, `move_appointment`, `cancel_appointment`) |
+| Agent tools | `tools/fallcha_tools/providers/google_calendar/tools.py` (`check_appointment_availability`, `book_appointment`, `find_appointments`, `reschedule_appointment`, `cancel_appointment`); caller matching in `matching.py` and `phone_numbers.py`; caller ID from `api/services/tool_integrations/call_context.py` |
 | Bookings list | tools `GET /internal/connections/{id}/bookings`; API `GET /api/v1/integrations/bookings`; UI `ui/src/app/bookings/` |
 | Booking questions (toggles) | `api/services/workflow/starter_templates.py` (`_booking_steps`, `*_TOGGLES`), `api/services/workflow/template_setup.py` (`toggles_answer`), `ui/src/components/workflow/create/TemplateSetup.tsx` |
 

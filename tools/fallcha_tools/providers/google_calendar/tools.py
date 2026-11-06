@@ -12,19 +12,19 @@ from fallcha_tools.core.provider import ConnectionContextFactory
 from fallcha_tools.providers.google_calendar.errors import CalendarToolError
 from fallcha_tools.providers.google_calendar.schemas import (
     AvailabilityResult,
-    BookingDay,
-    BookingName,
-    BookingPhone,
+    BookedName,
+    BookedPhone,
     BookingResult,
     CallerName,
     CallerPhone,
     CancelResult,
     EventId,
-    FindBookingResult,
+    FindResult,
     PartOfDay,
     PartySize,
     Reason,
     RelativeDay,
+    RescheduleResult,
     SlotId,
 )
 from fallcha_tools.providers.google_calendar.service import (
@@ -84,47 +84,61 @@ def register_calendar_tools(
         caller picked one and gave their name and phone number (and party size,
         if you checked with one). Books it on the business's calendar. If
         "booked" is false, read the "say" field: it lists alternatives to offer,
-        or, when "handoff" is set, transfer or take a message instead."""
+        or, when "handoff" is set, transfer or take a message instead. To move
+        an existing appointment, use reschedule_appointment instead."""
         svc = await service()
         return await _guard(
             svc.book(slot_id, caller_name, caller_phone, reason, party_size)
         )
-
-    @mcp.tool(annotations=_READ_ONLY, title="Find a caller's booking")
-    async def find_booking(
-        caller_phone: BookingPhone,
-        caller_name: BookingName = None,
-        booking_day: BookingDay = None,
-    ) -> FindBookingResult:
-        """Use when a caller wants to cancel or move a booking made on an
-        earlier call. Ask for the phone number the booking was made under, and
-        their name or the day of the booking, then call this. Read the "say"
-        field, confirm which booking with the caller, then use its event_id
-        with cancel_appointment or move_appointment. If "handoff" is set, do
-        not change anything: transfer the caller if you can, otherwise take a
-        message for the team."""
-        svc = await service()
-        return await _guard(svc.find_booking(caller_phone, caller_name, booking_day))
-
-    @mcp.tool(annotations=_WRITES, title="Move a booking to a new time")
-    async def move_appointment(event_id: EventId, slot_id: SlotId) -> BookingResult:
-        """Move a booking found with find_booking (or made earlier on this
-        call) to a new time. First check free times with
-        check_appointment_availability, let the caller choose, read the new
-        time back and get a yes. The new time is booked before the old one is
-        removed. Read the "say" field; if "booked" is false, offer the
-        alternatives or follow "handoff"."""
-        svc = await service()
-        return await _guard(svc.move(event_id, slot_id))
 
     @mcp.tool(
         annotations={**_WRITES, "destructiveHint": True},
         title="Cancel an appointment it booked",
     )
     async def cancel_appointment(event_id: EventId) -> CancelResult:
-        """Cancel a booking, using the event_id that book_appointment returned
-        on this call or that find_booking found. Confirm with the caller first.
-        Only bookings made through this agent can be cancelled. Read the "say"
-        field to the caller."""
+        """Cancel an appointment booked through this agent, using its event_id:
+        from book_appointment in this call, or from find_appointments for a
+        booking made on an earlier call. Confirm with the caller which
+        appointment it is first. Read the "say" field to the caller; if
+        "handoff" is set, nothing was cancelled: transfer the caller or take a
+        message."""
         svc = await service()
         return await _guard(svc.cancel(event_id))
+
+    @mcp.tool(annotations=_READ_ONLY, title="Find a caller's appointments")
+    async def find_appointments(
+        caller_phone: BookedPhone = None, caller_name: BookedName = None
+    ) -> FindResult:
+        """Use when the caller wants to cancel, move or check an appointment they
+        booked on an earlier call. Always ask for the full name the appointment
+        was booked under first (at least the surname) and pass it as
+        caller_name. Leave caller_phone empty to use the number this call comes
+        from; if that finds nothing and they booked with another number, ask
+        for that number (confirm it back) and call again with it. Returns their
+        upcoming appointments booked through this agent (at most three, soonest
+        first), each with its event_id. Read the "say" field to the caller and
+        confirm which appointment they mean; never guess one. If none is found,
+        offer to take a message. If "handoff" is set, do not change anything:
+        transfer the caller if you can, otherwise take a message."""
+        svc = await service()
+        return await _guard(svc.find(caller_phone, caller_name))
+
+    @mcp.tool(
+        annotations={**_WRITES, "destructiveHint": True},
+        title="Move an appointment it booked",
+    )
+    async def reschedule_appointment(
+        event_id: EventId, slot_id: SlotId
+    ) -> RescheduleResult:
+        """Move an appointment to a new time, once the caller confirmed which
+        appointment (event_id from find_appointments or book_appointment) and
+        picked a new slot from check_appointment_availability. Books the new
+        time first and only then cancels the old one, so never cancel it
+        yourself. Read the "say" field to the caller. If "outcome" is
+        "slot_taken", offer the alternatives in "slots"; if it is
+        "old_not_cancelled", the new time is booked: take a message so the team
+        removes the old one; if it is "details_edited", take a message so the
+        team moves it; if it is "handed_off", nothing changed: follow
+        "handoff". On an error, try the same call once more."""
+        svc = await service()
+        return await _guard(svc.reschedule(event_id, slot_id))
