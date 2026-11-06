@@ -31,6 +31,7 @@ import { type Permission, ROLE_LABELS } from "@/lib/auth/roles";
 
 import { agentSectionFor } from "./agentNav";
 import { getPageMeta } from "./navConfig";
+import { usePageHeadingOwned } from "./pageHeading";
 import { useShellChrome } from "./shellContext";
 
 type AccountLink = { href: string; label: string; icon: typeof Settings };
@@ -97,6 +98,10 @@ export function AppTopBar({
       ? { ...getPageMeta(returnTo), subtitle: runId ? `Run ${runId}` : undefined }
       : getPageMeta(pathname);
   const uiVersion = config?.uiVersion;
+  // A screen that prints its own title owns the h1 (and shows its own
+  // one-line description), so the header's copy becomes a plain breadcrumb.
+  const pageOwnsHeading = usePageHeadingOwned();
+  const TitleTag = pageOwnsHeading ? "p" : "h1";
 
   // Update check is OSS-only — cloud deployments are upgraded for the user.
   const { latest: latestRelease, isBehind } = useLatestReleaseVersion(uiVersion, {
@@ -135,7 +140,7 @@ export function AppTopBar({
         size="icon"
         onClick={toggleSidebar}
         aria-label="Toggle navigation"
-        className="h-7 w-7 shrink-0 text-ink-3 hover:text-foreground"
+        className="size-10 shrink-0 text-ink-3 hover:text-foreground md:size-7"
       >
         <Menu className="h-4 w-4" />
       </Button>
@@ -185,10 +190,12 @@ export function AppTopBar({
       )}
 
       <span className="hidden sm:inline">{separator}</span>
-      <h1 className="min-w-0 truncate whitespace-nowrap text-sm font-semibold text-foreground">
+      {/* Narrow, the title takes the room that's left and truncates rather
+          than pushing the help and account buttons onto a second row. */}
+      <TitleTag className="min-w-0 flex-1 basis-0 truncate whitespace-nowrap text-sm font-semibold text-foreground md:flex-none md:basis-auto">
         {meta.title}
-      </h1>
-      {meta.subtitle && (
+      </TitleTag>
+      {meta.subtitle && !pageOwnsHeading && (
         <p className="hidden truncate whitespace-nowrap text-xs text-ink-3 xl:block">
           {meta.subtitle}
         </p>
@@ -200,7 +207,7 @@ export function AppTopBar({
         className="order-last flex w-full min-w-0 flex-wrap items-center gap-2 empty:hidden md:order-none md:ml-auto md:w-auto md:flex-nowrap md:justify-end md:empty:flex"
       />
 
-      <div className="ml-auto flex flex-none items-center gap-2.5 md:ml-0">
+      <div className="ml-auto flex flex-none items-center gap-1 md:ml-0 md:gap-2.5">
         {/* On xl the test rail is pinned beside the content panel; below it,
             the same panel opens as a sheet from here. */}
         {agentShell && showTestRail && (
@@ -215,16 +222,19 @@ export function AppTopBar({
           </Button>
         )}
 
-        <SupportLink iconOnly tooltipSide="bottom" variant="ghost" className="text-ink-3 hover:text-foreground" />
+        <SupportLink iconOnly tooltipSide="bottom" variant="ghost" className="h-10 w-10 text-ink-3 hover:text-foreground md:h-7 md:w-7" />
 
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
+            {/* A 40px tap target on phones around the same 26px badge. */}
             <button
               type="button"
               aria-label="Account menu"
-              className="grid h-[26px] w-[26px] shrink-0 cursor-pointer place-items-center rounded-full border border-line bg-brand-dim font-mono text-[10px] font-semibold text-brand outline-none focus-visible:ring-[3px] focus-visible:ring-ring/60 focus-visible:ring-offset-1 focus-visible:ring-offset-background"
+              className="group grid size-10 shrink-0 cursor-pointer place-items-center rounded-full outline-none md:size-[26px]"
             >
-              {userInitials}
+              <span className="grid size-[26px] place-items-center rounded-full border border-line bg-brand-dim font-mono text-[10px] font-semibold text-brand group-focus-visible:ring-[3px] group-focus-visible:ring-ring/60 group-focus-visible:ring-offset-1 group-focus-visible:ring-offset-background">
+                {userInitials}
+              </span>
             </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent side="bottom" align="end" className="w-56">

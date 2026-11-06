@@ -3,6 +3,7 @@
 import { ArrowRight, CalendarCheck, Cpu, FileText, GitBranch, type LucideIcon, Plus, TrendingUp } from 'lucide-react';
 import Link from 'next/link';
 
+import { useOwnsPageHeading } from '@/components/layout/pageHeading';
 import { SupportLink } from '@/components/SupportLink';
 import { Panel, PanelDescription, PanelTitle } from '@/components/ui/panel';
 import { SectionHeading, SectionHint } from '@/components/ui/section-heading';
@@ -103,6 +104,8 @@ function ShortcutCard({ shortcut }: { shortcut: Shortcut }) {
 export default function OverviewPage() {
     const { user } = useAuth();
     const { can } = useOrgConfig();
+    // The greeting is this screen's h1; the header keeps "Overview" as text.
+    useOwnsPageHeading();
 
     const daily = DAILY.filter((s) => can(s.requires));
     const setup = SETUP.filter((s) => can(s.requires));
