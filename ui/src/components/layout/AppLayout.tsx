@@ -19,15 +19,18 @@ import { AgentShellProvider } from "@/context/AgentShellContext";
 import { useAppConfig } from "@/context/AppConfigContext";
 import { useOrgConfig } from "@/context/OrgConfigContext";
 import { useFeatureFlags, useFeatureFlagsLoaded } from "@/hooks/useFeatureFlags";
+import { cn } from "@/lib/utils";
 
 import { AgentTestRail } from "./AgentTestRail";
 import { AppSidebar } from "./AppSidebar";
 import { AppTopBar } from "./AppTopBar";
+import { hidesTabBar, MobileTabBar } from "./MobileTabBar";
 import { getRequiredPermission } from "./navConfig";
 import { PageActionsSlotProvider } from "./PageActionsSlot";
 import { PageHeadingProvider } from "./pageHeading";
 import { useShellChrome } from "./shellContext";
 import { WelcomeToast } from "./WelcomeToast";
+import { WorkspaceAgentsProvider } from "./workspaceAgents";
 
 function BackendStatusBanner() {
   const { config, loading, refresh } = useAppConfig();
@@ -151,6 +154,9 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
   // A run's detail screen is a read-only record, and a run opened from a
   // workspace list stays in the workspace — neither gets the live test rail.
   const { showTestRail } = useShellChrome();
+  // Phones get the tab bar instead of the sidebar, except on the full-screen
+  // conversation diagram.
+  const showTabBar = !hidesTabBar(pathname);
 
   // The API enforces roles; this just replaces a screen full of 403s with an
   // explanation. A restricted screen waits for the role so it doesn't mount
@@ -194,6 +200,7 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
           </div>
         ) : (
           <PageActionsSlotProvider slot={actionsSlot}>
+            <WorkspaceAgentsProvider>
             <PageHeadingProvider>
               <div className="app-surface flex h-svh w-full flex-col overflow-hidden">
                 <a
@@ -205,13 +212,19 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
                 <AppTopBar actionsSlotRef={setActionsSlot} />
                 <WelcomeToast />
 
-                <div className="flex min-h-0 flex-1 gap-3.5 px-3.5 pb-3.5 md:pl-0">
+                {/* On phones the content stops above the fixed tab bar. */}
+                <div
+                  className={cn(
+                    "flex min-h-0 flex-1 gap-3.5 px-3.5 pb-3.5 md:pl-0",
+                    showTabBar && "max-md:pb-[calc(64px+env(safe-area-inset-bottom)+0.875rem)]",
+                  )}
+                >
                   <AppSidebar />
                   <main
                     ref={mainRef}
                     id={MAIN_CONTENT_ID}
                     tabIndex={-1}
-                    className="app-content-panel min-w-0 flex-1 overflow-y-auto rounded-xl border border-line bg-panel outline-none [scrollbar-gutter:stable]"
+                    className="app-content-panel relative min-w-0 flex-1 overflow-y-auto rounded-xl border border-line bg-panel outline-none [scrollbar-gutter:stable]"
                   >
                     <BackendStatusBanner />
                     <PendingDeletionBanner />
@@ -231,8 +244,10 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
                   </main>
                   {showTestRail && <AgentTestRail />}
                 </div>
+                {showTabBar && <MobileTabBar />}
               </div>
             </PageHeadingProvider>
+            </WorkspaceAgentsProvider>
           </PageActionsSlotProvider>
         )}
       </AgentShellProvider>

@@ -28,8 +28,11 @@ import { useLatestReleaseVersion } from "@/hooks/useLatestReleaseVersion";
 import type { LocalUser } from "@/lib/auth";
 import { useAuth } from "@/lib/auth";
 import { type Permission, ROLE_LABELS } from "@/lib/auth/roles";
+import { cn } from "@/lib/utils";
+import { workspaceDisplayName } from "@/lib/workspaceName";
 
 import { agentSectionFor } from "./agentNav";
+import { initialsOf, memberName } from "./memberIdentity";
 import { getPageMeta } from "./navConfig";
 import { usePageHeadingOwned } from "./pageHeading";
 import { useShellChrome } from "./shellContext";
@@ -108,22 +111,12 @@ export function AppTopBar({
     enabled: config?.deploymentMode === "oss",
   });
 
-  const { role, can } = useOrgConfig();
+  const { role, can, orgContext } = useOrgConfig();
 
   const accountLinks = accountMenuLinks(provider, role === null ? null : can);
 
-  const displayIdentity =
-    user?.displayName ||
-    (user as { primaryEmail?: string } | undefined)?.primaryEmail ||
-    (user as LocalUser | undefined)?.email ||
-    "";
-  const userInitials =
-    displayIdentity
-      .split(/[\s@]/)
-      .filter(Boolean)
-      .slice(0, 2)
-      .map((s: string) => s[0]?.toUpperCase())
-      .join("") || "U";
+  const userInitials = initialsOf(memberName(user));
+  const workspaceName = workspaceDisplayName(orgContext?.organization_name);
 
   const separator = (
     <span aria-hidden className="select-none text-xs text-ink-3 opacity-40">
@@ -135,30 +128,35 @@ export function AppTopBar({
     // Below md the header wraps: identity stays on the first row and the
     // screen's actions drop below it, wrapping rather than running off-screen.
     <header className="flex min-h-[46px] flex-none flex-wrap items-center gap-2 px-3.5 py-1.5 md:h-[46px] md:flex-nowrap md:py-0">
+      {/* Phones move around with the tab bar; the menu button stays only on
+          an agent's screens, whose own sections the tab bar doesn't list. */}
       <Button
         variant="ghost"
         size="icon"
         onClick={toggleSidebar}
-        aria-label="Toggle navigation"
-        className="size-10 shrink-0 text-ink-3 hover:text-foreground md:size-7"
+        aria-label={agentShell ? "Agent menu" : "Toggle navigation"}
+        className={cn(
+          "size-11 shrink-0 text-ink-3 hover:text-foreground md:size-7",
+          !agentShell && "max-md:hidden"
+        )}
       >
         <Menu className="h-4 w-4" />
       </Button>
 
       <Link
         href="/overview"
-        className="notranslate flex shrink-0 items-center gap-1.5 rounded-md py-1 pl-1 pr-1.5"
+        aria-label={`${workspaceName}, Home`}
+        className="notranslate flex min-w-0 shrink-0 items-center gap-2 rounded-md py-1 pl-1 pr-1.5 max-md:max-w-[60%] max-md:shrink"
         translate="no"
       >
-        {/* The kit lockup, mark at its 24px minimum. */}
-        <BrandLogo size={24} />
-      </Link>
-
-      {uiVersion && (
-        <span className="hidden font-mono text-[11px] text-ink-3 lg:inline">
-          v{uiVersion}
+        {/* Phones: the mark and the business's name (mocks/mobile.png).
+            Wider: the kit lockup, mark at its 24px minimum. */}
+        <BrandLogo mark size={28} className="md:hidden" />
+        <span className="truncate font-display text-[17px] font-semibold tracking-tight text-foreground md:hidden">
+          {workspaceName}
         </span>
-      )}
+        <BrandLogo size={24} className="max-md:hidden" />
+      </Link>
       {isBehind && latestRelease && (
         <Tooltip>
           <TooltipTrigger asChild>
@@ -192,7 +190,15 @@ export function AppTopBar({
       <span className="hidden sm:inline">{separator}</span>
       {/* Narrow, the title takes the room that's left and truncates rather
           than pushing the help and account buttons onto a second row. */}
-      <TitleTag className="min-w-0 flex-1 basis-0 truncate whitespace-nowrap text-sm font-semibold text-foreground md:flex-none md:basis-auto">
+      {/* On phones the business name heads the bar, so the screen's name
+          drops to its own line, or away when the screen prints its own. */}
+      <TitleTag
+        className={cn(
+          "min-w-0 truncate whitespace-nowrap text-sm font-semibold text-foreground md:flex-none md:basis-auto",
+          "max-md:order-[90] max-md:w-full max-md:px-1 max-md:pb-1 max-md:text-[15px]",
+          pageOwnsHeading && "max-md:hidden"
+        )}
+      >
         {meta.title}
       </TitleTag>
       {meta.subtitle && !pageOwnsHeading && (
@@ -207,22 +213,27 @@ export function AppTopBar({
         className="order-last flex w-full min-w-0 flex-wrap items-center gap-2 empty:hidden md:order-none md:ml-auto md:w-auto md:flex-nowrap md:justify-end md:empty:flex"
       />
 
-      <div className="ml-auto flex flex-none items-center gap-1 md:ml-0 md:gap-2.5">
+      <div className="ml-auto flex flex-none items-center gap-1 md:gap-2.5">
         {/* On xl the test rail is pinned beside the content panel; below it,
-            the same panel opens as a sheet from here. */}
+            or while a screen has it closed, it opens from here. */}
         {agentShell && showTestRail && (
           <Button
             variant="outline"
             size="sm"
             onClick={agentShell.openTester}
-            className="h-7 gap-1.5 rounded-md border-line bg-transparent px-2.5 text-xs text-ink-2 hover:bg-panel-2 hover:text-foreground xl:hidden"
+            className={cn(
+              "h-9 gap-1.5 rounded-md border-line bg-transparent px-2.5 text-xs text-ink-2 hover:bg-panel-2 hover:text-foreground md:h-7",
+              // Pinned beside the page on xl, unless a screen closed it.
+              agentShell.isRailOpen && "xl:hidden"
+            )}
           >
             <Bot className="h-3.5 w-3.5" />
             Test agent
           </Button>
         )}
 
-        <SupportLink iconOnly tooltipSide="bottom" variant="ghost" className="h-10 w-10 text-ink-3 hover:text-foreground md:h-7 md:w-7" />
+        {/* On phones Help is in the More sheet. */}
+        <SupportLink iconOnly tooltipSide="bottom" variant="ghost" className="h-7 w-7 text-ink-3 hover:text-foreground max-md:hidden" />
 
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
@@ -230,7 +241,7 @@ export function AppTopBar({
             <button
               type="button"
               aria-label="Account menu"
-              className="group grid size-10 shrink-0 cursor-pointer place-items-center rounded-full outline-none md:size-[26px]"
+              className="group grid size-11 shrink-0 cursor-pointer place-items-center rounded-full outline-none md:size-[26px]"
             >
               <span className="grid size-[26px] place-items-center rounded-full border border-line bg-brand-dim font-mono text-[10px] font-semibold text-brand group-focus-visible:ring-[3px] group-focus-visible:ring-ring/60 group-focus-visible:ring-offset-1 group-focus-visible:ring-offset-background">
                 {userInitials}
