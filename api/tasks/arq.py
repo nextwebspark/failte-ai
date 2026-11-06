@@ -59,6 +59,7 @@ REDIS_SETTINGS = RedisSettings(
 
 from api.services.failure_alerts import send_failure_alert
 from api.tasks.billing_sweep import sweep_uncharged_workflow_runs
+from api.tasks.call_review import review_finished_call
 from api.tasks.campaign_tasks import (
     process_campaign_batch,
     sync_campaign_source,
@@ -98,6 +99,7 @@ class WorkerSettings:
         deliver_webhook,
         complete_inactive_text_chat_session,
         send_failure_alert,
+        review_finished_call,
     ]
     cron_jobs = [
         # Safety net for webhook deliveries whose ARQ job was lost (worker

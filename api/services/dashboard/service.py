@@ -9,6 +9,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from api.constants import BILLING_PROVIDER
 from api.db import db_client
 from api.services.billing import pricing
+from api.services.call_review.categories import reason_set, template_for_workflow
 from api.services.dashboard.calls import CallView, call_view
 from api.services.dashboard.follow_ups import (
     LOOKBACK,
@@ -24,6 +25,7 @@ from api.services.dashboard.summary import (
     DashboardRange,
     agent_status,
     call_change,
+    callers_wanted,
     calls_by_hour,
     credit_summary,
     range_bounds,
@@ -111,6 +113,29 @@ async def _credit(organization_id: int) -> dict[str, Any] | None:
     )
 
 
+async def _wording(
+    organization_id: int, workflow_id: int | None, agents: list[dict[str, Any]]
+) -> dict[str, Any]:
+    """Home's words for the kind of business: the starter template of the
+    agent shown (or the workspace's first answering agent)."""
+    agent_id = workflow_id
+    if agent_id is None:
+        active = [a for a in agents if a.get("status") == "active"]
+        agent_id = (active or agents or [{"id": None}])[0]["id"]
+    source = (
+        await db_client.get_agent_template_source(organization_id, agent_id)
+        if agent_id is not None
+        else None
+    )
+    template = (
+        template_for_workflow(source["definition"], source["facts"])
+        if source
+        else "general"
+    )
+    reasons = reason_set(template)
+    return {"template": reasons.template, "bookings_label": reasons.bookings_label}
+
+
 async def dashboard_summary(
     *,
     organization_id: int,
@@ -135,14 +160,15 @@ async def dashboard_summary(
         workflow_id=workflow_id,
     )
     credit = await _credit(organization_id)
+    last_call_at = await db_client.get_last_inbound_call_at(
+        organization_id, workflow_id
+    )
     status = agent_status(
         agents=agents,
         numbers=await db_client.get_answering_numbers(organization_id),
         workflow_id=workflow_id,
         credit_too_low=bool(credit and credit["too_low"]),
-        last_call_at=await db_client.get_last_inbound_call_at(
-            organization_id, workflow_id
-        ),
+        last_call_at=last_call_at,
     )
     scoped_agents = [a for a in agents if workflow_id is None or a["id"] == workflow_id]
     return {
@@ -156,6 +182,10 @@ async def dashboard_summary(
         "calls_change": call_change(len(calls), previous_calls),
         "calls_by_hour": calls_by_hour(calls, tz),
         "recent_calls": recent_calls(calls),
+        "callers_wanted": callers_wanted(calls),
+        "wording": await _wording(organization_id, workflow_id, agents),
+        # Whether any real call ever came in (else screens may show samples).
+        "has_calls": last_call_at is not None,
         "agent_status": status,
         "credit": credit if show_credit else None,
         "agents": [
@@ -189,6 +219,10 @@ async def follow_up_list(
         "open_count": sum(1 for i in items if not i.done),
         "done_count": sum(1 for i in items if i.done),
         "week": week_summary(items, now),
+        "has_calls": await db_client.get_last_inbound_call_at(
+            organization_id, workflow_id
+        )
+        is not None,
     }
 
 

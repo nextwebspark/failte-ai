@@ -17,7 +17,7 @@ import {
     RefreshCw,
 } from "lucide-react";
 import Link from "next/link";
-import { type ReactNode, useState } from "react";
+import { type ReactNode, useMemo, useState } from "react";
 
 import { formatPhone } from "@/app/usage/callsView";
 import type {
@@ -32,15 +32,20 @@ import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { agentFactsHref, agentTalkHref } from "@/components/workflow/agentLinks";
 import { useOrgConfig } from "@/context/OrgConfigContext";
+import { useSampleMode } from "@/lib/sampleData";
 import { cn } from "@/lib/utils";
 
+import { AddAnswerDialog } from "./AddAnswerDialog";
+import { CallersWantedChart } from "./CallersWantedChart";
 import {
     callerWords,
     callLength,
     callsTileLabel,
     callWhen,
     changeWords,
+    type ChipTone,
     euros,
+    followUpKey,
     lastCallWords,
     notAnsweringWords,
     RANGE_OPTIONS,
@@ -51,7 +56,9 @@ import {
 import { Chip, FollowUpRow } from "./FollowUpRow";
 import { HomeSkeleton } from "./HomeSkeleton";
 import { HourlyCallsChart } from "./HourlyCallsChart";
-import { useDashboardSummary, useFollowUps } from "./useDashboardData";
+import { SampleBanner, SampleDataPill } from "./SampleBanner";
+import { SAMPLE_OUTCOME_WORDS, sampleFollowUpItems, sampleOutcomes, sampleSummary } from "./sampleView";
+import { useDashboardSummary, useFollowUpMarking, useFollowUps } from "./useDashboardData";
 
 const ATTENTION_LIMIT = 4;
 
@@ -291,13 +298,20 @@ function Attention({
     timezone,
     now,
     followUpsHref,
+    sample,
+    onAddAnswer,
 }: {
     items: FollowUpItem[] | null;
     openCount: number | null;
     timezone: string;
     now: Date;
     followUpsHref: string;
+    sample: boolean;
+    onAddAnswer: (item: FollowUpItem) => void;
 }) {
+    const { can } = useOrgConfig();
+    const { busy, change } = useFollowUpMarking();
+    const canMark = can("followups:manage");
     return (
         <Card
             titleId="home-attention"
@@ -324,7 +338,22 @@ function Attention({
             ) : (
                 <ul className="flex flex-col">
                     {items.slice(0, ATTENTION_LIMIT).map((item) => (
-                        <FollowUpRow key={item.run_id} item={item} timezone={timezone} now={now} returnTo="/overview" />
+                        <FollowUpRow
+                            key={followUpKey(item)}
+                            item={item}
+                            timezone={timezone}
+                            now={now}
+                            returnTo="/overview"
+                            sample={sample}
+                            busy={busy === followUpKey(item)}
+                            // Done here only for the review kinds (no call to return).
+                            onMarkDone={
+                                canMark && (item.kind === "unanswered_question" || item.kind === "time_was_full")
+                                    ? (i) => void change(i, true)
+                                    : undefined
+                            }
+                            onAddAnswer={canMark && can("agents:facts") ? onAddAnswer : undefined}
+                        />
                     ))}
                 </ul>
             )}
@@ -332,7 +361,22 @@ function Attention({
     );
 }
 
-function PlayLink({ call, returnTo }: { call: DashboardRecentCall; returnTo: string }) {
+/** A recent call's chip: its result, or a sample call's own outcome. */
+type ChipFor = (call: DashboardRecentCall) => { label: string; tone: ChipTone };
+
+function PlayLink({ call, returnTo, sample }: { call: DashboardRecentCall; returnTo: string; sample: boolean }) {
+    if (sample) {
+        return (
+            <span
+                className="grid size-7 place-items-center rounded-full bg-panel-2 text-ink-3"
+                title="Sample call: there's no recording"
+                aria-label="Sample call: there's no recording"
+                role="img"
+            >
+                <Play className="size-3 fill-current" aria-hidden />
+            </span>
+        );
+    }
     if (!call.has_recording) {
         return <span className="block size-7" aria-hidden />;
     }
@@ -347,9 +391,28 @@ function PlayLink({ call, returnTo }: { call: DashboardRecentCall; returnTo: str
     );
 }
 
-function RecentCalls({ summary, now }: { summary: DashboardSummaryResponse; now: Date }) {
+function RecentCalls({
+    summary,
+    now,
+    sample,
+    chipFor,
+}: {
+    summary: DashboardSummaryResponse;
+    now: Date;
+    sample: boolean;
+    chipFor: ChipFor;
+}) {
     const calls = summary.recent_calls;
     const returnTo = "/overview";
+    // A sample call has nothing to open.
+    const CallerLink = ({ call, className, children }: { call: DashboardRecentCall; className: string; children: ReactNode }) =>
+        sample ? (
+            <span className={className}>{children}</span>
+        ) : (
+            <Link href={runDetailHref(call.workflow_id, call.run_id, returnTo)} className={className}>
+                {children}
+            </Link>
+        );
     return (
         <Card titleId="home-recent" title="Recent calls" action={<CardLink href="/usage">All calls</CardLink>}>
             {calls.length === 0 ? (
@@ -361,18 +424,16 @@ function RecentCalls({ summary, now }: { summary: DashboardSummaryResponse; now:
                     {/* Phone: a simple list */}
                     <ul className="flex flex-col @xl:hidden">
                         {calls.map((call) => (
-                            <li key={call.run_id} className="flex items-center gap-3 border-t border-line-soft py-2.5 first:border-t-0">
-                                <PlayLink call={call} returnTo={returnTo} />
-                                <Link
-                                    href={runDetailHref(call.workflow_id, call.run_id, returnTo)}
-                                    className="min-w-0 flex-1 outline-none focus-visible:underline"
-                                >
+                            <li key={call.run_id} className="flex items-start gap-3 border-t border-line-soft py-2.5 first:border-t-0">
+                                <PlayLink call={call} returnTo={returnTo} sample={sample} />
+                                <CallerLink call={call} className="min-w-0 flex-1 outline-none focus-visible:underline">
                                     <span className="block truncate text-[13.5px] font-semibold text-foreground">{callerWords(call)}</span>
-                                    <span className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11.5px] tabular-nums text-ink-3">
-                                        <Chip tone={RESULT_WORDS[call.result].tone}>{RESULT_WORDS[call.result].label}</Chip>
+                                    {call.summary && <span className="mt-0.5 block text-[12.5px] leading-snug text-ink-2">{call.summary}</span>}
+                                    <span className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11.5px] tabular-nums text-ink-3">
+                                        <Chip tone={chipFor(call).tone}>{chipFor(call).label}</Chip>
                                         {callWhen(call.created_at, summary.timezone, now)}
                                     </span>
-                                </Link>
+                                </CallerLink>
                             </li>
                         ))}
                     </ul>
@@ -384,33 +445,36 @@ function RecentCalls({ summary, now }: { summary: DashboardSummaryResponse; now:
                                     <span className="sr-only">Listen</span>
                                 </th>
                                 <th className="pb-2.5" scope="col">Caller</th>
+                                <th className="pb-2.5" scope="col">What happened</th>
                                 <th className="pb-2.5" scope="col">Outcome</th>
-                                <th className="pb-2.5 text-right" scope="col">Length</th>
                                 <th className="pb-2.5 text-right" scope="col">Time</th>
                             </tr>
                         </thead>
                         <tbody>
                             {calls.map((call) => (
                                 <tr key={call.run_id} className="border-b border-line-soft last:border-b-0">
-                                    <td className="py-2.5">
-                                        <PlayLink call={call} returnTo={returnTo} />
+                                    <td className="py-2.5 align-top">
+                                        <PlayLink call={call} returnTo={returnTo} sample={sample} />
                                     </td>
-                                    <td className="py-2.5 pr-3">
-                                        <Link
-                                            href={runDetailHref(call.workflow_id, call.run_id, returnTo)}
-                                            className="font-semibold text-foreground hover:underline"
-                                        >
+                                    <td className="w-[28%] py-2.5 pr-3 align-top">
+                                        <CallerLink call={call} className="font-semibold text-foreground hover:underline">
                                             {callerWords(call)}
-                                        </Link>
+                                        </CallerLink>
                                         {call.caller_name && call.caller_number && (
                                             <div className="text-[12px] tabular-nums text-ink-3">{formatPhone(call.caller_number)}</div>
                                         )}
                                     </td>
-                                    <td className="py-2.5 pr-3">
-                                        <Chip tone={RESULT_WORDS[call.result].tone}>{RESULT_WORDS[call.result].label}</Chip>
+                                    <td className="py-2.5 pr-3 align-top text-ink-2">
+                                        {call.summary ?? (
+                                            <span className="text-ink-3">
+                                                {callLength(call.duration_seconds) ? `${callLength(call.duration_seconds)} call` : "—"}
+                                            </span>
+                                        )}
                                     </td>
-                                    <td className="py-2.5 text-right tabular-nums text-ink-2">{callLength(call.duration_seconds) ?? "—"}</td>
-                                    <td className="py-2.5 text-right tabular-nums text-ink-2">
+                                    <td className="py-2.5 pr-3 align-top">
+                                        <Chip tone={chipFor(call).tone}>{chipFor(call).label}</Chip>
+                                    </td>
+                                    <td className="whitespace-nowrap py-2.5 text-right align-top tabular-nums text-ink-2">
                                         {callWhen(call.created_at, summary.timezone, now)}
                                     </td>
                                 </tr>
@@ -434,6 +498,46 @@ function WhenPeopleCalled({ summary }: { summary: DashboardSummaryResponse }) {
                 <p className="py-4 text-[13px] text-ink-3">No calls in this time yet.</p>
             ) : (
                 <HourlyCallsChart hours={summary.calls_by_hour} caption={sub} />
+            )}
+        </Card>
+    );
+}
+
+function rangeWords(range: DashboardRange): string {
+    return range === "today" ? "Today" : range === "7d" ? "Last 7 days" : "Last 30 days";
+}
+
+/** The doc's small figures under the ring: real counts only. */
+function StatChip({ value, label }: { value: ReactNode; label: string }) {
+    return (
+        <div className="min-w-0 rounded-[10px] bg-panel-2 px-3.5 py-2.5">
+            <div className="font-display text-[17px] font-semibold tabular-nums text-foreground">{value}</div>
+            <div className="text-[12px] text-ink-3">{label}</div>
+        </div>
+    );
+}
+
+function CallersWanted({ summary }: { summary: DashboardSummaryResponse }) {
+    const reasons = summary.callers_wanted;
+    const bookings = summary.wording.bookings_label;
+    const average = callLength(summary.tiles.average_call_seconds);
+    const when = rangeWords(summary.range);
+    return (
+        <Card
+            titleId="home-wanted"
+            title="What callers wanted"
+            action={<span className="text-[13px] text-ink-3">{when}</span>}
+        >
+            {reasons.length === 0 ? (
+                <p className="py-4 text-[13px] text-ink-3">No calls in this time yet.</p>
+            ) : (
+                <CallersWantedChart reasons={reasons} caption={`What callers wanted, ${when.toLowerCase()}`} />
+            )}
+            {(bookings || average) && summary.tiles.calls > 0 && (
+                <div className="mt-4 grid grid-cols-2 gap-2.5">
+                    {bookings && <StatChip value={summary.tiles.bookings_taken} label={bookings} />}
+                    {average && <StatChip value={average} label="average call" />}
+                </div>
             )}
         </Card>
     );
@@ -596,9 +700,12 @@ function QuickLinks({ summary, onTryAgent }: { summary: DashboardSummaryResponse
 function GetStarted({
     summary,
     onTryAgent,
+    onShowSample,
 }: {
     summary: DashboardSummaryResponse;
     onTryAgent?: () => void;
+    /** Offered when the sample calls are hidden. */
+    onShowSample?: () => void;
 }) {
     const status = summary.agent_status;
     const agentId = primaryAgentId(summary);
@@ -684,7 +791,45 @@ function GetStarted({
                     </>
                 )}
             </div>
+            {onShowSample && (
+                <p className="mt-3 text-[12.5px] text-ink-3">
+                    Want to see how this page looks with calls?{" "}
+                    <button type="button" onClick={onShowSample} className="font-semibold text-brand hover:underline">
+                        Show sample data
+                    </button>
+                </p>
+            )}
         </Card>
+    );
+}
+
+/** The way to a first real call, for the sample banner. */
+function TryAgentButton({ summary, onTryAgent }: { summary: DashboardSummaryResponse; onTryAgent?: () => void }) {
+    const agentId = primaryAgentId(summary);
+    const number = summary.agent_status.answering ? summary.agent_status.phone_numbers[0] : undefined;
+    if (number) {
+        return (
+            <Button asChild size="sm" className="md:hidden">
+                <a href={telHref(number)}>
+                    <Phone aria-hidden />
+                    Ring your agent now
+                </a>
+            </Button>
+        );
+    }
+    if (agentId == null) return null;
+    return onTryAgent ? (
+        <Button size="sm" onClick={onTryAgent}>
+            <Mic aria-hidden />
+            Try your agent
+        </Button>
+    ) : (
+        <Button asChild size="sm">
+            <Link href={agentTalkHref(agentId)}>
+                <Mic aria-hidden />
+                Try your agent
+            </Link>
+        </Button>
     );
 }
 
@@ -706,11 +851,25 @@ export function HomeDashboard({ heading, workflowId, onTryAgent }: HomeDashboard
     const [range, setRange] = useState<DashboardRange>("today");
     const { result, reload } = useDashboardSummary(range, workflowId);
     const followUps = useFollowUps("open", workflowId);
+    const [answering, setAnswering] = useState<FollowUpItem | null>(null);
     // One clock per render, so every relative time agrees.
     const now = new Date();
 
     const followUpsHref = "/follow-ups";
-    const summary = result.state === "ready" ? result.data : null;
+    const real = result.state === "ready" ? result.data : null;
+    // Until the first real call, the sample day shows (clearly labelled);
+    // it goes by itself once a call comes in.
+    const { showSample, hide, show } = useSampleMode(real ? real.has_calls : null);
+    const business = real?.agents[0]?.name;
+    const summary = useMemo(
+        () => (real && showSample ? sampleSummary(real, undefined, new Date()) : real),
+        [real, showSample],
+    );
+    const outcomes = useMemo(() => sampleOutcomes(), []);
+    const chipFor: ChipFor = (call) => {
+        const outcome = showSample ? outcomes.get(call.run_id) : undefined;
+        return (outcome && SAMPLE_OUTCOME_WORDS[outcome]) || RESULT_WORDS[call.result];
+    };
     const timezone = summary?.timezone ?? null;
 
     const header = (
@@ -722,12 +881,14 @@ export function HomeDashboard({ heading, workflowId, onTryAgent }: HomeDashboard
                 <p className="mt-1 text-[14px] text-ink-3">{rangeSentence(range, now, timezone)}</p>
             </div>
             <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center @4xl:flex-nowrap">
+                {showSample && <SampleDataPill className="self-start sm:self-auto" />}
                 {summary && (
                     <div>
                         <StatusPill summary={summary} />
                     </div>
                 )}
-                <RangeSwitch value={range} onChange={setRange} />
+                {/* The sample is one made-up day: nothing to switch. */}
+                {!showSample && <RangeSwitch value={range} onChange={setRange} />}
             </div>
         </header>
     );
@@ -764,24 +925,45 @@ export function HomeDashboard({ heading, workflowId, onTryAgent }: HomeDashboard
     }
 
     const brandNew = !summary.agent_status.last_call_at;
-    const attentionItems = followUps.result.state === "ready" ? followUps.result.data.items : followUps.result.state === "error" ? null : [];
-    const openCount = followUps.result.state === "ready" ? followUps.result.data.open_count : null;
+    const sampleItems = showSample ? sampleFollowUpItems(business, now) : null;
+    const attentionItems =
+        sampleItems ??
+        (followUps.result.state === "ready" ? followUps.result.data.items : followUps.result.state === "error" ? null : []);
+    const openCount = sampleItems
+        ? sampleItems.length
+        : followUps.result.state === "ready"
+          ? followUps.result.data.open_count
+          : null;
+    // Real calls: the dashboard. No calls: the setup steps, then (unless
+    // hidden) the sample day below its banner.
+    const setUp = brandNew;
 
     return (
         <div className="page-body @container flex min-w-0 flex-col gap-5">
             {header}
             <NotAnsweringBanner summary={summary} now={now} />
 
-            {brandNew ? (
+            {setUp && (
                 <div className="grid grid-cols-1 gap-4 @4xl:grid-cols-[minmax(0,7fr)_minmax(0,5fr)]">
-                    <GetStarted summary={summary} onTryAgent={onTryAgent} />
+                    <GetStarted summary={summary} onTryAgent={onTryAgent} onShowSample={showSample ? undefined : show} />
                     <AgentCard summary={summary} now={now} onTryAgent={onTryAgent} />
                 </div>
-            ) : (
+            )}
+
+            {showSample && (
+                <SampleBanner
+                    text="This is how Home looks once calls come in. These calls are made up."
+                    onHide={hide}
+                    action={<TryAgentButton summary={summary} onTryAgent={onTryAgent} />}
+                />
+            )}
+
+            {(!setUp || showSample) && (
                 <>
                     <Tiles summary={summary} now={now} />
                     {/* Two columns on a computer; on a phone one list in the
-                        design's order: attention, hours, recent calls, agent. */}
+                        design's order: attention, what callers wanted, hours,
+                        recent calls, agent. */}
                     <div className="flex flex-col gap-4 @4xl:flex-row @4xl:items-start">
                         <div className="contents @4xl:flex @4xl:w-[58%] @4xl:min-w-0 @4xl:flex-col @4xl:gap-4">
                             <div className="order-1 min-w-0 @4xl:order-none">
@@ -791,25 +973,34 @@ export function HomeDashboard({ heading, workflowId, onTryAgent }: HomeDashboard
                                     timezone={summary.timezone}
                                     now={now}
                                     followUpsHref={followUpsHref}
+                                    sample={showSample}
+                                    onAddAnswer={setAnswering}
                                 />
                             </div>
-                            <div className="order-3 min-w-0 @4xl:order-none">
-                                <RecentCalls summary={summary} now={now} />
+                            <div className="order-4 min-w-0 @4xl:order-none">
+                                <RecentCalls summary={summary} now={now} sample={showSample} chipFor={chipFor} />
                             </div>
                         </div>
                         <div className="contents @4xl:flex @4xl:min-w-0 @4xl:flex-1 @4xl:flex-col @4xl:gap-4">
-                            <div className="order-4 min-w-0 @4xl:order-none">
-                                <AgentCard summary={summary} now={now} onTryAgent={onTryAgent} />
-                            </div>
                             <div className="order-2 min-w-0 @4xl:order-none">
+                                <CallersWanted summary={summary} />
+                            </div>
+                            <div className="order-3 min-w-0 @4xl:order-none">
                                 <WhenPeopleCalled summary={summary} />
                             </div>
+                            {/* The setup row above already shows the agent. */}
+                            {!setUp && (
+                                <div className="order-5 min-w-0 @4xl:order-none">
+                                    <AgentCard summary={summary} now={now} onTryAgent={onTryAgent} />
+                                </div>
+                            )}
                         </div>
                     </div>
                 </>
             )}
 
             <QuickLinks summary={summary} onTryAgent={onTryAgent} />
+            <AddAnswerDialog item={answering} onClose={() => setAnswering(null)} />
         </div>
     );
 }

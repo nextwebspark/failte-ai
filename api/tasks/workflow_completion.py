@@ -10,6 +10,7 @@ from api.services.telephony.external_pbx_writeback import (
 from api.services.workflow_run_billing import (
     report_completed_workflow_run_platform_usage,
 )
+from api.tasks.call_review import enqueue_call_review
 from api.tasks.run_integrations import (
     mark_post_call_done,
     run_integrations_post_workflow_run,
@@ -83,5 +84,11 @@ async def _process_workflow_completion(_ctx, workflow_run_id: int) -> None:
     # caller's name and message, which come from the final extraction.
     # Never raises; claims each channel first, so a retry sends nothing twice.
     await send_call_notifications(workflow_run_id)
+
+    # The short review (summary, what the caller wanted, questions the agent
+    # couldn't answer) runs as its own job, after the final extraction has
+    # had time to land; it never affects the call. A review landing after an
+    # erasure is cut back to what a purge keeps (retention_client).
+    await enqueue_call_review(workflow_run_id)
 
     logger.info(f"Completed workflow completion processing for run {workflow_run_id}")

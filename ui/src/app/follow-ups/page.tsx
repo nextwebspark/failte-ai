@@ -3,22 +3,21 @@
 import { AlertTriangle, CheckCircle2, RefreshCw } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
-import { toast } from "sonner";
 
-import {
-    markFollowUpDoneApiV1FollowUpsRunIdDonePost,
-    undoFollowUpDoneApiV1FollowUpsRunIdDoneDelete,
-} from "@/client/sdk.gen";
 import type { FollowUpItem, FollowUpKind, FollowUpListResponse, FollowUpStatus } from "@/client/types.gen";
-import { FOLLOW_UP_KINDS, FOLLOW_UP_WORDS, waitWords } from "@/components/dashboard/dashboardView";
+import { AddAnswerDialog } from "@/components/dashboard/AddAnswerDialog";
+import { FOLLOW_UP_KINDS, FOLLOW_UP_WORDS, followUpKey, waitWords } from "@/components/dashboard/dashboardView";
 import { FollowUpRow } from "@/components/dashboard/FollowUpRow";
-import { notifyFollowUpsChanged, useFollowUps } from "@/components/dashboard/useDashboardData";
+import { SampleBanner } from "@/components/dashboard/SampleBanner";
+import { sampleFollowUpItems } from "@/components/dashboard/sampleView";
+import { useFollowUpMarking, useFollowUps } from "@/components/dashboard/useDashboardData";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { PageHeader } from "@/components/ui/page-header";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useOrgConfig } from "@/context/OrgConfigContext";
 import { useOrganizationTimezone } from "@/hooks/useOrganizationTimezone";
+import { useSampleMode } from "@/lib/sampleData";
 import { cn } from "@/lib/utils";
 
 import { groupByCaller } from "./groups";
@@ -158,37 +157,20 @@ export default function FollowUpsPage() {
     const timezone = useOrganizationTimezone();
     const [status, setStatus] = useState<FollowUpStatus>("open");
     const [kind, setKind] = useState<KindFilter>("all");
-    const [busy, setBusy] = useState<number | null>(null);
+    const [answering, setAnswering] = useState<FollowUpItem | null>(null);
     const { result, reload } = useFollowUps(status);
+    const { busy, change } = useFollowUpMarking();
     const canMark = can("followups:manage");
+    const canAnswer = can("agents:facts") && canMark;
     const now = new Date();
 
-    const data = result.state === "ready" ? result.data : null;
+    const real = result.state === "ready" ? result.data : null;
+    // Until the first real call, the sample calls' follow-ups show instead.
+    const { showSample, hide } = useSampleMode(real ? real.has_calls : null);
+    const data: FollowUpListResponse | null = real && showSample ? sampleList(status, now) : real;
     const items = (data?.items ?? []).filter((item) => kind === "all" || item.kind === kind);
     const groups = groupByCaller(items);
 
-    const change = async (item: FollowUpItem, done: boolean) => {
-        setBusy(item.run_id);
-        try {
-            const path = { run_id: item.run_id };
-            const res = done
-                ? await markFollowUpDoneApiV1FollowUpsRunIdDonePost({ path })
-                : await undoFollowUpDoneApiV1FollowUpsRunIdDoneDelete({ path });
-            if (res.error) throw new Error("failed");
-            notifyFollowUpsChanged();
-            if (done) {
-                toast.success("Marked done", {
-                    action: { label: "Undo", onClick: () => void change(item, false) },
-                });
-            } else {
-                toast.success("Back on the to-do list");
-            }
-        } catch {
-            toast.error("Couldn't save that. Please try again.");
-        } finally {
-            setBusy(null);
-        }
-    };
 
     const switchStatus = (next: FollowUpStatus) => {
         setStatus(next);
@@ -201,6 +183,13 @@ export default function FollowUpsPage() {
                 title="Follow-ups"
                 description="Calls that need a person. Mark each one done when it's sorted."
             />
+            {showSample && real && (
+                <SampleBanner
+                    className="mb-4"
+                    text="This is how Follow-ups looks once calls come in. These calls are made up."
+                    onHide={hide}
+                />
+            )}
             <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
                 <section aria-label="Follow-ups list" className="min-w-0 overflow-hidden rounded-[14px] border border-line bg-panel shadow-xs">
                     <Tabs status={status} onChange={switchStatus} data={data} />
@@ -255,15 +244,17 @@ export default function FollowUpsPage() {
                                             <ul className="flex flex-col">
                                                 {group.items.map((item) => (
                                                     <FollowUpRow
-                                                        key={item.run_id}
+                                                        key={followUpKey(item)}
                                                         item={item}
                                                         timezone={timezone}
                                                         now={now}
                                                         returnTo="/follow-ups"
                                                         meta="waiting"
-                                                        busy={busy === item.run_id}
+                                                        sample={showSample}
+                                                        busy={busy === followUpKey(item)}
                                                         onMarkDone={canMark ? (i) => void change(i, true) : undefined}
                                                         onUndo={canMark ? (i) => void change(i, false) : undefined}
+                                                        onAddAnswer={canAnswer ? setAnswering : undefined}
                                                     />
                                                 ))}
                                             </ul>
@@ -276,6 +267,24 @@ export default function FollowUpsPage() {
                 </section>
                 <WeekPanel data={data} />
             </div>
+            <AddAnswerDialog item={answering} onClose={() => setAnswering(null)} />
         </div>
     );
+}
+
+/** The follow-ups of the sample calls (none done). */
+function sampleList(status: FollowUpStatus, now: Date): FollowUpListResponse {
+    const open = sampleFollowUpItems(undefined, now);
+    const items = status === "open" ? open : [];
+    const counts: Record<string, number> = Object.fromEntries(FOLLOW_UP_KINDS.map((k) => [k, 0]));
+    for (const item of items) counts[item.kind] += 1;
+    return {
+        status,
+        items,
+        kind_counts: counts,
+        open_count: open.length,
+        done_count: 0,
+        week: { raised: open.length, sorted: 0, median_wait_minutes: null },
+        has_calls: false,
+    };
 }

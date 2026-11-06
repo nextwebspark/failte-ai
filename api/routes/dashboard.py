@@ -11,7 +11,12 @@ from api.db import db_client
 from api.services.auth.depends import OrgMembership, require_permission
 from api.services.auth.permissions import Permission
 from api.services.dashboard.calls import CallResult
-from api.services.dashboard.follow_ups import FollowUpKind, FollowUpStatus, done_mark
+from api.services.dashboard.follow_ups import (
+    REVIEW_KINDS,
+    FollowUpKind,
+    FollowUpStatus,
+    done_mark,
+)
 from api.services.dashboard.service import (
     dashboard_summary,
     follow_up_list,
@@ -45,6 +50,8 @@ class DashboardTiles(BaseModel):
     callbacks_requested: int
     in_progress: int
     average_call_seconds: int | None
+    # Bookings the calendar confirmed on the call.
+    bookings_taken: int
 
 
 class DashboardRecentCall(BaseModel):
@@ -56,6 +63,24 @@ class DashboardRecentCall(BaseModel):
     result: CallResult
     duration_seconds: float | None
     has_recording: bool
+    # From the call review; None until it is written.
+    summary: str | None
+    reason_label: str | None
+
+
+class DashboardReason(BaseModel):
+    # The reason's key in the agent's template set, or "not_reviewed".
+    key: str
+    label: str
+    count: int
+    percent: int
+
+
+class DashboardWording(BaseModel):
+    # The starter template category the words come from.
+    template: str
+    # "bookings taken", "appointments booked"; None when the agent doesn't book.
+    bookings_label: str | None
 
 
 class DashboardAgentStatus(BaseModel):
@@ -94,6 +119,11 @@ class DashboardSummaryResponse(BaseModel):
     # Calls per local hour of the day, 0-23, summed over the range.
     calls_by_hour: list[int]
     recent_calls: list[DashboardRecentCall]
+    # What callers wanted, from the call reviews, most common first.
+    callers_wanted: list[DashboardReason]
+    wording: DashboardWording
+    # Whether any real call ever came in (scoped like the rest).
+    has_calls: bool
     agent_status: DashboardAgentStatus
     # None when calls aren't billed by prepaid credit, or the member can't
     # read billing.
@@ -117,6 +147,10 @@ class FollowUpItem(BaseModel):
     first_call_at: datetime | None
     done_at: datetime | None
     done_by: str | None
+    # From the call review, when written.
+    summary: str | None
+    # The questions the agent couldn't answer (``unanswered_question`` only).
+    questions: list[str]
 
 
 class FollowUpWeek(BaseModel):
@@ -132,6 +166,8 @@ class FollowUpListResponse(BaseModel):
     open_count: int
     done_count: int
     week: FollowUpWeek
+    # Whether any real call ever came in (scoped like the list).
+    has_calls: bool
 
 
 class FollowUpCountResponse(BaseModel):
@@ -140,6 +176,7 @@ class FollowUpCountResponse(BaseModel):
 
 class FollowUpMarkResponse(BaseModel):
     run_id: int
+    kind: FollowUpKind | None = None
     done_at: datetime | None
     done_by: str | None
 
@@ -205,8 +242,26 @@ async def count_follow_ups(
     )
 
 
+KindQuery = Annotated[
+    FollowUpKind | None,
+    Query(
+        description=(
+            "The follow-up's kind. Needed for the call-review kinds "
+            "(unanswered_question, time_was_full), which are done on their own; "
+            "the other kinds share one mark per call."
+        )
+    ),
+]
+
+
+def _mark_kind(kind: FollowUpKind | None) -> str | None:
+    return kind.value if kind in REVIEW_KINDS else None
+
+
 @router.post("/follow-ups/{run_id}/done", response_model=FollowUpMarkResponse)
-async def mark_follow_up_done(run_id: int, membership: FollowUpsManager):
+async def mark_follow_up_done(
+    run_id: int, membership: FollowUpsManager, kind: KindQuery = None
+):
     """Mark a call's follow-up done, saying who and when."""
     mark = done_mark(
         user_id=membership.user.id,
@@ -215,23 +270,30 @@ async def mark_follow_up_done(run_id: int, membership: FollowUpsManager):
         now=datetime.now(UTC),
     )
     if (
-        await db_client.set_follow_up_mark(membership.organization_id, run_id, mark)
+        await db_client.set_follow_up_mark(
+            membership.organization_id, run_id, mark, kind=_mark_kind(kind)
+        )
         is None
     ):
         raise HTTPException(status_code=404, detail="Call not found")
     return FollowUpMarkResponse(
         run_id=run_id,
+        kind=kind,
         done_at=datetime.fromisoformat(mark["done_at"]),
         done_by=mark["done_by"],
     )
 
 
 @router.delete("/follow-ups/{run_id}/done", response_model=FollowUpMarkResponse)
-async def undo_follow_up_done(run_id: int, membership: FollowUpsManager):
+async def undo_follow_up_done(
+    run_id: int, membership: FollowUpsManager, kind: KindQuery = None
+):
     """Put a follow-up back on the to-do list."""
     if (
-        await db_client.set_follow_up_mark(membership.organization_id, run_id, None)
+        await db_client.set_follow_up_mark(
+            membership.organization_id, run_id, None, kind=_mark_kind(kind)
+        )
         is None
     ):
         raise HTTPException(status_code=404, detail="Call not found")
-    return FollowUpMarkResponse(run_id=run_id, done_at=None, done_by=None)
+    return FollowUpMarkResponse(run_id=run_id, kind=kind, done_at=None, done_by=None)

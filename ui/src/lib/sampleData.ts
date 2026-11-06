@@ -160,3 +160,39 @@ export function useSampleMode(hasRealCalls: boolean | null): { showSample: boole
         show: useCallback(() => set(false), [set]),
     };
 }
+
+/** The sample day's numbers, matching SAMPLE_CALLS_BY_HOUR (46 calls). */
+export const SAMPLE_TILES = {
+    calls: 46,
+    handled: 38,
+    handled_percent: 83,
+    passed_to_team: 6,
+    transfer_picked_up: 5,
+    transfer_not_answered: 1,
+    hung_up_silent: 2,
+    callbacks_requested: 1,
+    in_progress: 0,
+    average_call_seconds: 126,
+    bookings_taken: 14,
+};
+
+/** What the sample day's callers wanted, keyed like SAMPLE_REASONS. */
+export const SAMPLE_CALLERS_WANTED: { key: SampleReasonKey; label: string; count: number; percent: number }[] = [
+    { key: "reservations", label: SAMPLE_REASONS.reservations, count: 21, percent: 46 },
+    { key: "questions", label: SAMPLE_REASONS.questions, count: 12, percent: 26 },
+    { key: "changes", label: SAMPLE_REASONS.changes, count: 7, percent: 15 },
+    { key: "takeaway", label: SAMPLE_REASONS.takeaway, count: 4, percent: 9 },
+    { key: "other", label: SAMPLE_REASONS.other, count: 2, percent: 4 },
+];
+
+/** A sample call's time, from its `minutesAgo`. */
+export function sampleCallTime(call: Pick<SampleCall, "minutesAgo">, now: Date = new Date()): string {
+    return new Date(now.getTime() - call.minutesAgo * 60_000).toISOString();
+}
+
+/** The sample calls that need a person, oldest first (as Follow-ups lists them). */
+export function sampleFollowUpCalls(business?: string): SampleCall[] {
+    return sampleCalls(business)
+        .filter((call) => call.followUp)
+        .sort((a, b) => b.minutesAgo - a.minutesAgo);
+}

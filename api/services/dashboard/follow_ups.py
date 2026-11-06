@@ -4,16 +4,20 @@ What lands here, all read from the stored call:
 
 * the caller asked to be called back, or left their details for a person;
 * the agent tried to pass the call to a person and nobody picked up;
-* a caller rang two or more times in a row and never reached anyone.
+* a caller rang two or more times in a row and never reached anyone;
+* the call review found a question the agent couldn't answer;
+* the call review found the caller wanted a time that was full (unless a
+  booking was made on the call anyway).
 
-Done is stored on the call (``annotations.follow_up``), so it needs no table
-of its own. A repeat caller's item sits on their latest unreached call: if they
+Done is stored on the call (``annotations.follow_up``, and for the two
+call-review kinds ``annotations.follow_up_kinds.<kind>``, so each is done on
+its own), so it needs no table of its own. A repeat caller's item sits on their latest unreached call: if they
 ring again and still reach nobody, a new item opens.
 """
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 from enum import StrEnum
@@ -39,6 +43,12 @@ class FollowUpKind(StrEnum):
     CALLBACK = "callback"
     TRANSFER_NOT_ANSWERED = "transfer_not_answered"
     REPEAT_CALLER = "repeat_caller"
+    UNANSWERED_QUESTION = "unanswered_question"
+    TIME_WAS_FULL = "time_was_full"
+
+
+# Kinds raised by the call review, each marked done on its own.
+REVIEW_KINDS = frozenset({FollowUpKind.UNANSWERED_QUESTION, FollowUpKind.TIME_WAS_FULL})
 
 
 class FollowUpStatus(StrEnum):
@@ -56,12 +66,18 @@ class FollowUp:
     first_call_at: datetime | None = None
 
     @property
+    def mark(self) -> Mapping[str, Any] | None:
+        if self.kind in REVIEW_KINDS:
+            return (self.call.follow_up_marks or {}).get(self.kind.value)
+        return self.call.follow_up_mark
+
+    @property
     def done(self) -> bool:
-        return self.call.follow_up_mark is not None
+        return self.mark is not None
 
     @property
     def done_at(self) -> datetime | None:
-        mark = self.call.follow_up_mark
+        mark = self.mark
         if not mark:
             return None
         try:
@@ -78,8 +94,22 @@ class FollowUp:
         )
 
 
+def unanswered_questions(call: CallView) -> list[str]:
+    questions = (call.review or {}).get("unanswered_questions")
+    if not isinstance(questions, list):
+        return []
+    return [q.strip() for q in questions if isinstance(q, str) and q.strip()]
+
+
+def _time_was_full(call: CallView) -> bool:
+    return (call.review or {}).get("time_was_full") is True and (
+        call.result != CallResult.BOOKING_MADE
+    )
+
+
 def follow_ups(calls: Iterable[CallView]) -> list[FollowUp]:
-    """Every follow-up the calls raise, open and done, one per call."""
+    """Every follow-up the calls raise, open and done: at most one of the
+    callback kinds per call, plus one per call-review kind."""
     calls = sorted(calls, key=lambda c: (c.created_at, c.run_id))
     items: dict[int, FollowUp] = {}
     for call in calls:
@@ -115,7 +145,15 @@ def follow_ups(calls: Iterable[CallView]) -> list[FollowUp]:
                 repeat_count=len(unreached),
                 first_call_at=first.created_at,
             )
-    return list(items.values())
+    reviewed: list[FollowUp] = []
+    for call in calls:
+        if call.result == CallResult.IN_PROGRESS:
+            continue
+        if unanswered_questions(call):
+            reviewed.append(FollowUp(FollowUpKind.UNANSWERED_QUESTION, call))
+        if _time_was_full(call):
+            reviewed.append(FollowUp(FollowUpKind.TIME_WAS_FULL, call))
+    return [*items.values(), *reviewed]
 
 
 def ordered(items: Sequence[FollowUp], status: FollowUpStatus) -> list[FollowUp]:
@@ -125,7 +163,11 @@ def ordered(items: Sequence[FollowUp], status: FollowUpStatus) -> list[FollowUp]
         done = [i for i in items if i.done]
         return sorted(
             done,
-            key=lambda i: (i.done_at.timestamp() if i.done_at else 0, i.call.run_id),
+            key=lambda i: (
+                i.done_at.timestamp() if i.done_at else 0,
+                i.call.run_id,
+                i.kind.value,
+            ),
             reverse=True,
         )
     open_items = [i for i in items if not i.done]
@@ -141,6 +183,7 @@ def ordered(items: Sequence[FollowUp], status: FollowUpStatus) -> list[FollowUp]
             i.group_key,
             i.call.created_at,
             i.call.run_id,
+            i.kind.value,
         ),
     )
 
@@ -172,7 +215,8 @@ def kind_counts(items: Iterable[FollowUp]) -> dict[str, int]:
 
 def follow_up_row(item: FollowUp) -> dict[str, Any]:
     call = item.call
-    mark = call.follow_up_mark or {}
+    mark = item.mark or {}
+    summary = (call.review or {}).get("summary")
     return {
         "run_id": call.run_id,
         "workflow_id": call.workflow_id,
@@ -189,6 +233,10 @@ def follow_up_row(item: FollowUp) -> dict[str, Any]:
         "first_call_at": item.first_call_at,
         "done_at": item.done_at,
         "done_by": mark.get("done_by") if item.done else None,
+        "summary": summary if isinstance(summary, str) and summary else None,
+        "questions": unanswered_questions(call)
+        if item.kind == FollowUpKind.UNANSWERED_QUESTION
+        else [],
     }
 
 

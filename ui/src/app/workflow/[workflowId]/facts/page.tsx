@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertCircle, BookOpenText, Check, CircleDashed, Mic, Play } from "lucide-react";
+import { AlertCircle, BookOpenText, Check, CircleDashed, MessageSquarePlus, Mic, Play } from "lucide-react";
 import Link from "next/link";
 import { useParams, usePathname, useRouter, useSearchParams } from "next/navigation";
 import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
@@ -11,7 +11,10 @@ import {
     setAiBookingApiV1IntegrationsBookingsCalendarsConnectionIdPut,
     updateBusinessFactsApiV1WorkflowWorkflowIdBusinessFactsPut,
 } from "@/client/sdk.gen";
-import type { BusinessFact } from "@/client/types.gen";
+import type { BusinessFact, FollowUpItem } from "@/client/types.gen";
+import { AddAnswerDialog } from "@/components/dashboard/AddAnswerDialog";
+import { appendAnswer, callWhen } from "@/components/dashboard/dashboardView";
+import { useFollowUps } from "@/components/dashboard/useDashboardData";
 import { useOwnsPageHeading } from "@/components/layout/pageHeading";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -69,6 +72,7 @@ export default function WhatYourAgentKnowsPage() {
     const savingRef = useRef(false);
     // Required-field messages show once the owner has tried to save.
     const [triedSave, setTriedSave] = useState(false);
+    const [answering, setAnswering] = useState<FollowUpItem | null>(null);
 
     const load = useCallback(async () => {
         setError(null);
@@ -131,6 +135,18 @@ export default function WhatYourAgentKnowsPage() {
         if (!facts) return;
         setValues(Object.fromEntries(facts.map((f) => [f.key, f.value])));
         setTriedSave(false);
+    };
+
+    // An answer added from a caller's question is saved straight away; keep
+    // any unsaved edits to the answers and add it to them too.
+    const answerAdded = (answers: string, added: { question: string; answer: string }) => {
+        const before = facts?.find((f) => f.key === FAQ_KEY)?.value ?? "";
+        const local = values[FAQ_KEY] ?? "";
+        setFacts((current) => current?.map((f) => (f.key === FAQ_KEY ? { ...f, value: answers } : f)) ?? current);
+        setValues((v) => ({
+            ...v,
+            [FAQ_KEY]: local === before ? answers : appendAnswer(local, added.question, added.answer),
+        }));
     };
 
     const field = (fact: BusinessFact, opts: { rows?: number; className?: string } = {}) => (
@@ -234,6 +250,10 @@ export default function WhatYourAgentKnowsPage() {
                                         {faq.help ?? "Parking, prices, payment options, languages you speak."} Write
                                         each answer in plain words; your agent reads them out as needed.
                                     </p>
+                                    <UnansweredQuestions
+                                        workflowId={workflowId}
+                                        onAdd={canEdit ? setAnswering : undefined}
+                                    />
                                     {field(faq, { rows: 5, className: "mt-1" })}
                                 </div>
                             </Card>
@@ -254,7 +274,45 @@ export default function WhatYourAgentKnowsPage() {
                     </div>
                 </div>
             )}
+            <AddAnswerDialog item={answering} onClose={() => setAnswering(null)} onSaved={answerAdded} />
         </div>
+    );
+}
+
+/**
+ * Questions callers asked that the agent couldn't answer (from the call
+ * reviews, still on the to-do list), each with Add answer.
+ */
+function UnansweredQuestions({ workflowId, onAdd }: { workflowId: number; onAdd?: (item: FollowUpItem) => void }) {
+    const { result } = useFollowUps("open", workflowId);
+    if (result.state !== "ready") return null;
+    const items = result.data.items.filter((item) => item.kind === "unanswered_question" && item.questions.length > 0);
+    if (items.length === 0) return null;
+    return (
+        <ul className="my-1.5 flex flex-col gap-2" aria-label="Questions without an answer">
+            {items.map((item) => (
+                <li
+                    key={item.run_id}
+                    className="flex flex-col gap-2 rounded-[10px] border border-sky/50 bg-sky-dim px-3.5 py-2.5 @md/card:flex-row @md/card:items-center"
+                >
+                    <div className="min-w-0 flex-1">
+                        <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[13.5px] font-semibold text-foreground">
+                            {item.questions.join(" ")}
+                            <span className="rounded-full bg-panel px-2 py-px text-[11.5px] font-semibold text-sky">
+                                Asked {callWhen(item.created_at, null)}
+                            </span>
+                        </p>
+                        <p className="mt-0.5 text-[12.5px] text-sky">No answer yet. Add one so your agent can help next time.</p>
+                    </div>
+                    {onAdd && (
+                        <Button type="button" size="sm" variant="outline" className="self-start @md/card:self-auto" onClick={() => onAdd(item)}>
+                            <MessageSquarePlus aria-hidden />
+                            Add answer
+                        </Button>
+                    )}
+                </li>
+            ))}
+        </ul>
     );
 }
 

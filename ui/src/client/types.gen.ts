@@ -2906,6 +2906,28 @@ export type DashboardCredit = {
 export type DashboardRange = 'today' | '7d' | '30d';
 
 /**
+ * DashboardReason
+ */
+export type DashboardReason = {
+    /**
+     * Key
+     */
+    key: string;
+    /**
+     * Label
+     */
+    label: string;
+    /**
+     * Count
+     */
+    count: number;
+    /**
+     * Percent
+     */
+    percent: number;
+};
+
+/**
  * DashboardRecentCall
  */
 export type DashboardRecentCall = {
@@ -2938,6 +2960,14 @@ export type DashboardRecentCall = {
      * Has Recording
      */
     has_recording: boolean;
+    /**
+     * Summary
+     */
+    summary: string | null;
+    /**
+     * Reason Label
+     */
+    reason_label: string | null;
 };
 
 /**
@@ -2978,6 +3008,15 @@ export type DashboardSummaryResponse = {
      * Recent Calls
      */
     recent_calls: Array<DashboardRecentCall>;
+    /**
+     * Callers Wanted
+     */
+    callers_wanted: Array<DashboardReason>;
+    wording: DashboardWording;
+    /**
+     * Has Calls
+     */
+    has_calls: boolean;
     agent_status: DashboardAgentStatus;
     credit: DashboardCredit | null;
     /**
@@ -3030,6 +3069,24 @@ export type DashboardTiles = {
      * Average Call Seconds
      */
     average_call_seconds: number | null;
+    /**
+     * Bookings Taken
+     */
+    bookings_taken: number;
+};
+
+/**
+ * DashboardWording
+ */
+export type DashboardWording = {
+    /**
+     * Template
+     */
+    template: string;
+    /**
+     * Bookings Label
+     */
+    bookings_label: string | null;
 };
 
 /**
@@ -4119,12 +4176,20 @@ export type FollowUpItem = {
      * Done By
      */
     done_by: string | null;
+    /**
+     * Summary
+     */
+    summary: string | null;
+    /**
+     * Questions
+     */
+    questions: Array<string>;
 };
 
 /**
  * FollowUpKind
  */
-export type FollowUpKind = 'callback' | 'transfer_not_answered' | 'repeat_caller';
+export type FollowUpKind = 'callback' | 'transfer_not_answered' | 'repeat_caller' | 'unanswered_question' | 'time_was_full';
 
 /**
  * FollowUpListResponse
@@ -4150,6 +4215,10 @@ export type FollowUpListResponse = {
      */
     done_count: number;
     week: FollowUpWeek;
+    /**
+     * Has Calls
+     */
+    has_calls: boolean;
 };
 
 /**
@@ -4160,6 +4229,7 @@ export type FollowUpMarkResponse = {
      * Run Id
      */
     run_id: number;
+    kind?: FollowUpKind | null;
     /**
      * Done At
      */
@@ -20258,7 +20328,14 @@ export type UndoFollowUpDoneApiV1FollowUpsRunIdDoneDeleteData = {
          */
         run_id: number;
     };
-    query?: never;
+    query?: {
+        /**
+         * Kind
+         *
+         * The follow-up's kind. Needed for the call-review kinds (unanswered_question, time_was_full), which are done on their own; the other kinds share one mark per call.
+         */
+        kind?: FollowUpKind | null;
+    };
     url: '/api/v1/follow-ups/{run_id}/done';
 };
 
@@ -20302,7 +20379,14 @@ export type MarkFollowUpDoneApiV1FollowUpsRunIdDonePostData = {
          */
         run_id: number;
     };
-    query?: never;
+    query?: {
+        /**
+         * Kind
+         *
+         * The follow-up's kind. Needed for the call-review kinds (unanswered_question, time_was_full), which are done on their own; the other kinds share one mark per call.
+         */
+        kind?: FollowUpKind | null;
+    };
     url: '/api/v1/follow-ups/{run_id}/done';
 };
 

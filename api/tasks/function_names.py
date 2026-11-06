@@ -7,3 +7,4 @@ class FunctionNames:
     DELIVER_WEBHOOK = "deliver_webhook"
     COMPLETE_INACTIVE_TEXT_CHAT_SESSION = "complete_inactive_text_chat_session"
     SEND_FAILURE_ALERT = "send_failure_alert"
+    REVIEW_FINISHED_CALL = "review_finished_call"

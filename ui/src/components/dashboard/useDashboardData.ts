@@ -1,14 +1,25 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { toast } from "sonner";
 
 import {
     countFollowUpsApiV1FollowUpsCountGet,
     getDashboardSummaryApiV1DashboardSummaryGet,
     listFollowUpsApiV1FollowUpsGet,
+    markFollowUpDoneApiV1FollowUpsRunIdDonePost,
+    undoFollowUpDoneApiV1FollowUpsRunIdDoneDelete,
 } from "@/client/sdk.gen";
-import type { DashboardRange, DashboardSummaryResponse, FollowUpListResponse, FollowUpStatus } from "@/client/types.gen";
+import type {
+    DashboardRange,
+    DashboardSummaryResponse,
+    FollowUpItem,
+    FollowUpListResponse,
+    FollowUpStatus,
+} from "@/client/types.gen";
 import { useAuth } from "@/lib/auth";
+
+import { followUpKey, markKind } from "./dashboardView";
 
 export type Loadable<T> =
     | { state: "loading" }
@@ -125,4 +136,38 @@ export function useOpenFollowUpCount(workflowId?: number): number | null {
     useOnFollowUpsChanged(reload);
 
     return count;
+}
+
+/**
+ * Mark a follow-up done or put it back, with a toast (and Undo). `busy` is
+ * the key (followUpKey) of the item being saved.
+ */
+export function useFollowUpMarking() {
+    const [busy, setBusy] = useState<string | null>(null);
+
+    const change = useCallback(async (item: FollowUpItem, done: boolean): Promise<void> => {
+        setBusy(followUpKey(item));
+        try {
+            const kind = markKind(item.kind);
+            const options = { path: { run_id: item.run_id }, query: kind ? { kind } : undefined };
+            const res = done
+                ? await markFollowUpDoneApiV1FollowUpsRunIdDonePost(options)
+                : await undoFollowUpDoneApiV1FollowUpsRunIdDoneDelete(options);
+            if (res.error) throw new Error("failed");
+            notifyFollowUpsChanged();
+            if (done) {
+                toast.success("Marked done", {
+                    action: { label: "Undo", onClick: () => void change(item, false) },
+                });
+            } else {
+                toast.success("Back on the to-do list");
+            }
+        } catch {
+            toast.error("Couldn't save that. Please try again.");
+        } finally {
+            setBusy(null);
+        }
+    }, []);
+
+    return { busy, change };
 }

@@ -399,8 +399,11 @@ class WorkflowClient(BaseDBClient):
                 definition.template_context_variables = merged(
                     definition.template_context_variables
                 )
+            # Read before the commit: it expires the row, and reloading an
+            # attribute outside the session's await fails (MissingGreenlet).
+            saved = dict(workflow.template_context_variables)
             await session.commit()
-            return dict(workflow.template_context_variables)
+            return saved
 
     async def get_draft_version(
         self,

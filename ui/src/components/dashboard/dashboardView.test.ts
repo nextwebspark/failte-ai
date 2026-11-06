@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { FollowUpItem } from "@/client/types.gen";
 
 import {
+    appendAnswer,
     busiestHour,
     callBackNumber,
     callLength,
@@ -11,6 +12,7 @@ import {
     clockTime,
     dayLine,
     followUpDetail,
+    followUpKey,
     followUpTitle,
     hourWindow,
     lastCallWords,
@@ -41,6 +43,8 @@ function item(overrides: Partial<FollowUpItem> = {}): FollowUpItem {
         first_call_at: null,
         done_at: null,
         done_by: null,
+        summary: null,
+        questions: [],
         ...overrides,
     };
 }
@@ -148,5 +152,27 @@ describe("calls per hour", () => {
         const tie = [...peaked];
         tie[19] = 6;
         expect(busiestHour(tie)).toBeNull();
+    });
+});
+
+describe("call-review follow-ups", () => {
+    it("words a question the agent couldn't answer and a full time", () => {
+        const question = item({ kind: "unanswered_question", questions: ["Do you have gluten-free pasta?"] });
+        expect(followUpTitle(question)).toBe("Your agent couldn't answer");
+        expect(followUpDetail(question, DUBLIN, NOW)).toMatch(/^“Do you have gluten-free pasta\?” Add the answer once/);
+        const full = item({ kind: "time_was_full", summary: "Wanted 7:30 pm Friday for 5; offered 8:15 pm." });
+        expect(followUpTitle(full)).toBe("Time was full");
+        expect(followUpDetail(full, DUBLIN, NOW)).toBe("Wanted 7:30 pm Friday for 5; offered 8:15 pm.");
+    });
+
+    it("keys a follow-up by call and kind (one call can have two)", () => {
+        expect(followUpKey(item({ kind: "callback" }))).not.toBe(followUpKey(item({ kind: "unanswered_question" })));
+    });
+
+    it("adds an answer as a Q/A line of its own", () => {
+        expect(appendAnswer("", " Gluten-free? ", "Yes,\n just ask.")).toBe("Q: Gluten-free? A: Yes, just ask.");
+        expect(appendAnswer("Parking: Henry Street.\n", "Dogs?", "On the terrace.")).toBe(
+            "Parking: Henry Street.\nQ: Dogs? A: On the terrace.",
+        );
     });
 });

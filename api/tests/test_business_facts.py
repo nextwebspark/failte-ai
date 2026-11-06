@@ -235,3 +235,5 @@ def test_duplicating_creates_one_transfer_tool_for_the_agent():
     facts = db.create_workflow.await_args.kwargs["template_context_variables"]
     assert facts["transfer_number"] == "+353871234567"
     assert facts["opening_hours"] == "Tue-Sun 12-22"
+    # The call review words what callers wanted for this kind of business.
+    assert facts["template_category"] == "restaurant"

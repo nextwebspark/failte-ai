@@ -43,6 +43,7 @@ from api.services.auth.depends import (
     requires,
 )
 from api.services.auth.permissions import Permission
+from api.services.call_review.categories import TEMPLATE_CATEGORY_FACT
 from api.services.configuration.ai_model_configuration import (
     WORKFLOW_MODEL_CONFIGURATION_V2_OVERRIDE_KEY,
     CustomerKeysNotAllowedError,
@@ -1660,6 +1661,11 @@ async def duplicate_workflow_template(
         if request.appointment_hours is not None:
             # So the agent works dates out in the business's own timezone.
             facts = {**facts, "timezone": request.appointment_hours.timezone}
+        category = getattr(template, "category", None)
+        if category:
+            # Which starter it came from: the call review words what callers
+            # wanted for this kind of business (api/services/call_review).
+            facts = {**facts, TEMPLATE_CATEGORY_FACT: category}
     except TemplateSetupError as e:
         raise HTTPException(status_code=422, detail=str(e))
 

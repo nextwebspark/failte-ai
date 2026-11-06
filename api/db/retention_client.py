@@ -29,6 +29,7 @@ from api.db.models import (
     WorkflowRunModel,
     WorkflowRunTextSessionModel,
 )
+from api.services.call_review.review import CALL_REVIEW_KEY, purged_review
 
 # Marker stamped into ``workflow_runs.extra`` once a run's call content is gone,
 # so later passes skip it.
@@ -130,7 +131,11 @@ def apply_purged_shape(run: WorkflowRunModel, purged_at: Optional[str] = None) -
     run.transcript_url = None
     run.logs = {}
     run.initial_context = {}
-    run.annotations = {}
+    # The call review keeps what the caller wanted and whether the time was
+    # full (Home's counts); its summary and the caller's questions go.
+    annotations = run.annotations if isinstance(run.annotations, dict) else {}
+    review = purged_review(annotations.get(CALL_REVIEW_KEY))
+    run.annotations = {CALL_REVIEW_KEY: review} if review else {}
     run.public_access_token = None
     run.gathered_context = {
         key: value

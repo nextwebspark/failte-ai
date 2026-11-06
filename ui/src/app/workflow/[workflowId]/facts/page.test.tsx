@@ -14,6 +14,8 @@ const mocks = vi.hoisted(() => ({
     openTester: vi.fn(),
     setRailOpen: vi.fn(),
     setAiBooking: vi.fn(),
+    followUps: vi.fn(),
+    done: vi.fn(),
     knowledge: null as unknown as AgentKnowledge,
 }));
 
@@ -27,6 +29,8 @@ vi.mock("@/context/AgentShellContext", () => ({
     useAgentShell: () => ({ openTester: mocks.openTester, setRailOpen: mocks.setRailOpen }),
 }));
 vi.mock("@/client/sdk.gen", () => ({
+    listFollowUpsApiV1FollowUpsGet: mocks.followUps,
+    markFollowUpDoneApiV1FollowUpsRunIdDonePost: mocks.done,
     getBusinessFactsApiV1WorkflowWorkflowIdBusinessFactsGet: mocks.get,
     updateBusinessFactsApiV1WorkflowWorkflowIdBusinessFactsPut: mocks.put,
     setAiBookingApiV1IntegrationsBookingsCalendarsConnectionIdPut: mocks.setAiBooking,
@@ -35,6 +39,7 @@ vi.mock("@/components/layout/pageHeading", () => ({ useOwnsPageHeading: () => {}
 vi.mock("./useAgentKnowledge", () => ({ useAgentKnowledge: () => mocks.knowledge }));
 vi.mock("@/context/OrgConfigContext", () => ({ useOrgConfig: () => ({ can: mocks.can }) }));
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
+vi.mock("@/lib/auth", () => ({ useAuth: () => ({ user: { id: "4" }, loading: false }) }));
 
 // Radix measures the switch; jsdom has no ResizeObserver.
 globalThis.ResizeObserver ??= class {
@@ -66,6 +71,8 @@ describe("What your agent knows", () => {
         mocks.put.mockImplementation(async ({ body }) => ({
             data: { facts: FACTS.map((f) => ({ ...f, value: body.facts[f.key] ?? f.value })) },
         }));
+        mocks.followUps.mockResolvedValue({ data: { items: [] } });
+        mocks.done.mockResolvedValue({ data: {} });
     });
 
     it("has one main heading and the mock's panels, in plain words", async () => {
@@ -306,5 +313,38 @@ describe("What your agent knows", () => {
         fireEvent.click(discard);
         expect((hours as HTMLInputElement).value).toBe("Tue-Sun 12-22");
         expect(discard.hasAttribute("disabled")).toBe(true);
+    });
+
+    it("shows questions the agent couldn't answer, and adds an answer to the list", async () => {
+        mocks.followUps.mockResolvedValue({
+            data: {
+                items: [
+                    {
+                        run_id: 106,
+                        workflow_id: 12,
+                        kind: "unanswered_question",
+                        created_at: "2026-11-05T12:00:00Z",
+                        questions: ["Do you have gluten-free pasta?"],
+                    },
+                ],
+            },
+        });
+        mocks.get.mockResolvedValue({
+            data: { facts: FACTS.map((f) => (f.key === "extra_info" ? { ...f, value: "Q: Parking? A: Henry Street." } : f)) },
+        });
+        render(<WhatYourAgentKnowsPage />);
+        expect(await screen.findByText("No answer yet. Add one so your agent can help next time.")).toBeTruthy();
+        fireEvent.click(screen.getByRole("button", { name: /add answer/i }));
+        fireEvent.change(await screen.findByLabelText("Your answer"), { target: { value: "Yes, just ask." } });
+        fireEvent.click(screen.getByRole("button", { name: "Save answer" }));
+        await waitFor(() =>
+            expect(mocks.put).toHaveBeenCalledWith({
+                path: { workflow_id: 12 },
+                body: { facts: { extra_info: "Q: Parking? A: Henry Street.\nQ: Do you have gluten-free pasta? A: Yes, just ask." } },
+            }),
+        );
+        await waitFor(() =>
+            expect(mocks.done).toHaveBeenCalledWith({ path: { run_id: 106 }, query: { kind: "unanswered_question" } }),
+        );
     });
 });
