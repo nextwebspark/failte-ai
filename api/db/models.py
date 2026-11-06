@@ -746,6 +746,8 @@ class WorkflowTemplates(Base):
     icon = Column(String, nullable=True)
     featured = Column(Boolean, nullable=False, default=False, server_default="false")
     sample_audio_url = Column(String, nullable=True)
+    # Gallery filter: clinic, trades, restaurant, estate, general, …
+    category = Column(String, nullable=True)
     # Integration providers (e.g. "google_calendar") the dialog offers to
     # connect while setting the agent up.
     integrations = Column(JSON, nullable=False, default=list, server_default="[]")

@@ -11270,6 +11270,10 @@ export type WorkflowTemplateResponse = {
      */
     sample_audio_url?: string | null;
     /**
+     * Category
+     */
+    category?: string | null;
+    /**
      * Integrations
      */
     integrations?: Array<string>;

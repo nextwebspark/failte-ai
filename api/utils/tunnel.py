@@ -7,6 +7,12 @@ from typing import Optional
 import aiohttp
 from loguru import logger
 
+# Only the connection step (DNS lookup included) is kept short: when the API
+# runs on the host, "cloudflared" never resolves and /health must stay under
+# the dashboard's 3s budget. A slow reply from a reachable tunnel still gets
+# the full total.
+CLOUDFLARED_METRICS_TIMEOUT = aiohttp.ClientTimeout(total=5, connect=1)
+
 
 class TunnelURLProvider:
     """Provider for getting tunnel URLs from cloudflared service."""
@@ -51,7 +57,7 @@ class TunnelURLProvider:
 
             async with aiohttp.ClientSession() as session:
                 async with session.get(
-                    metrics_url, timeout=aiohttp.ClientTimeout(total=5)
+                    metrics_url, timeout=CLOUDFLARED_METRICS_TIMEOUT
                 ) as response:
                     if response.status != 200:
                         logger.warning(

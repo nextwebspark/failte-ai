@@ -1,6 +1,6 @@
 'use client';
 
-import { useParams, useSearchParams } from 'next/navigation';
+import { useParams, usePathname, useRouter, useSearchParams } from 'next/navigation';
 import posthog from 'posthog-js';
 import { useEffect, useMemo, useState } from 'react';
 
@@ -22,6 +22,8 @@ import WorkflowLayout from '../WorkflowLayout';
 export default function WorkflowDetailPage() {
     const params = useParams();
     const searchParams = useSearchParams();
+    const router = useRouter();
+    const pathname = usePathname();
     const workflowId = Number(params.workflowId);
     const version = searchParams.get('version');
     const requestKey = `${workflowId}:${version ?? 'current'}`;
@@ -33,6 +35,16 @@ export default function WorkflowDetailPage() {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const { user, redirectToLogin, loading: authLoading } = useAuth();
+    // Capture once so we still open the tester after stripping the param.
+    const [openTesterOnLoad] = useState(() => searchParams.get('onboarding') === 'web_call');
+
+    useEffect(() => {
+        if (searchParams.get('onboarding') !== 'web_call') return;
+        const next = new URLSearchParams(searchParams.toString());
+        next.delete('onboarding');
+        const query = next.toString();
+        router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
+    }, [pathname, router, searchParams]);
 
     // Redirect if not authenticated
     useEffect(() => {
@@ -107,7 +119,6 @@ export default function WorkflowDetailPage() {
     }, [workflowId, version, requestKey, user, authLoading]);
 
     const stableUser = useMemo(() => user, [user]);
-    const openTesterOnLoad = searchParams.get('onboarding') === 'web_call';
     const workflow = loaded?.key === requestKey ? loaded.workflow : undefined;
     const selectedVersion = loaded?.key === requestKey ? loaded.version : undefined;
     const definition = selectedVersion ? selectedVersion.workflow_json : workflow?.workflow_definition;

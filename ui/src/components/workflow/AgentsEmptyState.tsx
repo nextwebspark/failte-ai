@@ -9,18 +9,18 @@ import { cn } from '@/lib/utils';
 const STEPS = [
     {
         icon: Sparkles,
-        title: 'Pick a ready-made agent',
-        body: 'Start from an agent built for the job, like a receptionist. No technical setup.',
+        title: 'Choose a template',
+        body: 'Clinic, trades, restaurant, estate agent, or a general receptionist. No technical setup.',
     },
     {
         icon: ClipboardList,
-        title: 'Add your business details',
-        body: 'Your name, opening hours, address and website. Connect your calendar for bookings.',
+        title: 'Personalise',
+        body: 'Your name, opening hours, address and website. Connect Google Calendar if you want bookings.',
     },
     {
         icon: PhoneCall,
-        title: 'Test it, then go live',
-        body: 'Talk to it in your browser, then put it on a phone number or your website.',
+        title: 'Talk to your agent',
+        body: 'Test it in your browser first. Add a phone number when you’re ready to go live.',
     },
 ] as const;
 
