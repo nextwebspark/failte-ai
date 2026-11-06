@@ -17,6 +17,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { agentTalkHref } from '@/components/workflow/agentLinks';
 import { AgentReady, type ReadyItem } from '@/components/workflow/create/AgentReady';
 import { TemplateGallery, TemplateIcon } from '@/components/workflow/create/TemplateGallery';
 import { TemplateSetup } from '@/components/workflow/create/TemplateSetup';
@@ -348,7 +349,7 @@ export function CreateAgentWizard({ initialMode = 'template' }: CreateAgentWizar
                 fail('describe', response.error, 'Couldn’t build the agent. Please try again.');
                 return;
             }
-            router.push(`/workflow/${response.data.id}?onboarding=web_call`);
+            router.push(agentTalkHref(response.data.id));
         } catch (err) {
             fail('describe', String(err), 'Couldn’t build the agent. Please try again.');
         }
@@ -499,7 +500,7 @@ export function CreateAgentWizard({ initialMode = 'template' }: CreateAgentWizar
                     <AgentReady
                         agentId={created.id}
                         items={created.items}
-                        onTalk={() => router.push(`/workflow/${created.id}?onboarding=web_call`)}
+                        onTalk={() => router.push(agentTalkHref(created.id))}
                     />
                 </section>
             )}
