@@ -1136,8 +1136,9 @@ export const listBookingsApiV1IntegrationsBookingsGet = <ThrowOnError extends bo
 /**
  * Set Ai Booking
  *
- * Switch AI booking on or off for one connected calendar. Off, the agent
- * offers no times and passes callers to the team instead.
+ * The owner's switches for one connected calendar: AI booking (off,
+ * the agent offers no times and passes callers to the team) and letting
+ * the agent cancel or move earlier bookings after checking the caller.
  */
 export const setAiBookingApiV1IntegrationsBookingsCalendarsConnectionIdPut = <ThrowOnError extends boolean = false>(options: Options<SetAiBookingApiV1IntegrationsBookingsCalendarsConnectionIdPutData, ThrowOnError>): RequestResult<SetAiBookingApiV1IntegrationsBookingsCalendarsConnectionIdPutResponses, SetAiBookingApiV1IntegrationsBookingsCalendarsConnectionIdPutErrors, ThrowOnError> => (options.client ?? client).put<SetAiBookingApiV1IntegrationsBookingsCalendarsConnectionIdPutResponses, SetAiBookingApiV1IntegrationsBookingsCalendarsConnectionIdPutErrors, ThrowOnError>({
     url: '/api/v1/integrations/bookings/calendars/{connection_id}',
@@ -1348,23 +1349,6 @@ export const migrateModelConfigurationV2ApiV1OrganizationsModelConfigurationsV2M
  * org with a disposition mapping still gets a usable filter.
  */
 export const getDispositionCodesApiV1OrganizationsDispositionCodesGet = <ThrowOnError extends boolean = false>(options?: Options<GetDispositionCodesApiV1OrganizationsDispositionCodesGetData, ThrowOnError>): RequestResult<GetDispositionCodesApiV1OrganizationsDispositionCodesGetResponses, GetDispositionCodesApiV1OrganizationsDispositionCodesGetErrors, ThrowOnError> => (options?.client ?? client).get<GetDispositionCodesApiV1OrganizationsDispositionCodesGetResponses, GetDispositionCodesApiV1OrganizationsDispositionCodesGetErrors, ThrowOnError>({ url: '/api/v1/organizations/disposition-codes', ...options });
-
-/**
- * Get Notification Settings
- */
-export const getNotificationSettingsApiV1OrganizationsNotificationsGet = <ThrowOnError extends boolean = false>(options?: Options<GetNotificationSettingsApiV1OrganizationsNotificationsGetData, ThrowOnError>): RequestResult<GetNotificationSettingsApiV1OrganizationsNotificationsGetResponses, GetNotificationSettingsApiV1OrganizationsNotificationsGetErrors, ThrowOnError> => (options?.client ?? client).get<GetNotificationSettingsApiV1OrganizationsNotificationsGetResponses, GetNotificationSettingsApiV1OrganizationsNotificationsGetErrors, ThrowOnError>({ url: '/api/v1/organizations/notifications', ...options });
-
-/**
- * Update Notification Settings
- */
-export const updateNotificationSettingsApiV1OrganizationsNotificationsPut = <ThrowOnError extends boolean = false>(options: Options<UpdateNotificationSettingsApiV1OrganizationsNotificationsPutData, ThrowOnError>): RequestResult<UpdateNotificationSettingsApiV1OrganizationsNotificationsPutResponses, UpdateNotificationSettingsApiV1OrganizationsNotificationsPutErrors, ThrowOnError> => (options.client ?? client).put<UpdateNotificationSettingsApiV1OrganizationsNotificationsPutResponses, UpdateNotificationSettingsApiV1OrganizationsNotificationsPutErrors, ThrowOnError>({
-    url: '/api/v1/organizations/notifications',
-    ...options,
-    headers: {
-        'Content-Type': 'application/json',
-        ...options.headers
-    }
-});
 
 /**
  * Get Preferences
@@ -1672,6 +1656,23 @@ export const resendInvitationApiV1OrganizationsInvitationsInvitationIdResendPost
  * Revoke Invitation
  */
 export const revokeInvitationApiV1OrganizationsInvitationsInvitationIdDelete = <ThrowOnError extends boolean = false>(options: Options<RevokeInvitationApiV1OrganizationsInvitationsInvitationIdDeleteData, ThrowOnError>): RequestResult<RevokeInvitationApiV1OrganizationsInvitationsInvitationIdDeleteResponses, RevokeInvitationApiV1OrganizationsInvitationsInvitationIdDeleteErrors, ThrowOnError> => (options.client ?? client).delete<RevokeInvitationApiV1OrganizationsInvitationsInvitationIdDeleteResponses, RevokeInvitationApiV1OrganizationsInvitationsInvitationIdDeleteErrors, ThrowOnError>({ url: '/api/v1/organizations/invitations/{invitation_id}', ...options });
+
+/**
+ * Get Notification Settings
+ */
+export const getNotificationSettingsApiV1OrganizationsNotificationsGet = <ThrowOnError extends boolean = false>(options?: Options<GetNotificationSettingsApiV1OrganizationsNotificationsGetData, ThrowOnError>): RequestResult<GetNotificationSettingsApiV1OrganizationsNotificationsGetResponses, GetNotificationSettingsApiV1OrganizationsNotificationsGetErrors, ThrowOnError> => (options?.client ?? client).get<GetNotificationSettingsApiV1OrganizationsNotificationsGetResponses, GetNotificationSettingsApiV1OrganizationsNotificationsGetErrors, ThrowOnError>({ url: '/api/v1/organizations/notifications', ...options });
+
+/**
+ * Update Notification Settings
+ */
+export const updateNotificationSettingsApiV1OrganizationsNotificationsPut = <ThrowOnError extends boolean = false>(options: Options<UpdateNotificationSettingsApiV1OrganizationsNotificationsPutData, ThrowOnError>): RequestResult<UpdateNotificationSettingsApiV1OrganizationsNotificationsPutResponses, UpdateNotificationSettingsApiV1OrganizationsNotificationsPutErrors, ThrowOnError> => (options.client ?? client).put<UpdateNotificationSettingsApiV1OrganizationsNotificationsPutResponses, UpdateNotificationSettingsApiV1OrganizationsNotificationsPutErrors, ThrowOnError>({
+    url: '/api/v1/organizations/notifications',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
 
 /**
  * Preview Invitation

@@ -293,12 +293,18 @@ export type ActiveCallsResponse = {
 
 /**
  * AiBookingRequest
+ *
+ * The owner's switches for one calendar; omitted ones are kept.
  */
 export type AiBookingRequest = {
     /**
      * Ai Booking Enabled
      */
-    ai_booking_enabled: boolean;
+    ai_booking_enabled?: boolean | null;
+    /**
+     * Ai Changes Enabled
+     */
+    ai_changes_enabled?: boolean | null;
 };
 
 /**
@@ -1101,6 +1107,12 @@ export type BookingCalendar = {
      * Whether agents may book on it (the owner's switch).
      */
     ai_booking_enabled: boolean;
+    /**
+     * Ai Changes Enabled
+     *
+     * Whether agents may cancel or move bookings made on an earlier call, after checking the caller's details.
+     */
+    ai_changes_enabled?: boolean;
     /**
      * Ok
      *
@@ -16624,84 +16636,6 @@ export type GetDispositionCodesApiV1OrganizationsDispositionCodesGetResponses = 
 
 export type GetDispositionCodesApiV1OrganizationsDispositionCodesGetResponse = GetDispositionCodesApiV1OrganizationsDispositionCodesGetResponses[keyof GetDispositionCodesApiV1OrganizationsDispositionCodesGetResponses];
 
-export type GetNotificationSettingsApiV1OrganizationsNotificationsGetData = {
-    body?: never;
-    headers?: {
-        /**
-         * Authorization
-         */
-        authorization?: string | null;
-        /**
-         * X-Api-Key
-         */
-        'X-API-Key'?: string | null;
-    };
-    path?: never;
-    query?: never;
-    url: '/api/v1/organizations/notifications';
-};
-
-export type GetNotificationSettingsApiV1OrganizationsNotificationsGetErrors = {
-    /**
-     * Not found
-     */
-    404: unknown;
-    /**
-     * Validation Error
-     */
-    422: HttpValidationError;
-};
-
-export type GetNotificationSettingsApiV1OrganizationsNotificationsGetError = GetNotificationSettingsApiV1OrganizationsNotificationsGetErrors[keyof GetNotificationSettingsApiV1OrganizationsNotificationsGetErrors];
-
-export type GetNotificationSettingsApiV1OrganizationsNotificationsGetResponses = {
-    /**
-     * Successful Response
-     */
-    200: CallNotificationSettingsResponse;
-};
-
-export type GetNotificationSettingsApiV1OrganizationsNotificationsGetResponse = GetNotificationSettingsApiV1OrganizationsNotificationsGetResponses[keyof GetNotificationSettingsApiV1OrganizationsNotificationsGetResponses];
-
-export type UpdateNotificationSettingsApiV1OrganizationsNotificationsPutData = {
-    body: CallNotificationSettings;
-    headers?: {
-        /**
-         * Authorization
-         */
-        authorization?: string | null;
-        /**
-         * X-Api-Key
-         */
-        'X-API-Key'?: string | null;
-    };
-    path?: never;
-    query?: never;
-    url: '/api/v1/organizations/notifications';
-};
-
-export type UpdateNotificationSettingsApiV1OrganizationsNotificationsPutErrors = {
-    /**
-     * Not found
-     */
-    404: unknown;
-    /**
-     * Validation Error
-     */
-    422: HttpValidationError;
-};
-
-export type UpdateNotificationSettingsApiV1OrganizationsNotificationsPutError = UpdateNotificationSettingsApiV1OrganizationsNotificationsPutErrors[keyof UpdateNotificationSettingsApiV1OrganizationsNotificationsPutErrors];
-
-export type UpdateNotificationSettingsApiV1OrganizationsNotificationsPutResponses = {
-    /**
-     * Successful Response
-     */
-    200: CallNotificationSettingsResponse;
-};
-
-export type UpdateNotificationSettingsApiV1OrganizationsNotificationsPutResponse = UpdateNotificationSettingsApiV1OrganizationsNotificationsPutResponses[keyof UpdateNotificationSettingsApiV1OrganizationsNotificationsPutResponses];
-
 export type GetPreferencesApiV1OrganizationsPreferencesGetData = {
     body?: never;
     headers?: {
@@ -18269,6 +18203,84 @@ export type RevokeInvitationApiV1OrganizationsInvitationsInvitationIdDeleteRespo
 };
 
 export type RevokeInvitationApiV1OrganizationsInvitationsInvitationIdDeleteResponse = RevokeInvitationApiV1OrganizationsInvitationsInvitationIdDeleteResponses[keyof RevokeInvitationApiV1OrganizationsInvitationsInvitationIdDeleteResponses];
+
+export type GetNotificationSettingsApiV1OrganizationsNotificationsGetData = {
+    body?: never;
+    headers?: {
+        /**
+         * Authorization
+         */
+        authorization?: string | null;
+        /**
+         * X-Api-Key
+         */
+        'X-API-Key'?: string | null;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/v1/organizations/notifications';
+};
+
+export type GetNotificationSettingsApiV1OrganizationsNotificationsGetErrors = {
+    /**
+     * Not found
+     */
+    404: unknown;
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type GetNotificationSettingsApiV1OrganizationsNotificationsGetError = GetNotificationSettingsApiV1OrganizationsNotificationsGetErrors[keyof GetNotificationSettingsApiV1OrganizationsNotificationsGetErrors];
+
+export type GetNotificationSettingsApiV1OrganizationsNotificationsGetResponses = {
+    /**
+     * Successful Response
+     */
+    200: CallNotificationSettingsResponse;
+};
+
+export type GetNotificationSettingsApiV1OrganizationsNotificationsGetResponse = GetNotificationSettingsApiV1OrganizationsNotificationsGetResponses[keyof GetNotificationSettingsApiV1OrganizationsNotificationsGetResponses];
+
+export type UpdateNotificationSettingsApiV1OrganizationsNotificationsPutData = {
+    body: CallNotificationSettings;
+    headers?: {
+        /**
+         * Authorization
+         */
+        authorization?: string | null;
+        /**
+         * X-Api-Key
+         */
+        'X-API-Key'?: string | null;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/v1/organizations/notifications';
+};
+
+export type UpdateNotificationSettingsApiV1OrganizationsNotificationsPutErrors = {
+    /**
+     * Not found
+     */
+    404: unknown;
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type UpdateNotificationSettingsApiV1OrganizationsNotificationsPutError = UpdateNotificationSettingsApiV1OrganizationsNotificationsPutErrors[keyof UpdateNotificationSettingsApiV1OrganizationsNotificationsPutErrors];
+
+export type UpdateNotificationSettingsApiV1OrganizationsNotificationsPutResponses = {
+    /**
+     * Successful Response
+     */
+    200: CallNotificationSettingsResponse;
+};
+
+export type UpdateNotificationSettingsApiV1OrganizationsNotificationsPutResponse = UpdateNotificationSettingsApiV1OrganizationsNotificationsPutResponses[keyof UpdateNotificationSettingsApiV1OrganizationsNotificationsPutResponses];
 
 export type PreviewInvitationApiV1InvitationsLookupGetData = {
     body?: never;
