@@ -13,6 +13,7 @@ import {
     getWorkflowTemplatesApiV1WorkflowTemplatesGet,
 } from '@/client/sdk.gen';
 import type { CalendarHoursStatus, WorkflowTemplateResponse } from '@/client/types.gen';
+import { useOwnsPageHeading } from '@/components/layout/pageHeading';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -171,6 +172,8 @@ interface CreateAgentWizardProps {
  * side paths.
  */
 export function CreateAgentWizard({ initialMode = 'template' }: CreateAgentWizardProps) {
+    // Every step prints its own title, so the top bar's name isn't the h1.
+    useOwnsPageHeading();
     const router = useRouter();
     const { user, loading: authLoading, redirectToLogin } = useAuth();
     const { can } = useOrgConfig();
