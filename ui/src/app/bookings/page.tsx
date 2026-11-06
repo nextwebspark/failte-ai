@@ -1,20 +1,18 @@
 "use client";
 
-import { CalendarCheck, Phone } from "lucide-react";
+import { ArrowRight, CalendarCheck, CalendarClock, CalendarPlus, RefreshCw } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
-import {
-    integrationErrorMessage,
-    isUnavailableError,
-} from "@/app/integrations/messages";
+import { integrationErrorMessage } from "@/app/integrations/messages";
 import {
     listBookingsApiV1IntegrationsBookingsGet,
     setAiBookingApiV1IntegrationsBookingsCalendarsConnectionIdPut,
 } from "@/client/sdk.gen";
-import type { BookingCalendar, BookingListResponse, CalendarBooking } from "@/client/types.gen";
+import type { BookingCalendar, BookingListResponse } from "@/client/types.gen";
 import { NoAccess } from "@/components/auth/NoAccess";
+import { EmptyState } from "@/components/page-states/EmptyState";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Panel, PanelDescription, PanelTitle } from "@/components/ui/panel";
@@ -23,20 +21,22 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { StatusPill } from "@/components/ui/status-pill";
 import { Switch } from "@/components/ui/switch";
 import { useOrgConfig } from "@/context/OrgConfigContext";
+import { errorCodeFromError } from "@/lib/apiError";
+import { cn } from "@/lib/utils";
 
+import { BookingDays } from "./BookingDays";
 import { BookingRulesEditor, type Rules, summarize } from "./BookingRules";
 import {
-    groupByDay,
+    bookingsLoadError,
+    type BookingTotals,
+    daysInRange,
+    type FriendlyError,
     isoWithOffset,
-    partyLabel,
     RANGE_OPTIONS,
     rangeFor,
     type RangeKey,
-    timeRange,
     totals,
 } from "./bookingsView";
-
-const LOAD_FAILED = "Couldn't load bookings. Please try again.";
 
 export default function BookingsPage() {
     const { can, role, loading } = useOrgConfig();
@@ -64,7 +64,7 @@ function BookingsScreen() {
     const [showCancelled, setShowCancelled] = useState(false);
     const [data, setData] = useState<BookingListResponse | null>(null);
     const [loading, setLoading] = useState(true);
-    const [error, setError] = useState<string | null>(null);
+    const [error, setError] = useState<FriendlyError | null>(null);
     const [saving, setSaving] = useState<string | null>(null);
 
     const load = useCallback(async () => {
@@ -76,17 +76,13 @@ function BookingsScreen() {
                 query: { start: isoWithOffset(start), end: isoWithOffset(end) },
             });
             if (response.error || !response.data) {
-                setError(
-                    isUnavailableError(response.error)
-                        ? "Calendar bookings aren't switched on for your account yet. Ask your LightMove contact to turn them on."
-                        : integrationErrorMessage(response.error, LOAD_FAILED),
-                );
+                setError(bookingsLoadError(errorCodeFromError(response.error)));
                 setData(null);
                 return;
             }
             setData(response.data);
         } catch {
-            setError(LOAD_FAILED);
+            setError(bookingsLoadError(undefined));
             setData(null);
         } finally {
             setLoading(false);
@@ -155,136 +151,194 @@ function BookingsScreen() {
     const now = useMemo(() => new Date(), [data]); // eslint-disable-line react-hooks/exhaustive-deps
     const bookings = data?.bookings ?? [];
     const calendars = data?.calendars ?? [];
-    const groups = groupByDay(bookings, now, showCancelled);
     const sums = totals(bookings);
-    const names = new Map(calendars.map((c) => [c.connection_id, calendarName(c)]));
-    const showCalendarName = calendars.length > 1;
+    const days = daysInRange(bookings, rangeFor(range, now), now, showCancelled);
+    const names =
+        calendars.length > 1 ? new Map(calendars.map((c) => [c.connection_id, calendarName(c)])) : undefined;
+    const rangeLabel = RANGE_OPTIONS.find((option) => option.value === range)?.label ?? "";
 
-    return (
-        <div className="mx-auto flex w-full max-w-5xl flex-col gap-6 p-6">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-                <div className="flex flex-wrap gap-2" role="group" aria-label="Which bookings">
-                    {RANGE_OPTIONS.map((option) => (
-                        <Button
-                            key={option.value}
-                            size="sm"
-                            variant={range === option.value ? "default" : "outline"}
-                            aria-pressed={range === option.value}
-                            onClick={() => setRange(option.value)}
-                        >
-                            {option.label}
-                        </Button>
-                    ))}
-                </div>
-                <div className="flex items-center gap-2">
-                    <Switch id="show-cancelled" checked={showCancelled} onCheckedChange={setShowCancelled} />
-                    <Label htmlFor="show-cancelled">Show cancelled</Label>
+    if (loading && !data && !error) return <BookingsSkeleton />;
+
+    if (error) {
+        return (
+            <div className="page-body">
+                <div className="mx-auto max-w-4xl">
+                    <EmptyState
+                        tone="amber"
+                        icon={CalendarClock}
+                        title={error.title}
+                        role="alert"
+                        action={
+                            error.retry ? (
+                                <Button className="h-10 sm:h-9" onClick={() => void load()} disabled={loading}>
+                                    <RefreshCw aria-hidden />
+                                    {loading ? "Trying…" : "Try again"}
+                                </Button>
+                            ) : null
+                        }
+                    >
+                        {error.body}
+                    </EmptyState>
                 </div>
             </div>
+        );
+    }
 
-            {loading && !data ? (
-                <div className="flex flex-col gap-3" aria-busy="true">
-                    <Skeleton className="h-16 w-full" />
-                    <Skeleton className="h-24 w-full" />
-                    <Skeleton className="h-24 w-full" />
+    if (calendars.length === 0) {
+        return (
+            <div className="page-body">
+                <div className="mx-auto max-w-4xl">
+                    <NoCalendar canConnect={canConnect} />
                 </div>
-            ) : error ? (
-                <Panel accent="danger" role="alert">
-                    <PanelTitle>{error}</PanelTitle>
-                    <Button className="mt-3" size="sm" variant="outline" onClick={() => void load()}>
-                        Try again
-                    </Button>
-                </Panel>
-            ) : calendars.length === 0 ? (
-                <NoCalendar canConnect={canConnect} />
-            ) : (
-                <>
-                    <section aria-label="Calendars" className="flex flex-col gap-3">
-                        <SectionHeading>Calendars</SectionHeading>
-                        {calendars.map((calendar) => (
-                            <CalendarRow
-                                key={calendar.connection_id}
-                                calendar={calendar}
-                                canManage={canManage}
-                                canSeeIntegrations={canSeeIntegrations}
-                                saving={saving === calendar.connection_id}
-                                onChange={(key, enabled) => void setSwitch(calendar, key, enabled)}
-                                onSaveRules={(rules) => void saveRules(calendar, rules)}
-                            />
-                        ))}
-                    </section>
+            </div>
+        );
+    }
 
-                    <section aria-label="Bookings" className="flex flex-col gap-3">
-                        <SectionHeading
-                            action={
-                                <span className="font-mono text-[11.5px] text-ink-3">
-                                    {sums.confirmed} {sums.confirmed === 1 ? "booking" : "bookings"} ·{" "}
-                                    {sums.guests} guests
-                                    {sums.noPartySize > 0 && ` · ${sums.noPartySize} without a party size`}
-                                    {sums.cancelled > 0 && ` · ${sums.cancelled} cancelled`}
-                                </span>
-                            }
+    const emptyRange = sums.confirmed === 0 && (sums.cancelled === 0 || !showCancelled);
+
+    return (
+        <div className="page-body">
+            <div className="mx-auto flex max-w-4xl flex-col gap-8">
+                <section
+                    aria-labelledby="bookings-range"
+                    className="rounded-xl border border-line bg-gradient-to-br from-brand-dim via-panel to-panel px-5 py-5 sm:px-6"
+                >
+                    <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+                        <div className="min-w-0">
+                            <h2 id="bookings-range" className="text-[22px] font-bold tracking-tight">
+                                {rangeLabel}
+                            </h2>
+                            <p className="mt-1 text-[15px] text-ink-2" aria-live="polite">
+                                {loading ? "Checking your calendar…" : rangeSummary(sums)}
+                            </p>
+                        </div>
+                        <div
+                            className="grid grid-cols-3 gap-1 rounded-lg border border-line bg-panel p-1"
+                            role="group"
+                            aria-label="Which days"
                         >
-                            Bookings
-                        </SectionHeading>
-                        {groups.length === 0 ? (
-                            <Panel>
-                                <PanelTitle>
-                                    {range === "past7" ? "No bookings in the last 7 days." : "No bookings yet in this range."}
-                                </PanelTitle>
-                                <PanelDescription>
-                                    Bookings your agent makes on a connected calendar show here.
-                                </PanelDescription>
-                            </Panel>
-                        ) : (
-                            groups.map((group) => (
-                                <div key={group.key} className="flex flex-col gap-2">
-                                    <h3 className="flex items-baseline justify-between text-sm font-semibold">
-                                        <span>{group.label}</span>
-                                        <span className="font-mono text-[11.5px] font-normal text-ink-3">
-                                            {group.confirmed} {group.confirmed === 1 ? "booking" : "bookings"}
-                                            {group.guests > 0 && ` · ${group.guests} guests`}
-                                        </span>
-                                    </h3>
-                                    <ul className="flex flex-col gap-2">
-                                        {group.bookings.map((booking) => (
-                                            <BookingRow
-                                                key={`${booking.connection_id}-${booking.event_id}`}
-                                                booking={booking}
-                                                calendarName={
-                                                    showCalendarName ? names.get(booking.connection_id) : undefined
-                                                }
-                                            />
-                                        ))}
-                                    </ul>
-                                </div>
-                            ))
+                            {RANGE_OPTIONS.map((option) => (
+                                <button
+                                    key={option.value}
+                                    type="button"
+                                    aria-pressed={range === option.value}
+                                    onClick={() => setRange(option.value)}
+                                    className={cn(
+                                        "min-h-10 whitespace-nowrap rounded-md px-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/40 motion-reduce:transition-none md:min-h-8",
+                                        range === option.value
+                                            ? "bg-brand text-primary-foreground"
+                                            : "text-ink-2 hover:bg-brand-dim hover:text-brand",
+                                    )}
+                                >
+                                    {option.label}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+                    <div className="mt-4 flex flex-col gap-3 border-t border-line-soft pt-3 sm:flex-row sm:items-center sm:justify-between">
+                        <p className="text-[13px] text-ink-3">
+                            Bookings your agent took on the phone, read live from your calendar. Ones your team adds
+                            straight into the calendar aren&apos;t listed here.
+                        </p>
+                        {sums.cancelled > 0 && (
+                            <div className="flex min-h-10 flex-none items-center gap-2">
+                                <Switch
+                                    id="show-cancelled"
+                                    checked={showCancelled}
+                                    onCheckedChange={setShowCancelled}
+                                />
+                                <Label htmlFor="show-cancelled">Show cancelled</Label>
+                            </div>
                         )}
-                    </section>
-                </>
-            )}
+                    </div>
+                </section>
+
+                <section aria-label="Bookings" aria-busy={loading} className={cn(loading && "opacity-60")}>
+                    {emptyRange ? (
+                        <EmptyState icon={CalendarCheck} title={emptyTitle(range)}>
+                            {calendars.some((c) => c.ai_booking_enabled)
+                                ? "When your agent books a table or appointment, it shows up here straight away."
+                                : "Your agent isn't taking bookings at the moment. You can switch it on below."}
+                        </EmptyState>
+                    ) : (
+                        <BookingDays days={days} calendarNames={names} />
+                    )}
+                </section>
+
+                <section aria-labelledby="calendar-settings" className="flex flex-col gap-3">
+                    <SectionHeading id="calendar-settings">
+                        {calendars.length === 1 ? "Your calendar" : "Your calendars"}
+                    </SectionHeading>
+                    {calendars.map((calendar) => (
+                        <CalendarRow
+                            key={calendar.connection_id}
+                            calendar={calendar}
+                            canManage={canManage}
+                            canSeeIntegrations={canSeeIntegrations}
+                            saving={saving === calendar.connection_id}
+                            onChange={(key, enabled) => void setSwitch(calendar, key, enabled)}
+                            onSaveRules={(rules) => void saveRules(calendar, rules)}
+                        />
+                    ))}
+                </section>
+            </div>
+        </div>
+    );
+}
+
+function rangeSummary(sums: BookingTotals): string {
+    if (sums.confirmed === 0) {
+        return sums.cancelled > 0 ? `No bookings, ${sums.cancelled} cancelled` : "No bookings yet";
+    }
+    const parts = [`${sums.confirmed} ${sums.confirmed === 1 ? "booking" : "bookings"}`];
+    if (sums.guests > 0) parts.push(`${sums.guests} ${sums.guests === 1 ? "guest" : "guests"}`);
+    if (sums.noPartySize > 0) parts.push(`${sums.noPartySize} without a party size`);
+    if (sums.cancelled > 0) parts.push(`${sums.cancelled} cancelled`);
+    return parts.join(" · ");
+}
+
+function emptyTitle(range: RangeKey): string {
+    if (range === "past7") return "No bookings in the last 7 days";
+    return range === "next14" ? "No bookings in the next 14 days" : "No bookings in the next 7 days";
+}
+
+function BookingsSkeleton() {
+    return (
+        <div className="page-body" aria-busy="true" aria-label="Loading bookings">
+            <div className="mx-auto flex max-w-4xl flex-col gap-8">
+                <Skeleton className="h-[148px] w-full rounded-xl" />
+                {[0, 1].map((day) => (
+                    <div key={day} className="flex flex-col gap-2">
+                        <Skeleton className="h-5 w-44" />
+                        <Skeleton className="h-[68px] w-full rounded-lg" />
+                        <Skeleton className="h-[68px] w-full rounded-lg" />
+                    </div>
+                ))}
+            </div>
         </div>
     );
 }
 
 function NoCalendar({ canConnect }: { canConnect: boolean }) {
     return (
-        <Panel accent="sky">
-            <PanelTitle as="h2">No calendar connected yet</PanelTitle>
-            <p className="mt-2 text-sm text-ink-2">
-                Connect a Google Calendar and your agent can offer real free times and book them while the
-                caller is on the line. Bookings then show here.
-            </p>
-            {canConnect ? (
-                <Button asChild className="mt-4" size="sm">
-                    <Link href="/integrations">Connect a calendar</Link>
-                </Button>
-            ) : (
-                <p className="mt-3 text-sm text-ink-3">
-                    Ask an admin on your team to connect your calendar. Your bookings will then show here.
-                </p>
-            )}
-        </Panel>
+        <EmptyState
+            icon={CalendarPlus}
+            title="Connect your calendar to take bookings"
+            action={
+                canConnect ? (
+                    <Button asChild className="h-10 sm:h-9">
+                        <Link href="/integrations">
+                            Connect a calendar
+                            <ArrowRight aria-hidden />
+                        </Link>
+                    </Button>
+                ) : null
+            }
+        >
+            Link your Google Calendar and your agent can offer callers real free times and book them while
+            they&apos;re still on the line. Every booking then shows up here, day by day.
+            {!canConnect && <span className="mt-2 block">Ask an admin on your team to connect it.</span>}
+        </EmptyState>
     );
 }
 
@@ -424,40 +478,5 @@ function CalendarRow({
                 </p>
             )}
         </Panel>
-    );
-}
-
-function BookingRow({ booking, calendarName }: { booking: CalendarBooking; calendarName?: string }) {
-    const cancelled = booking.status === "cancelled";
-    const party = partyLabel(booking);
-    return (
-        <li>
-            <Panel padding="sm" className={cancelled ? "opacity-60" : undefined}>
-                <div className="flex flex-wrap items-center gap-x-6 gap-y-1">
-                    <span className={`w-28 font-mono text-sm ${cancelled ? "line-through" : ""}`}>
-                        {timeRange(booking)}
-                    </span>
-                    <span className="min-w-40 flex-1 font-medium">{booking.caller_name || "Name not given"}</span>
-                    <span className={party === "Not asked" ? "text-sm text-ink-3" : "text-sm"}>{party}</span>
-                    {booking.caller_phone ? (
-                        <a
-                            className="inline-flex items-center gap-1 font-mono text-sm underline-offset-2 hover:underline"
-                            href={`tel:${booking.caller_phone.replace(/[^\d+]/g, "")}`}
-                        >
-                            <Phone className="size-3.5" aria-hidden />
-                            {booking.caller_phone}
-                        </a>
-                    ) : null}
-                    {cancelled && <StatusPill tone="mute">Cancelled</StatusPill>}
-                </div>
-                {(booking.reason || calendarName) && (
-                    <p className="mt-1 text-sm text-ink-3">
-                        {booking.reason}
-                        {booking.reason && calendarName ? " · " : ""}
-                        {calendarName}
-                    </p>
-                )}
-            </Panel>
-        </li>
     );
 }

@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { toast } from "sonner";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -177,7 +177,7 @@ describe("BookingsPage", () => {
         mocks.list.mockResolvedValue({ data: { calendars: [], bookings: [] } });
         render(<BookingsPage />);
 
-        expect(await screen.findByText("No calendar connected yet")).toBeTruthy();
+        expect(await screen.findByText("Connect your calendar to take bookings")).toBeTruthy();
         expect(screen.getByRole("link", { name: "Connect a calendar" }).getAttribute("href")).toBe("/integrations");
     });
 
@@ -218,9 +218,9 @@ describe("BookingsPage", () => {
         );
         render(<BookingsPage />);
 
-        expect(await screen.findByText("No calendar connected yet")).toBeTruthy();
+        expect(await screen.findByText("Connect your calendar to take bookings")).toBeTruthy();
         expect(screen.queryByRole("link", { name: "Connect a calendar" })).toBeNull();
-        expect(screen.getByText(/Ask an admin on your team to connect your calendar/)).toBeTruthy();
+        expect(screen.getByText(/Ask an admin on your team to connect it/)).toBeTruthy();
     });
 
     it("explains a calendar read error in plain words to people who can't see Integrations", async () => {
@@ -263,7 +263,7 @@ describe("BookingsPage", () => {
     it("handles a network failure while loading", async () => {
         mocks.list.mockRejectedValueOnce(new TypeError("Failed to fetch"));
         render(<BookingsPage />);
-        expect(await screen.findByText("Couldn't load bookings. Please try again.")).toBeTruthy();
+        expect(await screen.findByText("Bookings aren't available right now")).toBeTruthy();
         expect(screen.queryByText(/Failed to fetch/)).toBeNull();
     });
 
@@ -330,9 +330,51 @@ describe("BookingsPage", () => {
     it("shows an empty range in plain words and marks the chosen range", async () => {
         mocks.list.mockResolvedValue({ data: listing({ bookings: [] }) });
         render(<BookingsPage />);
-        expect(await screen.findByText("No bookings yet in this range.")).toBeTruthy();
+        expect(await screen.findByText("No bookings in the next 7 days")).toBeTruthy();
         fireEvent.click(screen.getByRole("button", { name: "Last 7 days" }));
-        expect(await screen.findByText("No bookings in the last 7 days.")).toBeTruthy();
+        expect(await screen.findByText("No bookings in the last 7 days")).toBeTruthy();
         expect(screen.getByRole("button", { name: "Last 7 days" }).getAttribute("aria-pressed")).toBe("true");
+    });
+
+    it("says bookings are briefly unavailable when the integrations service is down, never the server's words", async () => {
+        mocks.list.mockResolvedValue({
+            error: { detail: "The integrations service isn't responding", code: "tools_service_unavailable" },
+        });
+        render(<BookingsPage />);
+
+        expect(await screen.findByText("Bookings aren't available right now")).toBeTruthy();
+        expect(screen.getByText(/We're on it\. Try again in a minute\./)).toBeTruthy();
+        expect(screen.queryByText(/integrations service/i)).toBeNull();
+        expect(screen.getByRole("button", { name: "Try again" })).toBeTruthy();
+    });
+
+    it("explains bookings aren't switched on, without a pointless Try again", async () => {
+        mocks.list.mockResolvedValue({ error: { detail: "x", code: "tools_service_not_configured" } });
+        render(<BookingsPage />);
+
+        expect(await screen.findByText("Bookings aren't switched on for your account yet")).toBeTruthy();
+        expect(screen.queryByRole("button", { name: "Try again" })).toBeNull();
+    });
+
+    it("explains what connecting a calendar does", async () => {
+        mocks.list.mockResolvedValue({ data: { calendars: [], bookings: [] } });
+        render(<BookingsPage />);
+
+        expect(await screen.findByText(/offer callers real free times and book them/)).toBeTruthy();
+        // No range buttons or settings until there is a calendar.
+        expect(screen.queryByRole("button", { name: "Next 7 days" })).toBeNull();
+    });
+
+    it("shows every day in the range, with quiet days marked", async () => {
+        render(<BookingsPage />);
+        await screen.findByText("Mary Byrne");
+
+        const days = screen.getByRole("list", { name: "Bookings by day" });
+        // Seven days from today, each with a heading.
+        expect(within(days).getAllByRole("heading", { level: 3 })).toHaveLength(7);
+        expect(within(days).getAllByText("No bookings")).toHaveLength(5);
+        // Tomorrow's cancelled booking is counted while hidden.
+        expect(within(days).getByText("1 booking · 1 cancelled")).toBeTruthy();
+        expect(screen.getAllByText(/^Booked by your agent/).length).toBeGreaterThan(0);
     });
 });

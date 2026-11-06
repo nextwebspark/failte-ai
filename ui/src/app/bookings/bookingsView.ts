@@ -95,3 +95,109 @@ export function totals(bookings: CalendarBooking[]): BookingTotals {
     }
     return result;
 }
+
+export interface CalendarDay extends DayGroup {
+    date: Date;
+    /** Cancelled bookings on this day that are hidden (Show cancelled is off). */
+    hiddenCancelled: number;
+}
+
+/**
+ * Every day in [start, end), each with its bookings, so a quiet day still shows
+ * as a day rather than vanishing from the list. A booking outside the range (an
+ * event that started the day before and runs past midnight) goes on its own day.
+ */
+export function daysInRange(
+    bookings: CalendarBooking[],
+    range: { start: Date; end: Date },
+    now: Date,
+    showCancelled: boolean,
+): CalendarDay[] {
+    const days = new Map<string, CalendarDay>();
+    const add = (date: Date) => {
+        const key = format(date, "yyyy-MM-dd");
+        let day = days.get(key);
+        if (!day) {
+            day = {
+                key,
+                date: startOfDay(date),
+                label: dayLabel(date, now),
+                bookings: [],
+                guests: 0,
+                confirmed: 0,
+                hiddenCancelled: 0,
+            };
+            days.set(key, day);
+        }
+        return day;
+    };
+    for (let day = startOfDay(range.start); day < range.end; day = addDays(day, 1)) add(day);
+    for (const booking of bookings) {
+        const day = add(new Date(booking.start));
+        if (booking.status === "cancelled") {
+            if (showCancelled) day.bookings.push(booking);
+            else day.hiddenCancelled += 1;
+            continue;
+        }
+        day.bookings.push(booking);
+        day.confirmed += 1;
+        day.guests += booking.party_size ?? 0;
+    }
+    return [...days.values()].sort((a, b) => a.date.getTime() - b.date.getTime());
+}
+
+/** "19:30", the start time on its own, for the big time on a booking. */
+export function startTime(booking: Pick<CalendarBooking, "start">): string {
+    return format(new Date(booking.start), "HH:mm");
+}
+
+/** "until 21:00". */
+export function untilTime(booking: Pick<CalendarBooking, "end">): string {
+    return `until ${format(new Date(booking.end), "HH:mm")}`;
+}
+
+/** "Mon 2 Nov, 14:05": when the booking was made, if the calendar says. */
+export function bookedOn(booking: Pick<CalendarBooking, "created_at">): string | null {
+    if (!booking.created_at) return null;
+    const made = new Date(booking.created_at);
+    if (Number.isNaN(made.getTime())) return null;
+    return format(made, "EEE d MMM, HH:mm");
+}
+
+/** The tel: link for a phone number as callers gave it ("087 123 4567"). */
+export function telHref(phone: string): string {
+    return `tel:${phone.replace(/[^\d+]/g, "")}`;
+}
+
+/** "3 bookings · 9 guests", leaving out guests when nobody gave a party size. */
+export function daySummary(day: Pick<DayGroup, "confirmed" | "guests">): string {
+    const bookings = `${day.confirmed} ${day.confirmed === 1 ? "booking" : "bookings"}`;
+    if (day.guests === 0) return bookings;
+    return `${bookings} · ${day.guests} ${day.guests === 1 ? "guest" : "guests"}`;
+}
+
+export interface FriendlyError {
+    title: string;
+    body: string;
+    /** False when trying again won't help (the feature isn't switched on). */
+    retry: boolean;
+}
+
+/**
+ * What an owner reads when bookings can't be loaded. Never the server's own
+ * words: the codes only pick which plain message to show.
+ */
+export function bookingsLoadError(code: string | undefined): FriendlyError {
+    if (code === "integration_unavailable" || code === "tools_service_not_configured") {
+        return {
+            title: "Bookings aren't switched on for your account yet",
+            body: "Ask your LightMove contact to turn them on.",
+            retry: false,
+        };
+    }
+    return {
+        title: "Bookings aren't available right now",
+        body: "We're on it. Try again in a minute.",
+        retry: true,
+    };
+}
