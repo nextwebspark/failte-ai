@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, Copy, Phone, Play, Undo2 } from "lucide-react";
+import { Check, Copy, MessageSquarePlus, Phone, Play, Undo2 } from "lucide-react";
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { toast } from "sonner";
@@ -102,11 +102,43 @@ interface FollowUpRowProps {
     meta?: "waiting" | "time";
     onMarkDone?: (item: FollowUpItem) => void;
     onUndo?: (item: FollowUpItem) => void;
+    /** "Add answer" on a question the agent couldn't answer. */
+    onAddAnswer?: (item: FollowUpItem) => void;
     busy?: boolean;
+    /** A made-up call: its buttons are shown but do nothing. */
+    sample?: boolean;
+}
+
+/** A sample call's button: shown so the owner sees it, but it does nothing. */
+function SampleButton({ children, variant = "soft" }: { children: ReactNode; variant?: "soft" | "default" | "ghost" }) {
+    return (
+        <Button size="sm" variant={variant} disabled title="Sample call: nothing to do">
+            {children}
+        </Button>
+    );
+}
+
+function OpenCallLink({ item, returnTo }: { item: Pick<FollowUpItem, "workflow_id" | "run_id">; returnTo: string }) {
+    return (
+        <Button asChild variant="ghost" size="sm" className="text-ink-2">
+            <Link href={runDetailHref(item.workflow_id, item.run_id, returnTo)}>Open call</Link>
+        </Button>
+    );
 }
 
 /** One call that needs a person: a coloured rule, title and chip, what they wanted, and who/when. */
-export function FollowUpRow({ item, timezone, now, returnTo, meta = "time", onMarkDone, onUndo, busy }: FollowUpRowProps) {
+export function FollowUpRow({
+    item,
+    timezone,
+    now,
+    returnTo,
+    meta = "time",
+    onMarkDone,
+    onUndo,
+    onAddAnswer,
+    busy,
+    sample = false,
+}: FollowUpRowProps) {
     const words = FOLLOW_UP_WORDS[item.kind];
     const done = Boolean(item.done_at);
     const number = callBackNumber(item);
@@ -153,6 +185,46 @@ export function FollowUpRow({ item, timezone, now, returnTo, meta = "time", onMa
                             <Button variant="ghost" size="sm" onClick={() => onUndo(item)} disabled={busy}>
                                 <Undo2 aria-hidden />
                                 Undo
+                            </Button>
+                        )}
+                    </>
+                ) : sample ? (
+                    <>
+                        <span className="mr-1 text-[12px] font-medium text-ink-3">Sample call</span>
+                        {item.kind === "unanswered_question" ? (
+                            <SampleButton>
+                                <MessageSquarePlus aria-hidden />
+                                Add answer
+                            </SampleButton>
+                        ) : item.kind === "time_was_full" ? (
+                            <SampleButton variant="ghost">Open call</SampleButton>
+                        ) : (
+                            <SampleButton variant="default">
+                                <Phone aria-hidden />
+                                Call back
+                            </SampleButton>
+                        )}
+                    </>
+                ) : item.kind === "unanswered_question" ? (
+                    <>
+                        {onAddAnswer && (
+                            <Button size="sm" variant="soft" onClick={() => onAddAnswer(item)} disabled={busy}>
+                                <MessageSquarePlus aria-hidden />
+                                Add answer
+                            </Button>
+                        )}
+                        {onMarkDone && (
+                            <Button variant="ghost" size="sm" onClick={() => onMarkDone(item)} disabled={busy}>
+                                Mark done
+                            </Button>
+                        )}
+                    </>
+                ) : item.kind === "time_was_full" ? (
+                    <>
+                        <OpenCallLink item={item} returnTo={returnTo} />
+                        {onMarkDone && (
+                            <Button variant="soft" size="sm" onClick={() => onMarkDone(item)} disabled={busy}>
+                                Mark done
                             </Button>
                         )}
                     </>

@@ -48,9 +48,27 @@ export const FOLLOW_UP_WORDS: Record<FollowUpKind, { chip: string; filter: strin
     callback: { chip: "Callback requested", filter: "Call back", tone: "amber" },
     transfer_not_answered: { chip: "Transfer not answered", filter: "Transfer not answered", tone: "danger" },
     repeat_caller: { chip: "Rang more than once", filter: "Rang more than once", tone: "sky" },
+    unanswered_question: { chip: "Add an answer", filter: "Couldn't answer", tone: "sky" },
+    time_was_full: { chip: "Time was full", filter: "Time was full", tone: "amber" },
 };
 
-export const FOLLOW_UP_KINDS: FollowUpKind[] = ["callback", "transfer_not_answered", "repeat_caller"];
+export const FOLLOW_UP_KINDS: FollowUpKind[] = [
+    "callback",
+    "transfer_not_answered",
+    "repeat_caller",
+    "unanswered_question",
+    "time_was_full",
+];
+
+/** One follow-up's key: a call can have one per kind. */
+export function followUpKey(item: Pick<FollowUpItem, "run_id" | "kind">): string {
+    return `${item.run_id}-${item.kind}`;
+}
+
+/** The kinds the call review raises; each is marked done on its own (?kind=). */
+export function markKind(kind: FollowUpKind): FollowUpKind | null {
+    return kind === "unanswered_question" || kind === "time_was_full" ? kind : null;
+}
 
 export const RANGE_OPTIONS: { value: DashboardRange; label: string }[] = [
     { value: "today", label: "Today" },
@@ -230,6 +248,10 @@ export function followUpTitle(item: FollowUpItem): string {
             return `Call back ${callerWords(item)}`;
         case "transfer_not_answered":
             return "Transfer not answered";
+        case "unanswered_question":
+            return "Your agent couldn't answer";
+        case "time_was_full":
+            return "Time was full";
         case "repeat_caller":
         default:
             return `${callerWords(item)} rang ${item.repeat_count ?? 2} times`;
@@ -251,6 +273,14 @@ export function followUpDetail(item: FollowUpItem, timezone?: string | null, now
                 : "Your agent tried to pass the call to your team, but nobody picked up.";
             return repeat ? `${base} ${repeat}` : base;
         }
+        case "unanswered_question": {
+            const questions = item.questions ?? [];
+            return questions.length
+                ? `${questions.map((q) => `“${q}”`).join(" ")} Add the answer once and your agent uses it on every call.`
+                : "The caller asked something your agent didn't know.";
+        }
+        case "time_was_full":
+            return item.summary ?? "The caller wanted a time that was full.";
         case "repeat_caller":
         default:
             return repeat ?? "Rang more than once and didn't reach anyone.";
@@ -288,4 +318,11 @@ export function hourLabel(hour: number): string {
 export function euros(value: string | number): string {
     const amount = typeof value === "string" ? Number(value) : value;
     return new Intl.NumberFormat("en-IE", { style: "currency", currency: "EUR" }).format(amount);
+}
+
+/** The agent's answers with one more: "Q: … A: …" on a line of its own. */
+export function appendAnswer(existing: string, question: string, answer: string): string {
+    const line = `Q: ${question.trim().replace(/\s+/g, " ")} A: ${answer.trim().replace(/\s+/g, " ")}`;
+    const before = existing.trimEnd();
+    return before ? `${before}\n${line}` : line;
 }
