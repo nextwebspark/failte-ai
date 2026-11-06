@@ -495,7 +495,11 @@ async def _create_inbound_workflow_run(
     )
     if not workflow:
         raise HTTPException(status_code=404, detail="Workflow not found")
-    run_inputs = await prepare_workflow_run_inputs(db_client, workflow)
+    # Live calls read the agent's stored business facts (opening hours,
+    # address...) like test calls do; the call's own fields take precedence.
+    run_inputs = await prepare_workflow_run_inputs(
+        db_client, workflow, include_template_context=True
+    )
 
     workflow_run = await db_client.create_workflow_run(
         workflow_run_name,
@@ -504,6 +508,7 @@ async def _create_inbound_workflow_run(
         user_id=user_id,
         call_type=CallType.INBOUND,
         initial_context={
+            **run_inputs.initial_context,
             "caller_number": normalized_data.from_number,
             "called_number": normalized_data.to_number,
             "direction": "inbound",

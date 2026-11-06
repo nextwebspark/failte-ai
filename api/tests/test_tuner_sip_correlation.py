@@ -148,7 +148,7 @@ async def test_inbound_metadata_survives_run_creation_and_tuner_delivery(provide
     }
     normalized = registry.get(provider_name).provider_cls.parse_inbound_webhook(webhook)
     workflow = SimpleNamespace(id=33, organization_id=11)
-    run_inputs = SimpleNamespace(definition_id=77, use_draft=False)
+    run_inputs = SimpleNamespace(definition_id=77, use_draft=False, initial_context={})
     create_run = AsyncMock(return_value=SimpleNamespace(id=42))
     with (
         patch(

@@ -21,11 +21,13 @@ from api.enums import (
     CallType,
     PostHogEvent,
     StorageBackend,
+    ToolCategory,
     WorkflowRunMode,
     WorkflowStatus,
 )
 from api.schemas.ai_model_configuration import OrganizationAIModelConfigurationV2
 from api.schemas.privacy import DeleteWorkflowRunDataResponse
+from api.schemas.tool import TransferCallConfig, TransferCallToolDefinition
 from api.schemas.workflow import WorkflowRunResponseSchema
 from api.schemas.workflow_configurations import WorkflowConfigurationDefaults
 from api.schemas.workflow_template import (
@@ -85,6 +87,11 @@ from api.services.workflow.agent_builder import (
     build_agent_workflow,
     default_agent_spec_generator,
 )
+from api.services.workflow.business_facts import (
+    BusinessFactsError,
+    checked_updates,
+    fact_fields,
+)
 from api.services.workflow.configuration_policy import (
     ExternalPBXConfigurationDisabledError,
     WorkflowConfigurationNotFoundError,
@@ -99,10 +106,14 @@ from api.services.workflow.run_usage_response import (
     format_public_usage_info,
 )
 from api.services.workflow.template_setup import (
+    BUILTIN_TRANSFER_TOOL,
+    TRANSFER_DESTINATION,
     TemplateSetupError,
     attach_integration_tools,
-    fill_template_values,
+    attach_tool_placeholder,
+    fill_template,
     parse_setup_fields,
+    uses_tool_placeholder,
 )
 from api.services.workflow.tool_name_validation import (
     validate_workflow_tool_name_collisions,
@@ -1610,7 +1621,9 @@ async def duplicate_workflow_template(
         )
 
     try:
-        filled = fill_template_values(
+        # Business facts stay on the agent (editable later); the rest is
+        # written into the prompts.
+        filled, facts = fill_template(
             template.template_json,
             parse_setup_fields(template.setup_fields),
             request.values,
@@ -1632,6 +1645,28 @@ async def duplicate_workflow_template(
         if {tool.tool_uuid for tool in tools} != tool_uuids:
             raise HTTPException(status_code=404, detail="Connected tool not found")
     filled = attach_integration_tools(filled, request.integration_tools)
+    if uses_tool_placeholder(filled, BUILTIN_TRANSFER_TOOL):
+        # One "put through to a person" tool per agent, sending calls to the
+        # agent's transfer_number fact (empty: the transfer fails and the
+        # agent takes a message, as its instructions say).
+        transfer_tool = await db_client.create_tool(
+            organization_id=user.selected_organization_id,
+            user_id=user.id,
+            name=f"Put through to the team ({request.workflow_name})"[:255],
+            definition=TransferCallToolDefinition(
+                type="transfer_call",
+                config=TransferCallConfig(
+                    destination=TRANSFER_DESTINATION,
+                    messageType="custom",
+                    customMessage="One moment, I'm putting you through.",
+                ),
+            ).model_dump(),
+            category=ToolCategory.TRANSFER_CALL.value,
+            description="Puts the caller through to the number on Business facts.",
+        )
+        filled = attach_tool_placeholder(
+            filled, BUILTIN_TRANSFER_TOOL, transfer_tool.tool_uuid
+        )
 
     # Create a new workflow from the template
     # Regenerate trigger UUIDs to avoid conflicts with existing triggers
@@ -1651,6 +1686,7 @@ async def duplicate_workflow_template(
         workflow_def,
         user.id,
         user.selected_organization_id,
+        template_context_variables=facts,
     )
 
     if trigger_paths:
@@ -2071,4 +2107,75 @@ async def get_ambient_noise_upload_url(
         upload_url=upload_url,
         storage_key=storage_key,
         storage_backend=StorageBackend.get_current_backend().value,
+    )
+
+
+class BusinessFact(BaseModel):
+    key: str
+    label: str
+    type: str
+    help: str | None = None
+    placeholder: str | None = None
+    required: bool
+    max_length: int
+    value: str
+
+
+class BusinessFactsResponse(BaseModel):
+    facts: list[BusinessFact]
+
+
+class UpdateBusinessFactsRequest(BaseModel):
+    facts: dict[str, str | None]
+
+
+async def _agent_facts(workflow_id: int, organization_id: int):
+    workflow = await db_client.get_workflow(
+        workflow_id, organization_id=organization_id
+    )
+    if workflow is None:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    released = workflow.released_definition
+    definition = released.workflow_json if released else workflow.workflow_definition
+    return workflow, fact_fields(definition, workflow.template_context_variables)
+
+
+@router.get(
+    "/{workflow_id}/business-facts",
+    dependencies=requires(Permission.AGENTS_READ),
+)
+async def get_business_facts(
+    workflow_id: int, user: UserModel = Depends(get_user)
+) -> BusinessFactsResponse:
+    """What the agent knows about the business: the facts its prompts read
+    at call time (opening hours, address, FAQ…), with their current values."""
+    _, fields = await _agent_facts(workflow_id, user.selected_organization_id)
+    return BusinessFactsResponse(
+        facts=[BusinessFact(**field.__dict__) for field in fields]
+    )
+
+
+@router.put(
+    "/{workflow_id}/business-facts",
+    dependencies=requires(Permission.AGENTS_FACTS),
+)
+async def update_business_facts(
+    workflow_id: int,
+    request: UpdateBusinessFactsRequest,
+    user: UserModel = Depends(get_user),
+) -> BusinessFactsResponse:
+    """Update the agent's business facts. They apply from the next call,
+    without publishing any unfinished changes to the agent itself."""
+    organization_id = user.selected_organization_id
+    _, fields = await _agent_facts(workflow_id, organization_id)
+    try:
+        updates = checked_updates(fields, request.facts)
+    except BusinessFactsError as e:
+        raise HTTPException(status_code=422, detail=str(e)) from None
+    saved = await db_client.update_business_facts(workflow_id, organization_id, updates)
+    if saved is None:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    _, fields = await _agent_facts(workflow_id, organization_id)
+    return BusinessFactsResponse(
+        facts=[BusinessFact(**field.__dict__) for field in fields]
     )

@@ -1,4 +1,5 @@
 import {
+  BookOpenText,
   type LucideIcon,
   MessageSquare,
   Settings2,
@@ -51,6 +52,12 @@ export const AGENT_NAV_SECTIONS: AgentNavSection[] = [
   {
     label: "CONFIGURE",
     items: [
+      {
+        title: "Business facts",
+        segment: "/facts",
+        icon: BookOpenText,
+        subtitle: "Opening hours, address and answers your agent gives",
+      },
       {
         title: "Conversation",
         segment: "",

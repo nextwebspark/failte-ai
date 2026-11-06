@@ -6,17 +6,21 @@ business. ``python -m scripts.sync_agent_templates`` writes them to the
 ``workflow_templates`` table.
 """
 
-from dataclasses import dataclass, field
+import copy
+from dataclasses import dataclass, field, replace
 from typing import Any, Literal
 
-from api.schemas.workflow_template import TemplateSetupField
+from api.schemas.workflow_template import SetupOption, TemplateSetupField
 from api.services.workflow.agent_builder import (
     AgentSpec,
     CapturedFieldSpec,
     StageSpec,
     assemble_workflow_definition,
 )
-from api.services.workflow.template_setup import INTEGRATION_TOOL_PREFIX
+from api.services.workflow.template_setup import (
+    BUILTIN_TRANSFER_TOOL,
+    INTEGRATION_TOOL_PREFIX,
+)
 
 GOOGLE_CALENDAR = "google-calendar"
 
@@ -87,18 +91,21 @@ def _business_fields(
     head = [
         TemplateSetupField(
             key="business_name",
+            stored=True,
             label="Business name",
             placeholder=name_placeholder,
             max_length=120,
         ),
         TemplateSetupField(
             key="business_description",
+            stored=True,
             label="What does your business do?",
             type="textarea",
             placeholder=description_placeholder,
         ),
         TemplateSetupField(
             key="opening_hours",
+            stored=True,
             label="Opening hours",
             placeholder=hours_placeholder,
             max_length=300,
@@ -108,6 +115,7 @@ def _business_fields(
         [
             TemplateSetupField(
                 key="address",
+                stored=True,
                 label="Address",
                 placeholder=address_placeholder,
                 required=False,
@@ -120,6 +128,7 @@ def _business_fields(
     tail = [
         TemplateSetupField(
             key="website",
+            stored=True,
             label="Website",
             type="url",
             placeholder=website_placeholder,
@@ -128,6 +137,7 @@ def _business_fields(
         ),
         TemplateSetupField(
             key="extra_info",
+            stored=True,
             label="Anything else callers often ask?",
             type="textarea",
             help=extra_help,
@@ -166,6 +176,154 @@ def _message_fields() -> list[CapturedFieldSpec]:
     ]
 
 
+# Starter templates are written by hand, so they may record more than a
+# generated agent: a table booking alone needs day, time and party size.
+TEMPLATE_MAX_CAPTURED_FIELDS = 8
+
+
+def _assemble(spec: AgentSpec, call_type: str) -> dict[str, Any]:
+    return assemble_workflow_definition(
+        spec, call_type, max_captured_fields=TEMPLATE_MAX_CAPTURED_FIELDS
+    )
+
+
+def _booking_steps(thing: str, details: str, check_with: str, read_back: str) -> str:
+    """How every booking template books: ask, check, read back, book, and
+    hand off when the calendar says so. ``thing`` is what is booked ("a
+    table"), ``details`` what is always asked, ``check_with`` what to pass to
+    the availability check, ``read_back`` an example confirmation sentence.
+    The owner's extra questions (``BOOKING_QUESTIONS``) follow the essentials."""
+    return (
+        f"If they want {thing} and you have calendar tools:\n"
+        f"1. Ask for {details}, one question at a time. Skip anything they "
+        "already told you. {{" + BOOKING_QUESTIONS + "}}\n"
+        f"2. Check availability, giving {check_with}. Offer only the times it "
+        "gives, at most two or three, and never make one up.\n"
+        f'3. Before booking, read it all back in one sentence, e.g. "{read_back}", '
+        "and wait for a clear yes.\n"
+        "4. Book it, then confirm the day and time the calendar gave.\n"
+        "If a calendar answer has a handoff (booking is switched off, the group "
+        "is too big, or it is fully booked), read its line to the caller, then "
+        "transfer them to the team if you can; otherwise take a message with the "
+        "details you have. Never tell a caller they are booked unless the "
+        "calendar confirmed it.\n"
+        "To move or cancel a booking made on an earlier call: ask for the phone "
+        "number the booking was made under, and their name or the day of the "
+        "booking, then find it with find_booking. Read back what it finds and "
+        "get a clear yes before cancelling or moving it (to move, check free "
+        "times first). If it hands off or finds nothing, change nothing: "
+        "transfer them or take their name, number and the booking's day and "
+        "time for the team. Never say a booking is moved or cancelled unless "
+        "the calendar confirmed it.\n\n"
+        "If you have no calendar tools, take a message with the same details so "
+        "the team can confirm."
+    )
+
+
+BOOKING_QUESTIONS = "booking_questions"
+
+
+def _booking_toggles(*options: SetupOption) -> TemplateSetupField:
+    """The owner's switches for what else the agent asks when booking."""
+    return TemplateSetupField(
+        key=BOOKING_QUESTIONS,
+        label="When someone books, also ask",
+        type="toggles",
+        help="Day, time, name and phone number are always asked.",
+        required=False,
+        options=list(options),
+    )
+
+
+def _option(value: str, label: str, prompt: str, default: bool = False) -> SetupOption:
+    return SetupOption(value=value, label=label, prompt=prompt, default=default)
+
+
+_PURPOSE = _option("purpose", "What it's for", "what it is for", default=True)
+_RESTAURANT_TOGGLES = _booking_toggles(
+    _option("party_size", "Party size", "how many people", default=True),
+    _option(
+        "allergies",
+        "Allergies",
+        "about any allergies or dietary needs",
+        default=True,
+    ),
+    _option("occasion", "Special occasion", "whether it is for a special occasion"),
+    _option("seating", "Seating", "about seating, such as inside, outside or a booth"),
+    _option("high_chair", "High chair", "whether they need a high chair"),
+)
+_CLINIC_TOGGLES = _booking_toggles(
+    _option(
+        "purpose",
+        "Reason for the visit",
+        "what the visit is for in a few words (never ask about symptoms)",
+        default=True,
+    ),
+    _option(
+        "patient_status",
+        "New or existing patient",
+        "whether they are a new or existing patient",
+        default=True,
+    ),
+    _option(
+        "cover",
+        "Medical card or insurance",
+        "whether they have a medical card or health insurance",
+    ),
+)
+_SALON_TOGGLES = _booking_toggles(
+    _option(
+        "service",
+        "Service",
+        "which service they want, such as a cut, colour or beard trim",
+        default=True,
+    ),
+    _option(
+        "stylist", "Stylist", "whether they want a particular stylist", default=True
+    ),
+    _option("first_visit", "First visit", "whether it is their first visit"),
+)
+_ESTATE_TOGGLES = _booking_toggles(
+    _option(
+        "buy_or_rent",
+        "Buying or renting",
+        "whether they are buying or renting",
+        default=True,
+    ),
+    _option(
+        "mortgage",
+        "Mortgage approval",
+        "whether they have mortgage approval in principle",
+    ),
+    _option(
+        "in_person",
+        "In person or video",
+        "whether they want to view in person or by video",
+    ),
+)
+_GENERAL_TOGGLES = _booking_toggles(_PURPOSE)
+
+
+def _booking_fields(when: str = "booking") -> list[CapturedFieldSpec]:
+    return [
+        CapturedFieldSpec(
+            name="booking_outcome",
+            description=(
+                "booked (the calendar confirmed it), requested (taken as a message "
+                "for the team), moved, cancelled, or empty if no booking came up."
+            ),
+        ),
+        CapturedFieldSpec(
+            name="booking_date",
+            description=f"The {when} day agreed or asked for, as YYYY-MM-DD.",
+        ),
+        CapturedFieldSpec(
+            name="booking_time",
+            description=f"The {when} time agreed or asked for, as 24-hour HH:MM.",
+        ),
+    ]
+
+
 _RECEPTIONIST = AgentSpec(
     name="AI Receptionist",
     persona=(
@@ -186,13 +344,14 @@ _RECEPTIONIST = AgentSpec(
             "Find out why the person is calling. If you can answer from what you "
             "know about the business, answer briefly and ask if there is anything "
             "else.\n\n"
-            "If they want an appointment and you have calendar tools: check "
-            "availability for the day they ask about, offer at most two or three "
-            "times, and book the one they choose with their name and phone "
-            "number. Confirm the day and time back to them. To cancel, look up "
-            "and cancel their booking.\n\n"
-            "If you have no calendar tools, or they need a callback or a person, "
-            "explain that you will take a message for the team."
+            + _booking_steps(
+                "an appointment",
+                "the day, the time, their name and a mobile number",
+                "the day and part of the day they want",
+                "Tuesday at half past ten for a consultation, under Mary Byrne. Shall I book that?",
+            )
+            + "\n\nIf they need a callback or a person, explain that you will "
+            "take a message for the team."
         ),
         done_when=(
             "The caller needs something you cannot do yourself, such as a "
@@ -209,7 +368,7 @@ _RECEPTIONIST = AgentSpec(
         "booked) and wants to go, says goodbye, or it is a wrong number or a "
         "sales call."
     ),
-    captured_fields=_message_fields(),
+    captured_fields=[*_message_fields(), *_booking_fields("appointment")],
 )
 
 _CLINIC = AgentSpec(
@@ -232,10 +391,14 @@ _CLINIC = AgentSpec(
         prompt=(
             "Find out whether they want to book, move or cancel a visit, or ask "
             "about hours, location or services. Answer from the facts you have.\n\n"
-            "If they want an appointment and you have calendar tools: check "
-            "availability, offer two or three times, book with their name and "
-            "phone number, and confirm the day and time.\n\n"
-            "If you cannot help, or they need a person, take a message."
+            + _booking_steps(
+                "an appointment",
+                "the day, the time, the patient's name and a mobile number. "
+                "Never ask about symptoms",
+                "the day and part of the day they want",
+                "A check-up on Thursday at nine fifteen, for Sean Kelly, an existing patient. Shall I book that?",
+            )
+            + "\n\nIf you cannot help, or they need a person, take a message."
         ),
         done_when=(
             "The caller needs a callback, a person, or a booking you could not make."
@@ -249,7 +412,21 @@ _CLINIC = AgentSpec(
         "Their visit is booked or cancelled, they have the answer they need, "
         "they say goodbye, or it is a wrong number."
     ),
-    captured_fields=_message_fields(),
+    captured_fields=[
+        *_message_fields(),
+        *_booking_fields("appointment"),
+        CapturedFieldSpec(
+            name="appointment_type",
+            description=(
+                "What the visit is for in a few words, e.g. check-up or "
+                "cleaning. Never record symptoms or medical details."
+            ),
+        ),
+        CapturedFieldSpec(
+            name="patient_status",
+            description="new or existing patient, if they said.",
+        ),
+    ],
 )
 
 _TRADES = AgentSpec(
@@ -288,7 +465,17 @@ _TRADES = AgentSpec(
     end_call_when=(
         "You have the message, they say goodbye, or it is a wrong number or sales call."
     ),
-    captured_fields=_message_fields(),
+    captured_fields=[
+        *_message_fields(),
+        CapturedFieldSpec(
+            name="job_address",
+            description="Where the job is: address or Eircode, if given.",
+        ),
+        CapturedFieldSpec(
+            name="urgency",
+            description="emergency, this week, or no rush, as the caller put it.",
+        ),
+    ],
 )
 
 _RESTAURANT = AgentSpec(
@@ -310,11 +497,14 @@ _RESTAURANT = AgentSpec(
     opening=StageSpec(
         name="Take a booking or answer",
         prompt=(
-            "If they want a table and you have calendar tools: ask for day, time "
-            "and party size, check availability, book under their name and phone, "
-            "and confirm.\n\n"
-            "If you have no calendar tools, take a message with day, time, party "
-            "size, name and number for the team.\n\n"
+            _booking_steps(
+                "a table",
+                "the day, the time, the name for the booking and a mobile number",
+                "the day, the part of the day and, once you know it, the number "
+                "of people",
+                "A table for four on Friday at half seven, under Mary Byrne. Shall I book that?",
+            )
+            + "\n\n"
             "Answer simple questions about hours, location or notes from the facts "
             "you have."
         ),
@@ -329,7 +519,20 @@ _RESTAURANT = AgentSpec(
     end_call_when=(
         "The booking or message is done, they say goodbye, or it is a wrong number."
     ),
-    captured_fields=_message_fields(),
+    captured_fields=[
+        *_message_fields(),
+        *_booking_fields(),
+        CapturedFieldSpec(
+            name="party_size",
+            description="How many people the table is for, as digits.",
+        ),
+        CapturedFieldSpec(
+            name="special_requests",
+            description=(
+                "Allergies, an occasion, a high chair or seating wishes, if mentioned."
+            ),
+        ),
+    ],
 )
 
 _ESTATE = AgentSpec(
@@ -353,10 +556,14 @@ _ESTATE = AgentSpec(
     opening=StageSpec(
         name="Help the caller",
         prompt=(
-            "If they want a viewing and you have calendar tools: ask which "
-            "property or area, offer times, book with name and mobile, and confirm.\n\n"
-            "If you cannot book, take a message with their name, number, and which "
-            "property they mean.\n\n"
+            _booking_steps(
+                "a viewing",
+                "which property (the address or listing they saw), the day and "
+                "time, their name and a mobile number",
+                "the day and part of the day they want",
+                "A viewing of 14 Oak Road on Saturday at eleven, for Aoife Ryan. Shall I book that?",
+            )
+            + "\n\n"
             "Answer simple office-hour or location questions from your facts."
         ),
         done_when=(
@@ -368,7 +575,14 @@ _ESTATE = AgentSpec(
     end_call_when=(
         "The viewing or message is done, they say goodbye, or it is a wrong number."
     ),
-    captured_fields=_message_fields(),
+    captured_fields=[
+        *_message_fields(),
+        *_booking_fields("viewing"),
+        CapturedFieldSpec(
+            name="property",
+            description="Which property or area, as the caller described it.",
+        ),
+    ],
 )
 
 _VOIP_LINE = AgentSpec(
@@ -388,9 +602,13 @@ _VOIP_LINE = AgentSpec(
         name="Route the call",
         prompt=(
             "Find out why they called. Answer simple questions from your facts.\n\n"
-            "If they want an appointment and you have calendar tools: check "
-            "availability, offer two or three times, book with name and number, "
-            "and confirm.\n\n"
+            + _booking_steps(
+                "an appointment",
+                "the day, the time, their name and a number",
+                "the day and part of the day they want",
+                "Wednesday at two for a call back about broadband, for Liam Walsh. Shall I book that?",
+            )
+            + "\n\n"
             "If they ask for a person, a department, or something you cannot do, "
             "take a clear message for the team."
         ),
@@ -405,7 +623,7 @@ _VOIP_LINE = AgentSpec(
     end_call_when=(
         "They have what they need, say goodbye, or it is a wrong number or sales call."
     ),
-    captured_fields=_message_fields(),
+    captured_fields=[*_message_fields(), *_booking_fields("appointment")],
 )
 
 _SALON = AgentSpec(
@@ -428,10 +646,13 @@ _SALON = AgentSpec(
     opening=StageSpec(
         name="Book or answer",
         prompt=(
-            "If they want an appointment and you have calendar tools: ask what "
-            "they need, check availability, book with name and mobile, and confirm.\n\n"
-            "If you cannot book, take a message with service, preferred times, "
-            "name and number.\n\n"
+            _booking_steps(
+                "an appointment",
+                "the day, the time, their name and a mobile number",
+                "the day and part of the day they want",
+                "A cut and blow-dry on Saturday at ten with Emma, for Ciara Doyle. Shall I book that?",
+            )
+            + "\n\n"
             "Answer short questions about hours, location or notes from your facts."
         ),
         done_when=(
@@ -443,7 +664,17 @@ _SALON = AgentSpec(
     end_call_when=(
         "The booking or message is done, they say goodbye, or it is a wrong number."
     ),
-    captured_fields=_message_fields(),
+    captured_fields=[
+        *_message_fields(),
+        *_booking_fields("appointment"),
+        CapturedFieldSpec(
+            name="service",
+            description="The service they want, e.g. cut and colour.",
+        ),
+        CapturedFieldSpec(
+            name="stylist", description="The stylist they asked for, if any."
+        ),
+    ],
 )
 
 _LEAD_FOLLOW_UP = AgentSpec(
@@ -496,8 +727,8 @@ _APPOINTMENT_REMINDER = AgentSpec(
         "Address: {{address | fallback:not listed.}}\n"
         "Website: {{website | fallback:not listed.}}\n"
         "Other notes: {{extra_info | fallback:nothing else.}}\n\n"
-        "Keep the call under two minutes. Confirm, reschedule via calendar tools "
-        "if you have them, or take a message."
+        "Keep the call under two minutes. Confirm the visit. Only change it if "
+        "the calendar lets you; otherwise take a message."
     ),
     greeting=(
         "Hi, this is {{business_name}} with a quick reminder about your upcoming "
@@ -506,14 +737,17 @@ _APPOINTMENT_REMINDER = AgentSpec(
     opening=StageSpec(
         name="Confirm the visit",
         prompt=(
-            "Confirm they still plan to attend. If they need to move it and you "
-            "have calendar tools: offer two or three new times, update the booking, "
-            "and confirm.\n\n"
-            "If they cancel or you cannot change the diary, take a short message "
-            "for the team with their name and number."
+            "Confirm they still plan to attend. If they need to move or cancel "
+            "it and you have calendar tools: find the booking with find_booking "
+            "(their phone number and name), read it back, and for a move check "
+            "free times and get a yes before moving it. If the calendar hands "
+            "off, finds nothing, or you have no calendar tools, take a short "
+            "message for the team with their name, number and, if moving, the "
+            "day and time they would prefer. Never say it is changed unless the "
+            "calendar confirmed it."
         ),
         done_when=(
-            "They confirmed, rescheduled, cancelled, or asked for a human callback."
+            "They confirmed, asked to move or cancel, or asked for a human callback."
         ),
     ),
     stages=[_message_stage()],
@@ -523,7 +757,7 @@ _APPOINTMENT_REMINDER = AgentSpec(
     end_call_when=(
         "Confirmation or change is done, they say goodbye, or it is a wrong number."
     ),
-    captured_fields=_message_fields(),
+    captured_fields=[*_message_fields(), *_booking_fields("appointment")],
 )
 
 _FEEDBACK = AgentSpec(
@@ -582,16 +816,19 @@ STARTER_TEMPLATES: list[StarterTemplate] = [
             "Answers every call, tells callers about your business, books "
             "appointments and takes messages."
         ),
-        setup_fields=_business_fields(
-            name_placeholder="Bloom Dental",
-            description_placeholder=(
-                "Family dental practice in Dublin. Check-ups, cleaning, "
-                "whitening and emergency appointments."
+        setup_fields=[
+            *_business_fields(
+                name_placeholder="Bloom Dental",
+                description_placeholder=(
+                    "Family dental practice in Dublin. Check-ups, cleaning, "
+                    "whitening and emergency appointments."
+                ),
+                website_placeholder="https://bloomdental.ie",
             ),
-            website_placeholder="https://bloomdental.ie",
-        ),
+            _GENERAL_TOGGLES,
+        ],
         definition=_with_integration_tools(
-            assemble_workflow_definition(_RECEPTIONIST, "INBOUND"), GOOGLE_CALENDAR
+            _assemble(_RECEPTIONIST, "INBOUND"), GOOGLE_CALENDAR
         ),
         call_type="inbound",
         icon="phone",
@@ -605,18 +842,21 @@ STARTER_TEMPLATES: list[StarterTemplate] = [
             "Books and moves clinic visits, answers hours and location, and "
             "passes anyone in pain to reception."
         ),
-        setup_fields=_business_fields(
-            name_placeholder="River Physio",
-            description_placeholder=(
-                "Physiotherapy clinic in Cork. Sports injuries, back pain and "
-                "post-op rehab."
+        setup_fields=[
+            *_business_fields(
+                name_placeholder="River Physio",
+                description_placeholder=(
+                    "Physiotherapy clinic in Cork. Sports injuries, back pain and "
+                    "post-op rehab."
+                ),
+                website_placeholder="https://riverphysio.ie",
+                extra_help="Insurance, first-visit notes, parking.",
+                extra_placeholder="New patients please arrive 10 minutes early. Free street parking nearby.",
             ),
-            website_placeholder="https://riverphysio.ie",
-            extra_help="Insurance, first-visit notes, parking.",
-            extra_placeholder="New patients please arrive 10 minutes early. Free street parking nearby.",
-        ),
+            _CLINIC_TOGGLES,
+        ],
         definition=_with_integration_tools(
-            assemble_workflow_definition(_CLINIC, "INBOUND"), GOOGLE_CALENDAR
+            _assemble(_CLINIC, "INBOUND"), GOOGLE_CALENDAR
         ),
         call_type="inbound",
         icon="activity",
@@ -640,7 +880,7 @@ STARTER_TEMPLATES: list[StarterTemplate] = [
             extra_help="Areas you cover, call-out fees if you publish them.",
             extra_placeholder="We cover Limerick city and county. Standard call-out from €80.",
         ),
-        definition=assemble_workflow_definition(_TRADES, "INBOUND"),
+        definition=_assemble(_TRADES, "INBOUND"),
         call_type="inbound",
         icon="moon",
         category="trades",
@@ -651,18 +891,21 @@ STARTER_TEMPLATES: list[StarterTemplate] = [
             "Takes table bookings and answers the usual questions while the "
             "floor is busy."
         ),
-        setup_fields=_business_fields(
-            name_placeholder="Harbour Kitchen",
-            description_placeholder=(
-                "Casual seafood restaurant in Galway. Lunch and dinner, groups welcome."
+        setup_fields=[
+            *_business_fields(
+                name_placeholder="Harbour Kitchen",
+                description_placeholder=(
+                    "Casual seafood restaurant in Galway. Lunch and dinner, groups welcome."
+                ),
+                hours_placeholder="Tue–Sun 12–3pm and 5–10pm, closed Monday",
+                website_placeholder="https://harbourkitchen.ie",
+                extra_help="Allergies, terrace, kids, parking.",
+                extra_placeholder="Please tell us about allergies when you book. High chairs available.",
             ),
-            hours_placeholder="Tue–Sun 12–3pm and 5–10pm, closed Monday",
-            website_placeholder="https://harbourkitchen.ie",
-            extra_help="Allergies, terrace, kids, parking.",
-            extra_placeholder="Please tell us about allergies when you book. High chairs available.",
-        ),
+            _RESTAURANT_TOGGLES,
+        ],
         definition=_with_integration_tools(
-            assemble_workflow_definition(_RESTAURANT, "INBOUND"), GOOGLE_CALENDAR
+            _assemble(_RESTAURANT, "INBOUND"), GOOGLE_CALENDAR
         ),
         call_type="inbound",
         icon="utensils",
@@ -674,18 +917,21 @@ STARTER_TEMPLATES: list[StarterTemplate] = [
         description=(
             "Answers listing questions after hours and books viewings into your diary."
         ),
-        setup_fields=_business_fields(
-            name_placeholder="Shannon Homes",
-            description_placeholder=(
-                "Residential sales and lettings across Clare and Limerick."
+        setup_fields=[
+            *_business_fields(
+                name_placeholder="Shannon Homes",
+                description_placeholder=(
+                    "Residential sales and lettings across Clare and Limerick."
+                ),
+                hours_placeholder="Mon–Fri 9am–5.30pm, Sat viewings by appointment",
+                website_placeholder="https://shannonhomes.ie",
+                extra_help="Areas, sales vs lettings, viewing rules.",
+                extra_placeholder="Bring photo ID to viewings. Pets policy depends on the landlord.",
             ),
-            hours_placeholder="Mon–Fri 9am–5.30pm, Sat viewings by appointment",
-            website_placeholder="https://shannonhomes.ie",
-            extra_help="Areas, sales vs lettings, viewing rules.",
-            extra_placeholder="Bring photo ID to viewings. Pets policy depends on the landlord.",
-        ),
+            _ESTATE_TOGGLES,
+        ],
         definition=_with_integration_tools(
-            assemble_workflow_definition(_ESTATE, "INBOUND"), GOOGLE_CALENDAR
+            _assemble(_ESTATE, "INBOUND"), GOOGLE_CALENDAR
         ),
         call_type="inbound",
         icon="star",
@@ -698,18 +944,21 @@ STARTER_TEMPLATES: list[StarterTemplate] = [
             "Answers your main VoIP or phone line: answers FAQs, takes "
             "messages, and can book into your calendar."
         ),
-        setup_fields=_business_fields(
-            name_placeholder="Connolly & Co",
-            description_placeholder=(
-                "Accountants in Dublin. Bookkeeping, payroll and company returns "
-                "for SMEs."
+        setup_fields=[
+            *_business_fields(
+                name_placeholder="Connolly & Co",
+                description_placeholder=(
+                    "Accountants in Dublin. Bookkeeping, payroll and company returns "
+                    "for SMEs."
+                ),
+                website_placeholder="https://connollyco.ie",
+                extra_help="Departments, after-hours policy, languages.",
+                extra_placeholder="Ask for accounts or payroll. Irish and English spoken.",
             ),
-            website_placeholder="https://connollyco.ie",
-            extra_help="Departments, after-hours policy, languages.",
-            extra_placeholder="Ask for accounts or payroll. Irish and English spoken.",
-        ),
+            _GENERAL_TOGGLES,
+        ],
         definition=_with_integration_tools(
-            assemble_workflow_definition(_VOIP_LINE, "INBOUND"), GOOGLE_CALENDAR
+            _assemble(_VOIP_LINE, "INBOUND"), GOOGLE_CALENDAR
         ),
         call_type="inbound",
         icon="phone-incoming",
@@ -722,18 +971,21 @@ STARTER_TEMPLATES: list[StarterTemplate] = [
             "Books cuts and colour, answers hours and prices, and takes messages "
             "when the chair is busy."
         ),
-        setup_fields=_business_fields(
-            name_placeholder="Harbour Cuts",
-            description_placeholder=(
-                "Unisex salon in Howth. Cuts, colour and blow-drys."
+        setup_fields=[
+            *_business_fields(
+                name_placeholder="Harbour Cuts",
+                description_placeholder=(
+                    "Unisex salon in Howth. Cuts, colour and blow-drys."
+                ),
+                hours_placeholder="Tue–Sat 9am–6pm, closed Sunday and Monday",
+                website_placeholder="https://harbourcuts.ie",
+                extra_help="Stylists, deposit policy, parking.",
+                extra_placeholder="Walk-ins welcome if free. Card only.",
             ),
-            hours_placeholder="Tue–Sat 9am–6pm, closed Sunday and Monday",
-            website_placeholder="https://harbourcuts.ie",
-            extra_help="Stylists, deposit policy, parking.",
-            extra_placeholder="Walk-ins welcome if free. Card only.",
-        ),
+            _SALON_TOGGLES,
+        ],
         definition=_with_integration_tools(
-            assemble_workflow_definition(_SALON, "INBOUND"), GOOGLE_CALENDAR
+            _assemble(_SALON, "INBOUND"), GOOGLE_CALENDAR
         ),
         call_type="inbound",
         icon="scissors",
@@ -758,7 +1010,7 @@ STARTER_TEMPLATES: list[StarterTemplate] = [
             extra_placeholder="They requested a quote from the website form this week.",
         ),
         definition=_with_integration_tools(
-            assemble_workflow_definition(_LEAD_FOLLOW_UP, "OUTBOUND"), GOOGLE_CALENDAR
+            _assemble(_LEAD_FOLLOW_UP, "OUTBOUND"), GOOGLE_CALENDAR
         ),
         call_type="outbound",
         icon="phone-outgoing",
@@ -768,8 +1020,8 @@ STARTER_TEMPLATES: list[StarterTemplate] = [
     StarterTemplate(
         name="Appointment reminder",
         description=(
-            "Calls ahead of a visit to confirm, reschedule, or cancel so you "
-            "lose fewer no-shows."
+            "Calls ahead of a visit to confirm, move or cancel it (when you "
+            "allow changes), so you lose fewer no-shows."
         ),
         setup_fields=_business_fields(
             name_placeholder="Bright Smile Dental",
@@ -781,7 +1033,7 @@ STARTER_TEMPLATES: list[StarterTemplate] = [
             extra_placeholder="Please arrive 5 minutes early. Free parking at the rear.",
         ),
         definition=_with_integration_tools(
-            assemble_workflow_definition(_APPOINTMENT_REMINDER, "OUTBOUND"),
+            _assemble(_APPOINTMENT_REMINDER, "OUTBOUND"),
             GOOGLE_CALENDAR,
         ),
         call_type="outbound",
@@ -805,9 +1057,57 @@ STARTER_TEMPLATES: list[StarterTemplate] = [
             extra_placeholder="They ordered lunch with us earlier this week.",
             ask_address=False,
         ),
-        definition=assemble_workflow_definition(_FEEDBACK, "OUTBOUND"),
+        definition=_assemble(_FEEDBACK, "OUTBOUND"),
         call_type="outbound",
         icon="message",
         category="general",
     ),
+]
+
+
+# Inbound agents can put a caller through to a person. The number is a
+# business fact (editable later); without one, the agent takes a message.
+_TRANSFER_FIELD = TemplateSetupField(
+    key="transfer_number",
+    label="Number to put callers through to a person",
+    type="phone",
+    help=(
+        "Your mobile or front desk. Leave it empty and your agent takes a "
+        "message instead."
+    ),
+    placeholder="+353 87 123 4567",
+    required=False,
+    max_length=40,
+    stored=True,
+)
+_TRANSFER_RULE = (
+    "\n\nPutting callers through to a person: "
+    "{{transfer_number | fallback:not available}}. If the caller asks for a "
+    "person, or a tool says to hand them over, and putting through is "
+    "available, tell them you're connecting them and use the transfer tool. "
+    "Never read that number out. If it isn't available or the transfer "
+    "doesn't connect, take a message for the team."
+)
+
+
+def _with_transfer(starter: StarterTemplate) -> StarterTemplate:
+    definition = copy.deepcopy(starter.definition)
+    for node in definition["nodes"]:
+        data = node["data"]
+        if node["type"] in ("startCall", "agentNode"):
+            data["tool_uuids"] = [
+                *(data.get("tool_uuids") or []),
+                BUILTIN_TRANSFER_TOOL,
+            ]
+        if node["id"] == "global":
+            data["prompt"] = data["prompt"] + _TRANSFER_RULE
+    return replace(
+        starter,
+        definition=definition,
+        setup_fields=[*starter.setup_fields, _TRANSFER_FIELD],
+    )
+
+
+STARTER_TEMPLATES = [
+    _with_transfer(s) if s.call_type == "inbound" else s for s in STARTER_TEMPLATES
 ]

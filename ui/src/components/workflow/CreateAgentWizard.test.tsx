@@ -441,3 +441,56 @@ it('opens straight on a side path from the URL mode', () => {
     expect(screen.getByRole('heading', { name: 'Start from scratch' })).toBeTruthy();
     expect(screen.queryByText('Choose template')).toBeNull();
 });
+
+it('lets the owner switch booking questions on and off, without typing', async () => {
+    mocks.templates.mockResolvedValue({
+        data: [
+            {
+                ...RECEPTIONIST,
+                template_name: 'Restaurant bookings',
+                featured: false,
+                setup_fields: [
+                    { key: 'business_name', label: 'Business name' },
+                    {
+                        key: 'booking_questions',
+                        label: 'When someone books, also ask',
+                        type: 'toggles',
+                        required: false,
+                        help: 'Day, time, name and phone number are always asked.',
+                        options: [
+                            { value: 'party_size', label: 'Party size', prompt: 'how many people', default: true },
+                            { value: 'allergies', label: 'Allergies', prompt: 'about allergies', default: true },
+                            { value: 'high_chair', label: 'High chair', prompt: 'about a high chair' },
+                        ],
+                    },
+                ],
+            },
+        ],
+    });
+    mocks.duplicate.mockResolvedValue({ data: { id: 7 } });
+    renderWizard();
+    fireEvent.click(await screen.findByRole('button', { name: /Restaurant bookings/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Use this template' }));
+    await screen.findByRole('heading', { name: 'Personalise your Restaurant bookings' });
+
+    const group = screen.getByRole('group', { name: 'When someone books, also ask' });
+    const toggle = (name: string) => screen.getByRole('button', { name });
+    expect(toggle('Party size').getAttribute('aria-pressed')).toBe('true');
+    expect(toggle('High chair').getAttribute('aria-pressed')).toBe('false');
+    expect(group.getAttribute('aria-describedby')).toBeTruthy();
+    expect(screen.getByText('Day, time, name and phone number are always asked.')).toBeTruthy();
+
+    fireEvent.click(toggle('High chair'));
+    fireEvent.click(toggle('Allergies'));
+    expect(toggle('High chair').getAttribute('aria-pressed')).toBe('true');
+    expect(toggle('Allergies').getAttribute('aria-pressed')).toBe('false');
+
+    fireEvent.change(screen.getByLabelText('Business name'), { target: { value: 'Harbour Kitchen' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Create agent' }));
+
+    await screen.findByRole('heading', { name: 'Your agent is ready' });
+    expect(mocks.duplicate.mock.calls[0][0].body.values).toEqual({
+        business_name: 'Harbour Kitchen',
+        booking_questions: 'party_size,high_chair',
+    });
+});
