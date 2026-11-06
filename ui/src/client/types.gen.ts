@@ -294,7 +294,8 @@ export type ActiveCallsResponse = {
 /**
  * AiBookingRequest
  *
- * The owner's switches for one calendar; omitted ones are kept.
+ * The owner's switches and booking rules for one calendar; omitted
+ * ones are kept.
  */
 export type AiBookingRequest = {
     /**
@@ -305,12 +306,7 @@ export type AiBookingRequest = {
      * Ai Changes Enabled
      */
     ai_changes_enabled?: boolean | null;
-    /**
-     * Rules
-     */
-    rules?: {
-        [key: string]: unknown;
-    } | null;
+    rules?: BookingRules | null;
 };
 
 /**
@@ -1120,6 +1116,14 @@ export type BookingCalendar = {
      */
     ai_changes_enabled?: boolean;
     /**
+     * Rules
+     *
+     * The calendar's current booking rules (owner-editable keys only; missing ones use the defaults).
+     */
+    rules?: {
+        [key: string]: JsonValue;
+    };
+    /**
      * Ok
      *
      * False when its bookings could not be read.
@@ -1131,14 +1135,6 @@ export type BookingCalendar = {
      * Why not, in words an admin can act on.
      */
     error?: string | null;
-    /**
-     * Rules
-     *
-     * The calendar's current booking rules (owner-editable keys only; missing ones use the defaults).
-     */
-    rules?: {
-        [key: string]: unknown;
-    };
 };
 
 /**
@@ -1156,6 +1152,74 @@ export type BookingListResponse = {
      * Bookings
      */
     bookings: Array<CalendarBooking>;
+};
+
+/**
+ * BookingRules
+ *
+ * The booking rules an owner sets in plain terms. Omitted rules are
+ * kept; the tools service checks the combination (e.g. a party limit above
+ * the covers limit) and answers 422 with the reason.
+ */
+export type BookingRules = {
+    /**
+     * Service Periods
+     */
+    service_periods?: Array<BookingServicePeriod> | null;
+    /**
+     * Slot Minutes
+     */
+    slot_minutes?: number | null;
+    /**
+     * Booking Minutes
+     */
+    booking_minutes?: number | null;
+    /**
+     * Buffer Minutes
+     */
+    buffer_minutes?: number | null;
+    /**
+     * Max Bookings At Once
+     */
+    max_bookings_at_once?: number | null;
+    /**
+     * Max Guests At Once
+     */
+    max_guests_at_once?: number | null;
+    /**
+     * Max Party Size
+     */
+    max_party_size?: number | null;
+    /**
+     * Min Lead Hours
+     */
+    min_lead_hours?: number | null;
+    /**
+     * Horizon Days
+     */
+    horizon_days?: number | null;
+};
+
+/**
+ * BookingServicePeriod
+ *
+ * When bookings may start on some weekdays, e.g. dinner Thu-Sat.
+ */
+export type BookingServicePeriod = {
+    /**
+     * Days
+     *
+     * Monday=0 ... Sunday=6.
+     */
+    days: Array<number>;
+    /**
+     * First Start
+     */
+    first_start: string;
+    /**
+     * Last Start
+     */
+    last_start: string;
 };
 
 /**
