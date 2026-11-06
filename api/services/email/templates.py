@@ -162,3 +162,44 @@ def low_balance_message(
         text=text,
         html=_layout(heading, body, "Add credit", billing_url),
     )
+
+
+def failure_alert_message(
+    *,
+    to: str,
+    for_operator: bool,
+    organization_name: str | None,
+    source: str,
+    code: str,
+    provider: str | None,
+    detail: str,
+    app_url: str,
+) -> EmailMessage:
+    """A critical failure, for a workspace's admins and owners (something
+    they can fix) or for the platform's operators (something we must fix)."""
+    workspace = organization_name or "your workspace"
+    if for_operator:
+        subject = f"[{PRODUCT_NAME} alert] {code}"
+        heading = "A platform failure needs a look"
+        lines = [
+            f"Failure: {code} ({source}{', ' + provider if provider else ''})",
+            f"Workspace: {organization_name or 'none'}",
+            f"Detail: {detail}",
+            "Repeats of this alert are held back for a few hours.",
+        ]
+    else:
+        subject = f"Action needed for {workspace} on {PRODUCT_NAME}"
+        heading = "Something needs your attention"
+        lines = [
+            f"{workspace} had a problem that may stop calls from being answered.",
+            detail,
+            "If you're not sure how to fix it, reply to this email and we'll help.",
+        ]
+    text = "\n\n".join(lines) + f"\n\nOpen {PRODUCT_NAME}: {app_url}\n"
+    body = "".join(f"<p>{escape(line)}</p>" for line in lines)
+    return EmailMessage(
+        to=to,
+        subject=subject,
+        text=text,
+        html=_layout(heading, body, f"Open {PRODUCT_NAME}", app_url),
+    )

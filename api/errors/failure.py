@@ -8,6 +8,7 @@ record that later phases can consume without changing runtime behaviour.
 from __future__ import annotations
 
 import re
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any
@@ -604,6 +605,23 @@ def _safe_log_context(context: dict[str, Any]) -> dict[str, Any]:
     return safe
 
 
+# Called after each failure is logged, with the failure and its safe log
+# context. This module stays free of notification policy: the API and worker
+# register the alerter (api/services/failure_alerts.py) at startup.
+FailureListener = Callable[[DograhFailure, dict[str, Any]], None]
+_listeners: list[FailureListener] = []
+
+
+def add_failure_listener(listener: FailureListener) -> None:
+    if listener not in _listeners:
+        _listeners.append(listener)
+
+
+def remove_failure_listener(listener: FailureListener) -> None:
+    if listener in _listeners:
+        _listeners.remove(listener)
+
+
 def log_failure(
     failure: DograhFailure,
     *,
@@ -645,3 +663,9 @@ def log_failure(
         # Deliberately do not attempt a fallback log: the logger itself may be what
         # failed, and classification must never mask the original error path.
         return
+    for listener in list(_listeners):
+        try:
+            listener(failure, context)
+        except Exception:
+            # A broken listener must never break the path that failed.
+            continue

@@ -38,6 +38,31 @@ TELEPHONY_ERROR_MESSAGES = {
 }
 
 
+# What a caller hears when their call can't go through. The messages above
+# are for the workspace (logs, failure records) and name configuration, so
+# they are never spoken: a caller only needs to know to try again.
+CALLER_UNAVAILABLE = (
+    "Sorry, we can't take your call right now. Please try again later. Goodbye."
+)
+CALLER_LINES_BUSY = (
+    "Sorry, all our lines are busy right now. Please try again in a few "
+    "minutes. Goodbye."
+)
+
+
+def caller_message(error: object) -> str:
+    """The short, polite line to speak to a caller for a validation error."""
+    try:
+        error = TelephonyError(error)
+    except (TypeError, ValueError):
+        return CALLER_UNAVAILABLE
+    if error == TelephonyError.ORGANIZATION_UNAVAILABLE:
+        return TELEPHONY_ERROR_MESSAGES[error]
+    if error == TelephonyError.CONCURRENT_CALL_LIMIT:
+        return CALLER_LINES_BUSY
+    return CALLER_UNAVAILABLE
+
+
 _QUOTA_ERRORS = {
     TelephonyError.CONCURRENT_CALL_LIMIT,
     TelephonyError.QUOTA_EXCEEDED,

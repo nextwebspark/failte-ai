@@ -57,6 +57,7 @@ REDIS_SETTINGS = RedisSettings(
     ssl_check_hostname=False if use_ssl else None,
 )
 
+from api.services.failure_alerts import send_failure_alert
 from api.tasks.billing_sweep import sweep_uncharged_workflow_runs
 from api.tasks.campaign_tasks import (
     process_campaign_batch,
@@ -79,6 +80,11 @@ async def _on_startup(ctx: dict) -> None:
     from api.services.credential_encryption import verify_credential_encryption
 
     await verify_credential_encryption()
+    # Alert people about critical failures logged in the worker too.
+    from api.errors.failure import add_failure_listener
+    from api.services.failure_alerts import on_failure
+
+    add_failure_listener(on_failure)
 
 
 class WorkerSettings:
@@ -91,6 +97,7 @@ class WorkerSettings:
         process_knowledge_base_document,
         deliver_webhook,
         complete_inactive_text_chat_session,
+        send_failure_alert,
     ]
     cron_jobs = [
         # Safety net for webhook deliveries whose ARQ job was lost (worker
