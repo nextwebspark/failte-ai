@@ -31,6 +31,7 @@ import { cn } from "@/lib/utils";
 import { SectionError, SectionMessage } from "../components/SectionStates";
 import { bookingTimesByDay, fillGreeting, WEEK, WEEK_LONG } from "./knowledge";
 import { type AgentKnowledge, type CalendarInfo, useAgentKnowledge } from "./useAgentKnowledge";
+import { VoiceChips } from "./VoiceChips";
 
 const LOAD_FAILED = "We couldn't load what your agent knows";
 const SAVE_FAILED = "Couldn't save. Please try again.";
@@ -667,6 +668,16 @@ function HowItSounds({
             <div className="flex flex-col gap-3.5 pt-2">
                 {voice.state === "loading" ? (
                     <Skeleton className="h-9 w-40 rounded-full" />
+                ) : voice.state === "ready" && voice.choices ? (
+                    <>
+                        <VoiceChips
+                            workflowId={workflowId}
+                            choices={voice.choices}
+                            readsGreeting={greeting.state !== "ready" || greeting.greeting?.kind === "text"}
+                            onSwitch={can("agents:write") ? knowledge.switchVoice : undefined}
+                        />
+                        {voice.language && <span className="-mt-1 text-[12.5px] text-ink-3">Speaks {voice.language}</span>}
+                    </>
                 ) : voice.state === "ready" && voice.voice ? (
                     <div className="flex flex-wrap items-center gap-2">
                         <span className="inline-flex items-center gap-2 rounded-full border border-brand bg-brand-dim py-1.5 pl-1.5 pr-3 text-[13px] font-semibold text-brand">
@@ -686,7 +697,7 @@ function HowItSounds({
                         href={`/workflow/${workflowId}/model`}
                         className="-mt-1 self-start text-[13px] font-medium text-brand underline-offset-2 hover:underline"
                     >
-                        Change the voice
+                        {voice.state === "ready" && voice.choices ? "See all voices" : "Change the voice"}
                     </Link>
                 )}
 

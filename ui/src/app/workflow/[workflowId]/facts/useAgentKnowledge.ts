@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
   getModelConfigurationV2ApiV1OrganizationsModelConfigurationsV2Get,
@@ -11,12 +11,16 @@ import {
   listPhoneNumbersApiV1OrganizationsTelephonyConfigsConfigIdPhoneNumbersGet,
   listTelephonyConfigurationsApiV1OrganizationsTelephonyConfigsGet,
   listToolsApiV1ToolsGet,
+  updateWorkflowApiV1WorkflowWorkflowIdPut,
 } from "@/client/sdk.gen";
+import type { PlatformModelCatalog, WorkflowConfigurationDefaults } from "@/client/types.gen";
 import { useOrgConfig } from "@/context/OrgConfigContext";
+import { detailFromError } from "@/lib/apiError";
 import { useAuth } from "@/lib/auth";
 import { summarizePlatformConfiguration, type VoiceSummary } from "@/lib/platformModelSummary";
 
 import { attachedToolUuids, type Greeting, isCalendarTool, startGreeting } from "./knowledge";
+import { type VoiceChoices, voiceChoices, withVoice } from "./voiceOptions";
 
 /**
  * Everything around the facts form that the page reads but doesn't edit as
@@ -27,7 +31,12 @@ import { attachedToolUuids, type Greeting, isCalendarTool, startGreeting } from 
 
 export type Loadable<T> = { state: "loading" } | { state: "hidden" } | ({ state: "ready" } & T);
 
-export type VoiceInfo = Loadable<{ voice: VoiceSummary | null; language: string | null }>;
+export type VoiceInfo = Loadable<{
+  voice: VoiceSummary | null;
+  language: string | null;
+  /** The voice and a few others to preview; null when it isn't a platform voice. */
+  choices?: VoiceChoices | null;
+}>;
 
 /** "none": the agent doesn't book. */
 export type CalendarInfo =
@@ -49,6 +58,15 @@ export type AgentKnowledge = {
   calendar: CalendarInfo;
   phone: PhoneInfo;
   setCalendar: (update: (current: CalendarInfo) => CalendarInfo) => void;
+  /** Give this agent *voice* (a `VoiceOption.value`); throws the reason it couldn't. */
+  switchVoice?: (voice: string) => Promise<void>;
+};
+
+/** What a voice switch saves on top of: the agent's settings and the voice setup calls use. */
+type VoiceSaveBase = {
+  configurations: Record<string, unknown>;
+  configuration: unknown;
+  catalog: PlatformModelCatalog;
 };
 
 export function useAgentKnowledge(workflowId: number): AgentKnowledge {
@@ -64,6 +82,8 @@ export function useAgentKnowledge(workflowId: number): AgentKnowledge {
   const [voice, setVoice] = useState<VoiceInfo>({ state: "loading" });
   const [calendar, setCalendarState] = useState<CalendarInfo>({ state: "loading" });
   const [phone, setPhone] = useState<PhoneInfo>({ state: "loading" });
+
+  const voiceBase = useRef<VoiceSaveBase | null>(null);
 
   const ready = !authLoading && Boolean(user);
   const userId = user?.id;
@@ -90,7 +110,11 @@ export function useAgentKnowledge(workflowId: number): AgentKnowledge {
         return;
       }
 
-      void loadVoice(configurations).then((info) => !ignore && setVoice(info));
+      void loadVoice(configurations).then(({ info, base }) => {
+        if (ignore) return;
+        voiceBase.current = base;
+        setVoice(info);
+      });
       void loadCalendar(definition, may).then((info) => !ignore && setCalendarState(info));
     };
     void load();
@@ -142,26 +166,61 @@ export function useAgentKnowledge(workflowId: number): AgentKnowledge {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ready, userId, canReadPhones, workflowId]);
 
-  return { greeting, voice, calendar, phone, setCalendar: setCalendarState };
+  // The same save the agent's "Model and voice" screen makes: the agent's
+  // own platform setup (seeded from the one calls use now) with the new voice.
+  const switchVoice = useCallback(
+    async (next: string) => {
+      const base = voiceBase.current;
+      if (!base) throw new Error("The voice settings haven't loaded yet.");
+      const configuration = withVoice(base.configuration, base.catalog, next);
+      const configurations: Record<string, unknown> = { ...base.configurations };
+      delete configurations.model_overrides;
+      configurations.model_configuration_v2_override = configuration;
+      const res = await updateWorkflowApiV1WorkflowWorkflowIdPut({
+        path: { workflow_id: workflowId },
+        body: {
+          workflow_definition: null,
+          workflow_configurations: configurations as WorkflowConfigurationDefaults,
+        },
+      });
+      if (res.error || !res.data) throw new Error(detailFromError(res.error, "Couldn't change the voice. Please try again."));
+      const saved = (res.data.workflow_configurations as Record<string, unknown> | null) ?? configurations;
+      voiceBase.current = { ...base, configurations: saved, configuration };
+      setVoice(voiceInfo(configuration, base.catalog));
+    },
+    [workflowId],
+  );
+
+  return { greeting, voice, calendar, phone, setCalendar: setCalendarState, switchVoice };
+}
+
+function voiceInfo(configuration: unknown, catalog: PlatformModelCatalog): VoiceInfo {
+  const summary = summarizePlatformConfiguration(configuration, catalog);
+  const choices = voiceChoices(configuration, catalog);
+  if (summary.kind === "realtime") return { state: "ready", voice: summary.voice, language: summary.language, choices };
+  if (summary.kind === "pipeline") {
+    return { state: "ready", voice: summary.tts.voice, language: summary.tts.language, choices };
+  }
+  return { state: "ready", voice: null, language: null, choices: null };
 }
 
 /** The voice calls use: this agent's own, else the workspace's. */
-async function loadVoice(configurations: Record<string, unknown>): Promise<VoiceInfo> {
+async function loadVoice(
+  configurations: Record<string, unknown>,
+): Promise<{ info: VoiceInfo; base: VoiceSaveBase | null }> {
+  const hidden = { info: { state: "hidden" } as VoiceInfo, base: null };
   try {
     const [defaults, workspace] = await Promise.all([
       getModelConfigurationV2DefaultsApiV1OrganizationsModelConfigurationsV2DefaultsGet(),
       getModelConfigurationV2ApiV1OrganizationsModelConfigurationsV2Get(),
     ]);
     const catalog = defaults.data?.platform;
-    if (!catalog) return { state: "hidden" };
+    if (!catalog) return hidden;
     const own = configurations.model_configuration_v2_override as { mode?: string } | undefined;
     const configuration = own?.mode === "platform" ? own : workspace.data?.configuration;
-    const summary = summarizePlatformConfiguration(configuration, catalog);
-    if (summary.kind === "realtime") return { state: "ready", voice: summary.voice, language: summary.language };
-    if (summary.kind === "pipeline") return { state: "ready", voice: summary.tts.voice, language: summary.tts.language };
-    return { state: "ready", voice: null, language: null };
+    return { info: voiceInfo(configuration, catalog), base: { configurations, configuration, catalog } };
   } catch {
-    return { state: "hidden" };
+    return hidden;
   }
 }
 

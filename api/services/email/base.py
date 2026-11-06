@@ -13,6 +13,8 @@ class EmailMessage:
     html: str
     # Lets a transport that supports it drop a resend of the same message.
     idempotency_key: str | None = None
+    # Extra headers (e.g. List-Unsubscribe) for transports that support them.
+    headers: tuple[tuple[str, str], ...] = ()
 
 
 class EmailFailure(StrEnum):

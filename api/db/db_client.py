@@ -6,6 +6,7 @@ from api.db.call_notification_client import CallNotificationClient
 from api.db.campaign_client import CampaignClient
 from api.db.dashboard_client import DashboardClient
 from api.db.data_export_client import DataExportClient
+from api.db.email_report_client import EmailReportClient
 from api.db.embed_token_client import EmbedTokenClient
 from api.db.folder_client import FolderClient
 from api.db.integration_client import IntegrationClient
@@ -62,6 +63,7 @@ class DBClient(
     WebhookCredentialClient,
     WebhookDeliveryClient,
     CallNotificationClient,
+    EmailReportClient,
     ToolClient,
     KnowledgeBaseClient,
     WorkflowRecordingClient,

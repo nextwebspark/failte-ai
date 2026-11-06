@@ -40,6 +40,8 @@ class Permission(StrEnum):
     NOTIFICATIONS_MANAGE = "notifications:manage"
     # Mark a follow-up (a call that needs a person) done, or undo it.
     FOLLOWUPS_MANAGE = "followups:manage"
+    # Choose which call reports are emailed (daily, weekly, monthly) and to whom.
+    REPORTS_SCHEDULE = "reports:schedule"
 
 
 # What every member of a business can see.
@@ -67,6 +69,7 @@ _VIEWER: frozenset[Permission] = _READ | {
     # The owner keeps what the agent says about the business up to date.
     Permission.AGENTS_FACTS,
     Permission.NOTIFICATIONS_MANAGE,
+    Permission.REPORTS_SCHEDULE,
 }
 
 # Builds agents; booking decisions stay with the owner and admins.

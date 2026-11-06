@@ -299,13 +299,37 @@ async def list_voices(
     }
 
 
-async def preview_audio(voice_id: str, *, credentials_json: str | None = None) -> bytes:
-    """Synthesise a short sample. Google publishes no preview URLs of its own."""
+def _check_voice_id(voice_id: str) -> None:
     if not re.fullmatch(r"[A-Za-z0-9-]{3,64}", voice_id):
         raise InvalidVoiceIdError("invalid voice id")
 
-    key = hashlib.sha256(f"{voice_id}|{PREVIEW_TEXT}".encode()).hexdigest()[:32]
-    cached = PREVIEW_CACHE / f"{key}.mp3"
+
+def preview_cache_path(voice_id: str, text: str = PREVIEW_TEXT) -> Path:
+    """Where the sample of *text* in *voice_id* is kept: one file per pair."""
+    key = hashlib.sha256(f"{voice_id}|{text}".encode()).hexdigest()[:32]
+    return PREVIEW_CACHE / f"{key}.mp3"
+
+
+async def cached_preview(voice_id: str, text: str = PREVIEW_TEXT) -> bytes | None:
+    """The stored sample, or None when it would have to be synthesised."""
+    _check_voice_id(voice_id)
+    return await asyncio.to_thread(
+        _read_cached_preview, preview_cache_path(voice_id, text)
+    )
+
+
+async def preview_audio(
+    voice_id: str,
+    *,
+    text: str = PREVIEW_TEXT,
+    credentials_json: str | None = None,
+) -> bytes:
+    """Synthesise a short sample of *text* (the fixed sentence unless the
+    caller passes another, e.g. an agent's greeting). Google publishes no
+    preview URLs of its own. Cached on disk per voice and text."""
+    _check_voice_id(voice_id)
+
+    cached = preview_cache_path(voice_id, text)
     hit = await asyncio.to_thread(_read_cached_preview, cached)
     if hit is not None:
         return hit
@@ -318,7 +342,7 @@ async def preview_audio(voice_id: str, *, credentials_json: str | None = None) -
             "https://texttospeech.googleapis.com/v1/text:synthesize",
             headers={"Authorization": f"Bearer {creds.token}"},
             json={
-                "input": {"text": PREVIEW_TEXT},
+                "input": {"text": text},
                 "voice": {"languageCode": locale, "name": voice_id},
                 "audioConfig": {"audioEncoding": "MP3"},
             },

@@ -1,7 +1,8 @@
 'use client';
 
 import { addDays, format, subDays } from 'date-fns';
-import { Calendar, ChevronLeft, ChevronRight, Download, FileWarning, PhoneCall, RefreshCw } from 'lucide-react';
+import { Calendar, ChevronLeft, ChevronRight, Download, FileWarning, Mail, PhoneCall, RefreshCw } from 'lucide-react';
+import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 
@@ -247,6 +248,13 @@ export default function ReportsPage() {
                 A one-page summary of a day: how many calls came in, how they ended and how long they lasted.
                 You can download the day&apos;s calls as a spreadsheet.
               </p>
+              <Link
+                href="/settings/reports"
+                className="mt-2 inline-flex items-center gap-1.5 text-[13.5px] font-medium text-brand underline-offset-2 hover:underline"
+              >
+                <Mail className="size-3.5" aria-hidden />
+                Get these by email
+              </Link>
             </div>
 
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
