@@ -9,6 +9,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { agentHomeHref } from "@/components/workflow/agentLinks";
 import { useAgentShell } from "@/context/AgentShellContext";
 
+import { talkToAgent } from "./AgentHomeSummary";
+
 /** Below Tailwind's `md`: a phone, where the flow diagram can't be used. */
 export const SMALL_SCREEN_QUERY = "(max-width: 767px)";
 
@@ -68,7 +70,7 @@ export function SmallScreenDiagramNote({
                             <ArrowRight className="size-4" aria-hidden />
                         </Link>
                     </Button>
-                    <Button size="lg" variant="outline" className="h-11" onClick={openTester}>
+                    <Button size="lg" variant="outline" className="h-11" onClick={() => talkToAgent(openTester)}>
                         <Mic className="size-4" aria-hidden />
                         Talk to your agent
                     </Button>

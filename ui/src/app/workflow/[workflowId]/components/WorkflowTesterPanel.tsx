@@ -266,6 +266,7 @@ export function WorkflowTesterPanel({
                                             )}
                                             <Button
                                                 size="lg"
+                                                data-test-call-start
                                                 onClick={() => {
                                                     markTooltipSeen("web_call");
                                                     void createVoiceRun();

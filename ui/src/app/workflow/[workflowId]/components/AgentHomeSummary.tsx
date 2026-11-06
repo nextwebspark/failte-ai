@@ -40,7 +40,7 @@ export function agentStatusWords(versionStatus: string | null | undefined): {
     tone: "ok" | "warn" | "mute";
 } {
     if (versionStatus === "published") {
-        return { label: "Live", hint: "Callers get the latest version.", tone: "ok" };
+        return { label: "Live", hint: "", tone: "ok" };
     }
     if (versionStatus === "draft") {
         return {
@@ -107,6 +107,20 @@ function SummaryCard({
             </div>
         </Link>
     );
+}
+
+/**
+ * Open the test panel and move focus to its start button, so the click does
+ * something visible even when the panel is already open beside the page.
+ */
+export function talkToAgent(openTester: () => void) {
+    openTester();
+    // The sheet mounts on the next frames; the desktop rail is already there.
+    window.setTimeout(() => {
+        const buttons = document.querySelectorAll<HTMLButtonElement>("[data-test-call-start]");
+        const visible = Array.from(buttons).find((b) => b.offsetParent !== null && !b.disabled);
+        visible?.focus();
+    }, 350);
 }
 
 export function AgentHomeSummary({ workflowId }: { workflowId: number }) {
@@ -234,10 +248,11 @@ export function AgentHomeSummary({ workflowId }: { workflowId: number }) {
                         {agent.name}
                     </h2>
                     <p className="mt-1 max-w-xl text-[14.5px] text-ink-2">
-                        {status.hint} Check what it tells callers below, then talk to it to hear how it sounds.
+                        {status.hint ? `${status.hint} ` : ""}Check what it tells callers below, then talk to it to hear how
+                        it sounds.
                     </p>
                 </div>
-                <Button size="lg" onClick={openTester} className="h-11 w-full shrink-0 text-[15px] sm:w-auto">
+                <Button size="lg" onClick={() => talkToAgent(openTester)} className="h-11 w-full shrink-0 text-[15px] sm:w-auto">
                     <Mic className="size-4" aria-hidden />
                     Talk to your agent
                 </Button>
