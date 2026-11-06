@@ -79,7 +79,8 @@ export const MAIN_CONTENT_ID = "main-content";
  * After moving to another screen: start the content panel (the scroll
  * container) at the top, and — if focus was left on the link just used, in
  * the nav or the header — move it to the content, so keyboard and screen
- * reader users land on the new screen rather than back at the top of the nav.
+ * reader users land on the new screen rather than back at the top of the nav
+ * (or on the phone tab bar).
  * The first load and changes to the query string (filters, tabs) are left
  * alone.
  */
@@ -95,7 +96,7 @@ function useRouteChangeFocus(pathname: string, main: React.RefObject<HTMLElement
     const focusLeftBehind =
       !active ||
       active === document.body ||
-      Boolean(active.closest("[data-sidebar], header, [data-slot='sidebar']")) ||
+      Boolean(active.closest("[data-sidebar], header, [data-slot='sidebar'], [data-mobile-tab-bar]")) ||
       !active.isConnected;
     if (focusLeftBehind && !panel.contains(active)) {
       panel.focus({ preventScroll: true });

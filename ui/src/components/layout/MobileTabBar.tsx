@@ -17,7 +17,7 @@ import {
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useTheme } from "next-themes";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 
 import { SUPPORT_MAILTO } from "@/components/SupportLink";
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet";
@@ -177,7 +177,13 @@ export function MobileTabBar() {
   const tabActive = tabs.some((tab) => tab.isActive);
   const moreActive = moreOpen || (!tabActive && [...moreItems, phone, settings, ...advanced].some((i) => i?.isActive));
 
-  const close = () => setMoreOpen(false);
+  // A row that leads to another screen hands focus to that screen, not back
+  // to More (AppLayout's route-change focus does the rest).
+  const navigated = useRef(false);
+  const close = () => {
+    navigated.current = true;
+    setMoreOpen(false);
+  };
   const workspaceName = workspaceDisplayName(orgContext?.organization_name);
   const person = memberName(user);
   const isDark = resolvedTheme === "dark";
@@ -221,6 +227,15 @@ export function MobileTabBar() {
       <Sheet open={moreOpen} onOpenChange={setMoreOpen}>
         <SheetContent
           side="bottom"
+          onOpenAutoFocus={() => {
+            navigated.current = false;
+          }}
+          onCloseAutoFocus={(event) => {
+            if (!navigated.current) return;
+            event.preventDefault();
+            // AppLayout's MAIN_CONTENT_ID (not imported: AppLayout imports this file).
+            document.getElementById("main-content")?.focus({ preventScroll: true });
+          }}
           // Sits on the tab bar, as in the mock; the bar stays visible below it.
           style={{ bottom: `calc(${TAB_BAR_HEIGHT}px + env(safe-area-inset-bottom))` }}
           className="max-h-[calc(100svh-120px)] gap-0 overflow-y-auto rounded-t-[18px] border-t-0 bg-panel px-3.5 pb-3 pt-2.5 md:hidden"

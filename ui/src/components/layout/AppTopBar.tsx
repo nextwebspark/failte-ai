@@ -222,13 +222,14 @@ export function AppTopBar({
             size="sm"
             onClick={agentShell.openTester}
             className={cn(
-              "h-9 gap-1.5 rounded-md border-line bg-transparent px-2.5 text-xs text-ink-2 hover:bg-panel-2 hover:text-foreground md:h-7",
+              "h-11 gap-1.5 rounded-md border-line bg-transparent px-3 text-xs text-ink-2 hover:bg-panel-2 hover:text-foreground md:h-7 md:px-2.5",
               // Pinned beside the page on xl, unless a screen closed it.
               agentShell.isRailOpen && "xl:hidden"
             )}
           >
-            <Bot className="h-3.5 w-3.5" />
-            Test agent
+            <Bot className="h-4 w-4 md:h-3.5 md:w-3.5" aria-hidden />
+            {/* Icon only on phones, so the bar stays one row. */}
+            <span className="max-md:sr-only">Test agent</span>
           </Button>
         )}
 
