@@ -5,9 +5,12 @@ import UsagePage from "./page";
 
 const mocks = vi.hoisted(() => ({
     history: vi.fn(),
+    run: vi.fn(),
     // Stable, as the real hook keeps it in state: a new array each render loops the filter sync.
     noCodes: [] as string[],
     push: vi.fn(),
+    replace: vi.fn(),
+    back: vi.fn(),
     query: "",
     auth: { isAuthenticated: true, loading: false, user: { id: "u1" }, getAccessToken: async () => "t" },
     userConfig: {
@@ -26,8 +29,9 @@ vi.stubGlobal(
     },
 );
 
+// Answers "(min-width: Npx)" from window.innerWidth, as a browser would.
 vi.stubGlobal("matchMedia", (query: string) => ({
-    matches: false,
+    matches: window.innerWidth >= Number(/min-width:\s*(\d+)px/.exec(query)?.[1] ?? Infinity),
     media: query,
     addEventListener() {},
     removeEventListener() {},
@@ -35,6 +39,7 @@ vi.stubGlobal("matchMedia", (query: string) => ({
 
 vi.mock("@/client/sdk.gen", () => ({
     getUsageHistoryApiV1OrganizationsUsageRunsGet: mocks.history,
+    getWorkflowRunApiV1WorkflowWorkflowIdRunsRunIdGet: mocks.run,
     getDailyUsageBreakdownApiV1OrganizationsUsageDailyBreakdownGet: vi.fn(async () => ({ data: null })),
     getPreferencesApiV1OrganizationsPreferencesGet: vi.fn(async () => ({ data: { timezone: "UTC" } })),
     getWorkflowsSummaryApiV1WorkflowSummaryGet: vi.fn(async () => ({ data: [] })),
@@ -42,132 +47,163 @@ vi.mock("@/client/sdk.gen", () => ({
     savePreferencesApiV1OrganizationsPreferencesPut: vi.fn(),
 }));
 vi.mock("next/navigation", () => ({
-    useRouter: () => ({ push: mocks.push, replace: vi.fn() }),
+    useRouter: () => ({ push: mocks.push, replace: mocks.replace, back: mocks.back }),
     useSearchParams: () => new URLSearchParams(mocks.query),
 }));
 vi.mock("@/lib/auth", () => ({ useAuth: () => mocks.auth }));
 vi.mock("@/context/UserConfigContext", () => ({ useUserConfig: () => mocks.userConfig }));
-vi.mock("@/context/AppConfigContext", () => ({ useAppConfig: () => ({ config: null }) }));
 vi.mock("@/hooks/useDispositionCodes", () => ({ useDispositionCodes: () => ({ codes: mocks.noCodes }) }));
 vi.mock("@/hooks/useFeatureFlags", () => ({ useFeatureEnabled: () => false }));
 vi.mock("@/components/filters/FilterBuilder", () => ({ FilterBuilder: () => null }));
 vi.mock("@/components/DailyUsageTable", () => ({ DailyUsageTable: () => null }));
 vi.mock("@/components/privacy/CallerDataRequestDialog", () => ({ CallerDataRequestDialog: () => <button type="button">Caller data request</button> }));
-vi.mock("@/components/CallTypeCell", () => ({ CallTypeCell: () => <span>Phone</span> }));
 vi.mock("react-timezone-select", () => ({ default: () => null }));
 vi.mock("posthog-js", () => ({ default: { capture: vi.fn() } }));
-vi.mock("@/lib/files", () => ({ downloadFile: vi.fn(), getSignedUrl: vi.fn(async () => null) }));
+vi.mock("@/lib/files", () => ({ downloadFile: vi.fn(), getSignedUrl: vi.fn(async () => "https://files.example/rec.wav") }));
 
-const RUNS = {
-    runs: [
-        {
-            id: 501,
-            workflow_id: 4,
-            workflow_name: "Front desk",
-            call_type: "inbound",
-            caller_number: "+353871234567",
-            created_at: "2026-11-01T10:00:00Z",
-            call_duration_seconds: 65,
-            recording_url: "rec/501.wav",
-            transcript_url: null,
-        },
-    ],
-    total_count: 1,
+const RUN = {
+    id: 501,
+    workflow_id: 4,
+    workflow_name: "Front desk",
+    name: "WR-501",
+    mode: "twilio",
+    call_type: "inbound",
+    caller_number: "+353871234567",
+    called_number: "+35315550142",
+    created_at: "2026-11-01T10:00:00Z",
+    call_duration_seconds: 65,
+    dograh_token_usage: 0,
+    recording_url: "recordings/501.wav",
+    transcript_url: null,
+    disposition: "callback_requested",
+    gathered_context: {
+        mapped_call_disposition: "callback_requested",
+        extracted_variables: { caller_name: "Sinéad O'Brien", call_reason: "Wants to change Saturday to 7 people" },
+    },
+};
+
+// The total is the API's count, larger than the page: tab counts must show it.
+const PAGE = {
+    runs: [RUN],
+    total_count: 37,
     page: 1,
-    limit: 50,
-    total_pages: 1,
+    limit: 10,
+    total_pages: 4,
     total_dograh_tokens: 0,
     total_duration_seconds: 65,
 };
 
-describe("UsagePage call list", () => {
+const EMPTY = { ...PAGE, runs: [], total_count: 0, total_pages: 0 };
+
+function requests() {
+    return mocks.history.mock.calls.map(([options]) => options.query as Record<string, string | number>);
+}
+
+describe("Calls list", () => {
     beforeEach(() => {
         vi.clearAllMocks();
         mocks.query = "";
-        mocks.history.mockResolvedValue({ data: RUNS });
+        window.innerWidth = 1200;
+        mocks.history.mockResolvedValue({ data: PAGE });
+        mocks.run.mockResolvedValue({
+            data: {
+                is_completed: true,
+                recording_url: "recordings/501.wav",
+                transcript_url: null,
+                gathered_context: RUN.gathered_context,
+                logs: {
+                    realtime_feedback_events: [
+                        { type: "rtf-bot-text", payload: { text: "Hi, thanks for calling." }, timestamp: "2026-11-01T10:00:01Z", turn: 1 },
+                        { type: "rtf-user-transcription", payload: { text: "Can I change my booking?", final: true }, timestamp: "2026-11-01T10:00:05Z", turn: 1 },
+                    ],
+                },
+            },
+        });
     });
 
-    it("opens a call through a real link that keeps the list to come back to", async () => {
+    it("has one main title and a download that is always there", async () => {
+        mocks.history.mockResolvedValue({ data: EMPTY });
+        render(<UsagePage />);
+        expect(screen.getByRole("heading", { level: 1, name: "Calls" })).toBeTruthy();
+        expect(await screen.findByText("No calls yet")).toBeTruthy();
+        expect((screen.getByRole("button", { name: "Download list" }) as HTMLButtonElement).disabled).toBe(false);
+    });
+
+    it("asks for the last 7 days by default, ten to a page", async () => {
+        render(<UsagePage />);
+        await screen.findByText("Sinéad O'Brien");
+        const [list] = requests();
+        expect(list.limit).toBe(10);
+        expect(list.start_date).toBeTruthy();
+        expect(list.filters).toBeUndefined();
+        expect(screen.getByRole("button", { name: /Last 7 days/ })).toBeTruthy();
+    });
+
+    it("counts each tab with the API's totals, not the page length", async () => {
+        render(<UsagePage />);
+        await screen.findByText("Sinéad O'Brien");
+        await waitFor(() => expect(requests()).toHaveLength(3));
+        const tabFilters = requests().slice(1).map(query => JSON.parse(String(query.filters))[0].attribute);
+        expect(tabFilters.sort()).toEqual(["bookingOutcome", "handledBy"]);
+        expect(screen.queryByRole("button", { name: /Needs follow-up/ })).toBeNull();
+        expect(await screen.findByRole("button", { name: "All, 37 calls" })).toBeTruthy();
+        expect(screen.getByRole("button", { name: "Passed to team, 37 calls" })).toBeTruthy();
+        const pager = screen.getByRole("navigation", { name: "Pages of calls" });
+        expect(pager.textContent).toContain("Showing 1–10 of 37 calls");
+    });
+
+    it("opens a call from a real link over the whole row, with the play button apart", async () => {
         mocks.query = "page=2";
         render(<UsagePage />);
-        const link = await screen.findByRole("link", { name: "Open call #501" });
-        const href = link.getAttribute("href") ?? "";
-        expect(href.startsWith("/workflow/4/run/501")).toBe(true);
-        expect(decodeURIComponent(href)).toContain("/usage?page=2");
-        expect(mocks.push).not.toHaveBeenCalled();
-    });
-
-    it("has no click handler on the row and no control inside the link", async () => {
-        render(<UsagePage />);
-        const link = await screen.findByRole("link", { name: "Open call #501" });
+        const link = await screen.findByRole("link", { name: /Sinéad O'Brien/ });
+        expect(link.getAttribute("href")).toBe("/usage?page=2&call=501");
         expect(link.querySelector("a, button")).toBeNull();
         const row = link.closest("tr") as HTMLElement;
-        expect(row.getAttribute("role")).toBeNull();
-        expect(row.getAttribute("tabindex")).toBeNull();
-    });
-
-    it("keeps the recording button separate and named", async () => {
-        render(<UsagePage />);
-        await screen.findByRole("link", { name: "Open call #501" });
-        const play = screen.getByRole("button", { name: "Play recording or read transcript for call #501" });
+        expect(row.className).toContain("relative");
+        const play = screen.getByRole("button", { name: /Play the recording: Sinéad O'Brien/ });
         expect(play.closest("a")).toBeNull();
+        fireEvent.click(play);
+        expect(mocks.push.mock.calls[0][0]).toBe("/usage?page=2&call=501&play=1");
     });
 
-    it("sorts by duration from a keyboard-reachable button", async () => {
+    it("shows what the agent took down, in plain words", async () => {
         render(<UsagePage />);
-        await screen.findByRole("link", { name: "Open call #501" });
-        const sort = screen.getByRole("button", { name: /Length/ });
-        expect(sort.tagName).toBe("BUTTON");
-        fireEvent.click(sort);
-        await waitFor(() => expect(mocks.push).toHaveBeenCalled());
-        expect(mocks.push.mock.calls[0][0]).toContain("sort_by=duration");
-    });
-});
-
-describe("UsagePage everyday search", () => {
-    beforeEach(() => {
-        vi.clearAllMocks();
-        mocks.query = "";
-        mocks.history.mockResolvedValue({ data: RUNS });
-        window.innerWidth = 1024;
+        expect(await screen.findByText("Wants to change Saturday to 7 people")).toBeTruthy();
+        expect(screen.getByText("Callback requested")).toBeTruthy();
+        expect(screen.getByText("1:05")).toBeTruthy();
+        expect(screen.getByText("+353 87 123 4567")).toBeTruthy();
     });
 
-    it("leads with a simple search and keeps expert tools under More", async () => {
+    it("searches names and numbers through the API", async () => {
         render(<UsagePage />);
-        await screen.findByRole("link", { name: "Open call #501" });
-
-        expect(screen.getByRole("search", { name: "Search calls" })).toBeTruthy();
-        expect(screen.getByLabelText("Phone number")).toBeTruthy();
-        expect(screen.queryByRole("button", { name: "Caller data request" })).toBeNull();
-
-        const more = screen.getByRole("button", { name: "More" });
-        expect(more.getAttribute("aria-expanded")).toBe("false");
-        fireEvent.click(more);
-        expect(more.getAttribute("aria-expanded")).toBe("true");
-        expect(screen.getByRole("button", { name: "Caller data request" })).toBeTruthy();
+        await screen.findByText("Sinéad O'Brien");
+        const box = screen.getByRole("searchbox", { name: "Search names or numbers" });
+        fireEvent.change(box, { target: { value: "murphy" } });
+        fireEvent.submit(box.closest("form")!);
+        expect(mocks.push.mock.calls.at(-1)![0]).toBe("/usage?q=murphy");
     });
 
-    it("searches by the digits of a phone number, however it was typed", async () => {
+    it("sends the search and chips from the URL as filters", async () => {
+        mocks.query = "q=087%20123&who=team&outcome=XFER&when=all";
         render(<UsagePage />);
-        await screen.findByRole("link", { name: "Open call #501" });
-
-        fireEvent.change(screen.getByLabelText("Phone number"), { target: { value: "087 123 4567" } });
-        fireEvent.click(screen.getByRole("button", { name: "Search" }));
-
-        await waitFor(() => expect(mocks.history.mock.calls.length).toBeGreaterThan(1));
-        const { filters } = mocks.history.mock.calls.at(-1)![0].query;
-        expect(JSON.parse(filters)).toEqual([
-            { attribute: "callerNumber", type: "text", value: { value: "871234567" } },
+        await screen.findByText("Sinéad O'Brien");
+        const [list] = requests();
+        expect(list.start_date).toBeUndefined();
+        expect(JSON.parse(String(list.filters))).toEqual([
+            { attribute: "callerSearch", type: "text", value: { value: "087 123" } },
+            { attribute: "dispositionCode", type: "multiSelect", value: { codes: ["XFER"] } },
+            { attribute: "handledBy", type: "radio", value: { status: "team" } },
         ]);
-        expect(await screen.findByRole("heading", { name: "Matching calls" })).toBeTruthy();
     });
 
-    it("says plainly when nothing matches and offers the full list", async () => {
-        mocks.history.mockResolvedValue({ data: { ...RUNS, runs: [], total_count: 0 } });
-        mocks.query = `filters=${encodeURIComponent(JSON.stringify([{ id: "callerNumber", value: { value: "999" } }]))}`;
+    it("says plainly when nothing matches and offers to clear the filters", async () => {
+        mocks.history.mockImplementation(async ({ query }) => ({ data: query.filters ? EMPTY : { ...PAGE, total_count: 5 } }));
+        mocks.query = "q=zzzz";
         render(<UsagePage />);
-        expect(await screen.findByText("No calls match your search")).toBeTruthy();
-        expect(screen.getByRole("button", { name: "Show all calls" })).toBeTruthy();
+        expect(await screen.findByText("No calls match")).toBeTruthy();
+        expect(screen.getByText("Nothing for “zzzz” in the last 7 days.")).toBeTruthy();
+        fireEvent.click(screen.getByRole("button", { name: "Clear filters" }));
+        expect(mocks.push.mock.calls.at(-1)![0]).toBe("/usage?when=all");
     });
 
     it("shows a friendly error with Try again, not the server's words", async () => {
@@ -176,16 +212,101 @@ describe("UsagePage everyday search", () => {
         expect(await screen.findByText("We couldn't load your calls")).toBeTruthy();
         expect(screen.queryByText(/Internal Server Error/)).toBeNull();
         fireEvent.click(screen.getByRole("button", { name: "Try again" }));
-        expect(await screen.findByRole("link", { name: "Open call #501" })).toBeTruthy();
+        expect(await screen.findByText("Sinéad O'Brien")).toBeTruthy();
     });
 
     it("shows calls as cards on a phone, each a real link", async () => {
         window.innerWidth = 390;
         render(<UsagePage />);
-        const link = await screen.findByRole("link", { name: "Open call #501" });
+        const link = await screen.findByRole("link", { name: /Sinéad O'Brien/ });
         expect(link.closest("table")).toBeNull();
         expect(link.closest("li")).toBeTruthy();
-        expect(screen.getByText("+353871234567")).toBeTruthy();
-        expect(screen.getByText("1m 5s")).toBeTruthy();
+    });
+});
+
+describe("On a wide screen", () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+        mocks.query = "";
+        window.innerWidth = 1500;
+        mocks.history.mockResolvedValue({ data: PAGE });
+        mocks.run.mockResolvedValue({
+            data: { is_completed: true, recording_url: null, transcript_url: null, gathered_context: {}, logs: {} },
+        });
+    });
+
+    it("shows the first call beside the list without taking focus, and closes it", async () => {
+        render(<UsagePage />);
+        const panel = await screen.findByRole("complementary", { name: "Sinéad O'Brien" });
+        expect(panel.getAttribute("aria-modal")).toBeNull();
+        expect(panel.contains(document.activeElement)).toBe(false);
+        fireEvent.click(screen.getByRole("button", { name: "Close this call" }));
+        await waitFor(() => expect(screen.queryByRole("complementary", { name: "Sinéad O'Brien" })).toBeNull());
+        expect(mocks.push).not.toHaveBeenCalled();
+    });
+});
+
+describe("One call", () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+        window.innerWidth = 390;
+        mocks.query = "call=501";
+        mocks.history.mockResolvedValue({ data: PAGE });
+    });
+
+    it("opens full-screen on a phone with the transcript, details and Call back", async () => {
+        mocks.run.mockResolvedValue({
+            data: {
+                is_completed: true,
+                recording_url: "recordings/501.wav",
+                transcript_url: null,
+                gathered_context: RUN.gathered_context,
+                logs: {
+                    realtime_feedback_events: [
+                        { type: "rtf-bot-text", payload: { text: "Hi, thanks for calling." }, timestamp: "2026-11-01T10:00:01Z", turn: 1 },
+                        { type: "rtf-user-transcription", payload: { text: "Can I change my booking?", final: true }, timestamp: "2026-11-01T10:00:05Z", turn: 1 },
+                    ],
+                },
+            },
+        });
+        render(<UsagePage />);
+        const dialog = await screen.findByRole("dialog", { name: "Sinéad O'Brien" });
+        expect(dialog).toBeTruthy();
+        expect(await screen.findByText("Can I change my booking?")).toBeTruthy();
+        expect(screen.getByText("Reason for calling")).toBeTruthy();
+        expect(screen.getByRole("link", { name: "Call back" }).getAttribute("href")).toBe("tel:+353871234567");
+        expect(screen.getByRole("link", { name: /Open full page/ }).getAttribute("href")).toContain("/workflow/4/run/501");
+        fireEvent.click(screen.getByRole("button", { name: "Back to calls" }));
+        expect(mocks.replace).toHaveBeenCalledWith("/usage", { scroll: false });
+    });
+
+    it("says when a call is still going on", async () => {
+        const live = { ...RUN, created_at: new Date().toISOString(), disposition: null, gathered_context: {} };
+        mocks.history.mockResolvedValue({ data: { ...PAGE, runs: [live] } });
+        mocks.run.mockResolvedValue({
+            data: { is_completed: false, recording_url: null, transcript_url: null, gathered_context: {}, logs: {} },
+        });
+        render(<UsagePage />);
+        expect(await screen.findByText(/This call is still going on/)).toBeTruthy();
+        expect(screen.getAllByText("Call in progress").length).toBeGreaterThan(0);
+    });
+
+    it("doesn't call an old unfinished call live", async () => {
+        mocks.run.mockResolvedValue({
+            data: { is_completed: false, recording_url: null, transcript_url: null, gathered_context: {}, logs: {} },
+        });
+        render(<UsagePage />);
+        expect(await screen.findByText("No recording was kept for this call.")).toBeTruthy();
+        expect(screen.queryByText(/still going on/)).toBeNull();
+    });
+
+    it("says when the recording isn't ready yet", async () => {
+        const fresh = { ...RUN, recording_url: null, created_at: new Date().toISOString() };
+        mocks.history.mockResolvedValue({ data: { ...PAGE, runs: [fresh] } });
+        mocks.run.mockResolvedValue({
+            data: { is_completed: true, recording_url: null, transcript_url: null, gathered_context: {}, logs: {} },
+        });
+        render(<UsagePage />);
+        expect(await screen.findByText(/The recording isn't ready yet/)).toBeTruthy();
     });
 });
