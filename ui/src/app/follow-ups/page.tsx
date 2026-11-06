@@ -244,7 +244,7 @@ export default function FollowUpsPage() {
                                     />
                                 )
                             ) : (
-                                <div className="px-[18px] pb-2">
+                                <div className="@container px-[18px] pb-2">
                                     {groups.map((group) => (
                                         <div key={group.id} className="border-t border-line-soft first:border-t-0">
                                             {group.items.length > 1 && (

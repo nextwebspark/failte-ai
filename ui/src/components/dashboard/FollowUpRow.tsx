@@ -118,9 +118,9 @@ export function FollowUpRow({ item, timezone, now, returnTo, meta = "time", onMa
     ].filter(Boolean);
 
     return (
-        <li className="grid grid-cols-[4px_minmax(0,1fr)] gap-x-3 gap-y-2.5 border-t border-line-soft py-3 first:border-t-0 sm:grid-cols-[4px_minmax(0,1fr)_auto] sm:items-center">
+        <li className="grid grid-cols-[4px_minmax(0,1fr)] gap-x-3 gap-y-2.5 border-t border-line-soft py-3 first:border-t-0 @xl:grid-cols-[4px_minmax(0,1fr)_auto] @xl:items-center">
             <span
-                className={cn("row-span-2 self-stretch rounded sm:row-span-1", done ? "bg-line" : RULE_CLASSES[words.tone])}
+                className={cn("row-span-2 self-stretch rounded @xl:row-span-1", done ? "bg-line" : RULE_CLASSES[words.tone])}
                 aria-hidden
             />
             <div className="min-w-0">
@@ -139,7 +139,7 @@ export function FollowUpRow({ item, timezone, now, returnTo, meta = "time", onMa
                     ))}
                 </p>
             </div>
-            <div className="col-start-2 flex flex-wrap items-center gap-1.5 sm:col-start-3 sm:justify-end">
+            <div className="col-start-2 flex flex-wrap items-center gap-1.5 @xl:col-start-3 @xl:justify-end">
                 {done ? (
                     <>
                         <span className="inline-flex items-center gap-1 text-[12.5px] text-brand">

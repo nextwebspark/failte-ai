@@ -79,7 +79,7 @@ function Card({
                 </h2>
                 {action}
             </header>
-            <div className="px-[18px] pb-[18px] pt-3.5">{children}</div>
+            <div className="@container px-[18px] pb-[18px] pt-3.5">{children}</div>
         </section>
     );
 }
@@ -208,7 +208,7 @@ function Tiles({ summary, now }: { summary: DashboardSummaryResponse; now: Date 
     const change = changeWords(summary.range, summary.calls_change, now, summary.timezone);
     const average = callLength(t.average_call_seconds);
     return (
-        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4 lg:gap-4">
+        <div className="grid grid-cols-2 gap-3 @3xl:grid-cols-4 @3xl:gap-4">
             <Tile
                 icon={Phone}
                 tone="bg-sky-dim text-sky"
@@ -358,7 +358,7 @@ function RecentCalls({ summary, now }: { summary: DashboardSummaryResponse; now:
             ) : (
                 <>
                     {/* Phone: a simple list */}
-                    <ul className="flex flex-col md:hidden">
+                    <ul className="flex flex-col @xl:hidden">
                         {calls.map((call) => (
                             <li key={call.run_id} className="flex items-center gap-3 border-t border-line-soft py-2.5 first:border-t-0">
                                 <PlayLink call={call} returnTo={returnTo} />
@@ -376,7 +376,7 @@ function RecentCalls({ summary, now }: { summary: DashboardSummaryResponse; now:
                         ))}
                     </ul>
                     {/* Computer: the table from the design */}
-                    <table className="hidden w-full text-left text-[13px] md:table">
+                    <table className="hidden w-full text-left text-[13px] @xl:table">
                         <thead>
                             <tr className="border-b border-line text-[11px] font-semibold uppercase tracking-[0.06em] text-ink-3">
                                 <th className="w-10 pb-2.5" scope="col">
@@ -456,7 +456,7 @@ function AgentCard({
     const agentId = primaryAgentId(summary);
     const credit = summary.credit;
     return (
-        <Card titleId="home-agent" title={summary.workflow_id ? "Status" : "Your agent"}>
+        <Card titleId="home-agent" title="Your agent">
             <dl className="flex flex-col gap-3 text-[13px]">
                 <div className="flex items-center justify-between gap-3">
                     <dt className="text-ink-3">Status</dt>
@@ -559,7 +559,7 @@ function QuickLinks({ summary, onTryAgent }: { summary: DashboardSummaryResponse
         "flex h-full min-w-0 items-center gap-3 rounded-xl border border-line bg-panel px-3.5 py-3 text-left shadow-xs outline-none transition-colors hover:border-brand/50 focus-visible:ring-[3px] focus-visible:ring-ring/40";
     return (
         <nav aria-label="Quick links">
-            <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <ul className="grid grid-cols-1 gap-3 @lg:grid-cols-2 @4xl:grid-cols-4">
                 {links.map((link) => {
                     const body = (
                         <>
@@ -713,14 +713,14 @@ export function HomeDashboard({ heading, workflowId, onTryAgent }: HomeDashboard
     const timezone = summary?.timezone ?? null;
 
     const header = (
-        <header className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between lg:gap-4">
+        <header className="flex flex-col gap-3 @4xl:flex-row @4xl:items-end @4xl:justify-between @4xl:gap-4">
             <div className="min-w-0">
                 <h1 className="font-display text-[24px] font-semibold tracking-[-0.01em] text-foreground lg:text-[26px]">
                     {heading}
                 </h1>
                 <p className="mt-1 text-[14px] text-ink-3">{rangeSentence(range, now, timezone)}</p>
             </div>
-            <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center lg:flex-nowrap">
+            <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center @4xl:flex-nowrap">
                 {summary && (
                     <div>
                         <StatusPill summary={summary} />
@@ -733,7 +733,7 @@ export function HomeDashboard({ heading, workflowId, onTryAgent }: HomeDashboard
 
     if (result.state === "loading") {
         return (
-            <div className="page-body flex flex-col gap-5">
+            <div className="page-body @container flex flex-col gap-5">
                 {header}
                 <HomeSkeleton withHeader={false} />
             </div>
@@ -742,7 +742,7 @@ export function HomeDashboard({ heading, workflowId, onTryAgent }: HomeDashboard
 
     if (result.state === "error" || !summary) {
         return (
-            <div className="page-body flex flex-col gap-5">
+            <div className="page-body @container flex flex-col gap-5">
                 {header}
                 <div className="rounded-[14px] border border-line bg-panel">
                     <EmptyState
@@ -767,12 +767,12 @@ export function HomeDashboard({ heading, workflowId, onTryAgent }: HomeDashboard
     const openCount = followUps.result.state === "ready" ? followUps.result.data.open_count : null;
 
     return (
-        <div className="page-body flex min-w-0 flex-col gap-5">
+        <div className="page-body @container flex min-w-0 flex-col gap-5">
             {header}
             <NotAnsweringBanner summary={summary} now={now} />
 
             {brandNew ? (
-                <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,7fr)_minmax(0,5fr)]">
+                <div className="grid grid-cols-1 gap-4 @4xl:grid-cols-[minmax(0,7fr)_minmax(0,5fr)]">
                     <GetStarted summary={summary} onTryAgent={onTryAgent} />
                     <AgentCard summary={summary} now={now} onTryAgent={onTryAgent} />
                 </div>
@@ -781,9 +781,9 @@ export function HomeDashboard({ heading, workflowId, onTryAgent }: HomeDashboard
                     <Tiles summary={summary} now={now} />
                     {/* Two columns on a computer; on a phone one list in the
                         design's order: attention, hours, recent calls, agent. */}
-                    <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
-                        <div className="contents lg:flex lg:w-[58%] lg:min-w-0 lg:flex-col lg:gap-4">
-                            <div className="order-1 min-w-0 lg:order-none">
+                    <div className="flex flex-col gap-4 @4xl:flex-row @4xl:items-start">
+                        <div className="contents @4xl:flex @4xl:w-[58%] @4xl:min-w-0 @4xl:flex-col @4xl:gap-4">
+                            <div className="order-1 min-w-0 @4xl:order-none">
                                 <Attention
                                     items={attentionItems}
                                     openCount={openCount}
@@ -792,15 +792,15 @@ export function HomeDashboard({ heading, workflowId, onTryAgent }: HomeDashboard
                                     followUpsHref={followUpsHref}
                                 />
                             </div>
-                            <div className="order-3 min-w-0 lg:order-none">
+                            <div className="order-3 min-w-0 @4xl:order-none">
                                 <RecentCalls summary={summary} now={now} />
                             </div>
                         </div>
-                        <div className="contents lg:flex lg:min-w-0 lg:flex-1 lg:flex-col lg:gap-4">
-                            <div className="order-4 min-w-0 lg:order-none">
+                        <div className="contents @4xl:flex @4xl:min-w-0 @4xl:flex-1 @4xl:flex-col @4xl:gap-4">
+                            <div className="order-4 min-w-0 @4xl:order-none">
                                 <AgentCard summary={summary} now={now} onTryAgent={onTryAgent} />
                             </div>
-                            <div className="order-2 min-w-0 lg:order-none">
+                            <div className="order-2 min-w-0 @4xl:order-none">
                                 <WhenPeopleCalled summary={summary} />
                             </div>
                         </div>
