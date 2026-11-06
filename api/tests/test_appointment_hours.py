@@ -605,6 +605,9 @@ def test_route_puts_the_hours_in_the_prompt_and_the_calendar():
     assert response.json()["calendar_hours"] == "updated"
     hours = AppointmentHours.model_validate(WEEKEND_MORNINGS)
     assert _prompt(db) == f"Hours: {describe_appointment_hours(hours)}\n"
+    # The agent works dates out in the business's own timezone.
+    facts = db.create_workflow.await_args.kwargs["template_context_variables"]
+    assert facts["timezone"] == hours.timezone
     (update,) = [r for r in stub.requests if r.method == "PATCH"]
     assert update.url.path == f"/internal/connections/{CONNECTION_ID}"
     # Org-scoped like every call to the tools service.

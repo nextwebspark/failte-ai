@@ -85,6 +85,7 @@ from api.services.workflow.disposition_mapping import (
 )
 from api.services.workflow.initial_context import GREETING_OVERRIDE_CONTEXT_KEY
 from api.services.workflow.mcp_tool_session import McpToolSession
+from api.services.workflow.call_date import todays_date_line
 from api.services.workflow.pipecat_engine_context_composer import (
     compose_functions_for_node,
     compose_system_prompt_for_node,
@@ -649,7 +650,14 @@ class PipecatEngine:
         # before creating the background task.
         parent_context = self._get_otel_context()
 
-        extraction_prompt = self._format_prompt(node.extraction_prompt)
+        extraction_prompt = "\n\n".join(
+            p
+            for p in (
+                todays_date_line(self._call_context_vars),
+                self._format_prompt(node.extraction_prompt),
+            )
+            if p
+        )
         node_variables = [
             variable
             for variable in node.extraction_variables
@@ -866,6 +874,7 @@ class PipecatEngine:
             workflow=agent.workflow,
             format_prompt=self._format_prompt,
             has_recordings=self._has_recordings,
+            todays_date=todays_date_line(self._call_context_vars),
         )
         functions = await compose_functions_for_node(
             node=node, custom_tool_manager=manager

@@ -1657,6 +1657,9 @@ async def duplicate_workflow_template(
             request.values,
             rendered=appointment_hours_answers(fields, request),
         )
+        if request.appointment_hours is not None:
+            # So the agent works dates out in the business's own timezone.
+            facts = {**facts, "timezone": request.appointment_hours.timezone}
     except TemplateSetupError as e:
         raise HTTPException(status_code=422, detail=str(e))
 

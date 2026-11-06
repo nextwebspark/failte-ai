@@ -59,6 +59,7 @@ def compose_system_prompt_for_node(
     workflow: "WorkflowGraph",
     format_prompt: Callable[[str], str],
     has_recordings: bool,
+    todays_date: str = "",
 ) -> ComposedNodePrompt:
     """Compose the full system prompt text for a workflow node.
 
@@ -70,6 +71,7 @@ def compose_system_prompt_for_node(
         workflow: The full workflow graph (needed for global node prompt).
         format_prompt: Callable to render template variables in prompts.
         has_recordings: Whether the organization has active recordings.
+        todays_date: A line with today's date, put first so every node has it.
 
     Returns:
         The composed text and whether this node uses recording response mode.
@@ -81,7 +83,7 @@ def compose_system_prompt_for_node(
 
     formatted_node_prompt = format_prompt(node.prompt)
 
-    parts = [p for p in (global_prompt, formatted_node_prompt) if p]
+    parts = [p for p in (todays_date, global_prompt, formatted_node_prompt) if p]
 
     recording_enabled = has_recordings and "RECORDING_ID:" in formatted_node_prompt
     if recording_enabled:
