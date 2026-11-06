@@ -72,6 +72,31 @@ def business_name(name: str | None) -> str:
     return (name or "").strip() or "Your business"
 
 
+async def resolve_business_name(
+    organization_id: int,
+    organization_name: str | None,
+    workflow_id: int | None = None,
+) -> str:
+    """The workspace's name; when it has none, the business name its agent
+    was given (the ``business_name`` fact), if the agents agree on one."""
+    if (organization_name or "").strip():
+        return organization_name.strip()
+    if workflow_id is not None:
+        ids = [workflow_id]
+    else:
+        ids = [a["id"] for a in await db_client.get_dashboard_agents(organization_id)]
+    names: set[str] = set()
+    for agent_id in ids[:10]:
+        workflow = await db_client.get_workflow(
+            agent_id, organization_id=organization_id
+        )
+        facts = getattr(workflow, "template_context_variables", None) or {}
+        value = facts.get("business_name") if isinstance(facts, dict) else None
+        if isinstance(value, str) and value.strip():
+            names.add(value.strip())
+    return names.pop() if len(names) == 1 else business_name(None)
+
+
 # ---------------------------------------------------------------- settings
 
 
@@ -185,7 +210,9 @@ async def send_confirmation(
     organization = await db_client.get_organization_by_id(organization_id)
     message = render.confirmation_message(
         to=recipient.email,
-        business_name=business_name(getattr(organization, "name", None)),
+        business_name=await resolve_business_name(
+            organization_id, getattr(organization, "name", None)
+        ),
         added_by=added_by,
         confirm_url=confirm_link(organization_id, recipient),
         hours=CONFIRM_HOURS,
@@ -235,7 +262,9 @@ async def confirm_from_link(token: str) -> dict[str, Any]:
     _, outcome = await change_settings(claim.organization_id, change)
     return {
         "status": outcome,
-        "business_name": business_name(organization.name)
+        "business_name": await resolve_business_name(
+            claim.organization_id, organization.name
+        )
         if outcome != "invalid"
         else None,
     }
@@ -265,7 +294,9 @@ async def unsubscribe_from_link(token: str) -> dict[str, Any]:
     _, outcome = await change_settings(claim.organization_id, change)
     return {
         "status": outcome,
-        "business_name": business_name(organization.name)
+        "business_name": await resolve_business_name(
+            claim.organization_id, organization.name
+        )
         if outcome != "invalid"
         else None,
     }
@@ -347,7 +378,9 @@ async def build(
 ) -> Report:
     return await load_report(
         organization_id=organization_id,
-        business_name=business_name(organization_name),
+        business_name=await resolve_business_name(
+            organization_id, organization_name, settings.workflow_id
+        ),
         workflow_id=settings.workflow_id,
         period=period,
         tz=tz,

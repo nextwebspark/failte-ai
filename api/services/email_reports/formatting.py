@@ -136,8 +136,9 @@ def mask_phone(raw: str | None) -> str:
         if len(national) == 10 and national.startswith("08"):
             return f"{national[:3]} {national[3:6]} xxxx"
         if national.startswith("01"):
-            return f"01 {national[2:5]} xxxx"
-        return f"{national[:-4]} xxxx"
+            return f"01 {national[2:-4]} xxxx"
+        # Other landlines: a three-digit area code (061, 091, ...).
+        return f"{national[:3]} {national[3:-4]} xxxx".replace("  ", " ")
     digits = e164[1:]
     code_len = _country_code_length(digits)
     code, rest = digits[:code_len], digits[code_len:]

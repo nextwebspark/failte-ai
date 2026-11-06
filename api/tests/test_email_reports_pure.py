@@ -362,6 +362,7 @@ def test_changes_are_described_for_the_history():
         ("+353872141234", "087 214 xxxx"),
         ("087 214 1234", "087 214 xxxx"),
         ("+35312345678", "01 234 xxxx"),
+        ("+353613301234", "061 330 xxxx"),
         ("+447700900123", "+44 7700 90xxxx"),
         ("anonymous", "Number withheld"),
         (None, "Number withheld"),
@@ -525,3 +526,30 @@ def test_message_carries_one_click_unsubscribe_headers():
     assert headers["List-Unsubscribe"] == f"<{LINKS.one_click}>"
     assert headers["List-Unsubscribe-Post"] == "List-Unsubscribe=One-Click"
     assert message.text and message.html
+
+
+def test_smtp_keeps_a_long_list_unsubscribe_header_readable():
+    from email import policy
+    from email.message import EmailMessage as Mime
+
+    from api.services.email.smtp_sender import _LONG_HEADERS
+
+    url = (
+        "<https://api.example/api/v1/public/email-reports/unsubscribe/"
+        + "a" * 300
+        + ">"
+    )
+    mime = Mime(policy=_LONG_HEADERS)
+    mime["List-Unsubscribe"] = url
+    mime.set_content("x")
+    assert url in mime.as_string()
+    assert policy.default.max_line_length == 78
+
+
+def test_a_test_email_has_no_unsubscribe_link():
+    from dataclasses import replace
+
+    links = replace(LINKS, unsubscribe=LINKS.manage, one_click=None, why="A test.")
+    message = report_message(_report([_call(1, 9)]), to="a@b.ie", links=links)
+    assert "Unsubscribe" not in message.html and "Unsubscribe" not in message.text
+    assert "A test." in message.html and message.headers == ()

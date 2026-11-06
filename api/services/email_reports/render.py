@@ -128,22 +128,27 @@ def _section_title(text: str) -> str:
     )
 
 
-def _tile(label: str, value: str, note: str | None) -> str:
+def _tile(label: str, value: str, note: str | None, side: str) -> str:
+    """One number in a half-width cell. The gap between tiles is the outer
+    cell's padding: spacer cells collapse in some clients."""
     note_html = (
         f'<p class="lm-ink3" style="margin:4px 0 0;font-size:12px;line-height:16px;'
         f'color:{INK_3}">{_e(note)}</p>'
         if note
         else ""
     )
+    pad = "padding:0 5px 10px 0" if side == "left" else "padding:0 0 10px 5px"
     return (
-        f'<td class="lm-tile" width="50%" valign="top" style="padding:14px 14px 12px;'
+        f'<td width="50%" valign="top" style="{pad}">'
+        '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">'
+        f'<tr><td class="lm-tile" valign="top" style="padding:14px 14px 12px;'
         f"background-color:#f7f8fa;border:1px solid {LINE};border-radius:10px;"
         f'font-family:{FONT}">'
         f'<p class="lm-ink2" style="margin:0;font-size:12.5px;line-height:16px;color:{INK_2}">'
         f"{_e(label)}</p>"
         f'<p class="lm-ink lm-num" style="margin:6px 0 0;font-size:28px;line-height:32px;'
         f'font-weight:700;color:{INK}">{_e(value)}</p>'
-        f"{note_html}</td>"
+        f"{note_html}</td></tr></table></td>"
     )
 
 
@@ -151,16 +156,13 @@ def _tiles(report: Report) -> str:
     total = report.calls
     handled_note = f"{round(report.handled * 100 / total)}% of calls" if total else None
     change = change_text(report.calls_change, report.period.frequency)
-    gap = '<td width="10" style="width:10px;font-size:0;line-height:0">&nbsp;</td>'
-    row_gap = '<tr><td colspan="3" height="10" style="height:10px;font-size:0;line-height:0">&nbsp;</td></tr>'
     return (
         '<tr><td class="lm-pad" style="padding:18px 28px 0">'
         '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">'
-        f"<tr>{_tile('Calls', str(total), change)}{gap}"
-        f"{_tile('Handled by your agent', str(report.handled), handled_note)}</tr>"
-        f"{row_gap}"
-        f"<tr>{_tile('Passed to your team', str(report.passed_to_team), None)}{gap}"
-        f"{_tile('Hung up without speaking', str(report.hung_up_silent), None)}</tr>"
+        f"<tr>{_tile('Calls', str(total), change, 'left')}"
+        f"{_tile('Handled by your agent', str(report.handled), handled_note, 'right')}</tr>"
+        f"<tr>{_tile('Passed to your team', str(report.passed_to_team), None, 'left')}"
+        f"{_tile('Hung up without speaking', str(report.hung_up_silent), None, 'right')}</tr>"
         "</table></td></tr>"
     )
 
@@ -172,7 +174,7 @@ def _facts_row(report: Report) -> str:
         parts.append(f"Average call: <strong>{_e(average)}</strong>")
     joined = " &nbsp;·&nbsp; ".join(parts)
     return (
-        f'<tr><td class="lm-pad lm-ink2" style="padding:14px 28px 0;font-family:{FONT};'
+        f'<tr><td class="lm-pad lm-ink2" style="padding:4px 28px 0;font-family:{FONT};'
         f'font-size:14px;line-height:20px;color:{INK_2}">{joined}</td></tr>'
     )
 
@@ -376,15 +378,23 @@ def _footer(report: Report, to: str, links: Links) -> str:
         f"You're getting this {report_name(report.period.frequency)} because {to} was "
         f"added to {report.business_name}'s reports on {BRAND_NAME}."
     )
+    # A preview or test has no subscription to leave (its link is Manage).
+    unsubscribe = (
+        ""
+        if links.unsubscribe == links.manage
+        else (
+            f'<span class="lm-ink3" style="color:{INK_3}"> &nbsp;·&nbsp; </span>'
+            f'<a class="lm-brand" href="{_e(links.unsubscribe)}" '
+            f'style="color:{BRAND};text-decoration:underline">Unsubscribe</a>'
+        )
+    )
     return (
         f'<tr><td class="lm-pad lm-line" style="padding:22px 28px 26px;margin-top:22px;'
         f"border-top:1px solid {LINE};font-family:{FONT};font-size:12px;line-height:18px;"
         f'color:{INK_3}"><p class="lm-ink3" style="margin:0;color:{INK_3}">{_e(why)}</p>'
         f'<p style="margin:8px 0 0"><a class="lm-brand" href="{_e(links.manage)}" '
         f'style="color:{BRAND};text-decoration:underline">Manage reports</a>'
-        f'<span class="lm-ink3" style="color:{INK_3}"> &nbsp;·&nbsp; </span>'
-        f'<a class="lm-brand" href="{_e(links.unsubscribe)}" '
-        f'style="color:{BRAND};text-decoration:underline">Unsubscribe</a></p></td></tr>'
+        f"{unsubscribe}</p></td></tr>"
     )
 
 
@@ -508,7 +518,11 @@ def render_text(report: Report, *, to: str, links: Links) -> str:
         links.why
         or f"You're getting this because {to} was added to {report.business_name}'s reports.",
         f"Manage reports: {links.manage}",
-        f"Unsubscribe: {links.unsubscribe}",
+        *(
+            []
+            if links.unsubscribe == links.manage
+            else [f"Unsubscribe: {links.unsubscribe}"]
+        ),
     ]
     return "\n".join(lines) + "\n"
 

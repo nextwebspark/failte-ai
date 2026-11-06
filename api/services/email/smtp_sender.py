@@ -1,6 +1,7 @@
 import asyncio
 import smtplib
 import ssl
+from email import policy
 from email.message import EmailMessage as MimeMessage
 
 from api.services.email.base import EmailDeliveryError, EmailFailure, EmailMessage
@@ -8,6 +9,7 @@ from api.services.email.settings import SmtpSecurity, SmtpSettings
 from api.utils.text import strip_control_characters
 
 _PERMANENT_REPLY = 500
+_LONG_HEADERS = policy.default.clone(max_line_length=998)
 
 
 def _failure_of(exc: Exception) -> EmailFailure:
@@ -49,7 +51,12 @@ class SmtpEmailSender:
 
     async def send(self, message: EmailMessage) -> None:
         try:
-            mime = MimeMessage()
+            # A header carrying a long URL (List-Unsubscribe) must not be
+            # folded into encoded words, which mail clients can't read as a
+            # link; RFC 5322 allows lines up to 998 characters.
+            mime = (
+                MimeMessage(policy=_LONG_HEADERS) if message.headers else MimeMessage()
+            )
             mime["From"] = self._from
             mime["To"] = message.to
             # Subjects carry user-chosen names; a line break would be header
