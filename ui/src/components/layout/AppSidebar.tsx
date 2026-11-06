@@ -35,6 +35,13 @@ import { useShellChrome } from "./shellContext";
 
 const TELEPHONY_WARNING_COPY = "Action required";
 
+/** The agent's status in owner words, matching the agent list ("Live"). */
+const AGENT_STATUS_LABEL: Record<string, string> = {
+  published: "Live",
+  draft: "Draft",
+  archived: "Archived",
+};
+
 /** What a nav row needs, whichever nav it came from. */
 type SidebarLinkProps = {
   title: string;
@@ -241,7 +248,7 @@ export function AppSidebar({ docked = true }: { docked?: boolean }) {
                 dot
                 className="mt-1.5 px-2 py-0.5 text-[10px]"
               >
-                {agentShell.agent.versionStatus}
+                {AGENT_STATUS_LABEL[agentShell.agent.versionStatus] ?? agentShell.agent.versionStatus}
               </StatusPill>
             )}
           </div>

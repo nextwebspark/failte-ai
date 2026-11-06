@@ -60,6 +60,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { agentHomeHref } from "@/components/workflow/agentLinks";
 import { BRAND } from "@/config/brand";
 import { useAppConfig } from "@/context/AppConfigContext";
 import { useOrgConfig } from "@/context/OrgConfigContext";
@@ -488,7 +489,7 @@ export default function TelephonyConfigurationDetailPage() {
                     <TableCell className="text-muted-foreground">
                       {n.inbound_workflow_id ? (
                         <Link
-                          href={`/workflow/${n.inbound_workflow_id}`}
+                          href={agentHomeHref(n.inbound_workflow_id)}
                           className="inline-flex items-center gap-1 hover:underline hover:text-foreground"
                         >
                           <span>#{n.inbound_workflow_id}</span>

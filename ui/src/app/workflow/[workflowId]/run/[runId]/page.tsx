@@ -35,6 +35,7 @@ import { DeleteCallDataButton } from '@/components/privacy/DeleteCallDataButton'
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
+import { agentHomeHref } from "@/components/workflow/agentLinks";
 import { ConversationRailFrame, RealtimeFeedback, WorkflowRunLogs } from '@/components/workflow/conversation';
 import { conversationItemsFromRealtimeFeedbackEvents } from '@/components/workflow/conversation/adapters/fromRealtimeFeedback';
 import { PostHogEvent } from '@/constants/posthog-events';
@@ -777,7 +778,7 @@ export default function WorkflowRunPage() {
                             {cameFromWorkspace && workflowName && (
                                 <Link
                                     ref={agentLinkRef}
-                                    href={`/workflow/${workflowId}`}
+                                    href={agentHomeHref(Number(workflowId))}
                                     className="inline-flex min-h-10 min-w-0 items-center gap-1.5 rounded-md border border-line bg-panel px-2 py-1 text-sm text-ink-2 transition-colors sm:min-h-0 hover:border-brand/50 hover:text-brand focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/40"
                                 >
                                     <Bot className="h-3.5 w-3.5 shrink-0" aria-hidden />
@@ -968,8 +969,8 @@ export default function WorkflowRunPage() {
                             </Link>
                         </Button>
                         <Button asChild className="gap-2">
-                            <Link href={`/workflow/${workflowId}`}>
-                                Customize Agent
+                            <Link href={agentHomeHref(Number(workflowId))}>
+                                Change your agent
                             </Link>
                         </Button>
                     </CardFooter>
