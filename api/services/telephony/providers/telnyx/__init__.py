@@ -8,6 +8,7 @@ import aiohttp
 from fastapi import HTTPException
 from loguru import logger
 
+from api.constants import BRAND_DOCS_URL
 from api.services.telephony.registry import (
     ProviderSpec,
     ProviderUIField,
@@ -236,7 +237,7 @@ async def _ensure_connection_id(
 
 _UI_METADATA = ProviderUIMetadata(
     display_name="Telnyx",
-    docs_url="https://docs.lightmove.ai/integrations/telephony/telnyx",
+    docs_url=f"{BRAND_DOCS_URL}/integrations/telephony/telnyx",
     fields=[
         ProviderUIField(
             name="api_key", label="API Key", type="password", sensitive=True

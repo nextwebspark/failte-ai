@@ -20,7 +20,7 @@ Fixes that apply to Dograh itself, independent of LightMove.ai's additions, can 
 
 ## 🚀 Development Setup
 
-Please refer to our [Development Setup documentation](https://docs.lightmove.ai/contribution/setup).
+Please refer to our [Development Setup documentation](docs/contribution/setup.mdx).
 
 ### Getting Help
 

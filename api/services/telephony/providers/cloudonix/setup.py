@@ -16,6 +16,7 @@ least one active phone number is required in both.
 
 from typing import Any
 
+from api.constants import BRAND_DOCS_URL
 from api.services.telephony.registry import (
     ConfigurationSetupState,
     ProviderSetupChecklist,
@@ -24,8 +25,8 @@ from api.services.telephony.registry import (
 
 from .config import MANAGED_BY
 
-MANAGED_DOCS_URL = "https://docs.lightmove.ai/integrations/telephony/dograh-sip"
-SELF_SERVE_DOCS_URL = "https://docs.lightmove.ai/integrations/telephony/cloudonix"
+MANAGED_DOCS_URL = f"{BRAND_DOCS_URL}/integrations/telephony/dograh-sip"
+SELF_SERVE_DOCS_URL = f"{BRAND_DOCS_URL}/integrations/telephony/cloudonix"
 
 
 def resolve_setup_checklist(

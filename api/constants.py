@@ -12,6 +12,13 @@ ENVIRONMENT = os.getenv("ENVIRONMENT", Environment.LOCAL.value)
 BRAND_NAME: Final = "LightMove.ai"
 BRAND_DOMAIN: Final = "lightmove.ai"
 BRAND_APP_URL: Final = f"https://app.{BRAND_DOMAIN}"
+# Public docs live on the website (lightmove-website, Starlight at /docs), not on
+# a docs.* subdomain. Provider and node docs links are built from this.
+# DOCS_BASE_URL overrides it, e.g. http://localhost:4321/docs to read the local
+# website's docs before they are released.
+BRAND_DOCS_URL: Final = (
+    os.getenv("DOCS_BASE_URL") or f"https://{BRAND_DOMAIN}/docs"
+).rstrip("/")
 # Absolute path to the project root directory (i.e. the directory containing
 # the top-level api/ package). Having a single canonical location helps
 # when constructing file-system paths elsewhere in the codebase.

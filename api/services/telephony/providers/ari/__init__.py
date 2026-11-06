@@ -3,6 +3,7 @@
 import secrets
 from typing import Any, Dict
 
+from api.constants import BRAND_DOCS_URL
 from api.services.telephony.registry import (
     ProviderSpec,
     ProviderUICondition,
@@ -81,7 +82,7 @@ def _config_loader(value: Dict[str, Any]) -> Dict[str, Any]:
 
 _UI_METADATA = ProviderUIMetadata(
     display_name="Asterisk ARI",
-    docs_url="https://docs.lightmove.ai/integrations/telephony/asterisk-ari",
+    docs_url=f"{BRAND_DOCS_URL}/integrations/telephony/asterisk-ari",
     fields=[
         ProviderUIField(
             name="ari_endpoint",
