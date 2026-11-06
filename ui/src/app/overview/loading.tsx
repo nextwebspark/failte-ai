@@ -1,6 +1,6 @@
-import { PageSkeleton } from "@/components/ui/page-skeleton";
+import { HomeSkeleton } from "@/components/dashboard/HomeSkeleton";
 
-/** Shown while this screen loads: shaped like it, so nothing jumps. */
+/** Shown while Home loads: shaped like it, so nothing jumps. */
 export default function Loading() {
-  return <PageSkeleton variant="cards" />;
+  return <HomeSkeleton />;
 }
