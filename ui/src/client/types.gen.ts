@@ -11639,7 +11639,7 @@ export type CallNotificationSettings = {
     /**
      * Email On Booking
      *
-     * Email when the agent books someone in.
+     * Email when the agent books, moves or cancels a booking.
      */
     email_on_booking?: boolean;
     /**
@@ -11687,7 +11687,7 @@ export type CallNotificationSettingsResponse = {
     /**
      * Email On Booking
      *
-     * Email when the agent books someone in.
+     * Email when the agent books, moves or cancels a booking.
      */
     email_on_booking?: boolean;
     /**

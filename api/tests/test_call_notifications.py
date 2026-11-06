@@ -2,6 +2,7 @@
 call, the words sent, and the job that sends them. DB-free: the database and
 both providers are fakes."""
 
+import asyncio
 import json
 from datetime import UTC, datetime
 from types import SimpleNamespace
@@ -28,9 +29,12 @@ from api.services.call_notifications.outcome import (
     is_phone_call,
 )
 from api.services.call_notifications.phone import textable_number, to_e164
-from api.services.call_notifications.service import send_call_notifications
+from api.services.call_notifications.service import (
+    EmailDelivery,
+    send_call_notifications,
+)
 from api.services.call_notifications.settings import CONFIG_KEY, email_recipients
-from api.services.email.base import EmailDeliveryError
+from api.services.email.base import EmailDeliveryError, EmailFailure
 from api.services.sms.base import SmsDeliveryError
 
 SLOT = "2026-11-14T19:30:00+00:00"
@@ -619,7 +623,15 @@ def make_run(gathered, *, mode="twilio", call_type="inbound", initial=None):
 BOOKED = {**SPOKE, "tool_results": [book_record()]}
 
 
-async def run_job(db, email=None, sms=None):
+async def no_wait(_seconds):
+    return None
+
+
+# Retries without waiting, no daily cap.
+FAST = EmailDelivery(sleep=no_wait)
+
+
+async def run_job(db, email=None, sms=None, delivery=FAST):
     email = email or FakeEmail()
     sms = sms or FakeSms()
     await send_call_notifications(
@@ -627,6 +639,7 @@ async def run_job(db, email=None, sms=None):
         db=db,
         email_sender_factory=lambda: email,
         sms_sender_factory=lambda: sms,
+        delivery=delivery,
     )
     return email, sms
 
@@ -748,7 +761,11 @@ async def test_a_misconfigured_text_provider_does_not_stop_the_email():
         raise ValueError("SMS_FROM required for SMS_PROVIDER=twilio")
 
     await send_call_notifications(
-        42, db=db, email_sender_factory=lambda: email, sms_sender_factory=broken
+        42,
+        db=db,
+        email_sender_factory=lambda: email,
+        sms_sender_factory=broken,
+        delivery=FAST,
     )
 
     assert len(email.sent) == 2
@@ -828,3 +845,304 @@ async def test_stored_errors_hold_no_numbers_or_addresses():
     assert "HTTP 400" in sms_error
     assert "@example.com" not in email_error and "[address]" in email_error
     assert db.claims[(42, "email")]["status"] == "failed"
+
+
+# --- moves and cancellations (find_appointments / reschedule_appointment) ----------
+
+
+def reschedule_record(
+    old="evt-old", new="evt-new", outcome="moved", starts_at="2026-11-20T13:00:00+00:00"
+):
+    result = {"outcome": outcome, "say": "Moved."}
+    if outcome in ("moved", "old_not_cancelled"):
+        result.update(event_id=new, starts_at=starts_at)
+    return {
+        "function_name": "mcp__google_calendar__reschedule_appointment",
+        "arguments": {"event_id": old, "slot_id": "2026-11-20T13:00:00+00:00"},
+        "status": "completed",
+        "result": json.dumps(result),
+    }
+
+
+def cancel_with_time(event_id, starts_at="2026-11-18T10:00:00+00:00"):
+    return {
+        **cancel_record(event_id),
+        "result": json.dumps(
+            {"cancelled": True, "say": "Cancelled.", "starts_at": starts_at}
+        ),
+    }
+
+
+def test_the_calendars_start_time_beats_the_slot_id():
+    record = book_record()
+    record["result"] = json.dumps(
+        {"booked": True, "event_id": "evt-1", "starts_at": "2026-11-14T20:00:00+00:00"}
+    )
+    [booking] = confirmed_bookings([record])
+    assert booking.start == datetime(2026, 11, 14, 20, 0, tzinfo=UTC)
+
+
+def test_moving_an_earlier_booking_is_a_move():
+    [booking] = confirmed_bookings([reschedule_record()])
+
+    assert booking.moved is True and booking.event_id == "evt-new"
+    assert booking.start == datetime(2026, 11, 20, 13, 0, tzinfo=UTC)
+
+
+def test_moving_this_calls_booking_keeps_its_details():
+    [booking] = confirmed_bookings(
+        [book_record(event_id="evt-1"), reschedule_record(old="evt-1")]
+    )
+
+    assert booking.moved is False and booking.event_id == "evt-new"
+    assert booking.party_size == 4 and booking.caller_name == "Mary Byrne"
+
+
+@pytest.mark.parametrize(
+    "outcome", ["slot_taken", "not_found", "unchanged", "handed_off", "details_edited"]
+)
+def test_a_refused_move_changes_nothing(outcome):
+    assert (
+        classify_call(
+            gathered_context={
+                **SPOKE,
+                "tool_results": [reschedule_record(outcome=outcome)],
+            },
+            logs={},
+            usage_info={},
+        ).event
+        is None
+    )
+
+
+def test_cancelling_an_earlier_booking_is_reported():
+    outcome = classify_call(
+        gathered_context={**SPOKE, "tool_results": [cancel_with_time("evt-old")]},
+        logs={},
+        usage_info={},
+    )
+
+    assert outcome.event is CallEvent.BOOKING_MADE
+    assert outcome.bookings == []
+    [gone] = outcome.cancelled
+    assert gone.start == datetime(2026, 11, 18, 10, 0, tzinfo=UTC)
+
+
+def test_a_move_that_kept_the_old_booking_is_flagged():
+    outcome = classify_call(
+        gathered_context={
+            **SPOKE,
+            "tool_results": [reschedule_record(outcome="old_not_cancelled")],
+        },
+        logs={},
+        usage_info={},
+    )
+    assert outcome.old_booking_kept is True and len(outcome.bookings) == 1
+
+
+def test_the_move_and_cancel_emails():
+    moved = classify_call(
+        gathered_context={
+            **SPOKE,
+            "caller_name": "Sean",
+            "tool_results": [reschedule_record(outcome="old_not_cancelled")],
+        },
+        logs={},
+        usage_info={},
+    )
+    message = business_email(
+        to="a@example.com", outcome=moved, facts=facts(gathered_context=SPOKE)
+    )
+    assert message is not None
+    assert message.subject.startswith("Booking moved: ")
+    assert "Moved to: Friday 20 Nov at 1pm" in message.text
+    assert "could not remove the old one" in message.text
+
+    cancelled = classify_call(
+        gathered_context={**SPOKE, "tool_results": [cancel_with_time("evt-old")]},
+        logs={},
+        usage_info={},
+    )
+    message = business_email(to="a@example.com", outcome=cancelled, facts=facts())
+    assert message is not None
+    assert message.subject.endswith("Wednesday 18 Nov at 10am")
+    assert message.subject.startswith("Booking cancelled: ")
+    assert "Cancelled: Wednesday 18 Nov at 10am" in message.text
+
+
+async def test_a_moved_booking_texts_the_new_time():
+    db = FakeDB(make_run({**SPOKE, "tool_results": [reschedule_record()]}))
+
+    email, sms = await run_job(db)
+
+    assert {m.subject for m in email.sent} == {
+        "Booking moved: +353871234567, Friday 20 Nov at 1pm"
+    }
+    [text] = sms.sent
+    assert text.body.startswith(
+        "Luigi's: your booking is moved to Friday 20 Nov at 1pm."
+    )
+
+
+async def test_a_call_that_only_cancelled_texts_no_one():
+    db = FakeDB(make_run({**SPOKE, "tool_results": [cancel_with_time("evt-old")]}))
+
+    email, sms = await run_job(db)
+
+    assert len(email.sent) == 2 and sms.sent == []
+
+
+# --- outbound calls --------------------------------------------------------------
+
+
+OUTBOUND_NUMBERS = {
+    "caller_number": "+35315550100",  # the business's line
+    "called_number": "+353861112222",
+    "business_name": "Luigi's",
+}
+
+
+async def test_an_outbound_call_that_moved_a_booking_emails_only():
+    run = make_run(
+        {**SPOKE, "tool_results": [reschedule_record()]},
+        call_type="outbound",
+        initial=OUTBOUND_NUMBERS,
+    )
+    db = FakeDB(run)
+
+    email, sms = await run_job(db)
+
+    assert len(email.sent) == 2
+    assert "Number called: +353861112222" in email.sent[0].text
+    assert sms.sent == [] and (42, "sms") not in db.claims
+
+
+async def test_an_unanswered_outbound_call_is_not_a_missed_call():
+    run = make_run(
+        {"call_status": "no-answer", "call_tags": []},
+        call_type="outbound",
+        initial=OUTBOUND_NUMBERS,
+    )
+    db = FakeDB(run)
+
+    email, _ = await run_job(db)
+
+    assert email.sent == [] and db.claims == {}
+
+
+# --- delivery ----------------------------------------------------------------------
+
+
+class FlakyEmail(FakeEmail):
+    """Fails each message ``failures`` times with ``kind``, then sends."""
+
+    def __init__(self, failures, kind):
+        super().__init__()
+        self.failures = failures
+        self.kind = kind
+        self.attempts: dict[str, int] = {}
+
+    async def send(self, message):
+        self.attempts[message.to] = self.attempts.get(message.to, 0) + 1
+        if self.attempts[message.to] <= self.failures:
+            raise EmailDeliveryError("try later", failure=self.kind)
+        self.sent.append(message)
+
+
+async def test_each_email_carries_its_own_idempotency_key():
+    db = FakeDB(make_run(BOOKED))
+
+    email, _ = await run_job(db)
+
+    keys = [m.idempotency_key for m in email.sent]
+    assert all(k and k.startswith("call-notice-42-email-") for k in keys)
+    assert len(set(keys)) == len(keys) == 2
+    assert all("@" not in k for k in keys)
+
+    # The same run and address always give the same key.
+    again, _ = await run_job(FakeDB(make_run(BOOKED)))
+    assert [m.idempotency_key for m in again.sent] == keys
+
+
+@pytest.mark.parametrize(
+    ("kind", "failures", "delivered", "attempts"),
+    [
+        (EmailFailure.TRANSIENT, 2, True, 3),
+        (EmailFailure.TRANSIENT, 3, False, 3),
+        (EmailFailure.PROVIDER_ERROR, 1, True, 2),
+        (EmailFailure.PROVIDER_ERROR, 2, False, 2),
+        (EmailFailure.FINAL, 1, False, 1),
+    ],
+)
+async def test_retries_follow_the_failure_kind(kind, failures, delivered, attempts):
+    db = FakeDB(make_run(BOOKED))
+    waits: list[float] = []
+
+    async def wait(seconds):
+        waits.append(seconds)
+
+    sender = FlakyEmail(failures, kind)
+    await run_job(db, email=sender, delivery=EmailDelivery(sleep=wait))
+
+    assert sender.attempts == {
+        "admin@example.com": attempts,
+        "owner@example.com": attempts,
+    }
+    assert (len(sender.sent) == 2) is delivered
+    assert db.claims[(42, "email")]["status"] == ("sent" if delivered else "failed")
+    # Both recipients wait the same steps (concurrently, so interleaved).
+    assert sorted(waits) == sorted([2.0, 8.0][: attempts - 1] * 2)
+
+
+async def test_a_slow_provider_is_cut_off_and_recorded():
+    class SlowEmail(FakeEmail):
+        async def send(self, message):
+            if message.to == "admin@example.com":
+                await asyncio.sleep(10)
+            self.sent.append(message)
+
+    db = FakeDB(make_run(BOOKED))
+
+    email, _ = await run_job(
+        db, email=SlowEmail(), delivery=EmailDelivery(sleep=no_wait, send_timeout=0.05)
+    )
+
+    assert [m.to for m in email.sent] == ["owner@example.com"]
+    assert db.claims[(42, "email")]["status"] == "partial"
+    assert "TimeoutError" in db.claims[(42, "email")]["error"]
+
+
+class Limiter:
+    def __init__(self, allow):
+        self.allowed = allow
+        self.keys: list[str] = []
+
+    async def allow(self, key, *, limit, window):
+        self.keys.append(key)
+        return self.allowed
+
+
+async def test_the_daily_limit_holds_emails_back_after_the_claim():
+    limiter = Limiter(allow=False)
+    db = FakeDB(make_run(BOOKED))
+
+    email, sms = await run_job(
+        db, delivery=EmailDelivery(rate_limiter=limiter, sleep=no_wait)
+    )
+
+    assert email.sent == []
+    assert db.claims[(42, "email")]["status"] == "limited"
+    assert limiter.keys and limiter.keys[0].startswith("call-notifications:7:")
+    # The caller's text is not part of the business's email allowance.
+    assert len(sms.sent) == 1
+
+
+async def test_a_retried_job_does_not_count_against_the_limit():
+    limiter = Limiter(allow=True)
+    db = FakeDB(make_run(BOOKED))
+    delivery = EmailDelivery(rate_limiter=limiter, sleep=no_wait)
+
+    await run_job(db, delivery=delivery)
+    await run_job(db, delivery=delivery)
+
+    assert len(limiter.keys) == 1

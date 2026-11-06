@@ -70,12 +70,15 @@ class MissedReason(StrEnum):
 
 @dataclass(frozen=True, slots=True)
 class ConfirmedBooking:
-    """A booking the calendar tool said it made (``booked: true``).
+    """A booking the calendar tool said it made (``booked: true``), or moved
+    to a new time (``reschedule_appointment`` outcome ``moved`` or
+    ``old_not_cancelled``).
 
-    ``start`` and ``party_size`` are the arguments of the ``book_appointment``
-    call the calendar accepted: the calendar books exactly the slot it is
-    given (``slot_id`` is that slot's ISO time) and stores that party size on
-    the event. They are not the LLM's after-call extraction.
+    ``start`` is the calendar's ``starts_at`` for that result, else the
+    ``slot_id`` argument (the calendar books exactly the slot it is given;
+    the id is that slot's ISO time). ``party_size`` is the argument the
+    calendar stored on the event. None of it is the LLM's after-call
+    extraction.
     """
 
     event_id: str
@@ -83,12 +86,37 @@ class ConfirmedBooking:
     party_size: int | None
     caller_name: str | None
     caller_phone: str | None
+    # A booking made on an earlier call that this call moved to ``start``.
+    moved: bool = False
+
+
+@dataclass(frozen=True, slots=True)
+class CancelledBooking:
+    """A booking made on an earlier call that this call cancelled. ``start``
+    is the cancelled time, when the calendar reported it."""
+
+    event_id: str
+    start: datetime | None
+
+
+@dataclass(frozen=True, slots=True)
+class CalendarActivity:
+    """What the calendar confirmed on one call, in call order."""
+
+    # Bookings made or moved on this call that still stand.
+    bookings: list[ConfirmedBooking] = field(default_factory=list)
+    # Bookings from earlier calls that this call cancelled.
+    cancelled: list[CancelledBooking] = field(default_factory=list)
+    # A move booked the new time but could not remove the old booking.
+    old_booking_kept: bool = False
 
 
 @dataclass(frozen=True, slots=True)
 class CallOutcome:
     event: CallEvent | None
     bookings: list[ConfirmedBooking] = field(default_factory=list)
+    cancelled: list[CancelledBooking] = field(default_factory=list)
+    old_booking_kept: bool = False
     missed_reason: MissedReason | None = None
     # The agent recorded booking_outcome "booked" but no calendar tool
     # confirmed a booking: told to the business as a message, never as a
@@ -97,9 +125,17 @@ class CallOutcome:
 
 
 def is_phone_call(mode: str | None, call_type: str | None) -> bool:
-    """Inbound phone calls only. Browser test calls (WebRTC), text chats and
-    outbound calls never notify."""
+    """Inbound phone calls: every notification. Browser test calls (WebRTC)
+    and text chats never notify; for outbound calls see
+    ``is_outbound_phone_call``."""
     return mode in _TELEPHONY_MODES and call_type == CallType.INBOUND.value
+
+
+def is_outbound_phone_call(mode: str | None, call_type: str | None) -> bool:
+    """Outbound phone calls (e.g. appointment reminders): only a booking
+    change or a message emails the business; nothing counts as missed and
+    the person called is never texted."""
+    return mode in _TELEPHONY_MODES and call_type == CallType.OUTBOUND.value
 
 
 def _text(value: Any) -> str:
@@ -137,10 +173,27 @@ def _positive_int(value: Any) -> int | None:
     return None
 
 
-def confirmed_bookings(tool_results: Sequence[Any]) -> list[ConfirmedBooking]:
-    """Bookings the calendar confirmed and that were not cancelled later in
-    the same call, in the order they were made."""
+def _aware_time(value: Any) -> datetime | None:
+    """An ISO time with an offset; a naive or unreadable one is None (there
+    is no zone to read it in)."""
+    try:
+        moment = datetime.fromisoformat(_text(value))
+    except ValueError:
+        return None
+    return moment if moment.tzinfo is not None else None
+
+
+# reschedule_appointment outcomes after which the new time is booked.
+_MOVED_OUTCOMES = frozenset({"moved", "old_not_cancelled"})
+
+
+def calendar_activity(tool_results: Sequence[Any]) -> CalendarActivity:
+    """Bookings made, moved and cancelled on one call, as the calendar
+    confirmed them. Refused attempts (slot gone, nothing found, handed off)
+    changed nothing and are left out."""
     bookings: dict[str, ConfirmedBooking] = {}
+    cancelled: list[CancelledBooking] = []
+    old_kept = False
     for record in tool_results or ():
         if not isinstance(record, Mapping) or record.get("status") != "completed":
             continue
@@ -155,9 +208,10 @@ def confirmed_bookings(tool_results: Sequence[Any]) -> list[ConfirmedBooking]:
             event_id = _text(result.get("event_id"))
             if result.get("booked") is not True or not event_id:
                 continue
-            try:
-                start = datetime.fromisoformat(_text(arguments.get("slot_id")))
-            except ValueError:
+            start = _aware_time(result.get("starts_at")) or _aware_time(
+                arguments.get("slot_id")
+            )
+            if start is None:
                 # Without the time the calendar accepted there is nothing
                 # trustworthy to confirm.
                 continue
@@ -169,9 +223,52 @@ def confirmed_bookings(tool_results: Sequence[Any]) -> list[ConfirmedBooking]:
                 caller_name=_text(arguments.get("caller_name")) or None,
                 caller_phone=_text(arguments.get("caller_phone")) or None,
             )
+        elif _tool_is(name, "reschedule_appointment"):
+            new_id = _text(result.get("event_id"))
+            if _text(result.get("outcome")) not in _MOVED_OUTCOMES or not new_id:
+                continue
+            start = _aware_time(result.get("starts_at")) or _aware_time(
+                arguments.get("slot_id")
+            )
+            if start is None:
+                continue
+            old_kept = old_kept or result.get("outcome") == "old_not_cancelled"
+            # Moving a booking made on this call keeps its details; one from
+            # an earlier call is reported as a move.
+            previous = bookings.pop(_text(arguments.get("event_id")), None)
+            bookings.pop(new_id, None)
+            bookings[new_id] = ConfirmedBooking(
+                event_id=new_id,
+                start=start,
+                party_size=previous.party_size if previous else None,
+                caller_name=previous.caller_name if previous else None,
+                caller_phone=previous.caller_phone if previous else None,
+                moved=previous.moved if previous else True,
+            )
         elif _tool_is(name, "cancel_appointment") and result.get("cancelled") is True:
-            bookings.pop(_text(arguments.get("event_id")), None)
-    return list(bookings.values())
+            event_id = _text(arguments.get("event_id"))
+            previous = bookings.pop(event_id, None)
+            if previous is None or previous.moved:
+                # A booking from an earlier call (or one this call moved from
+                # an earlier call) is gone: the business must know.
+                cancelled.append(
+                    CancelledBooking(
+                        event_id=event_id,
+                        start=_aware_time(result.get("starts_at"))
+                        or (previous.start if previous else None),
+                    )
+                )
+    return CalendarActivity(
+        bookings=list(bookings.values()),
+        cancelled=cancelled,
+        old_booking_kept=old_kept,
+    )
+
+
+def confirmed_bookings(tool_results: Sequence[Any]) -> list[ConfirmedBooking]:
+    """Bookings the calendar confirmed (made or moved) and that were not
+    cancelled later in the same call, in the order they were made."""
+    return calendar_activity(tool_results).bookings
 
 
 def _stored_function_result(value: Any) -> Mapping[str, Any] | None:
@@ -257,14 +354,21 @@ def classify_call(
     logs: Mapping[str, Any] | None,
     usage_info: Mapping[str, Any] | None,
 ) -> CallOutcome:
-    """Booking made, else message taken, else missed call, else nothing.
+    """Booking made, moved or cancelled, else message taken, else missed
+    call, else nothing.
 
-    Only meaningful for runs ``is_phone_call`` accepts.
+    Only meaningful for runs ``is_phone_call`` or ``is_outbound_phone_call``
+    accepts.
     """
     gathered = gathered_context or {}
-    bookings = confirmed_bookings(gathered.get("tool_results") or [])
-    if bookings:
-        return CallOutcome(event=CallEvent.BOOKING_MADE, bookings=bookings)
+    activity = calendar_activity(gathered.get("tool_results") or [])
+    if activity.bookings or activity.cancelled:
+        return CallOutcome(
+            event=CallEvent.BOOKING_MADE,
+            bookings=activity.bookings,
+            cancelled=activity.cancelled,
+            old_booking_kept=activity.old_booking_kept,
+        )
 
     booking_outcome = _text(gathered.get("booking_outcome")).lower()
     claimed_booking = booking_outcome == "booked"

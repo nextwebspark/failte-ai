@@ -59,7 +59,7 @@ describe("NotificationsSettingsPage", () => {
         render(<NotificationsSettingsPage />);
 
         expect(await screen.findByRole("switch", { name: "When a call is missed" })).toBeTruthy();
-        expect(screen.getByRole("switch", { name: "When a booking is made" }).getAttribute("aria-checked")).toBe("true");
+        expect(screen.getByRole("switch", { name: "When a booking is made, moved or cancelled" }).getAttribute("aria-checked")).toBe("true");
         expect(screen.getByText("owner@example.com, admin@example.com")).toBeTruthy();
         expect(screen.getByRole("switch", { name: "Text callers a booking confirmation" })).toBeTruthy();
         expect(screen.getByText(/Texting isn't set up yet/)).toBeTruthy();
@@ -87,7 +87,7 @@ describe("NotificationsSettingsPage", () => {
         mocks.get.mockResolvedValue({ data: response({ email_enabled: false }) });
         render(<NotificationsSettingsPage />);
 
-        const booking = await screen.findByRole("switch", { name: "When a booking is made" });
+        const booking = await screen.findByRole("switch", { name: "When a booking is made, moved or cancelled" });
         expect(booking.hasAttribute("disabled")).toBe(true);
         // Texts are separate from the business emails.
         expect(

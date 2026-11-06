@@ -30,6 +30,11 @@ MISSED_REASONS: Mapping[MissedReason, str] = {
     ),
 }
 
+OLD_BOOKING_KEPT_NOTE = (
+    "A booking was moved, but the calendar could not remove the old one: "
+    "delete it from the calendar so the time is free again."
+)
+
 UNCONFIRMED_BOOKING_NOTE = (
     "The agent noted a booking, but the calendar did not confirm one. Check "
     "the calendar and call them back if needed."
@@ -90,15 +95,18 @@ class CallFacts:
     business_name: str
     # The number the caller dialled (the business's line), as stored.
     business_number: str | None
-    # The caller's line, as the carrier gave it.
+    # The other party's line: the caller on an inbound call, the person
+    # called on an outbound one.
     caller_number: str | None
     called_at: datetime
     call_url: str
     gathered_context: Mapping[str, object]
+    inbound: bool = True
 
 
 def _booking_rows(booking: ConfirmedBooking) -> list[tuple[str, str]]:
-    rows = [("When", spoken_when(booking.start))]
+    label = "Moved to" if booking.moved else "When"
+    rows = [(label, spoken_when(booking.start))]
     if booking.party_size is not None:
         rows.append(("Party size", str(booking.party_size)))
     if booking.caller_name:
@@ -116,17 +124,49 @@ def business_email(
     business = _clean(facts.business_name)
     called = spoken_when(facts.called_at)
     caller_number = _clean(facts.caller_number) or "a withheld number"
+    contact_label = "Called from" if facts.inbound else "Number called"
     details: list[tuple[str, str]]
     note: str | None = None
 
     if outcome.event is CallEvent.BOOKING_MADE:
-        latest = outcome.bookings[-1]
-        who = _clean(latest.caller_name) or caller_number
-        subject = f"New booking: {who}, {spoken_when(latest.start)}"
-        heading = "New booking"
-        summary = f"The agent booked {who} in at {business} on a call on {called}."
+        new = [b for b in outcome.bookings if not b.moved]
+        moved = [b for b in outcome.bookings if b.moved]
+        # Moves and cancellations carry no name: use the one the agent noted.
+        noted = _clean(message_details(facts.gathered_context).get("caller_name"))
+        if new:
+            latest = new[-1]
+            who = _clean(latest.caller_name) or noted or caller_number
+            subject = f"New booking: {who}, {spoken_when(latest.start)}"
+            heading = "New booking"
+            summary = f"The agent booked {who} in at {business} on a call on {called}."
+        elif moved:
+            latest = moved[-1]
+            who = noted or caller_number
+            subject = f"Booking moved: {who}, {spoken_when(latest.start)}"
+            heading = "Booking moved"
+            summary = (
+                f"The agent moved a booking for {who} at {business} on a call "
+                f"on {called}."
+            )
+        else:
+            who = noted or caller_number
+            first = outcome.cancelled[0].start
+            subject = f"Booking cancelled: {who}" + (
+                f", {spoken_when(first)}" if first else ""
+            )
+            heading = "Booking cancelled"
+            summary = (
+                f"The agent cancelled a booking for {who} at {business} on a "
+                f"call on {called}."
+            )
         details = [row for b in outcome.bookings for row in _booking_rows(b)]
-        details.append(("Called from", caller_number))
+        details.extend(
+            ("Cancelled", spoken_when(c.start) if c.start else "a booking")
+            for c in outcome.cancelled
+        )
+        details.append((contact_label, caller_number))
+        if outcome.old_booking_kept:
+            note = OLD_BOOKING_KEPT_NOTE
     elif outcome.event is CallEvent.MESSAGE_TAKEN:
         fields = message_details(facts.gathered_context)
         who = _clean(fields.get("caller_name")) or caller_number
@@ -142,7 +182,7 @@ def business_email(
             )
             if key in fields
         ]
-        details.append(("Called from", caller_number))
+        details.append((contact_label, caller_number))
         if outcome.unconfirmed_booking_claim:
             note = UNCONFIRMED_BOOKING_NOTE
     elif outcome.event is CallEvent.MISSED_CALL:
@@ -174,11 +214,16 @@ def booking_confirmation_text(
     *, booking: ConfirmedBooking, business_name: str, business_number: str | None
 ) -> str:
     """{Business}: your booking for Friday 14 Nov at 7:30pm, table for 4, is
-    confirmed. To change it call +35315550100."""
-    parts = [f"your booking for {spoken_when(booking.start)}"]
-    if booking.party_size is not None:
-        parts.append(f"table for {booking.party_size}")
-    text = f"{_clean(business_name)}: {', '.join(parts)}, is confirmed."
+    confirmed. To change it call +35315550100. A moved booking: "your booking
+    is moved to Friday 14 Nov at 7:30pm." """
+    when = spoken_when(booking.start)
+    party = (
+        f", table for {booking.party_size}" if booking.party_size is not None else ""
+    )
+    if booking.moved:
+        text = f"{_clean(business_name)}: your booking is moved to {when}{party}."
+    else:
+        text = f"{_clean(business_name)}: your booking for {when}{party}, is confirmed."
     number = _clean(business_number)
     text += f" To change it call {number}." if number else " To change it, call us."
     return text

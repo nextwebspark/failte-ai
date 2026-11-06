@@ -199,8 +199,8 @@ export default function NotificationsSettingsPage() {
                     />
                     <ToggleRow
                         id="email-booking"
-                        label="When a booking is made"
-                        hint="Only bookings the calendar confirmed."
+                        label="When a booking is made, moved or cancelled"
+                        hint="Only changes the calendar confirmed."
                         checked={settings.email_on_booking ?? true}
                         disabled={saving || emailOff}
                         onChange={(v) => setToggle("email_on_booking", v)}

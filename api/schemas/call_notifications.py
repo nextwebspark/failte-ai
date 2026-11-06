@@ -10,7 +10,8 @@ class CallNotificationSettings(BaseModel):
         default=True, description="Email the business after calls at all."
     )
     email_on_booking: bool = Field(
-        default=True, description="Email when the agent books someone in."
+        default=True,
+        description="Email when the agent books, moves or cancels a booking.",
     )
     email_on_message: bool = Field(
         default=True, description="Email when the agent takes a message."
