@@ -7,9 +7,10 @@
  * Google callback; `/invite` previews an invitation before the visitor has an
  * account; `/embed` serves the public website widget (e.g.
  * /embed/lightmove-widget.js, plus the legacy fallcha-/failte-/dograh-widget.js
- * shims), which third-party sites load without a session.
+ * shims), which third-party sites load without a session; `/listen` plays a
+ * call recording someone shared with an expiring link.
  */
-export const PUBLIC_PATHS = ["/auth", "/invite", "/embed"] as const;
+export const PUBLIC_PATHS = ["/auth", "/invite", "/embed", "/listen"] as const;
 
 /**
  * Match on a path-segment boundary (exact match or a `/`-delimited subpath)
