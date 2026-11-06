@@ -125,7 +125,8 @@ export type PageMeta = {
  * route (/campaigns/12) inherits its section's title until it declares its own.
  */
 const PAGE_META: Record<string, PageMeta> = {
-  "/overview": { title: "Overview", subtitle: "Everything running today" },
+  "/overview": { title: "Home", subtitle: "How your phone agent did today" },
+  "/follow-ups": { title: "Follow-ups", subtitle: "Calls that need a person" },
   "/workflow": { title: "Voice agents", subtitle: "The agents that answer your calls" },
   "/workflow/create": { title: "New voice agent", subtitle: "Pick a ready-made agent" },
   "/campaigns": { title: "Campaigns", subtitle: "Bulk runs across contact lists" },
@@ -186,6 +187,8 @@ const ROUTE_PERMISSIONS: Record<string, Permission> = {
   "/campaigns/new": "campaigns:write",
   "/skills/new": "agents:write",
   "/automation": "agents:write",
+  // Every member sees and ticks off follow-ups (the menu row may also say so).
+  "/follow-ups": "calls:read",
 };
 
 export function getRequiredPermission(pathname: string): Permission | null {
