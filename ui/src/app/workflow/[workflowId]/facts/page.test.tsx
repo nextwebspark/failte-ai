@@ -1,4 +1,5 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { toast } from "sonner";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import BusinessFactsPage from "./page";
@@ -63,5 +64,99 @@ describe("Business facts", () => {
         mocks.get.mockResolvedValue({ data: { facts: [] } });
         render(<BusinessFactsPage />);
         expect(await screen.findByText("This agent has no business facts to edit here.")).toBeTruthy();
+    });
+
+    it("shows a load error with Try again, then recovers", async () => {
+        mocks.get.mockResolvedValueOnce({ error: { detail: "Agent not found" } });
+        render(<BusinessFactsPage />);
+        expect((await screen.findByRole("alert")).textContent).toContain("Agent not found");
+        fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+        expect(await screen.findByLabelText("Opening hours")).toBeTruthy();
+        expect(mocks.get).toHaveBeenCalledTimes(2);
+    });
+
+    it("handles a network failure while loading", async () => {
+        mocks.get.mockRejectedValueOnce(new TypeError("Failed to fetch"));
+        render(<BusinessFactsPage />);
+        expect((await screen.findByRole("alert")).textContent).toContain("Couldn't load the business facts");
+        expect(screen.queryByText(/Failed to fetch/)).toBeNull();
+    });
+
+    it("won't save a required answer left blank, and says which", async () => {
+        render(<BusinessFactsPage />);
+        const hours = await screen.findByLabelText("Opening hours");
+        expect(hours.hasAttribute("required")).toBe(true);
+        fireEvent.change(hours, { target: { value: "   " } });
+        fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+
+        expect(mocks.put).not.toHaveBeenCalled();
+        expect(toast.error).toHaveBeenCalledWith("Fill in the required answers before saving.");
+        expect(hours.getAttribute("aria-invalid")).toBe("true");
+        const message = document.getElementById(hours.getAttribute("aria-describedby") ?? "");
+        expect(message?.textContent).toContain("Your agent needs this answer");
+
+        // Fixing it clears the message and saves.
+        fireEvent.change(hours, { target: { value: "Mon-Fri 9-5" } });
+        expect(hours.getAttribute("aria-invalid")).toBeNull();
+        fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+        await waitFor(() => expect(mocks.put).toHaveBeenCalledTimes(1));
+    });
+
+    it("lets an optional answer be blank", async () => {
+        render(<BusinessFactsPage />);
+        const extra = await screen.findByLabelText(/Anything else callers often ask/);
+        fireEvent.change(extra, { target: { value: "Parking at the back" } });
+        fireEvent.change(extra, { target: { value: "" } });
+        fireEvent.change(screen.getByLabelText("Opening hours"), { target: { value: "Mon-Fri 9-5" } });
+        fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+        await waitFor(() =>
+            expect(mocks.put).toHaveBeenCalledWith({
+                path: { workflow_id: 12 },
+                body: { facts: { opening_hours: "Mon-Fri 9-5" } },
+            }),
+        );
+    });
+
+    it("sends only one save on a double click", async () => {
+        let resolve: (value: unknown) => void = () => {};
+        mocks.put.mockReturnValue(new Promise((r) => (resolve = r)));
+        render(<BusinessFactsPage />);
+        fireEvent.change(await screen.findByLabelText("Opening hours"), { target: { value: "Mon-Fri 9-5" } });
+        const save = screen.getByRole("button", { name: "Save changes" });
+        fireEvent.click(save);
+        fireEvent.click(save);
+        expect(mocks.put).toHaveBeenCalledTimes(1);
+        expect(screen.getByRole("button", { name: "Saving…" }).hasAttribute("disabled")).toBe(true);
+        resolve({ data: { facts: FACTS.map((f) => (f.key === "opening_hours" ? { ...f, value: "Mon-Fri 9-5" } : f)) } });
+        await waitFor(() => expect(toast.success).toHaveBeenCalled());
+    });
+
+    it("keeps the owner's typing when the save is refused", async () => {
+        mocks.put.mockResolvedValue({ error: { detail: "Opening hours is too long." } });
+        render(<BusinessFactsPage />);
+        const hours = await screen.findByLabelText("Opening hours");
+        fireEvent.change(hours, { target: { value: "Mon-Fri 9-5" } });
+        fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+        await waitFor(() => expect(toast.error).toHaveBeenCalledWith("Opening hours is too long."));
+        expect((hours as HTMLInputElement).value).toBe("Mon-Fri 9-5");
+        expect(screen.getByRole("button", { name: "Save changes" }).hasAttribute("disabled")).toBe(false);
+    });
+
+    it("handles a network failure while saving", async () => {
+        mocks.put.mockRejectedValue(new TypeError("Failed to fetch"));
+        render(<BusinessFactsPage />);
+        fireEvent.change(await screen.findByLabelText("Opening hours"), { target: { value: "Mon-Fri 9-5" } });
+        fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+        await waitFor(() => expect(toast.error).toHaveBeenCalledWith("Couldn't save. Please try again."));
+        expect(screen.getByRole("button", { name: "Save changes" }).hasAttribute("disabled")).toBe(false);
+    });
+
+    it("Undo puts the saved answers back", async () => {
+        render(<BusinessFactsPage />);
+        const hours = await screen.findByLabelText("Opening hours");
+        fireEvent.change(hours, { target: { value: "Closed" } });
+        fireEvent.click(screen.getByRole("button", { name: "Undo" }));
+        expect((hours as HTMLInputElement).value).toBe("Tue-Sun 12-22");
+        expect(screen.queryByRole("button", { name: "Undo" })).toBeNull();
     });
 });

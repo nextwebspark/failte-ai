@@ -1,7 +1,7 @@
 "use client";
 
 import { useParams } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import {
@@ -18,6 +18,9 @@ import { Textarea } from "@/components/ui/textarea";
 import { useOrgConfig } from "@/context/OrgConfigContext";
 import { detailFromError } from "@/lib/apiError";
 
+const LOAD_FAILED = "Couldn't load the business facts. Please try again.";
+const SAVE_FAILED = "Couldn't save. Please try again.";
+
 /**
  * What the agent tells callers about the business. The owner edits these
  * here; the agent uses them from its next call, with no agent editor.
@@ -32,18 +35,27 @@ export default function BusinessFactsPage() {
     const [values, setValues] = useState<Record<string, string>>({});
     const [error, setError] = useState<string | null>(null);
     const [saving, setSaving] = useState(false);
+    // Set synchronously so a double click can't send two saves.
+    const savingRef = useRef(false);
+    // Required-field messages show once the owner has tried to save.
+    const [triedSave, setTriedSave] = useState(false);
 
     const load = useCallback(async () => {
         setError(null);
-        const res = await getBusinessFactsApiV1WorkflowWorkflowIdBusinessFactsGet({
-            path: { workflow_id: workflowId },
-        });
-        if (res.error || !res.data) {
-            setError(detailFromError(res.error, "Couldn't load the business facts."));
-            return;
+        setFacts(null);
+        try {
+            const res = await getBusinessFactsApiV1WorkflowWorkflowIdBusinessFactsGet({
+                path: { workflow_id: workflowId },
+            });
+            if (res.error || !res.data) {
+                setError(detailFromError(res.error, LOAD_FAILED));
+                return;
+            }
+            setFacts(res.data.facts);
+            setValues(Object.fromEntries(res.data.facts.map((f) => [f.key, f.value])));
+        } catch {
+            setError(LOAD_FAILED);
         }
-        setFacts(res.data.facts);
-        setValues(Object.fromEntries(res.data.facts.map((f) => [f.key, f.value])));
     }, [workflowId]);
 
     useEffect(() => {
@@ -51,21 +63,38 @@ export default function BusinessFactsPage() {
     }, [load]);
 
     const changed = (facts ?? []).filter((f) => (values[f.key] ?? "") !== f.value);
+    const missing = new Set(
+        (facts ?? []).filter((f) => f.required && !(values[f.key] ?? "").trim()).map((f) => f.key),
+    );
 
     const save = async () => {
-        setSaving(true);
-        const res = await updateBusinessFactsApiV1WorkflowWorkflowIdBusinessFactsPut({
-            path: { workflow_id: workflowId },
-            body: { facts: Object.fromEntries(changed.map((f) => [f.key, values[f.key] ?? ""])) },
-        });
-        setSaving(false);
-        if (res.error || !res.data) {
-            toast.error(detailFromError(res.error, "Couldn't save. Please try again."));
+        if (savingRef.current || changed.length === 0) return;
+        setTriedSave(true);
+        if (missing.size > 0) {
+            toast.error("Fill in the required answers before saving.");
             return;
         }
-        setFacts(res.data.facts);
-        setValues(Object.fromEntries(res.data.facts.map((f) => [f.key, f.value])));
-        toast.success("Saved. Your agent uses these from its next call.");
+        savingRef.current = true;
+        setSaving(true);
+        try {
+            const res = await updateBusinessFactsApiV1WorkflowWorkflowIdBusinessFactsPut({
+                path: { workflow_id: workflowId },
+                body: { facts: Object.fromEntries(changed.map((f) => [f.key, values[f.key] ?? ""])) },
+            });
+            if (res.error || !res.data) {
+                toast.error(detailFromError(res.error, SAVE_FAILED));
+                return;
+            }
+            setFacts(res.data.facts);
+            setValues(Object.fromEntries(res.data.facts.map((f) => [f.key, f.value])));
+            setTriedSave(false);
+            toast.success("Saved. Your agent uses these from its next call.");
+        } catch {
+            toast.error(SAVE_FAILED);
+        } finally {
+            savingRef.current = false;
+            setSaving(false);
+        }
     };
 
     if (error) {
@@ -109,11 +138,16 @@ export default function BusinessFactsPage() {
             </p>
             {facts.map((fact) => {
                 const id = `fact-${fact.key}`;
+                const errorId = `${id}-error`;
+                const invalid = triedSave && missing.has(fact.key);
                 const common = {
                     id,
                     value: values[fact.key] ?? "",
                     maxLength: fact.max_length,
                     disabled: !canEdit || saving,
+                    required: fact.required,
+                    "aria-invalid": invalid || undefined,
+                    "aria-describedby": invalid ? errorId : undefined,
                     placeholder: fact.placeholder ? `e.g. ${fact.placeholder}` : undefined,
                 };
                 return (
@@ -133,6 +167,11 @@ export default function BusinessFactsPage() {
                                 {...common}
                                 onChange={(e) => setValues((v) => ({ ...v, [fact.key]: e.target.value }))}
                             />
+                        )}
+                        {invalid && (
+                            <p id={errorId} className="text-[12.5px] text-danger">
+                                Your agent needs this answer. Please fill it in.
+                            </p>
                         )}
                         {fact.help && <p className="text-[12.5px] text-ink-3">{fact.help}</p>}
                     </div>
