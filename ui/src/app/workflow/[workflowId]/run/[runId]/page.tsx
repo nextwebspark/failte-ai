@@ -35,7 +35,7 @@ import { DeleteCallDataButton } from '@/components/privacy/DeleteCallDataButton'
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
-import { agentHomeHref } from "@/components/workflow/agentLinks";
+import { agentFactsHref, agentHomeHref } from "@/components/workflow/agentLinks";
 import { ConversationRailFrame, RealtimeFeedback, WorkflowRunLogs } from '@/components/workflow/conversation';
 import { conversationItemsFromRealtimeFeedbackEvents } from '@/components/workflow/conversation/adapters/fromRealtimeFeedback';
 import { PostHogEvent } from '@/constants/posthog-events';
@@ -969,7 +969,7 @@ export default function WorkflowRunPage() {
                             </Link>
                         </Button>
                         <Button asChild className="gap-2">
-                            <Link href={agentHomeHref(Number(workflowId))}>
+                            <Link href={agentFactsHref(Number(workflowId))}>
                                 Change your agent
                             </Link>
                         </Button>
