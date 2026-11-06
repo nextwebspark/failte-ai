@@ -198,3 +198,14 @@ async def open_follow_up_count(
     now = now or datetime.now(UTC)
     items = await _follow_up_items(organization_id, workflow_id, now)
     return sum(1 for i in items if not i.done)
+
+
+async def open_follow_up_run_ids(
+    *, organization_id: int, workflow_id: int | None = None, now: datetime | None = None
+) -> list[int]:
+    """The calls with an open follow-up, exactly as Follow-ups lists them
+    (same window, kinds and done marks). The Calls page's "Needs follow-up"
+    tab filters on these, so the two can't disagree."""
+    now = now or datetime.now(UTC)
+    items = await _follow_up_items(organization_id, workflow_id, now)
+    return sorted({i.call.run_id for i in items if not i.done})

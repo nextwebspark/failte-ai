@@ -73,7 +73,9 @@ def _filter(attribute: str, type_: str, value: dict) -> list[dict]:
 
 def _params(filters) -> dict:
     query = apply_workflow_run_filters(select(WorkflowRunModel.id), filters)
-    return query.compile(dialect=postgresql.dialect()).params
+    params = query.compile(dialect=postgresql.dialect()).params
+    # IN lists (the spoken event types) aren't searched for.
+    return {k: v for k, v in params.items() if not isinstance(v, list)}
 
 
 def test_caller_search_matches_name_or_the_number_shown():
@@ -130,3 +132,41 @@ def test_search_digits_drops_spacing_and_trunk_prefixes():
     assert search_digits("+353 87 123") == "35387123"
     assert search_digits("0035387") == "35387"
     assert search_digits("Murphy") == ""
+
+
+def test_search_also_looks_at_the_summary_and_what_was_said():
+    filters = _filter("callerSearch", "text", {"value": "parking"})
+    where = _where(filters)
+    values = set(_params(filters).values())
+
+    assert "call_review" in where and "summary" in where
+    assert "jsonb_array_elements" in where and "realtime_feedback_events" in where
+    # Only the spoken lines, not tool results or event names.
+    assert "'rtf-bot-text'" in where and "'rtf-user-transcription'" in where
+    assert "payload" in where
+    assert "%parking%" in values
+
+
+def test_search_of_what_was_said_is_parameterised_and_escaped():
+    filters = _filter("callerSearch", "text", {"value": "100%_' OR 1=1 --"})
+    values = set(_params(filters).values())
+    sql = str(
+        apply_workflow_run_filters(select(WorkflowRunModel.id), filters).compile(
+            dialect=postgresql.dialect()
+        )
+    )
+
+    assert r"%100\%\_' OR 1=1 --%" in values
+    assert "OR 1=1" not in sql
+
+
+def test_needs_follow_up_matches_only_the_resolved_ids():
+    where = _where(_filter("needsFollowUp", "runIds", {"ids": [5, 9, "7", True]}))
+    assert "workflow_runs.id IN (5, 9)" in where
+
+
+def test_needs_follow_up_without_ids_matches_nothing():
+    assert "false" in _where(_filter("needsFollowUp", "runIds", {"ids": []}))
+    assert "false" in _where(_filter("needsFollowUp", "runIds", {}))
+    # Ids smuggled in under another type are ignored too.
+    assert "false" in _where(_filter("needsFollowUp", "multiSelect", {"ids": [1]}))
