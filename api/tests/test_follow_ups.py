@@ -19,7 +19,15 @@ NOW = datetime(2026, 11, 6, 15, 0, tzinfo=UTC)
 
 
 def _call(
-    run_id, result, *, hours_ago, caller="+353871111111", mark=None, callback=None
+    run_id,
+    result,
+    *,
+    hours_ago,
+    caller="+353871111111",
+    mark=None,
+    callback=None,
+    review=None,
+    kind_marks=None,
 ):
     return CallView(
         run_id=run_id,
@@ -34,6 +42,8 @@ def _call(
         call_reason=None,
         callback_number=callback,
         follow_up_mark=mark,
+        review=review,
+        follow_up_marks=kind_marks,
     )
 
 
@@ -250,6 +260,8 @@ def test_kind_counts_lists_every_kind():
         "callback": 1,
         "transfer_not_answered": 0,
         "repeat_caller": 0,
+        "unanswered_question": 0,
+        "time_was_full": 0,
     }
 
 
@@ -264,3 +276,50 @@ def test_done_mark_names_the_member():
         done_mark(user_id=7, name="Maria Keane", email=None, now=NOW)["done_by"]
         == "Maria Keane"
     )
+
+
+def _review(questions=(), full=False, summary="Asked about gluten-free pasta."):
+    return {
+        "summary": summary,
+        "reason": "questions",
+        "reason_label": "Questions",
+        "unanswered_questions": list(questions),
+        "time_was_full": full,
+    }
+
+
+def test_call_review_raises_its_own_follow_ups():
+    items = follow_ups(
+        [
+            _call(1, CallResult.HANDLED, hours_ago=3, review=_review(["Gluten-free?"])),
+            _call(2, CallResult.HANDLED, hours_ago=2, review=_review(full=True)),
+            # A booking made anyway: the full time needs nobody.
+            _call(3, CallResult.BOOKING_MADE, hours_ago=2, review=_review(full=True)),
+            _call(4, CallResult.HANDLED, hours_ago=1, review=_review()),
+        ]
+    )
+    assert sorted((i.call.run_id, i.kind) for i in items) == [
+        (1, FollowUpKind.UNANSWERED_QUESTION),
+        (2, FollowUpKind.TIME_WAS_FULL),
+    ]
+    row = follow_up_row(items[0])
+    assert row["questions"] == ["Gluten-free?"]
+    assert row["summary"] == "Asked about gluten-free pasta."
+
+
+def test_one_call_can_need_a_callback_and_an_answer_each_done_on_its_own():
+    call = _call(
+        1,
+        CallResult.CALLBACK_REQUESTED,
+        hours_ago=2,
+        review=_review(["Gluten-free?"]),
+        kind_marks={"unanswered_question": _done(1)},
+    )
+    items = {i.kind: i for i in follow_ups([call])}
+    assert set(items) == {FollowUpKind.CALLBACK, FollowUpKind.UNANSWERED_QUESTION}
+    assert not items[FollowUpKind.CALLBACK].done
+    assert items[FollowUpKind.UNANSWERED_QUESTION].done
+    assert follow_up_row(items[FollowUpKind.CALLBACK])["questions"] == []
+    assert [i.kind for i in ordered(list(items.values()), FollowUpStatus.OPEN)] == [
+        FollowUpKind.CALLBACK
+    ]

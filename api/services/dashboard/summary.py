@@ -95,6 +95,8 @@ def tiles(calls: Sequence[CallView]) -> dict[str, Any]:
         "hung_up_silent": counts.get(CallResult.HUNG_UP_SILENT, 0),
         "callbacks_requested": counts.get(CallResult.CALLBACK_REQUESTED, 0),
         "in_progress": counts.get(CallResult.IN_PROGRESS, 0),
+        # Bookings the calendar confirmed on the call.
+        "bookings_taken": counts.get(CallResult.BOOKING_MADE, 0),
         "average_call_seconds": (
             round(sum(durations) / len(durations)) if durations else None
         ),
@@ -113,8 +115,71 @@ def recent_calls(calls: Sequence[CallView]) -> list[dict[str, Any]]:
             "result": call.result,
             "duration_seconds": call.duration_seconds,
             "has_recording": call.has_recording,
+            "summary": _review_text(call, "summary"),
+            "reason_label": _review_text(call, "reason_label"),
         }
         for call in calls[:RECENT_CALLS]
+    ]
+
+
+def _review_text(call: CallView, key: str) -> str | None:
+    value = (call.review or {}).get(key)
+    return value.strip() if isinstance(value, str) and value.strip() else None
+
+
+NOT_REVIEWED = "not_reviewed"
+NOT_REVIEWED_LABEL = "Not reviewed yet"
+# Calls no review is ever written for: nobody was on the line yet, or the
+# call never connected.
+_NEVER_REVIEWED = frozenset({CallResult.IN_PROGRESS, CallResult.NOT_CONNECTED})
+
+
+def _percents(counts: Sequence[int]) -> list[int]:
+    """Whole percents that add up to 100 (largest remainder)."""
+    total = sum(counts)
+    if not total:
+        return [0 for _ in counts]
+    exact = [c * 100 / total for c in counts]
+    whole = [int(e) for e in exact]
+    by_remainder = sorted(
+        range(len(counts)), key=lambda i: exact[i] - whole[i], reverse=True
+    )
+    for i in by_remainder[: 100 - sum(whole)]:
+        whole[i] += 1
+    return whole
+
+
+def callers_wanted(calls: Iterable[CallView]) -> list[dict[str, Any]]:
+    """What callers wanted, from each call's review: one row per reason
+    with its count and percent, most common first, "Other" and then "Not
+    reviewed yet" (calls whose review hasn't been written) last. A reason's
+    label is the one its reviews were written with."""
+    counts: dict[str, int] = {}
+    labels: dict[str, dict[str, int]] = {}
+    for call in calls:
+        reason = (call.review or {}).get("reason")
+        if isinstance(reason, str) and reason:
+            label = _review_text(call, "reason_label") or reason.replace("_", " ")
+            counts[reason] = counts.get(reason, 0) + 1
+            seen = labels.setdefault(reason, {})
+            seen[label] = seen.get(label, 0) + 1
+        elif call.result not in _NEVER_REVIEWED:
+            counts[NOT_REVIEWED] = counts.get(NOT_REVIEWED, 0) + 1
+            labels[NOT_REVIEWED] = {NOT_REVIEWED_LABEL: 1}
+
+    def label(key: str) -> str:
+        seen = labels[key]
+        return max(seen, key=lambda name: (seen[name], name))
+
+    def order(key: str) -> tuple[int, int, str]:
+        last = 2 if key == NOT_REVIEWED else 1 if key == "other" else 0
+        return (last, -counts[key], label(key))
+
+    keys = sorted(counts, key=order)
+    percents = _percents([counts[k] for k in keys])
+    return [
+        {"key": k, "label": label(k), "count": counts[k], "percent": p}
+        for k, p in zip(keys, percents)
     ]
 
 

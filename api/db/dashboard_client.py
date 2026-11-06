@@ -5,6 +5,7 @@ from datetime import datetime
 from typing import Any
 
 from sqlalchemy import String, and_, func, select
+from sqlalchemy.orm import selectinload
 
 from api.db.base_client import BaseDBClient
 from api.db.models import (
@@ -21,6 +22,10 @@ _TELEPHONY_MODES = tuple(
 
 # The key under a run's ``annotations`` that holds its follow-up mark.
 FOLLOW_UP_ANNOTATION = "follow_up"
+# Marks for the call-review follow-up kinds, by kind.
+FOLLOW_UP_KINDS_ANNOTATION = "follow_up_kinds"
+# The call review (api/services/call_review).
+CALL_REVIEW_ANNOTATION = "call_review"
 
 
 def _inbound_phone_call(organization_id: int, workflow_id: int | None):
@@ -208,14 +213,66 @@ class DashboardClient(BaseDBClient):
                 for row in result.all()
             ]
 
+    async def get_agent_template_source(
+        self, organization_id: int, workflow_id: int
+    ) -> dict[str, Any] | None:
+        """What tells which starter an agent came from: its live definition
+        (else its working one) and its business facts."""
+        async with self.async_session() as session:
+            workflow = await session.scalar(
+                select(WorkflowModel)
+                .options(selectinload(WorkflowModel.released_definition))
+                .where(
+                    WorkflowModel.organization_id == organization_id,
+                    WorkflowModel.id == workflow_id,
+                )
+            )
+            if workflow is None:
+                return None
+            released = workflow.released_definition
+            return {
+                "definition": released.workflow_json
+                if released is not None
+                else workflow.workflow_definition,
+                "facts": workflow.template_context_variables or {},
+            }
+
+    async def get_calls_to_review(
+        self, organization_id: int, limit: int, *, include_reviewed: bool = False
+    ) -> list[int]:
+        """Finished inbound phone calls of the organization, newest first,
+        that have no call review yet (or any, with ``include_reviewed``)."""
+        async with self.async_session() as session:
+            query = (
+                select(WorkflowRunModel.id)
+                .join(WorkflowModel, WorkflowRunModel.workflow_id == WorkflowModel.id)
+                .where(
+                    _inbound_phone_call(organization_id, None),
+                    WorkflowRunModel.is_completed.is_(True),
+                )
+                .order_by(
+                    WorkflowRunModel.created_at.desc(), WorkflowRunModel.id.desc()
+                )
+                .limit(limit)
+            )
+            if not include_reviewed:
+                query = query.where(
+                    WorkflowRunModel.annotations[CALL_REVIEW_ANNOTATION]
+                    .as_string()
+                    .is_(None)
+                )
+            return list((await session.scalars(query)).all())
+
     async def set_follow_up_mark(
         self,
         organization_id: int,
         run_id: int,
         mark: dict[str, Any] | None,
+        kind: str | None = None,
     ) -> dict[str, Any] | None:
         """Store (or with None, clear) the follow-up mark on one of the
-        organization's inbound phone calls. Returns the run's fields as
+        organization's inbound phone calls: the call's own, or with ``kind``
+        that call-review kind's. Returns the run's fields as
         ``get_inbound_calls_for_dashboard`` does, or None when the call is not
         the organization's."""
         async with self.async_session() as session:
@@ -231,7 +288,18 @@ class DashboardClient(BaseDBClient):
             if run is None:
                 return None
             annotations = dict(run.annotations or {})
-            if mark is None:
+            if kind is not None:
+                marks = annotations.get(FOLLOW_UP_KINDS_ANNOTATION)
+                marks = dict(marks) if isinstance(marks, dict) else {}
+                if mark is None:
+                    marks.pop(kind, None)
+                else:
+                    marks[kind] = mark
+                if marks:
+                    annotations[FOLLOW_UP_KINDS_ANNOTATION] = marks
+                else:
+                    annotations.pop(FOLLOW_UP_KINDS_ANNOTATION, None)
+            elif mark is None:
                 annotations.pop(FOLLOW_UP_ANNOTATION, None)
             else:
                 annotations[FOLLOW_UP_ANNOTATION] = mark

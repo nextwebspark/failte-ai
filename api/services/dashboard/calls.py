@@ -13,6 +13,7 @@ from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 from typing import Any
 
+from api.db.dashboard_client import FOLLOW_UP_KINDS_ANNOTATION
 from api.services.call_notifications.outcome import (
     CallEvent,
     MissedReason,
@@ -20,6 +21,7 @@ from api.services.call_notifications.outcome import (
     missed_reason,
     transfer_failed,
 )
+from api.services.call_review.review import stored_review
 from api.services.reports.daily_report import is_transferred
 
 # A call the engine has not marked finished is "in progress" only this long;
@@ -97,6 +99,10 @@ class CallView:
     callback_number: str | None
     # The follow-up mark stored on the call (``annotations.follow_up``).
     follow_up_mark: Mapping[str, Any] | None
+    # The call review (``annotations.call_review``), when written.
+    review: Mapping[str, Any] | None = None
+    # Marks per call-review follow-up kind (``annotations.follow_up_kinds``).
+    follow_up_marks: Mapping[str, Mapping[str, Any]] | None = None
 
 
 def _text(value: Any) -> str | None:
@@ -195,7 +201,19 @@ def call_view(
         follow_up_mark=mark
         if isinstance(mark, Mapping) and mark.get("done_at")
         else None,
+        review=stored_review(annotations),
+        follow_up_marks=_kind_marks(annotations.get(FOLLOW_UP_KINDS_ANNOTATION)),
     )
+
+
+def _kind_marks(value: Any) -> dict[str, Mapping[str, Any]]:
+    if not isinstance(value, Mapping):
+        return {}
+    return {
+        str(kind): mark
+        for kind, mark in value.items()
+        if isinstance(mark, Mapping) and mark.get("done_at")
+    }
 
 
 def number_key(number: str | None) -> str | None:

@@ -13,6 +13,7 @@ from api.services.dashboard.summary import (
     NotAnsweringReason,
     agent_status,
     call_change,
+    callers_wanted,
     calls_by_hour,
     credit_summary,
     range_bounds,
@@ -46,7 +47,11 @@ def _row(
     hint=False,
     recording=True,
     mark=None,
+    review=None,
 ):
+    annotations = {"follow_up": mark} if mark else {}
+    if review:
+        annotations["call_review"] = review
     return {
         "id": run_id,
         "workflow_id": 14,
@@ -59,7 +64,7 @@ def _row(
         else {"call_tags": ["user_speech"], "call_status": "user_hangup"},
         "usage_info": {"call_duration_seconds": seconds},
         "initial_context": {"caller_number": caller, "called_number": "+35315550142"},
-        "annotations": {"follow_up": mark} if mark else {},
+        "annotations": annotations,
         "transfer_hint": hint,
     }
 
@@ -353,3 +358,56 @@ def test_credit_too_low_under_the_minimum():
     )
     assert credit["too_low"] is True and credit["running_low"] is True
     assert credit["minutes_left"] == 3
+
+
+def _reason(key, label):
+    return {"summary": f"{label}.", "reason": key, "reason_label": label}
+
+
+def test_callers_wanted_counts_reviews_most_common_first():
+    calls = _views(
+        _row(1, review=_reason("questions", "Questions")),
+        _row(2, review=_reason("reservations", "Reservations")),
+        _row(3, review=_reason("other", "Other")),
+        _row(4, review=_reason("reservations", "Reservations")),
+        _row(5),  # finished, not reviewed yet
+        _row(6, completed=False, minutes_ago=1),  # on the line: never counted
+        _row(7, gathered={"call_status": "no-answer"}),  # never connected
+    )
+    assert callers_wanted(calls) == [
+        {"key": "reservations", "label": "Reservations", "count": 2, "percent": 40},
+        {"key": "questions", "label": "Questions", "count": 1, "percent": 20},
+        {"key": "other", "label": "Other", "count": 1, "percent": 20},
+        {"key": "not_reviewed", "label": "Not reviewed yet", "count": 1, "percent": 20},
+    ]
+
+
+def test_callers_wanted_without_unreviewed_calls_invents_nothing():
+    calls = _views(
+        *[_row(i, review=_reason("questions", "Questions")) for i in range(3)]
+    )
+    assert callers_wanted(calls) == [
+        {"key": "questions", "label": "Questions", "count": 3, "percent": 100}
+    ]
+    assert callers_wanted([]) == []
+
+
+def test_callers_wanted_percents_add_up_to_100():
+    calls = _views(
+        *[_row(i, review=_reason("a", "A")) for i in range(1)],
+        *[_row(10 + i, review=_reason("b", "B")) for i in range(1)],
+        *[_row(20 + i, review=_reason("c", "C")) for i in range(1)],
+    )
+    assert sum(r["percent"] for r in callers_wanted(calls)) == 100
+
+
+def test_recent_calls_carry_the_summary():
+    calls = _views(_row(1, review=_reason("reservations", "Reservations")), _row(2))
+    recent = recent_calls(calls)
+    assert recent[0]["summary"] == "Reservations."
+    assert recent[0]["reason_label"] == "Reservations"
+    assert recent[1]["summary"] is None
+
+
+def test_bookings_taken_counts_calendar_bookings():
+    assert tiles([])["bookings_taken"] == 0
