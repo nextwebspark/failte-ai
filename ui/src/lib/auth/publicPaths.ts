@@ -9,9 +9,10 @@
  * /embed/lightmove-widget.js, plus the legacy fallcha-/failte-/dograh-widget.js
  * shims), which third-party sites load without a session. The two report
  * links (confirm an address, unsubscribe) are opened from an email by people
- * who may have no account.
+ * who may have no account, and `/listen` plays a call recording someone
+ * shared with an expiring link.
  */
-export const PUBLIC_PATHS = ["/auth", "/invite", "/embed", "/reports/confirm", "/reports/unsubscribe"] as const;
+export const PUBLIC_PATHS = ["/auth", "/invite", "/embed", "/reports/confirm", "/reports/unsubscribe", "/listen"] as const;
 
 /**
  * Match on a path-segment boundary (exact match or a `/`-delimited subpath)

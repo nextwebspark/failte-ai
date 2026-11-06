@@ -1,6 +1,6 @@
 "use client";
 
-import { Download, Globe, PhoneCall, PhoneOff, RefreshCw, Search, ShieldCheck } from 'lucide-react';
+import { Download, EyeOff, FlaskConical, Globe, PhoneCall, PhoneOff, RefreshCw, Search, ShieldCheck } from 'lucide-react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { type ComponentProps, useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import TimezoneSelect, { type ITimezoneOption } from 'react-timezone-select';
@@ -15,6 +15,7 @@ import { EmptyState } from '@/components/page-states/EmptyState';
 import { CallerDataRequestDialog } from '@/components/privacy/CallerDataRequestDialog';
 import { Button } from '@/components/ui/button';
 import { PageHeader } from '@/components/ui/page-header';
+import { useOrgConfig } from '@/context/OrgConfigContext';
 import { useUserConfig } from '@/context/UserConfigContext';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { useDispositionCodes } from '@/hooks/useDispositionCodes';
@@ -24,6 +25,7 @@ import { useAuth } from '@/lib/auth';
 import { getLocalTimezone } from '@/lib/dateTime';
 import { getUsageFilterAttributes, withDispositionCodeOptions } from '@/lib/filterAttributes';
 import { decodeFiltersFromURL, encodeFiltersToURL } from '@/lib/filters';
+import { useSampleMode } from '@/lib/sampleData';
 import { cn } from '@/lib/utils';
 import type { ActiveFilter, FilterAttribute, NumberFilterOption } from '@/types/filters';
 
@@ -45,8 +47,10 @@ import {
     isNarrowed,
     PAGE_SIZE,
     tabFilter,
+    tabUsesDates,
     whenPhrase,
 } from './callsView';
+import { type CallRow, filterSampleRuns, sampleOutcomeCodes, sampleRuns, sampleTabCounts } from './sampleRuns';
 
 /**
  * The expert filters behind "More filters": everything the API can filter
@@ -95,9 +99,12 @@ function expertApiFilters(filters: ActiveFilter[]): ApiFilter[] {
     }));
 }
 
-/** start_date / end_date / filters for one request. */
-function requestQuery(query: CallsQuery, extra: ApiFilter[], now: Date) {
-    const range = dateRangeFor(query, now);
+/**
+ * start_date / end_date / filters for one request. "Needs follow-up" keeps
+ * Follow-ups' own window, so the date chip doesn't apply there.
+ */
+function requestQuery(query: CallsQuery, extra: ApiFilter[], now: Date, tab: CallsTab = query.tab) {
+    const range = tabUsesDates(tab) ? dateRangeFor(query, now) : null;
     return {
         ...(range && { start_date: range.from.toISOString(), end_date: range.to.toISOString() }),
         ...(extra.length > 0 && { filters: JSON.stringify(extra) }),
@@ -126,6 +133,7 @@ export default function UsagePage() {
     const router = useRouter();
     const searchParams = useSearchParams();
     const { organizationPricing, can } = useUserConfig();
+    const { orgContext } = useOrgConfig();
     const auth = useAuth();
     const isPhone = useIsMobile();
     // A computer: the call opens in a column beside the list.
@@ -140,7 +148,8 @@ export default function UsagePage() {
     const paramsKey = searchParams.toString();
     const query = useMemo(() => callsQueryFromParams(new URLSearchParams(paramsKey)), [paramsKey]);
     const callParam = Number.parseInt(searchParams.get('call') ?? '', 10);
-    const openCallId = Number.isFinite(callParam) && callParam > 0 ? callParam : null;
+    // Sample calls have negative ids; real ones are positive.
+    const openCallId = Number.isFinite(callParam) && callParam !== 0 ? callParam : null;
     const autoplay = searchParams.get('play') === '1';
 
     const [agentFilterOptions, setAgentFilterOptions] = useState<NumberFilterOption[] | null>(null);
@@ -231,7 +240,7 @@ export default function UsagePage() {
         const loadCounts = () => {
             CALLS_TABS.filter(({ value }) => value !== query.tab).forEach(({ value }) => {
                 getUsageHistoryApiV1OrganizationsUsageRunsGet({
-                    query: { page: 1, limit: 1, ...requestQuery(query, withTab(value), now) },
+                    query: { page: 1, limit: 1, ...requestQuery(query, withTab(value), now, value) },
                 })
                     .then(response => {
                         if (!cancelled && response.data) {
@@ -249,11 +258,43 @@ export default function UsagePage() {
         };
     }, [auth.isAuthenticated, query, expertKey, reloadKey]);
 
-    const runs = useMemo(() => (list.state === 'ready' ? list.runs : []), [list]);
+    // Sample mode: no real calls at all yet, and the owner hasn't hidden the
+    // sample. The made-up calls fill the list; the first real call ends it.
+    // Kept between loads, so the sample doesn't blink out while a filter reloads.
+    const [hasRealCalls, setHasRealCalls] = useState<boolean | null>(null);
+    useEffect(() => {
+        if (list.state === 'ready') setHasRealCalls(list.anyCalls);
+    }, [list]);
+    const { showSample, hide: hideSample } = useSampleMode(hasRealCalls);
+    const businessName = orgContext?.organization_name?.trim() || undefined;
+    const allSamples = useMemo(
+        () => (showSample ? sampleRuns(businessName, new Date()) : []),
+        [showSample, businessName]
+    );
+    const sampleView = useMemo(() => {
+        if (!showSample) return null;
+        const now = new Date();
+        const matching = filterSampleRuns(allSamples, query, query.tab, now);
+        return {
+            total: matching.length,
+            runs: matching.slice((query.page - 1) * PAGE_SIZE, query.page * PAGE_SIZE),
+            counts: sampleTabCounts(allSamples, query, now),
+        };
+    }, [showSample, allSamples, query]);
+
+    const runs: CallRow[] = useMemo(
+        () => sampleView?.runs ?? (list.state === 'ready' ? list.runs : []),
+        [sampleView, list]
+    );
+    const shownCounts = sampleView?.counts ?? counts;
+    const outcomeCodes = useMemo(
+        () => (showSample ? sampleOutcomeCodes(allSamples) : dispositionCodes),
+        [showSample, allSamples, dispositionCodes]
+    );
 
     // A linked call that isn't on this page: look it up by its ID.
     useEffect(() => {
-        if (!auth.isAuthenticated || !openCallId || list.state !== 'ready') return;
+        if (!auth.isAuthenticated || !openCallId || openCallId < 0 || list.state !== 'ready') return;
         if (runs.some(run => run.id === openCallId) || linkedRun?.id === openCallId) return;
         let cancelled = false;
         getUsageHistoryApiV1OrganizationsUsageRunsGet({
@@ -314,7 +355,7 @@ export default function UsagePage() {
         [query, hrefWith, router]
     );
 
-    const callHref = useCallback((run: WorkflowRunUsageResponse) => hrefWith(query, run.id), [hrefWith, query]);
+    const callHref = useCallback((run: CallRow) => hrefWith(query, run.id), [hrefWith, query]);
 
     const playRun = useCallback(
         (run: WorkflowRunUsageResponse) => {
@@ -468,9 +509,10 @@ export default function UsagePage() {
     };
 
     const narrowed = isNarrowed(query, appliedExpert.length);
-    const fullPageHref = openRun
+    const fullPageHref = openRun && !sampleView
         ? runDetailHref(openRun.workflow_id, openRun.id, hrefWith(query, openRun.id))
         : '';
+    const listTotal = sampleView ? sampleView.total : list.state === 'ready' ? list.total : 0;
     const rowProps = {
         runs,
         timezone: effectiveTimezone,
@@ -491,13 +533,42 @@ export default function UsagePage() {
                         title="Calls"
                         description="Every call your agent answered, with the recording and what was said."
                         action={
-                            <Button variant="outline" className="h-10 bg-panel sm:h-9" onClick={handleDownload} disabled={isDownloading}>
+                            <Button
+                                variant="outline"
+                                className="h-10 bg-panel sm:h-9"
+                                onClick={handleDownload}
+                                disabled={isDownloading || Boolean(sampleView)}
+                                aria-describedby={sampleView ? 'calls-sample-note' : undefined}
+                            >
                                 <Download aria-hidden />
                                 {isDownloading ? 'Preparing…' : 'Download list'}
                             </Button>
                         }
                     />
                 </div>
+
+                {sampleView && (
+                    <div
+                        role="note"
+                        aria-label="Sample data"
+                        inert={overlayOpen}
+                        className="-mt-2 flex flex-col gap-3 rounded-xl border border-sky/40 bg-sky-dim px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
+                    >
+                        <div className="flex items-start gap-3">
+                            <FlaskConical className="mt-0.5 size-5 flex-none text-ink-2" aria-hidden />
+                            <p id="calls-sample-note" className="text-[14px] text-foreground">
+                                <span className="mr-2 inline-flex rounded-full border border-line bg-panel px-2 py-0.5 text-[12px] font-semibold">
+                                    Sample data
+                                </span>
+                                This is how Calls looks once calls come in. These calls are made up.
+                            </p>
+                        </div>
+                        <Button variant="outline" className="h-10 flex-none bg-panel sm:h-9" onClick={hideSample}>
+                            <EyeOff aria-hidden />
+                            Hide sample data
+                        </Button>
+                    </div>
+                )}
 
                 <div
                     className={cn(
@@ -510,14 +581,14 @@ export default function UsagePage() {
                             <div className="border-b border-line-soft pt-1">
                                 <CallsTabs
                                     tab={query.tab}
-                                    counts={counts}
+                                    counts={shownCounts}
                                     listId={listId}
                                     onChange={tab => navigate({ tab })}
                                 />
                             </div>
                             <CallsFilterBar
                                 query={query}
-                                outcomeCodes={dispositionCodes}
+                                outcomeCodes={outcomeCodes}
                                 expertCount={appliedExpert.length}
                                 expertOpen={expertOpen}
                                 onChange={navigate}
@@ -540,12 +611,12 @@ export default function UsagePage() {
                             )}
 
                             <div id={listId} aria-busy={list.state === 'loading'} className="border-t border-line-soft">
-                                {list.state === 'loading' ? (
+                                {list.state === 'loading' && !sampleView ? (
                                     <>
                                         <span className="sr-only" role="status">Loading calls</span>
                                         {tableFits ? <CallsTableSkeleton /> : <CallCardsSkeleton />}
                                     </>
-                                ) : list.state === 'error' ? (
+                                ) : list.state === 'error' && !sampleView ? (
                                     <EmptyState
                                         tone="amber"
                                         icon={PhoneOff}
@@ -563,7 +634,7 @@ export default function UsagePage() {
                                         Something went wrong on our side. Please try again in a moment.
                                     </EmptyState>
                                 ) : runs.length === 0 ? (
-                                    !list.anyCalls ? (
+                                    list.state === 'ready' && !list.anyCalls && !sampleView ? (
                                         <EmptyState icon={PhoneCall} as="h2" title="No calls yet" className="rounded-none border-0">
                                             When your agent answers a call, it shows up here with the recording and what was said.
                                             Try ringing your agent&apos;s number, or test it from your agent&apos;s page.
@@ -582,9 +653,11 @@ export default function UsagePage() {
                                                 ) : undefined
                                             }
                                         >
-                                            {query.q.trim()
-                                                ? `Nothing for “${query.q.trim()}” ${whenPhrase(query)}.`
-                                                : `No calls ${whenPhrase(query)}${query.outcome || query.who || appliedExpert.length ? ' with these filters' : ''}.`}
+                                            {query.tab === 'follow_up' && !query.q.trim() && !query.outcome && !query.who && !appliedExpert.length
+                                                ? 'Nothing needs a follow-up. All caught up.'
+                                                : query.q.trim()
+                                                    ? `Nothing for “${query.q.trim()}” ${tabUsesDates(query.tab) ? whenPhrase(query) : 'in the last 30 days'}.`
+                                                    : `No calls ${tabUsesDates(query.tab) ? whenPhrase(query) : 'in the last 30 days'}${query.outcome || query.who || appliedExpert.length ? ' with these filters' : ''}.`}
                                         </EmptyState>
                                     )
                                 ) : !tableFits ? (
@@ -594,11 +667,11 @@ export default function UsagePage() {
                                 )}
                             </div>
 
-                            {list.state === 'ready' && list.total > 0 && (
+                            {(sampleView || list.state === 'ready') && listTotal > 0 && (
                                 <CallsPager
                                     page={query.page}
                                     pageSize={PAGE_SIZE}
-                                    total={list.total}
+                                    total={listTotal}
                                     onPage={page => router.push(hrefWith({ ...query, page }), { scroll: false })}
                                 />
                             )}
@@ -667,6 +740,7 @@ export default function UsagePage() {
                                 layout={panelLayout}
                                 isPhone={isPhone}
                                 fullPageHref={fullPageHref}
+                                highlight={query.q}
                                 onClose={closeCall}
                             />
                         </>

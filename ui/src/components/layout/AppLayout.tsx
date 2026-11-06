@@ -144,15 +144,17 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
     }
   }, [featureSwitchedOff, router]);
 
-  // Hide the shell for root (/), /handler routes (Stack Auth), /auth routes
-  // invitation landing pages and the report email links (confirm/unsubscribe).
+  // Hide the shell for root (/), /handler routes (Stack Auth), /auth routes,
+  // invitation landing pages, the report email links (confirm/unsubscribe)
+  // and shared recordings (/listen, no sign-in).
   const shouldShowShell =
     pathname !== "/" &&
     !pathname.startsWith("/handler") &&
     !pathname.startsWith("/auth") &&
     !pathname.startsWith("/invite") &&
     !pathname.startsWith("/reports/confirm/") &&
-    !pathname.startsWith("/reports/unsubscribe/");
+    !pathname.startsWith("/reports/unsubscribe/") &&
+    !pathname.startsWith("/listen/");
 
   // A run's detail screen is a read-only record, and a run opened from a
   // workspace list stays in the workspace — neither gets the live test rail.

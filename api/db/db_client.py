@@ -19,6 +19,7 @@ from api.db.organization_configuration_client import OrganizationConfigurationCl
 from api.db.organization_usage_client import OrganizationUsageClient
 from api.db.platform_admin_client import PlatformAdminClient
 from api.db.privacy_client import PrivacyClient
+from api.db.recording_share_client import RecordingShareClient
 from api.db.reports_client import ReportsClient
 from api.db.retention_client import RetentionClient
 from api.db.skill_client import SkillClient
@@ -57,6 +58,7 @@ class DBClient(
     OrgErasureClient,
     DataExportClient,
     PrivacyClient,
+    RecordingShareClient,
     APIKeyClient,
     EmbedTokenClient,
     AgentTriggerClient,

@@ -2449,6 +2449,16 @@ export type CreateProviderAppRequest = {
 };
 
 /**
+ * CreateRecordingShareRequest
+ */
+export type CreateRecordingShareRequest = {
+    /**
+     * How long the link works: 24h or 7d.
+     */
+    expires_in?: ShareExpiry;
+};
+
+/**
  * CreateServiceKeyRequest
  */
 export type CreateServiceKeyRequest = {
@@ -2699,6 +2709,34 @@ export type CreatedByResponse = {
      * Provider Id
      */
     provider_id: string;
+};
+
+/**
+ * CreatedRecordingShare
+ */
+export type CreatedRecordingShare = {
+    /**
+     * Id
+     */
+    id: string;
+    /**
+     * Created At
+     */
+    created_at: string;
+    /**
+     * Expires At
+     */
+    expires_at: string;
+    /**
+     * Created By
+     */
+    created_by?: string | null;
+    /**
+     * Url
+     *
+     * The link to send. Shown only once.
+     */
+    url: string;
 };
 
 /**
@@ -8121,6 +8159,38 @@ export type RecordingResponseSchema = {
 };
 
 /**
+ * RecordingShare
+ */
+export type RecordingShare = {
+    /**
+     * Id
+     */
+    id: string;
+    /**
+     * Created At
+     */
+    created_at: string;
+    /**
+     * Expires At
+     */
+    expires_at: string;
+    /**
+     * Created By
+     */
+    created_by?: string | null;
+};
+
+/**
+ * RecordingShareList
+ */
+export type RecordingShareList = {
+    /**
+     * Shares
+     */
+    shares: Array<RecordingShare>;
+};
+
+/**
  * RecordingUpdateRequestSchema
  *
  * Request schema for updating a recording's ID.
@@ -8702,6 +8772,41 @@ export type SetupStep = {
      * Blocks Outbound
      */
     blocks_outbound?: boolean;
+};
+
+/**
+ * ShareExpiry
+ */
+export type ShareExpiry = '24h' | '7d';
+
+/**
+ * SharedRecordingInfo
+ */
+export type SharedRecordingInfo = {
+    /**
+     * Status
+     */
+    status: 'active' | 'expired' | 'revoked' | 'unavailable';
+    /**
+     * Business Name
+     */
+    business_name?: string | null;
+    /**
+     * Called At
+     */
+    called_at?: string | null;
+    /**
+     * Timezone
+     */
+    timezone?: string | null;
+    /**
+     * Duration Seconds
+     */
+    duration_seconds?: number | null;
+    /**
+     * Expires At
+     */
+    expires_at?: string | null;
 };
 
 /**
@@ -12377,6 +12482,30 @@ export type WorkflowRunUsageResponse = {
      * Charge Eur
      */
     charge_eur?: number | null;
+    /**
+     * Is Completed
+     *
+     * False while the call is still going on.
+     */
+    is_completed?: boolean;
+    /**
+     * Summary
+     *
+     * The post-call review's short summary; empty on calls without one.
+     */
+    summary?: string | null;
+    /**
+     * Reason Label
+     *
+     * What the caller wanted, in plain words.
+     */
+    reason_label?: string | null;
+    /**
+     * Unanswered Questions
+     *
+     * Questions the agent couldn't answer on this call.
+     */
+    unanswered_questions?: Array<string>;
 };
 
 /**
@@ -20000,6 +20129,8 @@ export type GetUsageHistoryApiV1OrganizationsUsageRunsGetData = {
          * | `duration`      | `numberRange` | `{ "min": 60, "max": 300 }`                  | call duration (seconds), inclusive bounds            |
          * | `callDirection` | `radio`       | `{ "status": "inbound" }`                    | `inbound` or `outbound`; any other value matches all |
          * | `callChannel`   | `radio`       | `{ "status": "telephony" }`                  | `telephony`, `web`, or `chat` — the group of run modes for that channel |
+         * | `callerSearch`  | `text`        | `{ "value": "Murphy" }`                      | the caller's captured name or number, the call's summary, or what was said |
+         * | `needsFollowUp` | `runIds`      | `{}`                                         | calls with an open follow-up, as on Follow-ups (last 30 days; ignores any value sent) |
          *
          * Unknown attributes and unsupported `type` values are silently ignored.
          *
@@ -20093,6 +20224,8 @@ export type DownloadUsageRunsReportApiV1OrganizationsUsageRunsReportGetData = {
          * | `duration`      | `numberRange` | `{ "min": 60, "max": 300 }`                  | call duration (seconds), inclusive bounds            |
          * | `callDirection` | `radio`       | `{ "status": "inbound" }`                    | `inbound` or `outbound`; any other value matches all |
          * | `callChannel`   | `radio`       | `{ "status": "telephony" }`                  | `telephony`, `web`, or `chat` — the group of run modes for that channel |
+         * | `callerSearch`  | `text`        | `{ "value": "Murphy" }`                      | the caller's captured name or number, the call's summary, or what was said |
+         * | `needsFollowUp` | `runIds`      | `{}`                                         | calls with an open follow-up, as on Follow-ups (last 30 days; ignores any value sent) |
          *
          * Unknown attributes and unsupported `type` values are silently ignored.
          *
@@ -21626,6 +21759,219 @@ export type DownloadWorkflowArtifactApiV1PublicDownloadWorkflowTokenArtifactType
 export type DownloadWorkflowArtifactApiV1PublicDownloadWorkflowTokenArtifactTypeGetError = DownloadWorkflowArtifactApiV1PublicDownloadWorkflowTokenArtifactTypeGetErrors[keyof DownloadWorkflowArtifactApiV1PublicDownloadWorkflowTokenArtifactTypeGetErrors];
 
 export type DownloadWorkflowArtifactApiV1PublicDownloadWorkflowTokenArtifactTypeGetResponses = {
+    /**
+     * Successful Response
+     */
+    200: unknown;
+};
+
+export type ListRecordingSharesApiV1CallsRunIdRecordingSharesGetData = {
+    body?: never;
+    headers?: {
+        /**
+         * Authorization
+         */
+        authorization?: string | null;
+        /**
+         * X-Api-Key
+         */
+        'X-API-Key'?: string | null;
+    };
+    path: {
+        /**
+         * Run Id
+         */
+        run_id: number;
+    };
+    query?: never;
+    url: '/api/v1/calls/{run_id}/recording-shares';
+};
+
+export type ListRecordingSharesApiV1CallsRunIdRecordingSharesGetErrors = {
+    /**
+     * Not found
+     */
+    404: unknown;
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ListRecordingSharesApiV1CallsRunIdRecordingSharesGetError = ListRecordingSharesApiV1CallsRunIdRecordingSharesGetErrors[keyof ListRecordingSharesApiV1CallsRunIdRecordingSharesGetErrors];
+
+export type ListRecordingSharesApiV1CallsRunIdRecordingSharesGetResponses = {
+    /**
+     * Successful Response
+     */
+    200: RecordingShareList;
+};
+
+export type ListRecordingSharesApiV1CallsRunIdRecordingSharesGetResponse = ListRecordingSharesApiV1CallsRunIdRecordingSharesGetResponses[keyof ListRecordingSharesApiV1CallsRunIdRecordingSharesGetResponses];
+
+export type CreateRecordingShareApiV1CallsRunIdRecordingSharesPostData = {
+    /**
+     * Request
+     */
+    body?: CreateRecordingShareRequest | null;
+    headers?: {
+        /**
+         * Authorization
+         */
+        authorization?: string | null;
+        /**
+         * X-Api-Key
+         */
+        'X-API-Key'?: string | null;
+    };
+    path: {
+        /**
+         * Run Id
+         */
+        run_id: number;
+    };
+    query?: never;
+    url: '/api/v1/calls/{run_id}/recording-shares';
+};
+
+export type CreateRecordingShareApiV1CallsRunIdRecordingSharesPostErrors = {
+    /**
+     * No such call
+     */
+    404: unknown;
+    /**
+     * No recording
+     */
+    409: unknown;
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type CreateRecordingShareApiV1CallsRunIdRecordingSharesPostError = CreateRecordingShareApiV1CallsRunIdRecordingSharesPostErrors[keyof CreateRecordingShareApiV1CallsRunIdRecordingSharesPostErrors];
+
+export type CreateRecordingShareApiV1CallsRunIdRecordingSharesPostResponses = {
+    /**
+     * Successful Response
+     */
+    201: CreatedRecordingShare;
+};
+
+export type CreateRecordingShareApiV1CallsRunIdRecordingSharesPostResponse = CreateRecordingShareApiV1CallsRunIdRecordingSharesPostResponses[keyof CreateRecordingShareApiV1CallsRunIdRecordingSharesPostResponses];
+
+export type RevokeRecordingShareApiV1CallsRunIdRecordingSharesShareIdDeleteData = {
+    body?: never;
+    headers?: {
+        /**
+         * Authorization
+         */
+        authorization?: string | null;
+        /**
+         * X-Api-Key
+         */
+        'X-API-Key'?: string | null;
+    };
+    path: {
+        /**
+         * Run Id
+         */
+        run_id: number;
+        /**
+         * Share Id
+         */
+        share_id: string;
+    };
+    query?: never;
+    url: '/api/v1/calls/{run_id}/recording-shares/{share_id}';
+};
+
+export type RevokeRecordingShareApiV1CallsRunIdRecordingSharesShareIdDeleteErrors = {
+    /**
+     * Not found
+     */
+    404: unknown;
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type RevokeRecordingShareApiV1CallsRunIdRecordingSharesShareIdDeleteError = RevokeRecordingShareApiV1CallsRunIdRecordingSharesShareIdDeleteErrors[keyof RevokeRecordingShareApiV1CallsRunIdRecordingSharesShareIdDeleteErrors];
+
+export type RevokeRecordingShareApiV1CallsRunIdRecordingSharesShareIdDeleteResponses = {
+    /**
+     * Successful Response
+     */
+    204: void;
+};
+
+export type RevokeRecordingShareApiV1CallsRunIdRecordingSharesShareIdDeleteResponse = RevokeRecordingShareApiV1CallsRunIdRecordingSharesShareIdDeleteResponses[keyof RevokeRecordingShareApiV1CallsRunIdRecordingSharesShareIdDeleteResponses];
+
+export type SharedRecordingInfoApiV1PublicRecordingTokenInfoGetData = {
+    body?: never;
+    path: {
+        /**
+         * Token
+         */
+        token: string;
+    };
+    query?: never;
+    url: '/api/v1/public/recording/{token}/info';
+};
+
+export type SharedRecordingInfoApiV1PublicRecordingTokenInfoGetErrors = {
+    /**
+     * Not a link we know
+     */
+    404: unknown;
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type SharedRecordingInfoApiV1PublicRecordingTokenInfoGetError = SharedRecordingInfoApiV1PublicRecordingTokenInfoGetErrors[keyof SharedRecordingInfoApiV1PublicRecordingTokenInfoGetErrors];
+
+export type SharedRecordingInfoApiV1PublicRecordingTokenInfoGetResponses = {
+    /**
+     * Successful Response
+     */
+    200: SharedRecordingInfo;
+};
+
+export type SharedRecordingInfoApiV1PublicRecordingTokenInfoGetResponse = SharedRecordingInfoApiV1PublicRecordingTokenInfoGetResponses[keyof SharedRecordingInfoApiV1PublicRecordingTokenInfoGetResponses];
+
+export type PlaySharedRecordingApiV1PublicRecordingTokenGetData = {
+    body?: never;
+    path: {
+        /**
+         * Token
+         */
+        token: string;
+    };
+    query?: never;
+    url: '/api/v1/public/recording/{token}';
+};
+
+export type PlaySharedRecordingApiV1PublicRecordingTokenGetErrors = {
+    /**
+     * Not a link we know
+     */
+    404: unknown;
+    /**
+     * The link expired or was turned off, or the recording is gone
+     */
+    410: unknown;
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type PlaySharedRecordingApiV1PublicRecordingTokenGetError = PlaySharedRecordingApiV1PublicRecordingTokenGetErrors[keyof PlaySharedRecordingApiV1PublicRecordingTokenGetErrors];
+
+export type PlaySharedRecordingApiV1PublicRecordingTokenGetResponses = {
     /**
      * Successful Response
      */

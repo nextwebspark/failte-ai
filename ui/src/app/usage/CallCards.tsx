@@ -6,7 +6,8 @@ import { ROW_LINK, ROW_LINK_CONTAINER } from "@/lib/rowLink";
 import { cn } from "@/lib/utils";
 
 import { callerLines, type CallRowProps, OutcomeChip, PlayButton } from "./CallsTable";
-import { callOutcome, formatCallWhen, formatLength, spokenLength, whatHappened } from "./callsView";
+import { callOutcome, callSummary, formatCallWhen, formatLength, spokenLength } from "./callsView";
+import { isSampleRun } from "./sampleRuns";
 
 /**
  * The calls list on a phone: one card per call instead of a wide table. The
@@ -19,7 +20,7 @@ export function CallCards({ runs, timezone, selectedId, hrefFor, onPlay, onOpen 
             {runs.map((run) => {
                 const { name, number } = callerLines(run);
                 const outcome = callOutcome(run);
-                const what = whatHappened(run.gathered_context);
+                const what = callSummary(run);
                 const when = formatCallWhen(run.created_at, timezone);
                 const selected = run.id === selectedId;
                 return (
@@ -31,7 +32,7 @@ export function CallCards({ runs, timezone, selectedId, hrefFor, onPlay, onOpen 
                             selected && "bg-brand-dim",
                         )}
                     >
-                        {run.recording_url ? (
+                        {run.recording_url || isSampleRun(run) ? (
                             <PlayButton run={run} label={`${name}, ${when}`} onPlay={onPlay} className="mt-0.5 size-10" />
                         ) : (
                             // No recording: a plain marker keeps the cards lined up.

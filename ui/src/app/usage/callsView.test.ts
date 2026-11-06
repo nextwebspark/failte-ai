@@ -4,8 +4,10 @@ import {
     callDetails,
     callerNameOf,
     callOutcome,
+    CALLS_TABS,
     callsQueryFromParams,
     callsQueryToParams,
+    callSummary,
     chipFilters,
     dateRangeFor,
     DEFAULT_QUERY,
@@ -15,10 +17,13 @@ import {
     formatLength,
     formatLengthWords,
     formatPhone,
+    highlightParts,
     isDialable,
+    isInProgress,
     outcomeLabel,
     pageList,
     tabFilter,
+    tabUsesDates,
     whatHappened,
     whenLabel,
     whenPhrase,
@@ -233,5 +238,55 @@ describe("pageList", () => {
         expect(pageList(1, 32)).toEqual([1, 2, 3, 4, "gap", 32]);
         expect(pageList(16, 32)).toEqual([1, "gap", 15, 16, 17, "gap", 32]);
         expect(pageList(32, 32)).toEqual([1, "gap", 29, 30, 31, 32]);
+    });
+});
+
+describe("summaries, tabs and search marks", () => {
+    it("puts the tabs in the mock's order, with Needs follow-up second", () => {
+        expect(CALLS_TABS.map((tab) => tab.label)).toEqual(["All", "Needs follow-up", "Bookings", "Passed to team"]);
+        expect(callsQueryFromParams(new URLSearchParams("tab=follow_up")).tab).toBe("follow_up");
+        expect(tabFilter("follow_up")).toEqual({ attribute: "needsFollowUp", type: "runIds", value: {} });
+        expect(tabUsesDates("follow_up")).toBe(false);
+        expect(tabUsesDates("all")).toBe(true);
+    });
+
+    it("prefers the stored summary, else what the agent took down", () => {
+        const gathered = { extracted_variables: { call_reason: "Change a booking" } };
+        expect(callSummary({ summary: " Moved Friday to 8 pm. ", gathered_context: gathered })).toBe("Moved Friday to 8 pm.");
+        expect(callSummary({ summary: null, gathered_context: gathered })).toBe("Change a booking");
+        expect(callSummary({ summary: "", gathered_context: {} })).toBeNull();
+    });
+
+    it("calls a call in progress only while it can still be going on", () => {
+        const now = new Date("2026-11-06T15:00:00Z").getTime();
+        expect(isInProgress({ is_completed: false, created_at: "2026-11-06T14:30:00Z" }, now)).toBe(true);
+        expect(isInProgress({ is_completed: false, created_at: "2026-11-06T13:30:00Z" }, now)).toBe(false);
+        expect(isInProgress({ is_completed: true, created_at: "2026-11-06T14:59:00Z" }, now)).toBe(false);
+        expect(isInProgress({ created_at: "2026-11-06T14:59:00Z" }, now)).toBe(false);
+        expect(callOutcome({ is_completed: false, created_at: "2026-11-06T14:30:00Z", disposition: null }, now)).toEqual({
+            label: "In progress",
+            tone: "live",
+        });
+    });
+
+    it("marks every match of the search, whatever the case, and regex characters literally", () => {
+        expect(highlightParts("Parking? Is there parking near you?", "parking")).toEqual([
+            { text: "Parking", hit: true },
+            { text: "? Is there ", hit: false },
+            { text: "parking", hit: true },
+            { text: " near you?", hit: false },
+        ]);
+        expect(highlightParts("Costs €5 (or so).", "(or")).toEqual([
+            { text: "Costs €5 ", hit: false },
+            { text: "(or", hit: true },
+            { text: " so).", hit: false },
+        ]);
+        expect(highlightParts("Hello", "  ")).toEqual([{ text: "Hello", hit: false }]);
+        expect(highlightParts("Hello", "zz")).toEqual([{ text: "Hello", hit: false }]);
+    });
+
+    it("names the new outcomes plainly", () => {
+        expect(outcomeLabel("transfer_not_answered")).toBe("Transfer not answered");
+        expect(outcomeLabel("booking_made")).toBe("Booking made");
     });
 });

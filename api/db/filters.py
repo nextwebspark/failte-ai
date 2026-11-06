@@ -4,7 +4,7 @@ import re
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from sqlalchemy import Float, Text, and_, cast, func, not_, or_
+from sqlalchemy import Float, Text, and_, case, cast, false, func, literal, not_, or_, select
 from sqlalchemy.dialects.postgresql import JSONB
 
 from api.db.models import WorkflowRunModel
@@ -59,7 +59,12 @@ ATTRIBUTE_FIELD_MAPPING = {
     "callerSearch": "caller",
     "handledBy": "handled_by",
     "bookingOutcome": "gathered_context.booking_outcome",
+    "needsFollowUp": "follow_up",
 }
+
+# The stored events that hold what was said: the agent's lines and the
+# caller's (final) transcriptions, in ``logs.realtime_feedback_events``.
+SPOKEN_EVENT_TYPES = ("rtf-bot-text", "rtf-user-transcription")
 
 # How the engine records a call that was handed to a person (the same rule
 # as api/services/reports/daily_report.py's is_transferred): call_status
@@ -98,12 +103,58 @@ def search_digits(text: str) -> str:
     return digits.lstrip("0")
 
 
+def _escape_like(text: str) -> str:
+    """``text`` for a LIKE pattern: its own %, _ and backslash match literally."""
+    return re.sub(r"([\\%_])", r"\\\1", text)
+
+
+def _said_on_call(pattern: str):
+    """Whether any line of the conversation (agent or caller) matches the
+    ILIKE ``pattern``. Looks only at the spoken text of the stored events,
+    not at event types, tool results or timestamps, so "bot" or "2026" don't
+    match every call.
+
+    Cost: no index covers this; Postgres reads each candidate row's ``logs``
+    and walks its events. The list is always scoped to one organization and,
+    by default, to the last 7 days, which keeps the rows scanned small. With
+    "Any time" on a large workspace it is a scan of that workspace's calls.
+    """
+    events = cast(WorkflowRunModel.logs, JSONB).op("->")("realtime_feedback_events")
+    # jsonb_array_elements fails on a non-array, so anything else reads as [].
+    as_array = case(
+        (func.jsonb_typeof(events) == "array", events),
+        else_=cast(literal("[]"), JSONB),
+    )
+    said = func.jsonb_array_elements(as_array).table_valued("value").alias("said")
+    line = said.c.value
+    return (
+        select(literal(1))
+        .select_from(said)
+        .where(
+            line.op("->>")("type").in_(SPOKEN_EVENT_TYPES),
+            line.op("->")("payload").op("->>")("text").ilike(pattern, escape="\\"),
+        )
+        .exists()
+    )
+
+
+def _summary_matches(pattern: str):
+    """The post-call review's summary (``annotations.call_review.summary``)."""
+    review = cast(WorkflowRunModel.annotations, JSONB).op("->")("call_review")
+    return func.coalesce(review.op("->>")("summary"), "").ilike(pattern, escape="\\")
+
+
 def _caller_search(text: str):
-    """The caller's name (as the agent captured it) or their number: the
-    number the list shows, the caller's on inbound calls and the number
-    called on outbound ones."""
-    escaped = re.sub(r"([\\%_])", r"\\\1", text)
-    conditions = [_gathered("caller_name").ilike(f"%{escaped}%", escape="\\")]
+    """The one search box: the caller's name (as the agent captured it),
+    their number (the number the list shows: the caller's on inbound calls
+    and the number called on outbound ones), the call's summary, or anything
+    said on the call."""
+    pattern = f"%{_escape_like(text)}%"
+    conditions = [
+        _gathered("caller_name").ilike(pattern, escape="\\"),
+        _summary_matches(pattern),
+        _said_on_call(pattern),
+    ]
     digits = search_digits(text)
     if digits:
         conditions.append(
@@ -141,7 +192,11 @@ def apply_workflow_run_filters(
     - calledNumber: Filter by initial_context.called_number (text search)
     - callDirection: Filter by call_type (inbound / outbound)
     - callChannel: Filter by mode, grouped into telephony / web / chat
-    - callerSearch: the caller's captured name or their number (text)
+    - callerSearch: the caller's captured name or number, the call's summary,
+      or what was said on the call (text)
+    - needsFollowUp: the calls with an open follow-up. The route resolves
+      these with the Follow-ups service and passes the run ids in
+      ``value.ids`` (type "runIds"); without resolved ids nothing matches.
     - handledBy: "agent" or "team" (passed to a person), as a radio value
     - bookingOutcome: gathered_context.booking_outcome, any of the codes
 
@@ -293,6 +348,19 @@ def apply_workflow_run_filters(
                 text = str(value.get("value") or "").strip()
                 if text:
                     filter_conditions.append(_caller_search(text))
+
+            elif field == "follow_up":
+                # Never trust ids from the request: the route replaces this
+                # filter's value with the Follow-ups service's open items.
+                ids = value.get("ids") if filter_type == "runIds" else None
+                run_ids = (
+                    [i for i in ids if isinstance(i, int) and not isinstance(i, bool)]
+                    if isinstance(ids, list)
+                    else []
+                )
+                filter_conditions.append(
+                    WorkflowRunModel.id.in_(run_ids) if run_ids else false()
+                )
 
             elif filter_type == "radio" and field == "handled_by":
                 # "agent": the agent dealt with the call itself; "team": it
