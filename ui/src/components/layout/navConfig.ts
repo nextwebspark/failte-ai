@@ -97,6 +97,21 @@ export function getNavSections(flags: FeatureFlags): NavSection[] {
   }));
 }
 
+/** `/tools/abc` is within `/tools`; `/toolsets` would not be. */
+export function isWithin(pathname: string, url: string): boolean {
+  return pathname === url || pathname.startsWith(`${url}/`);
+}
+
+/**
+ * Whether a workspace nav row is lit: the screen or anything under it
+ * (`/telephony-configurations/7`, `/skills/library/3`). A run opened from a
+ * workspace list (`?from=/usage?page=2`) keeps that list's row lit.
+ */
+export function isNavRowActive(url: string, pathname: string, returnTo?: string | null): boolean {
+  if (isWithin(pathname, url)) return true;
+  return Boolean(returnTo && isWithin(returnTo.split("?")[0], url));
+}
+
 /** The left nav with the default switches (before the runtime ones are read). */
 export const NAV_SECTIONS: NavSection[] = getNavSections(DEFAULT_FEATURE_FLAGS);
 
@@ -115,14 +130,14 @@ const PAGE_META: Record<string, PageMeta> = {
   "/workflow/create": { title: "New voice agent", subtitle: "Pick a ready-made agent" },
   "/campaigns": { title: "Campaigns", subtitle: "Bulk runs across contact lists" },
   "/campaigns/new": { title: "New campaign", subtitle: "Pick an agent and a contact list" },
-  "/model-configurations": { title: "Models & voice", subtitle: "Speech-to-speech or STT → LLM → TTS, voices" },
-  "/telephony-configurations": { title: "Telephony", subtitle: "Providers, trunks and numbers" },
-  "/tools": { title: "Tools", subtitle: "HTTP and MCP tools agents can call" },
+  "/model-configurations": { title: "Models & voice", subtitle: "How your agents listen, think and speak" },
+  "/telephony-configurations": { title: "Telephony", subtitle: "Your phone accounts and numbers" },
+  "/tools": { title: "Tools", subtitle: "Things your agents can do during a call" },
   "/integrations": { title: "Integrations", subtitle: "Connect apps like Google Calendar to your agents" },
   "/skills": { title: "Skills", subtitle: "Playbooks your agents load when a caller needs them" },
   "/skills/new": { title: "New skill", subtitle: "Write a playbook your agents can load on demand" },
   "/skills/library": { title: "Skill library", subtitle: "Platform skills shared with every workspace" },
-  "/files": { title: "Files", subtitle: "Documents agents can reference" },
+  "/files": { title: "Files", subtitle: "Documents your agents can look things up in" },
   "/recordings": { title: "Prompt audio", subtitle: "Recorded greetings and messages your agents can play" },
   "/usage": { title: "Calls", subtitle: "Every call your agents answered or made" },
   "/bookings": { title: "Bookings", subtitle: "Tables and appointments your agent booked" },

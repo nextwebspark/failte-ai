@@ -6,7 +6,8 @@ import { useEffect, useState } from "react";
 import { PageActions } from "@/components/layout/PageActionsSlot";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Skeleton } from "@/components/ui/skeleton";
+import { PageHeader } from "@/components/ui/page-header";
+import { PageSkeleton } from "@/components/ui/page-skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAuth } from "@/lib/auth";
 
@@ -26,20 +27,16 @@ export default function RecordingsPage() {
     }, [loading, user, redirectToLogin]);
 
     if (loading || !user) {
-        return (
-            <div className="page-body">
-                <div className="space-y-4">
-                    <Skeleton className="h-12 w-64" />
-                    <Skeleton className="h-64 w-full" />
-                </div>
-            </div>
-        );
+        return <PageSkeleton variant="list" />;
     }
 
     return (
         <div className="page-body">
-            {/* Screen name, strapline and primary action are rendered by the
-                app header (AppTopBar) — see PageActions. */}
+            <PageHeader
+                title="Prompt audio"
+                description="Greetings and messages recorded in your own voice, for your agents to play on calls."
+            />
+            {/* The primary action sits in the app header — see PageActions. */}
             <PageActions>
                 <Button size="toolbar" onClick={() => setIsUploadOpen(true)}>
                     <Upload className="w-4 h-4" />
@@ -49,30 +46,30 @@ export default function RecordingsPage() {
 
             <Tabs defaultValue="recordings" key={`${user.id}:${"selectedTeam" in user ? user.selectedTeam?.id : user.organizationId}`}>
                 <TabsList className="mb-4">
-                    <TabsTrigger value="recordings">Uploaded recordings</TabsTrigger>
-                    <TabsTrigger value="tts-cache">TTS cache</TabsTrigger>
+                    <TabsTrigger value="recordings">Your recordings</TabsTrigger>
+                    <TabsTrigger value="tts-cache">Saved speech</TabsTrigger>
                 </TabsList>
                 <TabsContent value="recordings">
                     <Card>
                         <CardHeader>
-                            <CardTitle>All Recordings</CardTitle>
+                            <CardTitle as="h2">All recordings</CardTitle>
                             <CardDescription>
-                                Shared across every agent in your organization. Use{" "}
-                                <code className="rounded bg-muted px-1 text-xs">@</code> in prompt fields to
-                                insert them, or as transition messages in tool calls.
+                                Every agent can use these. Type{" "}
+                                <code className="rounded bg-panel-2 px-1 font-mono text-xs">@</code> in an agent&apos;s
+                                instructions to add one, or pick one as the message a tool plays.
                             </CardDescription>
                         </CardHeader>
                         <CardContent>
-                            <RecordingsList refreshKey={refreshKey} />
+                            <RecordingsList refreshKey={refreshKey} onUploadClick={() => setIsUploadOpen(true)} />
                         </CardContent>
                     </Card>
                 </TabsContent>
                 <TabsContent value="tts-cache">
                     <Card>
                         <CardHeader>
-                            <CardTitle>Cached speech</CardTitle>
+                            <CardTitle as="h2">Saved speech</CardTitle>
                             <CardDescription>
-                                Speech reused across your organization’s agents. Listen to a phrase and invalidate it to generate fresh audio on its next request.
+                                Phrases your agents have already said, kept so they can be reused quickly. Remove one to have it spoken fresh next time.
                             </CardDescription>
                         </CardHeader>
                         <CardContent>

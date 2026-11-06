@@ -8,6 +8,7 @@ import { SettingRow, SettingsSection } from "@/components/settings/SettingsLayou
 import { useOrgConfig } from "@/context/OrgConfigContext";
 import { useAuth } from "@/lib/auth";
 import { ROLE_LABELS } from "@/lib/auth/roles";
+import { workspaceDisplayName } from "@/lib/workspaceName";
 
 function profileOf(user: unknown): { name: string; email: string } {
   const u = user as {
@@ -70,7 +71,7 @@ export default function AccountPage() {
             <span className="text-[13px] text-foreground">{email || "—"}</span>
           </SettingRow>
           <SettingRow label="Workspace" compact>
-            <span className="text-[13px] text-foreground">{orgContext?.organization_name || "My workspace"}</span>
+            <span className="text-[13px] text-foreground">{workspaceDisplayName(orgContext?.organization_name)}</span>
           </SettingRow>
           <SettingRow label="Role" hint="Set by an admin on Members." compact>
             <span className="text-[13px] text-foreground">{role ? ROLE_LABELS[role] : "—"}</span>

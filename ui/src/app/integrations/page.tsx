@@ -1,6 +1,6 @@
 "use client";
 
-import { Loader2, Plug, X } from "lucide-react";
+import { Loader2, Plug, RotateCcw, TriangleAlert, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
@@ -22,6 +22,8 @@ import {
     AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/empty-state";
+import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
 import { SectionHeading, SectionHint } from "@/components/ui/section-heading";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -292,6 +294,10 @@ function IntegrationsScreen() {
 
     return (
         <div className="page-body">
+            <PageHeader
+                title="Integrations"
+                description="Connect the apps you already use, like Google Calendar, so your agents can check and book times for callers."
+            />
             <div className="w-full max-w-5xl space-y-8">
                 {finishing && (
                     <Panel accent="sky" padding="sm" className="flex items-center gap-2 text-sm" role="status">
@@ -320,12 +326,18 @@ function IntegrationsScreen() {
                 {unavailable ? (
                     <UnavailableState />
                 ) : error ? (
-                    <Panel accent="danger" padding="sm" className="flex flex-wrap items-center justify-between gap-3">
-                        <p className="text-sm text-destructive">{error}</p>
-                        <Button size="sm" variant="soft" onClick={() => void refresh()}>
-                            Try again
-                        </Button>
-                    </Panel>
+                    <EmptyState
+                        tone="danger"
+                        icon={TriangleAlert}
+                        title={error}
+                        description="Check your connection, then try again."
+                        action={
+                            <Button variant="outline" onClick={() => void refresh()}>
+                                <RotateCcw aria-hidden />
+                                Try again
+                            </Button>
+                        }
+                    />
                 ) : loading ? (
                     <LoadingState />
                 ) : (
@@ -442,10 +454,12 @@ function IntegrationsScreen() {
 
 function UnavailableState() {
     return (
-        <div className="mx-auto flex max-w-md flex-col items-center gap-3 py-16 text-center">
-            <Plug className="size-8 text-ink-3" aria-hidden />
-            <h2 className="text-lg font-semibold">Integrations aren&apos;t configured on this server</h2>
-            <p className="text-sm text-muted-foreground">
+        <div className="mx-auto flex max-w-md flex-col items-center gap-2 py-16 text-center">
+            <span className="grid size-11 place-items-center rounded-full bg-brand-dim text-brand" aria-hidden>
+                <Plug className="size-5" />
+            </span>
+            <h2 className="mt-1 text-base font-semibold">Integrations aren&apos;t switched on yet</h2>
+            <p className="text-sm text-ink-3">
                 Connecting apps like Google Calendar needs the integrations service, which isn&apos;t set up for this{" "}
                 {BRAND.name} deployment. Ask your administrator to enable it.
             </p>
@@ -455,7 +469,7 @@ function UnavailableState() {
 
 function LoadingState() {
     return (
-        <div className="space-y-8" aria-busy="true" aria-label="Loading integrations">
+        <div className="space-y-8" role="status" aria-label="Loading integrations">
             <div className="space-y-3">
                 <Skeleton className="h-5 w-40" />
                 <Skeleton className="h-20 w-full" />

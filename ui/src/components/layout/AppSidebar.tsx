@@ -3,7 +3,7 @@
 import { AlertTriangle, ArrowLeft } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import React from "react";
+import React, { useEffect } from "react";
 
 import { BrandLogo } from "@/components/BrandLogo";
 import { firstSettingsUrl, isSettingsRoute } from "@/components/settings/settingsNav";
@@ -30,7 +30,7 @@ import { useFeatureFlags } from "@/hooks/useFeatureFlags";
 import { cn } from "@/lib/utils";
 
 import { AGENT_NAV_SECTIONS, agentHref, agentSectionFor } from "./agentNav";
-import { getNavSections, type NavItem } from "./navConfig";
+import { getNavSections, isNavRowActive, type NavItem } from "./navConfig";
 import { useShellChrome } from "./shellContext";
 
 const TELEPHONY_WARNING_COPY = "Action required";
@@ -82,6 +82,12 @@ export function AppSidebar({ docked = true }: { docked?: boolean }) {
     }
   };
 
+  // The phone menu also closes on any other move between screens — Back,
+  // Forward, or a link inside the page — so it never covers the new screen.
+  useEffect(() => {
+    setOpenMobile(false);
+  }, [pathname, setOpenMobile]);
+
   const SidebarLink = ({ title, url, icon: Icon, isActive, showWarningDot }: SidebarLinkProps) => {
     const tooltip = {
       children: (
@@ -115,6 +121,8 @@ export function AppSidebar({ docked = true }: { docked?: boolean }) {
         tooltip={tooltip}
         className={cn(
           "h-auto gap-2.5 rounded-md px-2.5 py-2 text-[13.5px] font-normal text-ink-2",
+          // 40px+ rows for fingers in the phone menu.
+          isMobile && "min-h-10 py-2.5 text-[14.5px]",
           "transition-colors hover:bg-panel-2 hover:text-foreground",
           isActive &&
             "bg-brand-dim font-semibold text-brand hover:bg-brand-dim hover:text-brand"
@@ -155,8 +163,7 @@ export function AppSidebar({ docked = true }: { docked?: boolean }) {
 
   // A run opened from a workspace list keeps that list's row lit, even though
   // the pathname is now /workflow/<id>/run/<runId>.
-  const isWorkspaceRowActive = (url: string) =>
-    pathname.startsWith(url) || Boolean(returnTo?.startsWith(url));
+  const isWorkspaceRowActive = (url: string) => isNavRowActive(url, pathname, returnTo);
   const settingsUrl = firstSettingsUrl(role === null ? null : can);
 
   const workspaceNav = getNavSections(featureFlags).map((section) => ({

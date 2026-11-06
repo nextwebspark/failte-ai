@@ -116,7 +116,7 @@ describe("ToolsPage", () => {
     it("shows the empty state", async () => {
         mocks.list.mockResolvedValue({ data: [] });
         render(<ToolsPage />);
-        expect(await screen.findByText("No tools found")).toBeTruthy();
+        expect(await screen.findByText("No tools yet")).toBeTruthy();
         expect(screen.queryAllByRole("link")).toHaveLength(0);
     });
 });

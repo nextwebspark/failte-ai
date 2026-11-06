@@ -117,6 +117,6 @@ describe("Models & voice page", () => {
         render(<ModelConfigurationV2 />);
 
         expect(await screen.findByText("Legacy editor")).toBeTruthy();
-        expect(screen.getByText("AI Models Configuration")).toBeTruthy();
+        expect(screen.getByRole("heading", { level: 1, name: "Models & voice" })).toBeTruthy();
     });
 });

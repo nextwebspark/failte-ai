@@ -9,6 +9,7 @@ import { DangerZoneCard } from "@/components/privacy/DangerZoneCard";
 import { YourAccountCard } from "@/components/privacy/YourAccountCard";
 import { SettingsSection } from "@/components/settings/SettingsLayout";
 import { firstSettingsUrl } from "@/components/settings/settingsNav";
+import { PageSkeleton } from "@/components/ui/page-skeleton";
 import { useOrgConfig } from "@/context/OrgConfigContext";
 
 import { OrganizationNameCard } from "../team/OrganizationNameCard";
@@ -42,6 +43,8 @@ export default function SettingsPage() {
     );
   }
 
+  // Still finding out who you are: hold the screen's shape, don't go blank.
+  if (role === null) return <PageSkeleton variant="settings" withHeader={false} />;
   if (!canManageOrg) return null;
 
   return (
