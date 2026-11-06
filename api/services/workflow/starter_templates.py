@@ -87,18 +87,21 @@ def _business_fields(
     head = [
         TemplateSetupField(
             key="business_name",
+            stored=True,
             label="Business name",
             placeholder=name_placeholder,
             max_length=120,
         ),
         TemplateSetupField(
             key="business_description",
+            stored=True,
             label="What does your business do?",
             type="textarea",
             placeholder=description_placeholder,
         ),
         TemplateSetupField(
             key="opening_hours",
+            stored=True,
             label="Opening hours",
             placeholder=hours_placeholder,
             max_length=300,
@@ -108,6 +111,7 @@ def _business_fields(
         [
             TemplateSetupField(
                 key="address",
+                stored=True,
                 label="Address",
                 placeholder=address_placeholder,
                 required=False,
@@ -120,6 +124,7 @@ def _business_fields(
     tail = [
         TemplateSetupField(
             key="website",
+            stored=True,
             label="Website",
             type="url",
             placeholder=website_placeholder,
@@ -128,6 +133,7 @@ def _business_fields(
         ),
         TemplateSetupField(
             key="extra_info",
+            stored=True,
             label="Anything else callers often ask?",
             type="textarea",
             help=extra_help,

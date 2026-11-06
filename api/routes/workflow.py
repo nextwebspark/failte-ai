@@ -85,6 +85,11 @@ from api.services.workflow.agent_builder import (
     build_agent_workflow,
     default_agent_spec_generator,
 )
+from api.services.workflow.business_facts import (
+    BusinessFactsError,
+    checked_updates,
+    fact_fields,
+)
 from api.services.workflow.configuration_policy import (
     ExternalPBXConfigurationDisabledError,
     WorkflowConfigurationNotFoundError,
@@ -101,7 +106,7 @@ from api.services.workflow.run_usage_response import (
 from api.services.workflow.template_setup import (
     TemplateSetupError,
     attach_integration_tools,
-    fill_template_values,
+    fill_template,
     parse_setup_fields,
 )
 from api.services.workflow.tool_name_validation import (
@@ -1610,7 +1615,9 @@ async def duplicate_workflow_template(
         )
 
     try:
-        filled = fill_template_values(
+        # Business facts stay on the agent (editable later); the rest is
+        # written into the prompts.
+        filled, facts = fill_template(
             template.template_json,
             parse_setup_fields(template.setup_fields),
             request.values,
@@ -1651,6 +1658,7 @@ async def duplicate_workflow_template(
         workflow_def,
         user.id,
         user.selected_organization_id,
+        template_context_variables=facts,
     )
 
     if trigger_paths:
@@ -2071,4 +2079,75 @@ async def get_ambient_noise_upload_url(
         upload_url=upload_url,
         storage_key=storage_key,
         storage_backend=StorageBackend.get_current_backend().value,
+    )
+
+
+class BusinessFact(BaseModel):
+    key: str
+    label: str
+    type: str
+    help: str | None = None
+    placeholder: str | None = None
+    required: bool
+    max_length: int
+    value: str
+
+
+class BusinessFactsResponse(BaseModel):
+    facts: list[BusinessFact]
+
+
+class UpdateBusinessFactsRequest(BaseModel):
+    facts: dict[str, str | None]
+
+
+async def _agent_facts(workflow_id: int, organization_id: int):
+    workflow = await db_client.get_workflow(
+        workflow_id, organization_id=organization_id
+    )
+    if workflow is None:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    released = workflow.released_definition
+    definition = released.workflow_json if released else workflow.workflow_definition
+    return workflow, fact_fields(definition, workflow.template_context_variables)
+
+
+@router.get(
+    "/{workflow_id}/business-facts",
+    dependencies=requires(Permission.AGENTS_READ),
+)
+async def get_business_facts(
+    workflow_id: int, user: UserModel = Depends(get_user)
+) -> BusinessFactsResponse:
+    """What the agent knows about the business: the facts its prompts read
+    at call time (opening hours, address, FAQ…), with their current values."""
+    _, fields = await _agent_facts(workflow_id, user.selected_organization_id)
+    return BusinessFactsResponse(
+        facts=[BusinessFact(**field.__dict__) for field in fields]
+    )
+
+
+@router.put(
+    "/{workflow_id}/business-facts",
+    dependencies=requires(Permission.AGENTS_FACTS),
+)
+async def update_business_facts(
+    workflow_id: int,
+    request: UpdateBusinessFactsRequest,
+    user: UserModel = Depends(get_user),
+) -> BusinessFactsResponse:
+    """Update the agent's business facts. They apply from the next call,
+    without publishing any unfinished changes to the agent itself."""
+    organization_id = user.selected_organization_id
+    _, fields = await _agent_facts(workflow_id, organization_id)
+    try:
+        updates = checked_updates(fields, request.facts)
+    except BusinessFactsError as e:
+        raise HTTPException(status_code=422, detail=str(e)) from None
+    saved = await db_client.update_business_facts(workflow_id, organization_id, updates)
+    if saved is None:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    _, fields = await _agent_facts(workflow_id, organization_id)
+    return BusinessFactsResponse(
+        facts=[BusinessFact(**field.__dict__) for field in fields]
     )

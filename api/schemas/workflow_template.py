@@ -38,6 +38,10 @@ class TemplateSetupField(BaseModel):
     # ("{items}" becomes "how many people and about allergies"). The answer
     # is the chosen values, comma-separated; none chosen leaves the
     # placeholder empty.
+    # Kept as an agent fact (template_context_variables) that the owner can
+    # edit later on the Business facts screen, instead of being written
+    # into the prompts; the prompts read it at call time.
+    stored: bool = False
     options: list[SetupOption] = Field(default_factory=list, max_length=12)
     sentence: str = Field(default="Also ask {items}.", max_length=200)
 

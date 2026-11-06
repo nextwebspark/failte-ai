@@ -102,6 +102,45 @@ def fill_template_values(
     return fill(definition)
 
 
+def fill_template(
+    definition: dict[str, Any],
+    fields: list[TemplateSetupField],
+    values: dict[str, str],
+) -> tuple[dict[str, Any], dict[str, str]]:
+    """Like ``fill_template_values``, but ``stored`` fields are not written
+    into the prompts: each of their placeholders becomes
+    ``{{initial_context.<key>}}`` (fallback kept), and the answers are
+    returned as the agent's facts, to save as its template context variables.
+    Answers are checked the same way for every field."""
+    fill_template_values(definition, fields, values)  # validates every answer
+    stored = [f for f in fields if f.stored and f.type != "toggles"]
+    facts = {
+        f.key: (values.get(f.key) or "").strip()
+        for f in stored
+        if (values.get(f.key) or "").strip()
+    }
+    if stored:
+        keys = "|".join(re.escape(f.key) for f in stored)
+        pattern = re.compile(r"\{\{\s*(" + keys + r")(\s*(?:\|[^}]*)?)\}\}")
+
+        def relabel(node: Any) -> Any:
+            if isinstance(node, str):
+                return pattern.sub(
+                    lambda m: "{{initial_context." + m.group(1) + m.group(2) + "}}",
+                    node,
+                )
+            if isinstance(node, dict):
+                return {key: relabel(value) for key, value in node.items()}
+            if isinstance(node, list):
+                return [relabel(item) for item in node]
+            return node
+
+        definition = relabel(definition)
+    baked = [f for f in fields if not (f.stored and f.type != "toggles")]
+    remaining = {k: v for k, v in values.items() if k in {f.key for f in baked}}
+    return fill_template_values(definition, baked, remaining), facts
+
+
 INTEGRATION_TOOL_PREFIX = "integration:"
 
 

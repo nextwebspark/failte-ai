@@ -6046,7 +6046,7 @@ export type OrganizationPreferencesResponse = {
 /**
  * Permission
  */
-export type Permission = 'org:manage' | 'members:read' | 'members:manage' | 'billing:read' | 'billing:manage' | 'agents:read' | 'agents:write' | 'campaigns:read' | 'campaigns:write' | 'telephony:read' | 'telephony:write' | 'integrations:read' | 'integrations:write' | 'credentials:write' | 'api_keys:manage' | 'calls:read' | 'reports:read';
+export type Permission = 'org:manage' | 'members:read' | 'members:manage' | 'billing:read' | 'billing:manage' | 'agents:read' | 'agents:write' | 'campaigns:read' | 'campaigns:write' | 'telephony:read' | 'telephony:write' | 'integrations:read' | 'integrations:write' | 'credentials:write' | 'api_keys:manage' | 'calls:read' | 'reports:read' | 'agents:facts';
 
 /**
  * PhoneNumberCreateRequest
@@ -22096,3 +22096,59 @@ export type AutoscaleMetricApiV1HealthAutoscaleMetricGetResponses = {
 };
 
 export type AutoscaleMetricApiV1HealthAutoscaleMetricGetResponse = AutoscaleMetricApiV1HealthAutoscaleMetricGetResponses[keyof AutoscaleMetricApiV1HealthAutoscaleMetricGetResponses];
+
+/**
+ * BusinessFact
+ */
+export type BusinessFact = {
+    key: string;
+    label: string;
+    type: string;
+    help?: string | null;
+    placeholder?: string | null;
+    required: boolean;
+    max_length: number;
+    value: string;
+};
+
+/**
+ * BusinessFactsResponse
+ */
+export type BusinessFactsResponse = {
+    facts: Array<BusinessFact>;
+};
+
+/**
+ * UpdateBusinessFactsRequest
+ */
+export type UpdateBusinessFactsRequest = {
+    facts: {
+        [key: string]: string | null;
+    };
+};
+
+export type GetBusinessFactsApiV1WorkflowWorkflowIdBusinessFactsGetData = {
+    body?: never;
+    path: {
+        workflow_id: number;
+    };
+    query?: never;
+    url: '/api/v1/workflow/{workflow_id}/business-facts';
+};
+
+export type GetBusinessFactsApiV1WorkflowWorkflowIdBusinessFactsGetResponses = {
+    200: BusinessFactsResponse;
+};
+
+export type UpdateBusinessFactsApiV1WorkflowWorkflowIdBusinessFactsPutData = {
+    body: UpdateBusinessFactsRequest;
+    path: {
+        workflow_id: number;
+    };
+    query?: never;
+    url: '/api/v1/workflow/{workflow_id}/business-facts';
+};
+
+export type UpdateBusinessFactsApiV1WorkflowWorkflowIdBusinessFactsPutResponses = {
+    200: BusinessFactsResponse;
+};

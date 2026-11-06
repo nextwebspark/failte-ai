@@ -972,7 +972,10 @@ class ARIConnection:
 
             # 3. Create workflow run
             call_id = channel_id
-            run_inputs = await prepare_workflow_run_inputs(db_client, workflow)
+            # Live calls read the agent's stored business facts too.
+            run_inputs = await prepare_workflow_run_inputs(
+                db_client, workflow, include_template_context=True
+            )
             # Capture the configured external PBX identity from SIP headers.
             # Lead fields come from the definition this run binds to, not from
             # the workflow's draft-synced legacy column.
@@ -996,6 +999,7 @@ class ARIConnection:
                 user_id=user_id,
                 call_type=CallType.INBOUND,
                 initial_context={
+                    **run_inputs.initial_context,
                     "caller_number": caller_number,
                     "called_number": called_number,
                     "direction": "inbound",
