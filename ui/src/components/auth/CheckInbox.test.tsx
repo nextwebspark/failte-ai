@@ -52,7 +52,7 @@ describe("CheckInbox", () => {
         body: { email: "pat@example.com", code: "123456" },
       }),
     );
-    expect(mocks.startLocalSession).toHaveBeenCalledWith(session, "/workflow");
+    expect(mocks.startLocalSession).toHaveBeenCalledWith(session, "/workflow", "new");
   });
 
   it("shows the API's message for a wrong code and stays on the page", async () => {

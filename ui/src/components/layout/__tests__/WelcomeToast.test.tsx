@@ -26,6 +26,26 @@ describe("WelcomeToast", () => {
         expect(sessionStorage.getItem("lm-just-signed-in")).toBeNull();
     });
 
+    it("welcomes someone who just signed up to the product", () => {
+        sessionStorage.setItem("lm-just-signed-in", "new");
+        render(<WelcomeToast />);
+        const [title, options] = vi.mocked(toast.success).mock.calls[0];
+        expect(title).toBe("Welcome to LightMove.ai, Mary!");
+        expect(String((options as { description: string }).description)).toMatch(/workspace is ready/);
+    });
+
+    it("says a plain hello when we can't tell new from returning", () => {
+        sessionStorage.setItem("lm-just-signed-in", "hello");
+        render(<WelcomeToast />);
+        expect(vi.mocked(toast.success).mock.calls[0][0]).toBe("Welcome, Mary");
+    });
+
+    it("ignores a flag it doesn't know", () => {
+        sessionStorage.setItem("lm-just-signed-in", "surprise");
+        render(<WelcomeToast />);
+        expect(toast.success).not.toHaveBeenCalled();
+    });
+
     it("stays quiet on ordinary page loads", () => {
         render(<WelcomeToast />);
         expect(toast.success).not.toHaveBeenCalled();

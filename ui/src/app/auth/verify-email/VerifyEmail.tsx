@@ -24,7 +24,7 @@ export function VerifyEmail({ token }: { token: string | null }) {
         setError(detailFromError(res.error, "Could not verify your email."));
         return;
       }
-      await startLocalSession(res.data);
+      await startLocalSession(res.data, undefined, "new");
     })().catch(() => setError("Could not verify your email."));
   }, [token]);
 

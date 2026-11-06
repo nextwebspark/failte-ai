@@ -1,3 +1,5 @@
+import { JUST_SIGNED_IN_KEY, type WelcomeKind } from "@/lib/greeting";
+
 /**
  * Store a local-auth session (httpOnly cookies via the server route) and
  * leave the auth pages. Shared by every flow that ends in a logged-in user:
@@ -8,10 +10,14 @@
  * browser is navigating it never resolves, so the caller's button keeps its
  * busy label ("Signing you in...") until the next page paints instead of
  * flashing back to its idle label. It still rejects on failure.
+ *
+ * *welcome* picks the greeting on the first page: "new" right after signing
+ * up, "back" for a returning person, "hello" when we can't tell (Google).
  */
 export async function startLocalSession(
   auth: { token: string; user: unknown },
   nextPath?: string | null,
+  welcome: WelcomeKind = "back",
 ): Promise<never> {
   const res = await fetch("/api/auth/session", {
     method: "POST",
@@ -23,7 +29,7 @@ export async function startLocalSession(
   }
   try {
     // Read once by WelcomeToast on the first page after sign-in.
-    sessionStorage.setItem("lm-just-signed-in", "1");
+    sessionStorage.setItem(JUST_SIGNED_IN_KEY, welcome);
   } catch {
     // Storage blocked: no welcome toast, nothing else changes.
   }

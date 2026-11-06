@@ -57,7 +57,7 @@ export function CheckInbox({
       verified = true;
       // Stays "Verifying..." while the browser navigates away, so the used
       // code can't be submitted twice.
-      await startLocalSession(res.data, nextPath);
+      await startLocalSession(res.data, nextPath, "new");
     } catch {
       // Once verified the code is spent; the password still signs them in.
       if (verified) {

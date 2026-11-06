@@ -40,7 +40,7 @@ export function GoogleCallback({
         setError(detailFromError(res.error, "Google sign-in failed."));
         return;
       }
-      await startLocalSession(res.data, res.data.next_path);
+      await startLocalSession(res.data, res.data.next_path, "hello");
     })().catch(() => setError("Google sign-in failed."));
   }, [code, state, providerError]);
 
