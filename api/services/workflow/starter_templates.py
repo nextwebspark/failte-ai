@@ -197,8 +197,14 @@ def _booking_steps(thing: str, details: str, check_with: str, read_back: str) ->
         "transfer them to the team if you can; otherwise take a message with the "
         "details you have. Never tell a caller they are booked unless the "
         "calendar confirmed it.\n"
-        "To move or cancel, confirm their name and the booking first, then make "
-        "the change.\n\n"
+        "To move or cancel a booking made on an earlier call: ask for the phone "
+        "number the booking was made under, and their name or the day of the "
+        "booking, then find it with find_booking. Read back what it finds and "
+        "get a clear yes before cancelling or moving it (to move, check free "
+        "times first). If it hands off or finds nothing, change nothing: "
+        "transfer them or take their name, number and the booking's day and "
+        "time for the team. Never say a booking is moved or cancelled unless "
+        "the calendar confirmed it.\n\n"
         "If you have no calendar tools, take a message with the same details so "
         "the team can confirm."
     )
@@ -711,8 +717,8 @@ _APPOINTMENT_REMINDER = AgentSpec(
         "Address: {{address | fallback:not listed.}}\n"
         "Website: {{website | fallback:not listed.}}\n"
         "Other notes: {{extra_info | fallback:nothing else.}}\n\n"
-        "Keep the call under two minutes. Confirm, reschedule via calendar tools "
-        "if you have them, or take a message."
+        "Keep the call under two minutes. Confirm the visit. Only change it if "
+        "the calendar lets you; otherwise take a message."
     ),
     greeting=(
         "Hi, this is {{business_name}} with a quick reminder about your upcoming "
@@ -721,14 +727,17 @@ _APPOINTMENT_REMINDER = AgentSpec(
     opening=StageSpec(
         name="Confirm the visit",
         prompt=(
-            "Confirm they still plan to attend. If they need to move it and you "
-            "have calendar tools: offer two or three new times, update the booking, "
-            "and confirm.\n\n"
-            "If they cancel or you cannot change the diary, take a short message "
-            "for the team with their name and number."
+            "Confirm they still plan to attend. If they need to move or cancel "
+            "it and you have calendar tools: find the booking with find_booking "
+            "(their phone number and name), read it back, and for a move check "
+            "free times and get a yes before moving it. If the calendar hands "
+            "off, finds nothing, or you have no calendar tools, take a short "
+            "message for the team with their name, number and, if moving, the "
+            "day and time they would prefer. Never say it is changed unless the "
+            "calendar confirmed it."
         ),
         done_when=(
-            "They confirmed, rescheduled, cancelled, or asked for a human callback."
+            "They confirmed, asked to move or cancel, or asked for a human callback."
         ),
     ),
     stages=[_message_stage()],
@@ -1001,8 +1010,8 @@ STARTER_TEMPLATES: list[StarterTemplate] = [
     StarterTemplate(
         name="Appointment reminder",
         description=(
-            "Calls ahead of a visit to confirm, reschedule, or cancel so you "
-            "lose fewer no-shows."
+            "Calls ahead of a visit to confirm, move or cancel it (when you "
+            "allow changes), so you lose fewer no-shows."
         ),
         setup_fields=_business_fields(
             name_placeholder="Bright Smile Dental",
