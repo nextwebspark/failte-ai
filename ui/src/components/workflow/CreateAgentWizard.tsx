@@ -1,6 +1,6 @@
 'use client';
 
-import { ChevronLeft, Loader2 } from 'lucide-react';
+import { ArrowLeft, ChevronLeft, Loader2 } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { type ReactNode, useEffect, useRef, useState } from 'react';
@@ -129,7 +129,12 @@ function BackLink({ onClick, children }: { onClick: () => void; children: ReactN
 function StepRail({ step }: { step: 1 | 2 | 3 }) {
     const labels = ['Choose template', 'Personalise', 'Ready'] as const;
     return (
-        <ol className="flex flex-wrap items-center gap-2" aria-label="Progress">
+        <>
+        {/* A phone has no room for three chips: one line says where you are. */}
+        <p className="text-[12.5px] font-medium text-ink-2 sm:hidden">
+            {`Step ${step} of 3 · ${labels[step - 1]}`}
+        </p>
+        <ol className="hidden flex-wrap items-center gap-2 sm:flex" aria-label="Progress">
             {labels.map((label, index) => {
                 const n = (index + 1) as 1 | 2 | 3;
                 const active = n === step;
@@ -152,6 +157,7 @@ function StepRail({ step }: { step: 1 | 2 | 3 }) {
                 );
             })}
         </ol>
+        </>
     );
 }
 
@@ -390,9 +396,10 @@ export function CreateAgentWizard({ initialMode = 'template' }: CreateAgentWizar
                 <div className="flex flex-col gap-2">
                     <Link
                         href="/workflow"
-                        className="w-fit text-[13px] font-semibold text-ink-3 hover:text-ink hover:underline"
+                        className="-ml-1 inline-flex min-h-10 w-fit items-center gap-1.5 rounded-md px-1 text-[13px] font-semibold text-ink-3 hover:text-ink hover:underline focus-visible:outline-2 focus-visible:outline-ring sm:min-h-0"
                     >
-                        ← Back to agents
+                        <ArrowLeft className="size-3.5" aria-hidden />
+                        Back to agents
                     </Link>
                     {(view === 'gallery' || view === 'setup' || view === 'ready') && <StepRail step={step} />}
                 </div>
@@ -413,14 +420,14 @@ export function CreateAgentWizard({ initialMode = 'template' }: CreateAgentWizar
                             <button
                                 type="button"
                                 onClick={() => go('describe')}
-                                className="font-semibold text-brand hover:underline focus-visible:outline-2 focus-visible:outline-ring"
+                                className="min-h-10 font-semibold text-brand hover:underline focus-visible:outline-2 focus-visible:outline-ring sm:min-h-0"
                             >
                                 Describe it in your own words →
                             </button>
                             <button
                                 type="button"
                                 onClick={() => go('blank')}
-                                className="text-ink-3 hover:text-ink hover:underline focus-visible:outline-2 focus-visible:outline-ring"
+                                className="min-h-10 text-ink-3 hover:text-ink hover:underline focus-visible:outline-2 focus-visible:outline-ring sm:min-h-0"
                             >
                                 Start from scratch
                             </button>
