@@ -26,10 +26,11 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { useAgentShellOptional } from "@/context/AgentShellContext";
 import { useOrgConfig } from "@/context/OrgConfigContext";
 import { useTelephonyConfigWarnings } from "@/context/TelephonyConfigWarningsContext";
+import { useFeatureFlags } from "@/hooks/useFeatureFlags";
 import { cn } from "@/lib/utils";
 
 import { AGENT_NAV_SECTIONS, agentHref, agentSectionFor } from "./agentNav";
-import { NAV_SECTIONS, type NavItem } from "./navConfig";
+import { getNavSections, type NavItem } from "./navConfig";
 import { useShellChrome } from "./shellContext";
 
 const TELEPHONY_WARNING_COPY = "Action required";
@@ -58,6 +59,7 @@ type SidebarLinkProps = {
  */
 export function AppSidebar({ docked = true }: { docked?: boolean }) {
   const pathname = usePathname();
+  const featureFlags = useFeatureFlags();
   const { state, isMobile, setOpenMobile } = useSidebar();
   const agentShell = useAgentShellOptional();
   const { returnTo } = useShellChrome();
@@ -157,7 +159,7 @@ export function AppSidebar({ docked = true }: { docked?: boolean }) {
     pathname.startsWith(url) || Boolean(returnTo?.startsWith(url));
   const settingsUrl = firstSettingsUrl(role === null ? null : can);
 
-  const workspaceNav = NAV_SECTIONS.map((section) => ({
+  const workspaceNav = getNavSections(featureFlags).map((section) => ({
     ...section,
     items: visibleItems(section.items),
   }))

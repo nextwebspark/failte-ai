@@ -16,7 +16,7 @@ import {
 } from "lucide-react";
 
 import { SETTINGS_ROUTE_PERMISSIONS } from "@/components/settings/settingsNav";
-import { type Feature, isFeatureEnabled } from "@/config/features";
+import { DEFAULT_FEATURE_FLAGS, type Feature, type FeatureFlags } from "@/config/features";
 import type { Permission } from "@/lib/auth/roles";
 
 /**
@@ -88,10 +88,15 @@ const ALL_NAV_SECTIONS: NavSection[] = [
 ];
 
 /** What the left nav lists: areas that are switched off are left out. */
-export const NAV_SECTIONS: NavSection[] = ALL_NAV_SECTIONS.map((section) => ({
-  ...section,
-  items: section.items.filter((item) => !item.feature || isFeatureEnabled(item.feature)),
-}));
+export function getNavSections(flags: FeatureFlags): NavSection[] {
+  return ALL_NAV_SECTIONS.map((section) => ({
+    ...section,
+    items: section.items.filter((item) => !item.feature || flags[item.feature]),
+  }));
+}
+
+/** The left nav with the default switches (before the runtime ones are read). */
+export const NAV_SECTIONS: NavSection[] = getNavSections(DEFAULT_FEATURE_FLAGS);
 
 export type PageMeta = {
   title: string;
@@ -127,7 +132,7 @@ const PAGE_META: Record<string, PageMeta> = {
   "/api-keys": { title: "Settings" },
   "/account": { title: "Settings" },
   "/automation": { title: "Automation", subtitle: "Scheduled and triggered runs" },
-  "/superadmin": { title: "Superadmin", subtitle: "Cross-organisation administration" },
+  "/superadmin": { title: "Platform admin", subtitle: "Every workspace: switches, billing, users and health" },
   "/impersonate": { title: "Impersonate", subtitle: "Act as another user" },
 };
 

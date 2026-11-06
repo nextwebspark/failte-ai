@@ -13,9 +13,9 @@ import { createWorkflowDraftApiV1WorkflowWorkflowIdCreateDraftPost, getWorkflowV
 import type { DocumentResponseSchema, RecordingResponseSchema, SkillSummaryResponse, ToolResponse, WorkflowVersionResponse } from '@/client/types.gen';
 import { useNodeSpecs } from "@/components/flow/renderer";
 import { FlowEdge, FlowNode, NodeType } from "@/components/flow/types";
-import { isFeatureEnabled } from '@/config/features';
 import { useAgentShell } from '@/context/AgentShellContext';
 import { useUnsavedChanges } from '@/context/UnsavedChangesContext';
+import { useFeatureEnabled } from '@/hooks/useFeatureFlags';
 import { detailFromError } from '@/lib/apiError';
 import { WorkflowConfigurations } from '@/types/workflow-configurations';
 
@@ -110,8 +110,9 @@ function RenderWorkflow({
     // Workspace skills for the node pickers; refreshed when a node editor
     // opens, since skills are edited on another page. Not fetched while the
     // Skills area is switched off: the pickers are hidden then.
+    const skillsEnabled = useFeatureEnabled("skills");
     const refreshSkills = useCallback(async () => {
-        if (!isFeatureEnabled("skills")) {
+        if (!skillsEnabled) {
             setSkills([]);
             return;
         }
@@ -128,7 +129,7 @@ function RenderWorkflow({
             setSkills((current) => current ?? []);
             setSkillsError(true);
         }
-    }, []);
+    }, [skillsEnabled]);
     const [recordings, setRecordings] = useState<RecordingResponseSchema[]>([]);
     const [activeRuntimeNodeId, setActiveRuntimeNodeId] = useState<string | null>(null);
 

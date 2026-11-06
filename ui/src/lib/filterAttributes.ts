@@ -1,4 +1,4 @@
-import { isFeatureEnabled } from "@/config/features";
+import { DEFAULT_FEATURE_FLAGS } from "@/config/features";
 import { FilterAttribute } from "@/types/filters";
 
 // Shared filter attribute definitions
@@ -205,57 +205,63 @@ export const superadminFilterAttributes = createFilterAttributes([
   "callTags",
 ]);
 
-// Usage page filter attributes (simplified for regular users)
-export const usageFilterAttributes = createFilterAttributes(
-  [
-    "dateRange",
-    "duration",
-    "dispositionCode",
-    "callDirection",
-    "callChannel",
-    "callerNumber",
-    "calledNumber",
-    "runId",
-    "workflowId",
-    // Campaign runs only exist while the Campaigns area is switched on.
-    ...(isFeatureEnabled("campaigns") ? ["campaignId"] : []),
-  ],
-  {
-    runId: {
-      label: "Run ID",
-    },
-    workflowId: {
-      label: "Agent ID",
-    },
-    dateRange: {
-      label: "Date Range",
-      config: {
-        maxRangeDays: 90,
-        datePresets: ["today", "yesterday", "last7days", "last30days"],
+// Usage page filter attributes (simplified for regular users). The Campaign
+// ID filter is offered only while the Campaigns area is switched on.
+export function getUsageFilterAttributes(campaignsEnabled: boolean) {
+  return createFilterAttributes(
+    [
+      "dateRange",
+      "duration",
+      "dispositionCode",
+      "callDirection",
+      "callChannel",
+      "callerNumber",
+      "calledNumber",
+      "runId",
+      "workflowId",
+      // Campaign runs only exist while the Campaigns area is switched on.
+      ...(campaignsEnabled ? ["campaignId"] : []),
+    ],
+    {
+      runId: {
+        label: "Run ID",
       },
-    },
-    dispositionCode: {
-      label: "Outcome",
-      config: {
-        searchable: true,
-        showSelectAll: true,
+      workflowId: {
+        label: "Agent ID",
       },
-    },
-    duration: {
-      label: "Duration",
-      config: {
-        min: 0,
-        max: 3600, // Up to 1 hour
-        step: 1,
-        unit: "seconds",
-        numberPresets: [
-          { label: "< 30 sec", min: 0, max: 30 },
-          { label: "30 sec - 1 min", min: 30, max: 60 },
-          { label: "1-3 min", min: 60, max: 180 },
-          { label: "3-5 min", min: 180, max: 300 },
-          { label: "> 5 min", min: 300, max: 3600 },
-        ],
+      dateRange: {
+        label: "Date Range",
+        config: {
+          maxRangeDays: 90,
+          datePresets: ["today", "yesterday", "last7days", "last30days"],
+        },
       },
-    },
-  }
-);
+      dispositionCode: {
+        label: "Outcome",
+        config: {
+          searchable: true,
+          showSelectAll: true,
+        },
+      },
+      duration: {
+        label: "Duration",
+        config: {
+          min: 0,
+          max: 3600, // Up to 1 hour
+          step: 1,
+          unit: "seconds",
+          numberPresets: [
+            { label: "< 30 sec", min: 0, max: 30 },
+            { label: "30 sec - 1 min", min: 30, max: 60 },
+            { label: "1-3 min", min: 60, max: 180 },
+            { label: "3-5 min", min: 180, max: 300 },
+            { label: "> 5 min", min: 300, max: 3600 },
+          ],
+        },
+      },
+    }
+  );
+}
+
+/** With the default switches (before the runtime ones are read). */
+export const usageFilterAttributes = getUsageFilterAttributes(DEFAULT_FEATURE_FLAGS.campaigns);

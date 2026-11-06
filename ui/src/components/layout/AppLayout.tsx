@@ -1,8 +1,8 @@
 "use client";
 
 import { AlertTriangle, RefreshCw } from "lucide-react";
-import { usePathname } from "next/navigation";
-import React, { ReactNode, useState } from "react";
+import { usePathname, useRouter } from "next/navigation";
+import React, { ReactNode, useEffect, useState } from "react";
 
 import { NoAccess } from "@/components/auth/NoAccess";
 import { LowBalanceBanner } from "@/components/billing/LowBalanceBanner";
@@ -13,9 +13,11 @@ import {
 } from "@/components/privacy/PendingDeletionBanner";
 import { Button } from "@/components/ui/button";
 import { SidebarProvider } from "@/components/ui/sidebar";
+import { featureForRoute } from "@/config/features";
 import { AgentShellProvider } from "@/context/AgentShellContext";
 import { useAppConfig } from "@/context/AppConfigContext";
 import { useOrgConfig } from "@/context/OrgConfigContext";
+import { useFeatureFlags, useFeatureFlagsLoaded } from "@/hooks/useFeatureFlags";
 
 import { AgentTestRail } from "./AgentTestRail";
 import { AppSidebar } from "./AppSidebar";
@@ -85,7 +87,22 @@ interface AppLayoutProps {
  */
 const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
   const pathname = usePathname();
+  const router = useRouter();
   const [actionsSlot, setActionsSlot] = useState<HTMLDivElement | null>(null);
+
+  // A page of a product area switched off for this organisation goes to
+  // Overview. Middleware already redirects areas that are off for everyone;
+  // this applies the organisation's own switch once it has been read.
+  const featureFlags = useFeatureFlags();
+  const featureFlagsLoaded = useFeatureFlagsLoaded();
+  const routeFeature = featureForRoute(pathname);
+  const awaitingFeature = routeFeature !== null && !featureFlagsLoaded;
+  const featureSwitchedOff = routeFeature !== null && featureFlagsLoaded && !featureFlags[routeFeature];
+  useEffect(() => {
+    if (featureSwitchedOff) {
+      router.replace("/overview");
+    }
+  }, [featureSwitchedOff, router]);
 
   // Hide the shell for root (/), /handler routes (Stack Auth), /auth routes
   // and invitation landing pages.
@@ -152,7 +169,7 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
                   <LowBalanceBanner />
                   {noOrganization && organizationUnavailable ? (
                     <NoOrganizationNotice reason={organizationUnavailable} />
-                  ) : awaitingRole ? null : blocked ? (
+                  ) : awaitingRole || awaitingFeature || featureSwitchedOff ? null : blocked ? (
                     <NoAccess role={role} />
                   ) : closedForDeletion ? (
                     <PendingDeletionNotice />

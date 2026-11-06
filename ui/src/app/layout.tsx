@@ -4,6 +4,7 @@ import type { Metadata } from "next";
 import { DM_Sans, JetBrains_Mono, Sora } from "next/font/google";
 import { Suspense } from "react";
 
+import { FeatureFlagsLoader } from "@/components/FeatureFlagsLoader";
 import AppLayout from "@/components/layout/AppLayout";
 import PostHogIdentify from "@/components/PostHogIdentify";
 import { SentryErrorBoundary } from "@/components/SentryErrorBoundary";
@@ -100,6 +101,7 @@ export default function RootLayout({
               <AppConfigProvider>
                 <Suspense fallback={<SpinLoader />}>
                   <OrgConfigProvider>
+                    <FeatureFlagsLoader />
                     <TelephonyConfigWarningsProvider>
                       <OnboardingProvider>
                         <PostHogIdentify />

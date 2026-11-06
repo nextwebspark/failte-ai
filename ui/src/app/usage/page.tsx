@@ -28,19 +28,21 @@ import {
 import { useAppConfig } from '@/context/AppConfigContext';
 import { useUserConfig } from '@/context/UserConfigContext';
 import { useDispositionCodes } from '@/hooks/useDispositionCodes';
+import { useFeatureEnabled } from '@/hooks/useFeatureFlags';
 import { detailFromError } from '@/lib/apiError';
 import { useAuth } from '@/lib/auth';
 import { formatDateTime, getLocalTimezone } from '@/lib/dateTime';
-import { usageFilterAttributes, withDispositionCodeOptions } from '@/lib/filterAttributes';
+import { getUsageFilterAttributes, withDispositionCodeOptions } from '@/lib/filterAttributes';
 import { decodeFiltersFromURL, encodeFiltersToURL } from '@/lib/filters';
 import type { ActiveFilter, DateRangeValue, FilterAttribute, NumberFilterOption } from '@/types/filters';
 
 const buildUsageFilterAttributes = (
     agentOptions: NumberFilterOption[] | null,
     isLoadingAgentOptions: boolean,
-    dispositionCodes: string[]
+    dispositionCodes: string[],
+    campaignsEnabled: boolean,
 ): FilterAttribute[] => {
-    return withDispositionCodeOptions(usageFilterAttributes, dispositionCodes).map(attribute => {
+    return withDispositionCodeOptions(getUsageFilterAttributes(campaignsEnabled), dispositionCodes).map(attribute => {
         if (attribute.id !== 'workflowId') {
             return attribute;
         }
@@ -94,9 +96,10 @@ export default function UsagePage() {
     const [agentFilterOptions, setAgentFilterOptions] = useState<NumberFilterOption[] | null>(null);
     const [isLoadingAgentFilterOptions, setIsLoadingAgentFilterOptions] = useState(false);
     const { codes: dispositionCodes } = useDispositionCodes();
+    const campaignsEnabled = useFeatureEnabled('campaigns');
     const availableUsageFilterAttributes = useMemo(
-        () => buildUsageFilterAttributes(agentFilterOptions, isLoadingAgentFilterOptions, dispositionCodes),
-        [agentFilterOptions, isLoadingAgentFilterOptions, dispositionCodes]
+        () => buildUsageFilterAttributes(agentFilterOptions, isLoadingAgentFilterOptions, dispositionCodes, campaignsEnabled),
+        [agentFilterOptions, isLoadingAgentFilterOptions, dispositionCodes, campaignsEnabled]
     );
 
     // Daily usage breakdown state (only for paid orgs)
