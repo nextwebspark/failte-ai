@@ -113,11 +113,21 @@ class CalendarConfig(BaseModel):
     booking_days: tuple[Weekday, ...] = Field(
         default=(0, 1, 2, 3, 4),
         min_length=1,
-        description="Weekdays bookings are offered on (Monday=0 ... Sunday=6).",
+        description="Weekdays bookings are offered on (Monday=0 ... Sunday=6). "
+        "Ignored when service_periods is set.",
     )
-    open_hour: int = Field(default=9, ge=0, le=23)
+    open_hour: int = Field(
+        default=9,
+        ge=0,
+        le=23,
+        description="First slot starts at this hour. Ignored when "
+        "service_periods is set.",
+    )
     close_hour: int = Field(
-        default=17, ge=1, le=24, description="Last slot ends by this hour."
+        default=17,
+        ge=1,
+        le=24,
+        description="Last slot ends by this hour. Ignored when service_periods is set.",
     )
     slot_minutes: int = Field(default=30, ge=5, le=240)
     buffer_minutes: int = Field(default=15, ge=0, le=240)

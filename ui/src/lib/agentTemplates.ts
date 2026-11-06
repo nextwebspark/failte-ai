@@ -3,6 +3,7 @@ import type {
     TemplateSetupField,
     WorkflowTemplateResponse,
 } from '@/client/types.gen';
+import { isAppointmentHoursField } from '@/lib/appointmentHours';
 
 /** The integration providers the Create agent wizard can connect. */
 export const GOOGLE_CALENDAR = 'google-calendar';
@@ -102,10 +103,14 @@ export function templateMeta(template: WorkflowTemplateResponse): string {
     return parts.join(' · ');
 }
 
-/** The answers a template's questions start with: empty, and toggles at their defaults. */
+/**
+ * The text answers a template's questions start with: empty, and toggles at
+ * their defaults. Appointment hours are answered separately (see
+ * lib/appointmentHours.ts).
+ */
 export function emptyAnswers(fields: TemplateSetupField[]): Record<string, string> {
     return Object.fromEntries(
-        fields.map((field) => [
+        fields.filter((field) => !isAppointmentHoursField(field)).map((field) => [
             field.key,
             field.type === 'toggles'
                 ? (field.options ?? []).filter((option) => option.default).map((option) => option.value).join(',')
@@ -130,14 +135,18 @@ export function withToggle(field: TemplateSetupField, answer: string, value: str
         .join(',');
 }
 
-/** The first required question still unanswered, or null when all are. */
+/** The first required text question still unanswered, or null when all are. */
 export function missingAnswer(
     fields: TemplateSetupField[],
     answers: Record<string, string>,
 ): TemplateSetupField | null {
     return (
         fields.find(
-            (field) => field.type !== 'toggles' && (field.required ?? true) && !answers[field.key]?.trim(),
+            (field) =>
+                field.type !== 'toggles' &&
+                !isAppointmentHoursField(field) &&
+                (field.required ?? true) &&
+                !answers[field.key]?.trim(),
         ) ?? null
     );
 }

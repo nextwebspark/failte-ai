@@ -17,10 +17,12 @@ const mocks = vi.hoisted(() => ({
     startOAuth: vi.fn(),
     activate: vi.fn(),
     redirectToLogin: vi.fn(),
+    warning: vi.fn(),
     canConnect: true,
     user: { id: '1' } as { id: string } | null,
     authLoading: false,
 }));
+vi.mock('sonner', () => ({ toast: { warning: mocks.warning } }));
 vi.mock('next/navigation', () => ({ useRouter: () => ({ push: mocks.push, refresh: mocks.refresh }) }));
 vi.mock('next/link', () => ({
     default: ({ href, children, ...rest }: { href: string; children: React.ReactNode }) => (
@@ -493,4 +495,185 @@ it('lets the owner switch booking questions on and off, without typing', async (
         business_name: 'Harbour Kitchen',
         booking_questions: 'party_size,high_chair',
     });
+});
+
+// -- appointment hours (from PR #147, on the wizard) -------------------------------
+
+const RECEPTIONIST_WITH_HOURS = {
+    ...RECEPTIONIST,
+    setup_fields: [
+        ...RECEPTIONIST.setup_fields,
+        { key: 'appointment_hours', label: 'Appointment hours', type: 'appointment_hours', required: false },
+    ],
+};
+
+/** A calendar other agents already book with, in hours set on Bookings. */
+const BOOKING_CALENDAR = {
+    ...CALENDAR,
+    config: {
+        calendar_id: 'primary',
+        service_periods: [{ days: [1, 2, 3], first_start: '10:00', last_start: '15:15' }],
+        slot_minutes: 45,
+        timezone: 'America/New_York',
+    },
+};
+const BOOKING_HOURS = {
+    booking_days: [1, 2, 3],
+    open_hour: 10,
+    close_hour: 16,
+    slot_minutes: 45,
+    timezone: 'America/New_York',
+};
+
+function select(label: string): HTMLSelectElement {
+    return screen.getByLabelText(label) as HTMLSelectElement;
+}
+
+async function openWithHours(connections: unknown[] = []) {
+    mocks.templates.mockResolvedValue({ data: [RECEPTIONIST_WITH_HOURS] });
+    mocks.connections.mockResolvedValue({ data: { connections } });
+    renderWizard();
+    await openReceptionist();
+}
+
+async function fillAndCreate() {
+    fireEvent.change(screen.getByLabelText('Business name'), { target: { value: 'Bloom Dental' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Create agent' }));
+}
+
+it('asks for appointment hours only when the agent books into a calendar', async () => {
+    mocks.duplicate.mockResolvedValue({ data: { id: 42 } });
+    await openWithHours();
+
+    expect(await screen.findByRole('button', { name: 'Connect Google Calendar' })).toBeTruthy();
+    expect(screen.queryByRole('group', { name: 'Appointment hours' })).toBeNull();
+    await fillAndCreate();
+
+    await waitFor(() => expect(mocks.duplicate).toHaveBeenCalled());
+    const body = mocks.duplicate.mock.calls[0][0].body;
+    expect(body).not.toHaveProperty('appointment_hours');
+    expect(body).not.toHaveProperty('apply_to_calendar');
+    expect(body.values).not.toHaveProperty('appointment_hours');
+});
+
+it('shows the hours a reused calendar books in (its service period) and leaves them alone', async () => {
+    mocks.duplicate.mockResolvedValue({ data: { id: 7, calendar_hours: null } });
+    await openWithHours([BOOKING_CALENDAR]);
+
+    expect(await screen.findByRole('group', { name: 'Appointment hours' })).toBeTruthy();
+    await waitFor(() => expect(select('From').value).toBe('10'));
+    // Last start 15:15 plus a 45-minute appointment: open until 16:00.
+    expect(select('To').value).toBe('16');
+    expect(select('Appointment length').value).toBe('45');
+    expect(select('Time zone').value).toBe('America/New_York');
+    expect(screen.getByText(/every agent in this workspace that books with it/)).toBeTruthy();
+    await fillAndCreate();
+
+    expect(await screen.findByRole('heading', { name: 'Your agent is ready' })).toBeTruthy();
+    const body = mocks.duplicate.mock.calls[0][0].body;
+    expect(body.appointment_hours).toEqual(BOOKING_HOURS);
+    expect(body.apply_to_calendar).toBe(false);
+});
+
+it('saves edited hours to a reused calendar', async () => {
+    mocks.duplicate.mockResolvedValue({ data: { id: 7, calendar_hours: 'updated' } });
+    await openWithHours([BOOKING_CALENDAR]);
+    await waitFor(() => expect(select('From').value).toBe('10'));
+
+    fireEvent.change(select('From'), { target: { value: '8' } });
+    // Switching the calendar off and on again doesn't bring its hours back.
+    fireEvent.click(screen.getByRole('checkbox'));
+    expect(screen.queryByRole('group', { name: 'Appointment hours' })).toBeNull();
+    fireEvent.click(screen.getByRole('checkbox'));
+    expect(select('From').value).toBe('8');
+    await fillAndCreate();
+
+    expect(await screen.findByText('Books only in your appointment hours')).toBeTruthy();
+    const body = mocks.duplicate.mock.calls[0][0].body;
+    expect(body.appointment_hours).toEqual({ ...BOOKING_HOURS, open_hour: 8 });
+    expect(body.apply_to_calendar).toBe(true);
+});
+
+it('keeps opening times that are not one window, and sends no hours', async () => {
+    const lunchAndDinner = {
+        ...CALENDAR,
+        config: {
+            calendar_id: 'primary',
+            service_periods: [
+                { days: [3, 4, 5], first_start: '12:00', last_start: '14:00' },
+                { days: [3, 4, 5], first_start: '17:00', last_start: '21:00' },
+            ],
+        },
+    };
+    mocks.duplicate.mockResolvedValue({ data: { id: 7, calendar_hours: null } });
+    await openWithHours([lunchAndDinner]);
+
+    const group = await screen.findByRole('group', { name: 'Appointment hours' });
+    expect(group.textContent).toContain('Thu–Sat, first booking 12:00, last 14:00');
+    expect(group.textContent).toContain('Thu–Sat, first booking 17:00, last 21:00');
+    expect(group.textContent).toContain('set on the Bookings page');
+    expect(screen.queryByLabelText('From')).toBeNull();
+    await fillAndCreate();
+
+    await waitFor(() => expect(mocks.duplicate).toHaveBeenCalled());
+    const body = mocks.duplicate.mock.calls[0][0].body;
+    expect(body).not.toHaveProperty('appointment_hours');
+    expect(body).not.toHaveProperty('apply_to_calendar');
+});
+
+it('treats a calendar with no booking hours saved as new', async () => {
+    mocks.duplicate.mockResolvedValue({ data: { id: 7, calendar_hours: 'updated' } });
+    await openWithHours([{ ...CALENDAR, config: { calendar_id: 'primary' } }]);
+
+    expect(await screen.findByText(/These become the booking hours of your Google Calendar connection/)).toBeTruthy();
+    await fillAndCreate();
+
+    await waitFor(() => expect(mocks.duplicate).toHaveBeenCalled());
+    const body = mocks.duplicate.mock.calls[0][0].body;
+    expect(body.appointment_hours).toEqual({
+        booking_days: [0, 1, 2, 3, 4],
+        open_hour: 9,
+        close_hour: 17,
+        slot_minutes: 30,
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+    });
+    expect(body.apply_to_calendar).toBe(true);
+});
+
+it('shows, but doesn’t let change, hours this role may not change', async () => {
+    mocks.canConnect = false;
+    await openWithHours([BOOKING_CALENDAR]);
+
+    await waitFor(() => expect(select('From').value).toBe('10'));
+    expect(select('From').disabled).toBe(true);
+    expect(screen.getByRole('button', { name: 'Monday' })).toHaveProperty('disabled', true);
+    expect(screen.getByText(/Only a workspace owner or admin can change them/)).toBeTruthy();
+});
+
+it.each([
+    ['updated', 'Books only in your appointment hours', false],
+    ['not_allowed', 'An owner or admin sets them on Bookings', false],
+    ['failed', 'Not saved: set them on Bookings', true],
+])('reports calendar hours that were %s', async (status, text, warns) => {
+    mocks.duplicate.mockResolvedValue({ data: { id: 7, calendar_hours: status } });
+    await openWithHours([BOOKING_CALENDAR]);
+    await waitFor(() => expect(select('From').value).toBe('10'));
+
+    fireEvent.change(select('To'), { target: { value: '18' } });
+    await fillAndCreate();
+
+    expect(await screen.findByText(text)).toBeTruthy();
+    expect(mocks.warning).toHaveBeenCalledTimes(warns ? 1 : 0);
+});
+
+it('points at the hours when they make no sense', async () => {
+    await openWithHours([BOOKING_CALENDAR]);
+    await waitFor(() => expect(select('From').value).toBe('10'));
+
+    fireEvent.change(select('From'), { target: { value: '17' } });
+    await fillAndCreate();
+
+    expect(screen.getByText('The closing time must be after the opening time.')).toBeTruthy();
+    expect(document.activeElement).toBe(select('From'));
+    expect(mocks.duplicate).not.toHaveBeenCalled();
 });

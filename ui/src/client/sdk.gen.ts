@@ -498,10 +498,12 @@ export const getWorkflowTemplatesApiV1WorkflowTemplatesGet = <ThrowOnError exten
  *
  * Args:
  * request: The duplicate template request
- * user: The authenticated user
+ * membership: The user and their role in the selected organization,
+ * which decides whether the appointment hours may also change the
+ * attached calendar's booking hours
  *
  * Returns:
- * The newly created workflow
+ * The newly created workflow, and what happened to those booking hours
  */
 export const duplicateWorkflowTemplateApiV1WorkflowTemplatesDuplicatePost = <ThrowOnError extends boolean = false>(options: Options<DuplicateWorkflowTemplateApiV1WorkflowTemplatesDuplicatePostData, ThrowOnError>): RequestResult<DuplicateWorkflowTemplateApiV1WorkflowTemplatesDuplicatePostResponses, DuplicateWorkflowTemplateApiV1WorkflowTemplatesDuplicatePostErrors, ThrowOnError> => (options.client ?? client).post<DuplicateWorkflowTemplateApiV1WorkflowTemplatesDuplicatePostResponses, DuplicateWorkflowTemplateApiV1WorkflowTemplatesDuplicatePostErrors, ThrowOnError>({
     url: '/api/v1/workflow/templates/duplicate',

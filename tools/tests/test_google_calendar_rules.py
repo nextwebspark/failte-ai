@@ -32,7 +32,10 @@ from fallcha_tools.providers.google_calendar.phone_numbers import (
     region_for_timezone,
     same_number,
 )
-from fallcha_tools.providers.google_calendar.scheduling import resolve_window
+from fallcha_tools.providers.google_calendar.scheduling import (
+    candidate_slots,
+    resolve_window,
+)
 from fallcha_tools.providers.google_calendar.settings import (
     CalendarConfig,
     ServiceAccountKey,
@@ -431,6 +434,26 @@ def test_calendar_config_rejects(changes: dict[str, Any]) -> None:
         CalendarConfig.model_validate({**calendar_config(), **changes})
 
 
+@pytest.fixture
+def without_system_tz_database() -> Iterator[None]:
+    """Like python:3.13-slim, whose trimmed tz database lacks legacy names:
+    zones then come only from the ``tzdata`` package."""
+    zoneinfo.reset_tzpath(to=[])
+    ZoneInfo.clear_cache()
+    yield
+    zoneinfo.reset_tzpath()
+    ZoneInfo.clear_cache()
+
+
+@pytest.mark.usefixtures("without_system_tz_database")
+@pytest.mark.parametrize(
+    "zone", ["Asia/Calcutta", "US/Eastern", "Europe/Kiev", "America/Buenos_Aires"]
+)
+def test_calendar_config_takes_legacy_zones_browsers_report(zone: str) -> None:
+    config = CalendarConfig.model_validate({**calendar_config(), "timezone": zone})
+    assert config.zone.key == zone
+
+
 def test_calendar_config_defaults_match_the_shim() -> None:
     config = CalendarConfig.model_validate({"calendar_id": "c"})
     assert config.timezone == "Europe/Dublin"
@@ -479,3 +502,38 @@ def test_an_unreadable_time_zone_table_warns_once(
     assert region_for_timezone("Europe/Dublin") is None
     assert region_for_timezone("Asia/Calcutta") is None
     assert len([m for m in warnings if "unreadable" in m]) == 1
+
+
+def test_a_wizard_service_period_offers_the_legacy_hours_starts() -> None:
+    """The Create agent wizard saves its hours as one service period (the
+    API's ``calendar_config_patch``); it must offer exactly the starts the
+    same hours gave as booking_days/open_hour/close_hour."""
+    legacy = CalendarConfig.model_validate(
+        calendar_config(
+            booking_days=[5, 6], open_hour=8, close_hour=12, slot_minutes=45
+        )
+    )
+    period = CalendarConfig.model_validate(
+        calendar_config(
+            # Older keys left behind by an earlier save no longer decide.
+            booking_days=[0],
+            open_hour=14,
+            service_periods=[
+                {"days": [5, 6], "first_start": "08:00", "last_start": "11:15"}
+            ],
+            slot_minutes=45,
+        )
+    )
+    zone = ZoneInfo("Europe/Dublin")
+    week = (datetime(2026, 10, 12, tzinfo=zone), datetime(2026, 10, 19, tzinfo=zone))
+
+    starts = list(candidate_slots(*week, None, period))
+    assert starts == list(candidate_slots(*week, None, legacy))
+    assert [s.strftime("%a %H:%M") for s in starts[:6]] == [
+        "Sat 08:00",
+        "Sat 08:45",
+        "Sat 09:30",
+        "Sat 10:15",
+        "Sat 11:00",
+        "Sun 08:00",
+    ]

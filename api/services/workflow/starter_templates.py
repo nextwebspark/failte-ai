@@ -10,7 +10,11 @@ import copy
 from dataclasses import dataclass, field, replace
 from typing import Any, Literal
 
-from api.schemas.workflow_template import SetupOption, TemplateSetupField
+from api.schemas.workflow_template import (
+    SetupFieldType,
+    SetupOption,
+    TemplateSetupField,
+)
 from api.services.workflow.agent_builder import (
     AgentSpec,
     CapturedFieldSpec,
@@ -19,10 +23,9 @@ from api.services.workflow.agent_builder import (
 )
 from api.services.workflow.template_setup import (
     BUILTIN_TRANSFER_TOOL,
+    GOOGLE_CALENDAR,
     INTEGRATION_TOOL_PREFIX,
 )
-
-GOOGLE_CALENDAR = "google-calendar"
 
 TemplateCategory = Literal[
     "general",
@@ -53,7 +56,7 @@ class StarterTemplate:
             "template_description": self.description,
             "template_json": self.definition,
             "setup_fields": [
-                f.model_dump(exclude_none=True) for f in self.setup_fields
+                f.model_dump(mode="json", exclude_none=True) for f in self.setup_fields
             ],
             "call_type": self.call_type,
             "icon": self.icon,
@@ -107,6 +110,7 @@ def _business_fields(
             key="opening_hours",
             stored=True,
             label="Opening hours",
+            help="What your agent tells callers.",
             placeholder=hours_placeholder,
             max_length=300,
         ),
@@ -333,6 +337,8 @@ _RECEPTIONIST = AgentSpec(
         "You are the friendly receptionist for {{business_name}}. "
         "About the business: {{business_description}}\n\n"
         "Opening hours: {{opening_hours}}\n"
+        # Its answer is a whole line, newline included, or nothing.
+        "{{appointment_hours}}"
         "Address: {{address | fallback:not listed. Offer to take a message instead.}}\n"
         "Website: {{website | fallback:not listed.}}\n"
         "Other things callers often ask about: {{extra_info | fallback:nothing else.}}\n\n"
@@ -828,6 +834,13 @@ STARTER_TEMPLATES: list[StarterTemplate] = [
                     "whitening and emergency appointments."
                 ),
                 website_placeholder="https://bloomdental.ie",
+            ),
+            TemplateSetupField(
+                key="appointment_hours",
+                label="Appointment hours",
+                type=SetupFieldType.APPOINTMENT_HOURS,
+                help="When callers can book with Google Calendar.",
+                required=False,
             ),
             _GENERAL_TOGGLES,
         ],

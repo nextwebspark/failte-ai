@@ -10,8 +10,11 @@ import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Textarea } from '@/components/ui/textarea';
 import { chosenToggles, previewParts, templateGreeting, withToggle } from '@/lib/agentTemplates';
+import { isAppointmentHoursField } from '@/lib/appointmentHours';
 import { cn } from '@/lib/utils';
 
+import { AppointmentHoursInput } from './AppointmentHoursInput';
+import type { AppointmentHours } from './useAppointmentHours';
 import type { ConnectStatus, IntegrationConnect } from './useIntegrationConnect';
 
 const INPUT_TYPE: Record<string, string> = { url: 'url', email: 'email', phone: 'tel', text: 'text' };
@@ -238,9 +241,14 @@ interface TemplateSetupProps {
     calendar: IntegrationConnect | null;
     useCalendar: boolean;
     onUseCalendarChange: (value: boolean) => void;
+    /** The appointment hours the calendar books in, when it asks for them. */
+    hours: AppointmentHours;
 }
 
-/** The template's questions, its calendar, and how the greeting will sound. */
+/**
+ * The template's questions, its calendar (with the appointment hours it books
+ * in), and how the greeting will sound.
+ */
 export function TemplateSetup({
     template,
     answers,
@@ -249,6 +257,7 @@ export function TemplateSetup({
     calendar,
     useCalendar,
     onUseCalendarChange,
+    hours,
 }: TemplateSetupProps) {
     const fields = template.setup_fields ?? [];
     const greeting = templateGreeting(template);
@@ -256,7 +265,7 @@ export function TemplateSetup({
     return (
         <div className="flex min-h-0 flex-1 flex-col md:flex-row">
             <div className="flex min-w-0 flex-1 flex-col gap-4 px-6 py-5">
-                {fields.map((field) =>
+                {fields.filter((field) => !isAppointmentHoursField(field)).map((field) =>
                     field.type === 'toggles' ? (
                         <SetupToggles
                             key={field.key}
@@ -276,6 +285,15 @@ export function TemplateSetup({
                 )}
                 {calendar && (
                     <CalendarCard calendar={calendar} useCalendar={useCalendar} onUseCalendarChange={onUseCalendarChange} />
+                )}
+                {hours.field && (
+                    <AppointmentHoursInput
+                        field={hours.field}
+                        value={hours.hours}
+                        onChange={hours.edit}
+                        target={hours.target}
+                        periods={hours.periods}
+                    />
                 )}
             </div>
             {greeting && (

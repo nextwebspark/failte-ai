@@ -208,7 +208,7 @@ counting the calendar's events instead.
 | Config | Default | |
 |---|---|---|
 | `ai_booking_enabled` | `true` | Off: no times are offered and nothing is booked; the tools answer with `handoff: "booking_off"` |
-| `service_periods` | none | When bookings may start, e.g. `[{"days": [3,4,5], "first_start": "17:00", "last_start": "21:00"}]`; several per day for lunch and dinner. Replaces `booking_days`/`open_hour`/`close_hour` |
+| `service_periods` | none | When bookings may start, e.g. `[{"days": [3,4,5], "first_start": "17:00", "last_start": "21:00"}]`; several per day for lunch and dinner. When set, `booking_days`/`open_hour`/`close_hour` are ignored (one precedence rule; the API's Create agent wizard and the Bookings page both write `service_periods`) |
 | `booking_minutes` | `slot_minutes` | How long one booking holds a table or slot (a 90-minute dinner); `slot_minutes` stays the gap between start times |
 | `max_bookings_at_once` | 1 | Bookings held at the same moment: the tables released for phone bookings (5 of 20, the rest kept for walk-ins). Capped at 500 |
 | `max_guests_at_once` | none | Covers seated at the same moment |

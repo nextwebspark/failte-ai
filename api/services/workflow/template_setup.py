@@ -1,6 +1,7 @@
 """Fill a workflow template with the answers to its setup questions."""
 
 import re
+from collections.abc import Mapping
 from typing import Any
 
 from pydantic import TypeAdapter, ValidationError
@@ -52,8 +53,14 @@ def fill_template_values(
     definition: dict[str, Any],
     fields: list[TemplateSetupField],
     values: dict[str, str],
+    rendered: Mapping[str, str] | None = None,
 ) -> dict[str, Any]:
     """Return a copy of *definition* with each field's ``{{key}}`` replaced.
+
+    *values* are the user's answers, trimmed. *rendered* are answers the
+    server wrote for some fields; they take precedence and are not trimmed
+    (e.g. a line ending in a newline). Both are checked against the field
+    and made plain text alike.
 
     Raises TemplateSetupError for an unknown key, a missing required answer or
     an answer over the field's length limit. An empty optional answer uses the
@@ -72,8 +79,11 @@ def fill_template_values(
             # Our own wording, not the user's text: no placeholder check.
             answers[field.key] = toggles_answer(field, values.get(field.key))
             continue
-        value = (values.get(field.key) or "").strip()
-        if not value and field.required:
+        if rendered and field.key in rendered:
+            value = rendered[field.key]
+        else:
+            value = (values.get(field.key) or "").strip()
+        if not value.strip() and field.required:
             raise TemplateSetupError(f"{field.label} is required.")
         if len(value) > field.max_length:
             raise TemplateSetupError(
@@ -99,21 +109,28 @@ def fill_template_values(
             return [fill(item) for item in node]
         return node
 
-    return fill(definition)
+    filled: dict[str, Any] = {key: fill(value) for key, value in definition.items()}
+    return filled
 
 
 def fill_template(
     definition: dict[str, Any],
     fields: list[TemplateSetupField],
     values: dict[str, str],
+    rendered: Mapping[str, str] | None = None,
 ) -> tuple[dict[str, Any], dict[str, str]]:
     """Like ``fill_template_values``, but ``stored`` fields are not written
     into the prompts: each of their placeholders becomes
     ``{{initial_context.<key>}}`` (fallback kept), and the answers are
     returned as the agent's facts, to save as its template context variables.
-    Answers are checked the same way for every field."""
-    fill_template_values(definition, fields, values)  # validates every answer
-    stored = [f for f in fields if f.stored and f.type != "toggles"]
+    Answers are checked the same way for every field. *rendered* (server
+    written answers, e.g. the appointment hours line) is never stored."""
+    fill_template_values(definition, fields, values, rendered)  # validates all
+    stored = [
+        f
+        for f in fields
+        if f.stored and f.type != "toggles" and f.key not in (rendered or {})
+    ]
     facts = {
         f.key: (values.get(f.key) or "").strip()
         for f in stored
@@ -136,9 +153,10 @@ def fill_template(
             return node
 
         definition = relabel(definition)
-    baked = [f for f in fields if not (f.stored and f.type != "toggles")]
+    stored_keys = {f.key for f in stored}
+    baked = [f for f in fields if f.key not in stored_keys]
     remaining = {k: v for k, v in values.items() if k in {f.key for f in baked}}
-    return fill_template_values(definition, baked, remaining), facts
+    return fill_template_values(definition, baked, remaining, rendered), facts
 
 
 INTEGRATION_TOOL_PREFIX = "integration:"
@@ -174,6 +192,10 @@ def attach_tool_placeholder(
             node = {**node, "data": {**data, "tool_uuids": resolved}}
         nodes.append(node)
     return {**definition, "nodes": nodes}
+
+
+# The tools-service provider id of Google Calendar.
+GOOGLE_CALENDAR = "google-calendar"
 
 
 def attach_integration_tools(

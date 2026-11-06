@@ -26,6 +26,7 @@ from api.enums import (
     WorkflowStatus,
 )
 from api.schemas.ai_model_configuration import OrganizationAIModelConfigurationV2
+from api.schemas.appointment_hours import CalendarHoursStatus
 from api.schemas.privacy import DeleteWorkflowRunDataResponse
 from api.schemas.tool import TransferCallConfig, TransferCallToolDefinition
 from api.schemas.workflow import WorkflowRunResponseSchema
@@ -35,7 +36,12 @@ from api.schemas.workflow_template import (
     WorkflowTemplateResponse,
 )
 from api.sdk_expose import sdk_expose
-from api.services.auth.depends import get_user, requires
+from api.services.auth.depends import (
+    OrgMembership,
+    get_org_membership,
+    get_user,
+    requires,
+)
 from api.services.auth.permissions import Permission
 from api.services.configuration.ai_model_configuration import (
     WORKFLOW_MODEL_CONFIGURATION_V2_OVERRIDE_KEY,
@@ -80,12 +86,17 @@ from api.services.privacy.call_erasure import (
 from api.services.rate_limit import RateLimiter, get_rate_limiter
 from api.services.reports import generate_workflow_report_csv
 from api.services.storage import storage_fs
+from api.services.tool_integrations import Actor
 from api.services.workflow.agent_builder import (
     AgentBuilderError,
     AgentBuilderRequest,
     AgentSpecGenerator,
     build_agent_workflow,
     default_agent_spec_generator,
+)
+from api.services.workflow.appointment_hours import (
+    appointment_hours_answers,
+    update_calendar_booking_hours,
 )
 from api.services.workflow.business_facts import (
     BusinessFactsError,
@@ -340,6 +351,17 @@ class WorkflowResponse(BaseModel):
     version_number: int | None = None
     version_status: str | None = None
     workflow_uuid: str | None = None
+
+
+class TemplateWorkflowResponse(WorkflowResponse):
+    """An agent created from a template."""
+
+    calendar_hours: CalendarHoursStatus | None = Field(
+        default=None,
+        description="Whether the appointment hours were saved as the attached "
+        "Google Calendar connection's booking hours; null when there was "
+        "nothing to save.",
+    )
 
 
 class WorkflowListResponse(BaseModel):
@@ -1599,18 +1621,23 @@ async def get_workflow_templates() -> List[WorkflowTemplateResponse]:
     dependencies=requires(Permission.AGENTS_WRITE),
 )
 async def duplicate_workflow_template(
-    request: DuplicateTemplateRequest, user: UserModel = Depends(get_user)
-) -> WorkflowResponse:
+    request: DuplicateTemplateRequest,
+    membership: OrgMembership = Depends(get_org_membership),
+) -> TemplateWorkflowResponse:
     """
     Duplicate a workflow template to create a new workflow for the user.
 
     Args:
         request: The duplicate template request
-        user: The authenticated user
+        membership: The user and their role in the selected organization,
+            which decides whether the appointment hours may also change the
+            attached calendar's booking hours
 
     Returns:
-        The newly created workflow
+        The newly created workflow, and what happened to those booking hours
     """
+    user = membership.user
+    organization_id = membership.organization_id
     template_client = WorkflowTemplateClient()
     template = await template_client.get_workflow_template(request.template_id)
 
@@ -1621,12 +1648,14 @@ async def duplicate_workflow_template(
         )
 
     try:
+        fields = parse_setup_fields(template.setup_fields)
         # Business facts stay on the agent (editable later); the rest is
-        # written into the prompts.
+        # written into the prompts, the appointment hours as a line.
         filled, facts = fill_template(
             template.template_json,
-            parse_setup_fields(template.setup_fields),
+            fields,
             request.values,
+            rendered=appointment_hours_answers(fields, request),
         )
     except TemplateSetupError as e:
         raise HTTPException(status_code=422, detail=str(e))
@@ -1639,9 +1668,7 @@ async def duplicate_workflow_template(
         )
     if request.integration_tools:
         tool_uuids = set(request.integration_tools.values())
-        tools = await db_client.get_tools_by_uuids(
-            list(tool_uuids), user.selected_organization_id
-        )
+        tools = await db_client.get_tools_by_uuids(list(tool_uuids), organization_id)
         if {tool.tool_uuid for tool in tools} != tool_uuids:
             raise HTTPException(status_code=404, detail="Connected tool not found")
     filled = attach_integration_tools(filled, request.integration_tools)
@@ -1650,7 +1677,7 @@ async def duplicate_workflow_template(
         # agent's transfer_number fact (empty: the transfer fails and the
         # agent takes a message, as its instructions say).
         transfer_tool = await db_client.create_tool(
-            organization_id=user.selected_organization_id,
+            organization_id=organization_id,
             user_id=user.id,
             name=f"Put through to the team ({request.workflow_name})"[:255],
             definition=TransferCallToolDefinition(
@@ -1685,16 +1712,23 @@ async def duplicate_workflow_template(
         request.workflow_name,
         workflow_def,
         user.id,
-        user.selected_organization_id,
+        organization_id,
         template_context_variables=facts,
     )
 
     if trigger_paths:
         await db_client.sync_triggers_for_workflow(
             workflow_id=workflow.id,
-            organization_id=user.selected_organization_id,
+            organization_id=organization_id,
             trigger_paths=trigger_paths,
         )
+
+    # After creating the agent: failing to save the hours must not lose it.
+    calendar_hours = await update_calendar_booking_hours(
+        request,
+        Actor(organization_id=organization_id, user=user),
+        may_change_settings=membership.can(Permission.INTEGRATIONS_WRITE),
+    )
 
     return {
         "id": workflow.id,
@@ -1710,6 +1744,7 @@ async def duplicate_workflow_template(
         "workflow_configurations": mask_workflow_configurations(
             workflow.workflow_configurations, drop_secrets=secrets_hidden_for(user)
         ),
+        "calendar_hours": calendar_hours,
     }
 
 

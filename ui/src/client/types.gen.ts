@@ -3069,6 +3069,16 @@ export type DuplicateTemplateRequest = {
     integration_tools?: {
         [key: string]: string;
     };
+    /**
+     * Answer to the template's appointment_hours question; only with Google Calendar attached. Goes into the agent's prompt.
+     */
+    appointment_hours?: AppointmentHours | null;
+    /**
+     * Apply To Calendar
+     *
+     * Also make appointment_hours the attached Google Calendar connection's booking hours (shared by every agent that books with it).
+     */
+    apply_to_calendar?: boolean;
 };
 
 /**
@@ -9128,6 +9138,10 @@ export type TelnyxConfigurationRequest = {
  * The answer replaces every ``{{key}}`` placeholder in the template. A
  * placeholder may carry a fallback (``{{key | fallback:text}}``), which is
  * used when an optional field is left empty.
+ *
+ * An ``appointment_hours`` field is answered with the request's structured
+ * ``appointment_hours`` (not with ``values``); its placeholder becomes a
+ * sentence describing those hours.
  */
 export type TemplateSetupField = {
     /**
@@ -9138,10 +9152,7 @@ export type TemplateSetupField = {
      * Label
      */
     label: string;
-    /**
-     * Type
-     */
-    type?: 'text' | 'textarea' | 'url' | 'email' | 'phone' | 'toggles';
+    type?: SetupFieldType;
     /**
      * Help
      */
@@ -11480,7 +11491,8 @@ export type XaittsConfiguration = {
 /**
  * AiBookingRequest
  *
- * The owner's switches for one calendar; omitted ones are kept.
+ * The owner's switches and booking rules for one calendar; omitted
+ * ones are kept.
  */
 export type AiBookingRequest = {
     /**
@@ -11491,9 +11503,7 @@ export type AiBookingRequest = {
      * Ai Changes Enabled
      */
     ai_changes_enabled?: boolean | null;
-    rules?: {
-        [key: string]: unknown;
-    } | null;
+    rules?: BookingRules | null;
 };
 
 /**
@@ -11533,6 +11543,14 @@ export type BookingCalendar = {
      */
     ai_changes_enabled?: boolean;
     /**
+     * Rules
+     *
+     * The calendar's current booking rules (owner-editable keys only; missing ones use the defaults).
+     */
+    rules?: {
+        [key: string]: JsonValue;
+    };
+    /**
      * Ok
      *
      * False when its bookings could not be read.
@@ -11544,9 +11562,6 @@ export type BookingCalendar = {
      * Why not, in words an admin can act on.
      */
     error?: string | null;
-    rules?: {
-        [key: string]: unknown;
-    } | null;
 };
 
 /**
@@ -11738,6 +11753,202 @@ export type CallNotificationSettingsResponse = {
      * A text provider is set up, so caller texts actually go out.
      */
     sms_available: boolean;
+};
+
+/**
+ * AppointmentHours
+ *
+ * The days, hours, length and time zone of bookable appointments. One
+ * window for all booking days, in whole hours.
+ */
+export type AppointmentHours = {
+    /**
+     * Booking Days
+     *
+     * Weekdays appointments can be booked on (Monday=0 ... Sunday=6).
+     */
+    booking_days?: Array<Weekday>;
+    /**
+     * Open Hour
+     *
+     * First appointment starts at this hour.
+     */
+    open_hour?: number;
+    /**
+     * Close Hour
+     *
+     * Last appointment ends by this hour.
+     */
+    close_hour?: number;
+    /**
+     * Slot Minutes
+     *
+     * Length of one appointment.
+     */
+    slot_minutes?: number;
+    /**
+     * Timezone
+     *
+     * IANA time zone of the business, e.g. Europe/Dublin.
+     */
+    timezone?: string;
+};
+
+/**
+ * CalendarHoursStatus
+ *
+ * What happened to the Google Calendar connection's booking hours when an
+ * agent was created with appointment hours.
+ */
+export type CalendarHoursStatus = 'updated' | 'not_allowed' | 'failed';
+
+/**
+ * SetupFieldType
+ *
+ * How the Create agent dialog asks a setup question.
+ */
+export type SetupFieldType = 'text' | 'textarea' | 'url' | 'email' | 'phone' | 'toggles' | 'appointment_hours';
+
+/**
+ * TemplateWorkflowResponse
+ *
+ * An agent created from a template.
+ */
+export type TemplateWorkflowResponse = {
+    /**
+     * Id
+     */
+    id: number;
+    /**
+     * Name
+     */
+    name: string;
+    /**
+     * Status
+     */
+    status: string;
+    /**
+     * Created At
+     */
+    created_at: string;
+    /**
+     * Workflow Definition
+     */
+    workflow_definition: {
+        [key: string]: unknown;
+    };
+    /**
+     * Current Definition Id
+     */
+    current_definition_id: number | null;
+    /**
+     * Template Context Variables
+     */
+    template_context_variables?: {
+        [key: string]: unknown;
+    } | null;
+    call_disposition_codes?: CallDispositionCodes | null;
+    /**
+     * Total Runs
+     */
+    total_runs?: number | null;
+    /**
+     * Workflow Configurations
+     */
+    workflow_configurations?: {
+        [key: string]: unknown;
+    } | null;
+    /**
+     * Version Number
+     */
+    version_number?: number | null;
+    /**
+     * Version Status
+     */
+    version_status?: string | null;
+    /**
+     * Workflow Uuid
+     */
+    workflow_uuid?: string | null;
+    /**
+     * Whether the appointment hours were saved as the attached Google Calendar connection's booking hours; null when there was nothing to save.
+     */
+    calendar_hours?: CalendarHoursStatus | null;
+};
+
+/**
+ * Weekday
+ *
+ * Day of the week, Monday=0 ... Sunday=6 (Python's ``date.weekday()``).
+ */
+export type Weekday = 0 | 1 | 2 | 3 | 4 | 5 | 6;
+
+/**
+ * BookingRules
+ *
+ * The booking rules an owner sets in plain terms. Omitted rules are
+ * kept; the tools service checks the combination (e.g. a party limit above
+ * the covers limit) and answers 422 with the reason.
+ */
+export type BookingRules = {
+    /**
+     * Service Periods
+     */
+    service_periods?: Array<BookingServicePeriod> | null;
+    /**
+     * Slot Minutes
+     */
+    slot_minutes?: number | null;
+    /**
+     * Booking Minutes
+     */
+    booking_minutes?: number | null;
+    /**
+     * Buffer Minutes
+     */
+    buffer_minutes?: number | null;
+    /**
+     * Max Bookings At Once
+     */
+    max_bookings_at_once?: number | null;
+    /**
+     * Max Guests At Once
+     */
+    max_guests_at_once?: number | null;
+    /**
+     * Max Party Size
+     */
+    max_party_size?: number | null;
+    /**
+     * Min Lead Hours
+     */
+    min_lead_hours?: number | null;
+    /**
+     * Horizon Days
+     */
+    horizon_days?: number | null;
+};
+
+/**
+ * BookingServicePeriod
+ *
+ * When bookings may start on some weekdays, e.g. dinner Thu-Sat.
+ */
+export type BookingServicePeriod = {
+    /**
+     * Days
+     *
+     * Monday=0 ... Sunday=6.
+     */
+    days: Array<number>;
+    /**
+     * First Start
+     */
+    first_start: string;
+    /**
+     * Last Start
+     */
+    last_start: string;
 };
 
 /**
@@ -13171,7 +13382,7 @@ export type DuplicateWorkflowTemplateApiV1WorkflowTemplatesDuplicatePostResponse
     /**
      * Successful Response
      */
-    200: WorkflowResponse;
+    200: TemplateWorkflowResponse;
 };
 
 export type DuplicateWorkflowTemplateApiV1WorkflowTemplatesDuplicatePostResponse = DuplicateWorkflowTemplateApiV1WorkflowTemplatesDuplicatePostResponses[keyof DuplicateWorkflowTemplateApiV1WorkflowTemplatesDuplicatePostResponses];

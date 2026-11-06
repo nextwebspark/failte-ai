@@ -4,6 +4,7 @@ import { ChevronLeft, Loader2 } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { type ReactNode, useEffect, useRef, useState } from 'react';
+import { toast } from 'sonner';
 
 import {
     createWorkflowApiV1WorkflowCreateDefinitionPost,
@@ -11,7 +12,7 @@ import {
     duplicateWorkflowTemplateApiV1WorkflowTemplatesDuplicatePost,
     getWorkflowTemplatesApiV1WorkflowTemplatesGet,
 } from '@/client/sdk.gen';
-import type { WorkflowTemplateResponse } from '@/client/types.gen';
+import type { CalendarHoursStatus, WorkflowTemplateResponse } from '@/client/types.gen';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -19,7 +20,9 @@ import { Textarea } from '@/components/ui/textarea';
 import { AgentReady, type ReadyItem } from '@/components/workflow/create/AgentReady';
 import { TemplateGallery, TemplateIcon } from '@/components/workflow/create/TemplateGallery';
 import { TemplateSetup } from '@/components/workflow/create/TemplateSetup';
+import { useAppointmentHours } from '@/components/workflow/create/useAppointmentHours';
 import { useIntegrationConnect } from '@/components/workflow/create/useIntegrationConnect';
+import { useOrgConfig } from '@/context/OrgConfigContext';
 import {
     agentNameFor,
     emptyAnswers,
@@ -31,6 +34,24 @@ import { detailFromError } from '@/lib/apiError';
 import { useAuth } from '@/lib/auth';
 import logger from '@/lib/logger';
 import { cn } from '@/lib/utils';
+
+/** What happened to the Google Calendar connection's booking hours. */
+const CALENDAR_HOURS_ITEM: Record<CalendarHoursStatus, ReadyItem> = {
+    updated: { text: 'Books only in your appointment hours', done: true },
+    not_allowed: { text: 'Calendar booking hours', note: 'An owner or admin sets them on Bookings', done: false },
+    failed: { text: 'Calendar booking hours', note: 'Not saved: set them on Bookings', done: false },
+};
+
+/** The agent exists; only saving the hours to the calendar failed. */
+function warnHoursNotSaved() {
+    toast.warning('Your agent is ready, but its appointment hours weren’t saved to Google Calendar.', {
+        description: 'Set them on the Bookings page, under Booking rules.',
+        action: {
+            label: 'Open Bookings',
+            onClick: () => window.open('/bookings', '_blank', 'noopener'),
+        },
+    });
+}
 
 /** Where the wizard opens: ready-made agents, or one of the other two ways. */
 export type CreateMode = 'template' | 'describe' | 'blank';
@@ -145,6 +166,7 @@ interface CreateAgentWizardProps {
 export function CreateAgentWizard({ initialMode = 'template' }: CreateAgentWizardProps) {
     const router = useRouter();
     const { user, loading: authLoading, redirectToLogin } = useAuth();
+    const { can } = useOrgConfig();
 
     const [view, setView] = useState<View>(initialMode === 'template' ? 'gallery' : initialMode);
     const [templates, setTemplates] = useState<WorkflowTemplateResponse[] | null>(null);
@@ -162,6 +184,11 @@ export function CreateAgentWizard({ initialMode = 'template' }: CreateAgentWizar
 
     const wantsCalendar = view === 'setup' && !!template?.integrations?.includes(GOOGLE_CALENDAR);
     const calendar = useIntegrationConnect(GOOGLE_CALENDAR, wantsCalendar && !!user);
+    const calendarTool =
+        wantsCalendar && useCalendar && calendar.status === 'connected'
+            ? calendar.connection?.tool_uuids?.[0]
+            : undefined;
+    const hours = useAppointmentHours(template, calendar, !!calendarTool, can('integrations:write'));
 
     useEffect(() => {
         setView(initialMode === 'template' ? 'gallery' : initialMode);
@@ -261,11 +288,12 @@ export function CreateAgentWizard({ initialMode = 'template' }: CreateAgentWizar
             document.getElementById(`setup-${missing.key}`)?.focus();
             return;
         }
+        if (hours.field && hours.problem) {
+            // The hours input already says what is wrong.
+            document.getElementById(`setup-${hours.field.key}-open`)?.focus();
+            return;
+        }
         setAnswerErrors({});
-        const calendarTool =
-            wantsCalendar && useCalendar && calendar.status === 'connected'
-                ? calendar.connection?.tool_uuids?.[0]
-                : undefined;
         setSubmitting(true);
         setError(null);
         try {
@@ -275,6 +303,7 @@ export function CreateAgentWizard({ initialMode = 'template' }: CreateAgentWizar
                     workflow_name: agentNameFor(template, answers),
                     values: Object.fromEntries(Object.entries(answers).map(([k, v]) => [k, v.trim()])),
                     integration_tools: calendarTool ? { [GOOGLE_CALENDAR]: calendarTool } : {},
+                    ...hours.request,
                 },
             });
             if (response.error || !response.data?.id) {
@@ -288,6 +317,11 @@ export function CreateAgentWizard({ initialMode = 'template' }: CreateAgentWizar
                         ? { text: 'Books into Google Calendar', done: true }
                         : { text: 'Books appointments', note: 'Takes a message for now', done: false },
                 );
+            }
+            const calendarHours = response.data.calendar_hours;
+            if (calendarHours) {
+                items.push(CALENDAR_HOURS_ITEM[calendarHours]);
+                if (calendarHours === 'failed') warnHoursNotSaved();
             }
             items.push({ text: 'Ready for a test call', done: true });
             setCreated({ id: response.data.id, items });
@@ -441,6 +475,7 @@ export function CreateAgentWizard({ initialMode = 'template' }: CreateAgentWizar
                             calendar={wantsCalendar ? calendar : null}
                             useCalendar={useCalendar}
                             onUseCalendarChange={setUseCalendar}
+                            hours={hours}
                         />
                         {errorLine && <div className="px-6 pb-4">{errorLine}</div>}
                     </div>

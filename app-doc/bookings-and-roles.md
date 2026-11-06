@@ -217,6 +217,37 @@ Saving goes through the same narrow endpoint as the switches. It accepts
 only these rule keys, never the calendar id, and the tools service checks the
 combination.
 
+### Appointment hours in the Create agent wizard (PR #147)
+The AI Receptionist's setup asks for **Appointment hours** (days, one window
+in whole hours, appointment length, time zone) once a Google Calendar is
+attached. They go into the agent's prompt as one line, and onto the calendar
+in the **same settings the Booking rules panel edits**:
+
+- **One set of hours per calendar.** The wizard saves them as a single
+  `service_periods` entry, e.g. Mon–Fri 9:00–17:00 with 30-minute
+  appointments becomes `{"days": [0,1,2,3,4], "first_start": "09:00",
+  "last_start": "16:30"}` (the last appointment ends at closing time), plus
+  `slot_minutes` and `timezone`. It never writes `booking_days`,
+  `open_hour` or `close_hour`.
+- **Precedence rule.** When `service_periods` is set, the calendar uses it
+  and ignores `booking_days`/`open_hour`/`close_hour` (older connections, or
+  the Integrations settings form, may still hold those; they no longer
+  decide anything). With no `service_periods`, the older keys apply as
+  before. The wizard and the Booking rules panel both read and write
+  `service_periods`, so each shows what the other saved.
+- **When the wizard saves them:** only for a calendar connected in the
+  wizard's pop-up, a calendar with no booking hours yet, or when the user
+  edited the hours of a calendar other agents already use (#147's rules).
+  It needs `integrations:write`; otherwise the hours show read-only. Saving
+  is best effort after the agent is created (`calendar_hours`: `updated`,
+  `not_allowed` or `failed`, with a warning pointing at Bookings).
+- **Opening times the wizard can't show as one window** (lunch and dinner,
+  a 9:30 start, an end off the hour) are listed read-only and left as they
+  are; the agent gets no hours line in its prompt then.
+- The prompt line is written once, at creation. Changing the Booking rules
+  later changes what the calendar offers (the agent only ever offers the
+  calendar's free times) but not that line.
+
 ## 5. Where things live
 
 | Part | Code |
@@ -227,6 +258,7 @@ combination.
 | Booking rules and counting | `tools/fallcha_tools/providers/google_calendar/` (`settings.py`, `scheduling.py`, `service.py`); see `tools/README.md` "Booking rules" |
 | Agent tools | `tools/fallcha_tools/providers/google_calendar/tools.py` (`check_appointment_availability`, `book_appointment`, `find_appointments`, `reschedule_appointment`, `cancel_appointment`); caller matching in `matching.py` and `phone_numbers.py`; caller ID from `api/services/tool_integrations/call_context.py` |
 | Bookings list | tools `GET /internal/connections/{id}/bookings`; API `GET /api/v1/integrations/bookings`; UI `ui/src/app/bookings/` |
+| Appointment hours (wizard) | `api/schemas/appointment_hours.py`, `api/services/workflow/appointment_hours.py` (`calendar_config_patch`, `service_period`), `ui/src/lib/appointmentHours.ts`, `ui/src/components/workflow/create/AppointmentHoursInput.tsx`, `useAppointmentHours.ts`, `CreateAgentWizard.tsx` |
 | Booking questions (toggles) | `api/services/workflow/starter_templates.py` (`_booking_steps`, `*_TOGGLES`), `api/services/workflow/template_setup.py` (`toggles_answer`), `ui/src/components/workflow/create/TemplateSetup.tsx` |
 
 ## 6. Known gaps
