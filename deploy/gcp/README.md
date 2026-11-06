@@ -802,6 +802,34 @@ and only then disable the old secret in Google.
   serves the Calendar and Sheets integrations. Sign-in asks only for
   `openid email profile`, which needs no Google review.
 
+### Texts to callers (Twilio SMS)
+
+Booking confirmation texts (`app-doc/notifications.md`) are off until both
+Twilio secrets exist and a sender is set; until then they are only logged.
+Deploys work either way.
+
+```bash
+for name in dograh-twilio-sms-account-sid dograh-twilio-sms-auth-token; do
+  echo "Paste $name, then Enter:"; read -rs V
+  printf %s "$V" | gcloud secrets create "$name" --data-file=- --project=dograh-eu
+  gcloud secrets add-iam-policy-binding "$name" --project=dograh-eu \
+    --member=serviceAccount:dograh-app-sa@dograh-eu.iam.gserviceaccount.com \
+    --role=roles/secretmanager.secretAccessor
+done
+unset V
+# The sender once (later runs keep it): a number on the Twilio account in
+# E.164, or an alphanumeric id of up to 11 letters and digits.
+cd /opt/lightmove/dograh
+sudo DOGRAH_SMS_FROM=+3531XXXXXXX ./deploy/gcp/configure-env.sh
+sudo docker compose up -d api
+```
+
+The script then writes `SMS_PROVIDER=twilio`, `TWILIO_SMS_ACCOUNT_SID`,
+`TWILIO_SMS_AUTH_TOKEN` and `SMS_FROM`. To switch texts off again, remove those
+lines from `.env` (or set `SMS_PROVIDER=none`), delete the secrets, and
+`up -d api`; each workspace can also turn them off under Settings >
+Notifications.
+
 ## Before go-live
 
 - [ ] **Remove the pre-launch instance schedule** — do this *first*, before adding

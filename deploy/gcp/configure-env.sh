@@ -312,6 +312,8 @@ if [[ -n "$STRIPE_KEY" ]]; then
   STRIPE_WEBHOOK="$(sm dograh-stripe-webhook-secret)"
 fi
 RESEND_KEY="$(sm_optional dograh-resend-api-key)"
+TWILIO_SMS_SID="$(sm_optional dograh-twilio-sms-account-sid)"
+TWILIO_SMS_TOKEN="$(sm_optional dograh-twilio-sms-auth-token)"
 GOOGLE_ID="" GOOGLE_SECRET=""
 GOOGLE_ID_STATUS=0 GOOGLE_SECRET_STATUS=0
 if [[ "${DOGRAH_GOOGLE:-}" != off ]]; then
@@ -369,7 +371,8 @@ set_key CREDENTIALS_ENCRYPTION_KEYS "$CRED_KEYS"
 #     --role=roles/secretmanager.secretAccessor
 # Names: dograh-stripe-secret-key (sk_test_/sk_live_), dograh-stripe-webhook-secret
 # (whsec_ of the dashboard endpoint), dograh-resend-api-key (re_...),
-# dograh-google-oauth-client-id / dograh-google-oauth-client-secret.
+# dograh-google-oauth-client-id / dograh-google-oauth-client-secret,
+# dograh-twilio-sms-account-sid / dograh-twilio-sms-auth-token.
 
 if [[ -n "$STRIPE_KEY" ]]; then
   set_key BILLING_PROVIDER stripe
@@ -388,6 +391,27 @@ if [[ -n "$RESEND_KEY" ]]; then
   # the Resend account owner's own address. The default is this install's
   # sending domain, verified in Resend.
   setting EMAIL_FROM 'LightMove.ai <no-reply@mail.lightmove.ai>' "${DOGRAH_EMAIL_FROM:-}"
+fi
+
+# Text messages (booking confirmations to callers, app-doc/notifications.md)
+# go through Twilio once both secrets exist: dograh-twilio-sms-account-sid
+# (AC...) and dograh-twilio-sms-auth-token. The sender is not a secret: give
+# it once with DOGRAH_SMS_FROM=+353... (a number on that Twilio account) or an
+# alphanumeric id such as DOGRAH_SMS_FROM=LightMove; later runs keep it.
+# Without a sender, or without either secret, SMS_PROVIDER stays "none" (texts
+# are only logged) and the deploy carries on.
+if [[ -n "$TWILIO_SMS_SID" && -n "$TWILIO_SMS_TOKEN" ]]; then
+  SMS_SENDER="${DOGRAH_SMS_FROM:-$(env_value SMS_FROM)}"
+  if [[ -n "$SMS_SENDER" ]]; then
+    set_key SMS_PROVIDER twilio
+    set_key TWILIO_SMS_ACCOUNT_SID "$TWILIO_SMS_SID"
+    set_key TWILIO_SMS_AUTH_TOKEN "$TWILIO_SMS_TOKEN"
+    set_key SMS_FROM "$SMS_SENDER"
+  else
+    echo "  Twilio SMS secrets found but no sender: set DOGRAH_SMS_FROM; texts stay off" >&2
+  fi
+elif [[ -n "$TWILIO_SMS_SID" || -n "$TWILIO_SMS_TOKEN" ]]; then
+  echo "  only one of dograh-twilio-sms-account-sid / -auth-token exists: texts stay off" >&2
 fi
 
 # One Google OAuth client serves "Continue with Google" sign-in (api, .env)

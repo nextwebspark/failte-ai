@@ -3,6 +3,7 @@ import asyncio
 from loguru import logger
 from pipecat.utils.run_context import set_current_run_id
 
+from api.services.call_notifications import send_call_notifications
 from api.services.telephony.external_pbx_writeback import (
     sync_external_pbx_call_record,
 )
@@ -77,5 +78,10 @@ async def _process_workflow_completion(_ctx, workflow_run_id: int) -> None:
         logger.error(
             f"Error writing back to external PBX for workflow {workflow_run_id}: {e}"
         )
+
+    # After the write-back for the same reason: the email reports the
+    # caller's name and message, which come from the final extraction.
+    # Never raises; claims each channel first, so a retry sends nothing twice.
+    await send_call_notifications(workflow_run_id)
 
     logger.info(f"Completed workflow completion processing for run {workflow_run_id}")

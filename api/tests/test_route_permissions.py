@@ -222,6 +222,9 @@ async def client_as(org):
             "/api/v1/organizations/members/999999/bookings-access",
             {OrgRole.VIEWER, OrgRole.ADMIN},
         ),
+        # Who hears about calls: owner and admins.
+        ("GET", "/api/v1/organizations/notifications", {OrgRole.VIEWER, OrgRole.ADMIN}),
+        ("PUT", "/api/v1/organizations/notifications", {OrgRole.VIEWER, OrgRole.ADMIN}),
         # Library writes: platform admins only, whatever the org role.
         ("POST", "/api/v1/skill-library", set()),
     ],
