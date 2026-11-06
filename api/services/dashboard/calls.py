@@ -17,6 +17,7 @@ from api.services.call_notifications.outcome import (
     CallEvent,
     MissedReason,
     classify_call,
+    missed_reason,
     transfer_failed,
 )
 from api.services.reports.daily_report import is_transferred
@@ -42,8 +43,10 @@ class CallResult(StrEnum):
     # The agent tried to pass the call to a person and nobody picked up
     # (the transfer tool's result in the call log).
     TRANSFER_NOT_ANSWERED = "transfer_not_answered"
-    # The caller asked to be called back (outcome ``callback_requested``), or
-    # the agent took their name, number or reason for a person to act on.
+    # The caller asked to be called back (outcome ``callback_requested``),
+    # left a number to ring them on, or asked for a booking the agent could
+    # only pass on (``booking_outcome`` "requested"). A name or a reason alone
+    # doesn't count: the agent writes those down on ordinary calls too.
     CALLBACK_REQUESTED = "callback_requested"
     # The engine heard no speech from the caller (no ``user_speech`` tag).
     HUNG_UP_SILENT = "hung_up_silent"
@@ -146,14 +149,20 @@ def call_result(
     # one, even if the agent then took their number.
     if transfer_failed(logs):
         return CallResult.TRANSFER_NOT_ANSWERED
-    if (
-        gathered.get("mapped_call_disposition") == CALLBACK_DISPOSITION
-        or outcome.event == CallEvent.MESSAGE_TAKEN
-    ):
+    if wants_callback(gathered):
         return CallResult.CALLBACK_REQUESTED
-    if outcome.event == CallEvent.MISSED_CALL and outcome.missed_reason is not None:
-        return _MISSED_RESULT[outcome.missed_reason]
+    reason = missed_reason(gathered, logs, usage_info)
+    if reason is not None:
+        return _MISSED_RESULT[reason]
     return CallResult.HANDLED
+
+
+def wants_callback(gathered: Mapping[str, Any]) -> bool:
+    return (
+        gathered.get("mapped_call_disposition") == CALLBACK_DISPOSITION
+        or _text(gathered.get("callback_number")) is not None
+        or (_text(gathered.get("booking_outcome")) or "").lower() == "requested"
+    )
 
 
 def call_view(

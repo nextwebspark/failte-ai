@@ -122,6 +122,21 @@ def test_call_result(gathered, logs, expected):
     assert _result(gathered, logs=logs) == expected
 
 
+@pytest.mark.parametrize(
+    "extra",
+    [
+        {"caller_name": "Niamh Kelly"},
+        {"call_reason": "Asked if dogs are allowed on the terrace"},
+        {"callback_number": ""},
+        # The agent says it booked but no calendar confirmed it: not a
+        # follow-up, and never counted as a booking made.
+        {"caller_name": "Paul Kennedy", "booking_outcome": "booked"},
+    ],
+)
+def test_details_written_down_on_ordinary_calls_are_not_a_callback(extra):
+    assert _result({**SPOKE, **extra}) == CallResult.HANDLED
+
+
 def test_spoke_then_hung_up_quickly_is_early_not_handled():
     gathered = {"call_tags": ["user_speech"], "call_status": "user_hangup"}
     assert _result(gathered, seconds=6) == CallResult.HUNG_UP_EARLY
