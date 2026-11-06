@@ -12,6 +12,7 @@ import {
     Phone,
     RotateCcw,
 } from 'lucide-react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useState, useTransition } from 'react';
 import { toast } from 'sonner';
@@ -33,6 +34,7 @@ import {
     DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { StatusPill, statusTone } from '@/components/ui/status-pill';
+import { useOrgConfig } from '@/context/OrgConfigContext';
 import { useOrganizationTimezone } from '@/hooks/useOrganizationTimezone';
 import {
     AGENT_STATUS_LABEL,
@@ -44,6 +46,7 @@ import {
     weeklyRuns,
 } from '@/lib/agentList';
 import { formatDate } from '@/lib/dateTime';
+import { ROW_LINK } from '@/lib/rowLink';
 import { cn } from '@/lib/utils';
 
 interface WorkflowTableProps {
@@ -111,9 +114,13 @@ function Sparkline({ values }: { values: number[] }) {
     );
 }
 
+const agentHref = (id: number) => `/workflow/${id}`;
+
 /**
- * The Voice agents list: one row per agent. The row opens the agent; the
- * secondary actions (move, archive, restore) live in its ⋯ menu.
+ * The Voice agents list: one row per agent. The agent's name is a real link
+ * stretched over the row, so the whole row opens the agent; the secondary
+ * actions (move, archive, restore) live in its ⋯ menu, shown only to roles
+ * that can change agents.
  */
 export function WorkflowTable({ workflows, showArchived, folders }: WorkflowTableProps) {
     const router = useRouter();
@@ -123,10 +130,8 @@ export function WorkflowTable({ workflows, showArchived, folders }: WorkflowTabl
     const timezone = useOrganizationTimezone();
     const [isPending, startTransition] = useTransition();
     const [busyWorkflowId, setBusyWorkflowId] = useState<number | null>(null);
-
-    const handleOpen = (id: number) => {
-        router.push(`/workflow/${id}`);
-    };
+    const { can } = useOrgConfig();
+    const canEdit = can('agents:write');
 
     const handleArchiveToggle = async (id: number, currentStatus: string) => {
         const newStatus = currentStatus === 'active' ? 'archived' : 'active';
@@ -215,22 +220,11 @@ export function WorkflowTable({ workflows, showArchived, folders }: WorkflowTabl
                     return (
                         <li
                             key={workflow.id}
-                            role="link"
-                            tabIndex={0}
-                            aria-label={`Open ${workflow.name}`}
                             className={cn(
                                 ROW_GRID,
-                                'min-h-[60px] cursor-pointer py-2.5 transition-colors hover:bg-panel-2 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring',
+                                'relative min-h-[60px] py-2.5 transition-colors hover:bg-panel-2 focus-within:bg-panel-2',
                                 showArchived && 'text-ink-2',
                             )}
-                            onClick={() => handleOpen(workflow.id)}
-                            onKeyDown={(event) => {
-                                if (event.target !== event.currentTarget) return;
-                                if (event.key === 'Enter' || event.key === ' ') {
-                                    event.preventDefault();
-                                    handleOpen(workflow.id);
-                                }
-                            }}
                         >
                             <div className="flex min-w-0 items-center gap-3">
                                 <span
@@ -249,7 +243,9 @@ export function WorkflowTable({ workflows, showArchived, folders }: WorkflowTabl
                                             showArchived ? 'text-ink-2' : 'text-ink',
                                         )}
                                     >
-                                        {workflow.name}
+                                        <Link href={agentHref(workflow.id)} className={ROW_LINK}>
+                                            {workflow.name}
+                                        </Link>
                                     </div>
                                     <div className="mt-0.5 flex items-center gap-2 text-[12px] text-ink-3">
                                         <span className="font-mono">#{workflow.id}</span>
@@ -284,83 +280,83 @@ export function WorkflowTable({ workflows, showArchived, folders }: WorkflowTabl
                                 {formatLastCall(workflow.last_run_at, timezone)}
                             </div>
 
-                            <div
-                                className="flex justify-end"
-                                onClick={(event) => event.stopPropagation()}
-                                onKeyDown={(event) => event.stopPropagation()}
-                            >
-                                <DropdownMenu>
-                                    <DropdownMenuTrigger asChild>
-                                        <Button
-                                            variant="ghost"
-                                            size="icon"
-                                            className="size-8 text-ink-3 hover:text-ink"
-                                            disabled={busy || isPending}
-                                            aria-label={`Actions for ${workflow.name}`}
-                                        >
-                                            {busy ? (
-                                                <span className="size-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
-                                            ) : (
-                                                <MoreHorizontal size={16} />
-                                            )}
-                                        </Button>
-                                    </DropdownMenuTrigger>
-                                    <DropdownMenuContent align="end" className="w-52">
-                                        <DropdownMenuItem onClick={() => handleOpen(workflow.id)}>
-                                            <Pencil size={14} />
-                                            Open
-                                        </DropdownMenuItem>
-                                        {folders && (
-                                            <DropdownMenuSub>
-                                                <DropdownMenuSubTrigger className="gap-2">
-                                                    <FolderInput size={14} />
-                                                    Move to folder
-                                                </DropdownMenuSubTrigger>
-                                                <DropdownMenuSubContent className="w-52">
-                                                    <DropdownMenuItem
-                                                        disabled={folderId === null}
-                                                        onClick={() => handleMove(workflow.id, null)}
-                                                    >
-                                                        <Inbox size={14} />
-                                                        Uncategorized
-                                                        {folderId === null && (
-                                                            <Check size={14} className="ml-auto" />
-                                                        )}
-                                                    </DropdownMenuItem>
-                                                    {folders.map((folder) => (
+                            <div className="relative z-10 flex justify-end">
+                                {canEdit && (
+                                    <DropdownMenu>
+                                        <DropdownMenuTrigger asChild>
+                                            <Button
+                                                variant="ghost"
+                                                size="icon"
+                                                className="size-8 text-ink-3 hover:text-ink"
+                                                disabled={busy || isPending}
+                                                aria-label={`Actions for ${workflow.name}`}
+                                            >
+                                                {busy ? (
+                                                    <span className="size-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                                                ) : (
+                                                    <MoreHorizontal size={16} aria-hidden />
+                                                )}
+                                            </Button>
+                                        </DropdownMenuTrigger>
+                                        <DropdownMenuContent align="end" className="w-52">
+                                            <DropdownMenuItem asChild>
+                                                <Link href={agentHref(workflow.id)}>
+                                                    <Pencil size={14} aria-hidden />
+                                                    Open
+                                                </Link>
+                                            </DropdownMenuItem>
+                                            {folders && (
+                                                <DropdownMenuSub>
+                                                    <DropdownMenuSubTrigger className="gap-2">
+                                                        <FolderInput size={14} />
+                                                        Move to folder
+                                                    </DropdownMenuSubTrigger>
+                                                    <DropdownMenuSubContent className="w-52">
                                                         <DropdownMenuItem
-                                                            key={folder.id}
-                                                            disabled={folder.id === folderId}
-                                                            onClick={() => handleMove(workflow.id, folder.id)}
+                                                            disabled={folderId === null}
+                                                            onClick={() => handleMove(workflow.id, null)}
                                                         >
-                                                            <FolderIcon size={14} />
-                                                            <span className="truncate">{folder.name}</span>
-                                                            {folder.id === folderId && (
-                                                                <Check size={14} className="ml-auto shrink-0" />
+                                                            <Inbox size={14} />
+                                                            Uncategorized
+                                                            {folderId === null && (
+                                                                <Check size={14} className="ml-auto" />
                                                             )}
                                                         </DropdownMenuItem>
-                                                    ))}
-                                                </DropdownMenuSubContent>
-                                            </DropdownMenuSub>
-                                        )}
-                                        <DropdownMenuSeparator />
-                                        <DropdownMenuItem
-                                            onClick={() => handleArchiveToggle(workflow.id, workflow.status)}
-                                        >
-                                            {showArchived ? (
-                                                <>
-                                                    <RotateCcw size={14} />
-                                                    Restore
-                                                </>
-                                            ) : (
-                                                <>
-                                                    <Archive size={14} />
-                                                    Archive
-                                                </>
+                                                        {folders.map((folder) => (
+                                                            <DropdownMenuItem
+                                                                key={folder.id}
+                                                                disabled={folder.id === folderId}
+                                                                onClick={() => handleMove(workflow.id, folder.id)}
+                                                            >
+                                                                <FolderIcon size={14} />
+                                                                <span className="truncate">{folder.name}</span>
+                                                                {folder.id === folderId && (
+                                                                    <Check size={14} className="ml-auto shrink-0" />
+                                                                )}
+                                                            </DropdownMenuItem>
+                                                        ))}
+                                                    </DropdownMenuSubContent>
+                                                </DropdownMenuSub>
                                             )}
-                                        </DropdownMenuItem>
-                                    </DropdownMenuContent>
-                                </DropdownMenu>
+                                            <DropdownMenuSeparator />
+                                            <DropdownMenuItem
+                                                onClick={() => handleArchiveToggle(workflow.id, workflow.status)}
+                                            >
+                                                {showArchived ? (
+                                                    <>
+                                                        <RotateCcw size={14} />
+                                                        Restore
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        <Archive size={14} />
+                                                        Archive
+                                                    </>
+                                                )}
+                                            </DropdownMenuItem>
+                                        </DropdownMenuContent>
+                                    </DropdownMenu>
+                                )}
                             </div>
                         </li>
                     );
