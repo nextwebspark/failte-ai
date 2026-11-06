@@ -53,14 +53,14 @@ describe("dates and times", () => {
     });
 
     it("uses the 24-hour clock in the business's zone", () => {
-        expect(clockTime("2026-11-05T13:41:00Z", DUBLIN)).toBe("13:41");
-        expect(clockTime("2026-11-05T13:41:00Z", "America/New_York")).toBe("08:41");
+        expect(clockTime("2026-11-05T13:41:00Z", DUBLIN)).toBe("1:41 pm");
+        expect(clockTime("2026-11-05T13:41:00Z", "America/New_York")).toBe("8:41 am");
     });
 
     it("says today, yesterday or the date", () => {
-        expect(callWhen("2026-11-05T09:05:00Z", DUBLIN, NOW)).toBe("09:05");
-        expect(callWhen("2026-11-04T18:30:00Z", DUBLIN, NOW)).toBe("Yesterday 18:30");
-        expect(callWhen("2026-11-02T18:30:00Z", DUBLIN, NOW)).toBe("Mon 2 Nov, 18:30");
+        expect(callWhen("2026-11-05T09:05:00Z", DUBLIN, NOW)).toBe("9:05 am");
+        expect(callWhen("2026-11-04T18:30:00Z", DUBLIN, NOW)).toBe("Yesterday 6:30 pm");
+        expect(callWhen("2026-11-02T18:30:00Z", DUBLIN, NOW)).toBe("Mon 2 Nov, 6:30 pm");
     });
 
     it("says how long something waited", () => {
@@ -94,9 +94,9 @@ describe("the change on last week", () => {
 describe("follow-up wording", () => {
     it("titles each kind plainly", () => {
         expect(followUpTitle(item({ caller_name: "Sinéad O'Brien" }))).toBe("Call back Sinéad O'Brien");
-        expect(followUpTitle(item())).toBe("Call back +353871234567");
+        expect(followUpTitle(item())).toBe("Call back +353 87 123 4567");
         expect(followUpTitle(item({ kind: "transfer_not_answered" }))).toBe("Transfer not answered");
-        expect(followUpTitle(item({ kind: "repeat_caller", repeat_count: 3 }))).toBe("+353871234567 rang 3 times");
+        expect(followUpTitle(item({ kind: "repeat_caller", repeat_count: 3 }))).toBe("+353 87 123 4567 rang 3 times");
     });
 
     it("shows what the caller wanted, or says plainly what happened", () => {
@@ -110,7 +110,7 @@ describe("follow-up wording", () => {
                 DUBLIN,
                 NOW,
             ),
-        ).toBe("Rang 2 times since 09:00 and didn't reach anyone.");
+        ).toBe("Rang 2 times since 9:00 am and didn't reach anyone.");
     });
 
     it("rings back the number the caller asked for first", () => {

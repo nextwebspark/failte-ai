@@ -19,6 +19,7 @@ import {
 import Link from "next/link";
 import { type ReactNode, useState } from "react";
 
+import { formatPhone } from "@/app/usage/callsView";
 import type {
     DashboardRange,
     DashboardRecentCall,
@@ -131,7 +132,7 @@ function StatusPill({ summary }: { summary: DashboardSummaryResponse }) {
             />
             <span className="truncate">
                 {status.answering ? "Answering calls" : "Not answering"}
-                {status.answering && number ? <span className="tabular-nums"> · {number}</span> : null}
+                {status.answering && number ? <span className="tabular-nums"> · {formatPhone(number)}</span> : null}
             </span>
         </span>
     );
@@ -402,7 +403,7 @@ function RecentCalls({ summary, now }: { summary: DashboardSummaryResponse; now:
                                             {callerWords(call)}
                                         </Link>
                                         {call.caller_name && call.caller_number && (
-                                            <div className="text-[12px] tabular-nums text-ink-3">{call.caller_number}</div>
+                                            <div className="text-[12px] tabular-nums text-ink-3">{formatPhone(call.caller_number)}</div>
                                         )}
                                     </td>
                                     <td className="py-2.5 pr-3">
@@ -640,13 +641,13 @@ function GetStarted({
                     <>
                         <p className="text-[13.5px] font-semibold text-foreground">Ring your number now</p>
                         <p className="mt-0.5 text-[12.5px] text-ink-2">
-                            Call <span className="font-semibold tabular-nums text-foreground">{number}</span> from your mobile
+                            Call <span className="font-semibold tabular-nums text-foreground">{formatPhone(number)}</span> from your mobile
                             and talk to your agent like a customer would. The call shows up here straight away.
                         </p>
                         <Button asChild size="sm" className="mt-3 md:hidden">
                             <a href={telHref(number)}>
                                 <Phone aria-hidden />
-                                Ring {number}
+                                Ring {formatPhone(number)}
                             </a>
                         </Button>
                     </>

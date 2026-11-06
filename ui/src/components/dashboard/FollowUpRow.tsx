@@ -5,6 +5,7 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import { toast } from "sonner";
 
+import { formatPhone } from "@/app/usage/callsView";
 import type { FollowUpItem } from "@/client/types.gen";
 import { runDetailHref } from "@/components/layout/shellContext";
 import { Button } from "@/components/ui/button";
@@ -64,7 +65,7 @@ export function CallBackButton({ number, label = "Call back" }: { number: string
                 <span className="flex items-center gap-1.5 px-2.5 text-[12.5px] font-semibold tabular-nums text-brand">
                     <Phone className="size-3.5" aria-hidden />
                     <span className="sr-only">{label}: </span>
-                    <span className="select-all">{number}</span>
+                    <span className="select-all">{formatPhone(number)}</span>
                 </span>
                 <button
                     type="button"
@@ -111,10 +112,10 @@ export function FollowUpRow({ item, timezone, now, returnTo, meta = "time", onMa
     const number = callBackNumber(item);
     const length = callLength(item.duration_seconds);
     const metaParts = [
-        item.caller_number ?? "Number withheld",
+        item.caller_number ? formatPhone(item.caller_number) : "Number withheld",
         callWhen(item.created_at, timezone, now),
         meta === "waiting" && !done ? `Waiting ${waitWords(minutesSince(item.created_at, now))}` : length,
-        item.callback_number && item.callback_number !== item.caller_number ? `Asked to be rung on ${item.callback_number}` : null,
+        item.callback_number && item.callback_number !== item.caller_number ? `Asked to be rung on ${formatPhone(item.callback_number)}` : null,
     ].filter(Boolean);
 
     return (

@@ -2,7 +2,7 @@
  * Words and formats for Home and Follow-ups. Pure, so they're easy to test.
  * Every number comes from the dashboard API; nothing here invents one.
  */
-import { formatDuration } from "@/app/usage/callsView";
+import { formatDuration, formatPhone } from "@/app/usage/callsView";
 import type {
     CallResult,
     DashboardRange,
@@ -82,12 +82,14 @@ export function dayLine(date: Date, timezone?: string | null): string {
     return `${part(p, "weekday")} ${part(p, "day")} ${part(p, "month")}`;
 }
 
-/** "13:41": the 24-hour clock an Irish or UK owner reads, as on Calls. */
+/** "1:41 pm", the same clock the Calls page uses. */
 export function clockTime(value: string | Date, timezone?: string | null): string {
     const date = typeof value === "string" ? new Date(value) : value;
     if (Number.isNaN(date.getTime())) return "";
     const p = parts(date, timezone, { hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
-    return `${part(p, "hour")}:${part(p, "minute")}`;
+    const hours = Number(part(p, "hour")) % 24;
+    const hour = hours % 12 === 0 ? 12 : hours % 12;
+    return `${hour}:${part(p, "minute")} ${hours < 12 ? "am" : "pm"}`;
 }
 
 function dayKey(date: Date, timezone?: string | null): string {
@@ -95,7 +97,7 @@ function dayKey(date: Date, timezone?: string | null): string {
     return `${part(p, "year")}-${part(p, "month")}-${part(p, "day")}`;
 }
 
-/** "13:41" today, "Yesterday 13:41", else "Thu 5 Nov, 13:41". */
+/** "1:41 pm" today, "Yesterday 1:41 pm", else "Thu 5 Nov, 1:41 pm". */
 export function callWhen(value: string, timezone: string | null | undefined, now: Date = new Date()): string {
     const date = new Date(value);
     if (Number.isNaN(date.getTime())) return "";
@@ -214,7 +216,7 @@ export function lastCallWords(value: string | null | undefined, now: Date = new 
 
 /** Who the caller is: their name if the agent took it, else their number. */
 export function callerWords(item: { caller_name?: string | null; caller_number?: string | null }): string {
-    return item.caller_name || item.caller_number || "Unknown caller";
+    return item.caller_name || (item.caller_number ? formatPhone(item.caller_number) : "Unknown caller");
 }
 
 /** The number to ring back: the one they asked for, else the one they rang from. */
