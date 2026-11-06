@@ -1,7 +1,7 @@
 """staff role and per-member bookings access
 
 Revision ID: b7c1d2e3f4a5
-Revises: 04b6af5b14b4
+Revises: a8f3c2e19b47
 Create Date: 2026-11-05 23:00:00.000000
 
 - A "staff" role: view-only (calls, bookings, reports), for a business's
@@ -19,7 +19,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = "b7c1d2e3f4a5"
-down_revision: str | None = "04b6af5b14b4"
+down_revision: str | None = "a8f3c2e19b47"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

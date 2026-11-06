@@ -1,7 +1,7 @@
 """platform admin: feature switches and audit log
 
 Revision ID: c8e2f1a4b6d3
-Revises: 04b6af5b14b4
+Revises: c4e8f1a2b3d6
 Create Date: 2026-11-06 09:00:00.000000
 
 See api/db/platform_admin_models.py:
@@ -23,7 +23,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = "c8e2f1a4b6d3"
-down_revision: str | None = "04b6af5b14b4"
+down_revision: str | None = "c4e8f1a2b3d6"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
