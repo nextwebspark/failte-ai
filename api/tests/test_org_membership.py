@@ -50,6 +50,7 @@ def test_roles_nest_except_bookings():
         Permission.BOOKINGS_MANAGE,
         Permission.BOOKINGS_GRANT,
         Permission.NOTIFICATIONS_MANAGE,
+        Permission.REPORTS_SCHEDULE,
     }
     assert owner - developer == owner_only
     assert not owner_only & developer

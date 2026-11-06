@@ -37,6 +37,10 @@ class ResendEmailSender:
             "text": message.text,
             "html": message.html,
         }
+        if message.headers:
+            payload["headers"] = {
+                name: strip_control_characters(value) for name, value in message.headers
+            }
         headers = {"Authorization": f"Bearer {self._api_key.get_secret_value()}"}
         if message.idempotency_key:
             headers["Idempotency-Key"] = message.idempotency_key

@@ -55,6 +55,8 @@ class SmtpEmailSender:
             # Subjects carry user-chosen names; a line break would be header
             # injection (and raises ValueError in the email package).
             mime["Subject"] = strip_control_characters(message.subject)
+            for name, value in message.headers:
+                mime[name] = strip_control_characters(value)
             mime.set_content(message.text)
             mime.add_alternative(message.html, subtype="html")
             await asyncio.to_thread(self._deliver, mime)
