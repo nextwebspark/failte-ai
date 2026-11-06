@@ -7,6 +7,11 @@ from api.db.base_client import BaseDBClient
 from api.db.models import WorkflowModel, WorkflowRunModel
 
 
+def _json_text(column, key: str):
+    """One JSON field as text, with any quote characters stripped."""
+    return func.replace(func.replace(func.cast(column[key], String), '"', ""), "'", "")
+
+
 class ReportsClient(BaseDBClient):
     async def get_workflow_runs_for_daily_report(
         self,
@@ -36,68 +41,30 @@ class ReportsClient(BaseDBClient):
                     WorkflowRunModel.id,
                     WorkflowRunModel.workflow_id,
                     WorkflowRunModel.created_at,
-                    # Extract only specific fields from JSON columns
-                    # Use TRIM and REPLACE to remove any quotes from JSON values
                     func.coalesce(
-                        func.replace(
-                            func.replace(
-                                func.cast(
-                                    WorkflowRunModel.gathered_context[
-                                        "mapped_call_disposition"
-                                    ],
-                                    String,
-                                ),
-                                '"',
-                                "",
-                            ),
-                            "'",
-                            "",
+                        _json_text(
+                            WorkflowRunModel.gathered_context, "mapped_call_disposition"
                         ),
                         "UNKNOWN",
                     ).label("disposition"),
+                    # How the call ended; a transfer is stamped here by the engine.
                     func.coalesce(
-                        func.replace(
-                            func.replace(
-                                func.cast(
-                                    WorkflowRunModel.gathered_context[
-                                        "customer_phone_number"
-                                    ],
-                                    String,
-                                ),
-                                '"',
-                                "",
-                            ),
-                            "'",
-                            "",
+                        _json_text(WorkflowRunModel.gathered_context, "call_status"),
+                        "",
+                    ).label("call_status"),
+                    # Outbound calls carry the dialled number; inbound calls only
+                    # carry the caller's number, so fall back to it last.
+                    func.coalesce(
+                        _json_text(
+                            WorkflowRunModel.gathered_context, "customer_phone_number"
                         ),
-                        func.replace(
-                            func.replace(
-                                func.cast(
-                                    WorkflowRunModel.initial_context["phone_number"],
-                                    String,
-                                ),
-                                '"',
-                                "",
-                            ),
-                            "'",
-                            "",
-                        ),
+                        _json_text(WorkflowRunModel.initial_context, "phone_number"),
+                        _json_text(WorkflowRunModel.initial_context, "caller_number"),
                         "",
                     ).label("phone_number"),
                     func.coalesce(
-                        func.replace(
-                            func.replace(
-                                func.cast(
-                                    WorkflowRunModel.usage_info[
-                                        "call_duration_seconds"
-                                    ],
-                                    String,
-                                ),
-                                '"',
-                                "",
-                            ),
-                            "'",
-                            "",
+                        _json_text(
+                            WorkflowRunModel.usage_info, "call_duration_seconds"
                         ),
                         "0",
                     ).label("call_duration_seconds"),
@@ -128,6 +95,7 @@ class ReportsClient(BaseDBClient):
                     "created_at": row.created_at,
                     "gathered_context": {
                         "mapped_call_disposition": row.disposition,
+                        "call_status": row.call_status,
                         "customer_phone_number": row.phone_number,  # Also provide it here for compatibility
                     },
                     "usage_info": {"call_duration_seconds": row.call_duration_seconds},

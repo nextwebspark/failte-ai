@@ -12,7 +12,7 @@ export const baseFilterAttributes: Record<string, Omit<FilterAttribute, "id">> =
   },
   dispositionCode: {
     type: "multiSelect",
-    label: "Disposition Code",
+    label: "Outcome",
     config: {
       // Populated at runtime from the backend catalog — see
       // useDispositionCodes. Left empty here so no screen can ship a stale
@@ -233,7 +233,7 @@ export const usageFilterAttributes = createFilterAttributes(
       },
     },
     dispositionCode: {
-      label: "Disposition",
+      label: "Outcome",
       config: {
         searchable: true,
         showSelectAll: true,

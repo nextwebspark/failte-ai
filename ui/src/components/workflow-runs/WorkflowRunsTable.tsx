@@ -147,7 +147,7 @@ export function WorkflowRunsTable({
                     <CardHeader>
                         <div className="flex items-center justify-between">
                             <div>
-                                <CardTitle>Runs</CardTitle>
+                                <CardTitle>Calls</CardTitle>
                                 <CardDescription>
                                     {subtitle || `Showing ${runs.length} of ${totalCount} total runs`}
                                 </CardDescription>
@@ -188,7 +188,7 @@ export function WorkflowRunsTable({
                                                 )}
                                             </div>
                                         </TableHead>
-                                        <TableHead className="font-semibold">Disposition</TableHead>
+                                        <TableHead className="font-semibold">Outcome</TableHead>
                                         <TableHead className="font-semibold">Actions</TableHead>
                                     </TableRow>
                                 </TableHeader>

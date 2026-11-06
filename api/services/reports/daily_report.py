@@ -4,6 +4,25 @@ from zoneinfo import ZoneInfo
 
 from api.db import db_client
 
+# How the engine records a call that was handed to a person: "transfer_call"
+# once the destination answers a bridged transfer, "call_transferred" when an
+# external PBX takes the caller. Read from call_status, not the disposition,
+# because a transfer tool may set its own disposition on success.
+TRANSFERRED_CALL_STATUSES = frozenset({"transfer_call", "call_transferred"})
+
+
+def is_transferred(gathered_context: Optional[Dict[str, Any]]) -> bool:
+    """Whether a call ended by being passed to a person.
+
+    Organizations that map dispositions to "XFER" keep being counted that way.
+    """
+    if not gathered_context:
+        return False
+    return (
+        gathered_context.get("call_status") in TRANSFERRED_CALL_STATUSES
+        or gathered_context.get("mapped_call_disposition") == "XFER"
+    )
+
 
 class DailyReportService:
     async def get_daily_report(
@@ -44,12 +63,7 @@ class DailyReportService:
 
         # Calculate metrics
         total_runs = len(runs)
-        xfer_count = sum(
-            1
-            for run in runs
-            if run["gathered_context"]
-            and run["gathered_context"].get("mapped_call_disposition") == "XFER"
-        )
+        xfer_count = sum(1 for run in runs if is_transferred(run["gathered_context"]))
 
         # Calculate disposition distribution
         disposition_counts = {}

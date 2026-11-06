@@ -38,8 +38,8 @@ describe("GET /after-sign-in", () => {
     mocks.count.mockResolvedValue({ data: { total: 2, active: 1 } });
   });
 
-  it("answers with a plain relative 307, not a page", async () => {
-    expect(await landing()).toEqual({ status: 307, location: "/workflow" });
+  it("answers with a plain relative 307 to the calls list for a member with agents", async () => {
+    expect(await landing()).toEqual({ status: 307, location: "/usage" });
   });
 
   it("sends a user without active agents to create one", async () => {

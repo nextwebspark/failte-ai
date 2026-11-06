@@ -70,13 +70,13 @@ export const NAV_SECTIONS: NavSection[] = [
       { title: "Integrations", url: "/integrations", icon: Plug, requires: "integrations:read" },
       { title: "Skills", url: "/skills", icon: BookOpen, requires: "agents:read" },
       { title: "Files", url: "/files", icon: Database, requires: "agents:write" },
-      { title: "Recordings", url: "/recordings", icon: AudioLines, requires: "agents:write" },
+      { title: "Prompt audio", url: "/recordings", icon: AudioLines, requires: "agents:write" },
     ],
   },
   {
     label: "MANAGE",
     items: [
-      { title: "Agent runs", url: "/usage", icon: TrendingUp, requires: "reports:read" },
+      { title: "Calls", url: "/usage", icon: TrendingUp, requires: "reports:read" },
       { title: "Bookings", url: "/bookings", icon: CalendarCheck, requires: "calls:read" },
       { title: "Reports", url: "/reports", icon: FileText, requires: "reports:read" },
       // Team, Billing, Developers and Compliance live under Settings.
@@ -108,8 +108,8 @@ const PAGE_META: Record<string, PageMeta> = {
   "/skills/new": { title: "New skill", subtitle: "Write a playbook your agents can load on demand" },
   "/skills/library": { title: "Skill library", subtitle: "Platform skills shared with every workspace" },
   "/files": { title: "Files", subtitle: "Documents agents can reference" },
-  "/recordings": { title: "Recordings", subtitle: "Shared audio for prompts and transitions" },
-  "/usage": { title: "Agent runs", subtitle: "Call history across every agent" },
+  "/recordings": { title: "Prompt audio", subtitle: "Recorded greetings and messages your agents can play" },
+  "/usage": { title: "Calls", subtitle: "Every call your agents answered or made" },
   "/bookings": { title: "Bookings", subtitle: "Tables and appointments your agent booked" },
   "/reports": { title: "Reports", subtitle: "Daily call outcomes" },
   // Settings screens print their own title and description (SettingsShell),

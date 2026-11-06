@@ -44,9 +44,11 @@ async function afterSignInPath(): Promise<string> {
             if (contextResponse.data?.role === 'viewer') {
                 return '/usage';
             }
+            // Everyone else lands on their calls once an agent is live;
+            // building an agent is where a new workspace starts.
             const countResponse = await getWorkflowCountApiV1WorkflowCountGet({ headers });
             if (countResponse.data && countResponse.data.active > 0) {
-                return '/workflow';
+                return '/usage';
             }
         }
     } catch (error) {
