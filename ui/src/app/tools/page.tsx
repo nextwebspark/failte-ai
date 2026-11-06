@@ -1,6 +1,7 @@
 "use client";
 
 import { Plus, RotateCcw, Search, Trash2 } from "lucide-react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 
@@ -43,6 +44,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { detailFromError } from "@/lib/apiError";
 import { useAuth } from "@/lib/auth";
+import { ROW_LINK } from "@/lib/rowLink";
 
 import {
     createMcpDefinition,
@@ -108,9 +110,11 @@ export default function ToolsPage() {
 
             if (response.data) {
                 setTools(response.data);
+            } else {
+                setError("Couldn't load your tools. Please try again.");
             }
         } catch (err) {
-            setError("Failed to fetch tools");
+            setError("Couldn't load your tools. Please try again.");
             console.error("Error fetching tools:", err);
         } finally {
             setIsLoading(false);
@@ -262,7 +266,7 @@ export default function ToolsPage() {
             setError(null);
             const accessToken = await getAccessToken();
 
-            await deleteToolApiV1ToolsToolUuidDelete({
+            const result = await deleteToolApiV1ToolsToolUuidDelete({
                 path: {
                     tool_uuid: toolUuid,
                 },
@@ -270,10 +274,14 @@ export default function ToolsPage() {
                     Authorization: `Bearer ${accessToken}`,
                 },
             });
+            if (result.error) {
+                setError(detailFromError(result.error, "Couldn't archive the tool. Please try again."));
+                return;
+            }
 
             fetchTools();
         } catch (err) {
-            setError("Failed to archive tool");
+            setError("Couldn't archive the tool. Please try again.");
             console.error("Error archiving tool:", err);
         }
     };
@@ -285,7 +293,7 @@ export default function ToolsPage() {
             setError(null);
             const accessToken = await getAccessToken();
 
-            await unarchiveToolApiV1ToolsToolUuidUnarchivePost({
+            const result = await unarchiveToolApiV1ToolsToolUuidUnarchivePost({
                 path: {
                     tool_uuid: toolUuid,
                 },
@@ -293,10 +301,14 @@ export default function ToolsPage() {
                     Authorization: `Bearer ${accessToken}`,
                 },
             });
+            if (result.error) {
+                setError(detailFromError(result.error, "Couldn't restore the tool. Please try again."));
+                return;
+            }
 
             fetchTools();
         } catch (err) {
-            setError("Failed to unarchive tool");
+            setError("Couldn't restore the tool. Please try again.");
             console.error("Error unarchiving tool:", err);
         }
     };
@@ -366,8 +378,14 @@ export default function ToolsPage() {
                 </PageActions>
 
                     {error && (
-                        <div className="mb-4 p-4 bg-destructive/10 border border-destructive/20 rounded-lg text-destructive">
-                            {error}
+                        <div
+                            role="alert"
+                            className="mb-4 flex flex-wrap items-center justify-between gap-3 p-4 bg-destructive/10 border border-destructive/20 rounded-lg text-destructive"
+                        >
+                            <span>{error}</span>
+                            <Button size="sm" variant="outline" onClick={() => void fetchTools()}>
+                                Try again
+                            </Button>
                         </div>
                     )}
 
@@ -427,10 +445,8 @@ export default function ToolsPage() {
                                             {activeTools.map((tool) => (
                                                 <div
                                                     key={tool.tool_uuid}
-                                                    className="flex items-center justify-between p-4 border rounded-lg hover:bg-muted/50 cursor-pointer transition-colors"
-                                                    onClick={() =>
-                                                        router.push(`/tools/${tool.tool_uuid}`)
-                                                    }
+                                                    // The name is a real link stretched over the card.
+                                                    className="relative flex items-center justify-between p-4 border rounded-lg hover:bg-muted/50 focus-within:bg-muted/50 transition-colors"
                                                 >
                                                     <div className="flex items-center gap-4">
                                                         <div
@@ -444,9 +460,9 @@ export default function ToolsPage() {
                                                         </div>
                                                         <div>
                                                             <div className="flex items-center gap-2">
-                                                                <span className="font-medium">
+                                                                <Link href={`/tools/${tool.tool_uuid}`} className={`font-medium ${ROW_LINK}`}>
                                                                     {tool.name}
-                                                                </span>
+                                                                </Link>
                                                                 {getCategoryBadge(tool.category)}
                                                             </div>
                                                             {tool.description && (
@@ -462,9 +478,11 @@ export default function ToolsPage() {
                                                         onClick={(e) =>
                                                             handleDeleteTool(tool.tool_uuid, e)
                                                         }
-                                                        className="text-destructive hover:text-destructive/90"
+                                                        className="relative z-10 text-destructive hover:text-destructive/90"
+                                                        aria-label={`Archive ${tool.name}`}
+                                                        title="Archive tool"
                                                     >
-                                                        <Trash2 className="w-4 h-4" />
+                                                        <Trash2 className="w-4 h-4" aria-hidden />
                                                     </Button>
                                                 </div>
                                             ))}
@@ -490,10 +508,7 @@ export default function ToolsPage() {
                                                 {archivedTools.map((tool) => (
                                                     <div
                                                         key={tool.tool_uuid}
-                                                        className="flex items-center justify-between p-4 border rounded-lg hover:bg-muted/50 cursor-pointer transition-colors opacity-60"
-                                                        onClick={() =>
-                                                            router.push(`/tools/${tool.tool_uuid}`)
-                                                        }
+                                                        className="relative flex items-center justify-between p-4 border rounded-lg hover:bg-muted/50 focus-within:bg-muted/50 transition-colors opacity-60"
                                                     >
                                                         <div className="flex items-center gap-4">
                                                             <div
@@ -507,9 +522,9 @@ export default function ToolsPage() {
                                                             </div>
                                                             <div>
                                                                 <div className="flex items-center gap-2">
-                                                                    <span className="font-medium">
+                                                                    <Link href={`/tools/${tool.tool_uuid}`} className={`font-medium ${ROW_LINK}`}>
                                                                         {tool.name}
-                                                                    </span>
+                                                                    </Link>
                                                                     {getCategoryBadge(tool.category)}
                                                                     {getStatusBadge(tool.status)}
                                                                 </div>
@@ -526,10 +541,11 @@ export default function ToolsPage() {
                                                             onClick={(e) =>
                                                                 handleUnarchiveTool(tool.tool_uuid, e)
                                                             }
-                                                            className="text-primary hover:text-primary/90"
+                                                            className="relative z-10 text-primary hover:text-primary/90"
                                                             title="Restore tool"
+                                                            aria-label={`Restore ${tool.name}`}
                                                         >
-                                                            <RotateCcw className="w-4 h-4" />
+                                                            <RotateCcw className="w-4 h-4" aria-hidden />
                                                         </Button>
                                                     </div>
                                                 ))}
