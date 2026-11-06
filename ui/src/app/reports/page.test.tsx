@@ -63,6 +63,14 @@ describe('ReportsPage', () => {
         expect(screen.getByText('Call outcomes chart')).toBeTruthy();
     });
 
+    it("asks for the day in the workspace's own time zone, never a made-up one", async () => {
+        render(<ReportsPage />);
+        await screen.findByText('3 calls');
+        const zones = mocks.daily.mock.calls.map((call) => call[0].query.timezone);
+        expect(zones).toEqual(['Europe/Dublin']);
+        expect(screen.getByText(/Times in Europe\/Dublin time/)).toBeTruthy();
+    });
+
     it('names the icon-only day buttons', async () => {
         render(<ReportsPage />);
         await screen.findByText('3 calls');
@@ -85,7 +93,7 @@ describe('ReportsPage', () => {
     it('shows an API error with Try again, then recovers', async () => {
         mocks.daily.mockResolvedValue({ error: { detail: 'boom' } });
         render(<ReportsPage />);
-        expect((await screen.findByRole('alert')).textContent).toContain("Couldn't load the report");
+        expect((await screen.findByRole('alert')).textContent).toContain("We couldn't load this report");
         mocks.daily.mockResolvedValue(report(2));
         fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
         expect(await screen.findByText('2 calls')).toBeTruthy();
@@ -95,7 +103,7 @@ describe('ReportsPage', () => {
     it('handles a network failure while loading', async () => {
         mocks.daily.mockRejectedValue(new TypeError('Failed to fetch'));
         render(<ReportsPage />);
-        expect((await screen.findByRole('alert')).textContent).toContain("Couldn't load the report");
+        expect((await screen.findByRole('alert')).textContent).toContain("We couldn't load this report");
         expect(screen.queryByText(/Failed to fetch/)).toBeNull();
     });
 
@@ -103,6 +111,8 @@ describe('ReportsPage', () => {
         mocks.daily.mockResolvedValue(report(0));
         render(<ReportsPage />);
         expect(await screen.findByText(/^No calls on/)).toBeTruthy();
+        // No empty charts on a quiet day.
+        expect(screen.queryByText('Call outcomes chart')).toBeNull();
         expect(screen.queryByRole('button', { name: /Download/ })).toBeNull();
     });
 

@@ -11,6 +11,7 @@ import {
   YAxis,
 } from 'recharts';
 
+import { outcomeLabel } from '@/app/usage/callsView';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 
 interface DispositionData {
@@ -23,28 +24,30 @@ interface DispositionChartProps {
   data: DispositionData[];
 }
 
+// Theme colours, so the bars read in light and dark mode alike.
 const COLORS = [
-  '#3b82f6', // blue-500
-  '#10b981', // emerald-500
-  '#f59e0b', // amber-500
-  '#8b5cf6', // violet-500
-  '#ef4444', // red-500
-  '#6b7280', // gray-500 for "Other"
+  'var(--brand)',
+  'var(--sky)',
+  'var(--amber)',
+  'var(--live)',
+  'var(--danger)',
+  'var(--ink-3)',
 ];
 
 export function DispositionChart({ data }: DispositionChartProps) {
   const chartData = data.map((item, index) => ({
     ...item,
+    label: outcomeLabel(item.disposition),
     fill: COLORS[index % COLORS.length],
   }));
 
-  const CustomTooltip = ({ active, payload }: { active?: boolean; payload?: Array<{ payload: DispositionData & { fill: string } }> }) => {
+  const CustomTooltip = ({ active, payload }: { active?: boolean; payload?: Array<{ payload: DispositionData & { label: string; fill: string } }> }) => {
     if (active && payload && payload[0]) {
       const data = payload[0].payload;
       return (
-        <div className="bg-background border rounded-lg shadow-lg p-3">
-          <p className="font-semibold">{data.disposition}</p>
-          <p className="text-sm">Count: {data.count}</p>
+        <div className="rounded-lg border border-line bg-popover p-3 text-popover-foreground shadow-lg">
+          <p className="font-semibold">{data.label}</p>
+          <p className="text-sm">{data.count} {data.count === 1 ? 'call' : 'calls'}</p>
           <p className="text-sm">{data.percentage}% of total</p>
         </div>
       );
@@ -55,7 +58,7 @@ export function DispositionChart({ data }: DispositionChartProps) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Call outcomes</CardTitle>
+        <CardTitle>How calls ended</CardTitle>
       </CardHeader>
       <CardContent>
         {data.length === 0 ? (
@@ -69,19 +72,19 @@ export function DispositionChart({ data }: DispositionChartProps) {
               layout="horizontal"
               margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
             >
-              <CartesianGrid strokeDasharray="3 3" opacity={0.1} />
+              <CartesianGrid strokeDasharray="3 3" stroke="var(--line)" />
               <XAxis
-                dataKey="disposition"
+                dataKey="label"
                 angle={-45}
                 textAnchor="end"
                 height={80}
                 interval={0}
-                tick={{ fontSize: 12 }}
+                tick={{ fontSize: 12, fill: 'var(--ink-3)' }}
               />
               <YAxis
-                tick={{ fontSize: 12 }}
+                tick={{ fontSize: 12, fill: 'var(--ink-3)' }}
               />
-              <Tooltip content={<CustomTooltip />} />
+              <Tooltip content={<CustomTooltip />} cursor={{ fill: 'var(--brand-dim)' }} />
               <Bar dataKey="count" radius={[4, 4, 0, 0]}>
                 {chartData.map((entry, index) => (
                   <Cell key={`cell-${index}`} fill={entry.fill} />
