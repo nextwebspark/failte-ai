@@ -154,7 +154,7 @@ export function AgentList({ activeWorkflows, archivedWorkflows, folders }: Agent
                     <Stat label="Agents">
                         {stats.total}
                         <StatNote>
-                            {stats.withDraft > 0 ? `${stats.withDraft} with draft edits` : 'all published'}
+                            {stats.withDraft > 0 ? `${stats.withDraft} with changes not live` : 'all live'}
                         </StatNote>
                     </Stat>
                     <Stat label="Calls · 24 h">
@@ -264,7 +264,7 @@ export function AgentList({ activeWorkflows, archivedWorkflows, folders }: Agent
                             ? `No active agents match. ${archived.length} archived ${archived.length === 1 ? 'agent matches' : 'agents match'} below.`
                             : query.trim()
                               ? `No agents match “${query.trim()}”.`
-                              : 'No agents have draft edits.'}
+                              : 'No agents have changes waiting to go live.'}
                         <Button variant="outline" size="sm" onClick={clearFilters}>
                             <X size={14} />
                             Clear filters

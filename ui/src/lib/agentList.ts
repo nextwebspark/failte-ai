@@ -10,7 +10,7 @@ import { formatDate } from '@/lib/dateTime';
 /**
  * Every agent is created with a published version, and saving in the editor
  * only adds a draft next to it, so an active agent is always live. A draft is
- * shown as a second chip, never in place of "Published".
+ * shown as a second chip, never in place of "Live".
  */
 export type AgentStatus = 'published' | 'archived';
 /** `draft` narrows the list to agents with saved edits that aren't published. */
@@ -18,11 +18,11 @@ export type AgentStatusFilter = 'all' | 'draft';
 export type AgentSort = 'last_call' | 'name' | 'newest';
 
 export const AGENT_STATUS_LABEL: Record<AgentStatus, string> = {
-    published: 'Published',
+    published: 'Live',
     archived: 'Archived',
 };
 
-export const DRAFT_EDITS_LABEL = 'Draft edits';
+export const DRAFT_EDITS_LABEL = 'Changes not live';
 
 export function agentStatus(agent: WorkflowListResponse): AgentStatus {
     return agent.status === 'archived' ? 'archived' : 'published';
