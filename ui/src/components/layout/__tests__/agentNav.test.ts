@@ -6,6 +6,7 @@ import {
   agentIdFromPath,
   agentSectionFor,
   isAgentRoute,
+  isWorkspaceAgentScreen,
 } from "../agentNav";
 
 describe("agentIdFromPath", () => {
@@ -73,5 +74,17 @@ describe("agentHref", () => {
       section.items.map((item) => item.segment),
     );
     expect(new Set(segments).size).toBe(segments.length);
+  });
+});
+
+describe("isWorkspaceAgentScreen", () => {
+  it("keeps the main menu on the agent screens the main menu links to", () => {
+    expect(isWorkspaceAgentScreen("/workflow/14/facts")).toBe(true);
+    expect(isWorkspaceAgentScreen("/workflow/14/deployment")).toBe(true);
+    expect(isWorkspaceAgentScreen("/workflow/14")).toBe(false);
+    expect(isWorkspaceAgentScreen("/workflow/14/settings")).toBe(false);
+    expect(isWorkspaceAgentScreen("/workflow/14/home")).toBe(false);
+    expect(isWorkspaceAgentScreen("/workflow/14/facts", "facts")).toBe(true);
+    expect(isWorkspaceAgentScreen("/workflow/14/facts", "deployment")).toBe(false);
   });
 });

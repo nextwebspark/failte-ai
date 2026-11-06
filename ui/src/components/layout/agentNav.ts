@@ -33,6 +33,18 @@ export function isAgentRoute(pathname: string): boolean {
   return AGENT_ROUTE.test(pathname);
 }
 
+/**
+ * Agent screens the main menu links to directly ("What your agent knows",
+ * "Phone number"). They keep the main menu, as in the design: the builder
+ * menu belongs to the Advanced setup screens only.
+ */
+const WORKSPACE_AGENT_SCREEN = /^\/workflow\/\d+\/(facts|deployment)\/?$/;
+
+export function isWorkspaceAgentScreen(pathname: string, screen?: "facts" | "deployment"): boolean {
+  const match = WORKSPACE_AGENT_SCREEN.exec(pathname);
+  return Boolean(match) && (!screen || match![1] === screen);
+}
+
 export type AgentNavItem = {
   title: string;
   /** Appended to `/workflow/<id>` — "" is the conversation (the flow canvas). */

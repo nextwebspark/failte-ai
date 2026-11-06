@@ -8,6 +8,7 @@ import { useOrgConfig } from "@/context/OrgConfigContext";
 import { useTelephonyConfigWarnings } from "@/context/TelephonyConfigWarningsContext";
 import { useFeatureFlags } from "@/hooks/useFeatureFlags";
 
+import { isWorkspaceAgentScreen } from "./agentNav";
 import {
   agentRowHref,
   FOLLOW_UPS_URL,
@@ -61,9 +62,14 @@ export function useWorkspaceNav(): ResolvedNavSection[] {
       const path = href.split("#")[0];
       // Lit only on the agent's own screen: the fallbacks (the agents list,
       // the phone accounts) belong to their Advanced setup rows.
-      isActive = path.startsWith("/workflow/") && path !== "/workflow/create" && isWithin(pathname, path);
+      isActive =
+        (path.startsWith("/workflow/") && path !== "/workflow/create" && isWithin(pathname, path)) ||
+        // With several agents the row links to the list, but any agent's own
+        // screen of this kind is still this row.
+        isWorkspaceAgentScreen(pathname, item.agentRow === "facts" ? "facts" : "deployment");
     } else {
-      isActive = isNavRowActive(item.url, pathname, returnTo);
+      // An agent screen the main menu owns lights its own row, not "Voice agents".
+      isActive = !isWorkspaceAgentScreen(pathname) && isNavRowActive(item.url, pathname, returnTo);
     }
     return {
       ...item,

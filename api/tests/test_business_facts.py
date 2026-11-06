@@ -237,3 +237,16 @@ def test_duplicating_creates_one_transfer_tool_for_the_agent():
     assert facts["opening_hours"] == "Tue-Sun 12-22"
     # The call review words what callers wanted for this kind of business.
     assert facts["template_category"] == "restaurant"
+
+
+def test_examples_follow_the_agents_kind_of_business():
+    from api.services.workflow.business_facts import known_fact_questions
+
+    restaurant = known_fact_questions("restaurant")
+    assert restaurant["website"].placeholder == "https://harbourkitchen.ie"
+    # A general agent (or one whose template is unknown) never sees another
+    # business's examples, such as the dental practice's.
+    general = known_fact_questions("general")
+    assert general["website"].placeholder == "https://yourbusiness.ie"
+    assert general["business_name"].placeholder is None
+    assert general["opening_hours"].placeholder

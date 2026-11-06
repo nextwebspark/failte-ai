@@ -49,15 +49,40 @@ class BusinessFactsError(ValueError):
     pass
 
 
-def known_fact_questions() -> dict[str, TemplateSetupField]:
-    """The stored setup questions of every starter template, by key."""
+# Examples that name one kind of business ("Bloom Dental"). Shown only to
+# agents made from that same kind of template; anyone else gets these.
+_NEUTRAL_PLACEHOLDERS = {
+    "business_name": None,
+    "business_description": None,
+    "website": "https://yourbusiness.ie",
+    "extra_info": None,
+}
+
+
+def known_fact_questions(category: str | None = None) -> dict[str, TemplateSetupField]:
+    """The stored setup questions of every starter template, by key. With a
+    ``category``, that kind of template's questions (and examples) come first;
+    examples naming another kind of business are replaced with neutral ones."""
     from api.services.workflow.starter_templates import STARTER_TEMPLATES
 
+    starters = sorted(
+        STARTER_TEMPLATES, key=lambda s: 0 if category and s.category == category else 1
+    )
     questions: dict[str, TemplateSetupField] = {}
-    for starter in STARTER_TEMPLATES:
+    for starter in starters:
+        own = (
+            category is not None
+            and category != "general"
+            and starter.category == category
+        )
         for field in starter.setup_fields:
-            if field.stored and field.key not in questions:
-                questions[field.key] = field
+            if not field.stored or field.key in questions:
+                continue
+            if category is not None and not own and field.key in _NEUTRAL_PLACEHOLDERS:
+                field = field.model_copy(
+                    update={"placeholder": _NEUTRAL_PLACEHOLDERS[field.key]}
+                )
+            questions[field.key] = field
     return questions
 
 
@@ -69,8 +94,11 @@ def fact_fields(
     """The facts an agent's prompts read, with their current values: every
     ``{{initial_context.<key>}}`` the definition uses that is a known business
     question or already has a stored value. Call fields are excluded."""
-    questions = known_fact_questions() if questions is None else questions
     facts = facts or {}
+    if questions is None:
+        from api.services.call_review.categories import template_for_workflow
+
+        questions = known_fact_questions(template_for_workflow(definition, facts))
     referenced = list(dict.fromkeys(_FACT_RE.findall(json.dumps(definition or {}))))
     keys = [
         key

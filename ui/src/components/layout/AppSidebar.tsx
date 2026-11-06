@@ -30,7 +30,7 @@ import { ROLE_LABELS } from "@/lib/auth/roles";
 import { cn } from "@/lib/utils";
 import { workspaceDisplayName } from "@/lib/workspaceName";
 
-import { AGENT_NAV_SECTIONS, agentHref, agentSectionFor } from "./agentNav";
+import { AGENT_NAV_SECTIONS, agentHref, agentSectionFor, isWorkspaceAgentScreen } from "./agentNav";
 import { initialsOf, memberName } from "./memberIdentity";
 import { type ResolvedNavItem, useWorkspaceNav } from "./useWorkspaceNav";
 import { useWorkspaceAgents } from "./workspaceAgents";
@@ -101,7 +101,9 @@ function badgeLabel(title: string, count: number): string {
 export function AppSidebar({ docked = true }: { docked?: boolean }) {
   const pathname = usePathname();
   const { state, isMobile, setOpenMobile } = useSidebar();
-  const agentShell = useAgentShellOptional();
+  const agentShellContext = useAgentShellOptional();
+  // The main menu stays on the agent screens it links to itself.
+  const agentShell = isWorkspaceAgentScreen(pathname) ? null : agentShellContext;
   const isCollapsed = !isMobile && state === "collapsed";
   const { role, orgContext } = useOrgConfig();
   const { user } = useAuth();
