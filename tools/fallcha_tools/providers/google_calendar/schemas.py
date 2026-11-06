@@ -162,12 +162,18 @@ class BookingResult(BaseModel):
     )
     say: str = Field(description="Read this to the caller word for word.")
     handoff: Handoff | None = HANDOFF_FIELD
+    starts_at: str | None = Field(
+        default=None, description="ISO start time in the calendar's zone, when booked."
+    )
 
 
 class CancelResult(BaseModel):
     cancelled: bool
     say: str = Field(description="Read this to the caller word for word.")
     handoff: Handoff | None = HANDOFF_FIELD
+    starts_at: str | None = Field(
+        default=None, description="ISO start time of the cancelled appointment."
+    )
 
 
 class FoundAppointment(BaseModel):

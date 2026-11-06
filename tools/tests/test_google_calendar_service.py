@@ -232,6 +232,7 @@ async def test_book_inserts_event_with_prefix_timezone_and_marker(
     )
     assert result.booked is True
     assert result.event_id == expected_id
+    assert result.starts_at == "2026-10-12T10:00:00+01:00"
     assert (
         result.say == "That is booked in for Monday the twelfth at ten in the morning."
     )
@@ -348,6 +349,7 @@ async def test_cancel_own_booking_once(
     assert cancelled.say == (
         "Your appointment for Monday the twelfth at ten in the morning is cancelled."
     )
+    assert cancelled.starts_at == "2026-10-12T10:00:00+01:00"
     assert google.delete_event.calls.last.request.url.params["sendUpdates"] == "none"
 
     again = await service.cancel(booked.event_id)

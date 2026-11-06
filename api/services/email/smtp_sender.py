@@ -3,9 +3,33 @@ import smtplib
 import ssl
 from email.message import EmailMessage as MimeMessage
 
-from api.services.email.base import EmailDeliveryError, EmailMessage
+from api.services.email.base import EmailDeliveryError, EmailFailure, EmailMessage
 from api.services.email.settings import SmtpSecurity, SmtpSettings
 from api.utils.text import strip_control_characters
+
+_PERMANENT_REPLY = 500
+
+
+def _failure_of(exc: Exception) -> EmailFailure:
+    """A 5xx reply, refused credentials or addresses, a server or certificate
+    that can't do TLS, an unbuildable message or a timeout fail the same way on
+    the next attempt; a 4xx reply or a dropped connection may not."""
+    if isinstance(
+        exc,
+        smtplib.SMTPAuthenticationError
+        | smtplib.SMTPRecipientsRefused
+        | smtplib.SMTPSenderRefused
+        | smtplib.SMTPNotSupportedError
+        | ssl.SSLCertVerificationError
+        | ValueError
+        | TimeoutError,
+    ):
+        return EmailFailure.FINAL
+    if isinstance(exc, smtplib.SMTPResponseException) and (
+        exc.smtp_code >= _PERMANENT_REPLY
+    ):
+        return EmailFailure.FINAL
+    return EmailFailure.TRANSIENT
 
 
 class SmtpEmailSender:
@@ -35,7 +59,9 @@ class SmtpEmailSender:
             mime.add_alternative(message.html, subtype="html")
             await asyncio.to_thread(self._deliver, mime)
         except (OSError, ValueError, smtplib.SMTPException) as exc:
-            raise EmailDeliveryError(f"SMTP delivery failed: {exc}") from exc
+            raise EmailDeliveryError(
+                f"SMTP delivery failed: {exc}", failure=_failure_of(exc)
+            ) from exc
 
     def _deliver(self, mime: MimeMessage) -> None:
         s = self._settings
