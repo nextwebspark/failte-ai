@@ -44,6 +44,8 @@ import {
 
 /** A recording usually lands within a minute or two of the call ending. */
 const RECORDING_GRACE_MS = 15 * 60 * 1000;
+/** A call not marked finished this long after it started never will be (Home uses the same hour). */
+const IN_PROGRESS_FOR_MS = 60 * 60 * 1000;
 /** Lines of the conversation shown before "Show the whole conversation". */
 const FIRST_LINES = 4;
 
@@ -62,6 +64,8 @@ export interface CallPanelProps {
     timezone: string;
     /** Start the recording as soon as it loads (the row's play button). */
     autoplay: boolean;
+    /** Move focus to the call (it was asked for, not shown by itself). */
+    focusOnOpen: boolean;
     /** Full-screen on a phone, a drawer on a tablet, a column beside the list on a computer. */
     layout: "column" | "overlay";
     isPhone: boolean;
@@ -90,7 +94,7 @@ function linesFrom(events: RealtimeFeedbackEvent[], toolResults: unknown): Line[
  * agent took down and what was said. Technical detail stays folded away;
  * the full call page is one link away.
  */
-export function CallPanel({ run, timezone, autoplay, layout, isPhone, fullPageHref, onClose }: CallPanelProps) {
+export function CallPanel({ run, timezone, autoplay, focusOnOpen, layout, isPhone, fullPageHref, onClose }: CallPanelProps) {
     const headingRef = useRef<HTMLHeadingElement>(null);
     const [record, setRecord] = useState<Load<CallRecord>>({ state: "loading" });
     const [reload, setReload] = useState(0);
@@ -106,9 +110,8 @@ export function CallPanel({ run, timezone, autoplay, layout, isPhone, fullPageHr
     // Move focus to the call when it opens, so keyboard and screen-reader
     // users land on it (the list stays where it was).
     useEffect(() => {
-        headingRef.current?.focus({ preventScroll: layout === "column" });
-        setShowAll(false);
-    }, [run.id, layout]);
+        if (focusOnOpen) headingRef.current?.focus({ preventScroll: layout === "column" });
+    }, [run.id, layout, focusOnOpen]);
 
     useEffect(() => {
         let cancelled = false;
@@ -186,6 +189,11 @@ export function CallPanel({ run, timezone, autoplay, layout, isPhone, fullPageHr
     );
     const callbackNumber = (capturedValues(gathered).callback_number as string | undefined)?.trim() || rawNumber;
 
+    const stillGoing =
+        record.state === "ready" &&
+        !record.data.is_completed &&
+        Date.now() - new Date(run.created_at).getTime() < IN_PROGRESS_FOR_MS;
+    const chip = stillGoing ? { label: "Call in progress", tone: "live" as const } : outcome;
     const headingId = `call-${run.id}-title`;
     const visibleLines = showAll ? lines : lines.slice(0, FIRST_LINES);
 
@@ -211,9 +219,10 @@ export function CallPanel({ run, timezone, autoplay, layout, isPhone, fullPageHr
                 ) : null}
                 <div className="flex items-start justify-between gap-3">
                     <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1.5">
-                        <OutcomeChip label={outcome.label} tone={outcome.tone} />
+                        <OutcomeChip label={chip.label} tone={chip.tone} />
                         <span className="text-[13px] text-ink-3">
-                            {when} · {formatLengthWords(run.call_duration_seconds)}
+                            {when}
+                            {!stillGoing && ` · ${formatLengthWords(run.call_duration_seconds)}`}
                         </span>
                     </div>
                     {!(layout === "overlay" && isPhone) && (
@@ -249,6 +258,7 @@ export function CallPanel({ run, timezone, autoplay, layout, isPhone, fullPageHr
             <div className="flex flex-col gap-6 px-5 py-5">
                 <Recording
                     record={record}
+                    stillGoing={stillGoing}
                     run={run}
                     autoplay={autoplay}
                     onRetry={() => setReload((n) => n + 1)}
@@ -287,7 +297,7 @@ export function CallPanel({ run, timezone, autoplay, layout, isPhone, fullPageHr
                         </div>
                     ) : record.state === "error" ? (
                         <p className="text-sm text-ink-3">We couldn&apos;t load this call. Try again in a moment.</p>
-                    ) : !record.data.is_completed && lines.length === 0 ? (
+                    ) : stillGoing && lines.length === 0 ? (
                         <p className="text-sm text-ink-3">What was said shows here once the call ends.</p>
                     ) : lines.length > 0 ? (
                         <>
@@ -398,8 +408,9 @@ function callKind(run: WorkflowRunUsageResponse): string {
 }
 
 /** The recording, or a plain word on why there isn't one. */
-function Recording({ record, run, autoplay, onRetry }: {
+function Recording({ record, stillGoing, run, autoplay, onRetry }: {
     record: Load<CallRecord>;
+    stillGoing: boolean;
     run: WorkflowRunUsageResponse;
     autoplay: boolean;
     onRetry: () => void;
@@ -444,7 +455,7 @@ function Recording({ record, run, autoplay, onRetry }: {
             </Notice>
         );
     }
-    if (!record.data.is_completed) {
+    if (stillGoing) {
         return (
             <Notice tone="live">
                 This call is still going on. The recording and what was said appear here when it ends.

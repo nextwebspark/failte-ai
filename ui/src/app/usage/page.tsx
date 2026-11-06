@@ -45,7 +45,7 @@ import {
     isNarrowed,
     PAGE_SIZE,
     tabFilter,
-    whenLabel,
+    whenPhrase,
 } from './callsView';
 
 /**
@@ -104,16 +104,16 @@ function requestQuery(query: CallsQuery, extra: ApiFilter[], now: Date) {
     };
 }
 
-/** Computer-wide: the call opens in a column beside the list. */
-function useWideScreen(): boolean {
+/** Whether the window is at least `px` wide. */
+function useMinWidth(px: number): boolean {
     const [wide, setWide] = useState(false);
     useEffect(() => {
-        const query = window.matchMedia('(min-width: 1280px)');
+        const query = window.matchMedia(`(min-width: ${px}px)`);
         const update = () => setWide(query.matches);
         update();
         query.addEventListener('change', update);
         return () => query.removeEventListener('change', update);
-    }, []);
+    }, [px]);
     return wide;
 }
 
@@ -128,7 +128,10 @@ export default function UsagePage() {
     const { organizationPricing, can } = useUserConfig();
     const auth = useAuth();
     const isPhone = useIsMobile();
-    const isWide = useWideScreen();
+    // A computer: the call opens in a column beside the list.
+    const isWide = useMinWidth(1440);
+    // Narrower than this (phones, tablets), the list is cards, not a table.
+    const tableFits = useMinWidth(1100);
     const listId = useId();
 
     // The URL is the source of truth: tabs, search, chips, page, expert
@@ -166,6 +169,8 @@ export default function UsagePage() {
     const [linkedRun, setLinkedRun] = useState<WorkflowRunUsageResponse | null>(null);
     // Set when a row is opened from this list, so closing the call goes Back.
     const openedHere = useRef(false);
+    // Closing the call on a computer also stops the first call showing by itself.
+    const [previewDismissed, setPreviewDismissed] = useState(false);
 
     // Daily usage breakdown (only for organisations on per-second pricing)
     const [dailyUsage, setDailyUsage] = useState<DailyUsageBreakdownResponse | null>(null);
@@ -274,7 +279,7 @@ export default function UsagePage() {
     // On a computer the first call shows beside the list until another is chosen.
     const openRun = openCallId
         ? runs.find(run => run.id === openCallId) ?? (linkedRun?.id === openCallId ? linkedRun : null)
-        : isWide
+        : isWide && !previewDismissed
             ? runs.find(run => run.recording_url) ?? runs[0] ?? null
             : null;
     const panelLayout = isWide ? 'column' : 'overlay';
@@ -321,7 +326,9 @@ export default function UsagePage() {
     );
 
     const closeCall = useCallback(() => {
-        if (openedHere.current && openCallId) {
+        setPreviewDismissed(true);
+        if (!openCallId) return;
+        if (openedHere.current) {
             openedHere.current = false;
             router.back();
         } else {
@@ -496,7 +503,7 @@ export default function UsagePage() {
                 <div
                     className={cn(
                         'grid items-start gap-4',
-                        isWide && openRun && 'grid-cols-[minmax(0,1fr)_400px]'
+                        isWide && openRun && 'grid-cols-[minmax(0,1fr)_380px]'
                     )}
                 >
                     <div inert={overlayOpen} className="flex min-w-0 flex-col gap-4">
@@ -537,7 +544,7 @@ export default function UsagePage() {
                                 {list.state === 'loading' ? (
                                     <>
                                         <span className="sr-only" role="status">Loading calls</span>
-                                        {isPhone ? <CallCardsSkeleton /> : <CallsTableSkeleton />}
+                                        {tableFits ? <CallsTableSkeleton /> : <CallCardsSkeleton />}
                                     </>
                                 ) : list.state === 'error' ? (
                                     <EmptyState
@@ -577,11 +584,11 @@ export default function UsagePage() {
                                             }
                                         >
                                             {query.q.trim()
-                                                ? `Nothing for “${query.q.trim()}” ${query.when === 'all' ? 'at any time' : `in ${whenLabel(query).toLowerCase()}`}.`
-                                                : `No calls ${query.when === 'all' ? 'here yet' : `in ${whenLabel(query).toLowerCase()}`}${narrowed && (query.outcome || query.who || appliedExpert.length) ? ' with these filters' : ''}.`}
+                                                ? `Nothing for “${query.q.trim()}” ${whenPhrase(query)}.`
+                                                : `No calls ${whenPhrase(query)}${query.outcome || query.who || appliedExpert.length ? ' with these filters' : ''}.`}
                                         </EmptyState>
                                     )
-                                ) : isPhone ? (
+                                ) : !tableFits ? (
                                     <CallCards {...rowProps} />
                                 ) : (
                                     <CallsTable {...rowProps} />
@@ -657,6 +664,7 @@ export default function UsagePage() {
                                 run={openRun}
                                 timezone={effectiveTimezone}
                                 autoplay={autoplay && openRun.id === openCallId}
+                                focusOnOpen={openRun.id === openCallId}
                                 layout={panelLayout}
                                 isPhone={isPhone}
                                 fullPageHref={fullPageHref}

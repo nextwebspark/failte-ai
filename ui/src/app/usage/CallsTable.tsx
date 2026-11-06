@@ -80,7 +80,7 @@ export function CallsTable({ runs, timezone, selectedId, hrefFor, onPlay, onOpen
     // on this page the column would be empty, so it goes.
     const showWhat = runs.some((run) => whatHappened(run.gathered_context));
     return (
-        <Table>
+        <Table className="[&_td]:px-3 [&_th]:px-3 [&_td:first-child]:pl-4 [&_td:first-child]:pr-0 [&_th:first-child]:pl-4 [&_th:first-child]:pr-0">
             <TableHeader className="bg-transparent">
                 <TableRow className="hover:bg-transparent">
                     <TableHead className="w-12 pr-0"><span className="sr-only">Recording</span></TableHead>
@@ -126,7 +126,7 @@ export function CallsTable({ runs, timezone, selectedId, hrefFor, onPlay, onOpen
                             {showWhat && (
                                 <TableCell className="py-3 text-ink-2">
                                     {what ? (
-                                        <span className="line-clamp-2 min-w-[150px] whitespace-normal">{what}</span>
+                                        <span className="line-clamp-2 min-w-[110px] whitespace-normal">{what}</span>
                                     ) : (
                                         <span className="text-ink-3">
                                             <span aria-hidden>–</span>

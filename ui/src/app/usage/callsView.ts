@@ -166,6 +166,22 @@ export function whenLabel(query: Pick<CallsQuery, "when" | "start" | "end">): st
     return WHEN_PRESETS.find((preset) => preset.value === query.when)?.label ?? "Last 7 days";
 }
 
+/** The date chip in a sentence: "in the last 7 days", "today", "between 1 Nov and 3 Nov". */
+export function whenPhrase(query: Pick<CallsQuery, "when" | "start" | "end">): string {
+    switch (query.when) {
+        case "today":
+            return "today";
+        case "all":
+            return "at any time";
+        case "custom": {
+            const label = whenLabel(query);
+            return label.includes("–") ? `between ${label.replace(" – ", " and ")}` : `on ${label}`;
+        }
+        default:
+            return `in the ${whenLabel(query).toLowerCase()}`;
+    }
+}
+
 /** One filter object as the usage API takes it (see FILTERS_DESCRIPTION). */
 export interface ApiFilter {
     attribute: string;

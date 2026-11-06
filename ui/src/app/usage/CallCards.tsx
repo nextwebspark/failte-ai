@@ -1,4 +1,4 @@
-import { ChevronRight } from "lucide-react";
+import { ChevronRight, Phone } from "lucide-react";
 import Link from "next/link";
 
 import { Skeleton } from "@/components/ui/skeleton";
@@ -31,9 +31,16 @@ export function CallCards({ runs, timezone, selectedId, hrefFor, onPlay, onOpen 
                             selected && "bg-brand-dim",
                         )}
                     >
-                        <PlayButton run={run} label={`${name}, ${when}`} onPlay={onPlay} className="mt-0.5 size-10" />
+                        {run.recording_url ? (
+                            <PlayButton run={run} label={`${name}, ${when}`} onPlay={onPlay} className="mt-0.5 size-10" />
+                        ) : (
+                            // No recording: a plain marker keeps the cards lined up.
+                            <span aria-hidden className="mt-0.5 grid size-10 flex-none place-items-center rounded-full bg-panel-2 text-ink-3">
+                                <Phone className="size-4" />
+                            </span>
+                        )}
                         <div className="min-w-0 flex-1">
-                            <div className="flex items-baseline justify-between gap-2">
+                            <div className="flex items-baseline gap-2">
                                 <Link
                                     href={hrefFor(run)}
                                     scroll={false}
@@ -44,15 +51,15 @@ export function CallCards({ runs, timezone, selectedId, hrefFor, onPlay, onOpen 
                                     {name}
                                     <span className="sr-only">, {when}</span>
                                 </Link>
-                                <span className="flex-none text-[13px] text-ink-3">{when}</span>
                             </div>
                             {number && <div className="truncate text-[13px] tabular-nums text-ink-3">{number}</div>}
                             {what && <p className="mt-1 line-clamp-2 text-sm text-ink-2">{what}</p>}
-                            <div className="mt-2 flex items-center gap-2">
+                            <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1">
                                 <OutcomeChip label={outcome.label} tone={outcome.tone} />
                                 <span className="text-[13px] tabular-nums text-ink-3">
                                     <span aria-hidden>{formatLength(run.call_duration_seconds)}</span>
                                     <span className="sr-only">{spokenLength(run.call_duration_seconds)}</span>
+                                    <span aria-hidden> · {when}</span>
                                 </span>
                             </div>
                         </div>

@@ -29,8 +29,9 @@ vi.stubGlobal(
     },
 );
 
+// Answers "(min-width: Npx)" from window.innerWidth, as a browser would.
 vi.stubGlobal("matchMedia", (query: string) => ({
-    matches: false,
+    matches: window.innerWidth >= Number(/min-width:\s*(\d+)px/.exec(query)?.[1] ?? Infinity),
     media: query,
     addEventListener() {},
     removeEventListener() {},
@@ -102,7 +103,7 @@ describe("Calls list", () => {
     beforeEach(() => {
         vi.clearAllMocks();
         mocks.query = "";
-        window.innerWidth = 1024;
+        window.innerWidth = 1200;
         mocks.history.mockResolvedValue({ data: PAGE });
         mocks.run.mockResolvedValue({
             data: {
@@ -200,7 +201,7 @@ describe("Calls list", () => {
         mocks.query = "q=zzzz";
         render(<UsagePage />);
         expect(await screen.findByText("No calls match")).toBeTruthy();
-        expect(screen.getByText("Nothing for “zzzz” in last 7 days.")).toBeTruthy();
+        expect(screen.getByText("Nothing for “zzzz” in the last 7 days.")).toBeTruthy();
         fireEvent.click(screen.getByRole("button", { name: "Clear filters" }));
         expect(mocks.push.mock.calls.at(-1)![0]).toBe("/usage?when=all");
     });
@@ -220,6 +221,28 @@ describe("Calls list", () => {
         const link = await screen.findByRole("link", { name: /Sinéad O'Brien/ });
         expect(link.closest("table")).toBeNull();
         expect(link.closest("li")).toBeTruthy();
+    });
+});
+
+describe("On a wide screen", () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+        mocks.query = "";
+        window.innerWidth = 1500;
+        mocks.history.mockResolvedValue({ data: PAGE });
+        mocks.run.mockResolvedValue({
+            data: { is_completed: true, recording_url: null, transcript_url: null, gathered_context: {}, logs: {} },
+        });
+    });
+
+    it("shows the first call beside the list without taking focus, and closes it", async () => {
+        render(<UsagePage />);
+        const panel = await screen.findByRole("complementary", { name: "Sinéad O'Brien" });
+        expect(panel.getAttribute("aria-modal")).toBeNull();
+        expect(panel.contains(document.activeElement)).toBe(false);
+        fireEvent.click(screen.getByRole("button", { name: "Close this call" }));
+        await waitFor(() => expect(screen.queryByRole("complementary", { name: "Sinéad O'Brien" })).toBeNull());
+        expect(mocks.push).not.toHaveBeenCalled();
     });
 });
 
@@ -258,11 +281,23 @@ describe("One call", () => {
     });
 
     it("says when a call is still going on", async () => {
+        const live = { ...RUN, created_at: new Date().toISOString(), disposition: null, gathered_context: {} };
+        mocks.history.mockResolvedValue({ data: { ...PAGE, runs: [live] } });
         mocks.run.mockResolvedValue({
             data: { is_completed: false, recording_url: null, transcript_url: null, gathered_context: {}, logs: {} },
         });
         render(<UsagePage />);
         expect(await screen.findByText(/This call is still going on/)).toBeTruthy();
+        expect(screen.getAllByText("Call in progress").length).toBeGreaterThan(0);
+    });
+
+    it("doesn't call an old unfinished call live", async () => {
+        mocks.run.mockResolvedValue({
+            data: { is_completed: false, recording_url: null, transcript_url: null, gathered_context: {}, logs: {} },
+        });
+        render(<UsagePage />);
+        expect(await screen.findByText("No recording was kept for this call.")).toBeTruthy();
+        expect(screen.queryByText(/still going on/)).toBeNull();
     });
 
     it("says when the recording isn't ready yet", async () => {

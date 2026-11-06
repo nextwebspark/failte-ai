@@ -20,6 +20,7 @@ import {
     tabFilter,
     whatHappened,
     whenLabel,
+    whenPhrase,
 } from "./callsView";
 
 const NOW = new Date(2026, 10, 6, 15, 0);
@@ -73,6 +74,13 @@ describe("dates", () => {
         expect(whenLabel({ when: "7d", start: null, end: null })).toBe("Last 7 days");
         expect(whenLabel({ when: "custom", start: "2026-11-01", end: "2026-11-03" })).toBe("1 Nov – 3 Nov");
         expect(whenLabel({ when: "custom", start: "2026-11-01", end: null })).toBe("1 Nov");
+    });
+
+    it("puts the dates in a sentence", () => {
+        expect(whenPhrase({ when: "7d", start: null, end: null })).toBe("in the last 7 days");
+        expect(whenPhrase({ when: "today", start: null, end: null })).toBe("today");
+        expect(whenPhrase({ when: "all", start: null, end: null })).toBe("at any time");
+        expect(whenPhrase({ when: "custom", start: "2026-11-01", end: "2026-11-03" })).toBe("between 1 Nov and 3 Nov");
     });
 });
 
