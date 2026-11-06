@@ -7,7 +7,6 @@ import { getWorkflowApiV1WorkflowFetchWorkflowIdGet } from "@/client/sdk.gen";
 import type { WorkflowResponse } from "@/client/types.gen";
 import type { TextChatInactivityTimeoutConstraints, WidgetTexts } from "@/client/types.gen";
 import { FlowEdge, FlowNode } from "@/components/flow/types";
-import SpinLoader from "@/components/SpinLoader";
 import { UnsavedChangesProvider } from "@/context/UnsavedChangesContext";
 import { useAuth } from "@/lib/auth";
 import logger from "@/lib/logger";
@@ -18,6 +17,7 @@ import {
 } from "@/types/workflow-configurations";
 
 import { useWorkflowState } from "../hooks/useWorkflowState";
+import { SectionError, SectionSkeleton } from "./SectionStates";
 
 /**
  * Everything a configuration section of an agent needs, loaded once.
@@ -60,7 +60,9 @@ export function AgentSectionShell({
     const { user, redirectToLogin, loading: authLoading } = useAuth();
     const [workflow, setWorkflow] = useState<WorkflowResponse | undefined>(undefined);
     const [loading, setLoading] = useState(true);
-    const [error, setError] = useState<string | null>(null);
+    const [error, setError] = useState<"failed" | "missing" | null>(null);
+    // Bumped by "Try again" to refetch.
+    const [attempt, setAttempt] = useState(0);
 
     useEffect(() => {
         if (!authLoading && !user) {
@@ -69,29 +71,56 @@ export function AgentSectionShell({
     }, [authLoading, user, redirectToLogin]);
 
     useEffect(() => {
+        let ignore = false;
         const fetchWorkflow = async () => {
             if (!user) return;
             try {
                 const response = await getWorkflowApiV1WorkflowFetchWorkflowIdGet({
                     path: { workflow_id: Number(params.workflowId) },
                 });
+                if (ignore) return;
+                if (response.error || !response.data) {
+                    setError(response.response?.status === 404 ? "missing" : "failed");
+                    return;
+                }
                 setWorkflow(response.data);
+                setError(null);
             } catch (err) {
-                setError("Failed to load agent");
+                if (!ignore) setError("failed");
                 logger.error(`Error fetching agent section: ${err}`);
             } finally {
-                setLoading(false);
+                if (!ignore) setLoading(false);
             }
         };
         if (user) void fetchWorkflow();
-    }, [params.workflowId, user]);
+        return () => {
+            ignore = true;
+        };
+    // Keyed on the user id, not the object: a fresh user object must not refetch
+    // and remount the section under the owner's feet.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [params.workflowId, user?.id, attempt]);
 
-    if (loading || authLoading) return <SpinLoader />;
+    if ((loading || authLoading) && !workflow) return <SectionSkeleton />;
 
     if (error || !workflow) {
         return (
-            <div className="flex min-h-full items-center justify-center">
-                <div className="text-lg text-destructive">{error || "Agent not found"}</div>
+            <div className="page-body max-w-4xl">
+                {error === "failed" ? (
+                    <SectionError
+                        title="We couldn't load this agent"
+                        onRetry={() => {
+                            setError(null);
+                            setLoading(true);
+                            setAttempt((n) => n + 1);
+                        }}
+                    />
+                ) : (
+                    <SectionError
+                        title="We couldn't find this agent"
+                        message="It may have been deleted, or the link is wrong. Go back to All voice agents to pick another."
+                    />
+                )}
             </div>
         );
     }
@@ -167,7 +196,7 @@ function AgentSectionState({
         ? resolveWorkflowConfigurations(workflowConfigurations)
         : null;
 
-    if (!resolved) return <SpinLoader />;
+    if (!resolved) return <SectionSkeleton />;
 
     return (
         <>

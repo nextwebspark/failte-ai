@@ -1,8 +1,8 @@
 "use client";
 
-import { ArrowDown, ArrowUp, ArrowUpDown, ChevronLeft, ChevronRight, ExternalLink, RefreshCw } from "lucide-react";
+import { AlertCircle, ArrowDown, ArrowUp, ArrowUpDown, ChevronLeft, ChevronRight, ExternalLink, PhoneCall, RefreshCw, RotateCw } from "lucide-react";
 import Link from "next/link";
-import { useState } from "react";
+import { type ReactNode, useState } from "react";
 
 import { WorkflowRunResponseSchema } from "@/client/types.gen";
 import { CallTypeCell } from "@/components/CallTypeCell";
@@ -12,6 +12,7 @@ import { MediaPreviewButton, MediaPreviewDialog } from "@/components/MediaPrevie
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
     Table,
     TableBody,
@@ -24,6 +25,37 @@ import { useOrganizationTimezone } from "@/hooks/useOrganizationTimezone";
 import { formatDateTime } from "@/lib/dateTime";
 import { ROW_LINK } from "@/lib/rowLink";
 import { ActiveFilter, FilterAttribute } from "@/types/filters";
+
+/** The calm empty / error shape the Calls page uses: round icon, bold line, one sentence, one action. */
+function RunsMessage({
+    icon,
+    title,
+    children,
+    action,
+    danger = false,
+    role,
+}: {
+    icon: ReactNode;
+    title: string;
+    children?: ReactNode;
+    action?: ReactNode;
+    danger?: boolean;
+    role?: "alert";
+}) {
+    return (
+        <div role={role} className="flex flex-col items-center gap-2 rounded-xl border border-line bg-panel px-6 py-12 text-center">
+            <span
+                aria-hidden
+                className={`grid size-11 place-items-center rounded-full [&_svg]:size-5 ${danger ? "bg-danger-dim text-danger" : "bg-brand-dim text-brand"}`}
+            >
+                {icon}
+            </span>
+            <p className="font-semibold text-foreground">{title}</p>
+            {children ? <p className="max-w-sm text-sm text-ink-3">{children}</p> : null}
+            {action ? <div className="mt-2">{action}</div> : null}
+        </div>
+    );
+}
 
 export interface WorkflowRunsTableProps {
     // Data
@@ -68,6 +100,10 @@ export interface WorkflowRunsTableProps {
     showFilters?: boolean;
     showAgentVersion?: boolean;
     emptyMessage?: string;
+    /** One helpful sentence under the empty title. */
+    emptyHint?: string;
+    /** One next step under the empty title, e.g. a test-call button. */
+    emptyAction?: ReactNode;
 }
 
 export function WorkflowRunsTable({
@@ -95,6 +131,8 @@ export function WorkflowRunsTable({
     showFilters = true,
     showAgentVersion = false,
     emptyMessage = "No runs yet",
+    emptyHint,
+    emptyAction,
 }: WorkflowRunsTableProps) {
     const [selectedRowId, setSelectedRowId] = useState<number | null>(null);
     const organizationTimezone = useOrganizationTimezone();
@@ -129,17 +167,33 @@ export function WorkflowRunsTable({
 
             {/* Loading State */}
             {loading ? (
-                <div className="flex justify-center">
-                    <div className="animate-pulse">Loading runs…</div>
+                <div className="space-y-2 rounded-xl border border-line bg-panel p-4" aria-busy="true" aria-label="Loading calls">
+                    <Skeleton className="h-5 w-40" />
+                    {[0, 1, 2, 3].map((i) => (
+                        <Skeleton key={i} className="h-11 w-full" />
+                    ))}
                 </div>
             ) : error ? (
-                <div role="alert" className="bg-destructive/10 border border-destructive/30 text-destructive px-4 py-3 rounded">
-                    {error}
-                </div>
+                <RunsMessage
+                    role="alert"
+                    danger
+                    icon={<AlertCircle />}
+                    title="We couldn't load these calls"
+                    action={
+                        onReload ? (
+                            <Button variant="outline" onClick={onReload} className="min-h-10">
+                                <RotateCw className="size-4" aria-hidden />
+                                Try again
+                            </Button>
+                        ) : undefined
+                    }
+                >
+                    Please check your connection and try again.
+                </RunsMessage>
             ) : runs.length === 0 ? (
-                <div className="text-center py-8">
-                    <p className="text-muted-foreground">{emptyMessage}</p>
-                </div>
+                <RunsMessage icon={<PhoneCall />} title={emptyMessage} action={emptyAction}>
+                    {emptyHint}
+                </RunsMessage>
             ) : (
                 <Card>
                     <CardHeader>
@@ -147,7 +201,7 @@ export function WorkflowRunsTable({
                             <div>
                                 <CardTitle>Calls</CardTitle>
                                 <CardDescription>
-                                    {subtitle || `Showing ${runs.length} of ${totalCount} total runs`}
+                                    {subtitle || `Showing ${runs.length} of ${totalCount} ${totalCount === 1 ? "call" : "calls"}`}
                                 </CardDescription>
                             </div>
                             {onReload && (
@@ -221,7 +275,7 @@ export function WorkflowRunsTable({
                                             {showAgentVersion && <TableCell><div>{run.workflow_name ?? `Agent #${run.workflow_id}`}</div><div className="text-xs text-muted-foreground">{run.version_number != null ? `Version ${run.version_number}` : run.definition_id != null ? `Definition #${run.definition_id}` : 'Unversioned'}</div></TableCell>}
                                             <TableCell>
                                                 <Badge variant={run.is_completed ? "default" : "secondary"}>
-                                                    {run.is_completed ? "Completed" : "In Progress"}
+                                                    {run.is_completed ? "Completed" : "In progress"}
                                                 </Badge>
                                             </TableCell>
                                             <TableCell className="text-sm">

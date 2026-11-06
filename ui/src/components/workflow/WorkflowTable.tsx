@@ -34,6 +34,7 @@ import {
     DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { StatusPill, statusTone } from '@/components/ui/status-pill';
+import { agentHomeHref } from '@/components/workflow/agentLinks';
 import { useOrgConfig } from '@/context/OrgConfigContext';
 import { useOrganizationTimezone } from '@/hooks/useOrganizationTimezone';
 import {
@@ -114,7 +115,7 @@ function Sparkline({ values }: { values: number[] }) {
     );
 }
 
-const agentHref = (id: number) => `/workflow/${id}`;
+const agentHref = agentHomeHref;
 
 /**
  * The Voice agents list: one row per agent. The agent's name is a real link

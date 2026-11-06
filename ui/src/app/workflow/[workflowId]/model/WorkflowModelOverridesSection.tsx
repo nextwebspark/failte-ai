@@ -191,7 +191,7 @@ export function WorkflowModelOverridesSection({
                 <CardDescription>
                     {platformModels
                         ? "This agent uses the workspace voice and model unless you choose different ones here."
-                        : "This agent speaks with the workspace LLM, speech and transcription stack unless you override the whole stack here."}
+                        : "This agent uses your workspace voice, language model and speech settings unless you choose different ones here."}
                 </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -294,10 +294,10 @@ export function WorkflowModelOverridesSection({
                 {!modelConfigurationLoading && !modelConfigurationError && !platformModels && !hasOrgConfiguration && (
                     <div className="flex flex-col gap-3 rounded-md border bg-muted/30 p-4 sm:flex-row sm:items-center sm:justify-between">
                         <p className="text-sm text-muted-foreground">
-                            Set up your workspace model configuration before overriding it per agent.
+                            Choose a voice and model for your workspace first. Then you can give this agent its own if you need to.
                         </p>
                         <Button type="button" variant="outline" size="sm" asChild>
-                            <Link href="/model-configurations">Configure Models</Link>
+                            <Link href="/model-configurations">Set up voice and model</Link>
                         </Button>
                     </div>
                 )}
@@ -335,7 +335,7 @@ export function WorkflowModelOverridesSection({
                                         : organizationModelConfiguration.effective_configuration
                                 }
                                 pricing={modelConfigurationPricing}
-                                submitLabel="Save Model Override"
+                                submitLabel="Save this agent's settings"
                                 onSave={saveV2Override}
                             />
                         ) : (
@@ -350,7 +350,7 @@ export function WorkflowModelOverridesSection({
                                         onClick={removeV2Override}
                                         disabled={isRemovingOverride}
                                     >
-                                        {isRemovingOverride ? "Saving..." : "Save Organization Configuration"}
+                                        {isRemovingOverride ? "Saving..." : "Save for the whole workspace"}
                                     </Button>
                                 )}
                             </div>

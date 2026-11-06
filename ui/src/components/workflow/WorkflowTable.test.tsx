@@ -65,8 +65,8 @@ describe('WorkflowTable', () => {
 
     it("makes each agent's name a real link to the agent", () => {
         render(<WorkflowTable workflows={AGENTS} showArchived={false} />);
-        expect(screen.getByRole('link', { name: 'Front desk' }).getAttribute('href')).toBe('/workflow/1');
-        expect(screen.getByRole('link', { name: 'After hours' }).getAttribute('href')).toBe('/workflow/2');
+        expect(screen.getByRole('link', { name: 'Front desk' }).getAttribute('href')).toBe('/workflow/1/facts');
+        expect(screen.getByRole('link', { name: 'After hours' }).getAttribute('href')).toBe('/workflow/2/facts');
     });
 
     it('rows are plain list items: no role="link", no tabindex, menu not inside the link', () => {
@@ -95,7 +95,7 @@ describe('WorkflowTable', () => {
         render(<WorkflowTable workflows={AGENTS} showArchived={false} />);
         openMenu('Front desk');
         const open = await screen.findByRole('menuitem', { name: 'Open' });
-        expect(open.getAttribute('href')).toBe('/workflow/1');
+        expect(open.getAttribute('href')).toBe('/workflow/1/facts');
         expect(screen.getByRole('menuitem', { name: 'Archive' })).toBeTruthy();
         expect(mocks.push).not.toHaveBeenCalled();
     });

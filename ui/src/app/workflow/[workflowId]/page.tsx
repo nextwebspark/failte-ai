@@ -8,16 +8,18 @@ import RenderWorkflow from '@/app/workflow/[workflowId]/RenderWorkflow';
 import { getWorkflowApiV1WorkflowFetchWorkflowIdGet, getWorkflowVersionsApiV1WorkflowWorkflowIdVersionsGet } from '@/client/sdk.gen';
 import type { WorkflowResponse, WorkflowVersionResponse } from '@/client/types.gen';
 import { FlowEdge, FlowNode } from '@/components/flow/types';
-import SpinLoader from '@/components/SpinLoader';
-import { BRAND } from "@/config/brand";
 import { PostHogEvent } from '@/constants/posthog-events';
 import { UnsavedChangesProvider } from '@/context/UnsavedChangesContext';
-import { detailFromError } from '@/lib/apiError';
 import { useAuth } from '@/lib/auth';
 import logger from '@/lib/logger';
 import { WorkflowConfigurations } from '@/types/workflow-configurations';
 
 import WorkflowLayout from '../WorkflowLayout';
+import { SectionError } from './components/SectionStates';
+import { ConversationSkeleton, SmallScreenDiagramNote, useIsSmallScreen } from './components/SmallScreenDiagramNote';
+
+const LOAD_FAILED = "We couldn't load this agent";
+const NOT_FOUND = "We couldn't find this agent";
 
 export default function WorkflowDetailPage() {
     const params = useParams();
@@ -37,6 +39,11 @@ export default function WorkflowDetailPage() {
     const { user, redirectToLogin, loading: authLoading } = useAuth();
     // Capture once so we still open the tester after stripping the param.
     const [openTesterOnLoad] = useState(() => searchParams.get('onboarding') === 'web_call');
+    // Phones get a note instead of the diagram, unless the owner asks for it.
+    const isSmallScreen = useIsSmallScreen();
+    const [showDiagramAnyway, setShowDiagramAnyway] = useState(false);
+    // Bumped by "Try again" to refetch.
+    const [attempt, setAttempt] = useState(0);
 
     useEffect(() => {
         if (searchParams.get('onboarding') !== 'web_call') return;
@@ -80,20 +87,17 @@ export default function WorkflowDetailPage() {
                 if (cancelled) return;
 
                 if (response.error) {
-                    const fallback = response.response?.status === 503
-                        ? `${BRAND.name} is temporarily unavailable. Please try again later.`
-                        : 'Failed to load agent';
-                    setError(detailFromError(response.error, fallback));
+                    setError(response.response?.status === 404 ? NOT_FOUND : LOAD_FAILED);
                     return;
                 }
 
                 const workflow = response.data;
                 if (!workflow) {
-                    setError('Agent not found');
+                    setError(NOT_FOUND);
                     return;
                 }
                 if (versionResponse?.error) {
-                    setError(detailFromError(versionResponse.error, 'Failed to load this version'));
+                    setError("We couldn't load this version");
                     return;
                 }
                 const selectedVersion = versionResponse?.data?.[0];
@@ -107,7 +111,7 @@ export default function WorkflowDetailPage() {
                     workflow_name: workflow.name,
                 });
             } catch (err) {
-                if (!cancelled) setError('Failed to load agent');
+                if (!cancelled) setError(LOAD_FAILED);
                 logger.error(`Error fetching workflow: ${err}`);
             } finally {
                 if (!cancelled) setLoading(false);
@@ -116,7 +120,7 @@ export default function WorkflowDetailPage() {
 
         void fetchWorkflow();
         return () => { cancelled = true; };
-    }, [workflowId, version, requestKey, user, authLoading]);
+    }, [workflowId, version, requestKey, user, authLoading, attempt]);
 
     const stableUser = useMemo(() => user, [user]);
     const workflow = loaded?.key === requestKey ? loaded.workflow : undefined;
@@ -125,19 +129,32 @@ export default function WorkflowDetailPage() {
     const configurations = selectedVersion ? selectedVersion.workflow_configurations : workflow?.workflow_configurations;
     const templateVariables = selectedVersion ? selectedVersion.template_context_variables : workflow?.template_context_variables;
 
-    if (authLoading || loading || (!error && loaded?.key !== requestKey)) {
+    if (authLoading || loading || (!error && loaded?.key !== requestKey) || isSmallScreen === null) {
         return (
             <WorkflowLayout>
-                <SpinLoader />
+                <ConversationSkeleton />
             </WorkflowLayout>
         );
     }
     else if (error || !workflow) {
         return (
             <WorkflowLayout showFeaturesNav={false}>
-                <div className="flex items-center justify-center min-h-screen">
-                    <div className="text-lg text-destructive">{error || 'Agent not found'}</div>
+                <div className="page-body">
+                    <SectionError
+                        title={error || NOT_FOUND}
+                        message={error === NOT_FOUND
+                            ? 'It may have been deleted, or the link is wrong. Go back to All voice agents to pick another.'
+                            : 'Please check your connection and try again.'}
+                        onRetry={error === NOT_FOUND ? undefined : () => setAttempt((n) => n + 1)}
+                    />
                 </div>
+            </WorkflowLayout>
+        );
+    }
+    else if (isSmallScreen && !showDiagramAnyway) {
+        return (
+            <WorkflowLayout>
+                <SmallScreenDiagramNote workflowId={workflowId} onShowAnyway={() => setShowDiagramAnyway(true)} />
             </WorkflowLayout>
         );
     }

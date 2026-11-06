@@ -24,7 +24,7 @@ function renderHeader(overrides: Partial<Props> = {}) {
         user: { id: "1" },
         onPhoneCallClick: vi.fn(),
         onHistoryClick: vi.fn(),
-        activeVersionLabel: "v3 (Draft)",
+        activeVersionLabel: "Version 3 · Draft",
         isViewingHistoricalVersion: false,
         onBackToDraft: vi.fn(),
         hasDraft: true,
@@ -87,7 +87,7 @@ describe("WorkflowEditorHeader", () => {
     });
 
     it("on an old version, offers only the way back", () => {
-        const props = renderHeader({ isViewingHistoricalVersion: true, activeVersionLabel: "v1 (Published)" });
+        const props = renderHeader({ isViewingHistoricalVersion: true, activeVersionLabel: "Version 1 · Live" });
         expect(screen.getByText("Read only")).toBeTruthy();
         expect(screen.queryByRole("button", { name: "Save" })).toBeNull();
         expect(screen.queryByRole("button", { name: /Rename agent/ })).toBeNull();

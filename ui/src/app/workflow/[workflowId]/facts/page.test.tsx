@@ -8,9 +8,22 @@ const mocks = vi.hoisted(() => ({
     get: vi.fn(),
     put: vi.fn(),
     can: vi.fn<(p: string) => boolean>(() => true),
+    query: "",
+    replace: vi.fn(),
+    openTester: vi.fn(),
 }));
 
-vi.mock("next/navigation", () => ({ useParams: () => ({ workflowId: "12" }) }));
+vi.mock("next/navigation", () => ({
+    useParams: () => ({ workflowId: "12" }),
+    useSearchParams: () => new URLSearchParams(mocks.query),
+    usePathname: () => "/workflow/12/facts",
+    useRouter: () => ({ replace: mocks.replace }),
+}));
+vi.mock("@/context/AgentShellContext", () => ({ useAgentShell: () => ({ openTester: mocks.openTester }) }));
+// The summary has its own tests; here it only needs to be on the page.
+vi.mock("../components/AgentHomeSummary", () => ({
+    AgentHomeSummary: ({ workflowId }: { workflowId: number }) => <div data-testid="summary">agent {workflowId}</div>,
+}));
 vi.mock("@/client/sdk.gen", () => ({
     getBusinessFactsApiV1WorkflowWorkflowIdBusinessFactsGet: mocks.get,
     updateBusinessFactsApiV1WorkflowWorkflowIdBusinessFactsPut: mocks.put,
@@ -26,11 +39,35 @@ const FACTS = [
 describe("Business facts", () => {
     beforeEach(() => {
         vi.clearAllMocks();
+        mocks.query = "";
         mocks.can.mockImplementation(() => true);
         mocks.get.mockResolvedValue({ data: { facts: FACTS } });
         mocks.put.mockImplementation(async ({ body }) => ({
             data: { facts: FACTS.map((f) => ({ ...f, value: body.facts[f.key] ?? f.value })) },
         }));
+    });
+
+    it("puts the agent summary above the facts", async () => {
+        render(<BusinessFactsPage />);
+        const summary = screen.getByTestId("summary");
+        expect(summary.textContent).toBe("agent 12");
+        const heading = await screen.findByRole("heading", { name: "Business facts" });
+        expect(summary.compareDocumentPosition(heading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    });
+
+    it("opens the test panel once when arriving from the Create agent wizard", async () => {
+        mocks.query = "onboarding=web_call";
+        render(<BusinessFactsPage />);
+        await screen.findByLabelText("Opening hours");
+        expect(mocks.openTester).toHaveBeenCalledTimes(1);
+        expect(mocks.replace).toHaveBeenCalledWith("/workflow/12/facts", { scroll: false });
+    });
+
+    it("leaves the test panel alone on a normal visit", async () => {
+        render(<BusinessFactsPage />);
+        await screen.findByLabelText("Opening hours");
+        expect(mocks.openTester).not.toHaveBeenCalled();
+        expect(mocks.replace).not.toHaveBeenCalled();
     });
 
     it("lets the owner change what the agent tells callers", async () => {
@@ -69,7 +106,9 @@ describe("Business facts", () => {
     it("shows a load error with Try again, then recovers", async () => {
         mocks.get.mockResolvedValueOnce({ error: { detail: "Agent not found" } });
         render(<BusinessFactsPage />);
-        expect((await screen.findByRole("alert")).textContent).toContain("Agent not found");
+        const alert = await screen.findByRole("alert");
+        expect(alert.textContent).toContain("We couldn't load your business facts");
+        expect(alert.textContent).not.toContain("Agent not found");
         fireEvent.click(screen.getByRole("button", { name: "Try again" }));
         expect(await screen.findByLabelText("Opening hours")).toBeTruthy();
         expect(mocks.get).toHaveBeenCalledTimes(2);
@@ -78,7 +117,7 @@ describe("Business facts", () => {
     it("handles a network failure while loading", async () => {
         mocks.get.mockRejectedValueOnce(new TypeError("Failed to fetch"));
         render(<BusinessFactsPage />);
-        expect((await screen.findByRole("alert")).textContent).toContain("Couldn't load the business facts");
+        expect((await screen.findByRole("alert")).textContent).toContain("We couldn't load your business facts");
         expect(screen.queryByText(/Failed to fetch/)).toBeNull();
     });
 

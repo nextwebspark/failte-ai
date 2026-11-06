@@ -4,6 +4,7 @@ import { Check, Mic, Minus } from 'lucide-react';
 import Link from 'next/link';
 
 import { Button } from '@/components/ui/button';
+import { agentHomeHref } from "@/components/workflow/agentLinks";
 import { cn } from '@/lib/utils';
 
 export interface ReadyItem {
@@ -68,8 +69,8 @@ export function AgentReady({ agentId, items, onTalk }: AgentReadyProps) {
                     <span aria-hidden className="text-line">
                         |
                     </span>
-                    <Link href={`/workflow/${agentId}`} className="text-ink-3 hover:text-ink hover:underline">
-                        Open the editor
+                    <Link href={agentHomeHref(agentId)} className="text-ink-3 hover:text-ink hover:underline">
+                        See your agent
                     </Link>
                 </div>
             </div>

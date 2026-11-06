@@ -24,7 +24,7 @@ interface VersionHistoryPanelProps {
 
 const statusLabel: Record<string, string> = {
     draft: "Draft",
-    published: "Published",
+    published: "Live",
     archived: "Archived",
 };
 
@@ -109,7 +109,7 @@ export const VersionHistoryPanel = ({
                                             <div className="flex items-center gap-2">
                                                 <FileText className="h-4 w-4 text-ink-3" />
                                                 <span className="text-sm font-medium text-foreground">
-                                                    v{version.version_number}
+                                                    Version {version.version_number}
                                                 </span>
                                             </div>
                                             {version.status !== "archived" && (
