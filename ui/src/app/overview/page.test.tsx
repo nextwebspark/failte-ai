@@ -104,7 +104,7 @@ describe("Home", () => {
         expect(screen.getByText("Passed to your team")).toBeTruthy();
         expect(screen.getByText("Hung up without speaking")).toBeTruthy();
         expect(screen.getByText("50%")).toBeTruthy();
-        expect(screen.getByText("1 not answered")).toBeTruthy();
+        expect(screen.getAllByText("1 not answered").length).toBeGreaterThan(0);
         expect(screen.getAllByText(/Answering calls/).length).toBeGreaterThan(0);
     });
 

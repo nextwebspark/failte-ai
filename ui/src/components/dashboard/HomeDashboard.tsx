@@ -170,23 +170,35 @@ interface TileProps {
     icon: LucideIcon;
     tone: string;
     label: string;
+    /** The label on a phone, where four tiles share 390px. */
+    shortLabel?: string;
     value: ReactNode;
     caption?: ReactNode;
+    /** What a phone shows under the number (nothing when omitted). */
+    phoneCaption?: ReactNode;
 }
 
-function Tile({ icon: Icon, tone, label, value, caption }: TileProps) {
+function Tile({ icon: Icon, tone, label, shortLabel, value, caption, phoneCaption }: TileProps) {
     return (
         <div className="flex min-w-0 flex-col gap-1.5 rounded-[14px] border border-line bg-panel px-4 py-4 shadow-xs sm:px-[18px]">
             <div className="flex items-center gap-2 text-[13px] font-medium text-ink-2">
-                <span className={cn("grid size-7 flex-none place-items-center rounded-lg", tone)} aria-hidden>
+                <span className={cn("hidden size-7 flex-none place-items-center rounded-lg sm:grid", tone)} aria-hidden>
                     <Icon className="size-4" />
                 </span>
-                <span className="min-w-0">{label}</span>
+                {shortLabel ? (
+                    <>
+                        <span className="min-w-0 sm:hidden">{shortLabel}</span>
+                        <span className="hidden min-w-0 sm:inline">{label}</span>
+                    </>
+                ) : (
+                    <span className="min-w-0">{label}</span>
+                )}
             </div>
             <div className="font-display text-[28px] font-semibold leading-tight tracking-[-0.02em] tabular-nums text-foreground sm:text-[32px]">
                 {value}
             </div>
-            {caption && <div className="text-[12.5px] leading-snug text-ink-3">{caption}</div>}
+            {phoneCaption && <div className="text-[12.5px] leading-snug text-ink-3 sm:hidden">{phoneCaption}</div>}
+            {caption && <div className="hidden text-[12.5px] leading-snug text-ink-3 sm:block">{caption}</div>}
         </div>
     );
 }
@@ -201,7 +213,9 @@ function Tiles({ summary, now }: { summary: DashboardSummaryResponse; now: Date 
                 icon={Phone}
                 tone="bg-sky-dim text-sky"
                 label={callsTileLabel(summary.range)}
+                shortLabel="Calls"
                 value={t.calls}
+                phoneCaption={change ? <>{change.amount && <span className={cn("font-semibold", change.sign === "up" ? "text-brand" : "text-ink-2")}>{change.amount}</span>}{change.rest}</> : null}
                 caption={
                     change ? (
                         <>
@@ -221,6 +235,7 @@ function Tiles({ summary, now }: { summary: DashboardSummaryResponse; now: Date 
                 icon={Check}
                 tone="bg-brand-dim text-brand"
                 label="Handled by your agent"
+                shortLabel="Handled by agent"
                 value={
                     <>
                         {t.handled}
@@ -235,7 +250,13 @@ function Tiles({ summary, now }: { summary: DashboardSummaryResponse; now: Date 
                 icon={PhoneForwarded}
                 tone="bg-amber-dim text-amber"
                 label="Passed to your team"
+                shortLabel="Passed to team"
                 value={t.passed_to_team}
+                phoneCaption={
+                    t.transfer_not_answered > 0 ? (
+                        <b className="font-semibold text-amber">{t.transfer_not_answered} not answered</b>
+                    ) : null
+                }
                 caption={
                     t.passed_to_team > 0 ? (
                         <>
@@ -378,9 +399,9 @@ function RecentCalls({ summary, now }: { summary: DashboardSummaryResponse; now:
                                             href={runDetailHref(call.workflow_id, call.run_id, returnTo)}
                                             className="font-semibold text-foreground hover:underline"
                                         >
-                                            {call.caller_name ?? (call.caller_number ? "Caller" : "Unknown caller")}
+                                            {callerWords(call)}
                                         </Link>
-                                        {call.caller_number && (
+                                        {call.caller_name && call.caller_number && (
                                             <div className="text-[12px] tabular-nums text-ink-3">{call.caller_number}</div>
                                         )}
                                     </td>
@@ -758,24 +779,30 @@ export function HomeDashboard({ heading, workflowId, onTryAgent }: HomeDashboard
             ) : (
                 <>
                     <Tiles summary={summary} now={now} />
-                    <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,7fr)_minmax(0,5fr)]">
-                        <div className="order-1 min-w-0">
-                            <Attention
-                                items={attentionItems}
-                                openCount={openCount}
-                                timezone={summary.timezone}
-                                now={now}
-                                followUpsHref={followUpsHref}
-                            />
+                    {/* Two columns on a computer; on a phone one list in the
+                        design's order: attention, hours, recent calls, agent. */}
+                    <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
+                        <div className="contents lg:flex lg:w-[58%] lg:min-w-0 lg:flex-col lg:gap-4">
+                            <div className="order-1 min-w-0 lg:order-none">
+                                <Attention
+                                    items={attentionItems}
+                                    openCount={openCount}
+                                    timezone={summary.timezone}
+                                    now={now}
+                                    followUpsHref={followUpsHref}
+                                />
+                            </div>
+                            <div className="order-3 min-w-0 lg:order-none">
+                                <RecentCalls summary={summary} now={now} />
+                            </div>
                         </div>
-                        <div className="order-4 min-w-0 lg:order-2">
-                            <AgentCard summary={summary} now={now} onTryAgent={onTryAgent} />
-                        </div>
-                        <div className="order-3 min-w-0">
-                            <RecentCalls summary={summary} now={now} />
-                        </div>
-                        <div className="order-2 min-w-0 lg:order-4">
-                            <WhenPeopleCalled summary={summary} />
+                        <div className="contents lg:flex lg:min-w-0 lg:flex-1 lg:flex-col lg:gap-4">
+                            <div className="order-4 min-w-0 lg:order-none">
+                                <AgentCard summary={summary} now={now} onTryAgent={onTryAgent} />
+                            </div>
+                            <div className="order-2 min-w-0 lg:order-none">
+                                <WhenPeopleCalled summary={summary} />
+                            </div>
                         </div>
                     </div>
                 </>
