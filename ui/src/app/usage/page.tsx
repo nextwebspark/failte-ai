@@ -496,7 +496,7 @@ export default function UsagePage() {
                 {/* Everyday search first: a number, a time, an outcome. */}
                 <form
                     role="search"
-                    aria-label="Find calls"
+                    aria-label="Search calls"
                     onSubmit={handleQuickSearch}
                     className="rounded-xl border border-line bg-gradient-to-br from-brand-dim via-panel to-panel px-5 py-5 sm:px-6"
                 >
@@ -586,29 +586,21 @@ export default function UsagePage() {
                 </form>
 
                 {moreOpen && (
+                    <div id="calls-more" className="flex flex-col">
+                    {/* The full filter builder (its own card, with Templates). */}
+                    <FilterBuilder
+                        availableAttributes={availableUsageFilterAttributes}
+                        activeFilters={activeFilters}
+                        onFiltersChange={handleFiltersChange}
+                        onApplyFilters={() => void handleApplyFilters()}
+                        onClearFilters={handleClearFilters}
+                        isExecuting={isExecutingFilters}
+                    />
                     <section
-                        id="calls-more"
                         aria-label="More options"
                         className="flex flex-col gap-5 rounded-xl border border-line bg-panel px-5 py-5 sm:px-6"
                     >
-                        <div className="flex flex-col gap-3">
-                            <div>
-                                <h2 className="text-[14.5px] font-semibold">More filters</h2>
-                                <p className="text-[13px] text-ink-3">
-                                    Narrow the list by call length, direction, agent and more. Choose a filter, then Apply.
-                                </p>
-                            </div>
-                            <FilterBuilder
-                                availableAttributes={availableUsageFilterAttributes}
-                                activeFilters={activeFilters}
-                                onFiltersChange={handleFiltersChange}
-                                onApplyFilters={() => void handleApplyFilters()}
-                                onClearFilters={handleClearFilters}
-                                isExecuting={isExecutingFilters}
-                            />
-                        </div>
-
-                        <div className="grid gap-5 border-t border-line-soft pt-5 md:grid-cols-2">
+                        <div className="grid gap-5 md:grid-cols-2">
                             <div className="flex flex-col gap-2">
                                 <h2 className="text-[14.5px] font-semibold">
                                     <label htmlFor={`${timezoneSelectId}-input`} className="inline-flex items-center gap-1.5">
@@ -664,6 +656,7 @@ export default function UsagePage() {
                             </div>
                         )}
                     </section>
+                    </div>
                 )}
 
                 <section aria-labelledby="calls-heading" className="flex flex-col gap-3">

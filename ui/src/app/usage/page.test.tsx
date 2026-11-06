@@ -136,7 +136,7 @@ describe("UsagePage everyday search", () => {
         render(<UsagePage />);
         await screen.findByRole("link", { name: "Open call #501" });
 
-        expect(screen.getByRole("search", { name: "Find calls" })).toBeTruthy();
+        expect(screen.getByRole("search", { name: "Search calls" })).toBeTruthy();
         expect(screen.getByLabelText("Phone number")).toBeTruthy();
         expect(screen.queryByRole("button", { name: "Caller data request" })).toBeNull();
 

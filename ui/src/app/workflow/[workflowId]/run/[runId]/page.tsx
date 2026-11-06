@@ -885,7 +885,7 @@ export default function WorkflowRunPage() {
                 {/* For whoever builds the agent: open by default when the call
                     was opened from the agent, folded away from the Calls list. */}
                 <details
-                    className="group min-w-0 rounded-xl border border-line bg-panel xl:col-start-1 xl:row-start-2 xl:min-h-0 xl:overflow-y-auto"
+                    className="group min-w-0 self-start rounded-xl border border-line bg-panel xl:col-start-1 xl:row-start-2 xl:max-h-full xl:min-h-0 xl:overflow-y-auto"
                     open={!cameFromWorkspace}
                 >
                     <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 rounded-xl px-5 py-3 text-[14.5px] font-semibold outline-none focus-visible:ring-[3px] focus-visible:ring-ring/40 [&::-webkit-details-marker]:hidden">
