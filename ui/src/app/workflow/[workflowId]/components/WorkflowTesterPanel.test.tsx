@@ -1,9 +1,11 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { createRunMock, markActionCompletedMock } = vi.hoisted(() => ({
+const { createRunMock, markActionCompletedMock, markTooltipSeenMock, onboardingState } = vi.hoisted(() => ({
     createRunMock: vi.fn(),
     markActionCompletedMock: vi.fn(),
+    markTooltipSeenMock: vi.fn(),
+    onboardingState: { seen: true },
 }));
 
 vi.mock("@/client/sdk.gen", () => ({
@@ -19,15 +21,15 @@ vi.mock("@/lib/auth", () => ({
 }));
 
 vi.mock("@/context/OnboardingContext", () => ({
-    useOnboarding: () => ({ markActionCompleted: markActionCompletedMock }),
+    useOnboarding: () => ({
+        markActionCompleted: markActionCompletedMock,
+        hasSeenTooltip: () => onboardingState.seen,
+        markTooltipSeen: markTooltipSeenMock,
+    }),
 }));
 
 vi.mock("posthog-js", () => ({ default: { capture: vi.fn() } }));
 vi.mock("sonner", () => ({ toast: { error: vi.fn() } }));
-
-vi.mock("@/components/onboarding/OnboardingTooltip", () => ({
-    OnboardingTooltip: () => null,
-}));
 
 // Stand-in for the real tester: it only needs to show which run it was handed.
 vi.mock("./workflow-tester/EmbeddedVoiceTester", () => ({
@@ -56,18 +58,19 @@ vi.mock("./workflow-tester/AiSimulatorPlaceholder", () => ({
 
 import { WorkflowTesterPanel } from "./WorkflowTesterPanel";
 
-function renderPanel() {
+function renderPanel(props: { showWebCallOnboarding?: boolean } = {}) {
     return render(
         <WorkflowTesterPanel
             workflowId={10124}
             disabled={false}
             disabledReason={null}
+            {...props}
         />,
     );
 }
 
 async function startVoiceRun() {
-    const runTest = await screen.findByRole("button", { name: /run test/i });
+    const runTest = await screen.findByRole("button", { name: /start a test call/i });
     fireEvent.click(runTest);
     const tester = await screen.findByTestId("voice-tester");
     return tester.textContent;
@@ -108,7 +111,7 @@ describe("WorkflowTesterPanel voice run lifecycle", () => {
         await waitFor(() =>
             expect(screen.queryByTestId("voice-tester")).toBeNull(),
         );
-        expect(screen.getByRole("button", { name: /run test/i })).toBeTruthy();
+        expect(screen.getByRole("button", { name: /start a test call/i })).toBeTruthy();
     });
 
     it("mints a fresh run on the next test rather than reusing the old one", async () => {
@@ -143,5 +146,44 @@ describe("WorkflowTesterPanel live pill", () => {
 
         fireEvent.click(screen.getByRole("button", { name: "hang up" }));
         expect(screen.queryByRole("status", { name: /Call live/ })).toBeNull();
+    });
+});
+
+describe("WorkflowTesterPanel first-call tip", () => {
+    beforeEach(() => {
+        createRunMock.mockReset();
+        createRunMock.mockResolvedValue({ data: { id: 1 }, error: undefined });
+        markTooltipSeenMock.mockReset();
+    });
+
+    it("shows the tip inline, above the button, for a first-time user", async () => {
+        onboardingState.seen = false;
+        renderPanel({ showWebCallOnboarding: true });
+        const button = await screen.findByRole("button", { name: /start a test call/i });
+        const tip = screen.getByRole("note");
+        expect(tip.textContent).toContain("New here?");
+        // Inline in the same column, before the button: it can't cover it.
+        expect(tip.compareDocumentPosition(button) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    });
+
+    it("closes for good from its own close button", async () => {
+        onboardingState.seen = false;
+        renderPanel({ showWebCallOnboarding: true });
+        fireEvent.click(await screen.findByRole("button", { name: "Hide this tip" }));
+        expect(markTooltipSeenMock).toHaveBeenCalledWith("web_call");
+    });
+
+    it("counts as seen once the first call starts", async () => {
+        onboardingState.seen = false;
+        renderPanel({ showWebCallOnboarding: true });
+        fireEvent.click(await screen.findByRole("button", { name: /start a test call/i }));
+        expect(markTooltipSeenMock).toHaveBeenCalledWith("web_call");
+    });
+
+    it("stays hidden once seen", async () => {
+        onboardingState.seen = true;
+        renderPanel({ showWebCallOnboarding: true });
+        await screen.findByRole("button", { name: /start a test call/i });
+        expect(screen.queryByRole("note")).toBeNull();
     });
 });

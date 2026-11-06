@@ -1,12 +1,11 @@
 "use client";
 
-import { Loader2, MessageSquareText, Mic, Phone, RefreshCw, X } from "lucide-react";
+import { Lightbulb, Loader2, MessageSquareText, Mic, Phone, RefreshCw, X } from "lucide-react";
 import posthog from "posthog-js";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 
 import { createWorkflowRunApiV1WorkflowWorkflowIdRunsPost } from "@/client/sdk.gen";
-import { OnboardingTooltip } from "@/components/onboarding/OnboardingTooltip";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StatusPill } from "@/components/ui/status-pill";
@@ -64,7 +63,7 @@ export function WorkflowTesterPanel({
     onRuntimeNodeTransition,
 }: WorkflowTesterPanelProps) {
     const auth = useAuth();
-    const { markActionCompleted } = useOnboarding();
+    const { markActionCompleted, hasSeenTooltip, markTooltipSeen } = useOnboarding();
     const { isAuthenticated, loading: authLoading, getAccessToken } = auth;
     const [accessToken, setAccessToken] = useState<string | null>(null);
     const [activeMode, setActiveMode] = useState<"audio" | "text">("audio");
@@ -74,7 +73,6 @@ export function WorkflowTesterPanel({
     const [voiceRunId, setVoiceRunId] = useState<number | null>(null);
     const [creatingVoiceRun, setCreatingVoiceRun] = useState(false);
     const [tokenReady, setTokenReady] = useState(false);
-    const runTestButtonRef = useRef<HTMLButtonElement>(null);
     // When the browser call connected, for the LIVE pill; null when no call is live.
     const [liveSince, setLiveSince] = useState<number | null>(null);
     const handleLiveChange = useCallback((live: boolean) => {
@@ -154,8 +152,9 @@ export function WorkflowTesterPanel({
         : null;
     const effectiveDisabledReason = disabledReason ?? authUnavailableReason;
     const testerBlocked = disabled || authUnavailableReason !== null;
-    const runTestTooltipEnabled =
+    const showFirstCallTip =
         showWebCallOnboarding &&
+        !hasSeenTooltip("web_call") &&
         isVisible &&
         activeMode === "audio" &&
         !voiceRunId &&
@@ -237,27 +236,55 @@ export function WorkflowTesterPanel({
                             <>
                                 {effectiveDisabledReason ? <DisabledNotice reason={effectiveDisabledReason} /> : null}
                                 <EmptyState
-                                    icon={<Phone className="h-7 w-7" />}
-                                    title="Call this agent in the browser"
-                                    description="Test the agent over a voice call. Some telephony-only tools, like call transfer, are not yet supported here."
+                                    icon={<Phone className="h-5 w-5" />}
+                                    title="Talk to your agent"
+                                    description="Have a conversation through your computer's microphone, just like a caller would. Putting a caller through to a person only works on a real phone call."
                                     action={
-                                        <Button
-                                            ref={runTestButtonRef}
-                                            onClick={createVoiceRun}
-                                            disabled={creatingVoiceRun || testerBlocked}
-                                        >
-                                            {creatingVoiceRun ? (
-                                                <>
-                                                    <Loader2 className="h-4 w-4 animate-spin" />
-                                                    Starting test...
-                                                </>
-                                            ) : (
-                                                <>
-                                                    <Phone className="h-4 w-4" />
-                                                    Run test
-                                                </>
+                                        <div className="flex flex-col items-start gap-3">
+                                            {/* First-run tip sits inline above the button it
+                                                points at, so it never covers the button or the
+                                                page beside the panel. */}
+                                            {showFirstCallTip && (
+                                                <div
+                                                    role="note"
+                                                    className="flex w-full items-start gap-2.5 rounded-lg border border-brand/30 bg-brand-dim px-3 py-2.5 text-[13px] text-ink-2"
+                                                >
+                                                    <Lightbulb className="mt-0.5 size-4 shrink-0 text-brand" aria-hidden />
+                                                    <p className="min-w-0 flex-1 leading-snug">
+                                                        <span className="font-semibold text-foreground">New here?</span>{" "}
+                                                        Start a test call to hear how your agent answers. Nobody else is called.
+                                                    </p>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => markTooltipSeen("web_call")}
+                                                        aria-label="Hide this tip"
+                                                        className="-m-1 grid size-7 shrink-0 place-items-center rounded-md text-ink-3 transition-colors hover:bg-panel hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring motion-reduce:transition-none"
+                                                    >
+                                                        <X className="size-4" aria-hidden />
+                                                    </button>
+                                                </div>
                                             )}
-                                        </Button>
+                                            <Button
+                                                size="lg"
+                                                onClick={() => {
+                                                    markTooltipSeen("web_call");
+                                                    void createVoiceRun();
+                                                }}
+                                                disabled={creatingVoiceRun || testerBlocked}
+                                            >
+                                                {creatingVoiceRun ? (
+                                                    <>
+                                                        <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" />
+                                                        Starting the call…
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        <Phone className="h-4 w-4" />
+                                                        Start a test call
+                                                    </>
+                                                )}
+                                            </Button>
+                                        </div>
                                     }
                                 />
                             </>
@@ -301,14 +328,6 @@ export function WorkflowTesterPanel({
                 </TabsContent>
             </Tabs>
 
-            <OnboardingTooltip
-                tooltipKey="web_call"
-                targetRef={runTestButtonRef}
-                title="Try your first web call"
-                message="Start a browser call here to hear the agent, inspect the transcript, and validate the workflow before you customize it further."
-                showNext={false}
-                enabled={runTestTooltipEnabled}
-            />
         </div>
     );
 }
