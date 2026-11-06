@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowDown, ArrowUp, ArrowUpDown, ChevronLeft, ChevronRight, Download, Globe } from 'lucide-react';
+import { ArrowDown, ArrowUp, ArrowUpDown, ChevronLeft, ChevronRight, Download, Globe, PhoneCall } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useCallback, useEffect, useId, useMemo, useState } from 'react';
@@ -742,7 +742,16 @@ export default function UsagePage() {
                                 )}
                             </>
                         ) : (
-                            <p className="text-center py-8 text-muted-foreground">No runs found</p>
+                            <div className="flex flex-col items-center gap-2 py-12 text-center">
+                                <span className="grid size-11 place-items-center rounded-full bg-brand-dim text-brand" aria-hidden>
+                                    <PhoneCall className="size-5" />
+                                </span>
+                                <p className="font-medium text-foreground">No calls yet</p>
+                                <p className="max-w-sm text-sm text-ink-3">
+                                    When your agent answers or makes a call, it shows up here with how it went.
+                                    Try a test call from your agent&apos;s page.
+                                </p>
+                            </div>
                         )}
                     </CardContent>
                 </Card>

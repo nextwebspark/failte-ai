@@ -172,7 +172,7 @@ export function AppTopBar({
         <>
           <span className="hidden sm:inline">{separator}</span>
           <div className="hidden min-w-0 max-w-[200px] sm:block">
-            <SidebarTeamSwitcher triggerClassName="h-7 w-full justify-start gap-1.5 border-0 bg-transparent px-1.5 font-mono text-[13px] font-medium text-ink-3 shadow-none hover:text-foreground focus-visible:ring-0" />
+            <SidebarTeamSwitcher triggerClassName="h-7 w-full justify-start gap-1.5 border-0 bg-transparent px-1.5 text-[13px] font-medium text-ink-3 shadow-none hover:text-foreground focus-visible:ring-0" />
           </div>
         </>
       ) : (
@@ -189,7 +189,7 @@ export function AppTopBar({
         {meta.title}
       </h1>
       {meta.subtitle && (
-        <p className="hidden truncate whitespace-nowrap font-mono text-xs text-ink-3 xl:block">
+        <p className="hidden truncate whitespace-nowrap text-xs text-ink-3 xl:block">
           {meta.subtitle}
         </p>
       )}

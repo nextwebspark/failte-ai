@@ -58,7 +58,7 @@ export function LocalProviderWrapper({ children }: { children: React.ReactNode }
     window.location.href = '/auth/login';
   }, []);
 
-  const logout = React.useCallback(async () => {
+  const logout = React.useCallback(async (options?: { reason?: 'session-ended' }) => {
     try {
       await fetch('/api/auth/logout', { method: 'POST' });
     } catch (error) {
@@ -66,7 +66,7 @@ export function LocalProviderWrapper({ children }: { children: React.ReactNode }
     }
     setUser(null);
     tokenRef.current = null;
-    window.location.href = '/auth/login';
+    window.location.href = options?.reason ? `/auth/login?reason=${options.reason}` : '/auth/login';
   }, []);
 
   const contextValue = useMemo(() => ({

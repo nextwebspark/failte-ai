@@ -46,7 +46,9 @@ describe("OverviewPage", () => {
 
     it("greets the person by first name", () => {
         render(<OverviewPage />);
-        expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("Welcome, Mary!");
+        expect(screen.getByRole("heading", { level: 1 }).textContent).toMatch(
+            /^Good (morning|afternoon|evening), Mary$/,
+        );
     });
 
     it("gives an admin the daily links and the set-up links", () => {

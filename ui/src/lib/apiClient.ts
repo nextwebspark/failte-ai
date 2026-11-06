@@ -56,9 +56,44 @@ let interceptorRegistered = false;
  * Register a request interceptor that attaches a fresh access token
  * to every outgoing SDK request. Idempotent — safe for React strict mode.
  */
-export function setupAuthInterceptor(apiClient: Client, getAccessToken: () => Promise<string>) {
+export function setupAuthInterceptor(
+    apiClient: Client,
+    getAccessToken: () => Promise<string>,
+    onSessionEnded?: () => void,
+) {
     if (interceptorRegistered) return;
     interceptorRegistered = true;
+
+    // A 401 on a signed-in page usually means the session is no longer valid
+    // (expired, signed out elsewhere, or a token from another environment).
+    // Confirm once with /auth/me, then end the session cleanly instead of
+    // leaving a half-working page. Concurrent 401s share one check.
+    let sessionCheck: Promise<void> | null = null;
+    apiClient.interceptors.response.use(async (response, request) => {
+        if (
+            response.status !== 401 ||
+            !onSessionEnded ||
+            typeof window === 'undefined' ||
+            new URL(request.url).pathname.includes('/auth/')
+        ) {
+            return response;
+        }
+        sessionCheck ??= (async () => {
+            try {
+                const token = await getAccessToken();
+                const me = await fetch(new URL('/api/v1/auth/me', request.url), {
+                    headers: token ? { Authorization: `Bearer ${token}` } : {},
+                });
+                if (me.status === 401) onSessionEnded();
+            } catch {
+                // Network trouble is not a session problem: leave the page as it is.
+            }
+        })().finally(() => {
+            sessionCheck = null;
+        });
+        await sessionCheck;
+        return response;
+    });
 
     apiClient.interceptors.request.use(async (request) => {
         if (request.headers.get('Authorization')) {

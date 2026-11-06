@@ -71,7 +71,7 @@ export function OrgConfigProvider({ children }: { children: ReactNode }) {
     const hasFetchedConfig = useRef(false);
 
     if (!auth.loading && auth.isAuthenticated) {
-        setupAuthInterceptor(client, auth.getAccessToken);
+        setupAuthInterceptor(client, auth.getAccessToken, () => void auth.logout({ reason: 'session-ended' }));
     }
 
     const fetchConfig = useCallback(async () => {

@@ -169,7 +169,7 @@ export function AppSidebar({ docked = true }: { docked?: boolean }) {
       {section.label && (
         <SidebarGroupLabel
           className={cn(
-            "notranslate h-auto px-2.5 pb-1.5 pt-3.5 font-mono text-[10px] font-semibold uppercase tracking-[0.14em] text-ink-3",
+            "notranslate h-auto px-2.5 pb-1.5 pt-3.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-3",
             isCollapsed && "hidden"
           )}
           translate="no"
@@ -246,7 +246,7 @@ export function AppSidebar({ docked = true }: { docked?: boolean }) {
           {section.label && (
             <SidebarGroupLabel
               className={cn(
-                "notranslate h-auto px-2.5 pb-1.5 pt-3.5 font-mono text-[10px] font-semibold uppercase tracking-[0.14em] text-ink-3",
+                "notranslate h-auto px-2.5 pb-1.5 pt-3.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-3",
                 isCollapsed && "hidden"
               )}
               translate="no"

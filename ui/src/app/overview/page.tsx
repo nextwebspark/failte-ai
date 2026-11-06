@@ -1,6 +1,6 @@
 "use client";
 
-import { CalendarCheck, Cpu, FileText, GitBranch, type LucideIcon, Plus, TrendingUp } from 'lucide-react';
+import { ArrowRight, CalendarCheck, Cpu, FileText, GitBranch, type LucideIcon, Plus, TrendingUp } from 'lucide-react';
 import Link from 'next/link';
 
 import { SupportLink } from '@/components/SupportLink';
@@ -10,6 +10,7 @@ import { BRAND } from "@/config/brand";
 import { useOrgConfig } from '@/context/OrgConfigContext';
 import { useAuth } from '@/lib/auth';
 import type { Permission } from '@/lib/auth/roles';
+import { greetingFor } from '@/lib/greeting';
 
 /** One place an owner or their team goes from the Overview. */
 interface Shortcut {
@@ -79,13 +80,19 @@ function ShortcutCard({ shortcut }: { shortcut: Shortcut }) {
                 href={shortcut.href}
                 className="group block h-full rounded-lg outline-none focus-visible:ring-[3px] focus-visible:ring-ring/40"
             >
-                <Panel className="h-full transition-colors group-hover:border-brand/60">
-                    <div className="flex items-start gap-3">
-                        <Icon className="mt-0.5 size-5 flex-none text-ink-3" aria-hidden />
-                        <div className="min-w-0">
+                <Panel className="h-full bg-panel transition-all duration-150 group-hover:-translate-y-0.5 group-hover:border-brand/50 group-hover:shadow-md motion-reduce:transition-none motion-reduce:group-hover:translate-y-0">
+                    <div className="flex items-start gap-3.5">
+                        <span className="grid size-10 flex-none place-items-center rounded-lg bg-brand-dim text-brand" aria-hidden>
+                            <Icon className="size-5" />
+                        </span>
+                        <div className="min-w-0 flex-1">
                             <PanelTitle as="h3">{shortcut.title}</PanelTitle>
                             <PanelDescription>{shortcut.description}</PanelDescription>
                         </div>
+                        <ArrowRight
+                            className="mt-1 size-4 flex-none text-ink-3 transition-transform group-hover:translate-x-0.5 group-hover:text-brand motion-reduce:transition-none"
+                            aria-hidden
+                        />
                     </div>
                 </Panel>
             </Link>
@@ -94,9 +101,8 @@ function ShortcutCard({ shortcut }: { shortcut: Shortcut }) {
 }
 
 export default function OverviewPage() {
-    const { user, provider } = useAuth();
+    const { user } = useAuth();
     const { can } = useOrgConfig();
-    const isOSSMode = provider !== 'stack';
 
     const daily = DAILY.filter((s) => can(s.requires));
     const setup = SETUP.filter((s) => can(s.requires));
@@ -105,16 +111,10 @@ export default function OverviewPage() {
         <div className="page-body">
             <div className="max-w-4xl animate-fade-up">
                 {/* Welcome */}
-                <div className="mb-8">
-                    <h1 className="text-2xl font-bold tracking-tight">
-                        {isOSSMode ? (
-                            `Welcome to ${BRAND.name}`
-                        ) : (
-                            `Welcome${user?.displayName ? `, ${user.displayName.split(' ')[0]}` : ''}!`
-                        )}
-                    </h1>
-                    <p className="mt-1.5 text-sm text-ink-3">
-                        Your phone agent at a glance. Pick where to go next.
+                <div className="mb-8 rounded-xl border border-line bg-gradient-to-br from-brand-dim via-panel to-panel px-6 py-6">
+                    <h1 className="text-[26px] font-bold tracking-tight">{greetingFor(user)}</h1>
+                    <p className="mt-1.5 max-w-xl text-[15px] text-ink-2">
+                        Welcome to {BRAND.name}. Here&apos;s everything for your phone agent in one place.
                     </p>
                 </div>
 

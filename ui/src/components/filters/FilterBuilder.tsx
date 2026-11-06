@@ -329,9 +329,9 @@ export const FilterBuilder: React.FC<FilterBuilderProps> = ({
       <CardHeader>
         <div className="flex items-center justify-between">
           <div>
-            <CardTitle>Filter runs</CardTitle>
+            <CardTitle>Find calls</CardTitle>
             <CardDescription>
-              Build custom filters to find specific runs
+              Filter by date, outcome, phone number or agent
             </CardDescription>
           </div>
           <div className="flex items-center gap-2">
@@ -370,7 +370,7 @@ export const FilterBuilder: React.FC<FilterBuilderProps> = ({
               addFilter(value);
             }}>
               <SelectTrigger className="flex-1">
-                <SelectValue placeholder="Select attribute to filter by" />
+                <SelectValue placeholder="Choose what to filter by" />
               </SelectTrigger>
               <SelectContent>
                 {availableAttributesForAdding.map((attr) => (
