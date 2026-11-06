@@ -36,11 +36,18 @@ def test_admin_has_every_permission():
     assert ROLE_PERMISSIONS[OrgRole.ADMIN] == frozenset(Permission)
 
 
-def test_roles_are_strictly_nested():
-    viewer = ROLE_PERMISSIONS[OrgRole.VIEWER]
+def test_roles_nest_except_bookings():
+    staff = ROLE_PERMISSIONS[OrgRole.STAFF]
+    owner = ROLE_PERMISSIONS[OrgRole.VIEWER]
     developer = ROLE_PERMISSIONS[OrgRole.DEVELOPER]
     admin = ROLE_PERMISSIONS[OrgRole.ADMIN]
-    assert viewer < developer < admin
+    assert staff < owner < admin
+    assert staff < developer < admin
+    # The owner runs bookings, which developers (who build agents) don't;
+    # apart from that, a developer can do everything an owner can.
+    bookings = {Permission.BOOKINGS_MANAGE, Permission.BOOKINGS_GRANT}
+    assert owner - developer == bookings
+    assert not bookings & developer
 
 
 @pytest.mark.parametrize(

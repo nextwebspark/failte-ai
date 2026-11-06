@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, SecretStr
 
@@ -263,3 +264,21 @@ class ConfirmConnectionRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     browser_nonce: SecretStr = Field(min_length=1, max_length=128)
+
+
+class BookingOut(BaseModel):
+    """One booking a connection's tools made (``bookings`` capability)."""
+
+    event_id: str
+    start: datetime
+    end: datetime
+    status: Literal["confirmed", "cancelled"]
+    caller_name: str | None = None
+    caller_phone: str | None = None
+    party_size: int | None = None
+    reason: str | None = None
+    created_at: datetime | None = None
+
+
+class BookingListOut(BaseModel):
+    bookings: list[BookingOut]

@@ -145,7 +145,7 @@ async def test_invite_emails_link_and_stores_only_hash(sessions, org, service, s
     assert message.to == email.lower()
     assert "Acme Marine" in message.subject
     assert "Ada Admin" in message.text
-    assert "Client" in message.text
+    assert "Owner" in message.text
 
     token = _token_from(message)
     async with sessions() as session:

@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import Mapping, Sequence
+from datetime import datetime, timedelta
+from typing import Annotated
 
-from fastapi import APIRouter, Depends, Response, status
+from fastapi import APIRouter, Depends, Query, Response, status
 from loguru import logger
 from pydantic import JsonValue, ValidationError
 
@@ -28,6 +30,8 @@ from fallcha_tools.core.errors import (
 )
 from fallcha_tools.core.models import AuthMode, ConnectionStatus
 from fallcha_tools.core.provider import (
+    BookingListFailed,
+    BookingListProvider,
     ConnectionTestResult,
     Provider,
     SyncableProvider,
@@ -37,6 +41,8 @@ from fallcha_tools.core.provider import (
 from fallcha_tools.core.repositories import ConnectionInfo, ConnectionRepository
 from fallcha_tools.core.sync import SyncInfo, SyncRepository
 from fallcha_tools.schemas import (
+    BookingListOut,
+    BookingOut,
     CatalogOAuth,
     CatalogProvider,
     CatalogResponse,
@@ -314,6 +320,41 @@ async def test_connection(
         ok=result.ok,
         message=result.message,
         connection=await _one(services, caller.org_id, info),
+    )
+
+
+# Longest range one bookings request may cover.
+MAX_BOOKINGS_SPAN = timedelta(days=62)
+
+
+@router.get("/connections/{connection_id}/bookings")
+async def list_bookings(
+    connection_id: uuid.UUID,
+    start: Annotated[datetime, Query(description="Range start, ISO 8601 with offset.")],
+    end: Annotated[datetime, Query(description="Range end (exclusive).")],
+    caller: InternalCallerDep,
+    services: ServicesDep,
+    repo: ConnectionRepoDep,
+) -> BookingListOut:
+    """Bookings the connection's tools made in [start, end), including ones
+    cancelled since (providers with the ``bookings`` capability). 422 for a
+    range that is reversed, has no time zone, or spans over 62 days; 409 when
+    the provider cannot list bookings or the calendar cannot be read."""
+    if start.tzinfo is None or end.tzinfo is None:
+        raise InvalidRequestError("start and end need a time zone offset")
+    if end <= start or end - start > MAX_BOOKINGS_SPAN:
+        raise InvalidRequestError("give a range of up to 62 days, start before end")
+    current = await repo.get_connection(caller.org_id, connection_id)
+    provider = services.registry.get(current.provider)
+    if not isinstance(provider, BookingListProvider):
+        raise ConflictError(f"{provider.title} does not list bookings")
+    ctx = await services.contexts.load(caller.org_id, connection_id, provider.id)
+    try:
+        found = await provider.list_bookings(ctx, start, end)
+    except BookingListFailed as exc:
+        raise ConflictError(str(exc)) from None
+    return BookingListOut(
+        bookings=[BookingOut.model_validate(b.model_dump()) for b in found]
     )
 
 
