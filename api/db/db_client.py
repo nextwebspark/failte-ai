@@ -4,6 +4,7 @@ from api.db.api_key_client import APIKeyClient
 from api.db.billing_client import BillingClient
 from api.db.call_notification_client import CallNotificationClient
 from api.db.campaign_client import CampaignClient
+from api.db.dashboard_client import DashboardClient
 from api.db.data_export_client import DataExportClient
 from api.db.embed_token_client import EmbedTokenClient
 from api.db.folder_client import FolderClient
@@ -50,6 +51,7 @@ class DBClient(
     WorkflowTemplateClient,
     CampaignClient,
     ReportsClient,
+    DashboardClient,
     RetentionClient,
     OrgErasureClient,
     DataExportClient,
@@ -88,6 +90,7 @@ class DBClient(
     - WorkflowTemplateClient: handles workflow template operations
     - CampaignClient: handles campaign operations
     - ReportsClient: handles reports and analytics operations
+    - DashboardClient: reads calls and phone numbers for Home and Follow-ups
     - RetentionClient: finds and scrubs data past its retention period
     - OrgErasureClient: schedules, cancels and carries out organisation deletion
     - DataExportClient: reads account and organisation data for exports

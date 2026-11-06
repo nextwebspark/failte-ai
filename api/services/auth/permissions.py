@@ -38,6 +38,8 @@ class Permission(StrEnum):
     AGENTS_FACTS = "agents:facts"
     # Choose who is emailed or texted after calls.
     NOTIFICATIONS_MANAGE = "notifications:manage"
+    # Mark a follow-up (a call that needs a person) done, or undo it.
+    FOLLOWUPS_MANAGE = "followups:manage"
 
 
 # What every member of a business can see.
@@ -46,6 +48,8 @@ _STAFF: frozenset[Permission] = frozenset(
         Permission.AGENTS_READ,
         Permission.CALLS_READ,
         Permission.REPORTS_READ,
+        # Whoever rings the caller back marks it done, staff included.
+        Permission.FOLLOWUPS_MANAGE,
     }
 )
 

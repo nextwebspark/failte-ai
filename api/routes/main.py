@@ -12,6 +12,7 @@ from api.routes.billing_admin import router as billing_admin_router
 from api.routes.billing_webhooks import router as billing_webhooks_router
 from api.routes.campaign import router as campaign_router
 from api.routes.credentials import router as credentials_router
+from api.routes.dashboard import router as dashboard_router
 from api.routes.features import router as features_router
 from api.routes.folder import router as folder_router
 from api.routes.integrations import router as integrations_router
@@ -70,6 +71,7 @@ router.include_router(s3_router)
 router.include_router(service_keys_router)
 router.include_router(organization_usage_router)
 router.include_router(reports_router)
+router.include_router(dashboard_router)
 router.include_router(webrtc_signaling_router)
 router.include_router(turn_credentials_router)
 router.include_router(public_embed_router)
