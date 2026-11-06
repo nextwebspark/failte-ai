@@ -14,6 +14,7 @@ from api.db.org_erasure_client import OrgErasureClient
 from api.db.organization_client import OrganizationClient
 from api.db.organization_configuration_client import OrganizationConfigurationClient
 from api.db.organization_usage_client import OrganizationUsageClient
+from api.db.platform_admin_client import PlatformAdminClient
 from api.db.privacy_client import PrivacyClient
 from api.db.reports_client import ReportsClient
 from api.db.retention_client import RetentionClient
@@ -65,6 +66,7 @@ class DBClient(
     TelephonyTrunkClient,
     FolderClient,
     SkillClient,
+    PlatformAdminClient,
 ):
     """
     Unified database client that combines all specialized database operations.
@@ -97,6 +99,8 @@ class DBClient(
     - KnowledgeBaseClient: handles knowledge base document and vector search operations
     - FolderClient: handles folder operations for grouping workflows (agents)
     - SkillClient: handles the agent skill library and workspace skills
+    - PlatformAdminClient: cross-organisation reads, feature switches and the
+      audit log for the platform admin area
     """
 
     pass

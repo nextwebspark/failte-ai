@@ -44,6 +44,9 @@ UNSCOPED_ROUTES = {
     ("POST", "/api/v1/invitations/accept"),
     ("POST", "/api/v1/superuser/impersonate"),
     ("GET", "/api/v1/superuser/workflow-runs"),
+    # Feature switches as the caller's organization sees them: every member
+    # needs them to draw the app.
+    ("GET", "/api/v1/features"),
 }
 
 
@@ -56,6 +59,29 @@ PLATFORM_ADMIN_ROUTES = {
     ("DELETE", "/api/v1/skill-library/{library_skill_uuid}"),
     ("POST", "/api/v1/skill-library/{library_skill_uuid}/publish"),
     ("POST", "/api/v1/skill-library/{library_skill_uuid}/deprecate"),
+    # Billing administration (plans, rates, credit limits, adjustments).
+    ("GET", "/api/v1/superuser/billing/organizations/{organization_id}"),
+    ("PATCH", "/api/v1/superuser/billing/organizations/{organization_id}"),
+    ("POST", "/api/v1/superuser/billing/organizations/{organization_id}/adjustments"),
+    ("GET", "/api/v1/superuser/billing/margins"),
+    # The platform admin area.
+    ("GET", "/api/v1/superuser/admin/overview"),
+    ("GET", "/api/v1/superuser/admin/health"),
+    ("GET", "/api/v1/superuser/admin/features"),
+    ("PUT", "/api/v1/superuser/admin/features/{feature}"),
+    (
+        "PUT",
+        "/api/v1/superuser/admin/features/{feature}/organizations/{organization_id}",
+    ),
+    ("GET", "/api/v1/superuser/admin/organizations"),
+    ("GET", "/api/v1/superuser/admin/organizations/{organization_id}"),
+    (
+        "PUT",
+        "/api/v1/superuser/admin/organizations/{organization_id}/concurrency-limit",
+    ),
+    ("GET", "/api/v1/superuser/admin/users"),
+    ("PUT", "/api/v1/superuser/admin/users/{user_id}/platform-admin"),
+    ("GET", "/api/v1/superuser/admin/audit-log"),
 }
 
 

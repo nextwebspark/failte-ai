@@ -21,11 +21,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
-import { isFeatureEnabled } from "@/config/features";
 import { useAppConfig } from "@/context/AppConfigContext";
 import { useOrgConfig } from "@/context/OrgConfigContext";
 import { useUnsavedChanges, useUnsavedChangesContext } from "@/context/UnsavedChangesContext";
 import { useAudioPlayback } from "@/hooks/useAudioPlayback";
+import { useFeatureEnabled } from "@/hooks/useFeatureFlags";
 import { copyTextToClipboard } from "@/lib/clipboard";
 import logger from "@/lib/logger";
 import { cn } from "@/lib/utils";
@@ -240,6 +240,7 @@ function GeneralSection({
     workflowId: number;
 }) {
     const { externalPbxIntegrationsEnabled } = useOrgConfig();
+    const skillsAreaOn = useFeatureEnabled("skills");
     const [name, setName] = useState(workflowName);
     const [ambientNoiseConfig, setAmbientNoiseConfig] = useState<AmbientNoiseConfiguration>(
         workflowConfigurations.ambient_noise_configuration,
@@ -739,7 +740,7 @@ function GeneralSection({
                     />
                 </SettingRow>
                 {/* Hidden with the Skills area; the saved value is kept as it is. */}
-                {isFeatureEnabled("skills") && (
+                {skillsAreaOn && (
                     <SettingRow
                         compact
                         label="Skills"
@@ -918,6 +919,7 @@ function TemplateVariablesSection({
     templateContextVariables: Record<string, string>;
     onSave: (variables: Record<string, string>) => Promise<void>;
 }) {
+    const campaignsEnabled = useFeatureEnabled("campaigns");
     const [contextVars, setContextVars] = useState<Record<string, string>>(templateContextVariables);
     const [newKey, setNewKey] = useState("");
     const [newValue, setNewValue] = useState("");
@@ -968,7 +970,7 @@ function TemplateVariablesSection({
             description={
                 <>
                     Values prompts can use as <code className="font-mono text-[11.5px] text-ink-2">{"{{name}}"}</code>.
-                    {isFeatureEnabled("campaigns") ? "Campaigns and the API" : "The API"} can override them per call.
+                    {campaignsEnabled ? "Campaigns and the API" : "The API"} can override them per call.
                 </>
             }
         >

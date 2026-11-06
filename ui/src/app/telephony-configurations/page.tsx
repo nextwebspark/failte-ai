@@ -48,14 +48,15 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { isFeatureEnabled } from "@/config/features";
 import { useTelephonyConfigWarnings } from "@/context/TelephonyConfigWarningsContext";
+import { useFeatureEnabled } from "@/hooks/useFeatureFlags";
 import { detailFromError } from "@/lib/apiError";
 import { useAuth } from "@/lib/auth";
 import { copyTextToClipboard } from "@/lib/clipboard";
 
 export default function TelephonyConfigurationsPage() {
   const { user, getAccessToken, loading: authLoading } = useAuth();
+  const campaignsEnabled = useFeatureEnabled("campaigns");
   const searchParams = useSearchParams();
   const {
     telnyxMissingWebhookPublicKeyCount,
@@ -399,7 +400,7 @@ export default function TelephonyConfigurationsPage() {
             <AlertDialogTitle>Delete configuration?</AlertDialogTitle>
             <AlertDialogDescription>
               {deleteTarget?.name} and all of its phone numbers will be removed.
-              {isFeatureEnabled("campaigns") &&
+              {campaignsEnabled &&
                 " Any campaigns that reference this configuration will block the deletion until they are reassigned."}
             </AlertDialogDescription>
           </AlertDialogHeader>
