@@ -516,6 +516,7 @@ export function EmbedDialog({
                                             onKeyPress={handleKeyPress}
                                         />
                                         <Button
+                                            aria-label="Add domain"
                                             type="button"
                                             size="icon"
                                             variant="outline"
@@ -536,6 +537,7 @@ export function EmbedDialog({
                                                 >
                                                     <span className="text-sm font-mono">{domain}</span>
                                                     <Button
+                                                        aria-label={`Remove ${domain}`}
                                                         type="button"
                                                         size="icon"
                                                         variant="ghost"

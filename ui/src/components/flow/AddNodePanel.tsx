@@ -132,7 +132,7 @@ export default function AddNodePanel({ isOpen, onNodeSelect, onClose, nodes }: A
             <div className="p-4 h-full overflow-y-auto">
                 <div className="flex justify-between items-center mb-6">
                     <h2 className="text-lg font-semibold">Add node</h2>
-                    <Button variant="ghost" size="icon" onClick={onClose}>
+                    <Button variant="ghost" size="icon" onClick={onClose} aria-label="Close">
                         <X className="w-5 h-5" />
                     </Button>
                 </div>

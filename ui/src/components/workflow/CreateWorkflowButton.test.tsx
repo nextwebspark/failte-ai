@@ -1,25 +1,55 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import { beforeEach, expect, it, vi } from 'vitest';
 
 import { CreateWorkflowButton } from './CreateWorkflowButton';
 
-const mocks = vi.hoisted(() => ({ push: vi.fn(), replace: vi.fn(), query: '' }));
+const mocks = vi.hoisted(() => ({
+    push: vi.fn(),
+    replace: vi.fn(),
+    query: '',
+    can: vi.fn<(...permissions: string[]) => boolean>(() => true),
+}));
 vi.mock('next/navigation', () => ({
     useRouter: () => ({ push: mocks.push, replace: mocks.replace }),
     useSearchParams: () => new URLSearchParams(mocks.query),
+}));
+vi.mock('@/context/OrgConfigContext', () => ({
+    useOrgConfig: () => ({ can: mocks.can }),
 }));
 
 beforeEach(() => {
     vi.clearAllMocks();
     mocks.query = '';
+    mocks.can.mockImplementation(() => true);
 });
 
-it('opens the full-page wizard', () => {
+it('is a real link to the full-page wizard', () => {
     render(<CreateWorkflowButton />);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Create agent' }));
+    const link = screen.getByRole('link', { name: 'Create agent' });
+    expect(link.getAttribute('href')).toBe('/workflow/create');
+    // A link, so it opens in a new tab and works with the keyboard; no button inside.
+    expect(link.querySelector('button')).toBeNull();
+    expect(screen.queryByRole('button')).toBeNull();
+});
 
-    expect(mocks.push).toHaveBeenCalledWith('/workflow/create');
+it.each([
+    ['owner', ['agents:read', 'calls:read', 'reports:read', 'bookings:manage']],
+    ['staff', ['agents:read', 'calls:read', 'reports:read']],
+])('is hidden from the %s, who cannot change agents', (_role, perms) => {
+    mocks.can.mockImplementation((...required: string[]) => required.every((p) => perms.includes(p)));
+    const { container } = render(<CreateWorkflowButton openFromUrl />);
+
+    expect(container.innerHTML).toBe('');
+    expect(screen.queryByRole('link', { name: 'Create agent' })).toBeNull();
+});
+
+it('does not forward ?create= for roles that cannot create agents', () => {
+    mocks.can.mockImplementation(() => false);
+    mocks.query = 'create=describe';
+    render(<CreateWorkflowButton openFromUrl />);
+
+    expect(mocks.replace).not.toHaveBeenCalled();
 });
 
 it.each([

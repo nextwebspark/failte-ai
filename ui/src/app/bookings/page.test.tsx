@@ -209,4 +209,130 @@ describe("BookingsPage", () => {
         render(<BookingsPage />);
         expect(mocks.list).not.toHaveBeenCalled();
     });
+
+    it("only offers to connect a calendar to people who can change integrations", async () => {
+        mocks.list.mockResolvedValue({ data: { calendars: [], bookings: [] } });
+        // The owner can manage bookings but not integrations.
+        mocks.can.mockImplementation((...perms: string[]) =>
+            perms.every((p) => ["calls:read", "bookings:manage"].includes(p)),
+        );
+        render(<BookingsPage />);
+
+        expect(await screen.findByText("No calendar connected yet")).toBeTruthy();
+        expect(screen.queryByRole("link", { name: "Connect a calendar" })).toBeNull();
+        expect(screen.getByText(/Ask an admin on your team to connect your calendar/)).toBeTruthy();
+    });
+
+    it("explains a calendar read error in plain words to people who can't see Integrations", async () => {
+        mocks.can.mockImplementation((...perms: string[]) => perms.every((p) => p === "calls:read"));
+        mocks.list.mockResolvedValue({
+            data: listing({
+                calendars: [
+                    {
+                        connection_id: CAL,
+                        provider: "google-calendar",
+                        title: "Google Calendar",
+                        account_label: null,
+                        ai_booking_enabled: true,
+                        ok: false,
+                        error: "HttpError 404 calendarId not found",
+                    },
+                ],
+                bookings: [],
+            }),
+        });
+        render(<BookingsPage />);
+
+        const alert = await screen.findByText(/We couldn't read this calendar/);
+        expect(alert.textContent).toContain("Ask an admin");
+        expect(screen.queryByText(/HttpError/)).toBeNull();
+        expect(screen.queryByRole("link", { name: "Check the connection" })).toBeNull();
+    });
+
+    it("shows a load error with Try again, then recovers", async () => {
+        mocks.list.mockResolvedValueOnce({ error: { detail: "boom" } });
+        render(<BookingsPage />);
+
+        const retry = await screen.findByRole("button", { name: "Try again" });
+        expect(screen.getByRole("alert")).toBeTruthy();
+        fireEvent.click(retry);
+        expect(await screen.findByText("Mary Byrne")).toBeTruthy();
+        expect(mocks.list).toHaveBeenCalledTimes(2);
+    });
+
+    it("handles a network failure while loading", async () => {
+        mocks.list.mockRejectedValueOnce(new TypeError("Failed to fetch"));
+        render(<BookingsPage />);
+        expect(await screen.findByText("Couldn't load bookings. Please try again.")).toBeTruthy();
+        expect(screen.queryByText(/Failed to fetch/)).toBeNull();
+    });
+
+    it("keeps the switch as it was when saving fails", async () => {
+        mocks.update.mockResolvedValue({ error: { detail: "nope" } });
+        render(<BookingsPage />);
+        const toggle = await screen.findByRole("switch", { name: "Let the agent book" });
+
+        fireEvent.click(toggle);
+
+        await waitFor(() => expect(toast.error).toHaveBeenCalled());
+        expect(toggle.getAttribute("aria-checked")).toBe("true");
+        expect(screen.getByText("Agent books")).toBeTruthy();
+        expect(toast.success).not.toHaveBeenCalled();
+    });
+
+    it("keeps the switch as it was when the network fails", async () => {
+        mocks.update.mockRejectedValue(new TypeError("Failed to fetch"));
+        render(<BookingsPage />);
+        const toggle = await screen.findByRole("switch", { name: "Let the agent book" });
+        fireEvent.click(toggle);
+        await waitFor(() => expect(toast.error).toHaveBeenCalledWith("Couldn't change the setting. Please try again."));
+        expect(toggle.getAttribute("aria-checked")).toBe("true");
+    });
+
+    it("saves booking rules and shows the new summary", async () => {
+        mocks.update.mockResolvedValue({ data: { rules: { max_bookings_at_once: 3 } } });
+        render(<BookingsPage />);
+        fireEvent.click(await screen.findByRole("button", { name: "Edit booking rules" }));
+        fireEvent.change(screen.getByLabelText("Bookings at the same time"), { target: { value: "3" } });
+        fireEvent.click(screen.getByRole("button", { name: "Save booking rules" }));
+
+        await waitFor(() =>
+            expect(mocks.update).toHaveBeenCalledWith({
+                path: { connection_id: CAL },
+                body: { rules: { max_bookings_at_once: 3 } },
+            }),
+        );
+        expect(await screen.findByText(/3 bookings at the same time/)).toBeTruthy();
+        expect(toast.success).toHaveBeenCalled();
+    });
+
+    it("tells the owner when booking rules could not be saved", async () => {
+        mocks.update.mockResolvedValue({ error: { detail: "bad rules" } });
+        render(<BookingsPage />);
+        fireEvent.click(await screen.findByRole("button", { name: "Edit booking rules" }));
+        fireEvent.change(screen.getByLabelText("Bookings at the same time"), { target: { value: "3" } });
+        fireEvent.click(screen.getByRole("button", { name: "Save booking rules" }));
+
+        await waitFor(() => expect(toast.error).toHaveBeenCalled());
+        expect(screen.getByText(/^One booking at a time ·/)).toBeTruthy();
+        expect(toast.success).not.toHaveBeenCalled();
+    });
+
+    it("hides the rules editor and switches from people who can't manage bookings", async () => {
+        mocks.can.mockImplementation((...perms: string[]) => perms.every((p) => p === "calls:read"));
+        render(<BookingsPage />);
+        await screen.findByText("Mary Byrne");
+        expect(screen.queryByRole("button", { name: "Edit booking rules" })).toBeNull();
+        expect(screen.queryByRole("switch", { name: "Let the agent cancel or move bookings" })).toBeNull();
+        expect(screen.getByText(/^One booking at a time ·/)).toBeTruthy();
+    });
+
+    it("shows an empty range in plain words and marks the chosen range", async () => {
+        mocks.list.mockResolvedValue({ data: listing({ bookings: [] }) });
+        render(<BookingsPage />);
+        expect(await screen.findByText("No bookings yet in this range.")).toBeTruthy();
+        fireEvent.click(screen.getByRole("button", { name: "Last 7 days" }));
+        expect(await screen.findByText("No bookings in the last 7 days.")).toBeTruthy();
+        expect(screen.getByRole("button", { name: "Last 7 days" }).getAttribute("aria-pressed")).toBe("true");
+    });
 });

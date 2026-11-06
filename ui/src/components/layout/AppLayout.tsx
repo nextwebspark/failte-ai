@@ -25,6 +25,7 @@ import { AppTopBar } from "./AppTopBar";
 import { getRequiredPermission } from "./navConfig";
 import { PageActionsSlotProvider } from "./PageActionsSlot";
 import { useShellChrome } from "./shellContext";
+import { WelcomeToast } from "./WelcomeToast";
 
 function BackendStatusBanner() {
   const { config, loading, refresh } = useAppConfig();
@@ -160,6 +161,7 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
           <PageActionsSlotProvider slot={actionsSlot}>
             <div className="app-surface flex h-svh w-full flex-col overflow-hidden">
               <AppTopBar actionsSlotRef={setActionsSlot} />
+              <WelcomeToast />
 
               <div className="flex min-h-0 flex-1 gap-3.5 px-3.5 pb-3.5 md:pl-0">
                 <AppSidebar />

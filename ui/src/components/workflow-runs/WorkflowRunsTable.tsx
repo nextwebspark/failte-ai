@@ -1,7 +1,7 @@
 "use client";
 
 import { ArrowDown, ArrowUp, ArrowUpDown, ChevronLeft, ChevronRight, ExternalLink, RefreshCw } from "lucide-react";
-import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { useState } from "react";
 
 import { WorkflowRunResponseSchema } from "@/client/types.gen";
@@ -22,6 +22,7 @@ import {
 } from "@/components/ui/table";
 import { useOrganizationTimezone } from "@/hooks/useOrganizationTimezone";
 import { formatDateTime } from "@/lib/dateTime";
+import { ROW_LINK } from "@/lib/rowLink";
 import { ActiveFilter, FilterAttribute } from "@/types/filters";
 
 export interface WorkflowRunsTableProps {
@@ -97,7 +98,6 @@ export function WorkflowRunsTable({
 }: WorkflowRunsTableProps) {
     const [selectedRowId, setSelectedRowId] = useState<number | null>(null);
     const organizationTimezone = useOrganizationTimezone();
-    const router = useRouter();
 
     // Media preview dialog
     const mediaPreview = MediaPreviewDialog();
@@ -105,9 +105,7 @@ export function WorkflowRunsTable({
     // Same tab: the run screen keeps this list's shell and links back to it.
     // Use the run's own workflow: a campaign with a traffic split mixes runs
     // from several agents in one list.
-    const handleRowClick = (run: WorkflowRunResponseSchema) => {
-        router.push(runDetailHref(run.workflow_id, run.id, returnTo));
-    };
+    const hrefFor = (run: WorkflowRunResponseSchema) => runDetailHref(run.workflow_id, run.id, returnTo);
 
     return (
         <div className="space-y-6">
@@ -135,7 +133,7 @@ export function WorkflowRunsTable({
                     <div className="animate-pulse">Loading runs…</div>
                 </div>
             ) : error ? (
-                <div className="bg-destructive/10 border border-destructive/30 text-destructive px-4 py-3 rounded">
+                <div role="alert" className="bg-destructive/10 border border-destructive/30 text-destructive px-4 py-3 rounded">
                     {error}
                 </div>
             ) : runs.length === 0 ? (
@@ -159,8 +157,9 @@ export function WorkflowRunsTable({
                                     onClick={onReload}
                                     disabled={loading}
                                     title="Reload"
+                                    aria-label="Reload calls"
                                 >
-                                    <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+                                    <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} aria-hidden />
                                 </Button>
                             )}
                         </div>
@@ -176,17 +175,26 @@ export function WorkflowRunsTable({
                                         <TableHead className="font-semibold">Created</TableHead>
                                         <TableHead className="font-semibold">Call type</TableHead>
                                         <TableHead
-                                            className="font-semibold cursor-pointer hover:bg-muted/50 select-none"
-                                            onClick={() => onSort?.('duration')}
+                                            className="font-semibold"
+                                            aria-sort={sortBy === 'duration' ? (sortOrder === 'asc' ? 'ascending' : 'descending') : undefined}
                                         >
-                                            <div className="flex items-center gap-1">
-                                                Duration
-                                                {sortBy === 'duration' ? (
-                                                    sortOrder === 'asc' ? <ArrowUp className="h-4 w-4" /> : <ArrowDown className="h-4 w-4" />
-                                                ) : (
-                                                    <ArrowUpDown className="h-4 w-4 text-muted-foreground" />
-                                                )}
-                                            </div>
+                                            {onSort ? (
+                                                <button
+                                                    type="button"
+                                                    className="-mx-1 flex items-center gap-1 rounded px-1 outline-none hover:bg-muted/50 focus-visible:ring-[3px] focus-visible:ring-ring/40"
+                                                    onClick={() => onSort('duration')}
+                                                >
+                                                    Duration
+                                                    {sortBy === 'duration' ? (
+                                                        sortOrder === 'asc' ? <ArrowUp className="h-4 w-4" aria-hidden /> : <ArrowDown className="h-4 w-4" aria-hidden />
+                                                    ) : (
+                                                        <ArrowUpDown className="h-4 w-4 text-muted-foreground" aria-hidden />
+                                                    )}
+                                                    <span className="sr-only">, sort</span>
+                                                </button>
+                                            ) : (
+                                                'Duration'
+                                            )}
                                         </TableHead>
                                         <TableHead className="font-semibold">Outcome</TableHead>
                                         <TableHead className="font-semibold">Actions</TableHead>
@@ -196,10 +204,20 @@ export function WorkflowRunsTable({
                                     {runs.map((run) => (
                                         <TableRow
                                             key={run.id}
-                                            className={`cursor-pointer hover:bg-muted/50 ${selectedRowId === run.id ? "bg-primary/20 ring-1 ring-primary/50" : ""}`}
-                                            onClick={() => handleRowClick(run)}
+                                            // The call number is a real link stretched over the row, so a
+                                            // click anywhere opens the call, and keyboard focus, middle-click
+                                            // and "open in new tab" all work. The actions sit above it.
+                                            className={`relative hover:bg-muted/50 focus-within:bg-muted/50 ${selectedRowId === run.id ? "bg-primary/20 ring-1 ring-primary/50" : ""}`}
                                         >
-                                            <TableCell className="font-mono text-sm">#{run.id}</TableCell>
+                                            <TableCell className="font-mono text-sm">
+                                                <Link
+                                                    href={hrefFor(run)}
+                                                    aria-label={`Open call #${run.id}`}
+                                                    className={ROW_LINK}
+                                                >
+                                                    #{run.id}
+                                                </Link>
+                                            </TableCell>
                                             {showAgentVersion && <TableCell><div>{run.workflow_name ?? `Agent #${run.workflow_id}`}</div><div className="text-xs text-muted-foreground">{run.version_number != null ? `Version ${run.version_number}` : run.definition_id != null ? `Definition #${run.definition_id}` : 'Unversioned'}</div></TableCell>}
                                             <TableCell>
                                                 <Badge variant={run.is_completed ? "default" : "secondary"}>
@@ -227,7 +245,7 @@ export function WorkflowRunsTable({
                                                 )}
                                             </TableCell>
                                             <TableCell>
-                                                <div className="flex space-x-2" onClick={(e) => e.stopPropagation()}>
+                                                <div className="relative z-10 flex space-x-2">
                                                     <MediaPreviewButton
                                                         recordingUrl={run.recording_url}
                                                         transcriptUrl={run.transcript_url}
@@ -235,13 +253,16 @@ export function WorkflowRunsTable({
                                                         onOpenPreview={mediaPreview.openPreview}
                                                         onSelect={setSelectedRowId}
                                                     />
-                                                    <Button
-                                                        variant="outline"
-                                                        size="icon"
-                                                        title="Open run in a new tab"
-                                                        onClick={() => window.open(runDetailHref(run.workflow_id, run.id, returnTo), '_blank')}
-                                                    >
-                                                        <ExternalLink className="h-4 w-4" />
+                                                    <Button asChild variant="outline" size="icon">
+                                                        <a
+                                                            href={hrefFor(run)}
+                                                            target="_blank"
+                                                            rel="noopener noreferrer"
+                                                            title="Open call in a new tab"
+                                                            aria-label={`Open call #${run.id} in a new tab`}
+                                                        >
+                                                            <ExternalLink className="h-4 w-4" aria-hidden />
+                                                        </a>
                                                     </Button>
                                                 </div>
                                             </TableCell>
@@ -264,7 +285,7 @@ export function WorkflowRunsTable({
                                         onClick={() => onPageChange(currentPage - 1)}
                                         disabled={currentPage === 1}
                                     >
-                                        <ChevronLeft className="h-4 w-4" />
+                                        <ChevronLeft className="h-4 w-4" aria-hidden />
                                         Previous
                                     </Button>
                                     <Button
@@ -274,7 +295,7 @@ export function WorkflowRunsTable({
                                         disabled={currentPage === totalPages}
                                     >
                                         Next
-                                        <ChevronRight className="h-4 w-4" />
+                                        <ChevronRight className="h-4 w-4" aria-hidden />
                                     </Button>
                                 </div>
                             </div>

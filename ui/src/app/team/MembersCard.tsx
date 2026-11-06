@@ -86,11 +86,18 @@ export function MembersCard({
 
   const changeRole = async (member: MemberResponse, role: OrgRole) => {
     setBusyUserId(member.user_id);
-    const res = await updateMemberRoleApiV1OrganizationsMembersUserIdPatch({
-      path: { user_id: member.user_id },
-      body: { role },
-    });
-    setBusyUserId(null);
+    let res: Awaited<ReturnType<typeof updateMemberRoleApiV1OrganizationsMembersUserIdPatch>>;
+    try {
+      res = await updateMemberRoleApiV1OrganizationsMembersUserIdPatch({
+        path: { user_id: member.user_id },
+        body: { role },
+      });
+    } catch {
+      toast.error("Couldn't change the role. Check your connection and try again.");
+      return;
+    } finally {
+      setBusyUserId(null);
+    }
     if (res.error) {
       toast.error(detailFromError(res.error, "Could not change the role"));
       return;
@@ -185,6 +192,7 @@ export function MembersCard({
                 <TableCell>
                   {canManage ? (
                     <RoleSelect
+                      aria-label={`Role for ${displayName(member)}`}
                       value={member.role}
                       onChange={(role) => void changeRole(member, role)}
                       disabled={busyUserId === member.user_id}

@@ -20,11 +20,14 @@ export function LoginForm({
   signupEnabled,
   googleAuthEnabled,
   nextPath,
+  sessionEnded = false,
 }: {
   signupEnabled: boolean;
   googleAuthEnabled: boolean;
   /** Same-origin path to continue to after signing in. */
   nextPath: string | null;
+  /** The previous session was no longer valid, so the user was signed out. */
+  sessionEnded?: boolean;
 }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -68,11 +71,20 @@ export function LoginForm({
   return (
     <LocalAuthShell>
       <div className="space-y-1.5 text-center">
-        <h1 className="text-2xl font-semibold tracking-tight">Sign in</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">Welcome back</h1>
         <p className="text-sm text-muted-foreground">
-          Enter your email and password to continue
+          Sign in to see your calls, bookings and agents
         </p>
       </div>
+
+      {sessionEnded && (
+        <p
+          role="status"
+          className="rounded-md border border-line bg-amber-dim px-3 py-2 text-sm text-amber"
+        >
+          Your session has ended. Please sign in again.
+        </p>
+      )}
 
       {googleAuthEnabled && (
         <>

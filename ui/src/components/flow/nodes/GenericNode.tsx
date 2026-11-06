@@ -207,6 +207,7 @@ function CanvasPreview({
                         {endpoint || "Generating..."}
                     </code>
                     <Button
+                        aria-label={triggerCopied ? "Copied" : "Copy trigger address"}
                         variant="ghost"
                         size="icon"
                         className="h-6 w-6 shrink-0"
@@ -679,6 +680,7 @@ export const GenericNode = memo(({ data, selected, id, type }: GenericNodeProps)
                     {/* Start nodes can't be deleted (workflow always needs one). */}
                     {type !== "startCall" && (
                         <Button
+                            aria-label="Delete node"
                             onClick={handleDeleteNode}
                             variant="outline"
                             size="icon"

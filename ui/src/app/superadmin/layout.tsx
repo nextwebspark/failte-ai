@@ -25,11 +25,29 @@ export default function PlatformAdminLayout({ children }: { children: ReactNode 
     const pathname = usePathname();
     const isAdmin = usePlatformAdmin();
 
+    if (isAdmin === null) {
+        return (
+            <div className="mx-auto w-full max-w-6xl p-6">
+                <AdminLoading />
+            </div>
+        );
+    }
+    if (!isAdmin) {
+        // No tabs: they would only lead to more of this message.
+        return (
+            <div className="mx-auto w-full max-w-6xl p-6">
+                <p className="text-sm text-ink-2">
+                    This area is for platform admins only. Ask a platform admin to grant you access.
+                </p>
+            </div>
+        );
+    }
+
     return (
         <div className="mx-auto w-full max-w-6xl space-y-5 p-6">
             <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-amber/40 bg-amber-dim px-4 py-2.5">
                 <div className="flex items-center gap-2 text-sm">
-                    <ShieldAlert className="h-4 w-4 text-amber" />
+                    <ShieldAlert className="h-4 w-4 text-amber" aria-hidden />
                     <span className="font-semibold">Platform admin</span>
                     <span className="text-ink-2">Changes here affect every workspace, and are recorded in the audit log.</span>
                 </div>
@@ -54,15 +72,7 @@ export default function PlatformAdminLayout({ children }: { children: ReactNode 
                     );
                 })}
             </nav>
-            {isAdmin === null ? (
-                <AdminLoading />
-            ) : isAdmin ? (
-                children
-            ) : (
-                <p className="text-sm text-ink-2">
-                    This area is for platform admins only. Ask a platform admin to grant you access.
-                </p>
-            )}
+            {children}
         </div>
     );
 }

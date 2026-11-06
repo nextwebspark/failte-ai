@@ -32,7 +32,7 @@ function SectionHeading({
 
 /** Mono caption sized to sit in a SectionHeading's action slot. */
 function SectionHint({ className, ...props }: React.HTMLAttributes<HTMLSpanElement>) {
-    return <span className={cn("font-mono text-[11.5px] text-ink-3", className)} {...props} />
+    return <span className={cn("text-xs text-ink-3", className)} {...props} />
 }
 
 export { SectionHeading, SectionHint }

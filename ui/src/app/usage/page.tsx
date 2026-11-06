@@ -1,6 +1,7 @@
 "use client";
 
-import { ArrowDown, ArrowUp, ArrowUpDown, ChevronLeft, ChevronRight, Download, Globe } from 'lucide-react';
+import { ArrowDown, ArrowUp, ArrowUpDown, ChevronLeft, ChevronRight, Download, Globe, PhoneCall } from 'lucide-react';
+import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useCallback, useEffect, useId, useMemo, useState } from 'react';
 import TimezoneSelect, { type ITimezoneOption } from 'react-timezone-select';
@@ -34,6 +35,7 @@ import { useAuth } from '@/lib/auth';
 import { formatDateTime, getLocalTimezone } from '@/lib/dateTime';
 import { getUsageFilterAttributes, withDispositionCodeOptions } from '@/lib/filterAttributes';
 import { decodeFiltersFromURL, encodeFiltersToURL } from '@/lib/filters';
+import { ROW_LINK } from '@/lib/rowLink';
 import type { ActiveFilter, DateRangeValue, FilterAttribute, NumberFilterOption } from '@/types/filters';
 
 const buildUsageFilterAttributes = (
@@ -431,11 +433,11 @@ export default function UsagePage() {
         updateUrlParams({ page: 1, filters: appliedFilters, sortBy: field, sortOrder: newSortOrder });
     }, [sortBy, sortOrder, appliedFilters, updateUrlParams]);
 
-    // Handle row click to navigate to workflow run. The run keeps this screen's
-    // shell and links back to this exact list — see shellContext.
-    const handleRowClick = (run: WorkflowRunUsageResponse) => {
+    // Each call links to its run screen, which keeps this screen's shell and
+    // links back to this exact list (filters included): see shellContext.
+    const runHref = (run: WorkflowRunUsageResponse) => {
         const query = searchParams.toString();
-        router.push(runDetailHref(run.workflow_id, run.id, `/usage${query ? `?${query}` : ''}`));
+        return runDetailHref(run.workflow_id, run.id, `/usage${query ? `?${query}` : ''}`);
     };
 
     const timezoneValue = typeof selectedTimezone === 'string' ? selectedTimezone : selectedTimezone.value;
@@ -601,17 +603,22 @@ export default function UsagePage() {
                                                 <TableHead className="font-semibold">Outcome</TableHead>
                                                 <TableHead className="font-semibold">Date</TableHead>
                                                 <TableHead
-                                                    className="font-semibold text-right cursor-pointer hover:bg-muted/50 select-none"
-                                                    onClick={() => handleSort('duration')}
+                                                    className="font-semibold text-right"
+                                                    aria-sort={sortBy === 'duration' ? (sortOrder === 'asc' ? 'ascending' : 'descending') : undefined}
                                                 >
-                                                    <div className="flex items-center justify-end gap-1">
+                                                    <button
+                                                        type="button"
+                                                        className="ml-auto flex items-center justify-end gap-1 rounded px-1 outline-none hover:bg-muted/50 focus-visible:ring-[3px] focus-visible:ring-ring/40"
+                                                        onClick={() => handleSort('duration')}
+                                                    >
                                                         Duration
                                                         {sortBy === 'duration' ? (
-                                                            sortOrder === 'asc' ? <ArrowUp className="h-4 w-4" /> : <ArrowDown className="h-4 w-4" />
+                                                            sortOrder === 'asc' ? <ArrowUp className="h-4 w-4" aria-hidden /> : <ArrowDown className="h-4 w-4" aria-hidden />
                                                         ) : (
-                                                            <ArrowUpDown className="h-4 w-4 text-muted-foreground" />
+                                                            <ArrowUpDown className="h-4 w-4 text-muted-foreground" aria-hidden />
                                                         )}
-                                                    </div>
+                                                        <span className="sr-only">, sort</span>
+                                                    </button>
                                                 </TableHead>
                                                 {organizationPricing?.price_per_second_usd && (
                                                     <TableHead className="font-semibold text-right">Cost (USD)</TableHead>
@@ -626,12 +633,17 @@ export default function UsagePage() {
                                             {usageHistory.runs.map((run) => (
                                                 <TableRow
                                                     key={run.id}
+                                                    // The call number is a real link stretched over the row.
+                                                    className="relative hover:bg-muted/50 focus-within:bg-muted/50"
                                                 >
-                                                    <TableCell
-                                                        className="font-mono text-sm cursor-pointer hover:underline"
-                                                        onClick={() => handleRowClick(run)}
-                                                    >
-                                                        #{run.id}
+                                                    <TableCell className="font-mono text-sm">
+                                                        <Link
+                                                            href={runHref(run)}
+                                                            aria-label={`Open call #${run.id}`}
+                                                            className={ROW_LINK}
+                                                        >
+                                                            #{run.id}
+                                                        </Link>
                                                     </TableCell>
                                                     <TableCell>{run.workflow_name || 'Unknown'}</TableCell>
                                                     <TableCell>
@@ -671,7 +683,7 @@ export default function UsagePage() {
                                                             }
                                                         </TableCell>
                                                     )}
-                                                    <TableCell>
+                                                    <TableCell className="relative z-10">
                                                         <MediaPreviewButton
                                                             recordingUrl={run.recording_url}
                                                             transcriptUrl={run.transcript_url}
@@ -730,7 +742,16 @@ export default function UsagePage() {
                                 )}
                             </>
                         ) : (
-                            <p className="text-center py-8 text-muted-foreground">No runs found</p>
+                            <div className="flex flex-col items-center gap-2 py-12 text-center">
+                                <span className="grid size-11 place-items-center rounded-full bg-brand-dim text-brand" aria-hidden>
+                                    <PhoneCall className="size-5" />
+                                </span>
+                                <p className="font-medium text-foreground">No calls yet</p>
+                                <p className="max-w-sm text-sm text-ink-3">
+                                    When your agent answers or makes a call, it shows up here with how it went.
+                                    Try a test call from your agent&apos;s page.
+                                </p>
+                            </div>
                         )}
                     </CardContent>
                 </Card>

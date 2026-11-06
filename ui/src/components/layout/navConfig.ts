@@ -58,7 +58,17 @@ const ALL_NAV_SECTIONS: NavSection[] = [
     items: [{ title: "Overview", url: "/overview", icon: Home }],
   },
   {
-    label: "BUILD",
+    label: "YOUR BUSINESS",
+    items: [
+      { title: "Calls", url: "/usage", icon: TrendingUp, requires: "reports:read" },
+      { title: "Bookings", url: "/bookings", icon: CalendarCheck, requires: "calls:read" },
+      { title: "Reports", url: "/reports", icon: FileText, requires: "reports:read" },
+      // Team, Billing, Developers and Compliance live under Settings.
+      { title: "Settings", url: "/settings", icon: Settings, settingsHub: true },
+    ],
+  },
+  {
+    label: "SET UP",
     items: [
       { title: "Voice agents", url: "/workflow", icon: GitBranch, requires: "agents:read" },
       { title: "Campaigns", url: "/campaigns", icon: Megaphone, requires: "campaigns:read", feature: "campaigns" },
@@ -75,16 +85,6 @@ const ALL_NAV_SECTIONS: NavSection[] = [
       { title: "Skills", url: "/skills", icon: BookOpen, requires: "agents:read", feature: "skills" },
       { title: "Files", url: "/files", icon: Database, requires: "agents:write" },
       { title: "Prompt audio", url: "/recordings", icon: AudioLines, requires: "agents:write" },
-    ],
-  },
-  {
-    label: "MANAGE",
-    items: [
-      { title: "Calls", url: "/usage", icon: TrendingUp, requires: "reports:read" },
-      { title: "Bookings", url: "/bookings", icon: CalendarCheck, requires: "calls:read" },
-      { title: "Reports", url: "/reports", icon: FileText, requires: "reports:read" },
-      // Team, Billing, Developers and Compliance live under Settings.
-      { title: "Settings", url: "/settings", icon: Settings, settingsHub: true },
     ],
   },
 ];

@@ -57,6 +57,8 @@ function BookingsScreen() {
     // The owner, admins, and staff the owner allowed.
     const canManage = can("bookings:manage");
     const canSeeIntegrations = can("integrations:read");
+    // Connecting a calendar happens on the Integrations page (admins only).
+    const canConnect = can("integrations:write");
 
     const [range, setRange] = useState<RangeKey>("next7");
     const [showCancelled, setShowCancelled] = useState(false);
@@ -76,7 +78,7 @@ function BookingsScreen() {
             if (response.error || !response.data) {
                 setError(
                     isUnavailableError(response.error)
-                        ? "Calendar bookings aren't available on this deployment."
+                        ? "Calendar bookings aren't switched on for your account yet. Ask your LightMove contact to turn them on."
                         : integrationErrorMessage(response.error, LOAD_FAILED),
                 );
                 setData(null);
@@ -194,7 +196,7 @@ function BookingsScreen() {
                     </Button>
                 </Panel>
             ) : calendars.length === 0 ? (
-                <NoCalendar canManage={canManage} />
+                <NoCalendar canConnect={canConnect} />
             ) : (
                 <>
                     <section aria-label="Calendars" className="flex flex-col gap-3">
@@ -265,7 +267,7 @@ function BookingsScreen() {
     );
 }
 
-function NoCalendar({ canManage }: { canManage: boolean }) {
+function NoCalendar({ canConnect }: { canConnect: boolean }) {
     return (
         <Panel accent="sky">
             <PanelTitle as="h2">No calendar connected yet</PanelTitle>
@@ -273,12 +275,14 @@ function NoCalendar({ canManage }: { canManage: boolean }) {
                 Connect a Google Calendar and your agent can offer real free times and book them while the
                 caller is on the line. Bookings then show here.
             </p>
-            {canManage ? (
+            {canConnect ? (
                 <Button asChild className="mt-4" size="sm">
                     <Link href="/integrations">Connect a calendar</Link>
                 </Button>
             ) : (
-                <p className="mt-3 text-sm text-ink-3">Ask an admin on your team to connect one.</p>
+                <p className="mt-3 text-sm text-ink-3">
+                    Ask an admin on your team to connect your calendar. Your bookings will then show here.
+                </p>
             )}
         </Panel>
     );
@@ -359,7 +363,7 @@ function CalendarRow({
                     <StatusPill tone={changesOn ? "ok" : "mute"}>{changesOn ? "On" : "Off"}</StatusPill>
                 )}
                 <div className="min-w-0 flex-1">
-                    <Label htmlFor={changesId} className="text-sm">
+                    <Label htmlFor={canManage ? changesId : undefined} className="text-sm">
                         Let the agent cancel or move bookings
                     </Label>
                     <p className="text-[12.5px] text-ink-3">
@@ -384,6 +388,7 @@ function CalendarRow({
                 {canManage && editingRules && (
                     <div className="mt-3">
                         <BookingRulesEditor
+                            idPrefix={calendar.connection_id}
                             initial={rules}
                             saving={saving}
                             onSave={(next) => {
@@ -401,11 +406,20 @@ function CalendarRow({
             )}
             {!calendar.ok && (
                 <p className="mt-2 text-sm text-danger" role="alert">
-                    Couldn&apos;t read this calendar: {calendar.error ?? "unknown error"}.{" "}
-                    {canSeeIntegrations && (
-                        <Link className="underline" href="/integrations">
-                            Check the connection
-                        </Link>
+                    {canSeeIntegrations ? (
+                        <>
+                            Couldn&apos;t read this calendar
+                            {calendar.error ? `: ${calendar.error}` : ""}. Your agent can&apos;t offer times from it
+                            until this is fixed.{" "}
+                            <Link className="underline" href="/integrations">
+                                Check the connection
+                            </Link>
+                        </>
+                    ) : (
+                        <>
+                            We couldn&apos;t read this calendar, so your agent can&apos;t offer times from it right
+                            now. Ask an admin on your team to check the calendar connection.
+                        </>
                     )}
                 </p>
             )}

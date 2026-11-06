@@ -50,9 +50,9 @@ function PanelTitle({ className, as: Tag = "div", ...props }: PanelTitleProps) {
     return <Tag className={cn("text-[14.5px] font-semibold text-foreground", className)} {...props} />
 }
 
-/** Mono sub-caption under a PanelTitle. */
+/** Short description under a PanelTitle. */
 function PanelDescription({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
-    return <div className={cn("mt-1 font-mono text-[11.5px] text-ink-3", className)} {...props} />
+    return <div className={cn("mt-1 text-[13px] leading-snug text-ink-3", className)} {...props} />
 }
 
 export { Panel, PanelDescription, PanelTitle, panelVariants }

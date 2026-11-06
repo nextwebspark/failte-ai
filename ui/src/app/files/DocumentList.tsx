@@ -193,6 +193,7 @@ export default function DocumentList({ refreshTrigger }: DocumentListProps) {
           />
         </div>
         <Button
+          aria-label="Reload documents"
           variant="outline"
           size="icon"
           onClick={fetchDocuments}

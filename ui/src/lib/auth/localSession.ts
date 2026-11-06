@@ -21,6 +21,12 @@ export async function startLocalSession(
   if (!res.ok) {
     throw new Error("Could not start session");
   }
+  try {
+    // Read once by WelcomeToast on the first page after sign-in.
+    sessionStorage.setItem("lm-just-signed-in", "1");
+  } catch {
+    // Storage blocked: no welcome toast, nothing else changes.
+  }
   window.location.replace(isSafeNextPath(nextPath) ? nextPath : "/after-sign-in");
   return new Promise<never>(() => {});
 }

@@ -6,6 +6,16 @@ import { toast } from "sonner";
 
 import { AdminError, AdminLoading } from "@/components/platform-admin/AdminStates";
 import { useAdminData } from "@/components/platform-admin/useAdminData";
+import {
+    AlertDialog,
+    AlertDialogAction,
+    AlertDialogCancel,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Panel, PanelDescription, PanelTitle } from "@/components/ui/panel";
 import { Switch } from "@/components/ui/switch";
@@ -15,8 +25,10 @@ import { type AdminFeature, platformAdminApi } from "@/lib/platformAdminApi";
 /** Platform admin > Features: switch product areas for every workspace, and
  *  see the per-workspace overrides (set on a workspace's page). */
 export default function PlatformAdminFeaturesPage() {
-    const { data, error, setData } = useAdminData(platformAdminApi.features);
+    const { data, error, setData, reload } = useAdminData(platformAdminApi.features);
     const [saving, setSaving] = useState<string | null>(null);
+    // A platform-wide switch waiting for the admin to confirm it.
+    const [pending, setPending] = useState<{ feature: AdminFeature; enabled: boolean | null } | null>(null);
 
     const change = async (feature: AdminFeature, enabled: boolean | null) => {
         setSaving(feature.key);
@@ -34,7 +46,16 @@ export default function PlatformAdminFeaturesPage() {
         }
     };
 
-    if (error) return <AdminError message={error} />;
+    if (error) {
+        return (
+            <div className="space-y-3">
+                <AdminError message={error} />
+                <Button size="sm" variant="outline" onClick={() => void reload()}>
+                    Try again
+                </Button>
+            </div>
+        );
+    }
     if (!data) return <AdminLoading />;
 
     return (
@@ -59,7 +80,7 @@ export default function PlatformAdminFeaturesPage() {
                                 id={`feature-${feature.key}`}
                                 checked={feature.effective_platform_value}
                                 disabled={saving === feature.key}
-                                onCheckedChange={(checked) => void change(feature, checked)}
+                                onCheckedChange={(checked) => setPending({ feature, enabled: checked })}
                             />
                         </div>
                     </div>
@@ -75,7 +96,7 @@ export default function PlatformAdminFeaturesPage() {
                                 variant="outline"
                                 size="sm"
                                 disabled={saving === feature.key}
-                                onClick={() => void change(feature, null)}
+                                onClick={() => setPending({ feature, enabled: null })}
                             >
                                 Back to the default
                             </Button>
@@ -105,6 +126,43 @@ export default function PlatformAdminFeaturesPage() {
                     </div>
                 </Panel>
             ))}
+            <AlertDialog open={pending !== null} onOpenChange={(open) => !open && setPending(null)}>
+                <AlertDialogContent>
+                    {pending && (
+                        <>
+                            <AlertDialogHeader>
+                                <AlertDialogTitle>{confirmTitle(pending.feature, pending.enabled)}</AlertDialogTitle>
+                                <AlertDialogDescription>
+                                    This changes {pending.feature.label} for every workspace without its own override
+                                    {pending.feature.overrides.length > 0
+                                        ? ` (${pending.feature.overrides.length} workspace${pending.feature.overrides.length === 1 ? " has" : "s have"} one and keep${pending.feature.overrides.length === 1 ? "s" : ""} it)`
+                                        : ""}
+                                    . People see it when their app next loads.
+                                </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                <AlertDialogAction
+                                    onClick={() => {
+                                        const { feature, enabled } = pending;
+                                        setPending(null);
+                                        void change(feature, enabled);
+                                    }}
+                                >
+                                    {pending.enabled === null ? "Use the default" : pending.enabled ? "Turn on" : "Turn off"}
+                                </AlertDialogAction>
+                            </AlertDialogFooter>
+                        </>
+                    )}
+                </AlertDialogContent>
+            </AlertDialog>
         </div>
     );
+}
+
+function confirmTitle(feature: AdminFeature, enabled: boolean | null): string {
+    if (enabled === null) {
+        return `Put ${feature.label} back to the default (${feature.default ? "on" : "off"}) for every workspace?`;
+    }
+    return `Turn ${feature.label} ${enabled ? "on" : "off"} for every workspace?`;
 }
