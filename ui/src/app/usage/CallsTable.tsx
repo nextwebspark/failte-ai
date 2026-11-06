@@ -1,7 +1,6 @@
 import { Play } from "lucide-react";
 import Link from "next/link";
 
-import type { WorkflowRunUsageResponse } from "@/client/types.gen";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StatusPill } from "@/components/ui/status-pill";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -12,26 +11,27 @@ import {
     callerNameOf,
     callNumberOf,
     callOutcome,
+    callSummary,
     formatCallWhen,
     formatLength,
     formatPhone,
     isDialable,
     spokenLength,
-    whatHappened,
 } from "./callsView";
+import { type CallRow, isSampleRun } from "./sampleRuns";
 
 export interface CallRowProps {
-    runs: WorkflowRunUsageResponse[];
+    runs: CallRow[];
     timezone: string;
     selectedId: number | null;
-    hrefFor: (run: WorkflowRunUsageResponse) => string;
-    onPlay: (run: WorkflowRunUsageResponse) => void;
+    hrefFor: (run: CallRow) => string;
+    onPlay: (run: CallRow) => void;
     /** Told when a row's link is followed, so closing the call can go Back. */
-    onOpen?: (run: WorkflowRunUsageResponse) => void;
+    onOpen?: (run: CallRow) => void;
 }
 
 /** "Declan Murphy" / "Unknown caller" / "Test call", and the number under it. */
-export function callerLines(run: WorkflowRunUsageResponse): { name: string; number: string | null } {
+export function callerLines(run: CallRow): { name: string; number: string | null } {
     const name = callerNameOf(run.gathered_context);
     const number = callNumberOf(run);
     // Browser calls and text chats are someone trying the agent out.
@@ -48,11 +48,29 @@ export function callerLines(run: WorkflowRunUsageResponse): { name: string; numb
 
 /** The round play button on a row: opens the call and starts its recording. */
 export function PlayButton({ run, label, onPlay, className }: {
-    run: WorkflowRunUsageResponse;
+    run: CallRow;
     label: string;
-    onPlay: (run: WorkflowRunUsageResponse) => void;
+    onPlay: (run: CallRow) => void;
     className?: string;
 }) {
+    if (isSampleRun(run)) {
+        // A sample has nothing to play; say so rather than hide the button.
+        return (
+            <button
+                type="button"
+                aria-disabled="true"
+                aria-label={`Sample call, no recording: ${label}`}
+                title="Sample call, no recording"
+                onClick={(event) => event.preventDefault()}
+                className={cn(
+                    "relative z-10 grid size-8 cursor-not-allowed place-items-center rounded-full bg-panel-2 text-ink-3 outline-none focus-visible:ring-[3px] focus-visible:ring-ring/40",
+                    className,
+                )}
+            >
+                <Play className="size-3.5" aria-hidden />
+            </button>
+        );
+    }
     if (!run.recording_url) {
         return <span className={cn("block size-8", className)} aria-hidden />;
     }
@@ -79,7 +97,7 @@ export function PlayButton({ run, label, onPlay, className }: {
 export function CallsTable({ runs, timezone, selectedId, hrefFor, onPlay, onOpen }: CallRowProps) {
     // "What happened" is only what the agent took down; with nothing taken down
     // on this page the column would be empty, so it goes.
-    const showWhat = runs.some((run) => whatHappened(run.gathered_context));
+    const showWhat = runs.some((run) => callSummary(run));
     return (
         <Table className="[&_td]:px-3 [&_th]:px-3 [&_td:first-child]:pl-4 [&_td:first-child]:pr-0 [&_th:first-child]:pl-4 [&_th:first-child]:pr-0">
             <TableHeader className="bg-transparent">
@@ -96,7 +114,7 @@ export function CallsTable({ runs, timezone, selectedId, hrefFor, onPlay, onOpen
                 {runs.map((run) => {
                     const { name, number } = callerLines(run);
                     const outcome = callOutcome(run);
-                    const what = whatHappened(run.gathered_context);
+                    const what = callSummary(run);
                     const when = formatCallWhen(run.created_at, timezone);
                     const selected = run.id === selectedId;
                     return (

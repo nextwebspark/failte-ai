@@ -4,25 +4,33 @@ import type { StatusTone } from "@/components/ui/status-pill";
 
 /*
  * The Calls page's plain-English view of a stored call: who rang, what the
- * agent took down, how it ended. Everything here reads stored fields only;
- * nothing is guessed or summarised.
+ * agent took down, how it ended. Everything here reads stored fields only:
+ * the summary is the post-call review stored on the call, never made up here.
  */
 
 type Context = Record<string, unknown> | null | undefined;
 
 /**
- * The tabs over the list. Each is a filter the API can count. There is no
- * "Needs follow-up" tab: Follow-ups decides what needs a person from more
- * than one stored field (and marks items done), which a list filter can't
- * count the same way, so the two would disagree.
+ * The tabs over the list. Each is a filter the API can count. "Needs
+ * follow-up" asks the API for the calls Follow-ups lists as still open (the
+ * server reads them from the Follow-ups service itself), so the two agree.
  */
-export type CallsTab = "all" | "bookings" | "team";
+export type CallsTab = "all" | "follow_up" | "bookings" | "team";
 
 export const CALLS_TABS: { value: CallsTab; label: string }[] = [
     { value: "all", label: "All" },
+    { value: "follow_up", label: "Needs follow-up" },
     { value: "bookings", label: "Bookings" },
     { value: "team", label: "Passed to team" },
 ];
+
+/**
+ * Whether the date chip applies on a tab. "Needs follow-up" keeps
+ * Follow-ups' own window (the last 30 days), or its count would differ.
+ */
+export function tabUsesDates(tab: CallsTab): boolean {
+    return tab !== "follow_up";
+}
 
 /** The date chip's choices. "custom" carries its own start and end day. */
 export type WhenPreset = "today" | "7d" | "30d" | "90d" | "all" | "custom";
@@ -199,6 +207,9 @@ export function tabFilter(tab: CallsTab): ApiFilter | null {
             return { attribute: "bookingOutcome", type: "multiSelect", value: { codes: BOOKING_OUTCOMES } };
         case "team":
             return { attribute: "handledBy", type: "radio", value: { status: "team" } };
+        case "follow_up":
+            // The server fills in the open follow-ups; nothing is sent.
+            return { attribute: "needsFollowUp", type: "runIds", value: {} };
         default:
             return null;
     }
@@ -388,6 +399,47 @@ export function whatHappened(gathered: Context): string | null {
         .join(" · ");
 }
 
+/**
+ * "What happened" for a row: the stored post-call summary when the call has
+ * one, else what the agent captured (reason or booking line).
+ */
+export function callSummary(run: { summary?: string | null; gathered_context?: Context }): string | null {
+    return text(run.summary) ?? whatHappened(run.gathered_context);
+}
+
+/** A call not marked finished this long after it started never will be (Home uses the same hour). */
+export const IN_PROGRESS_FOR_MS = 60 * 60 * 1000;
+
+/** Whether a call is still going on: not marked finished, and started within the hour. */
+export function isInProgress(
+    run: { is_completed?: boolean | null; created_at: string },
+    now: number = Date.now(),
+): boolean {
+    if (run.is_completed !== false) return false;
+    const started = new Date(run.created_at).getTime();
+    return Number.isFinite(started) && now - started < IN_PROGRESS_FOR_MS;
+}
+
+/**
+ * ``value`` split around each case-insensitive occurrence of ``query``, so
+ * the matches can be marked. A blank query gives the text unmarked.
+ */
+export function highlightParts(value: string, query: string): { text: string; hit: boolean }[] {
+    const needle = query.trim();
+    if (!needle) return [{ text: value, hit: false }];
+    const escaped = needle.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const parts: { text: string; hit: boolean }[] = [];
+    let last = 0;
+    for (const match of value.matchAll(new RegExp(escaped, "gi"))) {
+        const at = match.index ?? 0;
+        if (at > last) parts.push({ text: value.slice(last, at), hit: false });
+        parts.push({ text: match[0], hit: true });
+        last = at + match[0].length;
+    }
+    if (last < value.length) parts.push({ text: value.slice(last), hit: false });
+    return parts.length > 0 ? parts : [{ text: value, hit: false }];
+}
+
 const TRANSFERRED_STATUSES = new Set(["transfer_call", "call_transferred"]);
 
 /** Whether the call was handed to a person (the rule Reports and the "Passed to team" tab use). */
@@ -427,6 +479,9 @@ export function outcomeLabel(code: string): string {
 
 const OUTCOME_TONES: Record<string, StatusTone> = {
     qualified: "ok",
+    booking_made: "ok",
+    time_was_full: "warn",
+    transfer_not_answered: "bad",
     callback_requested: "warn",
     do_not_call: "bad",
     failed: "bad",
@@ -439,10 +494,18 @@ const OUTCOME_TONES: Record<string, StatusTone> = {
 };
 
 /** The outcome chip for a call: its stored outcome in plain words. */
-export function callOutcome(run: {
-    disposition?: string | null;
-    gathered_context?: Context;
-}): { label: string; tone: StatusTone } {
+export function callOutcome(
+    run: {
+        disposition?: string | null;
+        gathered_context?: Context;
+        is_completed?: boolean | null;
+        created_at?: string;
+    },
+    now: number = Date.now(),
+): { label: string; tone: StatusTone } {
+    if (run.created_at && isInProgress({ is_completed: run.is_completed, created_at: run.created_at }, now)) {
+        return { label: "In progress", tone: "live" };
+    }
     const gathered = run.gathered_context;
     if (isPassedToTeam(gathered)) return { label: "Passed to your team", tone: "info" };
     const code = run.disposition ?? text(gathered?.mapped_call_disposition);

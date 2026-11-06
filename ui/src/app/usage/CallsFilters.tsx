@@ -23,6 +23,7 @@ import {
     type CallsTab,
     HANDLED_BY_OPTIONS,
     outcomeLabel,
+    tabUsesDates,
     WHEN_PRESETS,
     whenLabel,
 } from "./callsView";
@@ -77,8 +78,10 @@ export function CallsTabs({ tab, counts, onChange, listId }: {
 }
 
 /**
- * One search box (caller names and numbers), the date, outcome and "Who
- * handled it" chips, and the quiet way into the expert filters.
+ * One search box (names, numbers, the summary and what was said), the date,
+ * outcome and "Who handled it" chips, and the quiet way into the expert
+ * filters. On "Needs follow-up" the date chip gives way to Follow-ups' own
+ * window, so the count matches that page.
  */
 export function CallsFilterBar({
     query,
@@ -130,8 +133,8 @@ export function CallsFilterBar({
                 <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-ink-3" aria-hidden />
                 <input
                     type="search"
-                    aria-label="Search names or numbers"
-                    placeholder="Search names or numbers"
+                    aria-label="Search names, numbers or what was said"
+                    placeholder="Search names, numbers or what was said"
                     autoComplete="off"
                     value={text}
                     onChange={(event) => {
@@ -157,7 +160,14 @@ export function CallsFilterBar({
             </form>
 
             <div className="flex flex-wrap items-center gap-2">
-                <DateChip query={query} onChange={onChange} />
+                {tabUsesDates(query.tab) ? (
+                    <DateChip query={query} onChange={onChange} />
+                ) : (
+                    <span className="inline-flex h-10 items-center gap-1.5 px-1 text-sm text-ink-3 sm:h-9">
+                        <CalendarDays className="size-4" aria-hidden />
+                        Last 30 days, as on Follow-ups
+                    </span>
+                )}
 
                 <DropdownMenu>
                     <DropdownMenuTrigger className={cn(CHIP, query.outcome ? CHIP_ON : CHIP_OFF)}>
