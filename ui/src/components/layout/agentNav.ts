@@ -86,7 +86,7 @@ export const AGENT_NAV_SECTIONS: AgentNavSection[] = [
     label: "ANALYSE",
     items: [
       {
-        title: "Runs",
+        title: "Calls",
         segment: "/runs",
         icon: TrendingUp,
         subtitle: "Every call this agent has taken",

@@ -86,8 +86,9 @@ export async function getRedirectUrl(token: string, permissions: { id: string }[
     });
 
     if (countResponse.data && countResponse.data.active > 0) {
-      console.log('[getRedirectUrl] User has workflows, redirecting to /workflow');
-      return "/workflow";
+      // Owners check their calls far more often than they build agents.
+      console.log('[getRedirectUrl] User has workflows, redirecting to /usage');
+      return "/usage";
     } else {
       console.log('[getRedirectUrl] No workflows found, redirecting to /workflow/create');
       return "/workflow/create";

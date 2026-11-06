@@ -55,12 +55,12 @@ export function DispositionChart({ data }: DispositionChartProps) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Disposition Distribution</CardTitle>
+        <CardTitle>Call outcomes</CardTitle>
       </CardHeader>
       <CardContent>
         {data.length === 0 ? (
           <div className="h-[300px] flex items-center justify-center text-muted-foreground">
-            No disposition data available
+            No call outcomes for this day
           </div>
         ) : (
           <ResponsiveContainer width="100%" height={300}>

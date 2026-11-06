@@ -94,7 +94,7 @@ export default function ComplianceSettingsPage() {
           <SettingBlock>
             <p className="text-[13px] text-ink-2">
               {isAdmin
-                ? "Look a caller up by phone number to export their calls or permanently delete them. The same tool is on Agent runs."
+                ? "Look a caller up by phone number to export their calls or permanently delete them. The same tool is on Calls."
                 : "Only an admin can export or delete a caller's data. Ask an admin of this workspace."}
             </p>
           </SettingBlock>

@@ -33,11 +33,11 @@ describe("agentSectionFor", () => {
     expect(agentSectionFor("/workflow/12/model")?.title).toBe("Model and voice");
     expect(agentSectionFor("/workflow/12/settings")?.title).toBe("Advanced settings");
     expect(agentSectionFor("/workflow/12/deployment")?.title).toBe("Deployment");
-    expect(agentSectionFor("/workflow/12/runs")?.title).toBe("Runs");
+    expect(agentSectionFor("/workflow/12/runs")?.title).toBe("Calls");
   });
 
-  it("keeps a single run's detail page under Runs", () => {
-    expect(agentSectionFor("/workflow/12/run/99")?.title).toBe("Runs");
+  it("keeps a single call's detail page under Calls", () => {
+    expect(agentSectionFor("/workflow/12/run/99")?.title).toBe("Calls");
   });
 
   it("is null off an agent route", () => {

@@ -571,9 +571,9 @@ export default function UsagePage() {
                     <CardHeader>
                         <div className="flex justify-between items-start">
                             <div className="space-y-1.5">
-                                <CardTitle>All Runs</CardTitle>
+                                <CardTitle>All calls</CardTitle>
                                 <CardDescription>
-                                    Every agent run across your organization, with usage details
+                                    Every call across your agents, with how long it lasted and how it ended
                                 </CardDescription>
                             </div>
                         </div>
@@ -591,11 +591,11 @@ export default function UsagePage() {
                                     <Table>
                                         <TableHeader>
                                             <TableRow className="bg-muted/50">
-                                                <TableHead className="font-semibold">Run ID</TableHead>
+                                                <TableHead className="font-semibold">Call</TableHead>
                                                 <TableHead className="font-semibold">Agent name</TableHead>
                                                 <TableHead className="font-semibold">Call type</TableHead>
                                                 <TableHead className="font-semibold">Phone Number</TableHead>
-                                                <TableHead className="font-semibold">Disposition</TableHead>
+                                                <TableHead className="font-semibold">Outcome</TableHead>
                                                 <TableHead className="font-semibold">Date</TableHead>
                                                 <TableHead
                                                     className="font-semibold text-right cursor-pointer hover:bg-muted/50 select-none"
