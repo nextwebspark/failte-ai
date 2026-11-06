@@ -1824,4 +1824,6 @@ class KnowledgeBaseChunkModel(Base):
 
 # Fallcha: agent skill tables live in a fork-owned module; importing it here
 # registers them on Base.metadata wherever the models are loaded.
+# Platform admin tables (feature switches, audit log), registered the same way.
+from api.db import platform_admin_models as _platform_admin_models  # noqa: E402, F401
 from api.db import skill_models as _skill_models  # noqa: E402, F401

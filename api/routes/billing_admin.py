@@ -1,6 +1,9 @@
 """Superuser billing administration: plans, negotiated rates, credit limits
 and manual ledger adjustments (e.g. Enterprise invoices paid outside the
-app)."""
+app).
+
+Guarded by ``require_platform_admin``; every change is written to the
+platform admin audit log."""
 
 from typing import Annotated, Literal
 
@@ -10,6 +13,7 @@ from fastapi.responses import StreamingResponse
 from api.db import db_client
 from api.db.billing_client import BillingAccount
 from api.db.models import UserModel
+from api.db.platform_admin_client import AuditEntry
 from api.routes.billing import require_stripe_billing
 from api.schemas.billing import (
     AdminBillingAccountResponse,
@@ -17,10 +21,11 @@ from api.schemas.billing import (
     AdminUpdateBillingAccountRequest,
     BillingLedgerEntryResponse,
 )
-from api.services.auth.depends import get_superuser
+from api.services.auth.platform_admin import require_platform_admin
 from api.services.billing.accounts import ensure_billing_account
 from api.services.billing.margins import margins_csv, monthly_margins
 from api.services.billing.pricing import price_per_minute_eur
+from api.services.platform_admin.audit import AuditAction, json_safe
 
 router = APIRouter(
     prefix="/superuser/billing",
@@ -28,7 +33,7 @@ router = APIRouter(
     dependencies=[Depends(require_stripe_billing)],
 )
 
-Superuser = Annotated[UserModel, Depends(get_superuser)]
+Superuser = Annotated[UserModel, Depends(require_platform_admin)]
 
 
 async def _require_organization(organization_id: int) -> None:
@@ -68,15 +73,29 @@ async def get_organization_billing(
     include_in_schema=False,
 )
 async def update_organization_billing(
-    organization_id: int, body: AdminUpdateBillingAccountRequest, _user: Superuser
+    organization_id: int, body: AdminUpdateBillingAccountRequest, user: Superuser
 ) -> AdminBillingAccountResponse:
     await _require_organization(organization_id)
-    await ensure_billing_account(organization_id)
+    before = await ensure_billing_account(organization_id)
     changes = body.model_dump(include=body.model_fields_set)
     for field in ("plan", "credit_limit_eur"):
         if field in changes and changes[field] is None:
             raise HTTPException(status_code=422, detail=f"{field} cannot be null")
     account = await db_client.update_billing_account(organization_id, **changes)
+    if changes:
+        await db_client.add_platform_audit_entry(
+            AuditEntry(
+                action=AuditAction.BILLING_TERMS_UPDATED,
+                actor_user_id=user.id,
+                organization_id=organization_id,
+                details=json_safe(
+                    {
+                        "before": {field: getattr(before, field) for field in changes},
+                        "after": {field: getattr(account, field) for field in changes},
+                    }
+                ),
+            )
+        )
     return _to_response(account)
 
 
@@ -96,6 +115,22 @@ async def adjust_organization_balance(
         amount_eur=body.amount_eur,
         description=body.description,
         created_by=user.id,
+    )
+    await db_client.add_platform_audit_entry(
+        AuditEntry(
+            action=AuditAction.BILLING_BALANCE_ADJUSTED,
+            actor_user_id=user.id,
+            organization_id=organization_id,
+            details=json_safe(
+                {
+                    "entry_type": body.entry_type,
+                    "amount_eur": entry.amount_eur,
+                    "balance_after_eur": entry.balance_after_eur,
+                    "reason": body.description,
+                    "ledger_entry_id": entry.id,
+                }
+            ),
+        )
     )
     return BillingLedgerEntryResponse(
         id=entry.id,

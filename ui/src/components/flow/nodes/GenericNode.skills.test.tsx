@@ -18,8 +18,8 @@ import { GenericNode } from "./GenericNode";
 const mocks = vi.hoisted(() => ({ refreshSkills: vi.fn(async () => {}), skillsOn: true }));
 
 // The Skills area is switched off in the product; these tests cover both states.
-vi.mock("@/config/features", () => ({
-    isFeatureEnabled: (feature: string) => feature === "skills" && mocks.skillsOn,
+vi.mock("@/hooks/useFeatureFlags", () => ({
+    useFeatureEnabled: (feature: string) => feature === "skills" && mocks.skillsOn,
 }));
 
 vi.mock("@xyflow/react", () => ({

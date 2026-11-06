@@ -5,13 +5,22 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
 
+from api import constants
 from api.db import db_client
 from api.db.models import UserModel
+from api.db.platform_admin_client import AuditEntry
 from api.services.auth.depends import get_superuser
 from api.services.auth.stack_auth import (
     StackAuthSessionError,
     StackAuthUserSearchError,
     stackauth,
+)
+from api.services.platform_admin.audit import AuditAction
+
+# Shown by the API and the platform admin Users screen.
+IMPERSONATION_UNAVAILABLE_LOCAL = (
+    "Impersonation is not available with local sign-in (AUTH_PROVIDER=local). "
+    "It needs Stack Auth sign-in."
 )
 
 router = APIRouter(prefix="/superuser", tags=["superuser"])
@@ -69,12 +78,22 @@ async def impersonate(
     """Impersonate a user as a super-admin.
     Internally, Stack Auth requires the **provider user ID** (a UUID-ish string)
     to create an impersonation session.
+
+    Stack Auth only: with local sign-in there is no impersonation session to
+    create, so the request is refused (501) before anything is looked up.
+    Each session created is written to the platform admin audit log.
     """
+    if constants.AUTH_PROVIDER == "local":
+        raise HTTPException(
+            status_code=status.HTTP_501_NOT_IMPLEMENTED,
+            detail=IMPERSONATION_UNAVAILABLE_LOCAL,
+        )
 
     provider_user_id = (
         request.provider_user_id.strip() if request.provider_user_id else None
     ) or None
     email = request.email.strip().lower() if request.email else None
+    target_user_id: int | None = None
 
     # ------------------------------------------------------------------
     # Fallback: resolve provider_user_id from internal ``user_id`` or email.
@@ -90,11 +109,13 @@ async def impersonate(
                 )
 
             provider_user_id = db_user.provider_id
+            target_user_id = db_user.id
         elif email:
             db_user = await db_client.get_user_by_email(email)
 
             if db_user is not None:
                 provider_user_id = db_user.provider_id
+                target_user_id = db_user.id
             else:
                 try:
                     stack_users = await stackauth.find_users_by_email(email)
@@ -144,6 +165,17 @@ async def impersonate(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail="Failed to create Stack Auth impersonation session.",
         )
+
+    await db_client.add_platform_audit_entry(
+        AuditEntry(
+            action=AuditAction.IMPERSONATION_STARTED,
+            actor_user_id=user.id,
+            target_user_id=target_user_id,
+            # The Stack Auth user id, so the target is known even when they
+            # have no account row in this app yet.
+            details={"auth_provider": "stack", "provider_user_id": provider_user_id},
+        )
+    )
 
     return ImpersonateResponse(
         refresh_token=session["refresh_token"],
