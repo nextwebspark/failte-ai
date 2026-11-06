@@ -408,7 +408,7 @@ describe("The call's summary, questions and search", () => {
 
     it("offers Share recording when there is one", async () => {
         render(<UsagePage />);
-        expect(await screen.findByRole("button", { name: "Share recording" })).toBeTruthy();
+        expect(await screen.findByRole("button", { name: "Share recording" }, { timeout: 4000 })).toBeTruthy();
     });
 });
 

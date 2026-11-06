@@ -260,7 +260,11 @@ export default function UsagePage() {
 
     // Sample mode: no real calls at all yet, and the owner hasn't hidden the
     // sample. The made-up calls fill the list; the first real call ends it.
-    const hasRealCalls = list.state === 'ready' ? list.anyCalls : null;
+    // Kept between loads, so the sample doesn't blink out while a filter reloads.
+    const [hasRealCalls, setHasRealCalls] = useState<boolean | null>(null);
+    useEffect(() => {
+        if (list.state === 'ready') setHasRealCalls(list.anyCalls);
+    }, [list]);
     const { showSample, hide: hideSample } = useSampleMode(hasRealCalls);
     const businessName = orgContext?.organization_name?.trim() || undefined;
     const allSamples = useMemo(
