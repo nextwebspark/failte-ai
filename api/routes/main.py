@@ -24,6 +24,7 @@ from api.routes.node_types import router as node_types_router
 from api.routes.notifications import router as notifications_router
 from api.routes.organization import router as organization_router
 from api.routes.organization_usage import router as organization_usage_router
+from api.routes.phone_setup import router as phone_setup_router
 from api.routes.platform_admin import router as platform_admin_router
 from api.routes.platform_admin_area import router as platform_admin_area_router
 from api.routes.privacy import router as privacy_router
@@ -67,6 +68,7 @@ router.include_router(credentials_router)
 router.include_router(tool_router)
 router.include_router(integrations_router)
 router.include_router(organization_router)
+router.include_router(phone_setup_router)
 router.include_router(team_router)
 router.include_router(notifications_router)
 router.include_router(invitations_router)

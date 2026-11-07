@@ -80,6 +80,50 @@ class TelephonyPhoneNumberClient(BaseDBClient):
             )
             return [(row, name) for row, name in result.all()]
 
+    async def list_phone_numbers_for_workflow(
+        self, workflow_id: int, organization_id: int
+    ) -> List[Tuple[TelephonyPhoneNumberModel, str, str, bool]]:
+        """The org's numbers that ring ``workflow_id``, oldest first, each with
+        its configuration's name, provider and whether that configuration is
+        turned off. Selects the configuration's plain columns only, so no
+        credentials are decrypted."""
+        async with self.async_session() as session:
+            result = await session.execute(
+                select(
+                    TelephonyPhoneNumberModel,
+                    TelephonyConfigurationModel.name,
+                    TelephonyConfigurationModel.provider,
+                    TelephonyConfigurationModel.inactive,
+                )
+                .join(
+                    TelephonyConfigurationModel,
+                    TelephonyConfigurationModel.id
+                    == TelephonyPhoneNumberModel.telephony_configuration_id,
+                )
+                .where(
+                    TelephonyPhoneNumberModel.organization_id == organization_id,
+                    TelephonyConfigurationModel.organization_id == organization_id,
+                    TelephonyPhoneNumberModel.inbound_workflow_id == workflow_id,
+                )
+                .order_by(TelephonyPhoneNumberModel.created_at)
+            )
+            return [
+                (row, name, provider, bool(inactive))
+                for row, name, provider, inactive in result.all()
+            ]
+
+    async def get_phone_number_for_org(
+        self, phone_number_id: int, organization_id: int
+    ) -> Optional[TelephonyPhoneNumberModel]:
+        async with self.async_session() as session:
+            result = await session.execute(
+                select(TelephonyPhoneNumberModel).where(
+                    TelephonyPhoneNumberModel.id == phone_number_id,
+                    TelephonyPhoneNumberModel.organization_id == organization_id,
+                )
+            )
+            return result.scalars().first()
+
     async def list_active_normalized_addresses_for_config(
         self, telephony_configuration_id: int
     ) -> List[str]:
