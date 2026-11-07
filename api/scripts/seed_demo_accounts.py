@@ -73,7 +73,12 @@ from api.scripts.demo_businesses import (
     fit_to_opening_hours,
 )
 from api.services.call_review.categories import TEMPLATE_CATEGORY_FACT, reason_set
-from api.services.call_review.review import CALL_REVIEW_KEY, REVIEW_VERSION
+from api.services.call_review.review import (
+    CALL_REVIEW_KEY,
+    REQUEST_TAGS_KEY,
+    REVIEW_VERSION,
+    clean_request_tags,
+)
 from api.services.dashboard.follow_ups import FollowUpKind, done_mark
 from api.services.email_reports import service as email_reports
 from api.services.email_reports.settings import add_recipient, record_change
@@ -810,7 +815,7 @@ async def render(
 
 def _review(plan: Plan, agent: Agent, created: datetime) -> dict:
     reasons = reason_set(agent.category)
-    return {
+    review = {
         "version": REVIEW_VERSION,
         "summary": plan.summary,
         "reason": plan.reason,
@@ -820,6 +825,10 @@ def _review(plan: Plan, agent: Agent, created: datetime) -> dict:
         "model": REVIEW_MODEL,
         "created_at": created.isoformat(),
     }
+    if reasons.request_tags:
+        # As the live review writes them: known tags, each once, in order.
+        review[REQUEST_TAGS_KEY] = clean_request_tags(plan.request_tags, reasons)
+    return review
 
 
 def _follow_up_kinds(plan: Plan) -> list[str | None]:

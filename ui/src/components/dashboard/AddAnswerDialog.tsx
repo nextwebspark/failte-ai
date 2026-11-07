@@ -40,8 +40,9 @@ export function AddAnswerDialog({
     onClose,
     onSaved,
 }: {
-    /** The follow-up being answered; null closes the dialog. */
-    item: FollowUpItem | null;
+    /** The follow-up being answered (a call, its agent and the questions);
+     * null closes the dialog. */
+    item: Pick<FollowUpItem, "run_id" | "workflow_id" | "questions"> | null;
     onClose: () => void;
     /** After saving: the agent's answers as now stored, and what was added. */
     onSaved?: (answers: string, added: { question: string; answer: string }) => void;

@@ -9,7 +9,13 @@ Stored at ``workflow_runs.annotations["call_review"]``::
      "reason": "reservations", "reason_label": "Reservations",
      "unanswered_questions": ["Do you have gluten-free pasta?"],
      "time_was_full": false,
+     "request_tags": ["allergies_diets"],
      "model": "gemini-3.1-flash-lite", "created_at": "2026-11-06T13:41:00+00:00"}
+
+``request_tags`` is written only for kinds of business with a list of
+special requests (``ReasonSet.request_tags``; restaurants today). Reviews
+written before it existed have no such key: readers treat that as "not
+tagged", never as "no requests".
 """
 
 from __future__ import annotations
@@ -27,7 +33,8 @@ REVIEW_VERSION = 1
 
 # What a review keeps after the call's content is deleted (retention purge or
 # erasure): the reason and the flags, which hold nothing the caller said.
-# The summary and the caller's questions go with the transcript.
+# The summary and the caller's questions go with the transcript, and so do
+# the request tags (an allergy is about the caller's health).
 KEPT_AFTER_PURGE = frozenset(
     {"version", "reason", "reason_label", "time_was_full", "model", "created_at"}
 )
@@ -45,6 +52,7 @@ MAX_TRANSCRIPT_CHARS = 8000
 MAX_SUMMARY_CHARS = 300
 MAX_QUESTIONS = 3
 MAX_QUESTION_CHARS = 200
+REQUEST_TAGS_KEY = "request_tags"
 
 # Details the agent writes down that help the reviewer; numbers are left out.
 _DETAIL_KEYS = (
@@ -137,6 +145,20 @@ def system_prompt(reasons: ReasonSet) -> str:
         "pass it on), written as the caller's short question. [] if none.\n"
         "- time_was_full: true only if the caller wanted a date or time that "
         "was full or not available."
+        f"{_request_tags_prompt(reasons)}"
+    )
+
+
+def _request_tags_prompt(reasons: ReasonSet) -> str:
+    if not reasons.request_tags:
+        return ""
+    options = "\n".join(
+        f'- "{t.key}": {t.label} ({t.hint})' for t in reasons.request_tags
+    )
+    return (
+        "\n- request_tags: the keys below for each special request the caller "
+        "made for their booking, each key once. [] if they made none:\n"
+        f"{options}"
     )
 
 
@@ -154,7 +176,7 @@ def user_prompt(
 
 def response_schema(reasons: ReasonSet) -> dict[str, Any]:
     """The JSON schema the model must answer in."""
-    return {
+    schema: dict[str, Any] = {
         "type": "object",
         "properties": {
             "summary": {"type": "string"},
@@ -164,6 +186,13 @@ def response_schema(reasons: ReasonSet) -> dict[str, Any]:
         },
         "required": ["summary", "reason", "unanswered_questions", "time_was_full"],
     }
+    if reasons.request_tags:
+        # Optional: an answer without it is still a good review.
+        schema["properties"][REQUEST_TAGS_KEY] = {
+            "type": "array",
+            "items": {"type": "string", "enum": list(reasons.request_tag_keys)},
+        }
+    return schema
 
 
 class ReviewParseError(ValueError):
@@ -210,7 +239,7 @@ def parse_review(
             cleaned = _cut(_one_line(question), MAX_QUESTION_CHARS)
             if cleaned not in questions:
                 questions.append(cleaned)
-    return {
+    review = {
         "version": REVIEW_VERSION,
         "summary": _cut(_one_line(summary), MAX_SUMMARY_CHARS),
         "reason": reason,
@@ -220,11 +249,36 @@ def parse_review(
         "model": model,
         "created_at": now.isoformat(),
     }
+    if reasons.request_tags:
+        review[REQUEST_TAGS_KEY] = clean_request_tags(
+            data.get(REQUEST_TAGS_KEY), reasons
+        )
+    return review
+
+
+def clean_request_tags(value: Any, reasons: ReasonSet) -> list[str]:
+    """The known tags in *value*, each once, in the set's own order; unknown
+    or malformed entries are dropped."""
+    given = (
+        {v.strip().lower() for v in value if isinstance(v, str)}
+        if isinstance(value, list)
+        else set()
+    )
+    return [key for key in reasons.request_tag_keys if key in given]
+
+
+def request_tags(review: Mapping[str, Any] | None) -> list[str] | None:
+    """The tags on a stored review; None when it was never tagged (written
+    before tags existed, or for a business without them)."""
+    value = (review or {}).get(REQUEST_TAGS_KEY)
+    if not isinstance(value, list):
+        return None
+    return [v for v in value if isinstance(v, str)]
 
 
 def silent_review(reasons: ReasonSet, *, now: datetime) -> dict[str, Any]:
     """The review of a call where the caller never spoke; no model needed."""
-    return {
+    review: dict[str, Any] = {
         "version": REVIEW_VERSION,
         "summary": SILENT_SUMMARY,
         "reason": OTHER,
@@ -234,6 +288,9 @@ def silent_review(reasons: ReasonSet, *, now: datetime) -> dict[str, Any]:
         "model": NO_MODEL,
         "created_at": now.isoformat(),
     }
+    if reasons.request_tags:
+        review[REQUEST_TAGS_KEY] = []
+    return review
 
 
 def stored_review(annotations: Mapping[str, Any] | None) -> Mapping[str, Any] | None:

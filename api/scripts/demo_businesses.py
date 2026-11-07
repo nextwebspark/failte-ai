@@ -50,6 +50,9 @@ class Plan:
     reason: str
     unanswered: list[str] = field(default_factory=list)
     time_was_full: bool = False
+    # The call review's special-request tags (restaurants: see
+    # ``call_review.categories.RESTAURANT_REQUEST_TAGS``), as said on the call.
+    request_tags: list[str] = field(default_factory=list)
     # end_call | transfer_call | user_hangup
     status: str = "end_call"
     speech: bool = True
@@ -366,6 +369,27 @@ def _r_book(c: Ctx) -> Plan:
     size = c.pick([2, 2, 2, 3, 4, 4, 5, 6])
     allergy = c.pick([None, None, None, "a coeliac", "a nut allergy", "dairy-free"])
     occasion = c.pick([None, None, None, "a birthday", "an anniversary"])
+    # The agent asks about one or the other, never both.
+    if allergy:
+        occasion = None
+    # (what the caller asks for, how the booking notes it, the review's tag)
+    extra_ask = c.pick(
+        [
+            None,
+            None,
+            None,
+            None,
+            None,
+            ("Could we have a high chair for the little one?", "a high chair", "kids"),
+            ("Any chance of a table on the terrace?", "a terrace table", "seating"),
+            ("Could we have a table by the window?", "a window table", "seating"),
+            (
+                "My mother uses a wheelchair, is it step-free?",
+                "step-free access for a wheelchair",
+                "accessibility",
+            ),
+        ]
+    )
     part = "lunch" if lunch else "evening"
     t = Talk(c.greeting)
     t.c(f"Hi, could I book a table for {NUMBERS[size]} {spoken}, around {say}?")
@@ -397,6 +421,10 @@ def _r_book(c: Ctx) -> Plan:
         t.a("Lovely. Is it for a special occasion?")
         t.c(f"It's {occasion}, actually.")
         t.a("How nice. I'll add that to the booking.")
+    if extra_ask:
+        ask, noted, _ = extra_ask
+        t.c(ask)
+        t.a(f"Of course. I've noted {noted} on the booking.")
     t.a(
         f"So that's a table for {NUMBERS[size]} {spoken} at {say}, under {c.caller.name}. Shall I book that?"
     )
@@ -427,6 +455,20 @@ def _r_book(c: Ctx) -> Plan:
         if occasion
         else ""
     )
+    if extra_ask:
+        extra += f" Asked for {extra_ask[1]}."
+    requests = [r for r in (allergy, occasion, extra_ask and extra_ask[1]) if r]
+    tags = [
+        tag
+        for tag, wanted in (
+            ("allergies_diets", allergy),
+            ("celebration", occasion),
+            ("kids", extra_ask and extra_ask[2] == "kids"),
+            ("accessibility", extra_ask and extra_ask[2] == "accessibility"),
+            ("seating", extra_ask and extra_ask[2] == "seating"),
+        )
+        if wanted
+    ]
     return Plan(
         t.steps,
         BOOKING_MADE,
@@ -438,10 +480,11 @@ def _r_book(c: Ctx) -> Plan:
             "booking_date": on,
             "booking_time": hhmm,
             "party_size": str(size),
-            "special_requests": allergy or occasion or "",
+            "special_requests": ", ".join(requests),
         },
         f"Booked a table for {size} {spoken} at {written}.{extra}",
         "reservations",
+        request_tags=tags,
     )
 
 
@@ -555,6 +598,7 @@ def _r_group(c: Ctx) -> Plan:
         f"Asked for a table for {size} {spoken} at 7:30 pm for {occasion}. "
         "Left a number for the team to confirm.",
         "reservations",
+        request_tags=["celebration"],
     )
 
 

@@ -17,6 +17,7 @@ from html import escape
 
 from api.constants import BRAND_NAME
 from api.services.email.base import EmailMessage
+from api.services.email_reports.cards import EmailBlock
 from api.services.email_reports.content import Bar, Report
 from api.services.email_reports.formatting import (
     change_text,
@@ -277,7 +278,166 @@ def _bar_labels(report: Report) -> list[str]:
     return [str(d.day) if d.day in (1, 8, 15, 22, 29) else "" for d in days]
 
 
-def _column_chart(report: Report) -> str:
+def _block_tiles(block: EmailBlock) -> str:
+    cells = []
+    tiles = list(block.tiles)
+    for i in range(0, len(tiles), 2):
+        left = tiles[i]
+        right = tiles[i + 1] if i + 1 < len(tiles) else None
+        row = _tile(left.label, left.value, left.note, "left")
+        row += (
+            _tile(right.label, right.value, right.note, "right")
+            if right
+            else '<td width="50%" style="padding:0 0 10px 5px">&nbsp;</td>'
+        )
+        cells.append(f"<tr>{row}</tr>")
+    title = _section_title(block.title) if block.title else ""
+    pad = "0 28px" if block.title else "18px 28px 0"
+    return title + (
+        f'<tr><td class="lm-pad" style="padding:{pad}">'
+        '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">'
+        f"{''.join(cells)}</table></td></tr>"
+    )
+
+
+def _block_note(text: str | None) -> str:
+    if not text:
+        return ""
+    return (
+        f'<tr><td class="lm-pad lm-ink3" style="padding:8px 28px 0;font-family:{FONT};'
+        f'font-size:12.5px;line-height:18px;color:{INK_3}">{_e(text)}</td></tr>'
+    )
+
+
+def _block_bars(block: EmailBlock) -> str:
+    top = max([b.count for b in block.bars] + [1])
+    rows = []
+    for bar in block.bars:
+        width = max(2, round(bar.count * 100 / top)) if bar.count else 0
+        fill = bar.colour or BRAND_FILL
+        # A custom colour stays in dark mode too: it is the category's hue.
+        fill_class = "" if bar.colour else "lm-bar"
+        shown = bar.value or str(bar.count)
+        track = (
+            '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" '
+            'style="margin-top:4px"><tr>'
+            + (
+                f'<td class="{fill_class}" width="{width}%" height="8" style="height:8px;font-size:0;'
+                f'line-height:0;background-color:{fill};border-radius:4px">&nbsp;</td>'
+                if width
+                else ""
+            )
+            + (
+                f'<td class="lm-track" width="{100 - width}%" height="8" style="height:8px;'
+                f'font-size:0;line-height:0;background-color:{BRAND_WASH};border-radius:4px">&nbsp;</td>'
+                if width < 100
+                else ""
+            )
+            + "</tr></table>"
+        )
+        rows.append(
+            f'<tr><td style="padding:6px 0 0;font-family:{FONT}">'
+            f'<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>'
+            f'<td class="lm-ink2" style="font-size:13.5px;line-height:18px;color:{INK_2}">{_e(bar.label)}</td>'
+            f'<td class="lm-ink" align="right" style="font-size:13.5px;font-weight:700;color:{INK};'
+            f'white-space:nowrap;padding-left:8px">{_e(shown)}</td></tr></table>'
+            f"{track}</td></tr>"
+        )
+    return (
+        _section_title(block.title) + '<tr><td class="lm-pad" style="padding:0 28px">'
+        '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">'
+        f"{''.join(rows)}</table></td></tr>" + _block_note(block.note)
+    )
+
+
+def _block_list(block: EmailBlock) -> str:
+    rows = []
+    for row in block.rows:
+        rows.append(
+            f'<tr><td class="lm-line" style="padding:10px 0;border-top:1px solid {LINE};'
+            f'font-family:{FONT}">'
+            f'<p class="lm-ink" style="margin:0;font-size:14px;line-height:20px;'
+            f'font-weight:600;color:{INK}">{_e(row.title)}</p>'
+            + (
+                f'<p class="lm-ink2" style="margin:2px 0 0;font-size:13.5px;line-height:19px;'
+                f'color:{INK_2}">{_e(row.detail)}</p>'
+                if row.detail
+                else ""
+            )
+            + (
+                f'<p class="lm-ink3" style="margin:2px 0 0;font-size:12px;line-height:16px;'
+                f'color:{INK_3}">{_e(row.meta)}</p>'
+                if row.meta
+                else ""
+            )
+            + "</td></tr>"
+        )
+    return (
+        _section_title(block.title) + '<tr><td class="lm-pad" style="padding:0 28px">'
+        '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">'
+        f"{''.join(rows)}</table></td></tr>" + _block_note(block.note)
+    )
+
+
+def _block_text_note(block: EmailBlock) -> str:
+    return _section_title(block.title) + (
+        f'<tr><td class="lm-pad lm-ink2" style="padding:0 28px;font-family:{FONT};'
+        f'font-size:14px;line-height:20px;color:{INK_2}">{_e(block.note or "")}</td></tr>'
+    )
+
+
+def _block(block: EmailBlock, report: Report, links: Links) -> str:
+    if block.kind == "calls":
+        return _tiles(report) + _facts_row(report)
+    if block.kind == "follow_ups":
+        return _follow_ups(report, links)
+    if block.kind == "when":
+        return _column_chart(report, title=block.title) + _block_note(block.note)
+    if block.kind == "tiles":
+        return _block_tiles(block)
+    if block.kind == "bars":
+        return _block_bars(block)
+    if block.kind == "list":
+        return _block_list(block)
+    if block.kind == "note":
+        return _block_text_note(block)
+    return ""
+
+
+def _block_text(block: EmailBlock, report: Report, links: Links) -> list[str]:
+    """One block in the plain-text part."""
+    if block.kind == "calls":
+        change = change_text(report.calls_change, report.period.frequency)
+        lines = [
+            f"Calls: {report.calls}" + (f" ({change})" if change else ""),
+            f"Handled by your agent: {report.handled}",
+            f"Passed to your team: {report.passed_to_team}",
+            f"Hung up without speaking: {report.hung_up_silent}",
+            f"Bookings made: {report.bookings}",
+        ]
+        if report.after_hours is not None:
+            lines.append(f"Outside opening hours: {report.after_hours}")
+        return [*lines, ""]
+    if block.kind == "follow_ups":
+        return [*_follow_ups_text(report, links), ""]
+    lines = [block.title] if block.title else []
+    lines += [
+        f"{t.label}: {t.value}" + (f" ({t.note})" if t.note else "")
+        for t in block.tiles
+    ]
+    lines += [f"- {b.label}: {b.value or b.count}" for b in block.bars]
+    lines += [
+        f"- {r.title}"
+        + (f": {r.detail}" if r.detail else "")
+        + (f" ({r.meta})" if r.meta else "")
+        for r in block.rows
+    ]
+    if block.note:
+        lines.append(block.note)
+    return [*lines, ""] if lines else []
+
+
+def _column_chart(report: Report, title: str = "When people called") -> str:
     bars = report.when
     top = max([b.count for b in bars] + [1])
     width = f"{100 / len(bars):.2f}%"
@@ -307,8 +467,7 @@ def _column_chart(report: Report) -> str:
         peak_day = date.fromisoformat(busiest.label)
         peak = f"Busiest day: {day_label(peak_day)} ({plural(busiest.count, 'call')})."
     return (
-        _section_title("When people called")
-        + '<tr><td class="lm-pad" style="padding:0 28px">'
+        _section_title(title) + '<tr><td class="lm-pad" style="padding:0 28px">'
         f'<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" '
         f'class="lm-line" style="border-bottom:1px solid {LINE}"><tr>{"".join(columns)}</tr></table>'
         '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">'
@@ -426,13 +585,15 @@ def render_html(report: Report, *, to: str, links: Links) -> str:
         )
     if report.calls == 0:
         sections.append(_no_calls(report))
+        sections.append(_follow_ups(report, links))
+    elif report.blocks is not None:
+        sections.extend(_block(block, report, links) for block in report.blocks)
     else:
         sections.append(_tiles(report))
         sections.append(_facts_row(report))
-    sections.append(_follow_ups(report, links))
-    if report.calls and report.callers_wanted:
-        sections.append(_reason_bars(report.callers_wanted))
-    if report.calls:
+        sections.append(_follow_ups(report, links))
+        if report.callers_wanted:
+            sections.append(_reason_bars(report.callers_wanted))
         sections.append(_column_chart(report))
     sections.append(_credit(report, links))
     sections.append(_button("Open your dashboard", links.dashboard))
@@ -479,6 +640,10 @@ def render_text(report: Report, *, to: str, links: Links) -> str:
             ),
             "",
         ]
+    if report.calls and report.blocks is not None:
+        for block in report.blocks:
+            lines += _block_text(block, report, links)
+        return _text_end(report, to=to, links=links, lines=lines)
     if report.calls == 0:
         lines += ["No calls in this period.", ""]
     else:
@@ -496,7 +661,17 @@ def render_text(report: Report, *, to: str, links: Links) -> str:
         if report.after_hours is not None:
             lines.append(f"Outside opening hours: {report.after_hours}")
         lines.append("")
-    lines.append("Needs your attention")
+    lines += _follow_ups_text(report, links)
+    lines.append("")
+    if report.calls and report.callers_wanted:
+        lines.append("What callers wanted")
+        lines += [f"- {b.label}: {b.count}" for b in report.callers_wanted]
+        lines.append("")
+    return _text_end(report, to=to, links=links, lines=lines)
+
+
+def _follow_ups_text(report: Report, links: Links) -> list[str]:
+    lines = ["Needs your attention"]
     if report.open_follow_ups == 0:
         lines.append("Nothing waiting.")
     else:
@@ -508,11 +683,10 @@ def render_text(report: Report, *, to: str, links: Links) -> str:
             detail = item.reason or FOLLOW_UP_KIND.get(item.kind, "Needs a call back")
             lines.append(f"- {who}: {detail}")
         lines.append(f"All follow-ups: {links.follow_ups}")
-    lines.append("")
-    if report.calls and report.callers_wanted:
-        lines.append("What callers wanted")
-        lines += [f"- {b.label}: {b.count}" for b in report.callers_wanted]
-        lines.append("")
+    return lines
+
+
+def _text_end(report: Report, *, to: str, links: Links, lines: list[str]) -> str:
     if report.credit:
         lines.append(f"Call credit: {euro(report.credit['spendable_eur'])} left")
         lines.append("")
