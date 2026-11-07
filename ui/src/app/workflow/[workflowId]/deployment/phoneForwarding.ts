@@ -54,6 +54,7 @@ export const UNDO_CODE = "##002#";
  */
 export function forwardingCode(agentNumber: string, when: ForwardWhen): string | null {
     const number = agentNumber.replace(/[\s()-]/g, "");
+    if (!isPublicNumber(number)) return null;
     switch (when) {
         case "no_answer":
             return `**61*${number}**20#`;
@@ -64,6 +65,15 @@ export function forwardingCode(agentNumber: string, when: ForwardWhen): string |
         case "outside_hours":
             return null;
     }
+}
+
+/**
+ * A full phone number anyone can ring (E.164, e.g. +35315550142). An extension
+ * on the customer's own phone system ("7000") or a SIP address is not: mobiles
+ * and landlines can't forward to it.
+ */
+export function isPublicNumber(address: string): boolean {
+    return /^\+[1-9]\d{6,14}$/.test(address.replace(/[\s()-]/g, ""));
 }
 
 /**

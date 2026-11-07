@@ -28,6 +28,7 @@ import {
     FORWARD_OPTIONS,
     forwardingCode,
     type ForwardWhen,
+    isPublicNumber,
     SETUP_METHODS,
     type SetupMethod,
     UNDO_CODE,
@@ -199,6 +200,10 @@ export function PhoneSetup({ agentId, agentName, onSettled }: PhoneSetupProps) {
             if (res.error || !res.data) throw new Error(detailFromError(res.error, "Couldn’t check just now"));
             apply(res.data);
             setCheckedOnce(true);
+            const first = primaryNumber(res.data.numbers);
+            if (first?.check.status !== "received") {
+                toast.info("No call has reached your agent yet. We’ll keep checking while this page is open.");
+            }
         } catch (error) {
             toast.error(error instanceof Error ? error.message : "Couldn’t check just now");
         } finally {
@@ -241,7 +246,8 @@ export function PhoneSetup({ agentId, agentName, onSettled }: PhoneSetupProps) {
                                 : "Ring your own number from another phone. When your agent answers, this step turns green."}
                         </p>
                         {checkedOnce && savedMatches && (
-                            <p role="status" className="text-ink-3">
+                            <p role="status" className="flex items-center gap-2 text-ink-2">
+                                <Loader2 className="size-3.5 animate-spin text-ink-3" />
                                 No call yet. We’ll keep looking while this page is open.
                             </p>
                         )}
@@ -295,6 +301,32 @@ export function PhoneSetup({ agentId, agentName, onSettled }: PhoneSetupProps) {
                             <p className="text-ink-3">Ask a workspace admin to get a number for this agent.</p>
                         )}
                     </Step>
+                </ol>
+            );
+        } else if (!isPublicNumber(primary.address_normalized)) {
+            // An extension on the customer's own phone system (e.g. Asterisk
+            // "7000"): calls reach it inside that system, but no mobile or
+            // landline can forward to it, so don't offer forwarding codes.
+            steps = (
+                <ol className="space-y-5">
+                    <Step n={1} title="Your agent’s number">
+                        <p>
+                            <strong>{primary.address_normalized}</strong> is an extension on your own phone system, not a
+                            phone number. Calls made inside that system to {primary.address_normalized} reach your agent.
+                        </p>
+                        {method !== "new_number" && (
+                            <div role="alert" className="rounded-lg border border-amber/40 bg-amber-dim px-3.5 py-3 text-sm">
+                                <p className="font-semibold text-ink">Phones can’t forward to an extension</p>
+                                <p className="mt-1 text-ink-2">
+                                    A mobile or landline can only forward to a full phone number. To forward your
+                                    number, your agent needs one: choose <strong>Get a new number</strong> above, or add
+                                    a number from your phone provider below. If you already dialled a forwarding code
+                                    for {primary.address_normalized}, cancel it with <Code>{UNDO_CODE}</Code>.
+                                </p>
+                            </div>
+                        )}
+                    </Step>
+                    {method === "new_number" && checkStep(2)}
                 </ol>
             );
         } else if (method === "new_number") {

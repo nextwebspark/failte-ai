@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { RealtimeFeedbackEvent, TtfbKind } from "../types";
-import { conversationItemsFromRealtimeFeedbackEvents, isLlmTtfb } from "./fromRealtimeFeedback";
+import { conversationItemsFromRealtimeFeedbackEvents, isLlmTtfb, toolResultFailed } from "./fromRealtimeFeedback";
 
 const timestamp = "2026-09-23T10:00:00.000Z";
 
@@ -138,5 +138,16 @@ describe("tools finishing after hangup", () => {
 
     it.each([null, {}, [null, {}, { ...timeout, status: "unknown" }]])("ignores invalid saved records: %j", (records) => {
         expect(conversationItemsFromRealtimeFeedbackEvents([start], records)[0]).toMatchObject({ status: "running" });
+    });
+});
+
+describe("tools that ran but didn't succeed", () => {
+    it("treats a failed transfer or an error result as failed, whether object or JSON text", () => {
+        expect(toolResultFailed({ status: "transfer_failed", reason: "webrtc_not_supported" })).toBe(true);
+        expect(toolResultFailed('{"status": "transfer_failed"}')).toBe(true);
+        expect(toolResultFailed({ status: "error" })).toBe(true);
+        expect(toolResultFailed({ status: "success" })).toBe(false);
+        expect(toolResultFailed("Booked for 7 pm")).toBe(false);
+        expect(toolResultFailed(undefined)).toBe(false);
     });
 });
