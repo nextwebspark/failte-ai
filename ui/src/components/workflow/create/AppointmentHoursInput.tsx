@@ -20,7 +20,7 @@ import { cn } from '@/lib/utils';
 import type { HoursTarget } from './useAppointmentHours';
 
 const SELECT_CLASS =
-    'h-9 w-full min-w-0 rounded-md border border-line bg-card px-2.5 text-[13.5px] text-ink outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/40 disabled:cursor-not-allowed disabled:opacity-60';
+    'h-9 w-full min-w-0 rounded-md border border-line bg-card px-2.5 text-sm text-ink outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/40 disabled:cursor-not-allowed disabled:opacity-60';
 
 const TARGET_NOTE: Record<HoursTarget, string> = {
     new_calendar:
@@ -112,12 +112,12 @@ export function AppointmentHoursInput({ field, value, onChange, target, periods 
                 <span id={`${id}-label`} className="text-[14px] font-semibold text-ink">
                     {field.label}
                 </span>
-                <ul className="flex flex-col gap-0.5 text-[13px] text-ink-2">
+                <ul className="flex flex-col gap-0.5 text-caption text-ink-2">
                     {periods.map((period, index) => (
                         <li key={index}>{describeStoredPeriod(period)}</li>
                     ))}
                 </ul>
-                <p id={`${id}-hint`} className="text-[12.5px] text-ink-3">
+                <p id={`${id}-hint`} className="text-caption text-ink-3">
                     {TARGET_NOTE[target]}
                 </p>
             </div>
@@ -165,7 +165,7 @@ function HoursEditor({
                 <span id={`${id}-label`} className="text-[14px] font-semibold text-ink">
                     {field.label}
                 </span>
-                {field.help && <span className="text-[12.5px] text-ink-2">{field.help}</span>}
+                {field.help && <span className="text-caption text-ink-2">{field.help}</span>}
             </div>
             <div role="group" aria-label="Days" className="flex flex-wrap gap-1.5">
                 {WEEKDAYS.map((day) => {
@@ -179,7 +179,7 @@ function HoursEditor({
                             disabled={disabled}
                             onClick={() => toggleDay(day.value)}
                             className={cn(
-                                'h-8 min-w-[44px] rounded-md border px-2 text-[12.5px] font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-ring disabled:cursor-not-allowed disabled:opacity-60',
+                                'h-8 min-w-[44px] rounded-md border px-2 text-caption font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-ring disabled:cursor-not-allowed disabled:opacity-60',
                                 on
                                     ? 'border-brand bg-brand-dim text-brand'
                                     : 'border-line bg-card text-ink-3 hover:bg-panel-2',
@@ -227,11 +227,11 @@ function HoursEditor({
                 disabled={disabled}
             />
             {problem && (
-                <p role="alert" className="text-[12.5px] text-danger">
+                <p role="alert" className="text-caption text-danger">
                     {problem}
                 </p>
             )}
-            <p id={`${id}-hint`} className="text-[12.5px] text-ink-3">
+            <p id={`${id}-hint`} className="text-caption text-ink-3">
                 {TARGET_NOTE[target]}
             </p>
         </div>

@@ -31,12 +31,12 @@ export function HomeSkeleton({ withHeader = true }: { withHeader?: boolean }) {
                             <Skeleton className="size-7 rounded-lg" />
                             <Skeleton className="h-3.5 w-24" />
                         </div>
-                        <Skeleton className="h-8 w-14" />
+                        <Skeleton className="h-9 w-16" />
                         <Skeleton className="h-3 w-3/4" />
                     </div>
                 ))}
             </div>
-            <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,7fr)_minmax(0,5fr)]">
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1.5fr)_minmax(400px,1fr)] lg:gap-5">
                 <CardSkeleton rows={3} />
                 <CardSkeleton rows={3} />
             </div>

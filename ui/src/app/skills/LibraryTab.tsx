@@ -260,7 +260,7 @@ export function LibraryTab({
                                 <Panel key={skill.library_skill_uuid} padding="sm" className="flex h-full flex-col gap-2">
                                     <div className="flex flex-wrap items-center gap-2">
                                         <span className="font-mono text-sm font-semibold">{skill.name}</span>
-                                        <span className="font-mono text-[11px] text-ink-3">v{skill.version}</span>
+                                        <span className="font-mono text-meta text-ink-3">v{skill.version}</span>
                                         {skill.category && <StatusPill tone="mute">{skill.category}</StatusPill>}
                                         {isPlatformAdmin && skill.status !== "published" && (
                                             <StatusPill tone={statusTone(skill.status)}>{skill.status}</StatusPill>

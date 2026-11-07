@@ -54,7 +54,7 @@ function NumberLine({ item, note }: { item: WorkspaceNumber; note?: string }) {
     return (
         <span className="min-w-0">
             <span className="block truncate font-mono text-[14px] text-ink">{item.number.address}</span>
-            <span className="block truncate text-[12.5px] text-ink-3">
+            <span className="block truncate text-caption text-ink-3">
                 {[item.number.label, item.provider.name, note].filter(Boolean).join(" · ")}
             </span>
         </span>
@@ -181,14 +181,14 @@ export function AgentPhoneNumbers({ agentId, agentName, onSettled, onChanged, em
         body = <Skeleton className="h-14 rounded-lg" />;
     } else if (!canRead) {
         body = (
-            <p className="text-[13.5px] text-ink-2">
+            <p className="text-sm text-ink-2">
                 Ask a workspace admin to connect a phone number to this agent.
             </p>
         );
     } else if (loadError) {
         body = (
             <div className="flex flex-wrap items-center gap-3">
-                <p className="text-[13.5px] text-danger">{loadError}</p>
+                <p className="text-sm text-danger">{loadError}</p>
                 <Button variant="outline" size="sm" onClick={() => void load()}>
                     Try again
                 </Button>
@@ -202,7 +202,7 @@ export function AgentPhoneNumbers({ agentId, agentName, onSettled, onChanged, em
                 <p className="text-[14px] font-medium text-ink">
                     {providers.length === 0 ? "Your workspace has no phone numbers yet" : "No numbers added yet"}
                 </p>
-                <p className="mt-1 text-[13px] text-ink-2">
+                <p className="mt-1 text-caption text-ink-2">
                     {providers.length === 0
                         ? "Connect the phone provider you buy numbers from, like Twilio, once. Then come back here and pick a number for this agent."
                         : `Add a number from ${singleProvider?.name ?? "your phone provider"}, then pick it here.`}
@@ -244,7 +244,7 @@ export function AgentPhoneNumbers({ agentId, agentName, onSettled, onChanged, em
                         ))}
                     </ul>
                 ) : (
-                    <p className="text-[13.5px] text-ink-2">This agent doesn’t answer a phone number yet.</p>
+                    <p className="text-sm text-ink-2">This agent doesn’t answer a phone number yet.</p>
                 )}
                 {canWrite && (
                     <div className="flex flex-wrap items-center gap-2">
@@ -313,7 +313,7 @@ export function AgentPhoneNumbers({ agentId, agentName, onSettled, onChanged, em
                     })}
                 </div>
                 {selected?.number.inbound_workflow_id && (
-                    <p className="rounded-md bg-amber-dim px-3 py-2 text-[12.5px] text-amber">
+                    <p className="rounded-md bg-amber-dim px-3 py-2 text-caption text-amber">
                         {selected.number.inbound_workflow_name ?? "Another agent"} will stop answering{" "}
                         {selected.number.address}.
                     </p>
@@ -337,7 +337,7 @@ export function AgentPhoneNumbers({ agentId, agentName, onSettled, onChanged, em
     if (embedded) {
         return (
             <div>
-                <p className="mb-3 text-[13px] text-ink-2">
+                <p className="mb-3 text-caption text-ink-2">
                     Numbers from a phone provider account you connect yourself, like Twilio or Telnyx.
                 </p>
                 {body}
@@ -353,7 +353,7 @@ export function AgentPhoneNumbers({ agentId, agentName, onSettled, onChanged, em
                     <Phone className="size-4 text-ink-3" aria-hidden />
                     Phone
                 </h2>
-                <p className="mt-1 text-[13px] text-ink-2">
+                <p className="mt-1 text-caption text-ink-2">
                     Callers ring a number and {agentName} answers.
                 </p>
             </header>

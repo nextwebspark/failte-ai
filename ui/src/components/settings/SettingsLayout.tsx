@@ -38,7 +38,7 @@ export function SettingsSection({
                     <h2 id={`${id}-title`} className="text-[15px] font-semibold text-foreground">
                         {title}
                     </h2>
-                    <p className="text-[12.5px] text-ink-3">{description}</p>
+                    <p className="text-caption text-ink-3">{description}</p>
                 </div>
                 {action && <div className="ml-auto shrink-0">{action}</div>}
             </div>
@@ -76,7 +76,7 @@ export function SettingRow({
             )}
         >
             <div className="flex min-w-0 flex-col gap-0.5">
-                <Label {...(htmlFor ? { htmlFor } : {})} className="text-[13px] font-semibold text-foreground">
+                <Label {...(htmlFor ? { htmlFor } : {})} className="text-caption font-semibold text-foreground">
                     {label}
                 </Label>
                 {hint && <span className="text-xs text-ink-3">{hint}</span>}

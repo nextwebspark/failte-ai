@@ -16,7 +16,7 @@ export function CanvasLegend() {
     return (
         <Panel position="top-right" className="!m-4 hidden md:block">
             <div className="flex w-[180px] flex-col gap-1.5 rounded-lg border border-line bg-panel px-3 py-2.5 shadow-panel">
-                <span id="canvas-legend-title" className="text-[10.5px] font-semibold tracking-[0.08em] text-ink-3 uppercase">
+                <span id="canvas-legend-title" className="text-meta font-semibold tracking-[0.08em] text-ink-3 uppercase">
                     Legend
                 </span>
                 <ul aria-labelledby="canvas-legend-title" className="flex flex-col gap-1.5">

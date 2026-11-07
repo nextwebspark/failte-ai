@@ -11,19 +11,32 @@ interface MetricsCardsProps {
   isToday: boolean;
 }
 
-function Metric({ icon: Icon, label, value, hint }: { icon: LucideIcon; label: string; value: number; hint: string }) {
+function Metric({
+  icon: Icon,
+  tone,
+  label,
+  value,
+  hint,
+}: {
+  icon: LucideIcon;
+  /** The icon chip's colours, as on Home's tiles. */
+  tone: string;
+  label: string;
+  value: number;
+  hint: string;
+}) {
   return (
-    <Panel className="bg-panel">
-      <div className="flex items-start gap-3.5">
-        <span className="grid size-10 flex-none place-items-center rounded-lg bg-brand-dim text-brand" aria-hidden>
-          <Icon className="size-5" />
+    <Panel className="rounded-[14px] bg-panel px-5 py-[18px]">
+      <div className="flex items-start justify-between gap-3">
+        <h3 className="pt-0.5 text-body font-medium text-ink-2">{label}</h3>
+        <span className={`grid size-9 flex-none place-items-center rounded-[10px] ${tone}`} aria-hidden>
+          <Icon className="size-[18px]" />
         </span>
-        <div className="min-w-0">
-          <h3 className="text-sm font-medium text-ink-2">{label}</h3>
-          <p className="mt-0.5 text-[26px] font-bold leading-tight tabular-nums">{value.toLocaleString('en-IE')}</p>
-          <p className="text-[13px] text-ink-3">{hint}</p>
-        </div>
       </div>
+      <p className="mt-2 font-display text-kpi font-semibold leading-none tracking-[-0.02em] tabular-nums">
+        {value.toLocaleString('en-IE')}
+      </p>
+      <p className="mt-2.5 text-caption text-ink-2">{hint}</p>
     </Panel>
   );
 }
@@ -33,12 +46,14 @@ export function MetricsCards({ metrics, isToday }: MetricsCardsProps) {
     <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
       <Metric
         icon={Phone}
+        tone="bg-sky-dim text-sky"
         label="Calls"
         value={metrics.total_runs}
         hint={isToday ? 'All calls so far today' : 'All calls on this day'}
       />
       <Metric
         icon={PhoneForwarded}
+        tone="bg-amber-dim text-amber"
         label="Passed to your team"
         value={metrics.xfer_count}
         hint="Calls your agent transferred to a person"

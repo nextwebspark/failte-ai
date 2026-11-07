@@ -349,3 +349,37 @@ export function appendAnswer(existing: string, question: string, answer: string)
     const before = existing.trimEnd();
     return before ? `${before}\n${line}` : line;
 }
+
+/**
+ * Home's "today in one line": the range's headline counts as short phrases,
+ * e.g. 6 calls · 4 handled by your agent · 3 bookings taken · 1 asked for a
+ * call back. Only counts the API returned; a phrase whose count is 0 is left
+ * out (except the calls and handled counts). Empty when there were no calls.
+ */
+export function todayLine(
+    tiles: {
+        calls: number;
+        handled: number;
+        passed_to_team: number;
+        callbacks_requested: number;
+        bookings_taken: number;
+    },
+    bookingsLabel: string | null | undefined,
+): { value: number; words: string }[] {
+    if (tiles.calls <= 0) return [];
+    const parts: { value: number; words: string }[] = [
+        { value: tiles.calls, words: tiles.calls === 1 ? "call" : "calls" },
+        { value: tiles.handled, words: "handled by your agent" },
+    ];
+    if (bookingsLabel && tiles.bookings_taken > 0) parts.push({ value: tiles.bookings_taken, words: bookingsLabel });
+    if (tiles.passed_to_team > 0) parts.push({ value: tiles.passed_to_team, words: "passed to your team" });
+    if (tiles.callbacks_requested > 0) {
+        parts.push({ value: tiles.callbacks_requested, words: "asked for a call back" });
+    }
+    return parts;
+}
+
+/** "09:00–10:00" for an hour of the day. */
+export function hourSpan(hour: number): string {
+    return `${hourLabel(hour)}–${hourLabel((hour + 1) % 24)}`;
+}

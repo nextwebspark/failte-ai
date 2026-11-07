@@ -86,7 +86,7 @@ export function VoiceChips({
                         <li
                             key={option.value}
                             className={cn(
-                                "inline-flex min-w-0 max-w-full items-center gap-1.5 rounded-full border py-1 pl-1 pr-3 text-[13px] font-semibold",
+                                "inline-flex min-w-0 max-w-full items-center gap-1.5 rounded-full border py-1 pl-1 pr-3 text-caption font-semibold",
                                 isCurrent ? "border-brand bg-brand-dim text-brand" : "border-line bg-panel text-foreground",
                             )}
                         >
@@ -130,20 +130,20 @@ export function VoiceChips({
                     );
                 })}
             </ul>
-            <p className="text-[12.5px] text-ink-3">
+            <p className="text-caption text-ink-3">
                 {readsGreeting
                     ? "Press play to hear each voice read your greeting."
                     : "Press play to hear each voice read a short sample sentence."}
                 {onSwitch && " Choose a name to switch."}
             </p>
             {previewError && (
-                <p className="text-[12.5px] text-danger" role="alert">
+                <p className="text-caption text-danger" role="alert">
                     Couldn&apos;t play that voice. Try again in a moment.
                 </p>
             )}
             {confirming && (
                 <div role="group" aria-label="Change the voice" className="flex flex-col gap-2 rounded-lg border border-line bg-panel-2 p-3">
-                    <p className="text-[13px] text-foreground">
+                    <p className="text-caption text-foreground">
                         Switch your agent to {confirming.name}? Test calls use it straight away; phone calls switch when the
                         agent is next published.
                     </p>

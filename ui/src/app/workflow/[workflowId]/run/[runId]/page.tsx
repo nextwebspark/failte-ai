@@ -133,7 +133,7 @@ function CopyDebugIdButton({ label, value }: { label: string; value: string }) {
             aria-label={`Copy ${label.toLowerCase()}`}
             className="inline-flex items-center gap-1.5 rounded-md border border-border bg-muted/30 px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"
         >
-            <span className="text-[10px] font-medium uppercase tracking-[0.12em]">{label}</span>
+            <span className="text-meta font-medium uppercase tracking-[0.12em]">{label}</span>
             <span className="font-mono text-xs font-semibold text-foreground">{value}</span>
             {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3 opacity-60" />}
         </button>

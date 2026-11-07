@@ -74,7 +74,7 @@ export function TransferOptions({
             {settings && value.trim() && (
                 <div className="mt-3 flex flex-col gap-1">
                     <div className="flex items-center justify-between gap-3">
-                        <label id="show-caller-number" className="text-[13px] font-medium text-foreground">
+                        <label id="show-caller-number" className="text-caption font-medium text-foreground">
                             Show the caller&apos;s number when we pass a call to you
                         </label>
                         <Switch
@@ -84,7 +84,7 @@ export function TransferOptions({
                             onCheckedChange={(checked) => void setShowCaller(checked)}
                         />
                     </div>
-                    <p className="text-[12.5px] leading-relaxed text-ink-3">{staffPhoneLine(settings)}</p>
+                    <p className="text-caption leading-relaxed text-ink-3">{staffPhoneLine(settings)}</p>
                 </div>
             )}
         </>

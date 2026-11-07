@@ -21,7 +21,7 @@ export function AdminError({ message }: { message: string }) {
 export function StatTile({ label, value, hint }: { label: string; value: string | number; hint?: string }) {
     return (
         <div className="rounded-lg border border-line bg-panel-2 px-4 py-3">
-            <div className="font-mono text-[10.5px] uppercase tracking-[0.08em] text-ink-3">{label}</div>
+            <div className="font-mono text-meta uppercase tracking-[0.08em] text-ink-3">{label}</div>
             <div className="mt-1 text-xl font-semibold tabular-nums text-foreground">{value}</div>
             {hint ? <div className="mt-0.5 text-xs text-ink-3">{hint}</div> : null}
         </div>

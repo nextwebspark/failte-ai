@@ -247,7 +247,7 @@ export function WorkflowTesterPanel({
                                             {showFirstCallTip && (
                                                 <div
                                                     role="note"
-                                                    className="flex w-full items-start gap-2.5 rounded-lg border border-brand/30 bg-brand-dim px-3 py-2.5 text-[13px] text-ink-2"
+                                                    className="flex w-full items-start gap-2.5 rounded-lg border border-brand/30 bg-brand-dim px-3 py-2.5 text-caption text-ink-2"
                                                 >
                                                     <Lightbulb className="mt-0.5 size-4 shrink-0 text-brand" aria-hidden />
                                                     <p className="min-w-0 flex-1 leading-snug">

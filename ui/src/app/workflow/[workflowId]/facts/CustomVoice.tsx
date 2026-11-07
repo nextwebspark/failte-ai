@@ -58,16 +58,16 @@ export function CustomVoice({ workflowId, canRequest }: { workflowId: number; ca
     return (
         <div className="rounded-xl border border-dashed border-line px-3.5 py-3">
             <div className="flex items-center gap-2">
-                <p className="text-[13px] font-semibold text-foreground">Your own voice</p>
-                <span className="rounded-full bg-sky-dim px-2 py-0.5 text-[11px] font-semibold text-sky">Coming soon</span>
+                <p className="text-caption font-semibold text-foreground">Your own voice</p>
+                <span className="rounded-full bg-sky-dim px-2 py-0.5 text-meta font-semibold text-sky">Coming soon</span>
             </div>
             {request ? (
-                <p className="mt-1 text-[12.5px] leading-relaxed text-ink-2">
+                <p className="mt-1 text-caption leading-relaxed text-ink-2">
                     You asked us on {requestedOn(request.requested_at)} to set up
                     {request.voice_name ? ` "${request.voice_name}"` : " your voice"}. We&apos;ll be in touch to finish it.
                 </p>
             ) : (
-                <p className="mt-1 text-[12.5px] leading-relaxed text-ink-2">
+                <p className="mt-1 text-caption leading-relaxed text-ink-2">
                     Soon you&apos;ll be able to record your own voice here.
                     {canRequest && " Already have a cloned voice with ElevenLabs or Cartesia? We can set it up for you."}
                 </p>
@@ -76,7 +76,7 @@ export function CustomVoice({ workflowId, canRequest }: { workflowId: number; ca
                 <button
                     type="button"
                     onClick={() => setOpen(true)}
-                    className="mt-1.5 text-[13px] font-medium text-brand underline-offset-2 hover:underline"
+                    className="mt-1.5 text-caption font-medium text-brand underline-offset-2 hover:underline"
                 >
                     {request ? "Send another request" : "I already have a cloned voice"}
                 </button>
@@ -149,7 +149,7 @@ function RequestDialog({
                 </DialogHeader>
                 <div className="flex flex-col gap-3.5">
                     <fieldset className="flex flex-col gap-1.5">
-                        <legend className="mb-1.5 text-[13px] font-medium">Where is it?</legend>
+                        <legend className="mb-1.5 text-caption font-medium">Where is it?</legend>
                         <div className="flex flex-wrap gap-2">
                             {PROVIDERS.map((p) => (
                                 <button
@@ -159,8 +159,8 @@ function RequestDialog({
                                     onClick={() => setProvider(p.value)}
                                     className={
                                         provider === p.value
-                                            ? "rounded-full border border-brand bg-brand-dim px-3 py-1 text-[13px] font-semibold text-brand"
-                                            : "rounded-full border border-line px-3 py-1 text-[13px] text-ink-2 hover:bg-panel-2"
+                                            ? "rounded-full border border-brand bg-brand-dim px-3 py-1 text-caption font-semibold text-brand"
+                                            : "rounded-full border border-line px-3 py-1 text-caption text-ink-2 hover:bg-panel-2"
                                     }
                                 >
                                     {p.label}
@@ -200,7 +200,7 @@ function RequestDialog({
                             rows={2}
                         />
                     </div>
-                    <label className="flex items-start gap-2.5 text-[13px] leading-snug text-ink-2">
+                    <label className="flex items-start gap-2.5 text-caption leading-snug text-ink-2">
                         <Checkbox
                             checked={consent}
                             onCheckedChange={(checked) => setConsent(checked === true)}

@@ -42,7 +42,7 @@ function RetentionReadOnly() {
       hint="Recordings, transcripts and call details are permanently deleted after this period. Only an admin can change it."
       compact
     >
-      <span className="font-mono text-[13px] text-foreground">
+      <span className="font-mono text-caption text-foreground">
         {days === null ? "…" : days === "error" ? "Unavailable" : `${days} days`}
       </span>
     </SettingRow>
@@ -92,7 +92,7 @@ export default function ComplianceSettingsPage() {
           action={isAdmin ? <CallerDataRequestDialog /> : undefined}
         >
           <SettingBlock>
-            <p className="text-[13px] text-ink-2">
+            <p className="text-caption text-ink-2">
               {isAdmin
                 ? "Look a caller up by phone number to export their calls or permanently delete them. The same tool is on Calls."
                 : "Only an admin can export or delete a caller's data. Ask an admin of this workspace."}
@@ -113,7 +113,7 @@ export default function ComplianceSettingsPage() {
                   href={doc.href}
                   target="_blank"
                   rel="noreferrer"
-                  className="flex items-center justify-between gap-3 px-[18px] py-3 text-[13px] font-medium text-foreground transition-colors hover:bg-panel-2"
+                  className="flex items-center justify-between gap-3 px-[18px] py-3 text-caption font-medium text-foreground transition-colors hover:bg-panel-2"
                 >
                   {doc.label}
                   <ExternalLink className="h-3.5 w-3.5 text-ink-3" aria-hidden />

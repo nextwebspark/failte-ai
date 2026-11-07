@@ -404,7 +404,7 @@ export function OrganizationPreferencesSection({
           {/* Most businesses never need these two: they are for workspaces
               that run their own phone system or reporting codes. */}
           <div className="bg-panel-2/60 px-[18px] pb-2 pt-3">
-            <h3 className="text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-3">
+            <h3 className="text-meta font-semibold uppercase tracking-[0.08em] text-ink-3">
               Advanced
             </h3>
             <p className="mt-0.5 text-xs text-ink-3">

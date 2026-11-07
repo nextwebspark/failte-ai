@@ -74,6 +74,29 @@
   --color-danger: var(--danger);
   --color-danger-dim: var(--danger-dim);
   --shadow-panel: var(--panel-shadow);
+
+  /* The type ladder (design pass, Nov 2026). Six named steps instead of the
+     eleven ad-hoc pixel sizes screens used to pick from; 12px is the floor for
+     anything a person has to read.
+       text-meta       12  axis ticks, table headers, timestamps, chips
+       text-caption  13  help under a label, captions, descriptions
+       text-sm         14  (Tailwind's) dense forms and admin tables
+       text-body       15  reading text on the owner screens
+       text-title      17  card titles
+       text-page       28  a page's h1
+       text-kpi        36  headline numbers */
+  --text-meta: 0.75rem;
+  --text-meta--line-height: 1rem;
+  --text-caption: 0.8125rem;
+  --text-caption--line-height: 1.1875rem;
+  --text-body: 0.9375rem;
+  --text-body--line-height: 1.45rem;
+  --text-title: 1.0625rem;
+  --text-title--line-height: 1.5rem;
+  --text-page: 1.75rem;
+  --text-page--line-height: 2.125rem;
+  --text-kpi: 2.25rem;
+  --text-kpi--line-height: 2.5rem;
 }
 
 /* ---------------------------------------------------------------------------
@@ -400,12 +423,12 @@
   /* NOTE: background-attachment: fixed positions in VIEWPORT space but only
      paints inside .app-surface, which starts right of the sidebar — the x-shift
      recentres the wordmark on the VISIBLE canvas. Keep it at roughly half the
-     sidebar's painted width (currently ~218px + gap, so ~113px). */
+     sidebar's painted width (currently ~234px + gap, so ~121px). */
   .app-surface {
     background-color: var(--bg);
     background-image: var(--brand-imprint);
     background-size: min(68vw, 980px) auto;
-    background-position: calc(50% + 113px) calc(100% - 24px);
+    background-position: calc(50% + 121px) calc(100% - 24px);
     background-repeat: no-repeat;
     background-attachment: fixed;
   }
@@ -416,13 +439,21 @@
     }
   }
 
-  /* Standard content block inside the shell's content panel: the canvas's
-     `max-width:1440px; padding:24px 28px 48px` on <main>. Left aligned — the
-     canvas never centres a workspace screen. */
+  /* Standard content block inside the shell's content panel. Up to 1680px
+     wide and centred in the panel: at 1440-1900px viewports it fills the panel
+     (no empty band on the right), and on wider screens the slack is shared
+     evenly instead of piling up on one side. */
   .page-body {
     width: 100%;
-    max-width: 1440px;
+    max-width: 1680px;
+    margin-inline: auto;
     padding: 24px 28px 48px;
+  }
+
+  @media (min-width: 1280px) {
+    .page-body {
+      padding: 28px 32px 56px;
+    }
   }
 
   @media (max-width: 640px) {

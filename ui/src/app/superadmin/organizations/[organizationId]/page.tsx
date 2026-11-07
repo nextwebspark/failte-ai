@@ -106,7 +106,7 @@ function BillingTerms({ detail, onSaved }: { detail: AdminOrganizationDetail; on
                         value={rate}
                         onChange={(event) => setRate(event.target.value)}
                     />
-                    <p className="text-[11px] text-ink-3">Leave empty for the plan&apos;s rate.</p>
+                    <p className="text-meta text-ink-3">Leave empty for the plan&apos;s rate.</p>
                 </div>
                 <div className="space-y-1.5">
                     <Label htmlFor="credit-limit">Credit limit, EUR</Label>
@@ -116,7 +116,7 @@ function BillingTerms({ detail, onSaved }: { detail: AdminOrganizationDetail; on
                         value={creditLimit}
                         onChange={(event) => setCreditLimit(event.target.value)}
                     />
-                    <p className="text-[11px] text-ink-3">How far below zero the balance may go before calls stop.</p>
+                    <p className="text-meta text-ink-3">How far below zero the balance may go before calls stop.</p>
                 </div>
             </div>
             <Button size="sm" onClick={() => void save()} disabled={saving}>

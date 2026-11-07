@@ -233,7 +233,7 @@ export default function ReportsPage() {
 
   return (
     <div className="page-body">
-      <div className="mx-auto flex max-w-6xl flex-col gap-6">
+      <div className="flex flex-col gap-6">
         {/* What this page is, and the two choices: which day, which agent. */}
         <section
           aria-labelledby="report-day"
@@ -241,16 +241,16 @@ export default function ReportsPage() {
         >
           <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
             <div className="min-w-0">
-              <h2 id="report-day" className="text-[22px] font-bold tracking-tight">
+              <h2 id="report-day" className="font-display text-[24px] font-semibold tracking-[-0.015em] sm:text-page">
                 {isToday ? `Today, ${format(selectedDate, 'EEE d MMM')}` : format(selectedDate, 'EEEE d MMMM')}
               </h2>
-              <p className="mt-1 max-w-xl text-[15px] text-ink-2">
+              <p className="mt-1.5 max-w-2xl text-body text-ink-2">
                 A one-page summary of a day: how many calls came in, how they ended and how long they lasted.
                 You can download the day&apos;s calls as a spreadsheet.
               </p>
               <Link
                 href="/settings/reports"
-                className="mt-2 inline-flex items-center gap-1.5 text-[13.5px] font-medium text-brand underline-offset-2 hover:underline"
+                className="mt-2 inline-flex items-center gap-1.5 text-sm font-medium text-brand underline-offset-2 hover:underline"
               >
                 <Mail className="size-3.5" aria-hidden />
                 Get these by email
@@ -319,7 +319,7 @@ export default function ReportsPage() {
           </div>
 
           <div className="mt-4 flex flex-col gap-3 border-t border-line-soft pt-3 sm:flex-row sm:items-center sm:justify-between">
-            <p className="text-[13px] text-ink-3">
+            <p className="text-sm text-ink-3">
               Times in {timezone.replace(/_/g, ' ')} time
               {agentName && <> · {agentName} only</>}
             </p>

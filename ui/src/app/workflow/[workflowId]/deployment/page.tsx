@@ -62,7 +62,7 @@ export default function AgentDeploymentPage() {
                                 <AppWindow className="size-4 text-ink-3" aria-hidden />
                                 Website
                             </h2>
-                            <p className="mt-1 text-[13px] text-ink-2">
+                            <p className="mt-1 text-caption text-ink-2">
                                 A call button on your website that connects visitors to {workflowName}. Publish
                                 the agent after any change so callers get the new version.
                             </p>
