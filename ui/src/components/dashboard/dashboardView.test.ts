@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { FollowUpItem } from "@/client/types.gen";
 
 import {
+    afterHoursWords,
     appendAnswer,
     busiestHour,
     callBackNumber,
@@ -174,5 +175,20 @@ describe("call-review follow-ups", () => {
         expect(appendAnswer("Parking: Henry Street.\n", "Dogs?", "On the terrace.")).toBe(
             "Parking: Henry Street.\nQ: Dogs? A: On the terrace.",
         );
+    });
+});
+
+describe("afterHoursWords", () => {
+    it("counts calls outside opening hours and names agents left out", () => {
+        expect(afterHoursWords({ calls: 3, agents_without_hours: [] })).toEqual({
+            count: "3 calls came in outside opening hours",
+            note: null,
+        });
+        expect(afterHoursWords({ calls: 1, agents_without_hours: [{ id: 2, name: "Front desk" }] })).toEqual({
+            count: "1 call came in outside opening hours",
+            note: "Not counted: Front desk, with no opening hours set as times.",
+        });
+        expect(afterHoursWords({ calls: null, agents_without_hours: [{ id: 2, name: "Front desk" }] }).count).toBeNull();
+        expect(afterHoursWords({ calls: null, agents_without_hours: [] })).toEqual({ count: null, note: null });
     });
 });

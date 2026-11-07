@@ -1329,6 +1329,7 @@ export type BusinessFactsResponse = {
      * Facts
      */
     facts: Array<BusinessFact>;
+    opening_hours_schedule?: OpeningHours | null;
 };
 
 /**
@@ -2894,6 +2895,20 @@ export type DailyUsageItem = {
 };
 
 /**
+ * DashboardAfterHours
+ */
+export type DashboardAfterHours = {
+    /**
+     * Calls
+     */
+    calls: number | null;
+    /**
+     * Agents Without Hours
+     */
+    agents_without_hours: Array<DashboardAgentRef>;
+};
+
+/**
  * DashboardAgent
  */
 export type DashboardAgent = {
@@ -2909,6 +2924,20 @@ export type DashboardAgent = {
      * Active
      */
     active: boolean;
+};
+
+/**
+ * DashboardAgentRef
+ */
+export type DashboardAgentRef = {
+    /**
+     * Id
+     */
+    id: number;
+    /**
+     * Name
+     */
+    name: string;
 };
 
 /**
@@ -3064,6 +3093,7 @@ export type DashboardSummaryResponse = {
      * Calls By Hour
      */
     calls_by_hour: Array<number>;
+    after_hours: DashboardAfterHours;
     /**
      * Recent Calls
      */
@@ -6854,6 +6884,26 @@ export type OpenAittsService = {
 };
 
 /**
+ * OpenRange
+ *
+ * One stretch the business is open, as "HH:MM" wall-clock times.
+ */
+export type OpenRange = {
+    /**
+     * Open
+     *
+     * Opening time, "HH:MM" (24-hour).
+     */
+    open: string;
+    /**
+     * Close
+     *
+     * Closing time, "HH:MM". At or before the opening time it is on the next day ("00:00" is midnight).
+     */
+    close: string;
+};
+
+/**
  * Open Router
  */
 export type OpenRouterEmbeddingsConfiguration = {
@@ -6915,6 +6965,47 @@ export type OpenRouterLlmConfiguration = {
      * OpenRouter provider slugs to try first, in order, one per entry (e.g. groq), as listed on the model's OpenRouter page. Pinning a low-latency provider avoids OpenRouter's default price-weighted routing; other providers are still used if these are unavailable.
      */
     provider_order?: Array<string>;
+};
+
+/**
+ * OpeningHours
+ *
+ * The week's opening hours, the business's time zone, and whether
+ * calls are passed to a person only while it is open.
+ */
+export type OpeningHours = {
+    /**
+     * Days
+     *
+     * Open ranges per weekday, Monday first; an empty day is closed.
+     */
+    days: [
+        Array<OpenRange>,
+        Array<OpenRange>,
+        Array<OpenRange>,
+        Array<OpenRange>,
+        Array<OpenRange>,
+        Array<OpenRange>,
+        Array<OpenRange>
+    ];
+    /**
+     * Timezone
+     *
+     * IANA time zone of the business, e.g. Europe/Dublin.
+     */
+    timezone?: string;
+    /**
+     * Transfer Only When Open
+     *
+     * Pass calls to a person only during opening hours; outside them the agent takes a message.
+     */
+    transfer_only_when_open?: boolean;
+    /**
+     * Note
+     *
+     * Said after the hours, e.g. "Closed on bank holidays."
+     */
+    note?: string | null;
 };
 
 /**
@@ -11201,9 +11292,10 @@ export type UpdateBusinessFactsRequest = {
     /**
      * Facts
      */
-    facts: {
+    facts?: {
         [key: string]: string | null;
     };
+    opening_hours_schedule?: OpeningHours | null;
 };
 
 /**

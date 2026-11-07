@@ -21,6 +21,7 @@ import { type ReactNode, useState } from "react";
 
 import { formatPhone } from "@/app/usage/callsView";
 import type {
+    DashboardAfterHours,
     DashboardRange,
     DashboardRecentCall,
     DashboardSummaryResponse,
@@ -37,6 +38,7 @@ import { cn } from "@/lib/utils";
 import { AddAnswerDialog } from "./AddAnswerDialog";
 import { CallersWantedChart } from "./CallersWantedChart";
 import {
+    afterHoursWords,
     callerWords,
     callLength,
     callsTileLabel,
@@ -464,7 +466,43 @@ function WhenPeopleCalled({ summary }: { summary: DashboardSummaryResponse }) {
             ) : (
                 <HourlyCallsChart hours={summary.calls_by_hour} caption={sub} />
             )}
+            <AfterHours afterHours={summary.after_hours} />
         </Card>
+    );
+}
+
+/**
+ * Calls that came in while the business was closed, by each agent's opening
+ * hours set as times. Agents without them are named, not guessed.
+ */
+function AfterHours({ afterHours }: { afterHours: DashboardAfterHours | undefined }) {
+    const { can } = useOrgConfig();
+    if (!afterHours) return null;
+    const words = afterHoursWords(afterHours);
+    if (!words.count && !words.note) return null;
+    const missing = afterHours.agents_without_hours;
+    return (
+        <div className="mt-3 border-t border-line-soft pt-3 text-[13px] text-ink-2">
+            {words.count && (
+                <p>
+                    <Clock className="mr-1.5 inline size-3.5 align-[-2px] text-ink-3" aria-hidden />
+                    <b className="font-semibold tabular-nums text-foreground">{words.count}</b>
+                </p>
+            )}
+            {words.note && (
+                <p className="mt-1 text-[12.5px] text-ink-3">
+                    {words.note}
+                    {can("agents:facts") && missing.length === 1 && (
+                        <>
+                            {" "}
+                            <Link href={agentFactsHref(missing[0].id)} className="font-medium text-brand hover:underline">
+                                Set the hours
+                            </Link>
+                        </>
+                    )}
+                </p>
+            )}
+        </div>
     );
 }
 

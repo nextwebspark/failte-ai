@@ -30,6 +30,8 @@ import { cn } from "@/lib/utils";
 
 import { SectionError, SectionMessage } from "../components/SectionStates";
 import { bookingLine, bookingTimesByDay, bookingTitle, fillGreeting, WEEK, WEEK_LONG } from "./knowledge";
+import { forSave, type OpeningHours, openingHoursProblem, sameOpeningHours } from "./openingHours";
+import { OpeningHoursField } from "./OpeningHoursEditor";
 import { type AgentKnowledge, type CalendarInfo, useAgentKnowledge } from "./useAgentKnowledge";
 import { VoiceChips } from "./VoiceChips";
 
@@ -39,6 +41,7 @@ const SAVE_FAILED = "Couldn't save. Please try again.";
 /** Facts with a place of their own on this page; any others join "Your business". */
 const FAQ_KEY = "extra_info";
 const TRANSFER_KEY = "transfer_number";
+const HOURS_KEY = "opening_hours";
 const BUSINESS_ORDER = ["business_name", "business_description", "address", "opening_hours", "website"];
 
 /** Owner wording for a fact's row, where it differs from the template's question. */
@@ -67,6 +70,9 @@ export default function WhatYourAgentKnowsPage() {
 
     const [facts, setFacts] = useState<BusinessFact[] | null>(null);
     const [values, setValues] = useState<Record<string, string>>({});
+    // The opening hours as times: saved, and as being edited (null: none).
+    const [savedHours, setSavedHours] = useState<OpeningHours | null>(null);
+    const [hours, setHours] = useState<OpeningHours | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [saving, setSaving] = useState(false);
     // Set synchronously so a double click can't send two saves.
@@ -88,6 +94,8 @@ export default function WhatYourAgentKnowsPage() {
             }
             setFacts(res.data.facts);
             setValues(Object.fromEntries(res.data.facts.map((f) => [f.key, f.value])));
+            setSavedHours(res.data.opening_hours_schedule ?? null);
+            setHours(res.data.opening_hours_schedule ?? null);
         } catch {
             setError(LOAD_FAILED);
         }
@@ -97,16 +105,28 @@ export default function WhatYourAgentKnowsPage() {
         void load();
     }, [load]);
 
-    const changed = (facts ?? []).filter((f) => (values[f.key] ?? "") !== f.value);
+    const hoursChanged = !sameOpeningHours(hours, savedHours);
+    // With times set, the hours sentence is generated from them, not typed.
+    const changed = (facts ?? []).filter(
+        (f) => (values[f.key] ?? "") !== f.value && !(f.key === HOURS_KEY && hours !== null),
+    );
+    const changeCount = changed.length + (hoursChanged ? 1 : 0);
     const missing = new Set(
-        (facts ?? []).filter((f) => f.required && !(values[f.key] ?? "").trim()).map((f) => f.key),
+        (facts ?? [])
+            .filter((f) => f.required && !(values[f.key] ?? "").trim() && !(f.key === HOURS_KEY && hours !== null))
+            .map((f) => f.key),
     );
 
     const save = async () => {
-        if (savingRef.current || changed.length === 0) return;
+        if (savingRef.current || changeCount === 0) return;
         setTriedSave(true);
         if (missing.size > 0) {
             toast.error("Fill in the required answers before saving.");
+            return;
+        }
+        const hoursProblem = hours ? openingHoursProblem(hours) : null;
+        if (hoursProblem) {
+            toast.error(hoursProblem);
             return;
         }
         savingRef.current = true;
@@ -114,7 +134,10 @@ export default function WhatYourAgentKnowsPage() {
         try {
             const res = await updateBusinessFactsApiV1WorkflowWorkflowIdBusinessFactsPut({
                 path: { workflow_id: workflowId },
-                body: { facts: Object.fromEntries(changed.map((f) => [f.key, values[f.key] ?? ""])) },
+                body: {
+                    facts: Object.fromEntries(changed.map((f) => [f.key, values[f.key] ?? ""])),
+                    ...(hoursChanged ? { opening_hours_schedule: hours ? forSave(hours) : null } : {}),
+                },
             });
             if (res.error || !res.data) {
                 toast.error(detailFromError(res.error, SAVE_FAILED));
@@ -122,6 +145,10 @@ export default function WhatYourAgentKnowsPage() {
             }
             setFacts(res.data.facts);
             setValues(Object.fromEntries(res.data.facts.map((f) => [f.key, f.value])));
+            if (hoursChanged) {
+                setSavedHours(res.data.opening_hours_schedule ?? null);
+                setHours(res.data.opening_hours_schedule ?? null);
+            }
             setTriedSave(false);
             toast.success("Saved. Your agent uses these from its next call.");
         } catch {
@@ -135,6 +162,7 @@ export default function WhatYourAgentKnowsPage() {
     const discard = () => {
         if (!facts) return;
         setValues(Object.fromEntries(facts.map((f) => [f.key, f.value])));
+        setHours(savedHours);
         setTriedSave(false);
     };
 
@@ -183,20 +211,20 @@ export default function WhatYourAgentKnowsPage() {
                 {facts && facts.length > 0 && (
                     canEdit ? (
                         <div className="flex flex-wrap items-center gap-2.5">
-                            {changed.length > 0 && !saving && (
+                            {changeCount > 0 && !saving && (
                                 <span className="text-[12.5px] text-ink-3" role="status">
-                                    {changed.length === 1 ? "1 unsaved change" : `${changed.length} unsaved changes`}
+                                    {changeCount === 1 ? "1 unsaved change" : `${changeCount} unsaved changes`}
                                 </span>
                             )}
                             <Button
                                 variant="outline"
                                 className="h-9"
-                                disabled={saving || changed.length === 0}
+                                disabled={saving || changeCount === 0}
                                 onClick={discard}
                             >
                                 Discard
                             </Button>
-                            <Button className="h-9" onClick={() => void save()} disabled={saving || changed.length === 0}>
+                            <Button className="h-9" onClick={() => void save()} disabled={saving || changeCount === 0}>
                                 {saving ? "Saving…" : "Save changes"}
                             </Button>
                         </div>
@@ -233,11 +261,23 @@ export default function WhatYourAgentKnowsPage() {
                 <div className="grid items-start gap-4 @4xl:grid-cols-[minmax(0,1fr)_340px]">
                     <div className="flex min-w-0 flex-col gap-4">
                         <Card title="Your business" id="your-business">
-                            {businessFacts.map((fact) => (
-                                <FactRow key={fact.key} fact={fact}>
-                                    {field(fact, { rows: 2 })}
-                                </FactRow>
-                            ))}
+                            {businessFacts.map((fact) =>
+                                fact.key === HOURS_KEY ? (
+                                    <FactRow key={fact.key} fact={fact} labelFor={hours ? null : undefined}>
+                                        <OpeningHoursField
+                                            hours={hours}
+                                            onChange={setHours}
+                                            textField={field(fact, { rows: 2 })}
+                                            savedText={fact.value}
+                                            disabled={!canEdit || saving}
+                                        />
+                                    </FactRow>
+                                ) : (
+                                    <FactRow key={fact.key} fact={fact}>
+                                        {field(fact, { rows: 2 })}
+                                    </FactRow>
+                                ),
+                            )}
                             <BookingTimesRow calendar={knowledge.calendar} />
                         </Card>
 
@@ -266,6 +306,8 @@ export default function WhatYourAgentKnowsPage() {
                             transfer={transfer}
                             transferField={transfer ? field(transfer) : null}
                             transferValue={transfer ? (values[transfer.key] ?? "").trim() : ""}
+                            hours={hours}
+                            onHoursChange={canEdit && !saving ? setHours : undefined}
                         />
                     </div>
 
@@ -419,11 +461,12 @@ function Row({ label, help, htmlFor, children }: { label: ReactNode; help?: Reac
     );
 }
 
-function FactRow({ fact, children }: { fact: BusinessFact; children: ReactNode }) {
+/** *labelFor* null: the answer isn't one field (the label names a group). */
+function FactRow({ fact, labelFor, children }: { fact: BusinessFact; labelFor?: null; children: ReactNode }) {
     const copy = ROW_COPY[fact.key] ?? {};
     return (
         <Row
-            htmlFor={`fact-${fact.key}`}
+            htmlFor={labelFor === null ? undefined : `fact-${fact.key}`}
             label={copy.label ?? fact.label}
             help={[copy.help ?? fact.help, fact.required ? null : "Optional"].filter(Boolean).join(" · ") || undefined}
         >
@@ -554,12 +597,17 @@ function CanDo({
     transfer,
     transferField,
     transferValue,
+    hours,
+    onHoursChange,
 }: {
     calendar: CalendarInfo;
     setCalendar: AgentKnowledge["setCalendar"];
     transfer: BusinessFact | undefined;
     transferField: ReactNode;
     transferValue: string;
+    /** The opening hours as times, for "Only during opening hours". */
+    hours: OpeningHours | null;
+    onHoursChange?: (hours: OpeningHours) => void;
 }) {
     const { can } = useOrgConfig();
     const [switching, setSwitching] = useState(false);
@@ -635,6 +683,7 @@ function CanDo({
                         <StatusText ok={transferValue ? true : null}>{transferValue ? "On" : "Off"}</StatusText>
                     </div>
                     <div className="max-w-sm">{transferField}</div>
+                    <OnlyWhenOpen hours={hours} onChange={onHoursChange} />
                 </div>
             )}
             {books && calendar.connected === false && can("integrations:read") && (
@@ -660,6 +709,45 @@ function CanDo({
                 </p>
             )}
         </Card>
+    );
+}
+
+/**
+ * "Only during opening hours" (the transfer mock): on by default once the
+ * hours are set as times; without times there is nothing to check against.
+ */
+function OnlyWhenOpen({ hours, onChange }: { hours: OpeningHours | null; onChange?: (hours: OpeningHours) => void }) {
+    if (!hours) {
+        return (
+            <p className="text-[12.5px] text-ink-3">
+                Set your opening hours as times (under Your business) to pass calls only while you&apos;re open.
+            </p>
+        );
+    }
+    const on = hours.transfer_only_when_open ?? true;
+    return (
+        <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 pt-1">
+            <div className="min-w-0">
+                <p id="only-when-open" className="text-[13px] font-semibold text-foreground">
+                    Only during opening hours
+                </p>
+                <p className="mt-0.5 text-[12.5px] leading-relaxed text-ink-3">
+                    {on
+                        ? "Outside your hours, your agent doesn't ring anyone. It takes a message, which appears in Follow-ups."
+                        : "Your agent tries to put callers through at any hour."}
+                </p>
+            </div>
+            {onChange ? (
+                <Switch
+                    aria-labelledby="only-when-open"
+                    checked={on}
+                    onCheckedChange={(checked) => onChange({ ...hours, transfer_only_when_open: checked })}
+                    className="h-[22px] w-[38px] [&_[data-slot=switch-thumb]]:size-4 [&_[data-slot=switch-thumb]]:data-[state=checked]:translate-x-[17px] [&_[data-slot=switch-thumb]]:data-[state=unchecked]:translate-x-[2px]"
+                />
+            ) : (
+                <StatusText ok={on}>{on ? "On" : "Off"}</StatusText>
+            )}
+        </div>
     );
 }
 

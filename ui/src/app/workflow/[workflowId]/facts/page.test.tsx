@@ -395,4 +395,83 @@ describe("What your agent knows", () => {
             expect(mocks.done).toHaveBeenCalledWith({ path: { run_id: 106 }, query: { kind: "unanswered_question" } }),
         );
     });
+
+    describe("opening hours as times", () => {
+        const SCHEDULE = {
+            days: [
+                [],
+                ...Array(6).fill([
+                    { open: "12:00", close: "15:00" },
+                    { open: "17:00", close: "22:00" },
+                ]),
+            ],
+            timezone: "Europe/Dublin",
+            transfer_only_when_open: true,
+            note: null,
+        };
+        const TRANSFER = {
+            key: "transfer_number",
+            label: "Number to put callers through to a person",
+            type: "phone",
+            required: false,
+            max_length: 40,
+            value: "+353871234567",
+        };
+
+        it("keeps free text, offering to set the hours as times without guessing them", async () => {
+            render(<WhatYourAgentKnowsPage />);
+            expect(((await screen.findByLabelText("Opening hours")) as HTMLInputElement).value).toBe("Tue-Sun 12-22");
+            fireEvent.click(screen.getByRole("button", { name: "Set your hours as times" }));
+            // A plain starting week, not a reading of "Tue-Sun 12-22".
+            expect(screen.getByRole("button", { name: "Monday: 9 am–5 pm. Change" })).toBeTruthy();
+            expect(screen.getByRole("button", { name: "Sunday: Closed. Change" })).toBeTruthy();
+            fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+            await waitFor(() => expect(mocks.put).toHaveBeenCalledTimes(1));
+            const body = mocks.put.mock.calls[0][0].body;
+            expect(body.facts).toEqual({});
+            expect(body.opening_hours_schedule.days[0]).toEqual([{ open: "09:00", close: "17:00" }]);
+        });
+
+        it("shows saved times as day chips and edits a day", async () => {
+            mocks.get.mockResolvedValue({ data: { facts: [...FACTS, TRANSFER], opening_hours_schedule: SCHEDULE } });
+            render(<WhatYourAgentKnowsPage />);
+            const monday = await screen.findByRole("button", { name: "Monday: Closed. Change" });
+            expect(screen.getByRole("button", { name: "Tuesday: 12–3 pm and 5–10 pm. Change" })).toBeTruthy();
+            expect(screen.getByText(/Your agent says:/).parentElement?.textContent).toContain(
+                "Tuesday to Sunday 12 to 3 pm and 5 to 10 pm, closed Monday",
+            );
+            fireEvent.click(monday);
+            fireEvent.click(screen.getByRole("switch", { name: "Open on Monday" }));
+            expect(screen.getByRole("button", { name: "Monday: 9 am–5 pm. Change" })).toBeTruthy();
+            fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+            await waitFor(() => expect(mocks.put).toHaveBeenCalledTimes(1));
+            expect(mocks.put.mock.calls[0][0].body.opening_hours_schedule.days[0]).toEqual([{ open: "09:00", close: "17:00" }]);
+        });
+
+        it("passes calls only during opening hours, and can be switched off", async () => {
+            mocks.get.mockResolvedValue({ data: { facts: [...FACTS, TRANSFER], opening_hours_schedule: SCHEDULE } });
+            render(<WhatYourAgentKnowsPage />);
+            const toggle = await screen.findByRole("switch", { name: "Only during opening hours" });
+            expect(toggle.getAttribute("aria-checked")).toBe("true");
+            expect(screen.getByText(/takes a message, which appears in Follow-ups/)).toBeTruthy();
+            fireEvent.click(toggle);
+            fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+            await waitFor(() => expect(mocks.put).toHaveBeenCalledTimes(1));
+            expect(mocks.put.mock.calls[0][0].body.opening_hours_schedule.transfer_only_when_open).toBe(false);
+        });
+
+        it("can go back to writing the hours out", async () => {
+            mocks.get.mockResolvedValue({ data: { facts: FACTS, opening_hours_schedule: SCHEDULE } });
+            render(<WhatYourAgentKnowsPage />);
+            fireEvent.click(await screen.findByRole("button", { name: "Write your hours out instead" }));
+            expect(((await screen.findByLabelText("Opening hours")) as HTMLInputElement).value).toBe("Tue-Sun 12-22");
+            fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+            await waitFor(() =>
+                expect(mocks.put).toHaveBeenCalledWith({
+                    path: { workflow_id: 12 },
+                    body: { facts: {}, opening_hours_schedule: null },
+                }),
+            );
+        });
+    });
 });
