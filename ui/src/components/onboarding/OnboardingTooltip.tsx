@@ -139,7 +139,7 @@ export const OnboardingTooltip = ({
 
                 <h3 className="mb-1.5 pr-6 text-[15px] font-semibold">{title}</h3>
 
-                <p id={messageId} className="mb-4 pr-4 text-[13.5px] leading-relaxed text-ink-2">
+                <p id={messageId} className="mb-4 pr-4 text-sm leading-relaxed text-ink-2">
                     {message}
                 </p>
 

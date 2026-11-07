@@ -44,7 +44,7 @@ export function SettingsShell({ children }: { children: ReactNode }) {
           {current?.title ?? "Settings"}
         </h1>
         {current?.description && (
-          <p className="text-[13.5px] leading-relaxed text-ink-2">{current.description}</p>
+          <p className="text-sm leading-relaxed text-ink-2">{current.description}</p>
         )}
       </header>
 
@@ -68,7 +68,7 @@ export function SettingsShell({ children }: { children: ReactNode }) {
               >
                 <p
                   aria-hidden
-                  className="hidden px-2.5 pb-1.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-3 @4xl:block"
+                  className="hidden px-2.5 pb-1.5 text-meta font-semibold uppercase tracking-[0.08em] text-ink-3 @4xl:block"
                 >
                   {section.label}
                 </p>
@@ -82,7 +82,7 @@ export function SettingsShell({ children }: { children: ReactNode }) {
                       href={item.url}
                       aria-current={active ? "page" : undefined}
                       className={cn(
-                        "flex min-h-10 shrink-0 snap-start items-center gap-2 whitespace-nowrap rounded-full px-3.5 text-[13.5px] transition-colors",
+                        "flex min-h-10 shrink-0 snap-start items-center gap-2 whitespace-nowrap rounded-full px-3.5 text-sm transition-colors",
                         "outline-none focus-visible:ring-[3px] focus-visible:ring-ring/40",
                         "border border-line bg-panel @4xl:min-h-9 @4xl:rounded-md @4xl:border-transparent @4xl:bg-transparent @4xl:px-2.5",
                         active

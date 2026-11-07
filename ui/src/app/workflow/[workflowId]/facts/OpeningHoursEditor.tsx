@@ -27,7 +27,7 @@ import {
 } from "./openingHours";
 
 const SELECT_CLASS =
-    "h-9 w-full min-w-0 rounded-md border border-line bg-card px-2.5 text-[13.5px] text-ink outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/40 disabled:cursor-not-allowed disabled:opacity-60";
+    "h-9 w-full min-w-0 rounded-md border border-line bg-card px-2.5 text-sm text-ink outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/40 disabled:cursor-not-allowed disabled:opacity-60";
 
 /**
  * The "Opening hours" answer. With times set: seven day chips (the mock's
@@ -56,7 +56,7 @@ export function OpeningHoursField({
                 {textField}
                 {!disabled && (
                     <div className="flex flex-col gap-2 rounded-[10px] border border-sky/50 bg-sky-dim px-3.5 py-2.5 sm:flex-row sm:items-center">
-                        <p className="min-w-0 flex-1 text-[12.5px] text-sky">
+                        <p className="min-w-0 flex-1 text-caption text-sky">
                             Set your hours as times so your agent knows when you&apos;re open and doesn&apos;t pass
                             calls to your team when you&apos;re closed.
                         </p>
@@ -121,7 +121,7 @@ function TimesEditor({
                                 !disabled && "hover:border-brand",
                             )}
                         >
-                            <span className="block text-[12.5px] font-semibold">{chip.short}</span>
+                            <span className="block text-caption font-semibold">{chip.short}</span>
                             {chip.lines ? chip.lines.map((line) => <span key={line} className="block">{line}</span>) : "Closed"}
                         </button>
                     </li>
@@ -139,7 +139,7 @@ function TimesEditor({
             )}
 
             {problem && (
-                <p role="alert" className="text-[12.5px] text-danger">
+                <p role="alert" className="text-caption text-danger">
                     {problem}
                 </p>
             )}
@@ -169,7 +169,7 @@ function TimesEditor({
                     </label>
                     <Input
                         id="opening-hours-note"
-                        className="h-9 text-[13.5px]"
+                        className="h-9 text-sm"
                         value={hours.note ?? ""}
                         maxLength={MAX_NOTE_LENGTH}
                         disabled={disabled}
@@ -179,14 +179,14 @@ function TimesEditor({
                 </div>
             </div>
 
-            <p className="text-[12.5px] text-ink-3">
+            <p className="text-caption text-ink-3">
                 <span className="font-medium text-ink-2">Your agent says: </span>
                 {problem ? savedText : describeOpeningHours(hours)}
             </p>
             {!disabled && (
                 <button
                     type="button"
-                    className="self-start text-[12.5px] font-medium text-brand underline-offset-2 hover:underline"
+                    className="self-start text-caption font-medium text-brand underline-offset-2 hover:underline"
                     onClick={() => onChange(null)}
                 >
                     Write your hours out instead
@@ -247,7 +247,7 @@ function DayEditor({
     return (
         <div role="group" aria-label={`${name} opening hours`} className="flex flex-col gap-2.5 rounded-[10px] border border-line p-3">
             <div className="flex items-center justify-between gap-3">
-                <label htmlFor={switchId} className="text-[13.5px] font-semibold text-foreground">
+                <label htmlFor={switchId} className="text-sm font-semibold text-foreground">
                     Open on {name}
                 </label>
                 <Switch

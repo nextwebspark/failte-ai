@@ -160,7 +160,7 @@ export function AppTopBar({
       {isBehind && latestRelease && (
         <Tooltip>
           <TooltipTrigger asChild>
-            <span className="hidden items-center gap-1 rounded-md bg-amber-dim px-1.5 py-0.5 font-mono text-[10px] font-medium leading-none text-amber lg:inline-flex">
+            <span className="hidden items-center gap-1 rounded-md bg-amber-dim px-1.5 py-0.5 font-mono text-meta font-medium leading-none text-amber lg:inline-flex">
               <ArrowUpCircle className="h-3 w-3" />
               Update
             </span>
@@ -175,7 +175,7 @@ export function AppTopBar({
         <>
           <span className="hidden sm:inline">{separator}</span>
           <div className="hidden min-w-0 max-w-[200px] sm:block">
-            <SidebarTeamSwitcher triggerClassName="h-7 w-full justify-start gap-1.5 border-0 bg-transparent px-1.5 text-[13px] font-medium text-ink-3 shadow-none hover:text-foreground focus-visible:ring-0" />
+            <SidebarTeamSwitcher triggerClassName="h-7 w-full justify-start gap-1.5 border-0 bg-transparent px-1.5 text-caption font-medium text-ink-3 shadow-none hover:text-foreground focus-visible:ring-0" />
           </div>
         </>
       ) : (
@@ -194,7 +194,7 @@ export function AppTopBar({
           drops to its own line, or away when the screen prints its own. */}
       <TitleTag
         className={cn(
-          "min-w-0 truncate whitespace-nowrap text-sm font-semibold text-foreground md:flex-none md:basis-auto",
+          "min-w-0 truncate whitespace-nowrap text-sm font-semibold text-foreground md:flex-none md:basis-auto md:text-body",
           "max-md:order-[90] max-md:w-full max-md:px-1 max-md:pb-1 max-md:text-[15px]",
           pageOwnsHeading && "max-md:hidden"
         )}
@@ -202,7 +202,7 @@ export function AppTopBar({
         {meta.title}
       </TitleTag>
       {meta.subtitle && !pageOwnsHeading && (
-        <p className="hidden truncate whitespace-nowrap text-xs text-ink-3 xl:block">
+        <p className="hidden truncate whitespace-nowrap text-caption text-ink-3 xl:block">
           {meta.subtitle}
         </p>
       )}
@@ -244,7 +244,7 @@ export function AppTopBar({
               aria-label="Account menu"
               className="group grid size-11 shrink-0 cursor-pointer place-items-center rounded-full outline-none md:size-[26px]"
             >
-              <span className="grid size-[26px] place-items-center rounded-full border border-line bg-brand-dim font-mono text-[10px] font-semibold text-brand group-focus-visible:ring-[3px] group-focus-visible:ring-ring/60 group-focus-visible:ring-offset-1 group-focus-visible:ring-offset-background">
+              <span className="grid size-[26px] place-items-center rounded-full border border-line bg-brand-dim font-mono text-[11px] font-semibold text-brand group-focus-visible:ring-[3px] group-focus-visible:ring-ring/60 group-focus-visible:ring-offset-1 group-focus-visible:ring-offset-background">
                 {userInitials}
               </span>
             </button>

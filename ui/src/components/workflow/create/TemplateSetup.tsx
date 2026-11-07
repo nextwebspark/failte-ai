@@ -55,7 +55,7 @@ function SetupToggles({
     const chosen = chosenToggles(value);
     return (
         <div className="flex flex-col gap-1.5">
-            <span id={labelId} className="text-[13px] font-semibold text-ink">
+            <span id={labelId} className="text-caption font-semibold text-ink">
                 {field.label}
             </span>
             <div
@@ -73,7 +73,7 @@ function SetupToggles({
                             aria-pressed={on}
                             onClick={() => onChange(withToggle(field, value, option.value, !on))}
                             className={cn(
-                                'inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[13px] transition-colors',
+                                'inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-caption transition-colors',
                                 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky',
                                 on
                                     ? 'border-brand bg-brand/10 font-medium text-ink'
@@ -87,7 +87,7 @@ function SetupToggles({
                 })}
             </div>
             {field.help && (
-                <p id={hintId} className="text-[12.5px] text-ink-3">
+                <p id={hintId} className="text-caption text-ink-3">
                     {field.help}
                 </p>
             )}
@@ -129,7 +129,7 @@ function SetupInput({
                 <Input {...common} type={INPUT_TYPE[field.type ?? 'text'] ?? 'text'} onChange={(e) => onChange(e.target.value)} />
             )}
             {(error || field.help) && (
-                <p id={hintId} className={cn('text-[12.5px]', error ? 'text-danger' : 'text-ink-3')}>
+                <p id={hintId} className={cn('text-caption', error ? 'text-danger' : 'text-ink-3')}>
                     {error ?? field.help}
                 </p>
             )}
@@ -169,7 +169,7 @@ function BookWithChoice({ value, onChange }: { value: BookingCalendar; onChange:
                     aria-checked={value === option.value}
                     onClick={() => onChange(option.value)}
                     className={cn(
-                        'inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[13px] transition-colors',
+                        'inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-caption transition-colors',
                         'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky',
                         value === option.value
                             ? 'border-brand bg-brand/10 font-medium text-ink'
@@ -204,18 +204,18 @@ function CalendlyCard({
                 </span>
                 <div className="flex min-w-0 flex-1 flex-col gap-0.5">
                     <span className="text-[14px] font-semibold text-ink">Calendly connected</span>
-                    <span className="text-[12.5px] text-ink-2">
+                    <span className="text-caption text-ink-2">
                         {chosen
                             ? `Checks free times in your Calendly and books callers into “${chosen}”.`
                             : 'Checks free times in your Calendly and books them, once you choose which event callers book.'}
                     </span>
                 </div>
-                <label className="flex shrink-0 cursor-pointer items-center gap-2 text-[13px] font-medium text-ink">
+                <label className="flex shrink-0 cursor-pointer items-center gap-2 text-caption font-medium text-ink">
                     <Checkbox checked={useCalendar} onCheckedChange={(value) => onUseCalendarChange(value === true)} />
                     Use for bookings
                 </label>
             </div>
-            <p className="text-[12.5px] text-ink-3">
+            <p className="text-caption text-ink-3">
                 {chosen ? '' : 'Choose the event in Integrations. Until then your agent takes callers’ details. '}
                 Your hours come from Calendly. Callers give an email address to book, and your agent can’t move or
                 cancel Calendly bookings.
@@ -247,7 +247,7 @@ function CalendarCard({
     if (calendly && calendlyConnected && (!googleConnected || bookWith === CALENDLY)) {
         return (
             <div className="flex flex-col gap-2">
-                <span className="text-[13px] font-semibold text-ink">Bookings</span>
+                <span className="text-caption font-semibold text-ink">Bookings</span>
                 {googleConnected && <BookWithChoice value={bookWith} onChange={onBookWithChange} />}
                 <CalendlyCard calendly={calendly} useCalendar={useCalendar} onUseCalendarChange={onUseCalendarChange} />
             </div>
@@ -261,7 +261,7 @@ function CalendarCard({
     const suggestCalendly = !connected && !calendlyConnected && (status === 'ready' || status === 'in_integrations');
     return (
         <div className="flex flex-col gap-2">
-            <span className="text-[13px] font-semibold text-ink">Bookings</span>
+            <span className="text-caption font-semibold text-ink">Bookings</span>
             {connected && calendlyConnected && <BookWithChoice value={bookWith} onChange={onBookWithChange} />}
             <div className="flex flex-col gap-3 rounded-lg border border-line p-3.5 sm:flex-row sm:items-center">
                 <span className="flex size-10 shrink-0 items-center justify-center rounded-[10px] border border-line bg-panel-2 text-ink-2">
@@ -271,7 +271,7 @@ function CalendarCard({
                     <span className="text-[14px] font-semibold text-ink">
                         {connected ? 'Google Calendar connected' : 'Let callers book appointments'}
                     </span>
-                    <span className="text-[12.5px] text-ink-2">
+                    <span className="text-caption text-ink-2">
                         {connected
                             ? calendar.connection?.account_label
                                 ? `Bookings go into ${calendar.connection.account_label}’s calendar.`
@@ -280,7 +280,7 @@ function CalendarCard({
                     </span>
                 </div>
                 {connected && (
-                    <label className="flex shrink-0 cursor-pointer items-center gap-2 text-[13px] font-medium text-ink">
+                    <label className="flex shrink-0 cursor-pointer items-center gap-2 text-caption font-medium text-ink">
                         <Checkbox
                             checked={useCalendar}
                             onCheckedChange={(value) => onUseCalendarChange(value === true)}
@@ -320,12 +320,12 @@ function CalendarCard({
                 )}
             </div>
             {calendar.error && (
-                <p className="text-[12.5px] text-danger" role="alert">
+                <p className="text-caption text-danger" role="alert">
                     {calendar.error}
                 </p>
             )}
             {status === 'connecting' ? (
-                <p className="text-[12.5px] text-ink-3">
+                <p className="text-caption text-ink-3">
                     Finish signing in to Google in the window that opened.{' '}
                     <button
                         type="button"
@@ -336,10 +336,10 @@ function CalendarCard({
                     </button>
                 </p>
             ) : (
-                CALENDAR_NOTE[status] && <p className="text-[12.5px] text-ink-3">{CALENDAR_NOTE[status]}</p>
+                CALENDAR_NOTE[status] && <p className="text-caption text-ink-3">{CALENDAR_NOTE[status]}</p>
             )}
             {suggestCalendly && (
-                <p className="text-[12.5px] text-ink-3">
+                <p className="text-caption text-ink-3">
                     Use Calendly instead?{' '}
                     <a
                         href="/integrations"
@@ -440,10 +440,10 @@ export function TemplateSetup({
                     aria-label="Preview"
                     className="flex w-full shrink-0 flex-col gap-3 border-t border-line-soft bg-panel-2 p-5 md:w-[280px] md:border-t-0 md:border-l"
                 >
-                    <span className="text-[10.5px] font-semibold uppercase tracking-[0.08em] text-ink-3">
+                    <span className="text-meta font-semibold uppercase tracking-[0.08em] text-ink-3">
                         How it will sound
                     </span>
-                    <p className="rounded-[12px_12px_12px_4px] border border-line bg-card px-3 py-2.5 text-[13.5px] leading-[1.45] text-ink">
+                    <p className="rounded-[12px_12px_12px_4px] border border-line bg-card px-3 py-2.5 text-sm leading-[1.45] text-ink">
                         {previewParts(greeting, fields, answers).map((part, index) =>
                             part.answer ? (
                                 <strong key={index} className="font-semibold text-brand">
@@ -456,7 +456,7 @@ export function TemplateSetup({
                     </p>
                     <span className="text-[12px] text-ink-3">The first thing callers hear.</span>
                     {booking?.status === 'connected' && useCalendar && (
-                        <span className="mt-auto flex items-center gap-1.5 text-[12.5px] text-ink-2">
+                        <span className="mt-auto flex items-center gap-1.5 text-caption text-ink-2">
                             <Check size={14} className="text-brand" aria-hidden />
                             Books into your calendar
                         </span>

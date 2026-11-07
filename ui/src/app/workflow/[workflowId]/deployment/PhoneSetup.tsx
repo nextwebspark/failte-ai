@@ -79,7 +79,7 @@ function Step({ n, title, done = false, children }: { n: number; title: string; 
             <span
                 aria-hidden
                 className={cn(
-                    "flex size-7 items-center justify-center rounded-full text-[13px] font-semibold",
+                    "flex size-7 items-center justify-center rounded-full text-caption font-semibold",
                     done ? "bg-ok text-white" : "bg-brand text-white",
                 )}
             >
@@ -90,7 +90,7 @@ function Step({ n, title, done = false, children }: { n: number; title: string; 
                     {title}
                     {done && <span className="sr-only"> (done)</span>}
                 </h3>
-                <div className="mt-1 space-y-2.5 text-[13.5px] text-ink-2">{children}</div>
+                <div className="mt-1 space-y-2.5 text-sm text-ink-2">{children}</div>
             </div>
         </li>
     );
@@ -210,11 +210,11 @@ export function PhoneSetup({ agentId, agentName, onSettled }: PhoneSetupProps) {
     if (!permissionsLoaded || (canRead && data === null && loadError === null)) {
         body = <Skeleton className="h-40 rounded-lg" />;
     } else if (!canRead) {
-        body = <p className="text-[13.5px] text-ink-2">Ask a workspace admin to set up a phone number for this agent.</p>;
+        body = <p className="text-sm text-ink-2">Ask a workspace admin to set up a phone number for this agent.</p>;
     } else if (loadError || !data) {
         body = (
             <div className="flex flex-wrap items-center gap-3">
-                <p className="text-[13.5px] text-danger">{loadError ?? LOAD_FAILED}</p>
+                <p className="text-sm text-danger">{loadError ?? LOAD_FAILED}</p>
                 <Button variant="outline" size="sm" onClick={() => void load()}>
                     Try again
                 </Button>
@@ -268,7 +268,7 @@ export function PhoneSetup({ agentId, agentName, onSettled }: PhoneSetupProps) {
                     display={displayNumber(primary.address_normalized)}
                     label="Number"
                 />
-                {primary.lightmove_number && <p className="text-[12.5px] text-ink-3">Provided by LightMove.</p>}
+                {primary.lightmove_number && <p className="text-caption text-ink-3">Provided by LightMove.</p>}
             </Step>
         ) : null;
 
@@ -328,8 +328,8 @@ export function PhoneSetup({ agentId, agentName, onSettled }: PhoneSetupProps) {
                                             checked ? "border-brand bg-brand-dim" : "border-line bg-card hover:border-ink-3",
                                         )}
                                     >
-                                        <span className="block text-[13.5px] font-semibold text-ink">{option.title}</span>
-                                        <span className="mt-0.5 block text-[12.5px] text-ink-2">
+                                        <span className="block text-sm font-semibold text-ink">{option.title}</span>
+                                        <span className="mt-0.5 block text-caption text-ink-2">
                                             {option.body} {option.code && <Code>{option.code}</Code>}
                                         </span>
                                     </button>
@@ -387,7 +387,7 @@ export function PhoneSetup({ agentId, agentName, onSettled }: PhoneSetupProps) {
                                 )}
                             >
                                 <span className="text-[14.5px] font-semibold text-ink">{option.title}</span>
-                                <span className="mt-1 text-[13px] leading-snug text-ink-2">{option.body}</span>
+                                <span className="mt-1 text-caption leading-snug text-ink-2">{option.body}</span>
                                 {option.badge && (
                                     <span className="mt-2 rounded-full bg-ok-dim px-2 py-px text-[12px] font-semibold text-ok">
                                         {option.badge}
@@ -410,7 +410,7 @@ export function PhoneSetup({ agentId, agentName, onSettled }: PhoneSetupProps) {
                     <Phone className="size-4 text-ink-3" aria-hidden />
                     How should callers reach {agentName}?
                 </h2>
-                <p className="mt-1 text-[13px] text-ink-2">You can change this later.</p>
+                <p className="mt-1 text-caption text-ink-2">You can change this later.</p>
             </header>
             <div className="px-5 py-4">{body}</div>
         </section>
@@ -508,7 +508,7 @@ function GetNumber({
                             onClick={() => void search(k)}
                             disabled={searching}
                             className={cn(
-                                "rounded px-3 py-1 text-[13px] font-medium",
+                                "rounded px-3 py-1 text-caption font-medium",
                                 numbers !== null && kind === k ? "bg-ink text-card" : "text-ink-2 hover:text-ink",
                             )}
                         >
@@ -520,7 +520,7 @@ function GetNumber({
             </div>
             {numbers !== null && !searching && (
                 numbers.length === 0 ? (
-                    <p className="text-[13px] text-ink-2">No numbers of this kind right now. Try the other kind, or ask us.</p>
+                    <p className="text-caption text-ink-2">No numbers of this kind right now. Try the other kind, or ask us.</p>
                 ) : (
                     <div role="radiogroup" aria-label="Available numbers" className="grid gap-2 @md/phone:grid-cols-2">
                         {numbers.map((n) => {
@@ -547,7 +547,7 @@ function GetNumber({
                     </div>
                 )
             )}
-            {error && <p className="text-[13px] text-danger">{error}</p>}
+            {error && <p className="text-caption text-danger">{error}</p>}
             {numbers && numbers.length > 0 && (
                 <Button size="sm" disabled={!selected || getting} onClick={() => void get()}>
                     {getting && <Loader2 className="animate-spin" />}
@@ -577,7 +577,7 @@ function OwnProviderAccount({
                 type="button"
                 aria-expanded={open}
                 onClick={() => setOpen((o) => !o)}
-                className="inline-flex items-center gap-1.5 text-[13px] font-medium text-ink-2 hover:text-ink"
+                className="inline-flex items-center gap-1.5 text-caption font-medium text-ink-2 hover:text-ink"
             >
                 <ChevronDown className={cn("size-4 transition-transform", open && "rotate-180")} aria-hidden />
                 {hasNumber ? "Manage this agent’s numbers" : "Advanced: use my own phone provider account"}

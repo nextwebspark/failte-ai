@@ -197,7 +197,7 @@ export function FilesEditor({ files, onChange, issues, readOnly }: FilesEditorPr
                                 className="min-h-[220px] font-mono text-xs leading-relaxed"
                                 spellCheck={false}
                             />
-                            <p className="text-right font-mono text-[11px] text-ink-3">
+                            <p className="text-right font-mono text-meta text-ink-3">
                                 {formatBytes(byteLength(selected.content))}
                             </p>
                         </div>

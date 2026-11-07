@@ -59,7 +59,7 @@ function TabLink({ tab, onNavigate }: { tab: Tab; onNavigate: () => void }) {
       onClick={onNavigate}
       aria-current={tab.isActive ? "page" : undefined}
       className={cn(
-        "relative flex min-h-11 min-w-0 flex-col items-center justify-center gap-[3px] rounded-lg text-[11px] font-semibold outline-none",
+        "relative flex min-h-11 min-w-0 flex-col items-center justify-center gap-[3px] rounded-lg text-meta font-semibold outline-none",
         "focus-visible:ring-[3px] focus-visible:ring-inset focus-visible:ring-ring/50",
         tab.isActive ? "text-brand" : "text-ink-3"
       )}
@@ -113,7 +113,7 @@ function SheetRow({
 
 function SheetLabel({ children }: { children: React.ReactNode }) {
   return (
-    <p className="px-1.5 pb-1 pt-2.5 text-[11px] font-semibold uppercase tracking-[0.06em] text-ink-3">{children}</p>
+    <p className="px-1.5 pb-1 pt-2.5 text-meta font-semibold uppercase tracking-[0.06em] text-ink-3">{children}</p>
   );
 }
 
@@ -213,7 +213,7 @@ export function MobileTabBar() {
             aria-haspopup="dialog"
             aria-expanded={moreOpen}
             className={cn(
-              "relative flex min-h-11 min-w-0 flex-col items-center justify-center gap-[3px] rounded-lg text-[11px] font-semibold outline-none",
+              "relative flex min-h-11 min-w-0 flex-col items-center justify-center gap-[3px] rounded-lg text-meta font-semibold outline-none",
               "focus-visible:ring-[3px] focus-visible:ring-inset focus-visible:ring-ring/50",
               moreActive ? "text-brand" : "text-ink-3"
             )}
@@ -252,7 +252,7 @@ export function MobileTabBar() {
               {initialsOf(workspaceName, "W")}
             </span>
             <div className="min-w-0">
-              <p className="truncate text-[13.5px] font-semibold text-foreground">{workspaceName}</p>
+              <p className="truncate text-sm font-semibold text-foreground">{workspaceName}</p>
               <p className="truncate text-[12px] text-ink-3">
                 {[person, role ? ROLE_LABELS[role] : null].filter(Boolean).join(" · ")}
               </p>
@@ -279,7 +279,7 @@ export function MobileTabBar() {
               >
                 <Wrench className="size-5 shrink-0 text-ink-2" aria-hidden />
                 <span className="min-w-0 flex-1 truncate">Advanced setup</span>
-                <span className="text-[12.5px] font-medium text-ink-3">Best on a computer</span>
+                <span className="text-caption font-medium text-ink-3">Best on a computer</span>
                 <ChevronDown
                   aria-hidden
                   className={cn("size-4 shrink-0 text-ink-3 transition-transform motion-reduce:transition-none", advancedOpen && "rotate-180")}
@@ -302,7 +302,7 @@ export function MobileTabBar() {
           >
             <CircleHelp className="size-5 shrink-0 text-ink-2" aria-hidden />
             Help
-            <span className="ml-auto text-[12.5px] font-medium text-ink-3">Email us</span>
+            <span className="ml-auto text-caption font-medium text-ink-3">Email us</span>
           </a>
           <button
             type="button"

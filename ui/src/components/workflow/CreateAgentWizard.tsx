@@ -122,7 +122,7 @@ function BackLink({ onClick, children }: { onClick: () => void; children: ReactN
         <button
             type="button"
             onClick={onClick}
-            className="flex w-fit items-center gap-1 text-[13px] font-semibold text-brand hover:underline focus-visible:outline-2 focus-visible:outline-ring"
+            className="flex w-fit items-center gap-1 text-caption font-semibold text-brand hover:underline focus-visible:outline-2 focus-visible:outline-ring"
         >
             <ChevronLeft size={14} aria-hidden />
             {children}
@@ -135,7 +135,7 @@ function StepRail({ step }: { step: 1 | 2 | 3 }) {
     return (
         <>
         {/* A phone has no room for three chips: one line says where you are. */}
-        <p className="text-[12.5px] font-medium text-ink-2 sm:hidden">
+        <p className="text-caption font-medium text-ink-2 sm:hidden">
             {`Step ${step} of 3 · ${labels[step - 1]}`}
         </p>
         <ol className="hidden flex-wrap items-center gap-2 sm:flex" aria-label="Progress">
@@ -148,13 +148,13 @@ function StepRail({ step }: { step: 1 | 2 | 3 }) {
                         {index > 0 && <span className="hidden h-px w-6 bg-line sm:block" aria-hidden />}
                         <span
                             className={cn(
-                                'inline-flex items-center gap-2 rounded-full border px-3 py-1 text-[12.5px] font-medium',
+                                'inline-flex items-center gap-2 rounded-full border px-3 py-1 text-caption font-medium',
                                 active && 'border-brand bg-brand-dim text-brand',
                                 done && 'border-line bg-panel-2 text-ink-2',
                                 !active && !done && 'border-line text-ink-3',
                             )}
                         >
-                            <span className="font-mono text-[11px]">{n}</span>
+                            <span className="font-mono text-meta">{n}</span>
                             {label}
                         </span>
                     </li>
@@ -403,7 +403,7 @@ export function CreateAgentWizard({ initialMode = 'template' }: CreateAgentWizar
     };
 
     const errorLine = error && (
-        <p className="text-[13px] text-danger" role="alert">
+        <p className="text-caption text-danger" role="alert">
             {error}
         </p>
     );
@@ -416,7 +416,7 @@ export function CreateAgentWizard({ initialMode = 'template' }: CreateAgentWizar
                 <div className="flex flex-col gap-2">
                     <Link
                         href="/workflow"
-                        className="-ml-1 inline-flex min-h-10 w-fit items-center gap-1.5 rounded-md px-1 text-[13px] font-semibold text-ink-3 hover:text-ink hover:underline focus-visible:outline-2 focus-visible:outline-ring sm:min-h-0"
+                        className="-ml-1 inline-flex min-h-10 w-fit items-center gap-1.5 rounded-md px-1 text-caption font-semibold text-ink-3 hover:text-ink hover:underline focus-visible:outline-2 focus-visible:outline-ring sm:min-h-0"
                     >
                         <ArrowLeft className="size-3.5" aria-hidden />
                         Back to agents
@@ -436,7 +436,7 @@ export function CreateAgentWizard({ initialMode = 'template' }: CreateAgentWizar
                                 Pick a ready-made agent for phone or VoIP, preview it, then personalise.
                             </p>
                         </div>
-                        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[13px]">
+                        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-caption">
                             <button
                                 type="button"
                                 onClick={() => go('describe')}
@@ -485,7 +485,7 @@ export function CreateAgentWizard({ initialMode = 'template' }: CreateAgentWizar
                             <h1 className="font-display text-[19px] tracking-[-0.02em] text-ink">
                                 Personalise your {template.template_name}
                             </h1>
-                            <p className="text-[13px] text-ink-3">
+                            <p className="text-caption text-ink-3">
                                 Tell it about your business
                                 {wantsCalendar ? ' · Connect calendar (optional)' : ''}
                             </p>
@@ -511,7 +511,7 @@ export function CreateAgentWizard({ initialMode = 'template' }: CreateAgentWizar
                         {errorLine && <div className="px-6 pb-4">{errorLine}</div>}
                     </div>
                     <footer className="flex flex-col gap-3 border-t border-line-soft bg-panel-2 px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
-                        <p className="text-[13px] text-ink-3">You can change any of this later.</p>
+                        <p className="text-caption text-ink-3">You can change any of this later.</p>
                         <div className="flex justify-end gap-2">
                             <Button variant="outline" onClick={() => go('gallery')} disabled={submitting}>
                                 Back
@@ -544,7 +544,7 @@ export function CreateAgentWizard({ initialMode = 'template' }: CreateAgentWizar
                         <h1 className="sr-only">Building your agent</h1>
                         <Loader2 size={28} className="animate-spin text-brand" aria-hidden />
                         <p className="mt-4 text-[15px] font-semibold text-ink">Building your agent</p>
-                        <p className="mt-1 max-w-sm text-[13.5px] text-ink-2">
+                        <p className="mt-1 max-w-sm text-sm text-ink-2">
                             Writing what it says and how it handles each step. This takes about 20 seconds.
                         </p>
                     </section>
@@ -588,7 +588,7 @@ export function CreateAgentWizard({ initialMode = 'template' }: CreateAgentWizar
                                         >
                                             {title}
                                         </span>
-                                        <span className="text-[12.5px] text-ink-2">{body}</span>
+                                        <span className="text-caption text-ink-2">{body}</span>
                                     </button>
                                 ))}
                             </div>
@@ -604,7 +604,7 @@ export function CreateAgentWizard({ initialMode = 'template' }: CreateAgentWizar
                                 />
                             </div>
                             <div className="flex flex-wrap items-center gap-2">
-                                <span className="text-[12.5px] text-ink-3">Try:</span>
+                                <span className="text-caption text-ink-3">Try:</span>
                                 {DESCRIBE_EXAMPLES.map((example) => (
                                     <button
                                         key={example.label}
@@ -613,7 +613,7 @@ export function CreateAgentWizard({ initialMode = 'template' }: CreateAgentWizar
                                             setCallType(example.callType);
                                             setDescription(example.text);
                                         }}
-                                        className="h-[30px] rounded-full border border-line bg-panel-2 px-3 text-[12.5px] font-medium text-ink-2 hover:text-ink focus-visible:outline-2 focus-visible:outline-ring"
+                                        className="h-[30px] rounded-full border border-line bg-panel-2 px-3 text-caption font-medium text-ink-2 hover:text-ink focus-visible:outline-2 focus-visible:outline-ring"
                                     >
                                         {example.label}
                                     </button>
@@ -622,7 +622,7 @@ export function CreateAgentWizard({ initialMode = 'template' }: CreateAgentWizar
                             {errorLine}
                         </div>
                         <footer className="flex items-center justify-between border-t border-line-soft pt-4">
-                            <p className="text-[13px] text-ink-3">Takes about 20 seconds.</p>
+                            <p className="text-caption text-ink-3">Takes about 20 seconds.</p>
                             <Button onClick={createFromDescription} disabled={!description.trim()}>
                                 Build my agent
                             </Button>

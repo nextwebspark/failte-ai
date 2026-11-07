@@ -63,7 +63,7 @@ export function ToolCallCard({
                                 <Badge
                                     variant="outline"
                                     className={cn(
-                                        "h-5 px-1.5 text-[10px] uppercase tracking-[0.14em]",
+                                        "h-5 px-1.5 text-meta uppercase tracking-[0.14em]",
                                         status === "running"
                                             ? "border-amber/60 text-amber"
                                             : status === "completed"
@@ -99,7 +99,7 @@ export function ToolCallCard({
                             <div className="space-y-3">
                                 {hasArguments ? (
                                     <div className="space-y-1">
-                                        <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
+                                        <p className="text-meta font-medium uppercase tracking-[0.14em] text-muted-foreground">
                                             Arguments
                                         </p>
                                         <pre className="overflow-x-auto rounded-xl bg-background/70 p-3 text-xs leading-5 text-foreground">
@@ -109,7 +109,7 @@ export function ToolCallCard({
                                 ) : null}
                                 {hasResult ? (
                                     <div className="space-y-1">
-                                        <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
+                                        <p className="text-meta font-medium uppercase tracking-[0.14em] text-muted-foreground">
                                             Result
                                         </p>
                                         <pre className="overflow-x-auto rounded-xl bg-background/70 p-3 text-xs leading-5 text-foreground">

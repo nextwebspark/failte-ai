@@ -51,7 +51,7 @@ const SORT_LABEL: Record<AgentSort, string> = {
 function Stat({ label, children }: { label: string; children: ReactNode }) {
     return (
         <div className="flex flex-col gap-1 rounded-lg border border-line bg-card px-4 py-3.5">
-            <span className="text-[10.5px] font-semibold uppercase tracking-[0.08em] text-ink-3">
+            <span className="text-meta font-semibold uppercase tracking-[0.08em] text-ink-3">
                 {label}
             </span>
             <span className="font-display text-[24px] font-semibold leading-tight tracking-[-0.02em] text-ink">
@@ -63,7 +63,7 @@ function Stat({ label, children }: { label: string; children: ReactNode }) {
 
 function StatNote({ children, className }: { children: ReactNode; className?: string }) {
     return (
-        <span className={cn('ml-1.5 font-sans text-[12.5px] font-medium tracking-normal text-ink-3', className)}>
+        <span className={cn('ml-1.5 font-sans text-caption font-medium tracking-normal text-ink-3', className)}>
             {children}
         </span>
     );
@@ -219,14 +219,14 @@ export function AgentList({ activeWorkflows, archivedWorkflows, folders }: Agent
                                 aria-pressed={status === filter.value}
                                 onClick={() => setStatus(filter.value)}
                                 className={cn(
-                                    'inline-flex h-full items-center gap-1.5 rounded-sm px-3 text-[13px] font-medium transition-colors focus-visible:outline-2 focus-visible:outline-ring',
+                                    'inline-flex h-full items-center gap-1.5 rounded-sm px-3 text-caption font-medium transition-colors focus-visible:outline-2 focus-visible:outline-ring',
                                     status === filter.value
                                         ? 'bg-card text-ink shadow-xs'
                                         : 'text-ink-3 hover:text-ink',
                                 )}
                             >
                                 {filter.label}
-                                <span className="font-mono text-[11px] text-ink-3">{filter.count}</span>
+                                <span className="font-mono text-meta text-ink-3">{filter.count}</span>
                             </button>
                         ))}
                     </div>
@@ -249,7 +249,7 @@ export function AgentList({ activeWorkflows, archivedWorkflows, folders }: Agent
             {filtering &&
                 (matches.length > 0 ? (
                     <div className="space-y-2">
-                        <p className="text-[12.5px] text-ink-3" aria-live="polite">
+                        <p className="text-caption text-ink-3" aria-live="polite">
                             {matches.length} {matches.length === 1 ? 'agent' : 'agents'}
                         </p>
                         <WorkflowTable
@@ -259,7 +259,7 @@ export function AgentList({ activeWorkflows, archivedWorkflows, folders }: Agent
                         />
                     </div>
                 ) : (
-                    <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed border-line bg-panel-2 p-8 text-center text-[13.5px] text-ink-2">
+                    <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed border-line bg-panel-2 p-8 text-center text-sm text-ink-2">
                         {archived.length > 0
                             ? `No active agents match. ${archived.length} archived ${archived.length === 1 ? 'agent matches' : 'agents match'} below.`
                             : query.trim()

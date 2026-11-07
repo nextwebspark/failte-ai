@@ -162,7 +162,7 @@ export function SettingsSaveProvider({
                     <div
                         className="pointer-events-auto flex max-w-full flex-wrap items-center gap-x-4 gap-y-2 rounded-xl border border-line bg-panel py-2 pr-2 pl-4 shadow-[var(--panel-shadow)]"
                     >
-                        <span role="status" aria-live="polite" className="flex min-w-0 items-center gap-2 text-[13px] text-ink-2">
+                        <span role="status" aria-live="polite" className="flex min-w-0 items-center gap-2 text-caption text-ink-2">
                             <span aria-hidden className="size-2 shrink-0 rounded-full bg-amber" />
                             <span className="min-w-0">
                                 <strong className="font-semibold text-foreground">
@@ -172,7 +172,7 @@ export function SettingsSaveProvider({
                             </span>
                         </span>
                         {blocked && (
-                            <span role="alert" className="text-[12.5px] text-danger">
+                            <span role="alert" className="text-caption text-danger">
                                 {blocked.label}: {blocked.blocker}
                             </span>
                         )}

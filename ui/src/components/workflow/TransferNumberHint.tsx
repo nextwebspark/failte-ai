@@ -11,7 +11,7 @@ export function TransferNumberHint({ hint, id }: { hint: TransferHint | null; id
             id={id}
             role={hint.tone === "error" ? "alert" : "status"}
             className={cn(
-                "mt-1 text-[12.5px] font-medium",
+                "mt-1 text-caption font-medium",
                 hint.tone === "ok" && "text-brand",
                 hint.tone === "error" && "text-danger",
                 hint.tone === "warn" && "text-amber",

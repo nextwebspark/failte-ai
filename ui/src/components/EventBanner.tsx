@@ -151,7 +151,7 @@ export function EventBanner() {
               row gives up the subtitle before it gives up a single character of
               the sentence. The subtitle is the flexible half and is hidden
               outright below lg, where it cannot fit whole. */}
-          <span className="flex min-w-0 items-baseline gap-1.5 text-[11px] sm:text-[13px]">
+          <span className="flex min-w-0 items-baseline gap-1.5 text-meta sm:text-caption">
             <span className="shrink-0 whitespace-nowrap text-foreground/85 underline-offset-4 group-hover:underline">
               {event.title}
             </span>
@@ -166,7 +166,7 @@ export function EventBanner() {
             read as one control repeated. Inverting on hover keeps it the
             loudest thing in the bar at the moment of intent. group-hover, not
             hover, because the whole bar is the link. */}
-        <span className="ml-auto inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full border border-cta px-2.5 py-1 text-[11px] font-medium text-cta transition-colors duration-150 group-hover:bg-cta group-hover:text-cta-foreground sm:px-3 sm:py-1.5 sm:text-[12px] md:ml-0">
+        <span className="ml-auto inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full border border-cta px-2.5 py-1 text-meta font-medium text-cta transition-colors duration-150 group-hover:bg-cta group-hover:text-cta-foreground sm:px-3 sm:py-1.5 sm:text-[12px] md:ml-0">
           <span>{event.cta}</span>
           <span aria-hidden>→</span>
         </span>
@@ -226,7 +226,7 @@ function Lockup({ partner }: { partner?: EventBannerEvent["partner"] }) {
           <>
             <span
               aria-hidden
-              className="font-mono text-[13px] leading-none text-muted-foreground"
+              className="font-mono text-caption leading-none text-muted-foreground"
             >
               ×
             </span>

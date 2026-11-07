@@ -185,7 +185,7 @@ export default function NotificationsSettingsPage() {
                 >
                     {!data.email_available && (
                         <SettingBlock>
-                            <p className="text-[13px] text-amber" role="status">
+                            <p className="text-caption text-amber" role="status">
                                 Email isn&apos;t set up on this server yet, so nothing is sent for now.
                             </p>
                         </SettingBlock>
@@ -230,13 +230,13 @@ export default function NotificationsSettingsPage() {
                         onChange={(v) => setToggle("email_members", v)}
                     />
                     <SettingBlock>
-                        <p className="text-[13px] font-semibold text-foreground">Also send to</p>
+                        <p className="text-caption font-semibold text-foreground">Also send to</p>
                         {extras.length > 0 && (
                             <ul className="flex flex-wrap gap-2" aria-label="Also send to">
                                 {extras.map((address) => (
                                     <li
                                         key={address}
-                                        className="flex items-center gap-1 rounded-md border border-line bg-panel-2 py-1 pl-2.5 pr-1 text-[13px]"
+                                        className="flex items-center gap-1 rounded-md border border-line bg-panel-2 py-1 pl-2.5 pr-1 text-caption"
                                     >
                                         {address}
                                         <Button
@@ -292,7 +292,7 @@ export default function NotificationsSettingsPage() {
                     />
                     {!data.sms_available && (
                         <SettingBlock>
-                            <p className="text-[13px] text-ink-2" role="status">
+                            <p className="text-caption text-ink-2" role="status">
                                 Texting isn&apos;t set up yet. Once it is, confirmations start on their own if
                                 this is on.
                             </p>
