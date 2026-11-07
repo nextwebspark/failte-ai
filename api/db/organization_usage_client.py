@@ -71,6 +71,23 @@ def call_review_fields(annotations: Optional[dict]) -> dict:
     }
 
 
+def call_result_of(run, now: datetime) -> str:
+    """How the call went, by the same rule Home and Follow-ups use
+    (``api.services.dashboard.calls.call_result``), so one call reads the
+    same everywhere."""
+    # Imported here: the dashboard service imports api.db.
+    from api.services.dashboard.calls import call_result
+
+    return call_result(
+        is_completed=bool(run.is_completed),
+        created_at=run.created_at,
+        gathered_context=run.gathered_context,
+        usage_info=run.usage_info,
+        logs=run.logs,
+        now=now,
+    ).value
+
+
 class OrganizationUsageClient(BaseDBClient):
     """Client for managing organization usage reporting aggregates."""
 
@@ -241,6 +258,7 @@ class OrganizationUsageClient(BaseDBClient):
 
             # Format runs
             formatted_runs = []
+            now = datetime.now(timezone.utc)
             total_tokens = 0
             total_duration_seconds = 0
             for run in runs:
@@ -291,6 +309,7 @@ class OrganizationUsageClient(BaseDBClient):
                     "initial_context": run.initial_context,
                     "gathered_context": run.gathered_context,
                     "is_completed": bool(run.is_completed),
+                    "result": call_result_of(run, now),
                     **call_review_fields(run.annotations),
                 }
 

@@ -156,8 +156,8 @@ def _summary_matches(pattern: str):
     return func.coalesce(review.op("->>")("summary"), "").ilike(pattern, escape="\\")
 
 
-def _caller_search(text: str):
-    """The one search box: the caller's name (as the agent captured it),
+def caller_search(text: str):
+    """The one search box (Calls and Follow-ups): the caller's name (as the agent captured it),
     their number (the number the list shows: the caller's on inbound calls
     and the number called on outbound ones), the call's summary, or anything
     said on the call."""
@@ -359,7 +359,7 @@ def apply_workflow_run_filters(
             elif filter_type == "text" and field == "caller":
                 text = str(value.get("value") or "").strip()
                 if text:
-                    filter_conditions.append(_caller_search(text))
+                    filter_conditions.append(caller_search(text))
 
             elif field == "follow_up":
                 # Never trust ids from the request: the route replaces this

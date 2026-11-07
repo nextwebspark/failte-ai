@@ -159,3 +159,52 @@ def test_csv_uses_plain_headers():
     assert header[0] == "Call ID" and values[0] == "1"
     assert values[header.index("Outcome")] == "booking_made"
     assert "Run ID" not in header and "Call Disposition" not in header
+
+
+def test_calls_list_reads_a_call_the_way_home_does():
+    """A call whose stored ending code is "end_call" ("Call finished") but
+    whose calendar confirmed a booking is "booking_made" on the Calls list,
+    exactly as Home's recent calls read it; an ordinary call is "handled"."""
+    from api.db.organization_usage_client import call_result_of
+    from api.services.dashboard.calls import call_result
+
+    now = datetime(2026, 11, 6, 15, 0, tzinfo=UTC)
+    booked = {
+        "call_tags": ["user_speech"],
+        "call_status": "end_call",
+        "mapped_call_disposition": "end_call",
+        "tool_results": [
+            {
+                "status": "completed",
+                "function_name": "book_appointment",
+                "arguments": {"slot_id": "2026-11-07T19:00:00+00:00"},
+                "result": {
+                    "booked": True,
+                    "event_id": "e1",
+                    "starts_at": "2026-11-07T19:00:00+00:00",
+                },
+            }
+        ],
+    }
+    ordinary = {
+        "call_tags": ["user_speech"],
+        "call_status": "end_call",
+        "mapped_call_disposition": "end_call",
+    }
+    for gathered, expected in ((booked, "booking_made"), (ordinary, "handled")):
+        run = SimpleNamespace(
+            is_completed=True,
+            created_at=datetime(2026, 11, 6, 14, 0, tzinfo=UTC),
+            gathered_context=gathered,
+            usage_info={"call_duration_seconds": 95},
+            logs={},
+        )
+        home = call_result(
+            is_completed=True,
+            created_at=run.created_at,
+            gathered_context=gathered,
+            usage_info=run.usage_info,
+            logs={},
+            now=now,
+        )
+        assert call_result_of(run, now) == home.value == expected
