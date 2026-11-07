@@ -314,6 +314,54 @@ export type AddRecipientResponse = {
 };
 
 /**
+ * AgentPhoneNumber
+ */
+export type AgentPhoneNumber = {
+    /**
+     * Id
+     */
+    id: number;
+    /**
+     * Telephony Configuration Id
+     */
+    telephony_configuration_id: number;
+    /**
+     * Address
+     */
+    address: string;
+    /**
+     * Address Normalized
+     */
+    address_normalized: string;
+    /**
+     * Label
+     */
+    label?: string | null;
+    /**
+     * Provider
+     */
+    provider: string;
+    /**
+     * Provider Name
+     */
+    provider_name: string;
+    /**
+     * Is Active
+     */
+    is_active: boolean;
+    /**
+     * Provider Inactive
+     */
+    provider_inactive: boolean;
+    /**
+     * Lightmove Number
+     */
+    lightmove_number: boolean;
+    setup?: PhoneSetupChoice | null;
+    check: PhoneSetupCheck;
+};
+
+/**
  * AiBookingRequest
  *
  * The owner's switches and booking rules for one calendar; omitted
@@ -550,6 +598,46 @@ export type AutoscaleMetricResponse = {
      * Value
      */
     value: number;
+};
+
+/**
+ * AvailablePlatformNumber
+ */
+export type AvailablePlatformNumber = {
+    /**
+     * Phone Number
+     */
+    phone_number: string;
+    /**
+     * Friendly Name
+     */
+    friendly_name: string;
+    /**
+     * Kind
+     */
+    kind: 'local' | 'mobile';
+    /**
+     * Locality
+     */
+    locality?: string | null;
+    /**
+     * Region
+     */
+    region?: string | null;
+};
+
+/**
+ * AvailablePlatformNumbersResponse
+ */
+export type AvailablePlatformNumbersResponse = {
+    /**
+     * Country
+     */
+    country: string;
+    /**
+     * Numbers
+     */
+    numbers: Array<AvailablePlatformNumber>;
 };
 
 /**
@@ -7299,6 +7387,83 @@ export type PhoneNumberUpdateRequest = {
 };
 
 /**
+ * PhoneSetupCheck
+ *
+ * Whether the number has had a call since the setup was chosen.
+ *
+ * ``waiting`` until the first inbound call to this number reaches the agent;
+ * ``received`` after. ``not_started`` when no setup has been chosen yet.
+ */
+export type PhoneSetupCheck = {
+    /**
+     * Status
+     */
+    status: 'not_started' | 'waiting' | 'received';
+    /**
+     * First Call At
+     */
+    first_call_at?: string | null;
+    /**
+     * First Call Run Id
+     */
+    first_call_run_id?: number | null;
+    /**
+     * Forwarded From
+     */
+    forwarded_from?: string | null;
+};
+
+/**
+ * PhoneSetupChoice
+ */
+export type PhoneSetupChoice = {
+    /**
+     * Method
+     */
+    method: 'keep_existing' | 'new_number' | 'mobile';
+    /**
+     * Forward When
+     */
+    forward_when?: 'no_answer' | 'busy' | 'all' | 'outside_hours' | null;
+    /**
+     * Started At
+     */
+    started_at: string;
+};
+
+/**
+ * PhoneSetupResponse
+ */
+export type PhoneSetupResponse = {
+    /**
+     * Platform Numbers Available
+     */
+    platform_numbers_available: boolean;
+    /**
+     * Numbers
+     */
+    numbers: Array<AgentPhoneNumber>;
+};
+
+/**
+ * PhoneSetupUpdateRequest
+ */
+export type PhoneSetupUpdateRequest = {
+    /**
+     * Phone Number Id
+     */
+    phone_number_id: number;
+    /**
+     * Method
+     */
+    method: 'keep_existing' | 'new_number' | 'mobile';
+    /**
+     * Forward When
+     */
+    forward_when?: 'no_answer' | 'busy' | 'all' | 'outside_hours' | null;
+};
+
+/**
  * PlatformAIModelConfiguration
  */
 export type PlatformAiModelConfiguration = {
@@ -7445,6 +7610,16 @@ export type PlatformModelCatalog = {
     modes: Array<PlatformModeOption>;
     realtime: PlatformRealtimeCatalog;
     pipeline: PlatformPipelineCatalog;
+};
+
+/**
+ * PlatformNumberPurchaseRequest
+ */
+export type PlatformNumberPurchaseRequest = {
+    /**
+     * Phone Number
+     */
+    phone_number: string;
 };
 
 /**
@@ -18964,6 +19139,182 @@ export type GetCampaignDefaultsApiV1OrganizationsCampaignDefaultsGetResponses = 
 };
 
 export type GetCampaignDefaultsApiV1OrganizationsCampaignDefaultsGetResponse = GetCampaignDefaultsApiV1OrganizationsCampaignDefaultsGetResponses[keyof GetCampaignDefaultsApiV1OrganizationsCampaignDefaultsGetResponses];
+
+export type GetPhoneSetupApiV1WorkflowWorkflowIdPhoneSetupGetData = {
+    body?: never;
+    headers?: {
+        /**
+         * Authorization
+         */
+        authorization?: string | null;
+        /**
+         * X-Api-Key
+         */
+        'X-API-Key'?: string | null;
+    };
+    path: {
+        /**
+         * Workflow Id
+         */
+        workflow_id: number;
+    };
+    query?: never;
+    url: '/api/v1/workflow/{workflow_id}/phone-setup';
+};
+
+export type GetPhoneSetupApiV1WorkflowWorkflowIdPhoneSetupGetErrors = {
+    /**
+     * Not found
+     */
+    404: unknown;
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type GetPhoneSetupApiV1WorkflowWorkflowIdPhoneSetupGetError = GetPhoneSetupApiV1WorkflowWorkflowIdPhoneSetupGetErrors[keyof GetPhoneSetupApiV1WorkflowWorkflowIdPhoneSetupGetErrors];
+
+export type GetPhoneSetupApiV1WorkflowWorkflowIdPhoneSetupGetResponses = {
+    /**
+     * Successful Response
+     */
+    200: PhoneSetupResponse;
+};
+
+export type GetPhoneSetupApiV1WorkflowWorkflowIdPhoneSetupGetResponse = GetPhoneSetupApiV1WorkflowWorkflowIdPhoneSetupGetResponses[keyof GetPhoneSetupApiV1WorkflowWorkflowIdPhoneSetupGetResponses];
+
+export type UpdatePhoneSetupApiV1WorkflowWorkflowIdPhoneSetupPutData = {
+    body: PhoneSetupUpdateRequest;
+    headers?: {
+        /**
+         * Authorization
+         */
+        authorization?: string | null;
+        /**
+         * X-Api-Key
+         */
+        'X-API-Key'?: string | null;
+    };
+    path: {
+        /**
+         * Workflow Id
+         */
+        workflow_id: number;
+    };
+    query?: never;
+    url: '/api/v1/workflow/{workflow_id}/phone-setup';
+};
+
+export type UpdatePhoneSetupApiV1WorkflowWorkflowIdPhoneSetupPutErrors = {
+    /**
+     * Not found
+     */
+    404: unknown;
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type UpdatePhoneSetupApiV1WorkflowWorkflowIdPhoneSetupPutError = UpdatePhoneSetupApiV1WorkflowWorkflowIdPhoneSetupPutErrors[keyof UpdatePhoneSetupApiV1WorkflowWorkflowIdPhoneSetupPutErrors];
+
+export type UpdatePhoneSetupApiV1WorkflowWorkflowIdPhoneSetupPutResponses = {
+    /**
+     * Successful Response
+     */
+    200: PhoneSetupResponse;
+};
+
+export type UpdatePhoneSetupApiV1WorkflowWorkflowIdPhoneSetupPutResponse = UpdatePhoneSetupApiV1WorkflowWorkflowIdPhoneSetupPutResponses[keyof UpdatePhoneSetupApiV1WorkflowWorkflowIdPhoneSetupPutResponses];
+
+export type ListAvailablePlatformNumbersApiV1PlatformNumbersAvailableGetData = {
+    body?: never;
+    headers?: {
+        /**
+         * Authorization
+         */
+        authorization?: string | null;
+        /**
+         * X-Api-Key
+         */
+        'X-API-Key'?: string | null;
+    };
+    path?: never;
+    query?: {
+        /**
+         * Kind
+         */
+        kind?: 'local' | 'mobile';
+    };
+    url: '/api/v1/platform-numbers/available';
+};
+
+export type ListAvailablePlatformNumbersApiV1PlatformNumbersAvailableGetErrors = {
+    /**
+     * Not found
+     */
+    404: unknown;
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ListAvailablePlatformNumbersApiV1PlatformNumbersAvailableGetError = ListAvailablePlatformNumbersApiV1PlatformNumbersAvailableGetErrors[keyof ListAvailablePlatformNumbersApiV1PlatformNumbersAvailableGetErrors];
+
+export type ListAvailablePlatformNumbersApiV1PlatformNumbersAvailableGetResponses = {
+    /**
+     * Successful Response
+     */
+    200: AvailablePlatformNumbersResponse;
+};
+
+export type ListAvailablePlatformNumbersApiV1PlatformNumbersAvailableGetResponse = ListAvailablePlatformNumbersApiV1PlatformNumbersAvailableGetResponses[keyof ListAvailablePlatformNumbersApiV1PlatformNumbersAvailableGetResponses];
+
+export type GetPlatformNumberApiV1WorkflowWorkflowIdPlatformNumberPostData = {
+    body: PlatformNumberPurchaseRequest;
+    headers?: {
+        /**
+         * Authorization
+         */
+        authorization?: string | null;
+        /**
+         * X-Api-Key
+         */
+        'X-API-Key'?: string | null;
+    };
+    path: {
+        /**
+         * Workflow Id
+         */
+        workflow_id: number;
+    };
+    query?: never;
+    url: '/api/v1/workflow/{workflow_id}/platform-number';
+};
+
+export type GetPlatformNumberApiV1WorkflowWorkflowIdPlatformNumberPostErrors = {
+    /**
+     * Not found
+     */
+    404: unknown;
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type GetPlatformNumberApiV1WorkflowWorkflowIdPlatformNumberPostError = GetPlatformNumberApiV1WorkflowWorkflowIdPlatformNumberPostErrors[keyof GetPlatformNumberApiV1WorkflowWorkflowIdPlatformNumberPostErrors];
+
+export type GetPlatformNumberApiV1WorkflowWorkflowIdPlatformNumberPostResponses = {
+    /**
+     * Successful Response
+     */
+    200: PhoneSetupResponse;
+};
+
+export type GetPlatformNumberApiV1WorkflowWorkflowIdPlatformNumberPostResponse = GetPlatformNumberApiV1WorkflowWorkflowIdPlatformNumberPostResponses[keyof GetPlatformNumberApiV1WorkflowWorkflowIdPlatformNumberPostResponses];
 
 export type ListMyOrganizationsApiV1OrganizationsMineGetData = {
     body?: never;
