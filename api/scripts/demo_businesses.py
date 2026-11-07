@@ -36,6 +36,9 @@ class Step:
     result: Any = None
     # transfer: whether the person picked up
     answered: bool = True
+    # transfer: skipped because the business was closed (the live gate's
+    # "closed" result; nobody was rung)
+    closed: bool = False
 
 
 @dataclass
@@ -1950,6 +1953,70 @@ TRADES = Business(
 
 
 BUSINESSES: list[Business] = [RESTAURANT, TELECOM, DENTAL, TRADES]
+
+
+def fit_to_opening_hours(plan: Plan, c: Ctx) -> Plan:
+    """The call as it goes with the live transfer gate: when the business
+    passes calls only during opening hours and the call came in while it was
+    closed, a call that would have put the caller through (answered or not)
+    rings nobody instead. The transfer tool returns its ``closed`` result, the
+    agent says the team isn't available and offers to take a message: most
+    callers leave one (a callback), the rest say they'll ring back (handled).
+    Any other call is returned as it is."""
+    from api.services.workflow.opening_hours import is_open
+
+    hours = c.business.opening_hours
+    at = next((i for i, s in enumerate(plan.steps) if s.kind == "transfer"), None)
+    if (
+        at is None
+        or hours is None
+        or not hours.transfer_only_when_open
+        or is_open(hours, c.started)
+    ):
+        return plan
+    t = Talk("")
+    t.steps = [*plan.steps[:at], Step("transfer", answered=False, closed=True)]
+    if any(s.kind == "move" and s.target == "stage_1" for s in t.steps):
+        t.node = "stage_1"
+    reason = plan.captured.get("call_reason") or "Asked for a person"
+    name = c.business.name
+    t.a(
+        "I'm sorry, the team isn't available right now, we're closed at the "
+        "moment. Can I take a message so someone calls you back?"
+    )
+    if c.rng.random() < 0.75:
+        t.c("Yes, please.")
+        if t.node != "stage_1":
+            t.message()
+        t.a("What's your name?")
+        t.c(c.caller.name)
+        t.a("And the best number for you?")
+        t.c(c.number_words())
+        t.a(f"That's {c.number_words()}. The team will call you back when we open.")
+        t.bye(f"Thanks for calling {name}.")
+        return Plan(
+            t.steps,
+            CALLBACK,
+            {
+                "caller_name": c.caller.name,
+                "callback_number": c.number_digits(),
+                "call_reason": reason,
+            },
+            f"Asked for a person while {name} was closed: "
+            f"{reason[:1].lower()}{reason[1:]}. Left a number for a call back.",
+            plan.reason,
+        )
+    t.c("No, it's fine, I'll ring back when you're open.")
+    t.a("No problem at all.")
+    t.bye(f"Thanks for calling {name}.")
+    return Plan(
+        t.steps,
+        HANDLED,
+        {"caller_name": c.caller.name, "call_reason": reason},
+        f"Asked for a person while {name} was closed; will ring back during "
+        "opening hours.",
+        plan.reason,
+    )
 
 
 def call_dates(
