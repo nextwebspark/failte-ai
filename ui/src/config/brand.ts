@@ -21,6 +21,8 @@ export const BRAND = {
   docsUrl: `https://${domain}/docs`,
   privacyUrl: `https://${domain}/privacy`,
   termsUrl: `https://${domain}/terms`,
+  /** The website's contact form (add ?reason=support to preselect the topic). */
+  contactUrl: `https://${domain}/contact`,
   salesEmail: `sales@${domain}`,
   supportEmail: `support@${domain}`,
   /** The other legal pages, linked from Settings > Privacy & compliance. */

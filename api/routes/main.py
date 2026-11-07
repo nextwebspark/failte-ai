@@ -18,6 +18,7 @@ from api.routes.email_reports import public_router as email_reports_public_route
 from api.routes.email_reports import router as email_reports_router
 from api.routes.features import router as features_router
 from api.routes.folder import router as folder_router
+from api.routes.help import router as help_router
 from api.routes.integrations import router as integrations_router
 from api.routes.invitations import router as invitations_router
 from api.routes.knowledge_base import router as knowledge_base_router
@@ -72,6 +73,7 @@ router.include_router(integrations_router)
 router.include_router(organization_router)
 router.include_router(phone_setup_router)
 router.include_router(custom_voice_router)
+router.include_router(help_router)
 router.include_router(team_router)
 router.include_router(notifications_router)
 router.include_router(invitations_router)
