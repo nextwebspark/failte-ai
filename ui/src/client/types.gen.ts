@@ -5603,6 +5603,89 @@ export type HealthResponse = {
 };
 
 /**
+ * HelpAnswerOut
+ */
+export type HelpAnswerOut = {
+    /**
+     * Id
+     */
+    id: string;
+    /**
+     * Kind
+     */
+    kind: 'answer' | 'not_covered' | 'off_topic' | 'unavailable';
+    /**
+     * Answer
+     */
+    answer: string;
+    /**
+     * Links
+     */
+    links: Array<string>;
+    /**
+     * Sources
+     */
+    sources: Array<string>;
+};
+
+/**
+ * HelpAskIn
+ */
+export type HelpAskIn = {
+    /**
+     * Question
+     */
+    question: string;
+    /**
+     * Page
+     */
+    page?: string | null;
+};
+
+/**
+ * HelpFeedbackIn
+ */
+export type HelpFeedbackIn = {
+    /**
+     * Answer Id
+     */
+    answer_id: string;
+    /**
+     * Helpful
+     */
+    helpful: boolean;
+    /**
+     * Kind
+     */
+    kind?: 'answer' | 'not_covered' | 'off_topic' | 'unavailable';
+    /**
+     * Sources
+     */
+    sources?: Array<string>;
+    /**
+     * Page
+     */
+    page?: string | null;
+};
+
+/**
+ * HelpTicketOut
+ */
+export type HelpTicketOut = {
+    ticket: TicketSummary;
+};
+
+/**
+ * HelpTicketsOut
+ */
+export type HelpTicketsOut = {
+    /**
+     * Tickets
+     */
+    tickets: Array<TicketSummary>;
+};
+
+/**
  * Hopper
  */
 export type HopperLlmConfiguration = {
@@ -11892,6 +11975,60 @@ export type TextChatInactivityTimeoutConstraints = {
      * Maximum Seconds
      */
     maximum_seconds?: number;
+};
+
+/**
+ * TicketIn
+ */
+export type TicketIn = {
+    /**
+     * Category
+     */
+    category: 'setup' | 'phone' | 'billing' | 'bug' | 'feature' | 'privacy' | 'other';
+    /**
+     * Subject
+     */
+    subject: string;
+    /**
+     * Message
+     */
+    message: string;
+    /**
+     * Include Page
+     */
+    include_page?: boolean;
+    /**
+     * Page
+     */
+    page?: string | null;
+};
+
+/**
+ * TicketSummary
+ *
+ * What the panel lists (the message stays in the email and the store).
+ */
+export type TicketSummary = {
+    /**
+     * Reference
+     */
+    reference: string;
+    /**
+     * Category
+     */
+    category: 'setup' | 'phone' | 'billing' | 'bug' | 'feature' | 'privacy' | 'other';
+    /**
+     * Subject
+     */
+    subject: string;
+    /**
+     * Created At
+     */
+    created_at: string;
+    /**
+     * Status
+     */
+    status: 'open' | 'answered' | 'closed';
 };
 
 /**
@@ -20968,6 +21105,162 @@ export type RequestCustomVoiceApiV1WorkflowWorkflowIdCustomVoicePostResponses = 
 };
 
 export type RequestCustomVoiceApiV1WorkflowWorkflowIdCustomVoicePostResponse = RequestCustomVoiceApiV1WorkflowWorkflowIdCustomVoicePostResponses[keyof RequestCustomVoiceApiV1WorkflowWorkflowIdCustomVoicePostResponses];
+
+export type AskHelpApiV1HelpAskPostData = {
+    body: HelpAskIn;
+    headers?: {
+        /**
+         * Authorization
+         */
+        authorization?: string | null;
+        /**
+         * X-Api-Key
+         */
+        'X-API-Key'?: string | null;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/v1/help/ask';
+};
+
+export type AskHelpApiV1HelpAskPostErrors = {
+    /**
+     * Not found
+     */
+    404: unknown;
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type AskHelpApiV1HelpAskPostError = AskHelpApiV1HelpAskPostErrors[keyof AskHelpApiV1HelpAskPostErrors];
+
+export type AskHelpApiV1HelpAskPostResponses = {
+    /**
+     * Successful Response
+     */
+    200: HelpAnswerOut;
+};
+
+export type AskHelpApiV1HelpAskPostResponse = AskHelpApiV1HelpAskPostResponses[keyof AskHelpApiV1HelpAskPostResponses];
+
+export type HelpFeedbackApiV1HelpFeedbackPostData = {
+    body: HelpFeedbackIn;
+    headers?: {
+        /**
+         * Authorization
+         */
+        authorization?: string | null;
+        /**
+         * X-Api-Key
+         */
+        'X-API-Key'?: string | null;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/v1/help/feedback';
+};
+
+export type HelpFeedbackApiV1HelpFeedbackPostErrors = {
+    /**
+     * Not found
+     */
+    404: unknown;
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type HelpFeedbackApiV1HelpFeedbackPostError = HelpFeedbackApiV1HelpFeedbackPostErrors[keyof HelpFeedbackApiV1HelpFeedbackPostErrors];
+
+export type HelpFeedbackApiV1HelpFeedbackPostResponses = {
+    /**
+     * Successful Response
+     */
+    204: void;
+};
+
+export type HelpFeedbackApiV1HelpFeedbackPostResponse = HelpFeedbackApiV1HelpFeedbackPostResponses[keyof HelpFeedbackApiV1HelpFeedbackPostResponses];
+
+export type GetHelpTicketsApiV1HelpTicketsGetData = {
+    body?: never;
+    headers?: {
+        /**
+         * Authorization
+         */
+        authorization?: string | null;
+        /**
+         * X-Api-Key
+         */
+        'X-API-Key'?: string | null;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/v1/help/tickets';
+};
+
+export type GetHelpTicketsApiV1HelpTicketsGetErrors = {
+    /**
+     * Not found
+     */
+    404: unknown;
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type GetHelpTicketsApiV1HelpTicketsGetError = GetHelpTicketsApiV1HelpTicketsGetErrors[keyof GetHelpTicketsApiV1HelpTicketsGetErrors];
+
+export type GetHelpTicketsApiV1HelpTicketsGetResponses = {
+    /**
+     * Successful Response
+     */
+    200: HelpTicketsOut;
+};
+
+export type GetHelpTicketsApiV1HelpTicketsGetResponse = GetHelpTicketsApiV1HelpTicketsGetResponses[keyof GetHelpTicketsApiV1HelpTicketsGetResponses];
+
+export type CreateHelpTicketApiV1HelpTicketsPostData = {
+    body: TicketIn;
+    headers?: {
+        /**
+         * Authorization
+         */
+        authorization?: string | null;
+        /**
+         * X-Api-Key
+         */
+        'X-API-Key'?: string | null;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/v1/help/tickets';
+};
+
+export type CreateHelpTicketApiV1HelpTicketsPostErrors = {
+    /**
+     * Not found
+     */
+    404: unknown;
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type CreateHelpTicketApiV1HelpTicketsPostError = CreateHelpTicketApiV1HelpTicketsPostErrors[keyof CreateHelpTicketApiV1HelpTicketsPostErrors];
+
+export type CreateHelpTicketApiV1HelpTicketsPostResponses = {
+    /**
+     * Successful Response
+     */
+    200: HelpTicketOut;
+};
+
+export type CreateHelpTicketApiV1HelpTicketsPostResponse = CreateHelpTicketApiV1HelpTicketsPostResponses[keyof CreateHelpTicketApiV1HelpTicketsPostResponses];
 
 export type ListMyOrganizationsApiV1OrganizationsMineGetData = {
     body?: never;

@@ -19,7 +19,7 @@ import { usePathname } from "next/navigation";
 import { useTheme } from "next-themes";
 import React, { useEffect, useRef, useState } from "react";
 
-import { SUPPORT_MAILTO } from "@/components/SupportLink";
+import { useHelpPanel } from "@/components/help/HelpPanel";
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet";
 import { useOrgConfig } from "@/context/OrgConfigContext";
 import { useAuth } from "@/lib/auth";
@@ -184,6 +184,7 @@ export function MobileTabBar() {
     navigated.current = true;
     setMoreOpen(false);
   };
+  const help = useHelpPanel();
   const workspaceName = workspaceDisplayName(orgContext?.organization_name);
   const person = memberName(user);
   const isDark = resolvedTheme === "dark";
@@ -296,14 +297,18 @@ export function MobileTabBar() {
           )}
 
           <SheetLabel>Account</SheetLabel>
-          <a
-            href={SUPPORT_MAILTO}
-            className="flex min-h-12 items-center gap-3 rounded-[10px] px-1.5 text-[15px] font-medium text-foreground outline-none hover:bg-panel-2 focus-visible:ring-[3px] focus-visible:ring-ring/50"
+          <button
+            type="button"
+            onClick={() => {
+              close();
+              help?.openHelp();
+            }}
+            className="flex min-h-12 w-full items-center gap-3 rounded-[10px] px-1.5 text-left text-[15px] font-medium text-foreground outline-none hover:bg-panel-2 focus-visible:ring-[3px] focus-visible:ring-ring/50"
           >
             <CircleHelp className="size-5 shrink-0 text-ink-2" aria-hidden />
             Help
-            <span className="ml-auto text-caption font-medium text-ink-3">Email us</span>
-          </a>
+            <span className="ml-auto text-caption font-medium text-ink-3">Ask, guides, contact us</span>
+          </button>
           <button
             type="button"
             onClick={() => setTheme(isDark ? "light" : "dark")}
