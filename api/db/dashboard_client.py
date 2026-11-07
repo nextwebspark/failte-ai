@@ -4,21 +4,43 @@ phone numbers that answer them, and the follow-up mark stored on a call."""
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import String, and_, func, select
+from sqlalchemy import String, and_, exists, func, or_, select
 from sqlalchemy.orm import selectinload
 
 from api.db.base_client import BaseDBClient
 from api.db.models import (
+    OrganizationConfigurationModel,
     TelephonyConfigurationModel,
     TelephonyPhoneNumberModel,
     WorkflowModel,
     WorkflowRunModel,
 )
-from api.enums import WORKFLOW_RUN_MODES_BY_CHANNEL, CallType, WorkflowRunChannel
+from api.enums import (
+    WORKFLOW_RUN_MODES_BY_CHANNEL,
+    CallType,
+    OrganizationConfigurationKey,
+    WorkflowRunChannel,
+    WorkflowRunMode,
+)
 
 _TELEPHONY_MODES = tuple(
     WORKFLOW_RUN_MODES_BY_CHANNEL[WorkflowRunChannel.TELEPHONY.value]
 )
+
+# Browser test calls ("Try your agent"). They count as phone calls only in a
+# demo workspace, so a test call made during a demo lands on Home and
+# Follow-ups like a real one; everywhere else they stay out.
+_BROWSER_CALL_MODES = (WorkflowRunMode.WEBRTC.value, WorkflowRunMode.SMALLWEBRTC.value)
+
+
+def is_demo_organization_clause(organization_id: int):
+    """True in SQL when the organization is a seeded demo workspace."""
+    return exists().where(
+        OrganizationConfigurationModel.organization_id == organization_id,
+        OrganizationConfigurationModel.key
+        == OrganizationConfigurationKey.DEMO_ACCOUNT.value,
+    )
+
 
 # The key under a run's ``annotations`` that holds its follow-up mark.
 FOLLOW_UP_ANNOTATION = "follow_up"
@@ -31,7 +53,13 @@ CALL_REVIEW_ANNOTATION = "call_review"
 def _inbound_phone_call(organization_id: int, workflow_id: int | None):
     conditions = [
         WorkflowModel.organization_id == organization_id,
-        WorkflowRunModel.mode.in_(_TELEPHONY_MODES),
+        or_(
+            WorkflowRunModel.mode.in_(_TELEPHONY_MODES),
+            and_(
+                WorkflowRunModel.mode.in_(_BROWSER_CALL_MODES),
+                is_demo_organization_clause(organization_id),
+            ),
+        ),
         WorkflowRunModel.call_type == CallType.INBOUND.value,
     ]
     if workflow_id is not None:
