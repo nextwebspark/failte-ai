@@ -1,19 +1,27 @@
 """Follow-ups: which calls need a person, their order, the done mark and
 this week's summary. Pure functions; no database."""
 
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
+from zoneinfo import ZoneInfo
 
 from api.services.dashboard.calls import CallResult, CallView
 from api.services.dashboard.follow_ups import (
+    LOOKBACK,
+    FollowUp,
+    FollowUpFilter,
     FollowUpKind,
     FollowUpStatus,
     done_mark,
     follow_up_row,
     follow_ups,
     kind_counts,
+    matches,
     ordered,
+    text_matches,
     week_summary,
 )
+from api.services.dashboard.service import follow_up_window
+from api.services.dashboard.summary import DashboardRange
 
 NOW = datetime(2026, 11, 6, 15, 0, tzinfo=UTC)
 
@@ -323,3 +331,92 @@ def test_one_call_can_need_a_callback_and_an_answer_each_done_on_its_own():
     assert [i.kind for i in ordered(list(items.values()), FollowUpStatus.OPEN)] == [
         FollowUpKind.CALLBACK
     ]
+
+
+# ---------- The page's controls: dates, kind, search, All ----------
+
+DUBLIN = ZoneInfo("Europe/Dublin")
+
+
+def test_window_defaults_to_the_whole_follow_ups_window():
+    for range_ in (None, DashboardRange.LAST_30_DAYS):
+        start, end = follow_up_window(
+            range_=range_, start_date=None, end_date=None, tz=DUBLIN, now=NOW
+        )
+        assert (start, end) == (NOW - LOOKBACK, None)
+
+
+def test_window_today_and_seven_days_start_at_local_midnight():
+    start, end = follow_up_window(
+        range_=DashboardRange.TODAY, start_date=None, end_date=None, tz=DUBLIN, now=NOW
+    )
+    assert start == datetime(2026, 11, 6, 0, 0, tzinfo=DUBLIN) and end is None
+    start, _ = follow_up_window(
+        range_=DashboardRange.LAST_7_DAYS,
+        start_date=None,
+        end_date=None,
+        tz=DUBLIN,
+        now=NOW,
+    )
+    assert start == datetime(2026, 10, 31, 0, 0, tzinfo=DUBLIN)
+
+
+def test_window_days_picked_by_hand_include_the_last_day_and_stay_in_range():
+    start, end = follow_up_window(
+        range_=DashboardRange.TODAY,
+        start_date=date(2026, 11, 2),
+        end_date=date(2026, 11, 3),
+        tz=DUBLIN,
+        now=NOW,
+    )
+    assert start == datetime(2026, 11, 2, 0, 0, tzinfo=DUBLIN)
+    assert end == datetime(2026, 11, 4, 0, 0, tzinfo=DUBLIN)
+    # Before the window: clamped to it, never further back.
+    start, end = follow_up_window(
+        range_=None,
+        start_date=date(2026, 8, 1),
+        end_date=date(2026, 8, 2),
+        tz=DUBLIN,
+        now=NOW,
+    )
+    assert start == end == NOW - LOOKBACK
+
+
+def _item(kind=FollowUpKind.CALLBACK, **call):
+    return FollowUp(kind, _call(1, CallResult.CALLBACK_REQUESTED, **call))
+
+
+def test_filter_by_dates_and_kind():
+    item = _item(hours_ago=30)
+    assert matches(item, FollowUpFilter())
+    assert not matches(item, FollowUpFilter(start=NOW - timedelta(hours=24)))
+    assert matches(item, FollowUpFilter(end=NOW - timedelta(hours=24)))
+    assert not matches(item, FollowUpFilter(kind=FollowUpKind.TIME_WAS_FULL))
+    # The kind chips count without their own kind.
+    assert matches(item, FollowUpFilter(kind=FollowUpKind.TIME_WAS_FULL), kind=False)
+
+
+def test_search_finds_the_number_written_any_way_and_the_database_hits():
+    item = _item(hours_ago=1, caller="+353871234567")
+    assert text_matches(item, "087 123 4567")
+    assert text_matches(item, "1234567")
+    assert not text_matches(item, "0861234567")
+    assert not matches(item, FollowUpFilter(text="gluten", found=frozenset()))
+    # What was said on the call is found by the database search.
+    assert matches(item, FollowUpFilter(text="gluten", found=frozenset({1})))
+
+
+def test_status_all_lists_to_do_then_done():
+    calls = [
+        _call(1, CallResult.CALLBACK_REQUESTED, hours_ago=3, caller="+353870000001"),
+        _call(
+            2,
+            CallResult.CALLBACK_REQUESTED,
+            hours_ago=2,
+            caller="+353870000002",
+            mark={"done_at": (NOW - timedelta(hours=1)).isoformat()},
+        ),
+    ]
+    items = follow_ups(calls)
+    shown = ordered(items, FollowUpStatus.ALL)
+    assert [(i.call.run_id, i.done) for i in shown] == [(1, False), (2, True)]

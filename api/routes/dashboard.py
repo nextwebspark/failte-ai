@@ -1,6 +1,6 @@
 """Home (the dashboard) and Follow-ups."""
 
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from decimal import Decimal
 from typing import Annotated
 
@@ -175,10 +175,19 @@ class FollowUpWeek(BaseModel):
 
 class FollowUpListResponse(BaseModel):
     status: FollowUpStatus
+    # The calls shown came in at or after ``start`` and before ``end``.
+    start: datetime
+    end: datetime
+    # The zone the days are counted in.
+    timezone: str
     items: list[FollowUpItem]
+    # Per kind, under the tab, dates and search (not the kind picked).
     kind_counts: dict[str, int]
+    # Under the dates, kind and search (not the tab).
     open_count: int
     done_count: int
+    # Every open follow-up, whatever is picked: the menu badge's number.
+    open_total: int
     week: FollowUpWeek
     # Whether any real call ever came in (scoped like the list).
     has_calls: bool
@@ -231,13 +240,44 @@ async def list_follow_ups(
     membership: CallsReader,
     status: Annotated[FollowUpStatus, Query()] = FollowUpStatus.OPEN,
     workflow_id: Annotated[int | None, Query()] = None,
+    range: Annotated[
+        DashboardRange | None,
+        Query(description="Today, 7 days or 30 days (the default: all of them)"),
+    ] = None,
+    start_date: Annotated[
+        date | None,
+        Query(description="First day picked by hand; overrides range"),
+    ] = None,
+    end_date: Annotated[
+        date | None, Query(description="Last day picked by hand (inclusive)")
+    ] = None,
+    kind: Annotated[FollowUpKind | None, Query()] = None,
+    q: Annotated[
+        str | None,
+        Query(
+            max_length=200,
+            description="Search: the caller's name or number, why they rang, "
+            "the summary, or what was said",
+        ),
+    ] = None,
+    timezone: Annotated[
+        str | None,
+        Query(description="IANA zone; defaults to the agent's or workspace's"),
+    ] = None,
 ) -> FollowUpListResponse:
-    """Calls from the last 30 days that need a person."""
+    """Calls from the last 30 days that need a person, narrowed by the
+    page's controls."""
     await _check_workflow(membership.organization_id, workflow_id)
     result = await follow_up_list(
         organization_id=membership.organization_id,
         status=status,
         workflow_id=workflow_id,
+        range_=range,
+        start_date=start_date,
+        end_date=end_date,
+        kind=kind,
+        q=q,
+        timezone=timezone,
     )
     return FollowUpListResponse(**result)
 

@@ -16,6 +16,7 @@ import { EmptyState } from '@/components/page-states/EmptyState';
 import { CallerDataRequestDialog } from '@/components/privacy/CallerDataRequestDialog';
 import { Button } from '@/components/ui/button';
 import { PageHeader } from '@/components/ui/page-header';
+import { Skeleton } from '@/components/ui/skeleton';
 import { useUserConfig } from '@/context/UserConfigContext';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { useDispositionCodes } from '@/hooks/useDispositionCodes';
@@ -135,7 +136,7 @@ export default function UsagePage() {
     const auth = useAuth();
     const isPhone = useIsMobile();
     // A computer: the call opens in a column beside the list.
-    const isWide = useMinWidth(1440);
+    const isWide = useMinWidth(1280);
     // Narrower than this (phones, tablets), the list is cards, not a table.
     const tableFits = useMinWidth(1100);
     const listId = useId();
@@ -283,12 +284,17 @@ export default function UsagePage() {
         };
     }, [auth.isAuthenticated, openCallId, list.state, runs, linkedRun?.id]);
 
-    // On a computer the first call shows beside the list until another is chosen.
+    // On a computer the newest call shows beside the list until another is
+    // chosen. It isn't put in the URL and doesn't take focus: nothing was picked.
     const openRun = openCallId
         ? runs.find(run => run.id === openCallId) ?? (linkedRun?.id === openCallId ? linkedRun : null)
         : isWide && !previewDismissed
-            ? runs.find(run => run.recording_url) ?? runs[0] ?? null
+            ? runs[0] ?? null
             : null;
+    // While the list loads the layout already holds the call's column, so
+    // nothing jumps when the newest call arrives.
+    const panelLoading = isWide && !openRun && list.state === 'loading' && (!previewDismissed || Boolean(openCallId));
+    const sideBySide = isWide && (Boolean(openRun) || panelLoading);
     const panelLayout = isWide ? 'column' : 'overlay';
     const overlayOpen = Boolean(openRun) && panelLayout === 'overlay';
 
@@ -492,8 +498,8 @@ export default function UsagePage() {
     };
 
     return (
-        <div className="page-body">
-            <div className={cn('mx-auto flex flex-col gap-6', isWide && openRun ? 'max-w-[1400px]' : 'max-w-6xl')}>
+        <div className={cn('page-body', sideBySide && 'max-w-[1720px]')}>
+            <div className={cn('flex flex-col gap-6', !sideBySide && 'mx-auto max-w-6xl')}>
                 <div inert={overlayOpen} className="flex flex-col">
                     <PageHeader
                         className="mb-0"
@@ -516,7 +522,7 @@ export default function UsagePage() {
                 <div
                     className={cn(
                         'grid items-start gap-4',
-                        isWide && openRun && 'grid-cols-[minmax(0,1fr)_380px]'
+                        sideBySide && 'grid-cols-[minmax(0,1fr)_minmax(420px,min(42%,640px))]'
                     )}
                 >
                     <div inert={overlayOpen} className="flex min-w-0 flex-col gap-4">
@@ -557,7 +563,7 @@ export default function UsagePage() {
                                 {list.state === 'loading' ? (
                                     <>
                                         <span className="sr-only" role="status">Loading calls</span>
-                                        {tableFits ? <CallsTableSkeleton /> : <CallCardsSkeleton />}
+                                        {tableFits && !isWide ? <CallsTableSkeleton /> : <CallCardsSkeleton />}
                                     </>
                                 ) : list.state === 'error' ? (
                                     <EmptyState
@@ -613,7 +619,7 @@ export default function UsagePage() {
                                                     : `No calls ${tabUsesDates(query.tab) ? whenPhrase(query) : 'in the last 30 days'}${query.outcome || query.who || appliedExpert.length ? ' with these filters' : ''}.`}
                                         </EmptyState>
                                     )
-                                ) : !tableFits ? (
+                                ) : !tableFits || sideBySide ? (
                                     <CallCards {...rowProps} />
                                 ) : (
                                     <CallsTable {...rowProps} />
@@ -679,6 +685,15 @@ export default function UsagePage() {
                         )}
                     </div>
 
+                    {panelLoading && (
+                        <div aria-hidden className="flex flex-col gap-4 rounded-xl border border-line bg-panel p-6">
+                            <Skeleton className="h-6 w-40 rounded-full" />
+                            <Skeleton className="h-7 w-2/3" />
+                            <Skeleton className="h-14 w-full rounded-xl" />
+                            <Skeleton className="h-4 w-full" />
+                            <Skeleton className="h-4 w-5/6" />
+                        </div>
+                    )}
                     {openRun && (
                         <>
                             {overlayOpen && (

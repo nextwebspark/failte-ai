@@ -1,16 +1,16 @@
 import { Play } from "lucide-react";
 import Link from "next/link";
 
+import { CHIP_CLASSES, type ChipTone } from "@/components/dashboard/dashboardView";
 import { Skeleton } from "@/components/ui/skeleton";
-import { StatusPill } from "@/components/ui/status-pill";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { ROW_LINK, ROW_LINK_CONTAINER } from "@/lib/rowLink";
 import { cn } from "@/lib/utils";
 
+import { callResultChip } from "./callOutcome";
 import {
     callerNameOf,
     callNumberOf,
-    callOutcome,
     type CallRow,
     callSummary,
     formatCallWhen,
@@ -81,7 +81,7 @@ export function CallsTable({ runs, timezone, selectedId, hrefFor, onPlay, onOpen
     // on this page the column would be empty, so it goes.
     const showWhat = runs.some((run) => callSummary(run));
     return (
-        <Table className="[&_td]:px-3 [&_th]:px-3 [&_td:first-child]:pl-4 [&_td:first-child]:pr-0 [&_th:first-child]:pl-4 [&_th:first-child]:pr-0">
+        <Table className="text-[14.5px] [&_th]:text-[12px] [&_td]:px-3 [&_th]:px-3 [&_td:first-child]:pl-4 [&_td:first-child]:pr-0 [&_th:first-child]:pl-4 [&_th:first-child]:pr-0">
             <TableHeader className="bg-transparent">
                 <TableRow className="hover:bg-transparent">
                     <TableHead className="w-12 pr-0"><span className="sr-only">Recording</span></TableHead>
@@ -95,7 +95,7 @@ export function CallsTable({ runs, timezone, selectedId, hrefFor, onPlay, onOpen
             <TableBody>
                 {runs.map((run) => {
                     const { name, number } = callerLines(run);
-                    const outcome = callOutcome(run);
+                    const outcome = callResultChip(run);
                     const what = callSummary(run);
                     const when = formatCallWhen(run.created_at, timezone);
                     const selected = run.id === selectedId;
@@ -117,7 +117,7 @@ export function CallsTable({ runs, timezone, selectedId, hrefFor, onPlay, onOpen
                                     scroll={false}
                                     onClick={() => onOpen?.(run)}
                                     aria-current={selected ? "true" : undefined}
-                                    className={cn(ROW_LINK, "block truncate font-semibold text-foreground")}
+                                    className={cn(ROW_LINK, "block truncate text-[15px] font-semibold text-foreground")}
                                 >
                                     {name}
                                     <span className="sr-only">, {when}</span>
@@ -143,7 +143,7 @@ export function CallsTable({ runs, timezone, selectedId, hrefFor, onPlay, onOpen
                                 <span aria-hidden>{formatLength(run.call_duration_seconds)}</span>
                                 <span className="sr-only">{spokenLength(run.call_duration_seconds)}</span>
                             </TableCell>
-                            <TableCell className="whitespace-nowrap py-3 text-right text-ink-3">{when}</TableCell>
+                            <TableCell className="whitespace-nowrap py-3 text-right text-ink-2">{when}</TableCell>
                         </TableRow>
                     );
                 })}
@@ -152,23 +152,22 @@ export function CallsTable({ runs, timezone, selectedId, hrefFor, onPlay, onOpen
     );
 }
 
-/** The outcome as the shared status pill, in sentence case like the rest of the list. */
+/** How the call went: the same chip, words and colours as Home and Follow-ups. */
 export function OutcomeChip({ label, tone, className }: {
     label: string;
-    tone: React.ComponentProps<typeof StatusPill>["tone"];
+    tone: ChipTone;
     className?: string;
 }) {
     return (
-        <StatusPill
-            tone={tone}
+        <span
             className={cn(
-                "whitespace-nowrap rounded-full px-2.5 py-1 text-[12px] font-semibold normal-case tracking-normal",
-                tone === "mute" && "bg-panel-2 text-ink-2",
+                "inline-flex items-center whitespace-nowrap rounded-full px-2.5 py-[3px] text-[12.5px] font-semibold leading-5",
+                CHIP_CLASSES[tone],
                 className,
             )}
         >
             {label}
-        </StatusPill>
+        </span>
     );
 }
 

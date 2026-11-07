@@ -187,6 +187,16 @@ describe("Calls list", () => {
         expect(screen.getByText("+353 87 123 4567")).toBeTruthy();
     });
 
+    it("reads each call the way Home does, not by the stored ending code", async () => {
+        const booked = { ...RUN, id: 502, disposition: "end_call", result: "booking_made", gathered_context: { mapped_call_disposition: "end_call" } };
+        const handled = { ...RUN, id: 503, disposition: "end_call", result: "handled", gathered_context: { mapped_call_disposition: "end_call" } };
+        mocks.history.mockResolvedValue({ data: { ...PAGE, runs: [booked, handled] } });
+        render(<UsagePage />);
+        expect(await screen.findByText("Booking made")).toBeTruthy();
+        expect(screen.getByText("Handled by your agent")).toBeTruthy();
+        expect(screen.queryByText("Call finished")).toBeNull();
+    });
+
     it("searches names and numbers through the API", async () => {
         render(<UsagePage />);
         await screen.findByText("Sinéad O'Brien");
@@ -332,7 +342,7 @@ describe("One call", () => {
         });
         render(<UsagePage />);
         expect(await screen.findByText(/This call is still going on/)).toBeTruthy();
-        expect(screen.getAllByText("Call in progress").length).toBeGreaterThan(0);
+        expect(screen.getAllByText("On the line now").length).toBeGreaterThan(0);
     });
 
     it("doesn't call an old unfinished call live", async () => {

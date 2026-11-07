@@ -8,6 +8,7 @@ from sqlalchemy import String, and_, exists, func, or_, select
 from sqlalchemy.orm import selectinload
 
 from api.db.base_client import BaseDBClient
+from api.db.filters import caller_search
 from api.db.models import (
     OrganizationConfigurationModel,
     TelephonyConfigurationModel,
@@ -143,6 +144,19 @@ class DashboardClient(BaseDBClient):
                 )
             )
             return {row.id: row.logs or {} for row in result.all()}
+
+    async def search_calls(self, run_ids: list[int], text: str) -> set[int]:
+        """Which of ``run_ids`` the Calls search box would find for ``text``:
+        the caller's name or number, the summary, or anything said."""
+        if not run_ids or not text.strip():
+            return set()
+        async with self.async_session() as session:
+            result = await session.execute(
+                select(WorkflowRunModel.id).where(
+                    WorkflowRunModel.id.in_(run_ids), caller_search(text.strip())
+                )
+            )
+            return {row.id for row in result.all()}
 
     async def count_inbound_calls(
         self,

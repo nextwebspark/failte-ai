@@ -2067,7 +2067,8 @@ export const getDashboardSummaryApiV1DashboardSummaryGet = <ThrowOnError extends
 /**
  * List Follow Ups
  *
- * Calls from the last 30 days that need a person.
+ * Calls from the last 30 days that need a person, narrowed by the
+ * page's controls.
  */
 export const listFollowUpsApiV1FollowUpsGet = <ThrowOnError extends boolean = false>(options?: Options<ListFollowUpsApiV1FollowUpsGetData, ThrowOnError>): RequestResult<ListFollowUpsApiV1FollowUpsGetResponses, ListFollowUpsApiV1FollowUpsGetErrors, ThrowOnError> => (options?.client ?? client).get<ListFollowUpsApiV1FollowUpsGetResponses, ListFollowUpsApiV1FollowUpsGetErrors, ThrowOnError>({ url: '/api/v1/follow-ups', ...options });
 
