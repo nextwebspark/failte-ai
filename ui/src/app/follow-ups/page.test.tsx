@@ -130,4 +130,13 @@ describe("Follow-ups", () => {
         expect(await screen.findByText("All caught up")).toBeTruthy();
         expect(screen.getByRole("link", { name: "See all calls" }).getAttribute("href")).toBe("/usage");
     });
+
+    it("says there are no calls yet, not all caught up, before the first call", async () => {
+        mocks.list.mockResolvedValue({ data: { ...response([]), has_calls: false } });
+        render(<FollowUpsPage />);
+        expect(await screen.findByText("No calls yet")).toBeTruthy();
+        expect(screen.queryByText("All caught up")).toBeNull();
+        expect(screen.queryByText(/sample/i)).toBeNull();
+        expect(screen.getByRole("link", { name: "Go to Home" }).getAttribute("href")).toBe("/overview");
+    });
 });

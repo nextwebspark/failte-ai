@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertTriangle, CheckCircle2, RefreshCw } from "lucide-react";
+import { AlertTriangle, CheckCircle2, PhoneIncoming, RefreshCw } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
 
@@ -8,8 +8,6 @@ import type { FollowUpItem, FollowUpKind, FollowUpListResponse, FollowUpStatus }
 import { AddAnswerDialog } from "@/components/dashboard/AddAnswerDialog";
 import { FOLLOW_UP_KINDS, FOLLOW_UP_WORDS, followUpKey, waitWords } from "@/components/dashboard/dashboardView";
 import { FollowUpRow } from "@/components/dashboard/FollowUpRow";
-import { SampleBanner } from "@/components/dashboard/SampleBanner";
-import { sampleFollowUpItems } from "@/components/dashboard/sampleView";
 import { useFollowUpMarking, useFollowUps } from "@/components/dashboard/useDashboardData";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -17,7 +15,6 @@ import { PageHeader } from "@/components/ui/page-header";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useOrgConfig } from "@/context/OrgConfigContext";
 import { useOrganizationTimezone } from "@/hooks/useOrganizationTimezone";
-import { useSampleMode } from "@/lib/sampleData";
 import { cn } from "@/lib/utils";
 
 import { groupByCaller } from "./groups";
@@ -164,10 +161,7 @@ export default function FollowUpsPage() {
     const canAnswer = can("agents:facts") && canMark;
     const now = new Date();
 
-    const real = result.state === "ready" ? result.data : null;
-    // Until the first real call, the sample calls' follow-ups show instead.
-    const { showSample, hide } = useSampleMode(real ? real.has_calls : null);
-    const data: FollowUpListResponse | null = real && showSample ? sampleList(status, now) : real;
+    const data: FollowUpListResponse | null = result.state === "ready" ? result.data : null;
     const items = (data?.items ?? []).filter((item) => kind === "all" || item.kind === kind);
     const groups = groupByCaller(items);
 
@@ -183,13 +177,6 @@ export default function FollowUpsPage() {
                 title="Follow-ups"
                 description="Calls that need a person. Mark each one done when it's sorted."
             />
-            {showSample && real && (
-                <SampleBanner
-                    className="mb-4"
-                    text="This is how Follow-ups looks once calls come in. These calls are made up."
-                    onHide={hide}
-                />
-            )}
             <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
                 <section aria-label="Follow-ups list" className="min-w-0 overflow-hidden rounded-[14px] border border-line bg-panel shadow-xs">
                     <Tabs status={status} onChange={switchStatus} data={data} />
@@ -214,7 +201,18 @@ export default function FollowUpsPage() {
                                 <KindChips value={kind} onChange={setKind} counts={data.kind_counts} total={data.items.length} />
                             )}
                             {data.items.length === 0 ? (
-                                status === "open" ? (
+                                !data.has_calls ? (
+                                    <EmptyState
+                                        icon={PhoneIncoming}
+                                        title="No calls yet"
+                                        description="Callers who need a person show up here: callback requests, transfers nobody answered and questions your agent couldn't answer. Try your agent or link a phone number to get your first calls."
+                                        action={
+                                            <Button asChild variant="soft">
+                                                <Link href="/overview">Go to Home</Link>
+                                            </Button>
+                                        }
+                                    />
+                                ) : status === "open" ? (
                                     <EmptyState
                                         icon={CheckCircle2}
                                         title="All caught up"
@@ -250,7 +248,6 @@ export default function FollowUpsPage() {
                                                         now={now}
                                                         returnTo="/follow-ups"
                                                         meta="waiting"
-                                                        sample={showSample}
                                                         busy={busy === followUpKey(item)}
                                                         onMarkDone={canMark ? (i) => void change(i, true) : undefined}
                                                         onUndo={canMark ? (i) => void change(i, false) : undefined}
@@ -270,21 +267,4 @@ export default function FollowUpsPage() {
             <AddAnswerDialog item={answering} onClose={() => setAnswering(null)} />
         </div>
     );
-}
-
-/** The follow-ups of the sample calls (none done). */
-function sampleList(status: FollowUpStatus, now: Date): FollowUpListResponse {
-    const open = sampleFollowUpItems(undefined, now);
-    const items = status === "open" ? open : [];
-    const counts: Record<string, number> = Object.fromEntries(FOLLOW_UP_KINDS.map((k) => [k, 0]));
-    for (const item of items) counts[item.kind] += 1;
-    return {
-        status,
-        items,
-        kind_counts: counts,
-        open_count: open.length,
-        done_count: 0,
-        week: { raised: open.length, sorted: 0, median_wait_minutes: null },
-        has_calls: false,
-    };
 }

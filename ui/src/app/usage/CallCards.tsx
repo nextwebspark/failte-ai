@@ -7,7 +7,6 @@ import { cn } from "@/lib/utils";
 
 import { callerLines, type CallRowProps, OutcomeChip, PlayButton } from "./CallsTable";
 import { callOutcome, callSummary, formatCallWhen, formatLength, spokenLength } from "./callsView";
-import { isSampleRun } from "./sampleRuns";
 
 /**
  * The calls list on a phone: one card per call instead of a wide table. The
@@ -32,7 +31,7 @@ export function CallCards({ runs, timezone, selectedId, hrefFor, onPlay, onOpen 
                             selected && "bg-brand-dim",
                         )}
                     >
-                        {run.recording_url || isSampleRun(run) ? (
+                        {run.recording_url ? (
                             <PlayButton run={run} label={`${name}, ${when}`} onPlay={onPlay} className="mt-0.5 size-10" />
                         ) : (
                             // No recording: a plain marker keeps the cards lined up.

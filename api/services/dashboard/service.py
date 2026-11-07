@@ -184,7 +184,7 @@ async def dashboard_summary(
         "recent_calls": recent_calls(calls),
         "callers_wanted": callers_wanted(calls),
         "wording": await _wording(organization_id, workflow_id, agents),
-        # Whether any real call ever came in (else screens may show samples).
+        # Whether any call ever came in (else screens show their first-call steps).
         "has_calls": last_call_at is not None,
         "agent_status": status,
         "credit": credit if show_credit else None,

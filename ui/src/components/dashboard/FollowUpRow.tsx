@@ -105,17 +105,6 @@ interface FollowUpRowProps {
     /** "Add answer" on a question the agent couldn't answer. */
     onAddAnswer?: (item: FollowUpItem) => void;
     busy?: boolean;
-    /** A made-up call: its buttons are shown but do nothing. */
-    sample?: boolean;
-}
-
-/** A sample call's button: shown so the owner sees it, but it does nothing. */
-function SampleButton({ children, variant = "soft" }: { children: ReactNode; variant?: "soft" | "default" | "ghost" }) {
-    return (
-        <Button size="sm" variant={variant} disabled title="Sample call: nothing to do">
-            {children}
-        </Button>
-    );
 }
 
 function OpenCallLink({ item, returnTo }: { item: Pick<FollowUpItem, "workflow_id" | "run_id">; returnTo: string }) {
@@ -137,7 +126,6 @@ export function FollowUpRow({
     onUndo,
     onAddAnswer,
     busy,
-    sample = false,
 }: FollowUpRowProps) {
     const words = FOLLOW_UP_WORDS[item.kind];
     const done = Boolean(item.done_at);
@@ -186,23 +174,6 @@ export function FollowUpRow({
                                 <Undo2 aria-hidden />
                                 Undo
                             </Button>
-                        )}
-                    </>
-                ) : sample ? (
-                    <>
-                        <span className="mr-1 text-[12px] font-medium text-ink-3">Sample call</span>
-                        {item.kind === "unanswered_question" ? (
-                            <SampleButton>
-                                <MessageSquarePlus aria-hidden />
-                                Add answer
-                            </SampleButton>
-                        ) : item.kind === "time_was_full" ? (
-                            <SampleButton variant="ghost">Open call</SampleButton>
-                        ) : (
-                            <SampleButton variant="default">
-                                <Phone aria-hidden />
-                                Call back
-                            </SampleButton>
                         )}
                     </>
                 ) : item.kind === "unanswered_question" ? (

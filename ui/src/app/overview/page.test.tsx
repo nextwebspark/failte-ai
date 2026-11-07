@@ -163,34 +163,18 @@ describe("Home", () => {
             agent_status: { answering: true, reason: null, phone_numbers: ["+35315550142"], last_call_at: null },
         });
 
-    it("gives a brand-new business a checklist, then the sample day, clearly labelled", async () => {
+    it("gives a brand-new business the checklist and its agent, with no made-up calls or empty charts", async () => {
         mocks.summary.mockResolvedValue({ data: BRAND_NEW() });
         render(<OverviewPage />);
         expect(await screen.findByText("Ring your number now")).toBeTruthy();
         expect(screen.getByText("Take your first call")).toBeTruthy();
-        const banner = screen.getByRole("region", { name: "Sample data" });
-        expect(banner.textContent).toMatch(/These calls are made up/);
-        // The sample day: 46 calls, the restaurant's reasons, made-up callers.
-        expect(screen.getByText("Handled by your agent")).toBeTruthy();
-        expect(screen.getAllByText("Reservations").length).toBeGreaterThan(0);
-        expect(screen.getAllByText("Declan Murphy").length).toBeGreaterThan(0);
-        // Nothing on a sample call does anything.
-        expect(screen.queryAllByRole("link", { name: /listen to the call/i })).toHaveLength(0);
-        expect(screen.getAllByText("Sample call").length).toBeGreaterThan(0);
-        for (const button of screen.getAllByRole("button", { name: /call back|mark done|add answer/i })) {
-            expect((button as HTMLButtonElement).disabled).toBe(true);
-        }
-        // No range to switch on a made-up day.
-        expect(screen.queryByRole("button", { name: "7 days" })).toBeNull();
-    });
-
-    it("hidden sample data leaves just the checklist", async () => {
-        mocks.summary.mockResolvedValue({ data: BRAND_NEW() });
-        render(<OverviewPage />);
-        fireEvent.click(await screen.findByRole("button", { name: /hide sample data/i }));
-        await waitFor(() => expect(screen.queryByText("Handled by your agent")).toBeNull());
-        expect(screen.getByText("Take your first call")).toBeTruthy();
-        expect(screen.getByRole("button", { name: "Show sample data" })).toBeTruthy();
+        expect(screen.getByText("Your agent")).toBeTruthy();
+        expect(screen.getByText("No calls yet")).toBeTruthy();
+        // No tiles, charts or sample calls until a real call comes in.
+        expect(screen.queryByText("Handled by your agent")).toBeNull();
+        expect(screen.queryByText("When people called")).toBeNull();
+        expect(screen.queryByText("Declan Murphy")).toBeNull();
+        expect(screen.queryByText(/sample/i)).toBeNull();
     });
 
     it("shows what callers wanted, with counts and percents, and the bookings taken", async () => {
