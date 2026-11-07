@@ -1,5 +1,6 @@
 import { endOfDay, startOfDay, subDays } from "date-fns";
 
+import type { WorkflowRunUsageResponse } from "@/client/types.gen";
 import type { StatusTone } from "@/components/ui/status-pill";
 
 /*
@@ -189,6 +190,9 @@ export function whenPhrase(query: Pick<CallsQuery, "when" | "start" | "end">): s
             return `in the ${whenLabel(query).toLowerCase()}`;
     }
 }
+
+/** A row of the Calls list, as the usage API returns it. */
+export type CallRow = WorkflowRunUsageResponse;
 
 /** One filter object as the usage API takes it (see FILTERS_DESCRIPTION). */
 export interface ApiFilter {

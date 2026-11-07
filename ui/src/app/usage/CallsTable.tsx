@@ -11,6 +11,7 @@ import {
     callerNameOf,
     callNumberOf,
     callOutcome,
+    type CallRow,
     callSummary,
     formatCallWhen,
     formatLength,
@@ -18,7 +19,6 @@ import {
     isDialable,
     spokenLength,
 } from "./callsView";
-import { type CallRow, isSampleRun } from "./sampleRuns";
 
 export interface CallRowProps {
     runs: CallRow[];
@@ -53,24 +53,6 @@ export function PlayButton({ run, label, onPlay, className }: {
     onPlay: (run: CallRow) => void;
     className?: string;
 }) {
-    if (isSampleRun(run)) {
-        // A sample has nothing to play; say so rather than hide the button.
-        return (
-            <button
-                type="button"
-                aria-disabled="true"
-                aria-label={`Sample call, no recording: ${label}`}
-                title="Sample call, no recording"
-                onClick={(event) => event.preventDefault()}
-                className={cn(
-                    "relative z-10 grid size-8 cursor-not-allowed place-items-center rounded-full bg-panel-2 text-ink-3 outline-none focus-visible:ring-[3px] focus-visible:ring-ring/40",
-                    className,
-                )}
-            >
-                <Play className="size-3.5" aria-hidden />
-            </button>
-        );
-    }
     if (!run.recording_url) {
         return <span className={cn("block size-8", className)} aria-hidden />;
     }

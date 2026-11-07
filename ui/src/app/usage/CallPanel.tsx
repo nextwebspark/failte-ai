@@ -11,7 +11,6 @@ import {
     MessageCircleQuestion,
     Phone,
     RefreshCw,
-    Share2,
     X,
 } from "lucide-react";
 import Link from "next/link";
@@ -38,6 +37,7 @@ import {
     callDetails,
     callNumberOf,
     callOutcome,
+    type CallRow,
     capturedValues,
     formatCallWhen,
     formatLengthWords,
@@ -46,7 +46,6 @@ import {
     IN_PROGRESS_FOR_MS,
     isDialable,
 } from "./callsView";
-import { type CallRow, isSampleRun } from "./sampleRuns";
 import { ShareRecordingDialog } from "./ShareRecordingDialog";
 
 /** A recording usually lands within a minute or two of the call ending. */
@@ -113,7 +112,6 @@ export function CallPanel({ run, timezone, autoplay, focusOnOpen, layout, isPhon
     const when = formatCallWhen(run.created_at, timezone);
     const rawNumber = callNumberOf(run);
     const isTest = run.mode === "webrtc" || run.mode === "smallwebrtc" || run.mode === "textchat";
-    const sample = isSampleRun(run) ? run.sample ?? null : null;
 
     // Move focus to the call when it opens, so keyboard and screen-reader
     // users land on it (the list stays where it was).
@@ -123,14 +121,6 @@ export function CallPanel({ run, timezone, autoplay, focusOnOpen, layout, isPhon
 
     useEffect(() => {
         let cancelled = false;
-        if (run.id < 0) {
-            // A sample call is all in the browser: nothing to fetch.
-            setRecord({
-                state: "ready",
-                data: { is_completed: true, recording_url: null, transcript_url: null, gathered_context: null, events: [] },
-            });
-            return;
-        }
         setRecord({ state: "loading" });
         getWorkflowRunApiV1WorkflowWorkflowIdRunsRunIdGet({
             path: { workflow_id: run.workflow_id, run_id: run.id },
@@ -197,18 +187,14 @@ export function CallPanel({ run, timezone, autoplay, focusOnOpen, layout, isPhon
         return () => window.removeEventListener("keydown", onKey);
     }, [layout, onClose]);
 
-    const gathered = record.state === "ready" && !sample ? record.data.gathered_context : run.gathered_context ?? null;
+    const gathered = record.state === "ready" ? record.data.gathered_context : run.gathered_context ?? null;
     const details = useMemo(() => callDetails(gathered), [gathered]);
     const lines = useMemo(
         () =>
-            sample
-                ? sample.transcript.map(
-                    (turn, index): Line => ({ id: `sample-${index}`, who: turn.role === "agent" ? "Agent" : "Caller", text: turn.text }),
-                )
-                : record.state === "ready"
-                    ? linesFrom(record.data.events, record.data.gathered_context?.tool_results)
-                    : [],
-        [record, sample],
+            record.state === "ready"
+                ? linesFrom(record.data.events, record.data.gathered_context?.tool_results)
+                : [],
+        [record],
     );
     const searchWords = highlight.trim();
     const hits = useMemo(() => {
@@ -326,18 +312,12 @@ export function CallPanel({ run, timezone, autoplay, focusOnOpen, layout, isPhon
                                 <li key={index}>{question}</li>
                             ))}
                         </ul>
-                        {sample ? (
-                            <p className="mt-2 text-[12.5px] text-ink-3">
-                                On a real call, this links to What your agent knows, where you add the answer.
-                            </p>
-                        ) : (
-                            <Link
+                        <Link
                                 href={agentFactsHref(run.workflow_id)}
                                 className="mt-2 inline-flex min-h-10 items-center rounded-sm text-sm font-semibold text-brand outline-none hover:underline focus-visible:ring-[3px] focus-visible:ring-ring/40 sm:min-h-0"
                             >
                                 Add the answer in What your agent knows
                             </Link>
-                        )}
                     </section>
                 )}
 
@@ -426,27 +406,6 @@ export function CallPanel({ run, timezone, autoplay, focusOnOpen, layout, isPhon
                     )}
                 </section>
 
-                {sample ? (
-                    <div className="flex flex-col gap-2">
-                        <div className="flex flex-wrap items-center gap-2">
-                            <Button className="h-10 sm:h-9" disabled aria-describedby={`${headingId}-sample-note`}>
-                                <Phone aria-hidden />
-                                Call back
-                            </Button>
-                            <Button variant="outline" className="h-10 sm:h-9" disabled aria-describedby={`${headingId}-sample-note`}>
-                                <Share2 aria-hidden />
-                                Share recording
-                            </Button>
-                            <Button variant="outline" className="h-10 sm:h-9" disabled aria-describedby={`${headingId}-sample-note`}>
-                                <Download aria-hidden />
-                                Download recording
-                            </Button>
-                        </div>
-                        <p id={`${headingId}-sample-note`} className="text-[12.5px] text-ink-3">
-                            This is a sample call, so there&apos;s nobody to ring back and no recording to share or download.
-                        </p>
-                    </div>
-                ) : (
                 <div className="flex flex-wrap items-center gap-2">
                     {callbackNumber && !isTest && (
                         <CallBack number={callbackNumber} isPhone={isPhone} />
@@ -471,7 +430,6 @@ export function CallPanel({ run, timezone, autoplay, focusOnOpen, layout, isPhon
                         Report a problem
                     </a>
                 </div>
-                )}
 
                 <details className="group rounded-lg border border-line-soft">
                     <summary className="flex min-h-10 cursor-pointer list-none items-center justify-between gap-3 rounded-lg px-3 py-2 text-[13.5px] font-semibold text-ink-2 outline-none focus-visible:ring-[3px] focus-visible:ring-ring/40 [&::-webkit-details-marker]:hidden">
@@ -573,9 +531,6 @@ function Recording({ record, stillGoing, run, autoplay, onRetry }: {
         }
     }, [autoplay, src]);
 
-    if (run.id < 0) {
-        return <Notice>Sample call, no recording. Real calls play here.</Notice>;
-    }
     if (record.state === "loading" || src?.state === "loading") {
         return <Skeleton className="h-14 w-full rounded-xl" aria-label="Loading the recording" />;
     }

@@ -17,7 +17,7 @@ import {
     RefreshCw,
 } from "lucide-react";
 import Link from "next/link";
-import { type ReactNode, useMemo, useState } from "react";
+import { type ReactNode, useState } from "react";
 
 import { formatPhone } from "@/app/usage/callsView";
 import type {
@@ -32,7 +32,6 @@ import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { agentFactsHref, agentTalkHref } from "@/components/workflow/agentLinks";
 import { useOrgConfig } from "@/context/OrgConfigContext";
-import { useSampleMode } from "@/lib/sampleData";
 import { cn } from "@/lib/utils";
 
 import { AddAnswerDialog } from "./AddAnswerDialog";
@@ -43,7 +42,6 @@ import {
     callsTileLabel,
     callWhen,
     changeWords,
-    type ChipTone,
     euros,
     followUpKey,
     lastCallWords,
@@ -56,8 +54,6 @@ import {
 import { Chip, FollowUpRow } from "./FollowUpRow";
 import { HomeSkeleton } from "./HomeSkeleton";
 import { HourlyCallsChart } from "./HourlyCallsChart";
-import { SampleBanner, SampleDataPill } from "./SampleBanner";
-import { SAMPLE_OUTCOME_WORDS, sampleFollowUpItems, sampleOutcomes, sampleSummary } from "./sampleView";
 import { useDashboardSummary, useFollowUpMarking, useFollowUps } from "./useDashboardData";
 
 const ATTENTION_LIMIT = 4;
@@ -298,7 +294,6 @@ function Attention({
     timezone,
     now,
     followUpsHref,
-    sample,
     onAddAnswer,
 }: {
     items: FollowUpItem[] | null;
@@ -306,7 +301,6 @@ function Attention({
     timezone: string;
     now: Date;
     followUpsHref: string;
-    sample: boolean;
     onAddAnswer: (item: FollowUpItem) => void;
 }) {
     const { can } = useOrgConfig();
@@ -344,7 +338,6 @@ function Attention({
                             timezone={timezone}
                             now={now}
                             returnTo="/overview"
-                            sample={sample}
                             busy={busy === followUpKey(item)}
                             // Done here only for the review kinds (no call to return).
                             onMarkDone={
@@ -361,22 +354,7 @@ function Attention({
     );
 }
 
-/** A recent call's chip: its result, or a sample call's own outcome. */
-type ChipFor = (call: DashboardRecentCall) => { label: string; tone: ChipTone };
-
-function PlayLink({ call, returnTo, sample }: { call: DashboardRecentCall; returnTo: string; sample: boolean }) {
-    if (sample) {
-        return (
-            <span
-                className="grid size-7 place-items-center rounded-full bg-panel-2 text-ink-3"
-                title="Sample call: there's no recording"
-                aria-label="Sample call: there's no recording"
-                role="img"
-            >
-                <Play className="size-3 fill-current" aria-hidden />
-            </span>
-        );
-    }
+function PlayLink({ call, returnTo }: { call: DashboardRecentCall; returnTo: string }) {
     if (!call.has_recording) {
         return <span className="block size-7" aria-hidden />;
     }
@@ -391,28 +369,15 @@ function PlayLink({ call, returnTo, sample }: { call: DashboardRecentCall; retur
     );
 }
 
-function RecentCalls({
-    summary,
-    now,
-    sample,
-    chipFor,
-}: {
-    summary: DashboardSummaryResponse;
-    now: Date;
-    sample: boolean;
-    chipFor: ChipFor;
-}) {
+function RecentCalls({ summary, now }: { summary: DashboardSummaryResponse; now: Date }) {
     const calls = summary.recent_calls;
     const returnTo = "/overview";
-    // A sample call has nothing to open.
-    const CallerLink = ({ call, className, children }: { call: DashboardRecentCall; className: string; children: ReactNode }) =>
-        sample ? (
-            <span className={className}>{children}</span>
-        ) : (
-            <Link href={runDetailHref(call.workflow_id, call.run_id, returnTo)} className={className}>
-                {children}
-            </Link>
-        );
+    const chipFor = (call: DashboardRecentCall) => RESULT_WORDS[call.result];
+    const CallerLink = ({ call, className, children }: { call: DashboardRecentCall; className: string; children: ReactNode }) => (
+        <Link href={runDetailHref(call.workflow_id, call.run_id, returnTo)} className={className}>
+            {children}
+        </Link>
+    );
     return (
         <Card titleId="home-recent" title="Recent calls" action={<CardLink href="/usage">All calls</CardLink>}>
             {calls.length === 0 ? (
@@ -425,7 +390,7 @@ function RecentCalls({
                     <ul className="flex flex-col @xl:hidden">
                         {calls.map((call) => (
                             <li key={call.run_id} className="flex items-start gap-3 border-t border-line-soft py-2.5 first:border-t-0">
-                                <PlayLink call={call} returnTo={returnTo} sample={sample} />
+                                <PlayLink call={call} returnTo={returnTo} />
                                 <CallerLink call={call} className="min-w-0 flex-1 outline-none focus-visible:underline">
                                     <span className="block truncate text-[13.5px] font-semibold text-foreground">{callerWords(call)}</span>
                                     {call.summary && <span className="mt-0.5 block text-[12.5px] leading-snug text-ink-2">{call.summary}</span>}
@@ -454,7 +419,7 @@ function RecentCalls({
                             {calls.map((call) => (
                                 <tr key={call.run_id} className="border-b border-line-soft last:border-b-0">
                                     <td className="py-2.5 align-top">
-                                        <PlayLink call={call} returnTo={returnTo} sample={sample} />
+                                        <PlayLink call={call} returnTo={returnTo} />
                                     </td>
                                     <td className="w-[28%] py-2.5 pr-3 align-top">
                                         <CallerLink call={call} className="font-semibold text-foreground hover:underline">
@@ -697,16 +662,7 @@ function QuickLinks({ summary, onTryAgent }: { summary: DashboardSummaryResponse
 }
 
 /** A brand-new business: what's set up, and a first call to make. */
-function GetStarted({
-    summary,
-    onTryAgent,
-    onShowSample,
-}: {
-    summary: DashboardSummaryResponse;
-    onTryAgent?: () => void;
-    /** Offered when the sample calls are hidden. */
-    onShowSample?: () => void;
-}) {
+function GetStarted({ summary, onTryAgent }: { summary: DashboardSummaryResponse; onTryAgent?: () => void }) {
     const status = summary.agent_status;
     const agentId = primaryAgentId(summary);
     const number = status.phone_numbers[0];
@@ -791,45 +747,7 @@ function GetStarted({
                     </>
                 )}
             </div>
-            {onShowSample && (
-                <p className="mt-3 text-[12.5px] text-ink-3">
-                    Want to see how this page looks with calls?{" "}
-                    <button type="button" onClick={onShowSample} className="font-semibold text-brand hover:underline">
-                        Show sample data
-                    </button>
-                </p>
-            )}
         </Card>
-    );
-}
-
-/** The way to a first real call, for the sample banner. */
-function TryAgentButton({ summary, onTryAgent }: { summary: DashboardSummaryResponse; onTryAgent?: () => void }) {
-    const agentId = primaryAgentId(summary);
-    const number = summary.agent_status.answering ? summary.agent_status.phone_numbers[0] : undefined;
-    if (number) {
-        return (
-            <Button asChild size="sm" className="md:hidden">
-                <a href={telHref(number)}>
-                    <Phone aria-hidden />
-                    Ring your agent now
-                </a>
-            </Button>
-        );
-    }
-    if (agentId == null) return null;
-    return onTryAgent ? (
-        <Button size="sm" onClick={onTryAgent}>
-            <Mic aria-hidden />
-            Try your agent
-        </Button>
-    ) : (
-        <Button asChild size="sm">
-            <Link href={agentTalkHref(agentId)}>
-                <Mic aria-hidden />
-                Try your agent
-            </Link>
-        </Button>
     );
 }
 
@@ -856,20 +774,7 @@ export function HomeDashboard({ heading, workflowId, onTryAgent }: HomeDashboard
     const now = new Date();
 
     const followUpsHref = "/follow-ups";
-    const real = result.state === "ready" ? result.data : null;
-    // Until the first real call, the sample day shows (clearly labelled);
-    // it goes by itself once a call comes in.
-    const { showSample, hide, show } = useSampleMode(real ? real.has_calls : null);
-    const business = real?.agents[0]?.name;
-    const summary = useMemo(
-        () => (real && showSample ? sampleSummary(real, undefined, new Date()) : real),
-        [real, showSample],
-    );
-    const outcomes = useMemo(() => sampleOutcomes(), []);
-    const chipFor: ChipFor = (call) => {
-        const outcome = showSample ? outcomes.get(call.run_id) : undefined;
-        return (outcome && SAMPLE_OUTCOME_WORDS[outcome]) || RESULT_WORDS[call.result];
-    };
+    const summary = result.state === "ready" ? result.data : null;
     const timezone = summary?.timezone ?? null;
 
     const header = (
@@ -881,14 +786,12 @@ export function HomeDashboard({ heading, workflowId, onTryAgent }: HomeDashboard
                 <p className="mt-1 text-[14px] text-ink-3">{rangeSentence(range, now, timezone)}</p>
             </div>
             <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center @4xl:flex-nowrap">
-                {showSample && <SampleDataPill className="self-start sm:self-auto" />}
                 {summary && (
                     <div>
                         <StatusPill summary={summary} />
                     </div>
                 )}
-                {/* The sample is one made-up day: nothing to switch. */}
-                {!showSample && <RangeSwitch value={range} onChange={setRange} />}
+                <RangeSwitch value={range} onChange={setRange} />
             </div>
         </header>
     );
@@ -924,19 +827,12 @@ export function HomeDashboard({ heading, workflowId, onTryAgent }: HomeDashboard
         );
     }
 
-    const brandNew = !summary.agent_status.last_call_at;
-    const sampleItems = showSample ? sampleFollowUpItems(business, now) : null;
     const attentionItems =
-        sampleItems ??
-        (followUps.result.state === "ready" ? followUps.result.data.items : followUps.result.state === "error" ? null : []);
-    const openCount = sampleItems
-        ? sampleItems.length
-        : followUps.result.state === "ready"
-          ? followUps.result.data.open_count
-          : null;
-    // Real calls: the dashboard. No calls: the setup steps, then (unless
-    // hidden) the sample day below its banner.
-    const setUp = brandNew;
+        followUps.result.state === "ready" ? followUps.result.data.items : followUps.result.state === "error" ? null : [];
+    const openCount = followUps.result.state === "ready" ? followUps.result.data.open_count : null;
+    // Calls: the dashboard. No call yet: the setup steps and the agent
+    // instead of empty tiles and charts.
+    const setUp = !summary.agent_status.last_call_at;
 
     return (
         <div className="page-body @container flex min-w-0 flex-col gap-5">
@@ -945,20 +841,12 @@ export function HomeDashboard({ heading, workflowId, onTryAgent }: HomeDashboard
 
             {setUp && (
                 <div className="grid grid-cols-1 gap-4 @4xl:grid-cols-[minmax(0,7fr)_minmax(0,5fr)]">
-                    <GetStarted summary={summary} onTryAgent={onTryAgent} onShowSample={showSample ? undefined : show} />
+                    <GetStarted summary={summary} onTryAgent={onTryAgent} />
                     <AgentCard summary={summary} now={now} onTryAgent={onTryAgent} />
                 </div>
             )}
 
-            {showSample && (
-                <SampleBanner
-                    text="This is how Home looks once calls come in. These calls are made up."
-                    onHide={hide}
-                    action={<TryAgentButton summary={summary} onTryAgent={onTryAgent} />}
-                />
-            )}
-
-            {(!setUp || showSample) && (
+            {!setUp && (
                 <>
                     <Tiles summary={summary} now={now} />
                     {/* Two columns on a computer; on a phone one list in the
@@ -973,12 +861,11 @@ export function HomeDashboard({ heading, workflowId, onTryAgent }: HomeDashboard
                                     timezone={summary.timezone}
                                     now={now}
                                     followUpsHref={followUpsHref}
-                                    sample={showSample}
                                     onAddAnswer={setAnswering}
                                 />
                             </div>
                             <div className="order-4 min-w-0 @4xl:order-none">
-                                <RecentCalls summary={summary} now={now} sample={showSample} chipFor={chipFor} />
+                                <RecentCalls summary={summary} now={now} />
                             </div>
                         </div>
                         <div className="contents @4xl:flex @4xl:min-w-0 @4xl:flex-1 @4xl:flex-col @4xl:gap-4">
@@ -988,12 +875,9 @@ export function HomeDashboard({ heading, workflowId, onTryAgent }: HomeDashboard
                             <div className="order-3 min-w-0 @4xl:order-none">
                                 <WhenPeopleCalled summary={summary} />
                             </div>
-                            {/* The setup row above already shows the agent. */}
-                            {!setUp && (
-                                <div className="order-5 min-w-0 @4xl:order-none">
-                                    <AgentCard summary={summary} now={now} onTryAgent={onTryAgent} />
-                                </div>
-                            )}
+                            <div className="order-5 min-w-0 @4xl:order-none">
+                                <AgentCard summary={summary} now={now} onTryAgent={onTryAgent} />
+                            </div>
                         </div>
                     </div>
                 </>
