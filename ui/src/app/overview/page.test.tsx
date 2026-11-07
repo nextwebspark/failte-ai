@@ -84,10 +84,14 @@ function summary(overrides: Partial<DashboardSummaryResponse> = {}): DashboardSu
 
 const NO_FOLLOW_UPS: FollowUpListResponse = {
     status: "open",
+    start: "2026-10-06T10:00:00Z",
+    end: "2026-11-05T12:00:00Z",
+    timezone: "Europe/Dublin",
     items: [],
     kind_counts: { callback: 0, transfer_not_answered: 0, repeat_caller: 0 },
     open_count: 0,
     done_count: 0,
+    open_total: 0,
     week: { raised: 0, sorted: 0, median_wait_minutes: null },
     has_calls: true,
 };

@@ -4536,6 +4536,18 @@ export type FollowUpKind = 'callback' | 'transfer_not_answered' | 'repeat_caller
 export type FollowUpListResponse = {
     status: FollowUpStatus;
     /**
+     * Start
+     */
+    start: string;
+    /**
+     * End
+     */
+    end: string;
+    /**
+     * Timezone
+     */
+    timezone: string;
+    /**
      * Items
      */
     items: Array<FollowUpItem>;
@@ -4553,6 +4565,10 @@ export type FollowUpListResponse = {
      * Done Count
      */
     done_count: number;
+    /**
+     * Open Total
+     */
+    open_total: number;
     week: FollowUpWeek;
     /**
      * Has Calls
@@ -4582,7 +4598,7 @@ export type FollowUpMarkResponse = {
 /**
  * FollowUpStatus
  */
-export type FollowUpStatus = 'open' | 'done';
+export type FollowUpStatus = 'open' | 'done' | 'all';
 
 /**
  * FollowUpWeek
@@ -12955,6 +12971,10 @@ export type WorkflowRunUsageResponse = {
      * False while the call is still going on.
      */
     is_completed?: boolean;
+    /**
+     * How the call went, by the rule Home and Follow-ups use.
+     */
+    result?: CallResult | null;
     /**
      * Summary
      *
@@ -21520,6 +21540,40 @@ export type ListFollowUpsApiV1FollowUpsGetData = {
          * Workflow Id
          */
         workflow_id?: number | null;
+        /**
+         * Range
+         *
+         * Today, 7 days or 30 days (the default: all of them)
+         */
+        range?: DashboardRange | null;
+        /**
+         * Start Date
+         *
+         * First day picked by hand; overrides range
+         */
+        start_date?: string | null;
+        /**
+         * End Date
+         *
+         * Last day picked by hand (inclusive)
+         */
+        end_date?: string | null;
+        /**
+         * Kind
+         */
+        kind?: FollowUpKind | null;
+        /**
+         * Q
+         *
+         * Search: the caller's name or number, why they rang, the summary, or what was said
+         */
+        q?: string | null;
+        /**
+         * Timezone
+         *
+         * IANA zone; defaults to the agent's or workspace's
+         */
+        timezone?: string | null;
     };
     url: '/api/v1/follow-ups';
 };
