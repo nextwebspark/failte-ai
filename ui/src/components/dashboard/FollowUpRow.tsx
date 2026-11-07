@@ -263,8 +263,10 @@ export function FollowUpTodo({
     const done = Boolean(item.done_at);
     const number = callBackNumber(item);
     const length = callLength(item.duration_seconds);
+    const title = todoTitle(item);
     const metaParts = [
-        item.caller_number ? formatPhone(item.caller_number) : "Number withheld",
+        // The number, unless the heading already is it.
+        item.caller_number ? (title === formatPhone(item.caller_number) ? null : formatPhone(item.caller_number)) : "Number withheld",
         callWhen(item.created_at, timezone, now),
         done ? length : `Waiting ${waitWords(minutesSince(item.created_at, now))}`,
         item.callback_number && item.callback_number !== item.caller_number ? `Asked to be rung on ${formatPhone(item.callback_number)}` : null,
@@ -288,7 +290,7 @@ export function FollowUpTodo({
             <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
                     <h3 className={cn("text-[16px] font-semibold leading-snug", done ? "text-ink-3 line-through decoration-ink-3/60" : "text-foreground")}>
-                        {todoTitle(item)}
+                        {title}
                     </h3>
                     <Chip tone={done ? "neutral" : words.tone} className="px-2.5 text-[12.5px]">
                         {words.chip}
