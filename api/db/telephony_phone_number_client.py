@@ -98,6 +98,33 @@ class TelephonyPhoneNumberClient(BaseDBClient):
             )
             return [row[0] for row in result.all()]
 
+    async def list_inbound_numbers_for_workflow(
+        self, workflow_id: int, organization_id: int
+    ) -> List[Tuple[str, str]]:
+        """The agent's active inbound numbers as ``(address_normalized,
+        provider)``: what callers ring to reach it, and over which provider.
+        Used by the call-transfer checks (a transfer to one of these rings the
+        agent again) and to say what the staff phone shows on a transfer."""
+        async with self.async_session() as session:
+            result = await session.execute(
+                select(
+                    TelephonyPhoneNumberModel.address_normalized,
+                    TelephonyConfigurationModel.provider,
+                )
+                .join(
+                    TelephonyConfigurationModel,
+                    TelephonyConfigurationModel.id
+                    == TelephonyPhoneNumberModel.telephony_configuration_id,
+                )
+                .where(
+                    TelephonyPhoneNumberModel.organization_id == organization_id,
+                    TelephonyPhoneNumberModel.inbound_workflow_id == workflow_id,
+                    TelephonyPhoneNumberModel.is_active.is_(True),
+                )
+                .order_by(TelephonyPhoneNumberModel.created_at)
+            )
+            return [(address, provider) for address, provider in result.all()]
+
     async def get_phone_number(
         self, phone_number_id: int
     ) -> Optional[TelephonyPhoneNumberModel]:

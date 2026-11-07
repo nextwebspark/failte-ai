@@ -34,7 +34,7 @@ Every business has:
   Create agent wizard uses, with the business's facts filled in (name,
   description, hours, address, website, common questions) and
   `template_category` set. "Pass calls to your team" is on, with the
-  placeholder number `+3530000000` (see "Transfers" below).
+  demo number `+353 1 555 0100` (see "Transfers" below).
 - **60–120 inbound calls over the last 30 days**, at the business's busy
   hours and days. Each call is stored the way a real phone call is: the
   call log (`logs.realtime_feedback_events`), what the agent wrote down
@@ -133,15 +133,24 @@ and a real call to it.
 
 ### Transfers
 
-"Pass calls to your team" is on for every demo agent, set to the
-placeholder `+3530000000` through the wizard's own "Number to put callers
-through to a person" answer. To change it: open the agent, go to **What
-your agent knows** › **Pass calls to your team**, type the number and save.
-The next call uses it.
+"Pass calls to your team" is on for every demo agent, set to the demo
+number `+353 1 555 0100` (stored as `+35315550100`) through the wizard's
+own "Number to put callers through to a person" answer. It looks like a
+Dublin landline so it passes the number check, but it could belong to a
+real person, so the transfer code never dials it: the list of reserved
+demo numbers is `DEMO_TRANSFER_NUMBERS` in `api/utils/transfer_number.py`
+(it also holds the old placeholder `+3530000000`). The agent's "What your
+agent knows" page marks it "Demo number – change it before a live
+transfer". To change it: open the agent, go to **What your agent knows** ›
+**Pass calls to your team**, type the number and save. The next call uses
+it.
+
+Agents seeded with the old placeholder `+3530000000` get the new number
+the next time the seed runs (only against a local database).
 
 In a browser test call, asking for a person makes the agent try the
 transfer; the engine refuses it ("call transfers are not available for web
 calls"), the agent says so and offers to take a message. On a phone call
-(once a number is linked), a transfer to the placeholder fails and is
-stored as a transfer nobody answered, which Home counts and Follow-ups
-lists.
+(once a number is linked), the transfer to the demo number is not dialled:
+it is stored as a transfer nobody answered (reason `demo_number`), which
+Home counts and Follow-ups lists, and the agent takes a message.

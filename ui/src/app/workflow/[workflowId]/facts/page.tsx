@@ -30,6 +30,7 @@ import { cn } from "@/lib/utils";
 
 import { SectionError, SectionMessage } from "../components/SectionStates";
 import { bookingLine, bookingTimesByDay, bookingTitle, fillGreeting, WEEK, WEEK_LONG } from "./knowledge";
+import { TransferOptions } from "./TransferOptions";
 import { type AgentKnowledge, type CalendarInfo, useAgentKnowledge } from "./useAgentKnowledge";
 import { VoiceChips } from "./VoiceChips";
 
@@ -264,7 +265,18 @@ export default function WhatYourAgentKnowsPage() {
                             calendar={knowledge.calendar}
                             setCalendar={knowledge.setCalendar}
                             transfer={transfer}
-                            transferField={transfer ? field(transfer) : null}
+                            transferField={
+                                transfer ? (
+                                    <>
+                                        {field(transfer)}
+                                        <TransferOptions
+                                            workflowId={workflowId}
+                                            value={values[transfer.key] ?? ""}
+                                            disabled={!canEdit || saving}
+                                        />
+                                    </>
+                                ) : null
+                            }
                             transferValue={transfer ? (values[transfer.key] ?? "").trim() : ""}
                         />
                     </div>
