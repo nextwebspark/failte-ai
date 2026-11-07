@@ -200,7 +200,7 @@ const PAGE_META: Record<string, PageMeta> = {
   "/usage": { title: "Calls", subtitle: "Every call your agents answered or made" },
   "/follow-ups": { title: "Follow-ups", subtitle: "Calls that need a person" },
   "/bookings": { title: "Bookings", subtitle: "Tables and appointments your agent booked" },
-  "/reports": { title: "Reports", subtitle: "Daily call outcomes" },
+  "/reports": { title: "Reports", subtitle: "Your business in numbers" },
   // Settings screens print their own title and description (SettingsShell),
   // so the header only names the area.
   "/settings": { title: "Settings" },

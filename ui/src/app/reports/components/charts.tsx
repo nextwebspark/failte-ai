@@ -142,7 +142,14 @@ export function StackedColumns({
                     {columns.map((column, index) => (
                         <span key={column.key} className="relative min-w-0 flex-1 text-center text-meta tabular-nums text-ink-3">
                             {index % tickEvery === 0 ? (
-                                <span className="absolute left-1/2 -translate-x-1/2 whitespace-nowrap">{column.tick}</span>
+                                <span
+                                    className={cn(
+                                        "absolute left-1/2 -translate-x-1/2 whitespace-nowrap",
+                                        index % (tickEvery * 2) !== 0 && "hidden @md:inline",
+                                    )}
+                                >
+                                    {column.tick}
+                                </span>
                             ) : null}
                         </span>
                     ))}
@@ -150,7 +157,8 @@ export function StackedColumns({
             </div>
             <Legend series={series} />
             <figcaption className="sr-only">{caption}</figcaption>
-            <table className="sr-only">
+            <div className="sr-only">
+            <table>
                 <caption>{caption}</caption>
                 <thead>
                     <tr>
@@ -173,6 +181,7 @@ export function StackedColumns({
                     ))}
                 </tbody>
             </table>
+            </div>
         </figure>
     );
 }
@@ -241,7 +250,8 @@ export function Heatmap({
                 More
             </div>
             <figcaption className="sr-only">{caption}</figcaption>
-            <table className="sr-only">
+            <div className="sr-only">
+            <table>
                 <caption>{caption}</caption>
                 <thead>
                     <tr>
@@ -264,6 +274,7 @@ export function Heatmap({
                     ))}
                 </tbody>
             </table>
+            </div>
         </figure>
     );
 }
@@ -369,7 +380,8 @@ export function Columns({
                             >
                                 {column.note && !column.value ? (
                                     <span className="mb-1 text-meta text-ink-3" aria-hidden>
-                                        {column.note}
+                                        <span className="hidden @md:inline">{column.note}</span>
+                                        <span className="@md:hidden">–</span>
                                     </span>
                                 ) : showValues && column.value > 0 ? (
                                     <span className="mb-1 text-meta font-semibold tabular-nums text-ink-2" aria-hidden>
@@ -399,14 +411,22 @@ export function Columns({
                     {columns.map((column, index) => (
                         <span key={column.key} className="relative min-w-0 flex-1 text-center text-meta tabular-nums text-ink-3">
                             {index % tickEvery === 0 ? (
-                                <span className="absolute left-1/2 -translate-x-1/2 whitespace-nowrap">{column.tick}</span>
+                                <span
+                                    className={cn(
+                                        "absolute left-1/2 -translate-x-1/2 whitespace-nowrap",
+                                        index % (tickEvery * 2) !== 0 && "hidden @md:inline",
+                                    )}
+                                >
+                                    {column.tick}
+                                </span>
                             ) : null}
                         </span>
                     ))}
                 </div>
             </div>
             <figcaption className="sr-only">{caption}</figcaption>
-            <table className="sr-only">
+            <div className="sr-only">
+            <table>
                 <caption>{caption}</caption>
                 <tbody>
                     {columns.map((c) => (
@@ -417,6 +437,7 @@ export function Columns({
                     ))}
                 </tbody>
             </table>
+            </div>
         </figure>
     );
 }

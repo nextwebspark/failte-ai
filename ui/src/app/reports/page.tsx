@@ -255,9 +255,9 @@ export default function ReportsPage() {
                                 );
                             })}
                         </div>
-                        <div className="flex gap-2">
+                        <div className="flex flex-wrap gap-2 sm:flex-nowrap">
                             <Select value={agent} onValueChange={setAgent}>
-                                <SelectTrigger className="min-w-0 flex-1 bg-panel data-[size=default]:h-10 sm:w-[180px] sm:flex-none" aria-label="Agent">
+                                <SelectTrigger className="w-full min-w-0 bg-panel data-[size=default]:h-10 sm:w-[180px]" aria-label="Agent">
                                     <SelectValue placeholder="All agents" />
                                 </SelectTrigger>
                                 <SelectContent>
@@ -269,12 +269,12 @@ export default function ReportsPage() {
                                     ))}
                                 </SelectContent>
                             </Select>
-                            <Button variant="outline" className="h-10 bg-panel" onClick={download} disabled={downloading || !report}>
+                            <Button variant="outline" className="h-10 flex-1 bg-panel sm:flex-none" onClick={download} disabled={downloading || !report}>
                                 <Download aria-hidden />
                                 {downloading ? 'Preparing…' : 'Download'}
                             </Button>
                             {report?.layout.can_customise ? (
-                                <Button className="h-10" onClick={() => setCustomising(true)}>
+                                <Button className="h-10 flex-1 sm:flex-none" onClick={() => setCustomising(true)}>
                                     <Settings2 aria-hidden />
                                     Customise
                                 </Button>
@@ -316,7 +316,7 @@ export default function ReportsPage() {
                             </p>
                         ) : null}
                         {kpis.length ? (
-                            <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,160px),1fr))] gap-3 sm:gap-4">
+                            <div className="grid grid-cols-2 gap-3 sm:grid-cols-[repeat(auto-fit,minmax(190px,1fr))] sm:gap-4">
                                 {kpis.map((c) => (
                                     <ReportCard key={c.key} cardKey={c.key} title={c.title} ctx={ctx} />
                                 ))}

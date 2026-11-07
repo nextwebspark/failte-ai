@@ -80,7 +80,7 @@ function Chip({ change, unit }: { change: number | null | undefined; unit?: stri
         <span
             className={cn(
                 "inline-flex rounded-full px-2 py-0.5 text-caption font-semibold tabular-nums",
-                chip.tone === "up" && "bg-brand-dim text-brand-ink",
+                chip.tone === "up" && "bg-brand-dim text-brand",
                 chip.tone === "down" && "bg-panel-2 text-ink-2",
                 chip.tone === "same" && "bg-panel-2 text-ink-2",
             )}
@@ -153,7 +153,7 @@ function Note({ children, tone = "neutral" }: { children: ReactNode; tone?: "neu
         <p
             className={cn(
                 "mt-4 flex items-start gap-2 rounded-xl px-3.5 py-3 text-caption",
-                tone === "brand" && "bg-brand-dim text-brand-ink",
+                tone === "brand" && "bg-brand-dim text-foreground",
                 tone === "amber" && "bg-amber-dim text-foreground",
                 tone === "neutral" && "bg-panel-2 text-ink-2",
             )}
@@ -402,7 +402,7 @@ export function ReportCard({ cardKey, title, ctx }: { cardKey: string; title: st
                                     key={`${g.run_id}-${g.question}`}
                                     className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-xl border border-line-soft px-3.5 py-2.5"
                                 >
-                                    <span className="min-w-0 flex-1 text-body font-medium text-foreground">{g.question}</span>
+                                    <span className="w-full min-w-0 text-body font-medium text-foreground @md:w-auto @md:flex-1">{g.question}</span>
                                     <span className="text-caption tabular-nums text-ink-3">{plural(g.count, "time")}</span>
                                     {ctx.onAddAnswer ? (
                                         <button
