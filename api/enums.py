@@ -187,6 +187,10 @@ class OrganizationConfigurationKey(Enum):
     EMAIL_REPORTS_SENT = "EMAIL_REPORTS_SENT"  # Last period each report went out for
     REPORT_LAYOUT = "REPORT_LAYOUT"  # Report cards an owner switched on, their order and which go in the email
     CUSTOM_VOICE_REQUESTS = "CUSTOM_VOICE_REQUESTS"  # Owners asking us to set up a voice they cloned elsewhere
+    SUPPORT_TICKETS = "SUPPORT_TICKETS"  # Tickets sent from the in-app Help panel
+    HELP_FEEDBACK = (
+        "HELP_FEEDBACK"  # Thumbs up/down on help answers (metadata only, no text)
+    )
     DEMO_ACCOUNT = "DEMO_ACCOUNT"  # Marks a seeded demo workspace (api/scripts/seed_demo_accounts.py)
 
 
