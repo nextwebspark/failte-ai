@@ -73,6 +73,7 @@ from api.services.pipecat.realtime.static_greeting import (
     format_disclosure_for_new_party_prompt,
     format_open_after_disclosure_prompt,
 )
+from api.services.pronunciation import irish as irish_pronunciation
 from api.services.workflow import pipecat_engine_callbacks as engine_callbacks
 from api.services.workflow.answer_handling import ANSWER_TERMINAL_REASONS, handle_answer
 from api.services.workflow.call_date import todays_date_line
@@ -881,6 +882,12 @@ class PipecatEngine:
         )
         functions.extend(self.skill_tools.attach(agent, node_skills, functions))
         system_prompt = self.skill_tools.compose_prompt(agent, prompt.text)
+        if self._is_realtime:
+            # A speech-to-speech model has no synthesis step to respell names
+            # in (the pipeline voices get that in create_tts_service), so it
+            # is told how to say them instead.
+            guide = self._pronunciation_guide(system_prompt)
+            system_prompt = f"{system_prompt}\n\n{guide}"
         agent.tools = ToolsSchema(standard_tools=functions)
         agent.system_prompt = system_prompt
         if agent.recording_router is not None:
@@ -889,6 +896,17 @@ class PipecatEngine:
             await agent.llm._update_settings(
                 LLMSettings(system_instruction=system_prompt)
             )
+
+    def _pronunciation_guide(self, system_prompt: str) -> str:
+        """How to say the Irish names this call is likely to hear or use."""
+        texts = [system_prompt]
+        for source in (self._call_context_vars, self._gathered_context):
+            for value in (source or {}).values():
+                if isinstance(value, str):
+                    texts.append(value)
+                elif isinstance(value, dict):
+                    texts.extend(v for v in value.values() if isinstance(v, str))
+        return irish_pronunciation.realtime_guide(texts)
 
     async def _setup_llm_context(self, node: Node) -> None:
         agent = self.active_agent

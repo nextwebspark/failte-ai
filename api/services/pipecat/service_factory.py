@@ -36,6 +36,7 @@ from api.services.pipecat.minimax_tts import (
     MiniMaxOwnedSessionTTSService,
 )
 from api.services.pipecat.tts_cache.runtime import get_speech_cache
+from api.services.pronunciation import irish as irish_pronunciation
 from api.utils.url_security import validate_user_configured_service_url
 from pipecat.services.assemblyai.stt import AssemblyAISTTService, AssemblyAISTTSettings
 from pipecat.services.aws.llm import AWSBedrockLLMService, AWSBedrockLLMSettings
@@ -112,6 +113,7 @@ from pipecat.services.speechmatics.stt import (
     SpeechmaticsSTTService,
     SpeechmaticsSTTSettings,
 )
+from pipecat.services.tts_service import TTSService
 from pipecat.services.xai.tts import XAITTSService, XAIWebsocketTTSSettings
 from pipecat.transcriptions.language import Language
 from pipecat.utils.text.xml_function_tag_filter import XMLFunctionTagFilter
@@ -709,6 +711,60 @@ def create_stt_service(
 
 @_report_service_factory_failures(ErrorSource.TTS, config_section="tts")
 def create_tts_service(
+    user_config,
+    audio_config: "AudioConfig",
+    correlation_id: str | None = None,
+    *,
+    organization_id: int | None = None,
+    tts_cache_enabled: bool = False,
+):
+    """Create the configured TTS service, saying Irish names the Irish way.
+
+    Arguments as for :func:`_create_provider_tts_service`.
+    """
+    service = _create_provider_tts_service(
+        user_config,
+        audio_config,
+        correlation_id,
+        organization_id=organization_id,
+        tts_cache_enabled=tts_cache_enabled,
+    )
+    _say_irish_names(service, user_config.tts)
+    return service
+
+
+def _speaks_english(tts_config) -> bool:
+    language = getattr(tts_config, "language", None) or ""
+    if not language:
+        locale = re.match(
+            r"^([a-z]{2,3})-[A-Z]{2}-", getattr(tts_config, "voice", None) or ""
+        )
+        language = locale.group(1) if locale else ""
+    # No language set: the providers' voices here are English unless named.
+    return not language or language.lower().startswith(("en", "multi"))
+
+
+def _say_irish_names(service, tts_config) -> None:
+    """Send Irish names to the voice as English respellings ("Sadhbh" as "Sive").
+
+    A Pipecat text transform changes only the text sent for synthesis. The
+    transcript and the LLM context come from the TTSTextFrame, which carries
+    the untransformed text on services that push their own text frames. On
+    word-timestamp services (ElevenLabs, Cartesia and others) the transcript
+    is rebuilt from the words the provider reports back, which would be the
+    respelling, so those are left as they are. Only English voices: the
+    respellings use English spelling rules.
+    """
+    if not isinstance(service, TTSService):
+        return
+    if not getattr(service, "_push_text_frames", False):
+        return
+    if not _speaks_english(tts_config):
+        return
+    service.add_text_transformer(irish_pronunciation.respell_transform)
+
+
+def _create_provider_tts_service(
     user_config,
     audio_config: "AudioConfig",
     correlation_id: str | None = None,
