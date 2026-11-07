@@ -86,6 +86,7 @@ from api.services.pipecat.realtime_feedback_events import (
     realtime_feedback_event_sort_key,
     stamp_realtime_feedback_event,
 )
+from api.services.pronunciation import irish as irish_pronunciation
 from api.services.storage import get_current_storage_backend, storage_fs
 from api.services.workflow.opening_hours import closed_transfer_result
 from api.utils.auth import hash_password
@@ -126,31 +127,15 @@ MALE_VOICES = (
 )
 TRANSFER_RING = APP_ROOT_DIR / "assets" / f"transfer_hold_ring_{SAMPLE_RATE}.wav"
 
-# How Irish names sound, for the speech only; the transcript keeps the spelling.
-SPOKEN_NAMES = {
-    "Siobhán": "Shiv-awn",
-    "Sinéad": "Shin-ade",
-    "Gráinne": "Grawn-ya",
-    "Róisín": "Ro-sheen",
-    "Caoimhe": "Kee-va",
-    "Eimear": "Ee-mer",
-    "Áine": "Awn-ya",
-    "Pádraig": "Paw-drig",
-    "Seán": "Shawn",
-    "Tadhg": "Tige",
-    "Diarmuid": "Deer-mid",
-    "Niamh": "Neeve",
-    "Ciarán": "Keer-awn",
-    "Aoife": "Ee-fa",
-    "Cian": "Kee-an",
-    "Eoin": "Owen",
-    "Clodagh": "Clo-da",
-    "Darragh": "Darra",
-    "Colm": "Collum",
-    "Fergal": "Fur-gal",
-    "Ronan": "Ro-nan",
-    "Donal": "Doe-nal",
-}
+# Gaps between turns in the recordings, in seconds. Speech is trimmed of the
+# silence TTS puts around it, so these are the gaps the listener hears: a
+# caller answers quickly, the agent takes a beat longer after a question.
+GAP_AFTER_AGENT = (0.25, 0.45)
+GAP_AFTER_CALLER = (0.3, 0.45)
+GAP_AFTER_QUESTION = (0.45, 0.6)
+# What trimming keeps around each utterance so it doesn't start or end abruptly.
+TRIM_LEAD_SECONDS = 0.03
+TRIM_TAIL_SECONDS = 0.06
 
 
 def _now() -> datetime:
@@ -451,9 +436,14 @@ class Speech:
 
 
 def spoken(words: str) -> str:
-    """What the voice reads: names respelled, phone numbers digit by digit."""
-    for name, sound in SPOKEN_NAMES.items():
-        words = words.replace(name, sound)
+    """What the voice reads: Irish names respelled, phone numbers digit by digit.
+
+    The respellings come from ``api.services.pronunciation.irish``; the call's
+    transcript keeps the real spelling. The respelled text is part of the
+    speech cache key, so a line whose respelling changes is synthesised again
+    and every other line comes from the cache.
+    """
+    words = irish_pronunciation.respell(words)
     return re.sub(
         r"\b(\d{3}) (\d{3}) (\d{4})\b",
         lambda m: ", ".join(" ".join(group) for group in m.groups()),
@@ -461,10 +451,41 @@ def spoken(words: str) -> str:
     )
 
 
+def turn_gap(who: str, words: str) -> tuple[float, float]:
+    """The range of the pause after ``who`` says ``words``."""
+    if who == "agent":
+        return GAP_AFTER_AGENT
+    return GAP_AFTER_QUESTION if words.rstrip().endswith("?") else GAP_AFTER_CALLER
+
+
 def caller_voice(ctx: Ctx) -> str:
     voices = FEMALE_VOICES if ctx.caller.female else MALE_VOICES
     digest = hashlib.sha256(ctx.caller.name.encode()).digest()
     return voices[digest[0] % len(voices)]
+
+
+def _trim(pcm: bytes, *, threshold: int = 400, window: float = 0.01) -> bytes:
+    """``pcm`` without the silence TTS leaves before and after the words.
+
+    Google's voices start a clip with up to half a second of silence and end
+    it with a quarter of one; joined turn after turn that reads as lag. The
+    edges are found on 10 ms windows whose loudest sample passes ``threshold``
+    (about -38 dBFS), and a little room is kept either side.
+    """
+    samples = memoryview(pcm).cast("h") if len(pcm) % 2 == 0 else None
+    if samples is None or not len(samples):
+        return pcm
+    step = max(1, int(window * SAMPLE_RATE))
+    loud = [
+        i
+        for i in range(0, len(samples), step)
+        if max(abs(v) for v in samples[i : i + step]) >= threshold
+    ]
+    if not loud:
+        return pcm
+    first = max(0, loud[0] - int(TRIM_LEAD_SECONDS * SAMPLE_RATE))
+    last = min(len(samples), loud[-1] + step + int(TRIM_TAIL_SECONDS * SAMPLE_RATE))
+    return pcm[first * 2 : last * 2]
 
 
 def _silence(seconds: float) -> bytes:
@@ -603,8 +624,10 @@ async def render(
         nonlocal cursor
         begin = cursor
         if speech is not None:
-            pcm = await speech.pcm(
-                AGENT_VOICE if who == "agent" else voice, spoken(words)
+            pcm = _trim(
+                await speech.pcm(
+                    AGENT_VOICE if who == "agent" else voice, spoken(words)
+                )
             )
             length = len(pcm) / 2 / SAMPLE_RATE
             mixed.append(pcm)
@@ -670,11 +693,7 @@ async def render(
             )
             # Logged when the utterance ends, as the live transcript does.
             add(event, end, with_node=True)
-            pad(
-                rng.uniform(0.45, 0.9)
-                if step.kind == "agent"
-                else rng.uniform(0.6, 1.3)
-            )
+            pad(rng.uniform(*turn_gap(step.kind, words)))
         elif step.kind == "move":
             call_id = f"call_{rng.randint(1000000, 9999999)}"
             add(
