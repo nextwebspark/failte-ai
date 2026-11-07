@@ -70,6 +70,7 @@ from api.scripts.demo_businesses import (
     Ctx,
     Plan,
     call_dates,
+    fit_to_opening_hours,
 )
 from api.services.call_review.categories import TEMPLATE_CATEGORY_FACT, reason_set
 from api.services.call_review.review import CALL_REVIEW_KEY, REVIEW_VERSION
@@ -86,6 +87,7 @@ from api.services.pipecat.realtime_feedback_events import (
     stamp_realtime_feedback_event,
 )
 from api.services.storage import get_current_storage_backend, storage_fs
+from api.services.workflow.opening_hours import closed_transfer_result
 from api.utils.auth import hash_password
 from api.utils.transcript import generate_transcript_text
 
@@ -720,7 +722,17 @@ async def render(
                 cursor,
             )
             sid = f"CA{rng.getrandbits(128):032x}"
-            if step.answered:
+            if step.closed:
+                # The live gate rings nobody outside opening hours; this is
+                # the result it hands the agent (_handle_transfer_result).
+                pad(rng.uniform(0.6, 1.2))
+                closed = closed_transfer_result()
+                result = {
+                    "status": "transfer_failed",
+                    "reason": closed["reason"],
+                    "message": closed["message"],
+                }
+            elif step.answered:
                 pad(rng.uniform(6, 14), ring=True)
                 result = {
                     "status": "transfer_success",
@@ -936,7 +948,7 @@ async def seed_calls(
             business=business,
             greeting=agent.greeting,
         )
-        plan = _choose(business, rng)(ctx)
+        plan = fit_to_opening_hours(_choose(business, rng)(ctx), ctx)
         start = start_local.astimezone(UTC)
         recorded = index < recordings and speech is not None
         rendered = await render(plan, ctx, agent, start, speech if recorded else None)
