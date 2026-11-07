@@ -185,6 +185,7 @@ class OrganizationConfigurationKey(Enum):
     CALL_NOTIFICATIONS = "CALL_NOTIFICATIONS"  # Who is emailed or texted after calls
     EMAIL_REPORTS = "EMAIL_REPORTS"  # Daily/weekly/monthly call reports by email
     EMAIL_REPORTS_SENT = "EMAIL_REPORTS_SENT"  # Last period each report went out for
+    REPORT_LAYOUT = "REPORT_LAYOUT"  # Report cards an owner switched on, their order and which go in the email
     CUSTOM_VOICE_REQUESTS = "CUSTOM_VOICE_REQUESTS"  # Owners asking us to set up a voice they cloned elsewhere
     DEMO_ACCOUNT = "DEMO_ACCOUNT"  # Marks a seeded demo workspace (api/scripts/seed_demo_accounts.py)
 
