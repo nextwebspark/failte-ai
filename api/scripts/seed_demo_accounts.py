@@ -64,6 +64,7 @@ from api.scripts.demo_businesses import (
     BOOKING_MADE,
     BUSINESSES,
     CALLBACK,
+    SILENT,
     TRANSFER_NOT_ANSWERED,
     Business,
     Ctx,
@@ -792,7 +793,13 @@ def _marks(
     owner); the newest ones are left open."""
     age = now - start
     annotations: dict[str, Any] = {}
-    for kind in _follow_up_kinds(plan):
+    kinds = _follow_up_kinds(plan)
+    if plan.outcome == SILENT:
+        # A caller who rang twice in a row without reaching anyone raises a
+        # "rang more than once" follow-up on their latest call; it is marked
+        # on the call itself, like a callback.
+        kinds.append(None)
+    for kind in kinds:
         # Older than three days: sorted. The last few days: about half.
         # The last few hours: still waiting.
         chance = (
@@ -887,8 +894,6 @@ async def _put(key: str, data: bytes, content_type: str) -> None:
 class Totals:
     calls: int = 0
     recordings: int = 0
-    open_follow_ups: int = 0
-    done_follow_ups: int = 0
     booking_calls: int = 0
     today: int = 0
     outcomes: dict[str, int] = field(default_factory=dict)
@@ -949,12 +954,6 @@ async def seed_calls(
         }
         marks = _marks(plan, start, now, rng, people)
         annotations.update(marks)
-        kinds = _follow_up_kinds(plan)
-        done = (1 if "follow_up" in marks else 0) + len(
-            marks.get("follow_up_kinds", {})
-        )
-        totals.done_follow_ups += done
-        totals.open_follow_ups += len(kinds) - done
         run = WorkflowRunModel(
             name=f"WR-TEL-IN-{rng.randint(0, 99_999_999):08d}",
             workflow_id=agent.workflow.id,
@@ -1125,6 +1124,13 @@ async def seed_business(
         recordings=recordings,
         speech=speech,
     )
+    # Counted the way Follow-ups counts them.
+    from api.services.dashboard.follow_ups import FollowUpStatus
+    from api.services.dashboard.service import follow_up_list
+
+    follow_ups = await follow_up_list(
+        organization_id=organization_id, status=FollowUpStatus.OPEN, workflow_id=None
+    )
     return {
         "business": business.name,
         "organization_id": organization_id,
@@ -1138,8 +1144,8 @@ async def seed_business(
         if speech
         else 0,
         "tts_chars_from_cache": (speech.cached_chars - before[1]) if speech else 0,
-        "follow_ups_open": totals.open_follow_ups,
-        "follow_ups_done": totals.done_follow_ups,
+        "follow_ups_open": follow_ups["open_count"],
+        "follow_ups_done": follow_ups["done_count"],
         "booking_calls": totals.booking_calls,
         "outcomes": dict(sorted(totals.outcomes.items())),
     }
