@@ -156,7 +156,7 @@ export function CallPanel({ run, timezone, autoplay, focusOnOpen, layout, isPhon
     useEffect(() => {
         let cancelled = false;
         setTimesBefore(null);
-        if (run.call_type !== "inbound" || !isDialable(run.caller_number) || isTest || run.id < 0) return;
+        if (run.call_type !== "inbound" || !isDialable(run.caller_number) || isTest) return;
         const before = new Date(new Date(run.created_at).getTime() - 1).toISOString();
         getUsageHistoryApiV1OrganizationsUsageRunsGet({
             query: {
