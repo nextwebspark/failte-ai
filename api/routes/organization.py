@@ -1133,7 +1133,9 @@ async def update_telephony_configuration(
         raise HTTPException(status_code=404, detail="Telephony configuration not found")
 
     credentials = None
-    if request.config is not None and is_managed_configuration(existing.credentials):
+    if request.config is not None and is_managed_configuration(
+        getattr(existing, "credentials", None)
+    ):
         raise HTTPException(status_code=409, detail=_LIGHTMOVE_MANAGED_DETAIL)
     if request.config is not None:
         if request.config.provider != existing.provider:
@@ -1240,7 +1242,7 @@ async def delete_telephony_configuration(
     existing = await db_client.get_telephony_configuration_for_org(
         config_id, user.selected_organization_id, active_only=False
     )
-    if existing and is_managed_configuration(existing.credentials):
+    if existing and is_managed_configuration(getattr(existing, "credentials", None)):
         raise HTTPException(status_code=409, detail=_LIGHTMOVE_MANAGED_DETAIL)
 
     try:
@@ -1715,7 +1717,9 @@ async def update_phone_number(
         await _ensure_trunk_belongs_to_config(request.telephony_trunk_id, config_id)
 
     extra_metadata = request.extra_metadata
-    if extra_metadata is not None and is_platform_number(existing.extra_metadata):
+    if extra_metadata is not None and is_platform_number(
+        getattr(existing, "extra_metadata", None)
+    ):
         # The record that LightMove owns this number is not the customer's to
         # edit: it is how the number gets released and billed.
         extra_metadata = {
@@ -1789,7 +1793,7 @@ async def delete_phone_number(
     existing = await db_client.get_phone_number_for_config(phone_number_id, config_id)
     if not existing:
         raise HTTPException(status_code=404, detail="Phone number not found")
-    if is_platform_number(existing.extra_metadata):
+    if is_platform_number(getattr(existing, "extra_metadata", None)):
         raise HTTPException(status_code=409, detail=_LIGHTMOVE_NUMBER_DETAIL)
 
     provider_sync = await _sync_inbound_for_phone_number(

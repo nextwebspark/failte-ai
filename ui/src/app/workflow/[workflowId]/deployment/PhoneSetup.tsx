@@ -40,7 +40,18 @@ export function primaryNumber(numbers: AgentPhoneNumber[]): AgentPhoneNumber | n
     return numbers.find((n) => n.is_active && !n.provider_inactive) ?? numbers[0] ?? null;
 }
 
-function CopyValue({ value, label, mono = false }: { value: string; label: string; mono?: boolean }) {
+/** A value with a Copy button; `display` is what's shown when it differs from what's copied. */
+function CopyValue({
+    value,
+    display,
+    label,
+    mono = false,
+}: {
+    value: string;
+    display?: string;
+    label: string;
+    mono?: boolean;
+}) {
     const copy = async () => {
         try {
             await copyTextToClipboard(value);
@@ -52,7 +63,7 @@ function CopyValue({ value, label, mono = false }: { value: string; label: strin
     return (
         <div className="inline-flex max-w-full items-center gap-3 rounded-lg border border-line bg-card py-2 pl-3.5 pr-2">
             <span className={cn("min-w-0 break-all text-[15px] text-ink", mono && "font-mono text-[14px] font-semibold")}>
-                {value}
+                {display ?? value}
             </span>
             <Button type="button" variant="outline" size="sm" onClick={() => void copy()} aria-label={`Copy ${label.toLowerCase()}`}>
                 <Copy aria-hidden />
@@ -252,7 +263,11 @@ export function PhoneSetup({ agentId, agentName, onSettled }: PhoneSetupProps) {
                         ? "Give this number to your callers: on your website, your Google listing and your cards."
                         : "Calls you forward go here. You don’t share this number with anyone."}
                 </p>
-                <CopyValue value={primary.address_normalized} label="Number" />
+                <CopyValue
+                    value={primary.address_normalized}
+                    display={displayNumber(primary.address_normalized)}
+                    label="Number"
+                />
                 {primary.lightmove_number && <p className="text-[12.5px] text-ink-3">Provided by LightMove.</p>}
             </Step>
         ) : null;
@@ -295,7 +310,7 @@ export function PhoneSetup({ agentId, agentName, onSettled }: PhoneSetupProps) {
                 <ol className="space-y-5">
                     {numberStep}
                     <Step n={2} title="When should calls go to your agent?">
-                        <div role="radiogroup" aria-label="When calls go to your agent" className="grid gap-2 sm:grid-cols-2">
+                        <div role="radiogroup" aria-label="When calls go to your agent" className="grid gap-2 @md/phone:grid-cols-2">
                             {FORWARD_OPTIONS.map((option) => {
                                 const checked = forwardWhen === option.value;
                                 return (
@@ -352,7 +367,7 @@ export function PhoneSetup({ agentId, agentName, onSettled }: PhoneSetupProps) {
 
         body = (
             <div className="space-y-5">
-                <div role="radiogroup" aria-label="How callers reach your agent" className="grid gap-3 md:grid-cols-3">
+                <div role="radiogroup" aria-label="How callers reach your agent" className="grid gap-3 @2xl/phone:grid-cols-3">
                     {SETUP_METHODS.map((option) => {
                         const checked = method === option.value;
                         return (
@@ -389,7 +404,7 @@ export function PhoneSetup({ agentId, agentName, onSettled }: PhoneSetupProps) {
     }
 
     return (
-        <section id="phone" aria-labelledby="phone-title" className="scroll-mt-6 rounded-lg border border-line bg-card">
+        <section id="phone" aria-labelledby="phone-title" className="@container/phone scroll-mt-6 rounded-lg border border-line bg-card">
             <header className="border-b border-line-soft px-5 py-4">
                 <h2 id="phone-title" className="flex items-center gap-2 text-[15px] font-semibold text-ink">
                     <Phone className="size-4 text-ink-3" aria-hidden />
@@ -507,7 +522,7 @@ function GetNumber({
                 numbers.length === 0 ? (
                     <p className="text-[13px] text-ink-2">No numbers of this kind right now. Try the other kind, or ask us.</p>
                 ) : (
-                    <div role="radiogroup" aria-label="Available numbers" className="grid gap-2 sm:grid-cols-2">
+                    <div role="radiogroup" aria-label="Available numbers" className="grid gap-2 @md/phone:grid-cols-2">
                         {numbers.map((n) => {
                             const checked = selected === n.phone_number;
                             return (

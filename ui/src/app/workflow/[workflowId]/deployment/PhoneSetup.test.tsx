@@ -89,7 +89,7 @@ describe("PhoneSetup", () => {
         mocks.getSetup.mockResolvedValue({ data: setup([agentNumber()]) });
         render(<PhoneSetup agentId={7} agentName="Bia Bistro" />);
 
-        expect(await screen.findByText("+35315550142")).toBeTruthy();
+        expect(await screen.findByText("+353 1 555 0142")).toBeTruthy();
         expect(screen.getByText("**61*+35315550142**20#")).toBeTruthy();
         expect(screen.getByText(/On most mobiles, dial this/)).toBeTruthy();
         expect(screen.getByText(/eir, Vodafone, Virgin Media, BT/)).toBeTruthy();
