@@ -128,6 +128,7 @@ from api.services.workflow.template_setup import (
     TemplateSetupError,
     attach_integration_tools,
     attach_tool_placeholder,
+    check_integration_tools,
     fill_template,
     parse_setup_fields,
     uses_tool_placeholder,
@@ -1674,12 +1675,10 @@ async def duplicate_workflow_template(
     except TemplateSetupError as e:
         raise HTTPException(status_code=422, detail=str(e))
 
-    unknown = sorted(set(request.integration_tools) - set(template.integrations or []))
-    if unknown:
-        raise HTTPException(
-            status_code=422,
-            detail=f"This template doesn't use: {', '.join(unknown)}",
-        )
+    try:
+        check_integration_tools(template.integrations, request.integration_tools)
+    except TemplateSetupError as e:
+        raise HTTPException(status_code=422, detail=str(e))
     if request.integration_tools:
         tool_uuids = set(request.integration_tools.values())
         tools = await db_client.get_tools_by_uuids(list(tool_uuids), organization_id)

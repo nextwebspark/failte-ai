@@ -46,6 +46,7 @@ from api.schemas.integrations import (
     InstallIntegrationRequest,
     IntegrationBooking,
     IntegrationCatalogResponse,
+    IntegrationChoiceListResponse,
     IntegrationConnection,
     IntegrationConnectionResponse,
     IntegrationProvider,
@@ -118,6 +119,10 @@ class ToolsServiceApi(Protocol):
         start: datetime,
         end: datetime,
     ) -> list[IntegrationBooking]: ...
+
+    async def list_choices(
+        self, caller: Caller, connection_id: uuid.UUID
+    ) -> IntegrationChoiceListResponse: ...
 
     async def start_sync(
         self, caller: Caller, connection_id: uuid.UUID
@@ -531,6 +536,14 @@ class IntegrationService:
             message=result.message,
             connection=links.response(result.connection),
         )
+
+    async def list_choices(
+        self, actor: Actor, connection_id: uuid.UUID
+    ) -> IntegrationChoiceListResponse:
+        """Values to pick for one setting of the connection, read live from
+        the provider (org-scoped by the tools service: another org's
+        connection is a 404; 409 when it has none or cannot be read)."""
+        return await self._tools.list_choices(actor.caller, connection_id)
 
     async def start_sync(
         self, actor: Actor, connection_id: uuid.UUID
