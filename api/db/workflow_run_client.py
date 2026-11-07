@@ -566,6 +566,36 @@ class WorkflowRunClient(BaseDBClient):
             )
             return result.scalars().first()
 
+    async def find_first_inbound_run_to_number(
+        self,
+        workflow_id: int,
+        organization_id: int,
+        called_number: str,
+        since,
+    ) -> Optional[WorkflowRunModel]:
+        """The earliest inbound phone call to ``called_number`` that reached this
+        agent at or after ``since``, or None.
+
+        ``called_number`` is the canonical address, as the inbound dispatcher
+        stamps it on ``initial_context.called_number``.
+        """
+        async with self.async_session() as session:
+            result = await session.execute(
+                select(WorkflowRunModel)
+                .join(WorkflowModel, WorkflowRunModel.workflow_id == WorkflowModel.id)
+                .where(
+                    WorkflowRunModel.workflow_id == workflow_id,
+                    WorkflowModel.organization_id == organization_id,
+                    WorkflowRunModel.call_type == CallType.INBOUND.value,
+                    WorkflowRunModel.created_at >= since,
+                    WorkflowRunModel.initial_context.op("->>")("called_number")
+                    == called_number,
+                )
+                .order_by(WorkflowRunModel.created_at.asc())
+                .limit(1)
+            )
+            return result.scalars().first()
+
     async def list_voice_runs_for_workflow(
         self,
         workflow_id: int,

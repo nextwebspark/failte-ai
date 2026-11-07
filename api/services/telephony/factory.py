@@ -31,6 +31,7 @@ from api.services.telephony.failure_reporting import (
     classify_telephony_exception,
     instrument_telephony_provider,
 )
+from api.services.telephony.platform_numbers import apply_platform_credentials
 from api.services.telephony.registry import (
     ConfigurationSetupState,
     ProviderConnectivity,
@@ -321,6 +322,8 @@ async def _normalize_with_phone_numbers(
     spec = registry.get(row.provider)
     raw = dict(row.credentials or {})
     raw["provider"] = row.provider
+    # LightMove-managed rows store no secret; it comes from the environment.
+    raw = apply_platform_credentials(row.provider, raw)
     base = spec.config_loader(raw)
 
     addresses = await db_client.list_active_normalized_addresses_for_config(row.id)

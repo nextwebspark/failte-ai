@@ -66,6 +66,10 @@ interface AgentPhoneNumbersProps {
     agentName: string;
     /** Called once the section has finished loading (or can't load). */
     onSettled?: () => void;
+    /** Called after a number is connected to or disconnected from this agent. */
+    onChanged?: () => void;
+    /** Render without its own card and heading, inside another section. */
+    embedded?: boolean;
 }
 
 /**
@@ -73,7 +77,7 @@ interface AgentPhoneNumbersProps {
  * point another workspace number at it. Numbers themselves are added under
  * Telephony, where the provider account lives.
  */
-export function AgentPhoneNumbers({ agentId, agentName, onSettled }: AgentPhoneNumbersProps) {
+export function AgentPhoneNumbers({ agentId, agentName, onSettled, onChanged, embedded = false }: AgentPhoneNumbersProps) {
     const { user, loading: authLoading, getAccessToken } = useAuth();
     const { can, orgContext, loading: orgLoading } = useOrgConfig();
     // `can` is false for everything until the organization has loaded. If
@@ -158,6 +162,7 @@ export function AgentPhoneNumbers({ agentId, agentName, onSettled }: AgentPhoneN
             }
             setPickerOpen(false);
             await load();
+            onChanged?.();
         } catch (error) {
             toast.error(error instanceof Error ? error.message : "Couldn’t update the number");
         } finally {
@@ -268,6 +273,79 @@ export function AgentPhoneNumbers({ agentId, agentName, onSettled }: AgentPhoneN
         );
     }
 
+    const picker = (
+        <Dialog open={pickerOpen} onOpenChange={setPickerOpen}>
+            <DialogContent className="sm:max-w-lg">
+                <DialogHeader>
+                    <DialogTitle>Connect a phone number</DialogTitle>
+                    <DialogDescription>Pick the number callers will ring to reach {agentName}.</DialogDescription>
+                </DialogHeader>
+                <div role="radiogroup" aria-label="Phone numbers" className="max-h-80 space-y-2 overflow-y-auto">
+                    {others.map((item) => {
+                        const { selectable, note } = numberAvailability(item, agentId);
+                        const checked = selectedId === item.number.id;
+                        return (
+                            <button
+                                key={item.number.id}
+                                type="button"
+                                role="radio"
+                                aria-checked={checked}
+                                disabled={!selectable}
+                                onClick={() => setSelectedId(item.number.id)}
+                                className={cn(
+                                    "flex w-full items-center gap-3 rounded-lg border px-3.5 py-3 text-left transition-colors",
+                                    checked ? "border-brand bg-brand-dim" : "border-line hover:border-ink-3",
+                                    !selectable && "cursor-not-allowed opacity-55 hover:border-line",
+                                )}
+                            >
+                                <span
+                                    aria-hidden
+                                    className={cn(
+                                        "flex size-4 shrink-0 items-center justify-center rounded-full border",
+                                        checked ? "border-brand" : "border-ink-3",
+                                    )}
+                                >
+                                    {checked && <span className="size-2 rounded-full bg-brand" />}
+                                </span>
+                                <NumberLine item={item} note={note} />
+                            </button>
+                        );
+                    })}
+                </div>
+                {selected?.number.inbound_workflow_id && (
+                    <p className="rounded-md bg-amber-dim px-3 py-2 text-[12.5px] text-amber">
+                        {selected.number.inbound_workflow_name ?? "Another agent"} will stop answering{" "}
+                        {selected.number.address}.
+                    </p>
+                )}
+                <DialogFooter>
+                    <Button variant="outline" onClick={() => setPickerOpen(false)}>
+                        Cancel
+                    </Button>
+                    <Button
+                        disabled={!selected || savingId !== null}
+                        onClick={() => selected && void route(selected, agentId)}
+                    >
+                        {savingId !== null && <Loader2 className="animate-spin" />}
+                        Connect
+                    </Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+    );
+
+    if (embedded) {
+        return (
+            <div>
+                <p className="mb-3 text-[13px] text-ink-2">
+                    Numbers from a phone provider account you connect yourself, like Twilio or Telnyx.
+                </p>
+                {body}
+                {picker}
+            </div>
+        );
+    }
+
     return (
         <section id="phone" aria-labelledby="phone-title" className="scroll-mt-6 rounded-lg border border-line bg-card">
             <header className="border-b border-line-soft px-5 py-4">
@@ -280,65 +358,7 @@ export function AgentPhoneNumbers({ agentId, agentName, onSettled }: AgentPhoneN
                 </p>
             </header>
             <div className="px-5 py-4">{body}</div>
-
-            <Dialog open={pickerOpen} onOpenChange={setPickerOpen}>
-                <DialogContent className="sm:max-w-lg">
-                    <DialogHeader>
-                        <DialogTitle>Connect a phone number</DialogTitle>
-                        <DialogDescription>Pick the number callers will ring to reach {agentName}.</DialogDescription>
-                    </DialogHeader>
-                    <div role="radiogroup" aria-label="Phone numbers" className="max-h-80 space-y-2 overflow-y-auto">
-                        {others.map((item) => {
-                            const { selectable, note } = numberAvailability(item, agentId);
-                            const checked = selectedId === item.number.id;
-                            return (
-                                <button
-                                    key={item.number.id}
-                                    type="button"
-                                    role="radio"
-                                    aria-checked={checked}
-                                    disabled={!selectable}
-                                    onClick={() => setSelectedId(item.number.id)}
-                                    className={cn(
-                                        "flex w-full items-center gap-3 rounded-lg border px-3.5 py-3 text-left transition-colors",
-                                        checked ? "border-brand bg-brand-dim" : "border-line hover:border-ink-3",
-                                        !selectable && "cursor-not-allowed opacity-55 hover:border-line",
-                                    )}
-                                >
-                                    <span
-                                        aria-hidden
-                                        className={cn(
-                                            "flex size-4 shrink-0 items-center justify-center rounded-full border",
-                                            checked ? "border-brand" : "border-ink-3",
-                                        )}
-                                    >
-                                        {checked && <span className="size-2 rounded-full bg-brand" />}
-                                    </span>
-                                    <NumberLine item={item} note={note} />
-                                </button>
-                            );
-                        })}
-                    </div>
-                    {selected?.number.inbound_workflow_id && (
-                        <p className="rounded-md bg-amber-dim px-3 py-2 text-[12.5px] text-amber">
-                            {selected.number.inbound_workflow_name ?? "Another agent"} will stop answering{" "}
-                            {selected.number.address}.
-                        </p>
-                    )}
-                    <DialogFooter>
-                        <Button variant="outline" onClick={() => setPickerOpen(false)}>
-                            Cancel
-                        </Button>
-                        <Button
-                            disabled={!selected || savingId !== null}
-                            onClick={() => selected && void route(selected, agentId)}
-                        >
-                            {savingId !== null && <Loader2 className="animate-spin" />}
-                            Connect
-                        </Button>
-                    </DialogFooter>
-                </DialogContent>
-            </Dialog>
+            {picker}
         </section>
     );
 }
