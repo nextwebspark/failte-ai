@@ -1003,7 +1003,25 @@ def build_cards(
             out[key] = call_spikes(calls, span)
         elif key == Card.REPEAT_CALLERS:
             out[key] = repeat_callers(calls)
+    if not previous:
+        # Nothing to compare with (a new business, or before its first
+        # call): "up 115" against an empty period would only mislead.
+        for card in out.values():
+            _drop_changes(card)
     return out
+
+
+def _drop_changes(value: Any) -> None:
+    """Set every "change" in a card (and its nested parts) to None."""
+    if isinstance(value, dict):
+        for k, v in value.items():
+            if k == "change":
+                value[k] = None
+            else:
+                _drop_changes(v)
+    elif isinstance(value, list):
+        for item in value:
+            _drop_changes(item)
 
 
 def local_day_bounds(

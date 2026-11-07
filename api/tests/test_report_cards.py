@@ -744,3 +744,27 @@ def test_preset_ranges_are_homes():
     assert bounds.start == datetime(2026, 11, 1, tzinfo=DUBLIN)
     assert bounds.previous_start == datetime(2026, 10, 25, tzinfo=DUBLIN)
     assert CallResult.BOOKING_MADE  # imported for Home's own names
+
+
+def test_no_change_shown_when_the_period_before_had_no_calls():
+    calls = [
+        _call(
+            i,
+            booked=True,
+            gathered={"party_size": "4"},
+            review={"reason": "reservations"},
+        )
+        for i in range(1, 9)
+    ]
+    pack = PACKS[Pack.RESTAURANT]
+    first = c.build_cards(
+        pack=pack, reasons=RESTAURANT, calls=calls, previous=[], span=_span()
+    )
+    assert first[Card.CALLS_ANSWERED]["change"] is None
+    assert first[Card.BOOKINGS_TAKEN]["change"] is None
+    assert first[Card.COVERS_BOOKED]["change"] is None
+    # With calls before, the change is shown as usual.
+    later = c.build_cards(
+        pack=pack, reasons=RESTAURANT, calls=calls, previous=calls[:2], span=_span()
+    )
+    assert later[Card.CALLS_ANSWERED]["change"] == 6
