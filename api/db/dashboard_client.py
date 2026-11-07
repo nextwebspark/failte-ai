@@ -149,8 +149,9 @@ class DashboardClient(BaseDBClient):
             )
 
     async def get_dashboard_agents(self, organization_id: int) -> list[dict[str, Any]]:
-        """The organization's agents: id, name, status and the timezone
-        saved with their opening hours."""
+        """The organization's agents: id, name, status, the timezone saved
+        with their opening hours, and those hours as times (the stored
+        ``opening_hours_schedule`` fact, unparsed; None when not set)."""
         async with self.async_session() as session:
             result = await session.execute(
                 select(
@@ -174,6 +175,11 @@ class DashboardClient(BaseDBClient):
                         "name": row.name,
                         "status": row.status,
                         "timezone": timezone if isinstance(timezone, str) else None,
+                        "opening_hours_schedule": variables.get(
+                            "opening_hours_schedule"
+                        )
+                        if isinstance(variables, dict)
+                        else None,
                     }
                 )
             return agents

@@ -553,3 +553,41 @@ def test_a_test_email_has_no_unsubscribe_link():
     message = report_message(_report([_call(1, 9)]), to="a@b.ie", links=links)
     assert "Unsubscribe" not in message.html and "Unsubscribe" not in message.text
     assert "A test." in message.html and message.headers == ()
+
+
+def test_report_counts_calls_outside_opening_hours_when_set():
+    from api.schemas.opening_hours import OpeningHours, OpenRange
+    from api.services.workflow.opening_hours import opening_hours_facts
+
+    # Bia (agent 14) is open 12:00-15:00 every day.
+    hours = OpeningHours(days=((OpenRange(open="12:00", close="15:00"),),) * 7)
+    agent = {
+        "id": 14,
+        "name": "Bia",
+        "status": "active",
+        "opening_hours_schedule": opening_hours_facts(hours)["opening_hours_schedule"],
+    }
+    calls = [_call(1, 9), _call(2, 12), _call(3, 16)]
+    report = build_report(
+        business_name="Bia",
+        agent_name=None,
+        period=daily_period(datetime(2026, 11, 6).date(), DUBLIN, SIX_PM),
+        tz=DUBLIN,
+        calls=calls,
+        rows=(),
+        previous_calls=0,
+        follow_up_rows=[],
+        open_follow_ups=0,
+        agent_status={"answering": True, "reason": None},
+        credit=None,
+        agents=[agent],
+    )
+    assert report.after_hours == 2
+    assert "Outside opening hours: 2" in render_text(report, to="o@bia.ie", links=LINKS)
+    assert "Outside opening hours: <strong>2</strong>" in render_html(
+        report, to="o@bia.ie", links=LINKS
+    )
+    # Without hours set as times the line is left out.
+    plain = _report(calls)
+    assert plain.after_hours is None
+    assert "Outside opening hours" not in render_text(plain, to="o@bia.ie", links=LINKS)

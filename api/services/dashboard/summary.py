@@ -12,6 +12,7 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 from api.services.dashboard.calls import HANDLED_RESULTS, CallResult, CallView
+from api.services.workflow.opening_hours import after_hours_count, parse_opening_hours
 
 RECENT_CALLS = 5
 
@@ -61,6 +62,35 @@ def calls_by_hour(calls: Iterable[CallView], tz: ZoneInfo) -> list[int]:
     for call in calls:
         hours[call.created_at.astimezone(tz).hour] += 1
     return hours
+
+
+def after_hours(
+    calls: Sequence[CallView], agents: Sequence[Mapping[str, Any]]
+) -> dict[str, Any]:
+    """Calls that arrived while their agent's business was closed, by each
+    agent's structured opening hours (``get_dashboard_agents``). Agents
+    without them aren't counted and are listed (those that are switched on
+    or had calls), so the screen can say so; ``calls`` is None when none of
+    the agents has them."""
+    hours = {
+        a["id"]: parsed
+        for a in agents
+        if (parsed := parse_opening_hours(a.get("opening_hours_schedule")))
+    }
+    with_calls = {call.workflow_id for call in calls}
+    return {
+        "calls": after_hours_count(
+            [(call.workflow_id, call.created_at) for call in calls], hours
+        )
+        if hours
+        else None,
+        "agents_without_hours": [
+            {"id": a["id"], "name": a["name"]}
+            for a in agents
+            if a["id"] not in hours
+            and (a.get("status") == "active" or a["id"] in with_calls)
+        ],
+    }
 
 
 def call_change(current: int, previous: int) -> int | None:

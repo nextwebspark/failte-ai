@@ -29,6 +29,10 @@ from api.services.telephony.transfer_event_protocol import (
     TransferEvent,
     TransferEventType,
 )
+from api.services.workflow.opening_hours import (
+    closed_transfer_result,
+    transfer_closed,
+)
 from api.services.workflow.pipecat_engine_skills import SkillToolManager
 from api.services.workflow.tools.calculator import get_calculator_tools, safe_calculator
 from api.services.workflow.tools.custom_tool import (
@@ -706,6 +710,16 @@ class CustomToolManager:
                     }
                     await self._handle_transfer_result(
                         webrtc_error_result, function_call_params, properties
+                    )
+                    return
+
+                # Outside the business's opening hours (when the owner set
+                # them as times and passes calls only while open) nobody is
+                # rung: the agent takes a message instead.
+                if transfer_closed(self._engine._call_context_vars):
+                    logger.info("Transfer skipped: outside opening hours")
+                    await self._handle_transfer_result(
+                        closed_transfer_result(), function_call_params, properties
                     )
                     return
 

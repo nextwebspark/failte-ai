@@ -105,6 +105,19 @@ class DashboardAgent(BaseModel):
     active: bool
 
 
+class DashboardAgentRef(BaseModel):
+    id: int
+    name: str
+
+
+class DashboardAfterHours(BaseModel):
+    # Calls that arrived while the business was closed, by each agent's
+    # opening hours set as times; None when no agent has them.
+    calls: int | None
+    # Agents whose calls aren't counted: no opening hours set as times.
+    agents_without_hours: list[DashboardAgentRef]
+
+
 class DashboardSummaryResponse(BaseModel):
     range: DashboardRange
     timezone: str
@@ -118,6 +131,7 @@ class DashboardSummaryResponse(BaseModel):
     calls_change: int | None
     # Calls per local hour of the day, 0-23, summed over the range.
     calls_by_hour: list[int]
+    after_hours: DashboardAfterHours
     recent_calls: list[DashboardRecentCall]
     # What callers wanted, from the call reviews, most common first.
     callers_wanted: list[DashboardReason]
