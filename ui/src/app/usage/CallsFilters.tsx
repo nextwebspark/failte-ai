@@ -28,10 +28,10 @@ import {
     whenLabel,
 } from "./callsView";
 
-const CHIP =
+export const CHIP =
     "inline-flex h-10 items-center gap-1.5 rounded-full border px-3.5 text-sm font-medium outline-none transition-colors focus-visible:ring-[3px] focus-visible:ring-ring/40 motion-reduce:transition-none sm:h-9";
-const CHIP_OFF = "border-line bg-panel text-ink-2 hover:border-ink-3/40 hover:text-foreground";
-const CHIP_ON = "border-brand/50 bg-brand-dim text-brand";
+export const CHIP_OFF = "border-line bg-panel text-ink-2 hover:border-ink-3/40 hover:text-foreground";
+export const CHIP_ON = "border-brand/50 bg-brand-dim text-brand";
 
 /** The tabs over the list, each with its real total (blank until counted). */
 export function CallsTabs({ tab, counts, onChange, listId }: {
@@ -169,9 +169,13 @@ export function CallsFilterBar({
                     </span>
                 )}
 
-                <DropdownMenu>
-                    <DropdownMenuTrigger className={cn(CHIP, query.outcome ? CHIP_ON : CHIP_OFF)}>
-                        {query.outcome ? <span className="max-w-[160px] truncate">{outcomeLabel(query.outcome)}</span> : "Outcome"}
+                {/* The stored ending code ("Call finished") isn't how the list
+                    reads a call (Home's words: "Booking made", "Handled by your
+                    agent"), so it lives under More filters; a link that sets it
+                    still shows here, so it can be seen and cleared. */}
+                {query.outcome && <DropdownMenu>
+                    <DropdownMenuTrigger className={cn(CHIP, CHIP_ON)}>
+                        <span className="max-w-[200px] truncate">Ending code: {outcomeLabel(query.outcome)}</span>
                         <ChevronDown className="size-3.5" aria-hidden />
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="start" className="max-h-80 overflow-y-auto">
@@ -179,13 +183,13 @@ export function CallsFilterBar({
                             value={query.outcome ?? "any"}
                             onValueChange={(value) => onChange({ outcome: value === "any" ? null : value })}
                         >
-                            <DropdownMenuRadioItem value="any">Any outcome</DropdownMenuRadioItem>
+                            <DropdownMenuRadioItem value="any">Any ending code</DropdownMenuRadioItem>
                             {outcomes.map((code) => (
                                 <DropdownMenuRadioItem key={code} value={code}>{outcomeLabel(code)}</DropdownMenuRadioItem>
                             ))}
                         </DropdownMenuRadioGroup>
                     </DropdownMenuContent>
-                </DropdownMenu>
+                </DropdownMenu>}
 
                 <DropdownMenu>
                     <DropdownMenuTrigger className={cn(CHIP, query.who ? CHIP_ON : CHIP_OFF)}>

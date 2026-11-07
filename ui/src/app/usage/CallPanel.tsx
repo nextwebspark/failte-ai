@@ -21,6 +21,7 @@ import {
     getUsageHistoryApiV1OrganizationsUsageRunsGet,
     getWorkflowRunApiV1WorkflowWorkflowIdRunsRunIdGet,
 } from "@/client/sdk.gen";
+import { RESULT_WORDS } from "@/components/dashboard/dashboardView";
 import { SUPPORT_EMAIL } from "@/components/SupportLink";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -32,11 +33,11 @@ import { copyTextToClipboard } from "@/lib/clipboard";
 import { downloadFile, getSignedUrl } from "@/lib/files";
 import { cn } from "@/lib/utils";
 
+import { callResultChip } from "./callOutcome";
 import { callerLines, OutcomeChip } from "./CallsTable";
 import {
     callDetails,
     callNumberOf,
-    callOutcome,
     type CallRow,
     capturedValues,
     formatCallWhen,
@@ -47,6 +48,9 @@ import {
     isDialable,
 } from "./callsView";
 import { ShareRecordingDialog } from "./ShareRecordingDialog";
+
+/** The small capitals over each part of the call. */
+const SECTION_HEADING = "mb-2.5 text-[12px] font-semibold uppercase tracking-[0.08em] text-ink-3";
 
 /** A recording usually lands within a minute or two of the call ending. */
 const RECORDING_GRACE_MS = 15 * 60 * 1000;
@@ -108,7 +112,7 @@ export function CallPanel({ run, timezone, autoplay, focusOnOpen, layout, isPhon
     const [showAll, setShowAll] = useState(false);
 
     const { name, number } = callerLines(run);
-    const outcome = callOutcome(run);
+    const outcome = callResultChip(run);
     const when = formatCallWhen(run.created_at, timezone);
     const rawNumber = callNumberOf(run);
     const isTest = run.mode === "webrtc" || run.mode === "smallwebrtc" || run.mode === "textchat";
@@ -216,7 +220,7 @@ export function CallPanel({ run, timezone, autoplay, focusOnOpen, layout, isPhon
         record.state === "ready" &&
         !record.data.is_completed &&
         Date.now() - new Date(run.created_at).getTime() < IN_PROGRESS_FOR_MS;
-    const chip = stillGoing ? { label: "Call in progress", tone: "live" as const } : outcome;
+    const chip = stillGoing ? RESULT_WORDS.in_progress : outcome;
     const headingId = `call-${run.id}-title`;
     const visibleLines = showAll ? lines : lines.slice(0, FIRST_LINES);
 
@@ -233,7 +237,7 @@ export function CallPanel({ run, timezone, autoplay, focusOnOpen, layout, isPhon
             )}
         >
             {/* How it ended, when, and who rang. */}
-            <div className="border-b border-line-soft px-5 pb-4 pt-4">
+            <div className="border-b border-line-soft px-5 pb-5 pt-4 sm:px-6">
                 {layout === "overlay" && isPhone ? (
                     <Button variant="ghost" className="-ml-2 mb-2 h-10 px-2" onClick={onClose}>
                         <ArrowLeft aria-hidden />
@@ -264,11 +268,11 @@ export function CallPanel({ run, timezone, autoplay, focusOnOpen, layout, isPhon
                     id={headingId}
                     ref={headingRef}
                     tabIndex={-1}
-                    className="mt-2 truncate text-xl font-bold tracking-[-0.01em] text-foreground outline-none"
+                    className="mt-2.5 truncate text-[22px] font-bold leading-tight tracking-[-0.01em] text-foreground outline-none"
                 >
                     {name}
                 </h2>
-                <p className="mt-0.5 text-[13.5px] text-ink-3">
+                <p className="mt-1 text-[14px] text-ink-2">
                     {number ? <span className="tabular-nums">{number}</span> : !isTest && <span>Number not known</span>}
                     {timesBefore !== null && timesBefore > 0 && (
                         <span>
@@ -278,7 +282,27 @@ export function CallPanel({ run, timezone, autoplay, focusOnOpen, layout, isPhon
                 </p>
             </div>
 
-            <div className="flex flex-col gap-6 px-5 py-5">
+            <div className="flex flex-col gap-7 px-5 py-6 sm:px-6">
+                {summary && (
+                    <section aria-labelledby={`${headingId}-summary`}>
+                        <h3 id={`${headingId}-summary`} className={SECTION_HEADING}>
+                            Summary
+                        </h3>
+                        <p className="text-[15.5px] leading-relaxed text-foreground">{summary}</p>
+                    </section>
+                )}
+
+                {reasonLabel && (
+                    <section aria-labelledby={`${headingId}-wanted`}>
+                        <h3 id={`${headingId}-wanted`} className={SECTION_HEADING}>
+                            What they wanted
+                        </h3>
+                        <p className="inline-flex rounded-full bg-panel-2 px-3 py-1 text-[14px] font-medium text-foreground">
+                            {reasonLabel}
+                        </p>
+                    </section>
+                )}
+
                 <Recording
                     record={record}
                     stillGoing={stillGoing}
@@ -287,27 +311,13 @@ export function CallPanel({ run, timezone, autoplay, focusOnOpen, layout, isPhon
                     onRetry={() => setReload((n) => n + 1)}
                 />
 
-                {(summary || reasonLabel) && (
-                    <section aria-labelledby={`${headingId}-summary`}>
-                        <h3 id={`${headingId}-summary`} className="mb-2 text-[11.5px] font-semibold uppercase tracking-[0.08em] text-ink-3">
-                            Summary
-                        </h3>
-                        {summary && <p className="text-[14.5px] leading-relaxed text-foreground">{summary}</p>}
-                        {reasonLabel && (
-                            <p className={cn("text-[13.5px] text-ink-2", summary && "mt-2")}>
-                                <span className="text-ink-3">What they wanted:</span> {reasonLabel}
-                            </p>
-                        )}
-                    </section>
-                )}
-
                 {unanswered.length > 0 && (
                     <section aria-labelledby={`${headingId}-unanswered`} className="rounded-xl border border-line bg-panel-2 px-4 py-3">
-                        <h3 id={`${headingId}-unanswered`} className="flex items-center gap-1.5 text-[13.5px] font-semibold text-foreground">
+                        <h3 id={`${headingId}-unanswered`} className="flex items-center gap-1.5 text-[14.5px] font-semibold text-foreground">
                             <MessageCircleQuestion className="size-4 text-ink-2" aria-hidden />
                             Your agent couldn&apos;t answer
                         </h3>
-                        <ul className="mt-1.5 list-disc pl-5 text-[13.5px] text-foreground">
+                        <ul className="mt-1.5 list-disc pl-5 text-[14.5px] text-foreground">
                             {unanswered.map((question, index) => (
                                 <li key={index}>{question}</li>
                             ))}
@@ -321,30 +331,8 @@ export function CallPanel({ run, timezone, autoplay, focusOnOpen, layout, isPhon
                     </section>
                 )}
 
-                {details.length > 0 && (
-                    <section aria-labelledby={`${headingId}-details`}>
-                        <h3 id={`${headingId}-details`} className="mb-2.5 text-[11.5px] font-semibold uppercase tracking-[0.08em] text-ink-3">
-                            Details your agent took
-                        </h3>
-                        <dl className="grid grid-cols-2 gap-2">
-                            {details.map((detail) => (
-                                <div
-                                    key={detail.key}
-                                    className={cn(
-                                        "min-w-0 rounded-lg border border-line px-3 py-2.5",
-                                        detail.value.length > 28 && "col-span-2",
-                                    )}
-                                >
-                                    <dt className="text-[12px] text-ink-3">{detail.label}</dt>
-                                    <dd className="mt-0.5 break-words font-semibold text-foreground">{detail.value}</dd>
-                                </div>
-                            ))}
-                        </dl>
-                    </section>
-                )}
-
                 <section aria-labelledby={`${headingId}-said`}>
-                    <h3 id={`${headingId}-said`} className="mb-2.5 text-[11.5px] font-semibold uppercase tracking-[0.08em] text-ink-3">
+                    <h3 id={`${headingId}-said`} className={SECTION_HEADING}>
                         What was said
                     </h3>
                     {searchWords && lines.length > 0 && (
@@ -370,13 +358,13 @@ export function CallPanel({ run, timezone, autoplay, focusOnOpen, layout, isPhon
                                     <li
                                         key={line.id}
                                         className={cn(
-                                            "max-w-[88%] rounded-xl px-3 py-2 text-[13.5px] leading-relaxed",
+                                            "max-w-[88%] rounded-xl px-3.5 py-2.5 text-[14.5px] leading-relaxed",
                                             line.who === "Agent"
                                                 ? "self-start bg-panel-2 text-foreground"
                                                 : "self-end bg-sky-dim text-foreground",
                                         )}
                                     >
-                                        <span className="block text-[12px] font-medium text-ink-3">{line.who}</span>
+                                        <span className="block text-[12.5px] font-medium text-ink-3">{line.who}</span>
                                         <Highlighted text={line.text} words={searchWords} />
                                     </li>
                                 ))}
@@ -405,6 +393,28 @@ export function CallPanel({ run, timezone, autoplay, focusOnOpen, layout, isPhon
                         <p className="text-sm text-ink-3">Nothing was said on this call.</p>
                     )}
                 </section>
+
+                {details.length > 0 && (
+                    <section aria-labelledby={`${headingId}-details`}>
+                        <h3 id={`${headingId}-details`} className={SECTION_HEADING}>
+                            Details your agent took
+                        </h3>
+                        <dl className="grid grid-cols-2 gap-2">
+                            {details.map((detail) => (
+                                <div
+                                    key={detail.key}
+                                    className={cn(
+                                        "min-w-0 rounded-lg border border-line px-3 py-2.5",
+                                        detail.value.length > 28 && "col-span-2",
+                                    )}
+                                >
+                                    <dt className="text-[12.5px] text-ink-3">{detail.label}</dt>
+                                    <dd className="mt-0.5 break-words text-[15px] font-semibold text-foreground">{detail.value}</dd>
+                                </div>
+                            ))}
+                        </dl>
+                    </section>
+                )}
 
                 <div className="flex flex-wrap items-center gap-2">
                     {callbackNumber && !isTest && (
