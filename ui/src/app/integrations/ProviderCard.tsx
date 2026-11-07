@@ -73,7 +73,7 @@ export function ProviderCard({ provider, connectedCount, canConnect, onConnect }
                 )}
                 {modes.length > 0 && (
                     <p className="text-xs text-muted-foreground">
-                        Connect with: {modes.map(authModeLabel).join(" or ")}
+                        Connect with: {modes.map((m) => authModeLabel(m, provider.id)).join(" or ")}
                     </p>
                 )}
             </CardContent>

@@ -7,9 +7,15 @@ import { isAppointmentHoursField } from '@/lib/appointmentHours';
 
 /** The integration providers the Create agent wizard can connect. */
 export const GOOGLE_CALENDAR = 'google-calendar';
+/** Books in place of Google Calendar in any template that books (connected on Integrations). */
+export const CALENDLY = 'calendly';
+
+/** The calendars an agent made from a template can book with. */
+export type BookingCalendar = typeof GOOGLE_CALENDAR | typeof CALENDLY;
 
 export const INTEGRATION_LABEL: Record<string, string> = {
     [GOOGLE_CALENDAR]: 'Google Calendar',
+    [CALENDLY]: 'Calendly',
 };
 
 /** OAuth clients are saved per auth family: Google Calendar signs in with Google's. */
@@ -193,7 +199,7 @@ export function templateHighlights(template: WorkflowTemplateResponse): string[]
         highlights.push('Uses your business details for hours, location and FAQs');
     }
     if (template.integrations?.includes(GOOGLE_CALENDAR)) {
-        highlights.push('Can book into Google Calendar (optional)');
+        highlights.push('Can book into Google Calendar or Calendly (optional)');
     } else {
         highlights.push('Takes a message when it cannot finish the request');
     }

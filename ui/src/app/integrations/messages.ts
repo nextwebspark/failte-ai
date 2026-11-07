@@ -50,24 +50,33 @@ export function urlWithoutReturnParams(href: string): string {
     return `${url.pathname}${query ? `?${query}` : ""}${url.hash}`;
 }
 
-const OAUTH_FAILURE_MESSAGES: Record<string, string> = {
-    access_denied: "You cancelled the sign-in, or Google refused access. Nothing was connected.",
-    invalid_state: "That sign-in link wasn't recognised or was already used. Please start again.",
-    expired_state: "The sign-in took too long and expired. Please start again.",
-    authorization_failed: "Google couldn't complete the sign-in. Please try again.",
-    client_missing: "The OAuth client used for this sign-in was removed. Add it again, then reconnect.",
-    token_exchange_failed:
-        "Google rejected the OAuth client. Check the client ID and secret, and that the redirect URI is registered exactly as shown.",
-    no_refresh_token:
-        "Google didn't grant offline access. Remove this app's access in your Google account settings, then connect again.",
-    scopes_missing: "Some required permissions weren't granted. Connect again and allow every requested permission.",
-    internal_error: "Something went wrong on our side while connecting. Please try again.",
-    invalid_return: "The sign-in returned an unexpected response. Please try again.",
+/** The Calendly integration's provider id. */
+export const CALENDLY_PROVIDER = "calendly";
+
+const OAUTH_FAILURE_MESSAGES: Record<string, (who: string) => string> = {
+    access_denied: (who) => `You cancelled the sign-in, or ${who} refused access. Nothing was connected.`,
+    invalid_state: () => "That sign-in link wasn't recognised or was already used. Please start again.",
+    expired_state: () => "The sign-in took too long and expired. Please start again.",
+    authorization_failed: (who) => `${who} couldn't complete the sign-in. Please try again.`,
+    client_missing: () => "The OAuth client used for this sign-in was removed. Add it again, then reconnect.",
+    token_exchange_failed: (who) =>
+        `${who} rejected the OAuth client. Check the client ID and secret, and that the redirect URI is registered exactly as shown.`,
+    no_refresh_token: (who) =>
+        `${who} didn't grant offline access. Remove this app's access in your ${who} account settings, then connect again.`,
+    scopes_missing: () => "Some required permissions weren't granted. Connect again and allow every requested permission.",
+    internal_error: () => "Something went wrong on our side while connecting. Please try again.",
+    invalid_return: () => "The sign-in returned an unexpected response. Please try again.",
 };
 
+/** Who the sign-in was with, for the messages above. */
+function signInWith(provider: string | null | undefined): string {
+    return provider === CALENDLY_PROVIDER ? "Calendly" : "Google";
+}
+
 /** Friendly copy for an OAuth callback failure code. */
-export function oauthFailureMessage(reason: string): string {
-    return OAUTH_FAILURE_MESSAGES[reason] ?? "The connection couldn't be completed. Please try again.";
+export function oauthFailureMessage(reason: string, provider?: string | null): string {
+    const message = OAUTH_FAILURE_MESSAGES[reason];
+    return message ? message(signInWith(provider)) : "The connection couldn't be completed. Please try again.";
 }
 
 export type ConnectionState = "active" | "pending" | "error" | "revoked" | "not_installed";
@@ -134,6 +143,10 @@ const SCOPE_LABELS: Record<string, string> = {
     "https://www.googleapis.com/auth/spreadsheets.readonly": "Read Google Sheets",
     "https://www.googleapis.com/auth/spreadsheets": "Read and edit Google Sheets",
     "https://www.googleapis.com/auth/gmail.send": "Send email as you",
+    "users:read": "See your Calendly account",
+    "event_types:read": "See your Calendly events",
+    "availability:read": "See your free times",
+    "scheduled_events:write": "Book meetings for callers",
 };
 
 /** A readable name for an OAuth scope URL. */
@@ -150,7 +163,8 @@ const AUTH_MODE_LABELS: Record<string, string> = {
     none: "No sign-in",
 };
 
-export function authModeLabel(mode: string): string {
+export function authModeLabel(mode: string, provider?: string): string {
+    if (mode === "api_key" && provider === CALENDLY_PROVIDER) return "Personal access token";
     return AUTH_MODE_LABELS[mode] ?? mode;
 }
 

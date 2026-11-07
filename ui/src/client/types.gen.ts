@@ -5390,6 +5390,59 @@ export type IntegrationCatalogResponse = {
 };
 
 /**
+ * IntegrationChoice
+ *
+ * One value the owner may pick for a connection setting, read live from
+ * the provider (e.g. one of their Calendly event types).
+ */
+export type IntegrationChoice = {
+    /**
+     * Value
+     */
+    value: string;
+    /**
+     * Label
+     */
+    label: string;
+    /**
+     * Detail
+     */
+    detail?: string | null;
+    /**
+     * Warning
+     *
+     * Why picking it would not work well, in plain words.
+     */
+    warning?: string | null;
+    /**
+     * Config
+     *
+     * Send this as the connection's config (PATCH) to pick it.
+     */
+    config: {
+        [key: string]: JsonValue;
+    };
+};
+
+/**
+ * IntegrationChoiceListResponse
+ *
+ * Values for one setting of a connection (``choices`` capability).
+ */
+export type IntegrationChoiceListResponse = {
+    /**
+     * Field
+     *
+     * The config field the choices are for.
+     */
+    field: string;
+    /**
+     * Choices
+     */
+    choices: Array<IntegrationChoice>;
+};
+
+/**
  * IntegrationConnectionListResponse
  */
 export type IntegrationConnectionListResponse = {
@@ -5561,7 +5614,7 @@ export type IntegrationProvider = {
     /**
      * Capabilities
      *
-     * Optional features, e.g. ``sync`` (POST /connections/{id}/sync imports the connection's data).
+     * Optional features, e.g. ``sync`` (POST /connections/{id}/sync imports the connection's data), ``bookings`` (its bookings are listed) or ``choices`` (GET /connections/{id}/choices lists the values of a setting to pick).
      */
     capabilities?: Array<string>;
     /**
@@ -17244,6 +17297,50 @@ export type TestConnectionApiV1IntegrationsConnectionsConnectionIdTestPostRespon
 };
 
 export type TestConnectionApiV1IntegrationsConnectionsConnectionIdTestPostResponse = TestConnectionApiV1IntegrationsConnectionsConnectionIdTestPostResponses[keyof TestConnectionApiV1IntegrationsConnectionsConnectionIdTestPostResponses];
+
+export type ListConnectionChoicesApiV1IntegrationsConnectionsConnectionIdChoicesGetData = {
+    body?: never;
+    headers?: {
+        /**
+         * Authorization
+         */
+        authorization?: string | null;
+        /**
+         * X-Api-Key
+         */
+        'X-API-Key'?: string | null;
+    };
+    path: {
+        /**
+         * Connection Id
+         */
+        connection_id: string;
+    };
+    query?: never;
+    url: '/api/v1/integrations/connections/{connection_id}/choices';
+};
+
+export type ListConnectionChoicesApiV1IntegrationsConnectionsConnectionIdChoicesGetErrors = {
+    /**
+     * Not found
+     */
+    404: unknown;
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ListConnectionChoicesApiV1IntegrationsConnectionsConnectionIdChoicesGetError = ListConnectionChoicesApiV1IntegrationsConnectionsConnectionIdChoicesGetErrors[keyof ListConnectionChoicesApiV1IntegrationsConnectionsConnectionIdChoicesGetErrors];
+
+export type ListConnectionChoicesApiV1IntegrationsConnectionsConnectionIdChoicesGetResponses = {
+    /**
+     * Successful Response
+     */
+    200: IntegrationChoiceListResponse;
+};
+
+export type ListConnectionChoicesApiV1IntegrationsConnectionsConnectionIdChoicesGetResponse = ListConnectionChoicesApiV1IntegrationsConnectionsConnectionIdChoicesGetResponses[keyof ListConnectionChoicesApiV1IntegrationsConnectionsConnectionIdChoicesGetResponses];
 
 export type SyncConnectionApiV1IntegrationsConnectionsConnectionIdSyncPostData = {
     body?: never;

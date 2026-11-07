@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 
 import {
     attachedToolUuids,
+    bookingLine,
     bookingTimesByDay,
+    calendarProvider,
     clockLabel,
     fillGreeting,
     isCalendarTool,
@@ -43,6 +45,17 @@ describe("what the agent's definition says", () => {
         expect(isCalendarTool({ category: "mcp", definition: { config: { url: "https://x/mcp/google-calendar" } } })).toBe(true);
         expect(isCalendarTool({ category: "mcp", definition: { config: { url: "https://x/mcp/hubspot" } } })).toBe(false);
         expect(isCalendarTool({ category: "transfer_call", definition: {} })).toBe(false);
+    });
+
+    it("tells Calendly from Google Calendar", () => {
+        const tool = (url: string) => ({ category: "mcp", definition: { config: { url } } });
+        expect(calendarProvider(tool("https://tools.example/mcp/calendly"))).toBe("calendly");
+        expect(calendarProvider(tool("https://tools.example/mcp/calendly/"))).toBe("calendly");
+        expect(calendarProvider(tool("https://x/mcp/google-calendar"))).toBe("google-calendar");
+        expect(calendarProvider(tool("https://x/mcp/calendly-lookalike"))).toBeNull();
+        expect(isCalendarTool(tool("https://tools.example/mcp/calendly"))).toBe(true);
+        expect(bookingLine("calendly")).toBe("Checks free times in your Calendly and books them.");
+        expect(bookingLine("google-calendar")).toBe("Checks free times in your Google Calendar and books them.");
     });
 });
 

@@ -130,6 +130,31 @@ describe("BookingsPage", () => {
         expect(new Date(end).getTime() - new Date(start).getTime()).toBeGreaterThanOrEqual(6.9 * 86_400_000);
     });
 
+    it("shows a Calendly calendar without Google-only rules or changes", async () => {
+        mocks.list.mockResolvedValue({
+            data: listing({
+                calendars: [
+                    {
+                        connection_id: CAL,
+                        provider: "calendly",
+                        title: "Calendly",
+                        account_label: "aoife@example.ie",
+                        ai_booking_enabled: true,
+                        ok: true,
+                    },
+                ],
+            }),
+        });
+        render(<BookingsPage />);
+        expect(await screen.findByText("Mary Byrne")).toBeTruthy();
+        expect(screen.getByText(/Free times come from your Calendly/)).toBeTruthy();
+        expect(screen.getByText(/can't move or cancel Calendly bookings/)).toBeTruthy();
+        expect(screen.queryByRole("button", { name: "Edit booking rules" })).toBeNull();
+        expect(screen.queryByText("Let the agent cancel or move bookings")).toBeNull();
+        // The owner's on/off switch still works for Calendly.
+        expect(screen.getByRole("switch", { name: "Let the agent book" })).toBeTruthy();
+    });
+
     it("lets an admin switch AI booking off for a calendar", async () => {
         render(<BookingsPage />);
         const toggle = await screen.findByRole("switch", { name: "Let the agent book" });

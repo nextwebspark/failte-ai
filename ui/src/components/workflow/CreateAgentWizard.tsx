@@ -27,8 +27,11 @@ import { useIntegrationConnect } from '@/components/workflow/create/useIntegrati
 import { useOrgConfig } from '@/context/OrgConfigContext';
 import {
     agentNameFor,
+    type BookingCalendar,
+    CALENDLY,
     emptyAnswers,
     GOOGLE_CALENDAR,
+    INTEGRATION_LABEL,
     missingAnswer,
     sortTemplates,
 } from '@/lib/agentTemplates';
@@ -194,11 +197,25 @@ export function CreateAgentWizard({ initialMode = 'template' }: CreateAgentWizar
 
     const wantsCalendar = view === 'setup' && !!template?.integrations?.includes(GOOGLE_CALENDAR);
     const calendar = useIntegrationConnect(GOOGLE_CALENDAR, wantsCalendar && !!user);
+    // Calendly books in Google Calendar's place once it is connected.
+    const calendly = useIntegrationConnect(CALENDLY, wantsCalendar && !!user);
+    const [chosenCalendar, setBookWith] = useState<BookingCalendar>(GOOGLE_CALENDAR);
+    const bookWith: BookingCalendar =
+        calendly.status === 'connected' && (calendar.status !== 'connected' || chosenCalendar === CALENDLY)
+            ? CALENDLY
+            : GOOGLE_CALENDAR;
+    const booking = bookWith === CALENDLY ? calendly : calendar;
     const calendarTool =
-        wantsCalendar && useCalendar && calendar.status === 'connected'
-            ? calendar.connection?.tool_uuids?.[0]
+        wantsCalendar && useCalendar && booking.status === 'connected'
+            ? booking.connection?.tool_uuids?.[0]
             : undefined;
-    const hours = useAppointmentHours(template, calendar, !!calendarTool, can('integrations:write'));
+    // Appointment hours are Google Calendar's: Calendly keeps its own.
+    const hours = useAppointmentHours(
+        template,
+        calendar,
+        !!calendarTool && bookWith === GOOGLE_CALENDAR,
+        can('integrations:write'),
+    );
 
     useEffect(() => {
         setView(initialMode === 'template' ? 'gallery' : initialMode);
@@ -312,7 +329,7 @@ export function CreateAgentWizard({ initialMode = 'template' }: CreateAgentWizar
                     template_id: template.id,
                     workflow_name: agentNameFor(template, answers),
                     values: Object.fromEntries(Object.entries(answers).map(([k, v]) => [k, v.trim()])),
-                    integration_tools: calendarTool ? { [GOOGLE_CALENDAR]: calendarTool } : {},
+                    integration_tools: calendarTool ? { [bookWith]: calendarTool } : {},
                     ...hours.request,
                 },
             });
@@ -324,7 +341,7 @@ export function CreateAgentWizard({ initialMode = 'template' }: CreateAgentWizar
             if (wantsCalendar) {
                 items.push(
                     calendarTool
-                        ? { text: 'Books into Google Calendar', done: true }
+                        ? { text: `Books into ${INTEGRATION_LABEL[bookWith]}`, done: true }
                         : { text: 'Books appointments', note: 'Takes a message for now', done: false },
                 );
             }
@@ -484,6 +501,9 @@ export function CreateAgentWizard({ initialMode = 'template' }: CreateAgentWizar
                                 setAnswerErrors((current) => (current[key] ? {} : current));
                             }}
                             calendar={wantsCalendar ? calendar : null}
+                            calendly={wantsCalendar ? calendly : null}
+                            bookWith={bookWith}
+                            onBookWithChange={setBookWith}
                             useCalendar={useCalendar}
                             onUseCalendarChange={setUseCalendar}
                             hours={hours}

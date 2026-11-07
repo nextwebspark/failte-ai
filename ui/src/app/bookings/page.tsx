@@ -336,8 +336,8 @@ function NoCalendar({ canConnect }: { canConnect: boolean }) {
                 ) : null
             }
         >
-            Link your Google Calendar and your agent can offer callers real free times and book them while
-            they&apos;re still on the line. Every booking then shows up here, day by day.
+            Link your Google Calendar or Calendly and your agent can offer callers real free times and book them
+            while they&apos;re still on the line. Every booking then shows up here, day by day.
             {!canConnect && <span className="mt-2 block">Ask an admin on your team to connect it.</span>}
         </EmptyState>
     );
@@ -380,6 +380,8 @@ function CalendarRow({
     const switchId = `booking-on-${calendar.connection_id}`;
     const changesId = `changes-on-${calendar.connection_id}`;
     const changesOn = calendar.ai_changes_enabled ?? false;
+    // Calendly keeps its own hours and rules, and has no way to move bookings.
+    const calendly = calendar.provider === "calendly";
     return (
         <Panel accent={calendar.ok ? (calendar.ai_booking_enabled ? "brand" : "amber") : "danger"}>
             <div className="flex flex-wrap items-center justify-between gap-3">
@@ -410,6 +412,18 @@ function CalendarRow({
                     )}
                 </div>
             </div>
+            {calendly && (
+                <div className="mt-3 border-t border-line-soft pt-3 text-[12.5px] text-ink-3">
+                    <p>
+                        Free times come from your Calendly: change your working hours, notice and limits there.
+                    </p>
+                    <p className="mt-1">
+                        Your agent can&apos;t move or cancel Calendly bookings. Callers use the links in their
+                        Calendly email, or you change them in Calendly.
+                    </p>
+                </div>
+            )}
+            {!calendly && (
             <div className="mt-3 flex flex-wrap items-start gap-2 border-t border-line-soft pt-3">
                 {canManage ? (
                     <Switch
@@ -433,6 +447,8 @@ function CalendarRow({
                     </p>
                 </div>
             </div>
+            )}
+            {!calendly && (
             <div className="mt-3 border-t border-line-soft pt-3">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                     <div className="min-w-0">
@@ -458,6 +474,7 @@ function CalendarRow({
                     </div>
                 )}
             </div>
+            )}
             {!calendar.ai_booking_enabled && (
                 <p className="mt-2 text-sm text-ink-2">
                     Your agent won&apos;t book on this calendar. Callers who want a booking are passed to your team,

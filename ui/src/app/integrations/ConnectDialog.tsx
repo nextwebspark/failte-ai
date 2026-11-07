@@ -21,13 +21,28 @@ import { authModeLabel, credentialFamily, isEmail } from "./messages";
 import { NoAuthConnect } from "./NoAuthConnect";
 import { OAuthConnect, SUGGESTED_ACCOUNT_ID } from "./OAuthConnect";
 import { type ReusableKey, ServiceAccountConnect } from "./ServiceAccountConnect";
+import { TokenConnect } from "./TokenConnect";
 
 /** Auth modes this screen can drive, in the order they are offered. */
-export const SUPPORTED_AUTH_MODES = ["oauth2", "service_account", "none"] as const;
+export const SUPPORTED_AUTH_MODES = ["oauth2", "service_account", "api_key", "none"] as const;
 type SupportedMode = (typeof SUPPORTED_AUTH_MODES)[number];
 
-export function connectableModes(provider: IntegrationProvider): SupportedMode[] {
-    return SUPPORTED_AUTH_MODES.filter((mode) => provider.auth_modes.includes(mode));
+/**
+ * The provider's modes this screen can drive. A pasted token comes first
+ * when there is no ready-made sign-in (signing in would need the workspace's
+ * own OAuth app, e.g. for Calendly).
+ */
+export function connectableModes(
+    provider: IntegrationProvider,
+    providerApps: ProviderAppResponse[] = [],
+): SupportedMode[] {
+    const modes = SUPPORTED_AUTH_MODES.filter((mode) => provider.auth_modes.includes(mode));
+    const family = credentialFamily(provider);
+    const managed = providerApps.some((a) => a.managed && (a.provider === family || a.provider === provider.id));
+    if (!managed && modes.includes("api_key")) {
+        return ["api_key", ...modes.filter((m) => m !== "api_key")];
+    }
+    return modes;
 }
 
 export interface ConnectTarget {
@@ -126,7 +141,7 @@ function ConnectBody({
     onProviderAppCreated: ConnectDialogProps["onProviderAppCreated"];
 }) {
     const { provider, replaces } = target;
-    const modes = connectableModes(provider);
+    const modes = connectableModes(provider, providerApps);
     const preferred = modes.find((m) => m === replaces?.auth_mode) ?? modes[0];
     const [mode, setMode] = useState<SupportedMode | undefined>(preferred);
     const reusableKeys = useMemo(
@@ -136,6 +151,8 @@ function ConnectBody({
     const { user } = useAuth();
     const ownEmail = signedInEmail(user);
     const oauthAccounts = useMemo(() => {
+        // Only Google takes a sign-in hint (Calendly ignores one).
+        if (credentialFamily(provider) !== "google") return [];
         // Only email addresses can be a sign-in hint. When reconnecting, the
         // replaced connection's account comes first (it may be in error).
         const accounts = familyConnections(provider, providers, connections, "oauth2").filter((a) =>
@@ -174,7 +191,7 @@ function ConnectBody({
                         <TabsList aria-labelledby="connect-mode-label">
                             {modes.map((m) => (
                                 <TabsTrigger key={m} value={m}>
-                                    {authModeLabel(m)}
+                                    {authModeLabel(m, provider.id)}
                                 </TabsTrigger>
                             ))}
                         </TabsList>
@@ -197,6 +214,16 @@ function ConnectBody({
                     provider={provider}
                     reusable={reusableKeys}
                     preferNewKey={Boolean(replaces)}
+                    onCancel={onClose}
+                    onInstalled={(connection) => {
+                        onInstalled(connection, replaces);
+                        onClose();
+                    }}
+                />
+            )}
+            {mode === "api_key" && (
+                <TokenConnect
+                    provider={provider}
                     onCancel={onClose}
                     onInstalled={(connection) => {
                         onInstalled(connection, replaces);
