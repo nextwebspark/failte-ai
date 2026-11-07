@@ -247,12 +247,68 @@ class BookingListFailed(Exception):
     it must be safe (no secrets, no raw upstream bodies)."""
 
 
+@runtime_checkable
+class SecretCheckingProvider(Protocol):
+    """Optional: the provider proves a directly supplied secret (e.g. a pasted
+    API token) works before the connection is saved."""
+
+    async def check_new_secret(
+        self,
+        http: httpx.AsyncClient,
+        auth_mode: AuthMode,
+        secret: Mapping[str, JsonValue],
+    ) -> str | None:
+        """Call the provider with ``secret``; return an account label (or
+        None). Raise ``InvalidRequestError`` with a message safe to show
+        (never quoting the secret) when it does not work."""
+        ...
+
+
+@dataclass(frozen=True, slots=True)
+class ConfigChoice:
+    """One value an admin may pick for a config field, read live from the
+    provider (e.g. one Calendly event type). ``config`` is merged into the
+    connection's config when it is picked."""
+
+    value: str
+    label: str
+    config: Mapping[str, JsonValue]
+    detail: str | None = None
+    # Why picking it would not work well, in words for the owner.
+    warning: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class ConfigChoices:
+    field: str
+    choices: Sequence[ConfigChoice]
+
+
+class ConfigChoicesFailed(Exception):
+    """The choices could not be read. The message is shown to the admin, so
+    it must be safe (no secrets, no raw upstream bodies)."""
+
+
+@runtime_checkable
+class ConfigChoicesProvider(Protocol):
+    """Optional capability: one config field is picked from a list the
+    provider reads live (``GET /internal/connections/{id}/choices``). Listed
+    in the catalog as the ``choices`` capability."""
+
+    async def config_choices(self, ctx: ConnectionContext) -> ConfigChoices:
+        """Raise ``ConfigChoicesFailed`` with an admin-safe message when the
+        provider cannot be read."""
+        ...
+
+
 def provider_capabilities(provider: Provider) -> list[str]:
     capabilities = []
     if isinstance(provider, SyncableProvider):
         capabilities.append("sync")
     if isinstance(provider, BookingListProvider):
         capabilities.append("bookings")
+    if isinstance(provider, ConfigChoicesProvider):
+        capabilities.append("choices")
     return capabilities
 
 
