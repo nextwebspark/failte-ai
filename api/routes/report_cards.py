@@ -47,13 +47,13 @@ ReportsEditor = Annotated[
 # ------------------------------------------------------------------ cards
 
 
-class Change(BaseModel):
+class CardChange(BaseModel):
     previous: int
     # None when both spans are too small to compare (Home's rule).
     change: int | None
 
 
-class CallsAnsweredCard(Change):
+class CallsAnsweredCard(CardChange):
     calls: int
     # Came in while closed; None when no agent has opening hours as times.
     after_hours: int | None
@@ -147,12 +147,12 @@ class AgentPerformanceCard(BaseModel):
     results: dict[str, int]
 
 
-class BookingsCard(Change):
+class BookingsCard(CardChange):
     count: int
     percent_of_calls: int | None
 
 
-class CoversCard(Change):
+class CoversCard(CardChange):
     covers: int
     bookings_with_size: int
     not_given: int
@@ -160,7 +160,7 @@ class CoversCard(Change):
     average_party: float | None
 
 
-class TablesFullCard(Change):
+class TablesFullCard(CardChange):
     count: int
     covers: int
     without_size: int
@@ -196,7 +196,7 @@ class SpecialRequestsCard(BaseModel):
     not_tagged: int
 
 
-class ReasonCard(Change):
+class ReasonCard(CardChange):
     count: int
     handled: int
     booked: int
@@ -278,7 +278,7 @@ class CalloutsCard(BaseModel):
     callbacks: int | None = None
 
 
-class ShareCard(Change):
+class ShareCard(CardChange):
     count: int
     percent: int | None
 
@@ -388,7 +388,7 @@ class ReportLayoutView(BaseModel):
     can_customise: bool
 
 
-class ReportAgent(BaseModel):
+class ReportPageAgent(BaseModel):
     id: int
     name: str
     active: bool
@@ -407,7 +407,7 @@ class ReportOverviewResponse(BaseModel):
     pack_label: str
     calls: int
     has_calls: bool
-    agents: list[ReportAgent]
+    agents: list[ReportPageAgent]
     layout: ReportLayoutView
     cards: ReportCards
 
