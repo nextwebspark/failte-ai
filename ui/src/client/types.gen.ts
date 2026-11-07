@@ -2895,6 +2895,77 @@ export type CurrentUsageResponse = {
 };
 
 /**
+ * CustomVoiceRequest
+ */
+export type CustomVoiceRequest = {
+    /**
+     * Workflow Id
+     */
+    workflow_id: number;
+    /**
+     * Provider
+     */
+    provider: 'elevenlabs' | 'cartesia' | 'other';
+    /**
+     * Voice Id
+     */
+    voice_id: string;
+    /**
+     * Voice Name
+     */
+    voice_name?: string | null;
+    /**
+     * Note
+     */
+    note?: string | null;
+    /**
+     * Requested By
+     */
+    requested_by?: string | null;
+    /**
+     * Requested At
+     */
+    requested_at: string;
+    /**
+     * Status
+     */
+    status?: 'requested' | 'set_up' | 'declined';
+};
+
+/**
+ * CustomVoiceRequestIn
+ */
+export type CustomVoiceRequestIn = {
+    /**
+     * Provider
+     */
+    provider: 'elevenlabs' | 'cartesia' | 'other';
+    /**
+     * Voice Id
+     */
+    voice_id: string;
+    /**
+     * Voice Name
+     */
+    voice_name?: string | null;
+    /**
+     * Note
+     */
+    note?: string | null;
+    /**
+     * Consent
+     */
+    consent: boolean;
+};
+
+/**
+ * CustomVoiceStatus
+ */
+export type CustomVoiceStatus = {
+    request?: CustomVoiceRequest | null;
+};
+
+/**
  * DailyReportResponse
  */
 export type DailyReportResponse = {
@@ -19610,6 +19681,94 @@ export type GetPlatformNumberApiV1WorkflowWorkflowIdPlatformNumberPostResponses 
 };
 
 export type GetPlatformNumberApiV1WorkflowWorkflowIdPlatformNumberPostResponse = GetPlatformNumberApiV1WorkflowWorkflowIdPlatformNumberPostResponses[keyof GetPlatformNumberApiV1WorkflowWorkflowIdPlatformNumberPostResponses];
+
+export type GetCustomVoiceApiV1WorkflowWorkflowIdCustomVoiceGetData = {
+    body?: never;
+    headers?: {
+        /**
+         * Authorization
+         */
+        authorization?: string | null;
+        /**
+         * X-Api-Key
+         */
+        'X-API-Key'?: string | null;
+    };
+    path: {
+        /**
+         * Workflow Id
+         */
+        workflow_id: number;
+    };
+    query?: never;
+    url: '/api/v1/workflow/{workflow_id}/custom-voice';
+};
+
+export type GetCustomVoiceApiV1WorkflowWorkflowIdCustomVoiceGetErrors = {
+    /**
+     * Not found
+     */
+    404: unknown;
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type GetCustomVoiceApiV1WorkflowWorkflowIdCustomVoiceGetError = GetCustomVoiceApiV1WorkflowWorkflowIdCustomVoiceGetErrors[keyof GetCustomVoiceApiV1WorkflowWorkflowIdCustomVoiceGetErrors];
+
+export type GetCustomVoiceApiV1WorkflowWorkflowIdCustomVoiceGetResponses = {
+    /**
+     * Successful Response
+     */
+    200: CustomVoiceStatus;
+};
+
+export type GetCustomVoiceApiV1WorkflowWorkflowIdCustomVoiceGetResponse = GetCustomVoiceApiV1WorkflowWorkflowIdCustomVoiceGetResponses[keyof GetCustomVoiceApiV1WorkflowWorkflowIdCustomVoiceGetResponses];
+
+export type RequestCustomVoiceApiV1WorkflowWorkflowIdCustomVoicePostData = {
+    body: CustomVoiceRequestIn;
+    headers?: {
+        /**
+         * Authorization
+         */
+        authorization?: string | null;
+        /**
+         * X-Api-Key
+         */
+        'X-API-Key'?: string | null;
+    };
+    path: {
+        /**
+         * Workflow Id
+         */
+        workflow_id: number;
+    };
+    query?: never;
+    url: '/api/v1/workflow/{workflow_id}/custom-voice';
+};
+
+export type RequestCustomVoiceApiV1WorkflowWorkflowIdCustomVoicePostErrors = {
+    /**
+     * Not found
+     */
+    404: unknown;
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type RequestCustomVoiceApiV1WorkflowWorkflowIdCustomVoicePostError = RequestCustomVoiceApiV1WorkflowWorkflowIdCustomVoicePostErrors[keyof RequestCustomVoiceApiV1WorkflowWorkflowIdCustomVoicePostErrors];
+
+export type RequestCustomVoiceApiV1WorkflowWorkflowIdCustomVoicePostResponses = {
+    /**
+     * Successful Response
+     */
+    200: CustomVoiceStatus;
+};
+
+export type RequestCustomVoiceApiV1WorkflowWorkflowIdCustomVoicePostResponse = RequestCustomVoiceApiV1WorkflowWorkflowIdCustomVoicePostResponses[keyof RequestCustomVoiceApiV1WorkflowWorkflowIdCustomVoicePostResponses];
 
 export type ListMyOrganizationsApiV1OrganizationsMineGetData = {
     body?: never;

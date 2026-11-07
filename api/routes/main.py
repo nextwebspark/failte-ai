@@ -12,6 +12,7 @@ from api.routes.billing_admin import router as billing_admin_router
 from api.routes.billing_webhooks import router as billing_webhooks_router
 from api.routes.campaign import router as campaign_router
 from api.routes.credentials import router as credentials_router
+from api.routes.custom_voice import router as custom_voice_router
 from api.routes.dashboard import router as dashboard_router
 from api.routes.email_reports import public_router as email_reports_public_router
 from api.routes.email_reports import router as email_reports_router
@@ -69,6 +70,7 @@ router.include_router(tool_router)
 router.include_router(integrations_router)
 router.include_router(organization_router)
 router.include_router(phone_setup_router)
+router.include_router(custom_voice_router)
 router.include_router(team_router)
 router.include_router(notifications_router)
 router.include_router(invitations_router)

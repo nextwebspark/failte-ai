@@ -29,6 +29,7 @@ import { detailFromError } from "@/lib/apiError";
 import { cn } from "@/lib/utils";
 
 import { SectionError, SectionMessage } from "../components/SectionStates";
+import { CustomVoice } from "./CustomVoice";
 import { bookingLine, bookingTimesByDay, bookingTitle, fillGreeting, WEEK, WEEK_LONG } from "./knowledge";
 import { forSave, type OpeningHours, openingHoursProblem, sameOpeningHours } from "./openingHours";
 import { OpeningHoursField } from "./OpeningHoursEditor";
@@ -815,6 +816,8 @@ function HowItSounds({
                         {voice.state === "ready" && voice.choices ? "See all voices" : "Change the voice"}
                     </Link>
                 )}
+
+                <CustomVoice workflowId={workflowId} canRequest={can("agents:write")} />
 
                 {greeting.state === "ready" && greeting.greeting && (
                     <div>
