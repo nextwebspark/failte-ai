@@ -42,6 +42,32 @@ or changed later on Business facts.
   Cloudonix, but not on Vonage, Vobiz or Exotel; there the tool fails and
   the agent takes a message.
 
+## Opening hours as times
+The owner can set the opening hours as times on "What your agent knows":
+per weekday closed or one or more ranges (12:00–15:00 and 17:00–22:00), a
+range past midnight (18:00–02:00), the time zone (default Europe/Dublin)
+and an optional note ("Closed on bank holidays").
+
+- **Storage.** No new table: the times are a fact like the others,
+  `opening_hours_schedule`, holding `OpeningHours`
+  (`api/schemas/opening_hours.py`) as JSON text. Saving also writes the
+  `opening_hours` sentence the prompts read, generated from the times
+  ("Tuesday to Sunday 12 to 3 pm and 5 to 10 pm, closed Monday"), and the
+  `timezone` fact. Through `PUT /business-facts` with
+  `opening_hours_schedule` (null removes the times and keeps the sentence).
+- **Free text stays.** An agent with only free-text hours keeps them until
+  the owner sets times; nothing is parsed from the text. While times are
+  set, the text can't be edited on its own.
+- **Transfers.** With times set and "Only during opening hours" on (the
+  default), the transfer tool rings nobody while the business is closed in
+  its zone. It returns `status: transfer_failed`, `reason: closed`, and the
+  agent offers to take a message. Without times, transfers are tried as
+  before (`opening_hours.transfer_closed`).
+- **Home and reports** count calls that came in outside the hours, for
+  agents that have times; the others are named as not counted.
+- **Wizard.** The create-agent setup still asks for the hours as text; the
+  owner sets times afterwards.
+
 ## Who can edit
 `agents:facts`: Owner, Developer and Admin. Owners still can't open the
 agent editor (`agents:write`). Anyone who can see the agent can read the

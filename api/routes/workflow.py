@@ -28,6 +28,7 @@ from api.enums import (
 from api.errors.failure import ErrorSource, classify_exception, log_failure
 from api.schemas.ai_model_configuration import OrganizationAIModelConfigurationV2
 from api.schemas.appointment_hours import CalendarHoursStatus
+from api.schemas.opening_hours import OpeningHours
 from api.schemas.privacy import DeleteWorkflowRunDataResponse
 from api.schemas.tool import TransferCallConfig, TransferCallToolDefinition
 from api.schemas.workflow import WorkflowRunResponseSchema
@@ -116,6 +117,11 @@ from api.services.workflow.errors import ItemKind, WorkflowError
 from api.services.workflow.greeting_preview import (
     greeting_preview_text,
     is_preview_voice,
+)
+from api.services.workflow.opening_hours import TEXT_KEY as OPENING_HOURS_TEXT_KEY
+from api.services.workflow.opening_hours import (
+    opening_hours_updates,
+    stored_opening_hours,
 )
 from api.services.workflow.run_creation import prepare_workflow_run_inputs
 from api.services.workflow.run_usage_response import (
@@ -2171,10 +2177,25 @@ class BusinessFact(BaseModel):
 
 class BusinessFactsResponse(BaseModel):
     facts: list[BusinessFact]
+    # The opening hours as times, when the owner has set them; the
+    # ``opening_hours`` fact is then the sentence generated from them.
+    opening_hours_schedule: OpeningHours | None = None
 
 
 class UpdateBusinessFactsRequest(BaseModel):
-    facts: dict[str, str | None]
+    facts: dict[str, str | None] = {}
+    # Sent to set the opening hours as times; null removes the times and
+    # keeps the sentence they generated. Left out: the times are unchanged.
+    opening_hours_schedule: OpeningHours | None = None
+
+
+def _facts_response(workflow, fields) -> BusinessFactsResponse:
+    return BusinessFactsResponse(
+        facts=[BusinessFact(**field.__dict__) for field in fields],
+        opening_hours_schedule=stored_opening_hours(
+            workflow.template_context_variables
+        ),
+    )
 
 
 async def _agent_facts(workflow_id: int, organization_id: int):
@@ -2197,10 +2218,8 @@ async def get_business_facts(
 ) -> BusinessFactsResponse:
     """What the agent knows about the business: the facts its prompts read
     at call time (opening hours, address, FAQ…), with their current values."""
-    _, fields = await _agent_facts(workflow_id, user.selected_organization_id)
-    return BusinessFactsResponse(
-        facts=[BusinessFact(**field.__dict__) for field in fields]
-    )
+    workflow, fields = await _agent_facts(workflow_id, user.selected_organization_id)
+    return _facts_response(workflow, fields)
 
 
 @router.put(
@@ -2215,18 +2234,22 @@ async def update_business_facts(
     """Update the agent's business facts. They apply from the next call,
     without publishing any unfinished changes to the agent itself."""
     organization_id = user.selected_organization_id
-    _, fields = await _agent_facts(workflow_id, organization_id)
+    workflow, fields = await _agent_facts(workflow_id, organization_id)
     try:
-        updates = checked_updates(fields, request.facts)
+        updates = opening_hours_updates(
+            workflow.template_context_variables,
+            checked_updates(fields, request.facts),
+            has_hours_fact=any(f.key == OPENING_HOURS_TEXT_KEY for f in fields),
+            hours_sent="opening_hours_schedule" in request.model_fields_set,
+            hours=request.opening_hours_schedule,
+        )
     except BusinessFactsError as e:
         raise HTTPException(status_code=422, detail=str(e)) from None
     saved = await db_client.update_business_facts(workflow_id, organization_id, updates)
     if saved is None:
         raise HTTPException(status_code=404, detail="Agent not found")
-    _, fields = await _agent_facts(workflow_id, organization_id)
-    return BusinessFactsResponse(
-        facts=[BusinessFact(**field.__dict__) for field in fields]
-    )
+    workflow, fields = await _agent_facts(workflow_id, organization_id)
+    return _facts_response(workflow, fields)
 
 
 # Fresh greeting previews (cache misses) one workspace may generate a day.

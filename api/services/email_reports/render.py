@@ -172,6 +172,8 @@ def _facts_row(report: Report) -> str:
     average = duration_text(report.average_call_seconds)
     if average:
         parts.append(f"Average call: <strong>{_e(average)}</strong>")
+    if report.after_hours is not None:
+        parts.append(f"Outside opening hours: <strong>{report.after_hours}</strong>")
     joined = " &nbsp;·&nbsp; ".join(parts)
     return (
         f'<tr><td class="lm-pad lm-ink2" style="padding:4px 28px 0;font-family:{FONT};'
@@ -491,6 +493,8 @@ def render_text(report: Report, *, to: str, links: Links) -> str:
         average = duration_text(report.average_call_seconds)
         if average:
             lines.append(f"Average call: {average}")
+        if report.after_hours is not None:
+            lines.append(f"Outside opening hours: {report.after_hours}")
         lines.append("")
     lines.append("Needs your attention")
     if report.open_follow_ups == 0:

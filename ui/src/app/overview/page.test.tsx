@@ -49,6 +49,7 @@ function summary(overrides: Partial<DashboardSummaryResponse> = {}): DashboardSu
         previous_calls: 2,
         calls_change: null,
         calls_by_hour: hours,
+        after_hours: { calls: 2, agents_without_hours: [] },
         recent_calls: [
             {
                 run_id: 501,
@@ -117,6 +118,15 @@ describe("Home", () => {
         expect(screen.getByText("50%")).toBeTruthy();
         expect(screen.getAllByText("1 not answered").length).toBeGreaterThan(0);
         expect(screen.getAllByText(/Answering calls/).length).toBeGreaterThan(0);
+    });
+
+    it("says how many calls came in outside opening hours, and who isn't counted", async () => {
+        mocks.summary.mockResolvedValue({
+            data: summary({ after_hours: { calls: 2, agents_without_hours: [{ id: 15, name: "Front desk" }] } }),
+        });
+        render(<OverviewPage />);
+        expect(await screen.findByText("2 calls came in outside opening hours")).toBeTruthy();
+        expect(screen.getByText(/Not counted: Front desk/)).toBeTruthy();
     });
 
     it("asks the API again for 7 days", async () => {

@@ -313,6 +313,15 @@ async def ensure_agent(business: Business, organization_id: int, owner: UserMode
     facts = workflow.template_context_variables or {}
     if facts.get(TEMPLATE_CATEGORY_FACT) != template.category:
         raise RuntimeError(f"{name}: template_category was not set")
+    if business.opening_hours is not None:
+        # Set on every run, so agents seeded before keep up with the hours.
+        from api.services.workflow.opening_hours import opening_hours_facts
+
+        await db_client.update_business_facts(
+            workflow.id, organization_id, opening_hours_facts(business.opening_hours)
+        )
+        workflow = await _agent(organization_id, name)
+        assert workflow is not None
     return workflow
 
 

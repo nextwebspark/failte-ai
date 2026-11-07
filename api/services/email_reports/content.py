@@ -16,7 +16,12 @@ from zoneinfo import ZoneInfo
 
 from api.services.dashboard.calls import CallResult, CallView, call_view
 from api.services.dashboard.follow_ups import FollowUpStatus
-from api.services.dashboard.summary import call_change, calls_by_hour, tiles
+from api.services.dashboard.summary import (
+    after_hours,
+    call_change,
+    calls_by_hour,
+    tiles,
+)
 from api.services.email_reports.periods import Frequency, Period
 
 TOP_FOLLOW_UPS = 5
@@ -60,6 +65,9 @@ class Report:
     # Why the agent isn't answering (the dashboard's reason), else None.
     not_answering: str | None
     credit: Mapping[str, Any] | None = None
+    # Calls that arrived outside opening hours (the dashboard's count); None
+    # when no agent in the report has its opening hours set as times.
+    after_hours: int | None = None
 
 
 def callers_wanted(rows: Sequence[Mapping[str, Any]]) -> list[Bar]:
@@ -111,7 +119,10 @@ def build_report(
     open_follow_ups: int,
     agent_status: Mapping[str, Any] | None,
     credit: Mapping[str, Any] | None,
+    agents: Sequence[Mapping[str, Any]] = (),
 ) -> Report:
+    """*agents* are the report's agents (all, or the one it is about), for
+    the after-hours count."""
     counted = tiles(calls)
     when = (
         hour_bars(calls, tz)
@@ -149,6 +160,7 @@ def build_report(
         when=when,
         not_answering=reason,
         credit=credit,
+        after_hours=after_hours(calls, agents)["calls"],
     )
 
 
@@ -220,4 +232,5 @@ async def load_report(
         open_follow_ups=follow_up["open_count"],
         agent_status=status,
         credit=credit,
+        agents=[a for a in agents if workflow_id is None or a["id"] == workflow_id],
     )

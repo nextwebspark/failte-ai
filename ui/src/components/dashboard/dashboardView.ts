@@ -153,6 +153,29 @@ export function telHref(number: string): string {
 }
 
 /** "Here's how your phone agent did today, Thursday 5 November." */
+/**
+ * Home's after-hours line: "3 calls came in outside opening hours", and which
+ * agents aren't counted because their hours aren't set as times.
+ */
+export function afterHoursWords(afterHours: {
+    calls: number | null;
+    agents_without_hours: { id: number; name: string }[];
+}): { count: string | null; note: string | null } {
+    const missing = afterHours.agents_without_hours.map((a) => a.name);
+    const count =
+        afterHours.calls === null
+            ? null
+            : `${afterHours.calls === 1 ? "1 call" : `${afterHours.calls} calls`} came in outside opening hours`;
+    let note: string | null = null;
+    if (afterHours.calls === null) {
+        if (missing.length) note = "Set your opening hours as times to see how many calls come in when you're closed.";
+    } else if (missing.length) {
+        const names = missing.length <= 2 ? missing.join(" and ") : `${missing.length} agents`;
+        note = `Not counted: ${names}, with no opening hours set as times.`;
+    }
+    return { count, note };
+}
+
 export function rangeSentence(range: DashboardRange, now: Date, timezone?: string | null): string {
     if (range === "today") return `Here's how your phone agent did today, ${dayLine(now, timezone)}.`;
     return `Here's how your phone agent did in the last ${range === "7d" ? "7" : "30"} days.`;

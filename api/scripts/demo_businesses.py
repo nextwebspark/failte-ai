@@ -18,6 +18,8 @@ from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 from typing import Any
 
+from api.schemas.opening_hours import OpeningHours, OpenRange
+
 # --- what a call is made of -------------------------------------------------
 
 
@@ -224,6 +226,22 @@ class Business:
     callers: list[Caller]
     # Days the business never takes bookings for.
     closed_days: tuple[int, ...] = ()
+    # The opening hours as times (the same hours as the ``opening_hours``
+    # text above); the seed saves them on the agent.
+    opening_hours: OpeningHours | None = None
+
+
+def _week(
+    *days: tuple[tuple[str, str], ...],
+    note: str | None = None,
+    transfer_only_when_open: bool = True,
+) -> OpeningHours:
+    """Opening hours from seven days (Monday first) of (open, close) pairs."""
+    return OpeningHours(
+        days=tuple(tuple(OpenRange(open=o, close=c) for o, c in day) for day in days),
+        note=note,
+        transfer_only_when_open=transfer_only_when_open,
+    )
 
 
 def _hours(**weights: float) -> tuple[float, ...]:
@@ -770,6 +788,15 @@ RESTAURANT = Business(
     name=RESTAURANT_NAME,
     kind="restaurant",
     template_name="Restaurant bookings",
+    opening_hours=_week(
+        (),
+        (("12:00", "15:00"), ("17:00", "21:30")),
+        (("12:00", "15:00"), ("17:00", "21:30")),
+        (("12:00", "15:00"), ("17:00", "21:30")),
+        (("12:00", "15:00"), ("17:00", "22:30")),
+        (("12:00", "15:00"), ("17:00", "22:30")),
+        (("12:00", "20:00"),),
+    ),
     facts={
         "business_name": RESTAURANT_NAME,
         "business_description": (
@@ -1133,6 +1160,12 @@ TELECOM = Business(
     name=TELECOM_NAME,
     kind="telecoms",
     template_name="VoIP phone receptionist",
+    opening_hours=_week(
+        *[(("08:00", "20:00"),)] * 5,
+        (("09:00", "13:00"),),
+        (),
+        note="Outages answered 24/7.",
+    ),
     facts={
         "business_name": TELECOM_NAME,
         "business_description": (
@@ -1514,6 +1547,12 @@ DENTAL = Business(
     name=DENTAL_NAME,
     kind="dental",
     template_name="Clinic receptionist",
+    opening_hours=_week(
+        *[(("08:30", "18:00"),)] * 4,
+        (("08:30", "16:00"),),
+        (("09:00", "13:00"),),
+        (),
+    ),
     facts={
         "business_name": DENTAL_NAME,
         "business_description": (
@@ -1842,6 +1881,14 @@ TRADES = Business(
     name=TRADES_NAME,
     kind="trades",
     template_name="Trades after-hours",
+    # Emergencies are put through to the on-call plumber at any hour.
+    opening_hours=_week(
+        *[(("08:00", "18:00"),)] * 5,
+        (("09:00", "13:00"),),
+        (),
+        note="Emergency call-outs evenings and weekends.",
+        transfer_only_when_open=False,
+    ),
     facts={
         "business_name": TRADES_NAME,
         "business_description": (
