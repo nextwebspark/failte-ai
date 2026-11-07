@@ -3,6 +3,7 @@ Twilio implementation of the TelephonyProvider interface.
 """
 
 import json
+import re
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 import aiohttp
@@ -608,6 +609,26 @@ class TwilioProvider(TelephonyProvider):
 
     # ======== CALL TRANSFER METHODS ========
 
+    def transfer_caller_number_params(
+        self, inbound_webhook: Dict[str, Any]
+    ) -> Optional[Dict[str, Any]]:
+        """Show the original caller's number on the transfer leg.
+
+        Twilio lets a call created with POST /Calls present the caller's own
+        number when it carries the inbound call's ``CallToken`` (sent in the
+        POST voice webhook) and ``From`` is that caller's number; without the
+        token ``From`` must be a Twilio or verified number.
+        https://www.twilio.com/docs/voice/api/call-resource (CallToken)
+        https://www.twilio.com/docs/voice/trusted-calling-with-shakenstir
+        """
+        token = inbound_webhook.get("CallToken")
+        caller = inbound_webhook.get("From")
+        if not isinstance(token, str) or not token or not isinstance(caller, str):
+            return None
+        if not re.fullmatch(r"\+[1-9]\d{6,14}", caller):
+            return None  # anonymous, a SIP caller or a client: nothing to show
+        return {"From": caller, "CallToken": token}
+
     async def transfer_call(
         self,
         destination: str,
@@ -685,8 +706,10 @@ class TwilioProvider(TelephonyProvider):
             )
             data["StatusCallbackEvent"] = ["answered", "completed"]
 
-        # Add any additional kwargs
+        # Add any additional kwargs (e.g. From + CallToken to show the caller's
+        # number: transfer_caller_number_params)
         data.update(kwargs)
+        from_number = data["From"]
 
         try:
             logger.debug("Dialing Twilio transfer {}", transfer_id)

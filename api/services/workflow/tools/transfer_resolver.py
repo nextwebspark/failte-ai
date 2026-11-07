@@ -14,6 +14,7 @@ from api.db import db_client
 from api.services.workflow.tools.custom_tool import _resolve_preset_parameters
 from api.utils.credential_auth import build_auth_header
 from api.utils.template_renderer import render_template
+from api.utils.transfer_number import dialable_destination
 from api.utils.url_security import validate_user_configured_service_url
 
 
@@ -398,7 +399,7 @@ def _resolve_from_response(
     )
 
 
-async def resolve_transfer_config(
+async def _resolve_transfer_config(
     *,
     tool: Any,
     config: dict[str, Any],
@@ -408,7 +409,7 @@ async def resolve_transfer_config(
     organization_id: Optional[int],
     workflow_run_id: Optional[int],
 ) -> ResolvedTransferConfig:
-    """Resolve transfer destination and options for a transfer tool call."""
+    """Resolve transfer destination and options, as configured."""
 
     destination_source = config.get("destination_source", "static")
     if destination_source == "context_mapping":
@@ -472,4 +473,34 @@ async def resolve_transfer_config(
         f"timeout={resolved.timeout_seconds} "
         f"custom_message_present={bool(resolved.message)}"
     )
+    return resolved
+
+
+async def resolve_transfer_config(
+    *,
+    tool: Any,
+    config: dict[str, Any],
+    arguments: dict[str, Any],
+    call_context_vars: Optional[Dict[str, Any]],
+    gathered_context_vars: Optional[Dict[str, Any]],
+    organization_id: Optional[int],
+    workflow_run_id: Optional[int],
+) -> ResolvedTransferConfig:
+    """Resolve transfer destination and options for a transfer tool call.
+
+    A phone number is dialled in E.164 whatever its stored shape: a
+    ``transfer_number`` saved as "087 123 4567" before numbers were checked
+    is read as Irish and dialled as +353871234567. SIP destinations are left
+    as they are.
+    """
+    resolved = await _resolve_transfer_config(
+        tool=tool,
+        config=config,
+        arguments=arguments,
+        call_context_vars=call_context_vars,
+        gathered_context_vars=gathered_context_vars,
+        organization_id=organization_id,
+        workflow_run_id=workflow_run_id,
+    )
+    resolved.destination = dialable_destination(resolved.destination)
     return resolved

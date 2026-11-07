@@ -547,6 +547,17 @@ class TelephonyProvider(ABC):
         """
         pass
 
+    def transfer_caller_number_params(
+        self, inbound_webhook: Dict[str, Any]
+    ) -> Optional[Dict[str, Any]]:
+        """Extra ``transfer_call`` parameters that make the transfer leg show
+        the original caller's number on the staff phone, built from the
+        inbound call's webhook; None when this provider can't (the default:
+        the staff phone shows the business's number). Providers that can
+        override this; the transfer tool falls back to the business's number
+        if the provider rejects the request."""
+        return None
+
     def supports_transfer_introduction(self) -> bool:
         """Whether both legs can play introduction audio before being bridged."""
         return False

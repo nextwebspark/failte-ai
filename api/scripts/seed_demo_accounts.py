@@ -90,15 +90,20 @@ from api.services.storage import get_current_storage_backend, storage_fs
 from api.services.workflow.opening_hours import closed_transfer_result
 from api.utils.auth import hash_password
 from api.utils.transcript import generate_transcript_text
+from api.utils.transfer_number import (
+    DEMO_TRANSFER_NUMBER,
+    LEGACY_DEMO_TRANSFER_NUMBER,
+)
 
 DEMO_DOMAIN = "demo.lightmove.ai"
 DEMO_PROVIDER_PREFIX = "demo_lightmove_"
 DEMO_KEY = OrganizationConfigurationKey.DEMO_ACCOUNT.value
 DEFAULT_PASSWORD = "LightMoveDemo2026!"
 # Where "Pass calls to your team" puts callers through until the presenter
-# sets a real number on the agent's "What your agent knows" page. Not a
-# diallable number: a phone call's transfer to it fails like an unanswered one.
-DEMO_TRANSFER_NUMBER = "+3530000000"
+# sets a real number on the agent's "What your agent knows" page
+# (DEMO_TRANSFER_NUMBER, +353 1 555 0100). It looks like a Dublin landline so
+# it passes the number check, and the transfer tool never dials it: a phone
+# call's transfer to it fails like an unanswered one (reason demo_number).
 SEED_MARK = "demo_seed"
 SEED_VERSION = 1
 REVIEW_MODEL = "demo-seed"
@@ -313,6 +318,14 @@ async def ensure_agent(business: Business, organization_id: int, owner: UserMode
         workflow = await _agent(organization_id, name)
     assert workflow is not None
     facts = workflow.template_context_variables or {}
+    if facts.get("transfer_number") == LEGACY_DEMO_TRANSFER_NUMBER:
+        # Seeded before the demo number changed: move it to the new one.
+        await db_client.update_business_facts(
+            workflow.id, organization_id, {"transfer_number": DEMO_TRANSFER_NUMBER}
+        )
+        workflow = await _agent(organization_id, name)
+        assert workflow is not None
+        facts = workflow.template_context_variables or {}
     if facts.get(TEMPLATE_CATEGORY_FACT) != template.category:
         raise RuntimeError(f"{name}: template_category was not set")
     if business.opening_hours is not None:

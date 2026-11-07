@@ -11231,6 +11231,72 @@ export type TransferCallToolDefinition = {
 };
 
 /**
+ * TransferNumberCheckRequest
+ */
+export type TransferNumberCheckRequest = {
+    /**
+     * Number
+     */
+    number: string;
+    /**
+     * Workflow Id
+     */
+    workflow_id?: number | null;
+};
+
+/**
+ * TransferNumberCheckResponse
+ */
+export type TransferNumberCheckResponse = {
+    /**
+     * Ok
+     */
+    ok: boolean;
+    /**
+     * Value
+     */
+    value: string;
+    /**
+     * Display
+     */
+    display: string;
+    /**
+     * Kind
+     */
+    kind: string;
+    /**
+     * Error
+     */
+    error?: string | null;
+    /**
+     * Is Sip
+     */
+    is_sip?: boolean;
+    /**
+     * Is Demo
+     */
+    is_demo?: boolean;
+};
+
+/**
+ * TransferSettings
+ */
+export type TransferSettings = {
+    /**
+     * Show Caller Number
+     */
+    show_caller_number: boolean;
+    /**
+     * Staff Phone Shows
+     */
+    staff_phone_shows: string;
+    /**
+     * Providers
+     */
+    providers: Array<string>;
+};
+
+/**
  * TriggerCallRequest
  *
  * Request model for triggering a call via API
@@ -11652,6 +11718,16 @@ export type UpdateToolRequest = {
      * Status
      */
     status?: string | null;
+};
+
+/**
+ * UpdateTransferSettingsRequest
+ */
+export type UpdateTransferSettingsRequest = {
+    /**
+     * Show Caller Number
+     */
+    show_caller_number: boolean;
 };
 
 /**
@@ -14906,6 +14982,133 @@ export type UpdateBusinessFactsApiV1WorkflowWorkflowIdBusinessFactsPutResponses 
 };
 
 export type UpdateBusinessFactsApiV1WorkflowWorkflowIdBusinessFactsPutResponse = UpdateBusinessFactsApiV1WorkflowWorkflowIdBusinessFactsPutResponses[keyof UpdateBusinessFactsApiV1WorkflowWorkflowIdBusinessFactsPutResponses];
+
+export type CheckTransferNumberRouteApiV1WorkflowTransferNumberCheckPostData = {
+    body: TransferNumberCheckRequest;
+    headers?: {
+        /**
+         * Authorization
+         */
+        authorization?: string | null;
+        /**
+         * X-Api-Key
+         */
+        'X-API-Key'?: string | null;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/v1/workflow/transfer-number/check';
+};
+
+export type CheckTransferNumberRouteApiV1WorkflowTransferNumberCheckPostErrors = {
+    /**
+     * Not found
+     */
+    404: unknown;
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type CheckTransferNumberRouteApiV1WorkflowTransferNumberCheckPostError = CheckTransferNumberRouteApiV1WorkflowTransferNumberCheckPostErrors[keyof CheckTransferNumberRouteApiV1WorkflowTransferNumberCheckPostErrors];
+
+export type CheckTransferNumberRouteApiV1WorkflowTransferNumberCheckPostResponses = {
+    /**
+     * Successful Response
+     */
+    200: TransferNumberCheckResponse;
+};
+
+export type CheckTransferNumberRouteApiV1WorkflowTransferNumberCheckPostResponse = CheckTransferNumberRouteApiV1WorkflowTransferNumberCheckPostResponses[keyof CheckTransferNumberRouteApiV1WorkflowTransferNumberCheckPostResponses];
+
+export type GetTransferSettingsApiV1WorkflowWorkflowIdTransferSettingsGetData = {
+    body?: never;
+    headers?: {
+        /**
+         * Authorization
+         */
+        authorization?: string | null;
+        /**
+         * X-Api-Key
+         */
+        'X-API-Key'?: string | null;
+    };
+    path: {
+        /**
+         * Workflow Id
+         */
+        workflow_id: number;
+    };
+    query?: never;
+    url: '/api/v1/workflow/{workflow_id}/transfer-settings';
+};
+
+export type GetTransferSettingsApiV1WorkflowWorkflowIdTransferSettingsGetErrors = {
+    /**
+     * Not found
+     */
+    404: unknown;
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type GetTransferSettingsApiV1WorkflowWorkflowIdTransferSettingsGetError = GetTransferSettingsApiV1WorkflowWorkflowIdTransferSettingsGetErrors[keyof GetTransferSettingsApiV1WorkflowWorkflowIdTransferSettingsGetErrors];
+
+export type GetTransferSettingsApiV1WorkflowWorkflowIdTransferSettingsGetResponses = {
+    /**
+     * Successful Response
+     */
+    200: TransferSettings;
+};
+
+export type GetTransferSettingsApiV1WorkflowWorkflowIdTransferSettingsGetResponse = GetTransferSettingsApiV1WorkflowWorkflowIdTransferSettingsGetResponses[keyof GetTransferSettingsApiV1WorkflowWorkflowIdTransferSettingsGetResponses];
+
+export type UpdateTransferSettingsApiV1WorkflowWorkflowIdTransferSettingsPutData = {
+    body: UpdateTransferSettingsRequest;
+    headers?: {
+        /**
+         * Authorization
+         */
+        authorization?: string | null;
+        /**
+         * X-Api-Key
+         */
+        'X-API-Key'?: string | null;
+    };
+    path: {
+        /**
+         * Workflow Id
+         */
+        workflow_id: number;
+    };
+    query?: never;
+    url: '/api/v1/workflow/{workflow_id}/transfer-settings';
+};
+
+export type UpdateTransferSettingsApiV1WorkflowWorkflowIdTransferSettingsPutErrors = {
+    /**
+     * Not found
+     */
+    404: unknown;
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type UpdateTransferSettingsApiV1WorkflowWorkflowIdTransferSettingsPutError = UpdateTransferSettingsApiV1WorkflowWorkflowIdTransferSettingsPutErrors[keyof UpdateTransferSettingsApiV1WorkflowWorkflowIdTransferSettingsPutErrors];
+
+export type UpdateTransferSettingsApiV1WorkflowWorkflowIdTransferSettingsPutResponses = {
+    /**
+     * Successful Response
+     */
+    200: TransferSettings;
+};
+
+export type UpdateTransferSettingsApiV1WorkflowWorkflowIdTransferSettingsPutResponse = UpdateTransferSettingsApiV1WorkflowWorkflowIdTransferSettingsPutResponses[keyof UpdateTransferSettingsApiV1WorkflowWorkflowIdTransferSettingsPutResponses];
 
 export type PreviewAgentVoiceApiV1WorkflowWorkflowIdVoicePreviewGetData = {
     body?: never;

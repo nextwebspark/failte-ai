@@ -19,8 +19,10 @@ import {
     withToggle,
 } from '@/lib/agentTemplates';
 import { isAppointmentHoursField } from '@/lib/appointmentHours';
+import { TRANSFER_NUMBER_KEY, transferHint, useTransferNumberCheck } from '@/lib/transferNumber';
 import { cn } from '@/lib/utils';
 
+import { TransferNumberHint } from '../TransferNumberHint';
 import { AppointmentHoursInput } from './AppointmentHoursInput';
 import type { AppointmentHours } from './useAppointmentHours';
 import type { ConnectStatus, IntegrationConnect } from './useIntegrationConnect';
@@ -131,8 +133,14 @@ function SetupInput({
                     {error ?? field.help}
                 </p>
             )}
+            {field.key === TRANSFER_NUMBER_KEY && !error && <TransferCheck value={value} />}
         </div>
     );
+}
+
+/** "✓ Irish mobile · saved as +353 87 123 4567", or why it can't be used. */
+function TransferCheck({ value }: { value: string }) {
+    return <TransferNumberHint hint={transferHint(useTransferNumberCheck(value))} />;
 }
 
 const CALENDAR_NOTE: Partial<Record<ConnectStatus, string>> = {
