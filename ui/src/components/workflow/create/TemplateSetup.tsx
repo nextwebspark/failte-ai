@@ -9,7 +9,15 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Textarea } from '@/components/ui/textarea';
-import { chosenToggles, previewParts, templateGreeting, withToggle } from '@/lib/agentTemplates';
+import {
+    type BookingCalendar,
+    CALENDLY,
+    chosenToggles,
+    GOOGLE_CALENDAR,
+    previewParts,
+    templateGreeting,
+    withToggle,
+} from '@/lib/agentTemplates';
 import { isAppointmentHoursField } from '@/lib/appointmentHours';
 import { cn } from '@/lib/utils';
 
@@ -137,23 +145,116 @@ const CALENDAR_NOTE: Partial<Record<ConnectStatus, string>> = {
         'Calendar connections aren’t switched on for this server yet. Your agent takes a message when someone wants to book.',
 };
 
+/** Which connected calendar books, when both are connected. */
+function BookWithChoice({ value, onChange }: { value: BookingCalendar; onChange: (value: BookingCalendar) => void }) {
+    const options: { value: BookingCalendar; label: string }[] = [
+        { value: GOOGLE_CALENDAR, label: 'Google Calendar' },
+        { value: CALENDLY, label: 'Calendly' },
+    ];
+    return (
+        <div role="radiogroup" aria-label="Book with" className="flex flex-wrap gap-2">
+            {options.map((option) => (
+                <button
+                    key={option.value}
+                    type="button"
+                    role="radio"
+                    aria-checked={value === option.value}
+                    onClick={() => onChange(option.value)}
+                    className={cn(
+                        'inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[13px] transition-colors',
+                        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky',
+                        value === option.value
+                            ? 'border-brand bg-brand/10 font-medium text-ink'
+                            : 'border-line bg-transparent text-ink-2 hover:bg-panel-2',
+                    )}
+                >
+                    {value === option.value && <Check size={14} strokeWidth={2.4} aria-hidden />}
+                    Book with {option.label}
+                </button>
+            ))}
+        </div>
+    );
+}
+
+/** Calendly is connected and books for this agent. */
+function CalendlyCard({
+    calendly,
+    useCalendar,
+    onUseCalendarChange,
+}: {
+    calendly: IntegrationConnect;
+    useCalendar: boolean;
+    onUseCalendarChange: (value: boolean) => void;
+}) {
+    const event = calendly.connection?.config?.event_type_name;
+    const chosen = typeof event === 'string' && event.trim() ? event.trim() : null;
+    return (
+        <>
+            <div className="flex flex-col gap-3 rounded-lg border border-line p-3.5 sm:flex-row sm:items-center">
+                <span className="flex size-10 shrink-0 items-center justify-center rounded-[10px] border border-line bg-panel-2 text-ink-2">
+                    <CalendarDays size={20} strokeWidth={1.8} aria-hidden />
+                </span>
+                <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+                    <span className="text-[14px] font-semibold text-ink">Calendly connected</span>
+                    <span className="text-[12.5px] text-ink-2">
+                        {chosen
+                            ? `Checks free times in your Calendly and books callers into “${chosen}”.`
+                            : 'Checks free times in your Calendly and books them, once you choose which event callers book.'}
+                    </span>
+                </div>
+                <label className="flex shrink-0 cursor-pointer items-center gap-2 text-[13px] font-medium text-ink">
+                    <Checkbox checked={useCalendar} onCheckedChange={(value) => onUseCalendarChange(value === true)} />
+                    Use for bookings
+                </label>
+            </div>
+            <p className="text-[12.5px] text-ink-3">
+                {chosen ? '' : 'Choose the event in Integrations. Until then your agent takes callers’ details. '}
+                Your hours come from Calendly. Callers give an email address to book, and your agent can’t move or
+                cancel Calendly bookings.
+            </p>
+        </>
+    );
+}
+
 function CalendarCard({
     calendar,
+    calendly,
+    bookWith,
+    onBookWithChange,
     useCalendar,
     onUseCalendarChange,
 }: {
     calendar: IntegrationConnect;
+    calendly: IntegrationConnect | null;
+    bookWith: BookingCalendar;
+    onBookWithChange: (value: BookingCalendar) => void;
     useCalendar: boolean;
     onUseCalendarChange: (value: boolean) => void;
 }) {
-    if (calendar.status === 'loading') return <Skeleton className="h-[74px] rounded-lg" />;
+    if (calendar.status === 'loading' || calendly?.status === 'loading') {
+        return <Skeleton className="h-[74px] rounded-lg" />;
+    }
+    const calendlyConnected = calendly?.status === 'connected';
+    const googleConnected = calendar.status === 'connected';
+    if (calendly && calendlyConnected && (!googleConnected || bookWith === CALENDLY)) {
+        return (
+            <div className="flex flex-col gap-2">
+                <span className="text-[13px] font-semibold text-ink">Bookings</span>
+                {googleConnected && <BookWithChoice value={bookWith} onChange={onBookWithChange} />}
+                <CalendlyCard calendly={calendly} useCalendar={useCalendar} onUseCalendarChange={onUseCalendarChange} />
+            </div>
+        );
+    }
 
     const { status } = calendar;
     const connected = status === 'connected';
     const canAct = status === 'ready' || status === 'connecting' || status === 'in_integrations';
+    // Calendly is connected on the Integrations page (a pasted token), not here.
+    const suggestCalendly = !connected && !calendlyConnected && (status === 'ready' || status === 'in_integrations');
     return (
         <div className="flex flex-col gap-2">
             <span className="text-[13px] font-semibold text-ink">Bookings</span>
+            {connected && calendlyConnected && <BookWithChoice value={bookWith} onChange={onBookWithChange} />}
             <div className="flex flex-col gap-3 rounded-lg border border-line p-3.5 sm:flex-row sm:items-center">
                 <span className="flex size-10 shrink-0 items-center justify-center rounded-[10px] border border-line bg-panel-2 text-ink-2">
                     <CalendarDays size={20} strokeWidth={1.8} aria-hidden />
@@ -229,6 +330,21 @@ function CalendarCard({
             ) : (
                 CALENDAR_NOTE[status] && <p className="text-[12.5px] text-ink-3">{CALENDAR_NOTE[status]}</p>
             )}
+            {suggestCalendly && (
+                <p className="text-[12.5px] text-ink-3">
+                    Use Calendly instead?{' '}
+                    <a
+                        href="/integrations"
+                        target="_blank"
+                        rel="noopener"
+                        className="inline-flex items-center gap-0.5 font-semibold text-brand hover:underline"
+                    >
+                        Connect it in Integrations
+                        <ExternalLink size={12} aria-hidden />
+                    </a>
+                    , then come back here.
+                </p>
+            )}
         </div>
     );
 }
@@ -239,6 +355,10 @@ interface TemplateSetupProps {
     errors: Record<string, string>;
     onAnswer: (key: string, value: string) => void;
     calendar: IntegrationConnect | null;
+    /** Calendly, offered in place of Google Calendar once it is connected. */
+    calendly?: IntegrationConnect | null;
+    bookWith?: BookingCalendar;
+    onBookWithChange?: (value: BookingCalendar) => void;
     useCalendar: boolean;
     onUseCalendarChange: (value: boolean) => void;
     /** The appointment hours the calendar books in, when it asks for them. */
@@ -255,10 +375,14 @@ export function TemplateSetup({
     errors,
     onAnswer,
     calendar,
+    calendly = null,
+    bookWith = GOOGLE_CALENDAR,
+    onBookWithChange = () => {},
     useCalendar,
     onUseCalendarChange,
     hours,
 }: TemplateSetupProps) {
+    const booking = bookWith === CALENDLY ? calendly : calendar;
     const fields = template.setup_fields ?? [];
     const greeting = templateGreeting(template);
 
@@ -284,7 +408,14 @@ export function TemplateSetup({
                     ),
                 )}
                 {calendar && (
-                    <CalendarCard calendar={calendar} useCalendar={useCalendar} onUseCalendarChange={onUseCalendarChange} />
+                    <CalendarCard
+                        calendar={calendar}
+                        calendly={calendly}
+                        bookWith={bookWith}
+                        onBookWithChange={onBookWithChange}
+                        useCalendar={useCalendar}
+                        onUseCalendarChange={onUseCalendarChange}
+                    />
                 )}
                 {hours.field && (
                     <AppointmentHoursInput
@@ -316,7 +447,7 @@ export function TemplateSetup({
                         )}
                     </p>
                     <span className="text-[12px] text-ink-3">The first thing callers hear.</span>
-                    {calendar?.status === 'connected' && useCalendar && (
+                    {booking?.status === 'connected' && useCalendar && (
                         <span className="mt-auto flex items-center gap-1.5 text-[12.5px] text-ink-2">
                             <Check size={14} className="text-brand" aria-hidden />
                             Books into your calendar

@@ -8,6 +8,25 @@ type Definition = { nodes?: Node[] } | null | undefined;
 
 /** The Google Calendar integration's provider id, in its MCP address. */
 export const GOOGLE_CALENDAR_PROVIDER = "google-calendar";
+/** The Calendly integration's provider id, in its MCP address. */
+export const CALENDLY_PROVIDER = "calendly";
+
+/** The calendars an agent can book with. */
+export type BookingProvider = typeof GOOGLE_CALENDAR_PROVIDER | typeof CALENDLY_PROVIDER;
+
+const BOOKING_TITLE: Record<BookingProvider, string> = {
+  [GOOGLE_CALENDAR_PROVIDER]: "Google Calendar",
+  [CALENDLY_PROVIDER]: "Calendly",
+};
+
+export function bookingTitle(provider: BookingProvider): string {
+  return BOOKING_TITLE[provider];
+}
+
+/** What booking does, in a line: "Checks free times in your Calendly and books them." */
+export function bookingLine(provider: BookingProvider): string {
+  return `Checks free times in your ${bookingTitle(provider)} and books them.`;
+}
 
 function nodes(definition: unknown): Node[] {
   const list = (definition as Definition)?.nodes;
@@ -54,11 +73,19 @@ export function fillGreeting(text: string, facts: Record<string, string>): strin
     .trim();
 }
 
-/** Whether a tool is the Google Calendar integration (an MCP tool at its address). */
-export function isCalendarTool(tool: { category?: string; definition?: unknown }): boolean {
-  if (tool.category !== "mcp") return false;
+/** Which calendar a tool books with (an MCP tool at its integration's address), if any. */
+export function calendarProvider(tool: { category?: string; definition?: unknown }): BookingProvider | null {
+  if (tool.category !== "mcp") return null;
   const url = (tool.definition as { config?: { url?: unknown } } | undefined)?.config?.url;
-  return typeof url === "string" && url.includes(GOOGLE_CALENDAR_PROVIDER);
+  if (typeof url !== "string") return null;
+  if (url.includes(GOOGLE_CALENDAR_PROVIDER)) return GOOGLE_CALENDAR_PROVIDER;
+  if (/\/mcp\/calendly\/?$/.test(url)) return CALENDLY_PROVIDER;
+  return null;
+}
+
+/** Whether a tool is a booking calendar integration (Google Calendar or Calendly). */
+export function isCalendarTool(tool: { category?: string; definition?: unknown }): boolean {
+  return calendarProvider(tool) !== null;
 }
 
 /** One stretch of the week bookings may start in, as the calendar stores it. */

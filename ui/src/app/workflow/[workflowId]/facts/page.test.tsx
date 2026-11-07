@@ -127,7 +127,10 @@ describe("What your agent knows", () => {
             ...HIDDEN,
             calendar: {
                 state: "ready",
+                provider: "google-calendar",
                 connected: true,
+                eventName: null,
+                needsEvent: false,
                 aiBooking: true,
                 connectionId: "c1",
                 rules: { service_periods: [{ days: [1, 2], first_start: "17:00", last_start: "21:30" }] },
@@ -148,6 +151,51 @@ describe("What your agent knows", () => {
                 body: { ai_booking_enabled: false },
             }),
         );
+    });
+
+    it("says the agent books with Calendly, and which event", async () => {
+        mocks.knowledge = {
+            ...HIDDEN,
+            calendar: {
+                state: "ready",
+                provider: "calendly",
+                connected: true,
+                eventName: "Consultation",
+                needsEvent: false,
+                aiBooking: true,
+                connectionId: "c2",
+                rules: {},
+            },
+        };
+        render(<WhatYourAgentKnowsPage />);
+        await screen.findByLabelText("Opening hours");
+        expect(screen.getByText(/Checks free times in your Calendly and books them\./)).toBeTruthy();
+        expect(screen.getByText(/Callers book “Consultation”/)).toBeTruthy();
+        expect(screen.getByText("Connected")).toBeTruthy();
+        expect(screen.getByText("Calendar connected")).toBeTruthy();
+        expect(screen.queryByText(/Google Calendar/)).toBeNull();
+        // Calendly keeps its own hours: no booking times row.
+        expect(screen.queryByRole("list", { name: "Booking times by day" })).toBeNull();
+    });
+
+    it("asks for a Calendly event before the agent can book", async () => {
+        mocks.knowledge = {
+            ...HIDDEN,
+            calendar: {
+                state: "ready",
+                provider: "calendly",
+                connected: true,
+                eventName: null,
+                needsEvent: true,
+                aiBooking: true,
+                connectionId: "c2",
+                rules: {},
+            },
+        };
+        render(<WhatYourAgentKnowsPage />);
+        await screen.findByLabelText("Opening hours");
+        expect(screen.getByText("Choose your Calendly event")).toBeTruthy();
+        expect(screen.queryByText("Calendar connected")).toBeNull();
     });
 
     it("has no bookings row or switch for an agent that doesn't book", async () => {

@@ -29,7 +29,7 @@ import { detailFromError } from "@/lib/apiError";
 import { cn } from "@/lib/utils";
 
 import { SectionError, SectionMessage } from "../components/SectionStates";
-import { bookingTimesByDay, fillGreeting, WEEK, WEEK_LONG } from "./knowledge";
+import { bookingLine, bookingTimesByDay, bookingTitle, fillGreeting, WEEK, WEEK_LONG } from "./knowledge";
 import { type AgentKnowledge, type CalendarInfo, useAgentKnowledge } from "./useAgentKnowledge";
 import { VoiceChips } from "./VoiceChips";
 
@@ -544,9 +544,9 @@ function StatusText({ ok, children }: { ok: boolean | null; children: ReactNode 
 }
 
 /**
- * Only what the agent can really do: book on Google Calendar when it has
- * one, and put callers through when its template can. Nothing that isn't
- * built (texts, emails to the kitchen) is offered.
+ * Only what the agent can really do: book on its calendar (Google Calendar
+ * or Calendly) when it has one, and put callers through when its template
+ * can. Nothing that isn't built (texts, emails to the kitchen) is offered.
  */
 function CanDo({
     calendar,
@@ -597,7 +597,8 @@ function CanDo({
                             Take bookings
                         </p>
                         <p className="mt-0.5 text-[12.5px] leading-relaxed text-ink-3">
-                            Checks free times in your Google Calendar and books them.{" "}
+                            {bookingLine(calendar.provider)}{" "}
+                            {calendar.eventName && <>Callers book &ldquo;{calendar.eventName}&rdquo;. </>}
                             {calendar.connected !== null && (
                                 <StatusText ok={calendar.connected}>
                                     {calendar.connected ? "Connected" : "Not connected"}
@@ -639,9 +640,23 @@ function CanDo({
             {books && calendar.connected === false && can("integrations:read") && (
                 <p className="pb-2 text-[12.5px] text-ink-2">
                     <Link href="/integrations" className="font-medium text-brand underline-offset-2 hover:underline">
-                        Reconnect Google Calendar
+                        Reconnect {bookingTitle(calendar.provider)}
                     </Link>{" "}
                     so your agent can see free times.
+                </p>
+            )}
+            {books && calendar.connected !== false && calendar.needsEvent && (
+                <p className="pb-2 text-[12.5px] text-ink-2">
+                    {can("integrations:write") ? (
+                        <>
+                            <Link href="/integrations" className="font-medium text-brand underline-offset-2 hover:underline">
+                                Choose which Calendly event callers book
+                            </Link>
+                            . Until then your agent takes their details instead.
+                        </>
+                    ) : (
+                        "No Calendly event is chosen yet, so your agent takes callers' details instead. Ask an admin to choose one in Integrations."
+                    )}
                 </p>
             )}
         </Card>
@@ -750,9 +765,11 @@ function ReadyForCalls({
     ];
     if (calendar.state === "ready" && calendar.connected !== null) {
         items.push(
-            calendar.connected
-                ? { ok: true, text: "Calendar connected" }
-                : { ok: false, text: "Calendar not connected" },
+            !calendar.connected
+                ? { ok: false, text: "Calendar not connected" }
+                : calendar.needsEvent
+                  ? { ok: false, text: "Choose your Calendly event" }
+                  : { ok: true, text: "Calendar connected" },
         );
     }
     if (phone.state === "ready") {

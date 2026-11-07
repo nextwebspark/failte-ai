@@ -19,7 +19,14 @@ import { detailFromError } from "@/lib/apiError";
 import { useAuth } from "@/lib/auth";
 import { summarizePlatformConfiguration, type VoiceSummary } from "@/lib/platformModelSummary";
 
-import { attachedToolUuids, type Greeting, isCalendarTool, startGreeting } from "./knowledge";
+import {
+  attachedToolUuids,
+  type BookingProvider,
+  calendarProvider,
+  CALENDLY_PROVIDER,
+  type Greeting,
+  startGreeting,
+} from "./knowledge";
 import { type VoiceChoices, voiceChoices, withVoice } from "./voiceOptions";
 
 /**
@@ -41,8 +48,14 @@ export type VoiceInfo = Loadable<{
 /** "none": the agent doesn't book. */
 export type CalendarInfo =
   | Loadable<{
-      /** Google Calendar answers. Null when this member can't tell. */
+      /** Which calendar the agent books with. */
+      provider: BookingProvider;
+      /** The calendar answers. Null when this member can't tell. */
       connected: boolean | null;
+      /** Calendly: the event callers book; null when unknown or none. */
+      eventName: string | null;
+      /** Calendly with no event chosen yet: the agent takes details instead. */
+      needsEvent: boolean;
       /** The owner's switch on the calendar. Null when this member can't tell. */
       aiBooking: boolean | null;
       connectionId: string | null;
@@ -225,7 +238,7 @@ async function loadVoice(
 }
 
 /**
- * Whether the agent books with Google Calendar, and how that calendar is.
+ * Whether the agent books with a calendar (Google Calendar or Calendly), and how it is.
  * The calendar's switch and booking rules come from the bookings list (every
  * member who sees calls may read it); which connection is this agent's needs
  * the integrations list, so without it a single calendar is assumed only
@@ -238,14 +251,17 @@ async function loadCalendar(
   const attached = attachedToolUuids(definition);
   if (attached.size === 0) return { state: "none" };
   let calendarTool: string | null = null;
+  let provider: BookingProvider | null = null;
   try {
     const tools = await listToolsApiV1ToolsGet({ query: { status: "active" } });
     if (!tools.data) return { state: "hidden" };
-    calendarTool = tools.data.find((tool) => attached.has(tool.tool_uuid) && isCalendarTool(tool))?.tool_uuid ?? null;
+    const tool = tools.data.find((t) => attached.has(t.tool_uuid) && calendarProvider(t) !== null);
+    calendarTool = tool?.tool_uuid ?? null;
+    provider = tool ? calendarProvider(tool) : null;
   } catch {
     return { state: "hidden" };
   }
-  if (!calendarTool) return { state: "none" };
+  if (!calendarTool || !provider) return { state: "none" };
 
   let connection: { id: string; status: string; config?: Record<string, unknown> } | null = null;
   if (may("integrations:read")) {
@@ -271,15 +287,21 @@ async function loadCalendar(
       // Shown without the switch and the hours.
     }
   }
-  const google = calendars.filter((c) => c.provider.includes("google"));
+  const sameKind = calendars.filter((c) => c.provider === provider);
   const calendar = connection
     ? calendars.find((c) => c.connection_id === connection?.id) ?? null
-    : google.length === 1
-      ? google[0]
+    : sameKind.length === 1
+      ? sameKind[0]
       : null;
+  const config = connection?.config ?? {};
+  const eventName = typeof config.event_type_name === "string" && config.event_type_name ? config.event_type_name : null;
 
   return {
     state: "ready",
+    provider,
+    eventName,
+    // Only known with the integrations list (the bookings list has no event).
+    needsEvent: provider === CALENDLY_PROVIDER && connection !== null && !config.event_type,
     connected: calendar ? calendar.ok !== false : connection ? connection.status === "active" : null,
     aiBooking: calendar
       ? calendar.ai_booking_enabled

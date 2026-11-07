@@ -282,3 +282,22 @@ class BookingOut(BaseModel):
 
 class BookingListOut(BaseModel):
     bookings: list[BookingOut]
+
+
+class ChoiceOut(BaseModel):
+    """One value an admin may pick (``choices`` capability)."""
+
+    value: str
+    label: str
+    detail: str | None = None
+    warning: str | None = Field(
+        default=None, description="Why picking it would not work well."
+    )
+    config: dict[str, JsonValue] = Field(
+        description="Send this as the connection's config patch to pick it."
+    )
+
+
+class ChoiceListOut(BaseModel):
+    field: str = Field(description="The config field the choices are for.")
+    choices: list[ChoiceOut]

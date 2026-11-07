@@ -55,6 +55,21 @@ export function takePendingOAuth(provider: string, now: number = Date.now()): Pe
     }
 }
 
+/** Providers with a sign-in in flight in this tab (a failed callback names none). */
+export function pendingOAuthProviders(): string[] {
+    const found: string[] = [];
+    try {
+        const storage = window.sessionStorage;
+        for (let i = 0; i < storage.length; i++) {
+            const key = storage.key(i);
+            if (key?.startsWith(PREFIX)) found.push(key.slice(PREFIX.length));
+        }
+    } catch {
+        // ignore
+    }
+    return found;
+}
+
 /** Forgets every pending sign-in (e.g. after a failed callback, which names no provider). */
 export function clearPendingOAuth(provider?: string): void {
     try {
