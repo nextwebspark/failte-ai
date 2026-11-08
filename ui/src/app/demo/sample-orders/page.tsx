@@ -8,6 +8,7 @@ import { listSampleOrdersApiV1DemoSampleOrdersGet } from "@/client/sdk.gen";
 import type { SampleOrdersView } from "@/client/types.gen";
 import { PageHeader } from "@/components/ui/page-header";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useAuth } from "@/lib/auth";
 
 import { orderRows } from "./sampleOrders";
 
@@ -20,10 +21,12 @@ const COLUMNS = ["Order", "Customer", "Delivering to", "Items", "Total", "Status
  * `available: false` to everyone else).
  */
 export default function SampleOrdersPage() {
+    const auth = useAuth();
     const [view, setView] = useState<SampleOrdersView | null>(null);
     const [error, setError] = useState(false);
 
     const load = useCallback(async () => {
+        if (!auth.isAuthenticated) return;
         setError(false);
         try {
             const res = await listSampleOrdersApiV1DemoSampleOrdersGet();
@@ -32,7 +35,7 @@ export default function SampleOrdersPage() {
         } catch {
             setError(true);
         }
-    }, []);
+    }, [auth.isAuthenticated]);
 
     useEffect(() => {
         void load();

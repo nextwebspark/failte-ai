@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 
 import { listSampleOrdersApiV1DemoSampleOrdersGet } from "@/client/sdk.gen";
+import { useAuth } from "@/lib/auth";
 
 /**
  * In a demo workspace with sample orders, a pointer to them for the
@@ -12,9 +13,11 @@ import { listSampleOrdersApiV1DemoSampleOrdersGet } from "@/client/sdk.gen";
  * `available: false` to every real workspace and to staff.
  */
 export function SampleOrdersLink() {
+    const auth = useAuth();
     const [count, setCount] = useState<number | null>(null);
 
     useEffect(() => {
+        if (!auth.isAuthenticated) return;
         let live = true;
         listSampleOrdersApiV1DemoSampleOrdersGet()
             .then((res) => {
@@ -24,7 +27,7 @@ export function SampleOrdersLink() {
         return () => {
             live = false;
         };
-    }, []);
+    }, [auth.isAuthenticated]);
 
     if (!count) return null;
     return (
