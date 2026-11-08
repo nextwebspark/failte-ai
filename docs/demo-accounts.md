@@ -5,6 +5,9 @@ working agent, for showing LightMove.ai to prospects. Everything in them is
 made up: the businesses, their people, their callers and every phone number
 (all in the 555 range; none is ever dialled).
 
+A fifth, CH Marine, is built on a real company's published facts for a
+partner presentation: see `docs/demo-chmarine.md` (`--only chmarine`).
+
 They are built by `api/scripts/seed_demo_accounts.py` (the business and call
 scripts are in `api/scripts/demo_businesses.py`). Local and development
 databases only: the script refuses to run with any other `ENVIRONMENT`.

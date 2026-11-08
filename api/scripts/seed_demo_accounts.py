@@ -72,6 +72,7 @@ from api.scripts.demo_businesses import (
     call_dates,
     fit_to_opening_hours,
 )
+from api.scripts.demo_chmarine import CHMARINE
 from api.services.call_review.categories import TEMPLATE_CATEGORY_FACT, reason_set
 from api.services.call_review.review import (
     CALL_REVIEW_KEY,
@@ -316,7 +317,17 @@ async def ensure_agent(business: Business, organization_id: int, owner: UserMode
         workflow = await _agent(organization_id, name)
         assert workflow is not None
         facts = workflow.template_context_variables or {}
-    if facts.get(TEMPLATE_CATEGORY_FACT) != template.category:
+    # A business may file its calls under a category of its own (CH Marine:
+    # "retail"), set over the starter's on the agent it made.
+    category = getattr(business, "template_category", None) or template.category
+    if facts.get(TEMPLATE_CATEGORY_FACT) == template.category != category:
+        await db_client.update_business_facts(
+            workflow.id, organization_id, {TEMPLATE_CATEGORY_FACT: category}
+        )
+        workflow = await _agent(organization_id, name)
+        assert workflow is not None
+        facts = workflow.template_context_variables or {}
+    if facts.get(TEMPLATE_CATEGORY_FACT) != category:
         raise RuntimeError(f"{name}: template_category was not set")
     if business.opening_hours is not None:
         # Set on every run, so agents seeded before keep up with the hours.
@@ -1101,6 +1112,9 @@ async def delete_demo_org(business: Business) -> bool:
     if org is None:
         return False
     await assert_demo_org(org.id, provider_id)
+    before_delete = getattr(business, "before_delete", None)
+    if before_delete is not None:
+        await before_delete(org.id)
     async with db_client.async_session() as session:
         runs = await session.execute(
             select(WorkflowRunModel)
@@ -1174,6 +1188,9 @@ async def seed_business(
     organization_id = await ensure_org(business, owner, staff)
     owner = await db_client.get_user_by_id(owner.id)
     workflow = await ensure_agent(business, organization_id, owner)
+    customise = getattr(business, "customise_agent", None)
+    if customise is not None:
+        workflow = await customise(organization_id, owner, workflow, now)
     await ensure_email_reports(organization_id, owner)
     agent = agent_shape(workflow, await _transfer_function(organization_id))
     before = (speech.synthesised_chars, speech.cached_chars) if speech else (0, 0)
@@ -1219,7 +1236,9 @@ async def _main(args: argparse.Namespace) -> None:
             f"Refusing to run with ENVIRONMENT={ENVIRONMENT!r}: demo accounts are "
             "for local and development databases only."
         )
-    businesses = [b for b in BUSINESSES if not args.only or b.slug in args.only]
+    businesses = [
+        b for b in [*BUSINESSES, CHMARINE] if not args.only or b.slug in args.only
+    ]
     if args.reset or args.delete:
         for business in businesses:
             deleted = await delete_demo_org(business)
