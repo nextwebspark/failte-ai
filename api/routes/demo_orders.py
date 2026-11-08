@@ -10,7 +10,6 @@ from fastapi import APIRouter, Depends, Header, HTTPException
 from loguru import logger
 from pydantic import BaseModel, Field
 from redis.exceptions import RedisError
-from sqlalchemy import text
 
 from api.constants import REDIS_URL
 from api.db import db_client
@@ -64,15 +63,8 @@ async def _demo_orders(organization_id: int) -> dict[str, Any] | None:
 
 
 async def _run_in_organization(run_id: int, organization_id: int) -> bool:
-    async with db_client.async_session() as session:
-        found = await session.scalar(
-            text(
-                "select 1 from workflow_runs r join workflows w on w.id = r.workflow_id "
-                "where r.id = :run and w.organization_id = :org"
-            ),
-            {"run": run_id, "org": organization_id},
-        )
-    return bool(found)
+    run, run_org = await db_client.get_workflow_run_with_context(run_id)
+    return run is not None and run_org == organization_id
 
 
 @router.post("/lookup", summary="Look up a sample order (demo workspaces only)")
