@@ -192,6 +192,7 @@ class OrganizationConfigurationKey(Enum):
         "HELP_FEEDBACK"  # Thumbs up/down on help answers (metadata only, no text)
     )
     DEMO_ACCOUNT = "DEMO_ACCOUNT"  # Marks a seeded demo workspace (api/scripts/seed_demo_accounts.py)
+    DEMO_SAMPLE_ORDERS = "DEMO_SAMPLE_ORDERS"  # A demo workspace's made-up shop orders and their lookup key (api/services/demo_orders.py)
 
 
 class UserConfigurationKey(Enum):

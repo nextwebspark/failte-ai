@@ -34,6 +34,7 @@ vi.mock("@/client/sdk.gen", () => ({
     getBusinessFactsApiV1WorkflowWorkflowIdBusinessFactsGet: mocks.get,
     updateBusinessFactsApiV1WorkflowWorkflowIdBusinessFactsPut: mocks.put,
     setAiBookingApiV1IntegrationsBookingsCalendarsConnectionIdPut: mocks.setAiBooking,
+    listSampleOrdersApiV1DemoSampleOrdersGet: () => Promise.resolve({ data: { available: false, orders: [] } }),
 }));
 vi.mock("@/components/layout/pageHeading", () => ({ useOwnsPageHeading: () => {} }));
 vi.mock("./useAgentKnowledge", () => ({ useAgentKnowledge: () => mocks.knowledge }));

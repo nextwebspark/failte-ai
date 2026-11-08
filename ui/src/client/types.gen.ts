@@ -6911,6 +6911,32 @@ export type LoginRequest = {
 };
 
 /**
+ * LookupRequest
+ */
+export type LookupRequest = {
+    /**
+     * Order Number
+     */
+    order_number?: string;
+    /**
+     * Email
+     */
+    email?: string | null;
+    /**
+     * Phone
+     */
+    phone?: string | null;
+    /**
+     * Caller Name
+     */
+    caller_name?: string | null;
+    /**
+     * Call Ref
+     */
+    call_ref?: string;
+};
+
+/**
  * MPSBillingAccountResponse
  */
 export type MpsBillingAccountResponse = {
@@ -7992,7 +8018,7 @@ export type OrganizationPreferencesResponse = {
 /**
  * Pack
  */
-export type Pack = 'restaurant' | 'clinic' | 'trades' | 'voip' | 'standard';
+export type Pack = 'restaurant' | 'clinic' | 'trades' | 'voip' | 'retail' | 'standard';
 
 /**
  * PatientStatusCard
@@ -8740,6 +8766,20 @@ export type ProcessDocumentRequestSchema = {
      * Retrieval mode: 'chunked' for vector search or 'full_document' for full text retrieval
      */
     retrieval_mode?: string;
+};
+
+/**
+ * ProductAsked
+ */
+export type ProductAsked = {
+    /**
+     * Label
+     */
+    label: string;
+    /**
+     * Calls
+     */
+    calls: number;
 };
 
 /**
@@ -9617,6 +9657,11 @@ export type ReportCards = {
     call_spikes?: SpikesCard | null;
     repeat_callers?: RepeatCallersCard | null;
     waiting_for_team?: WaitingCard | null;
+    product_enquiries?: ReasonCard | null;
+    orders_delivery?: ReasonCard | null;
+    returns?: ReasonCard | null;
+    servicing_requests?: ReasonCard | null;
+    top_products?: TopProductsCard | null;
 };
 
 /**
@@ -9988,6 +10033,26 @@ export type SipTransportDetails = {
      * Uri
      */
     uri: string;
+};
+
+/**
+ * SampleOrdersView
+ */
+export type SampleOrdersView = {
+    /**
+     * Available
+     */
+    available: boolean;
+    /**
+     * Note
+     */
+    note?: string | null;
+    /**
+     * Orders
+     */
+    orders?: Array<{
+        [key: string]: unknown;
+    }>;
 };
 
 /**
@@ -12252,6 +12317,24 @@ export type ToolTestResponse = {
      * Duration Ms
      */
     duration_ms: number;
+};
+
+/**
+ * TopProductsCard
+ */
+export type TopProductsCard = {
+    /**
+     * Products
+     */
+    products: Array<ProductAsked>;
+    /**
+     * Other Products
+     */
+    other_products: number;
+    /**
+     * Calls With Product
+     */
+    calls_with_product: number;
 };
 
 /**
@@ -23426,6 +23509,84 @@ export type MarkFollowUpDoneApiV1FollowUpsRunIdDonePostResponses = {
 };
 
 export type MarkFollowUpDoneApiV1FollowUpsRunIdDonePostResponse = MarkFollowUpDoneApiV1FollowUpsRunIdDonePostResponses[keyof MarkFollowUpDoneApiV1FollowUpsRunIdDonePostResponses];
+
+export type LookupOrderApiV1DemoSampleOrdersLookupPostData = {
+    body: LookupRequest;
+    headers?: {
+        /**
+         * Authorization
+         */
+        authorization?: string | null;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/v1/demo/sample-orders/lookup';
+};
+
+export type LookupOrderApiV1DemoSampleOrdersLookupPostErrors = {
+    /**
+     * Not found
+     */
+    404: unknown;
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type LookupOrderApiV1DemoSampleOrdersLookupPostError = LookupOrderApiV1DemoSampleOrdersLookupPostErrors[keyof LookupOrderApiV1DemoSampleOrdersLookupPostErrors];
+
+export type LookupOrderApiV1DemoSampleOrdersLookupPostResponses = {
+    /**
+     * Response Lookup Order Api V1 Demo Sample Orders Lookup Post
+     *
+     * Successful Response
+     */
+    200: {
+        [key: string]: unknown;
+    };
+};
+
+export type LookupOrderApiV1DemoSampleOrdersLookupPostResponse = LookupOrderApiV1DemoSampleOrdersLookupPostResponses[keyof LookupOrderApiV1DemoSampleOrdersLookupPostResponses];
+
+export type ListSampleOrdersApiV1DemoSampleOrdersGetData = {
+    body?: never;
+    headers?: {
+        /**
+         * Authorization
+         */
+        authorization?: string | null;
+        /**
+         * X-Api-Key
+         */
+        'X-API-Key'?: string | null;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/v1/demo/sample-orders';
+};
+
+export type ListSampleOrdersApiV1DemoSampleOrdersGetErrors = {
+    /**
+     * Not found
+     */
+    404: unknown;
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ListSampleOrdersApiV1DemoSampleOrdersGetError = ListSampleOrdersApiV1DemoSampleOrdersGetErrors[keyof ListSampleOrdersApiV1DemoSampleOrdersGetErrors];
+
+export type ListSampleOrdersApiV1DemoSampleOrdersGetResponses = {
+    /**
+     * Successful Response
+     */
+    200: SampleOrdersView;
+};
+
+export type ListSampleOrdersApiV1DemoSampleOrdersGetResponse = ListSampleOrdersApiV1DemoSampleOrdersGetResponses[keyof ListSampleOrdersApiV1DemoSampleOrdersGetResponses];
 
 export type GetEmailReportSettingsApiV1OrganizationsEmailReportsGetData = {
     body?: never;

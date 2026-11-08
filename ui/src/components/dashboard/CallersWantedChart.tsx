@@ -20,6 +20,8 @@ const SLOTS: Colour[] = [
     { stroke: "stroke-[#eb6834] dark:stroke-[#d95926]", swatch: "bg-[#eb6834] dark:bg-[#d95926]" },
     { stroke: "stroke-[#1baf7a] dark:stroke-[#199e70]", swatch: "bg-[#1baf7a] dark:bg-[#199e70]" },
     { stroke: "stroke-[#eda100] dark:stroke-[#c98500]", swatch: "bg-[#eda100] dark:bg-[#c98500]" },
+    // A fifth reason (a shop's "Technical advice"); no other set has five.
+    { stroke: "stroke-[#8a5cd1] dark:stroke-[#9b72e0]", swatch: "bg-[#8a5cd1] dark:bg-[#9b72e0]" },
 ];
 const OTHER: Colour = { stroke: "stroke-[#9aa1ad] dark:stroke-[#6b7280]", swatch: "bg-[#9aa1ad] dark:bg-[#6b7280]" };
 const NOT_REVIEWED: Colour = {
@@ -41,6 +43,11 @@ const KEY_SLOT: Record<string, number> = {
     walk_ins: 3,
     selling: 3,
     speak_to_someone: 3,
+    product_stock: 0,
+    orders_delivery: 1,
+    returns_faults: 2,
+    servicing: 3,
+    technical_advice: 4,
 };
 
 /** The colour classes for each reason, by key (unknown keys take a free slot). */
