@@ -16,11 +16,13 @@ from api.schemas.workflow_template import (
     TemplateSetupField,
 )
 from api.services.workflow.agent_builder import (
+    VOICE_RULES,
     AgentSpec,
     CapturedFieldSpec,
     StageSpec,
     assemble_workflow_definition,
 )
+from api.services.workflow.agent_languages import AGENT_LANGUAGES_KEY
 from api.services.workflow.template_setup import (
     BUILTIN_TRANSFER_TOOL,
     GOOGLE_CALENDAR,
@@ -393,9 +395,9 @@ _CLINIC = AgentSpec(
         "Address: {{address | fallback:not listed. Offer to take a message instead.}}\n"
         "Website: {{website | fallback:not listed.}}\n"
         "Other things patients often ask: {{extra_info | fallback:nothing else.}}\n\n"
-        "Never give medical advice or diagnose. For anyone in severe pain or an "
-        "emergency, tell them to call emergency services or go to A&E, then offer "
-        "to take a message for reception."
+        "Never give medical advice, diagnose or ask about symptoms. An "
+        "emergency follows the emergency rule below: no message, no booking. "
+        "Anyone else who is unwell can have a message taken for reception."
     ),
     greeting=("Hello, thanks for calling {{business_name}}. How can I help you today?"),
     opening=StageSpec(
@@ -451,9 +453,10 @@ _TRADES = AgentSpec(
         "Address or base: {{address | fallback:not listed.}}\n"
         "Website: {{website | fallback:not listed.}}\n"
         "Other notes: {{extra_info | fallback:nothing else.}}\n\n"
-        "Capture the job clearly so an engineer can call back. Ask whether "
-        "there is any smell of gas or immediate danger; if yes, tell them to "
-        "call emergency services first."
+        "Capture the job clearly so an engineer can call back. If the job "
+        "sounds dangerous (a smell of gas, sparking, water near electrics), "
+        "make sure they are safe first: the gas and emergency rules below say "
+        "what to tell them."
     ),
     greeting=(
         "Hi, you've reached {{business_name}}. The team may be on a job — "
@@ -462,9 +465,11 @@ _TRADES = AgentSpec(
     opening=StageSpec(
         name="Capture the job",
         prompt=(
-            "Ask what the problem is, the address if they have one, and how "
-            "urgent it feels. One question at a time. If they only want hours "
-            "or a price range you know, answer briefly.\n\n"
+            "Ask what the problem is, where the job is, and how urgent it "
+            "feels. One question at a time. As soon as they give the address, "
+            "your next question is its Eircode, before anything else; always "
+            "ask when there is no house number. If they only want hours or a "
+            "price range you know, answer briefly.\n\n"
             "Then take a message: name, best number, and a short summary of the job."
         ),
         done_when="You have enough for the team to call back, or they want to end.",
@@ -1102,7 +1107,8 @@ _TRANSFER_FIELD = TemplateSetupField(
 )
 _TRANSFER_RULE = (
     "\n\nPutting callers through to a person: "
-    "{{transfer_number | fallback:not available}}. If the caller asks for a "
+    "{{transfer_number | fallback:not available, so never offer it and "
+    "never use the transfer tool}}. If the caller asks for a "
     "person, or a tool says to hand them over, and putting through is "
     "available, tell them you're connecting them and use the transfer tool. "
     "Never read that number out. If it isn't available or the transfer "
@@ -1110,7 +1116,135 @@ _TRANSFER_RULE = (
 )
 
 
-def _with_transfer(starter: StarterTemplate) -> StarterTemplate:
+# Fixed safety rules every inbound starter carries, whatever the business.
+# An emergency is never triaged or booked: the caller is sent to 112/999 at
+# once. The post-call review flags the call for the owner (call_review).
+EMERGENCY_RULE = (
+    "\n\n## Emergencies\n"
+    "If the caller describes a medical emergency (for example chest pain, "
+    "trouble breathing, heavy bleeding, someone collapsed or unconscious, "
+    "signs of a stroke, a seizure, a severe allergic reaction, or thoughts of "
+    "harming themselves), a fire, or anyone in immediate danger, the first "
+    'thing you say is: "Please hang up now and dial 112 or 999." Say it at '
+    "once, before anything else. Don't ask about symptoms, don't assess how "
+    "serious it is, don't book, don't put them through and don't take a "
+    "message: say that one instruction and use the end_call tool in the same "
+    "reply, so they can make the call. A smell of gas follows the gas rule "
+    "below."
+)
+# Gas Networks Ireland's 24-hour emergency line, written digit by digit so
+# the voice reads it out slowly enough to write down.
+GAS_EMERGENCY_NUMBER = "1800 20 50 50"
+GAS_RULE = (
+    "\n\n## Gas\n"
+    "If the caller can smell gas or thinks there is a gas leak, tell them "
+    "straight away: leave the building now, don't use light switches, flames "
+    "or a phone inside, and once outside ring Gas Networks Ireland's 24-hour "
+    f"emergency line, {GAS_EMERGENCY_NUMBER}. Say the number digit by digit "
+    'and slowly, like "1, 8, 0, 0, 2, 0, 5, 0, 5, 0", and offer to say it '
+    "again. If anyone feels unwell or there is a fire, they dial 112 or 999. "
+    "Don't book a visit or take a message until they say they are safe "
+    "outside."
+)
+ADDRESS_RULE = (
+    "\n\n## Addresses\n"
+    "When a caller gives an address, your very next question is the Eircode, "
+    "before anything else, and always when there is no house number or the "
+    "address is a townland or directions. An Eircode is seven letters and "
+    "digits, like D02 "
+    'X285. Read it back one character at a time, like "D, zero, two, X, two, '
+    "eight, five\", and wait for a yes. If they don't know it, that's fine: "
+    "say so and take the townland, landmarks or directions instead."
+)
+LANGUAGE_RULE = (
+    "\n\n## Languages\n"
+    "You speak: {{" + AGENT_LANGUAGES_KEY + " | fallback:English}}.\n"
+    "- If the caller speaks one of those languages, answer in it.\n"
+    '- A greeting or a few words in another language (like "Dia duit"), '
+    "English mixed with other words, or English with an accent is English: "
+    "reply in English as usual.\n"
+    "- If the caller speaks a language that is not on that list, say ONE "
+    "short line, all of it in their language, that says: sorry, you can "
+    "only help in English; "
+    "you can take their number so someone can call them back; and, only if "
+    "putting callers through is available (see above), that you can connect "
+    "them to a member of staff. Then, if it is available, use the transfer "
+    "tool. Otherwise, or if the transfer doesn't connect, take their name "
+    "and phone number in English, slowly, and read the number back. Never "
+    "carry on the conversation in that language: no bookings, answers or "
+    "questions in it beyond that one line.\n"
+    "- This rule is only for callers in another language: it never changes "
+    "what you offer anyone else."
+)
+# Starters that take a caller's address (a job, a property).
+_ADDRESS_CATEGORIES = frozenset({"trades", "estate"})
+
+
+def inbound_rules(category: str | None) -> str:
+    """The fixed rules an inbound starter of *category* appends to its global
+    prompt, with ``{{agent_languages}}`` as a setup placeholder."""
+    address = ADDRESS_RULE if category in _ADDRESS_CATEGORIES else ""
+    return EMERGENCY_RULE + GAS_RULE + address + LANGUAGE_RULE
+
+
+def _inbound_rules(starter: StarterTemplate) -> str:
+    return inbound_rules(starter.category)
+
+
+# The clinic's emergency sentence before 8 Nov 2026: it offered a message.
+_OLD_CLINIC_EMERGENCY = (
+    "Never give medical advice or diagnose. For anyone in severe pain or an "
+    "emergency, tell them to call emergency services or go to A&E, then offer "
+    "to take a message for reception."
+)
+_NEW_CLINIC_EMERGENCY = (
+    "Never give medical advice, diagnose or ask about symptoms. An "
+    "emergency follows the emergency rule below: no message, no booking. "
+    "Anyone else who is unwell can have a message taken for reception."
+)
+_END_CALL_LINE = VOICE_RULES.rsplit("\n", 1)[-1]
+
+
+def with_current_safety_rules(prompt: str, category: str | None) -> str:
+    """An inbound agent's global prompt, made from a starter before the safety
+    rules existed, brought up to date: the emergency, gas, address and
+    language rules and the end-call line are added, the clinic's old "take a
+    message" emergency sentence is replaced. Idempotent; a prompt that already
+    has them comes back unchanged. For agents LightMove itself owns (the demo
+    seed); customers' agents are never rewritten."""
+    updated = prompt.replace(_OLD_CLINIC_EMERGENCY, _NEW_CLINIC_EMERGENCY)
+    if "## Emergencies" not in updated:
+        rules = inbound_rules(category).replace(
+            "{{" + AGENT_LANGUAGES_KEY + " |",
+            "{{initial_context." + AGENT_LANGUAGES_KEY + " |",
+        )
+        updated = updated + rules
+    if _END_CALL_LINE not in updated:
+        updated = updated + "\n" + _END_CALL_LINE
+    return updated
+
+
+# Inbound agents speak English unless the owner switches on more languages
+# on "What your agent knows" (services/workflow/agent_languages.py).
+_LANGUAGES_FIELD = TemplateSetupField(
+    key=AGENT_LANGUAGES_KEY,
+    label="Languages your agent speaks",
+    type=SetupFieldType.LANGUAGES,
+    help=(
+        "English is always on. A caller in a language that isn't on hears "
+        "one short line in their language offering a member of staff or a "
+        "call back."
+    ),
+    required=False,
+    max_length=300,
+    stored=True,
+)
+
+
+def _with_inbound_rules(starter: StarterTemplate) -> StarterTemplate:
+    """Every inbound starter: the transfer tool, and the global rules every
+    caller-facing agent follows (emergencies, gas, addresses, languages,
+    ending the call)."""
     definition = copy.deepcopy(starter.definition)
     for node in definition["nodes"]:
         data = node["data"]
@@ -1120,14 +1254,14 @@ def _with_transfer(starter: StarterTemplate) -> StarterTemplate:
                 BUILTIN_TRANSFER_TOOL,
             ]
         if node["id"] == "global":
-            data["prompt"] = data["prompt"] + _TRANSFER_RULE
+            data["prompt"] = data["prompt"] + _TRANSFER_RULE + _inbound_rules(starter)
     return replace(
         starter,
         definition=definition,
-        setup_fields=[*starter.setup_fields, _TRANSFER_FIELD],
+        setup_fields=[*starter.setup_fields, _TRANSFER_FIELD, _LANGUAGES_FIELD],
     )
 
 
 STARTER_TEMPLATES = [
-    _with_transfer(s) if s.call_type == "inbound" else s for s in STARTER_TEMPLATES
+    _with_inbound_rules(s) if s.call_type == "inbound" else s for s in STARTER_TEMPLATES
 ]

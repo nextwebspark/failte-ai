@@ -12,12 +12,16 @@ import {
     changeWords,
     clockTime,
     dayLine,
+    FOLLOW_UP_KINDS,
+    FOLLOW_UP_WORDS,
+    followUpChip,
     followUpDetail,
     followUpKey,
     followUpTitle,
     hourSpan,
     hourWindow,
     lastCallWords,
+    markKind,
     notAnsweringWords,
     rangeSentence,
     telHref,
@@ -216,5 +220,24 @@ describe("todayLine and hourSpan", () => {
     it("names an hour as a span", () => {
         expect(hourSpan(9)).toBe("09:00–10:00");
         expect(hourSpan(23)).toBe("23:00–00:00");
+    });
+
+    it("names the language a caller spoke, and marks the review kinds done on their own", () => {
+        const polish = item({ kind: "other_language", caller_language: "pl", caller_language_name: "Polish", summary: null });
+        expect(followUpChip(polish)).toBe("Spoke Polish");
+        expect(followUpTitle(polish)).toBe("Spoke Polish");
+        expect(followUpDetail(polish, DUBLIN, NOW)).toMatch(/member of staff or a call back/);
+        const unknown = item({ kind: "other_language", caller_language_name: null });
+        expect(followUpChip(unknown)).toBe("Spoke another language");
+        const emergency = item({ kind: "emergency", summary: "Described chest pain; told to dial 112." });
+        expect(followUpChip(emergency)).toBe("Emergency call");
+        expect(followUpTitle(emergency)).toBe("Emergency: sent to 112/999");
+        expect(followUpDetail(emergency, DUBLIN, NOW)).toBe("Described chest pain; told to dial 112.");
+        expect(followUpChip(item({ kind: "callback" }))).toBe("Callback requested");
+        expect(FOLLOW_UP_KINDS).toContain("other_language");
+        expect(FOLLOW_UP_WORDS.other_language.filter).toBe("Spoke another language");
+        expect(markKind("other_language")).toBe("other_language");
+        expect(markKind("emergency")).toBe("emergency");
+        expect(markKind("callback")).toBeNull();
     });
 });

@@ -19,6 +19,7 @@ import {
     CHIP_CLASSES,
     type ChipTone,
     FOLLOW_UP_WORDS,
+    followUpChip,
     followUpDetail,
     followUpTitle,
     minutesSince,
@@ -150,7 +151,7 @@ export function FollowUpRow({
                     <span className={cn("text-[13.5px] font-semibold", done ? "text-ink-3 line-through" : "text-foreground")}>
                         {followUpTitle(item)}
                     </span>
-                    {!done && <Chip tone={words.tone}>{words.chip}</Chip>}
+                    {!done && <Chip tone={words.tone}>{followUpChip(item)}</Chip>}
                 </div>
                 <p className={cn("mt-0.5 text-[12.5px]", done ? "text-ink-3" : "text-ink-2")}>
                     {followUpDetail(item, timezone, now)}
@@ -293,7 +294,7 @@ export function FollowUpTodo({
                         {title}
                     </h3>
                     <Chip tone={done ? "neutral" : words.tone} className="px-2.5 text-[12.5px]">
-                        {words.chip}
+                        {followUpChip(item)}
                     </Chip>
                 </div>
                 <p className={cn("mt-1 text-[14.5px] leading-snug", done ? "text-ink-3" : "text-ink-2")}>

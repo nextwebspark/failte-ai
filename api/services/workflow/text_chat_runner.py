@@ -49,6 +49,7 @@ from api.services.pipecat.pipeline_metrics_aggregator import (
 )
 from api.services.pipecat.pre_call_fetch import execute_pre_call_fetch
 from api.services.pipecat.recording_audio_cache import create_recording_audio_fetcher
+from api.services.pipecat.response_guard import EmptyResponseGuard
 from api.services.pipecat.service_factory import create_llm_service
 from api.services.pipecat.tracing_config import (
     build_remote_parent_context,
@@ -701,9 +702,23 @@ async def execute_text_chat_pending_turn(
     trace_span_attributes = {
         "langfuse.trace.name": workflow_run.name or f"text-chat-{workflow_run_id}"
     }
+
+    async def rerun_llm(guarded_context: LLMContext) -> None:
+        await llm.queue_frame(LLMContextFrame(guarded_context))
+
+    # An empty answer to the caller is asked for again, then replaced by a
+    # fixed line; never a silent turn.
+    response_guard = EmptyResponseGuard(
+        context_provider=lambda: context,
+        rerun=rerun_llm,
+        on_retry=response_window.note_direct_context_request,
+        in_closing_step=lambda: engine.in_closing_step,
+        on_farewell=engine.end_call_after_farewell,
+    )
     pipeline = Pipeline(
         [
             llm,
+            response_guard,
             capture_processor,
             assistant_context_aggregator,
             pipeline_metrics_aggregator,

@@ -12,6 +12,7 @@ import {
     updateBusinessFactsApiV1WorkflowWorkflowIdBusinessFactsPut,
 } from "@/client/sdk.gen";
 import type { BusinessFact, FollowUpItem } from "@/client/types.gen";
+import { AgentLanguageChips } from "@/components/agent/AgentLanguageChips";
 import { AddAnswerDialog } from "@/components/dashboard/AddAnswerDialog";
 import { appendAnswer, callWhen } from "@/components/dashboard/dashboardView";
 import { useFollowUps } from "@/components/dashboard/useDashboardData";
@@ -275,7 +276,11 @@ export default function WhatYourAgentKnowsPage() {
                                         />
                                     </FactRow>
                                 ) : (
-                                    <FactRow key={fact.key} fact={fact}>
+                                    <FactRow
+                                        key={fact.key}
+                                        fact={fact}
+                                        labelFor={fact.type === "languages" ? null : undefined}
+                                    >
                                         {field(fact, { rows: 2 })}
                                     </FactRow>
                                 ),
@@ -517,6 +522,9 @@ function FactField({
         "aria-describedby": invalid ? errorId : undefined,
         placeholder: fact.placeholder ? `e.g. ${fact.placeholder}` : undefined,
     };
+    if (fact.type === "languages") {
+        return <AgentLanguageChips id={id} value={value} onChange={onChange} disabled={disabled} />;
+    }
     return (
         <>
             {fact.type === "textarea" ? (

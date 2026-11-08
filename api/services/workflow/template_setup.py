@@ -41,6 +41,20 @@ def toggles_answer(field: TemplateSetupField, raw: str | None) -> str:
     return field.sentence.replace("{items}", _join(prompts)) if prompts else ""
 
 
+def languages_answer(field: TemplateSetupField, raw: str | None) -> str:
+    """A ``languages`` answer as it is stored: names, English first ("English,
+    Polish"), or "" for English only, so the prompt's fallback applies."""
+    from api.services.workflow.agent_languages import (
+        AgentLanguagesError,
+        normalised_agent_languages,
+    )
+
+    try:
+        return normalised_agent_languages(raw) or ""
+    except AgentLanguagesError as exc:
+        raise TemplateSetupError(f"{field.label}: {exc}") from exc
+
+
 def parse_setup_fields(raw: Any) -> list[TemplateSetupField]:
     """Read a template's stored ``setup_fields``; raise on a malformed list."""
     try:
@@ -81,6 +95,8 @@ def fill_template_values(
             continue
         if rendered and field.key in rendered:
             value = rendered[field.key]
+        elif field.type == "languages":
+            value = languages_answer(field, values.get(field.key))
         else:
             value = (values.get(field.key) or "").strip()
         if not value.strip() and field.required:
@@ -131,11 +147,15 @@ def fill_template(
         for f in fields
         if f.stored and f.type != "toggles" and f.key not in (rendered or {})
     ]
-    facts = {
-        f.key: (values.get(f.key) or "").strip()
+    answers = {
+        f.key: (
+            languages_answer(f, values.get(f.key))
+            if f.type == "languages"
+            else (values.get(f.key) or "").strip()
+        )
         for f in stored
-        if (values.get(f.key) or "").strip()
     }
+    facts = {key: value for key, value in answers.items() if value}
     if stored:
         keys = "|".join(re.escape(f.key) for f in stored)
         pattern = re.compile(r"\{\{\s*(" + keys + r")(\s*(?:\|[^}]*)?)\}\}")

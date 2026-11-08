@@ -50,6 +50,8 @@ export const FOLLOW_UP_WORDS: Record<FollowUpKind, { chip: string; filter: strin
     repeat_caller: { chip: "Rang more than once", filter: "Rang more than once", tone: "sky" },
     unanswered_question: { chip: "Add an answer", filter: "Couldn't answer", tone: "sky" },
     time_was_full: { chip: "Time was full", filter: "Time was full", tone: "amber" },
+    other_language: { chip: "Spoke another language", filter: "Spoke another language", tone: "sky" },
+    emergency: { chip: "Emergency call", filter: "Emergency call", tone: "danger" },
 };
 
 export const FOLLOW_UP_KINDS: FollowUpKind[] = [
@@ -58,6 +60,8 @@ export const FOLLOW_UP_KINDS: FollowUpKind[] = [
     "repeat_caller",
     "unanswered_question",
     "time_was_full",
+    "other_language",
+    "emergency",
 ];
 
 /** One follow-up's key: a call can have one per kind. */
@@ -66,8 +70,20 @@ export function followUpKey(item: Pick<FollowUpItem, "run_id" | "kind">): string
 }
 
 /** The kinds the call review raises; each is marked done on its own (?kind=). */
+export const REVIEW_KINDS: readonly FollowUpKind[] = ["unanswered_question", "time_was_full", "other_language", "emergency"];
+
 export function markKind(kind: FollowUpKind): FollowUpKind | null {
-    return kind === "unanswered_question" || kind === "time_was_full" ? kind : null;
+    return REVIEW_KINDS.includes(kind) ? kind : null;
+}
+
+/** The chip on a follow-up: its kind's words, with the language for a caller in another one. */
+export function followUpChip(item: Pick<FollowUpItem, "kind" | "caller_language_name">): string {
+    return item.kind === "other_language" ? spokeWords(item) : FOLLOW_UP_WORDS[item.kind].chip;
+}
+
+/** "Spoke Polish", or "Spoke another language" when the review didn't name it. */
+export function spokeWords(item: Pick<FollowUpItem, "caller_language_name">): string {
+    return item.caller_language_name ? `Spoke ${item.caller_language_name}` : "Spoke another language";
 }
 
 export const RANGE_OPTIONS: { value: DashboardRange; label: string }[] = [
@@ -275,6 +291,10 @@ export function followUpTitle(item: FollowUpItem): string {
             return "Your agent couldn't answer";
         case "time_was_full":
             return "Time was full";
+        case "other_language":
+            return spokeWords(item);
+        case "emergency":
+            return "Emergency: sent to 112/999";
         case "repeat_caller":
         default:
             return `${callerWords(item)} rang ${item.repeat_count ?? 2} times`;
@@ -304,6 +324,13 @@ export function followUpDetail(item: FollowUpItem, timezone?: string | null, now
         }
         case "time_was_full":
             return item.summary ?? "The caller wanted a time that was full.";
+        case "other_language":
+            return (
+                item.summary ??
+                "Your agent offered a member of staff or a call back, then took their details in English."
+            );
+        case "emergency":
+            return item.summary ?? "The caller described an emergency and was told to hang up and dial 112 or 999.";
         case "repeat_caller":
         default:
             return repeat ?? "Rang more than once and didn't reach anyone.";

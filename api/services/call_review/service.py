@@ -36,6 +36,7 @@ from api.services.call_review.review import (
     transcript_lines,
     user_prompt,
 )
+from api.services.workflow.agent_languages import AGENT_LANGUAGES_KEY
 
 _PHONE_MODES = frozenset(
     WORKFLOW_RUN_MODES_BY_CHANNEL[WorkflowRunChannel.TELEPHONY.value]
@@ -129,7 +130,13 @@ async def _review_call(workflow_run_id: int, *, redo: bool) -> ReviewOutcome:
         schema=response_schema(reasons),
     )
     try:
-        review = parse_review(answer.text, reasons, model=answer.model, now=now)
+        review = parse_review(
+            answer.text,
+            reasons,
+            model=answer.model,
+            now=now,
+            agent_languages=_agent_languages(run.workflow.template_context_variables),
+        )
     except ReviewParseError as exc:
         logger.warning(
             f"Call review for run {workflow_run_id} unusable ({exc}); not stored"
@@ -141,6 +148,11 @@ async def _review_call(workflow_run_id: int, *, redo: bool) -> ReviewOutcome:
         f"{answer.prompt_tokens} prompt + {answer.output_tokens} output tokens"
     )
     return ReviewOutcome.REVIEWED
+
+
+def _agent_languages(facts) -> str | None:
+    value = (facts or {}).get(AGENT_LANGUAGES_KEY) if isinstance(facts, dict) else None
+    return value if isinstance(value, str) else None
 
 
 async def _store(workflow_run_id: int, review: dict) -> None:

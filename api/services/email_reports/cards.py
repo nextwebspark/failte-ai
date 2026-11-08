@@ -63,6 +63,8 @@ FOLLOW_UP_KINDS = {
     "repeat_caller": "Rang more than once",
     "unanswered_question": "Couldn't answer",
     "time_was_full": "Time was full",
+    "other_language": "Spoke another language",
+    "emergency": "Emergency call",
 }
 
 

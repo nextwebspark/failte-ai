@@ -4953,12 +4953,20 @@ export type FollowUpItem = {
      * Questions
      */
     questions: Array<string>;
+    /**
+     * Caller Language
+     */
+    caller_language?: string | null;
+    /**
+     * Caller Language Name
+     */
+    caller_language_name?: string | null;
 };
 
 /**
  * FollowUpKind
  */
-export type FollowUpKind = 'callback' | 'transfer_not_answered' | 'repeat_caller' | 'unanswered_question' | 'time_was_full';
+export type FollowUpKind = 'callback' | 'transfer_not_answered' | 'repeat_caller' | 'unanswered_question' | 'time_was_full' | 'other_language' | 'emergency';
 
 /**
  * FollowUpListResponse
@@ -10183,7 +10191,7 @@ export type ServiceKeyResponse = {
  *
  * How the Create agent dialog asks a setup question.
  */
-export type SetupFieldType = 'text' | 'textarea' | 'url' | 'email' | 'phone' | 'toggles' | 'appointment_hours';
+export type SetupFieldType = 'text' | 'textarea' | 'url' | 'email' | 'phone' | 'toggles' | 'appointment_hours' | 'languages';
 
 /**
  * SetupOption
@@ -23339,7 +23347,7 @@ export type UndoFollowUpDoneApiV1FollowUpsRunIdDoneDeleteData = {
         /**
          * Kind
          *
-         * The follow-up's kind. Needed for the call-review kinds (unanswered_question, time_was_full), which are done on their own; the other kinds share one mark per call.
+         * The follow-up's kind. Needed for the call-review kinds (unanswered_question, time_was_full, other_language, emergency), which are done on their own; the other kinds share one mark per call.
          */
         kind?: FollowUpKind | null;
     };
@@ -23390,7 +23398,7 @@ export type MarkFollowUpDoneApiV1FollowUpsRunIdDonePostData = {
         /**
          * Kind
          *
-         * The follow-up's kind. Needed for the call-review kinds (unanswered_question, time_was_full), which are done on their own; the other kinds share one mark per call.
+         * The follow-up's kind. Needed for the call-review kinds (unanswered_question, time_was_full, other_language, emergency), which are done on their own; the other kinds share one mark per call.
          */
         kind?: FollowUpKind | null;
     };

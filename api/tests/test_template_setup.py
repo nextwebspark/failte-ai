@@ -127,7 +127,8 @@ def test_starter_templates_fill_into_valid_agents():
         values = {
             field.key: f"Sample {field.key}"
             for field in starter.setup_fields
-            if field.type != "toggles"
+            # Toggles and languages answer from fixed choices.
+            if field.type not in ("toggles", "languages")
         }
 
         filled = fill_template_values(starter.definition, starter.setup_fields, values)
@@ -444,7 +445,11 @@ def _ask_line(definition: dict) -> str:
 
 
 def _business_answers(starter) -> dict[str, str]:
-    return {f.key: "Sample" for f in starter.setup_fields if f.type != "toggles"}
+    return {
+        f.key: "Sample"
+        for f in starter.setup_fields
+        if f.type not in ("toggles", "languages")
+    }
 
 
 def test_booking_toggles_default_to_the_usual_questions():

@@ -270,6 +270,8 @@ def test_kind_counts_lists_every_kind():
         "repeat_caller": 0,
         "unanswered_question": 0,
         "time_was_full": 0,
+        "other_language": 0,
+        "emergency": 0,
     }
 
 
@@ -420,3 +422,62 @@ def test_status_all_lists_to_do_then_done():
     items = follow_ups(calls)
     shown = ordered(items, FollowUpStatus.ALL)
     assert [(i.call.run_id, i.done) for i in shown] == [(1, False), (2, True)]
+
+
+def test_a_caller_in_another_language_and_an_emergency_raise_their_own_follow_ups():
+    polish = {
+        **_review(summary="Asked in Polish about a table."),
+        "caller_language": "pl",
+        "other_language": True,
+    }
+    english = {**_review(), "caller_language": "en", "other_language": False}
+    # Spoken in a language the agent has switched on: nobody needs to act.
+    spoken = {**_review(), "caller_language": "pl", "other_language": False}
+    emergency = {
+        **_review(summary="Described chest pain; was told to dial 112."),
+        "emergency": True,
+    }
+    items = follow_ups(
+        [
+            _call(1, CallResult.CALLBACK_REQUESTED, hours_ago=3, review=polish),
+            _call(2, CallResult.HANDLED, hours_ago=3, review=english),
+            _call(3, CallResult.HANDLED, hours_ago=3, review=spoken),
+            _call(4, CallResult.HUNG_UP_EARLY, hours_ago=2, review=emergency),
+        ]
+    )
+    assert sorted((i.call.run_id, i.kind.value) for i in items) == [
+        (1, "callback"),
+        (1, "other_language"),
+        (4, "emergency"),
+    ]
+    by_kind = {i.kind: i for i in items}
+    row = follow_up_row(by_kind[FollowUpKind.OTHER_LANGUAGE])
+    assert row["caller_language"] == "pl"
+    assert row["caller_language_name"] == "Polish"
+    assert row["has_recording"] is True
+    assert follow_up_row(by_kind[FollowUpKind.EMERGENCY])["caller_language"] is None
+
+
+def test_language_and_emergency_follow_ups_are_done_on_their_own():
+    review = {
+        **_review(),
+        "caller_language": "pt",
+        "other_language": True,
+        "emergency": True,
+    }
+    call = _call(
+        1,
+        CallResult.CALLBACK_REQUESTED,
+        hours_ago=2,
+        review=review,
+        kind_marks={"other_language": _done(1)},
+    )
+    items = {i.kind: i for i in follow_ups([call])}
+    assert items[FollowUpKind.OTHER_LANGUAGE].done
+    assert not items[FollowUpKind.EMERGENCY].done
+    assert not items[FollowUpKind.CALLBACK].done
+
+
+def test_old_reviews_raise_no_language_or_emergency_follow_up():
+    items = follow_ups([_call(1, CallResult.HANDLED, hours_ago=2, review=_review())])
+    assert items == []

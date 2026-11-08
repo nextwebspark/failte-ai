@@ -281,6 +281,18 @@ GOOGLE_GENAI_HTTP_OPTIONS = HttpOptions(
 )
 
 
+# A Gemini stream that hasn't produced its first chunk by now is re-issued
+# once (pipecat's ``retry_on_timeout``). Without it a stalled request waits the
+# full 20 s idle timeout and the turn ends in silence (seen on 8 Nov 2026: a
+# chest-pain caller got no answer). Vertex first-chunk times run about 1 s at
+# p50 and under 2 s at p99 on the local stack, so 8 s only catches real stalls.
+GEMINI_FIRST_CHUNK_RETRY_SECS = 8.0
+GEMINI_TIMEOUT_RETRY = {
+    "retry_on_timeout": True,
+    "retry_timeout_secs": GEMINI_FIRST_CHUNK_RETRY_SECS,
+}
+
+
 class DograhGoogleLLMService(GoogleLLMService):
     adapter_class = DograhGeminiJSONSchemaAdapter
 
@@ -1340,6 +1352,7 @@ def create_llm_service_from_provider(
                 extra={"automatic_function_calling": {"disable": True}},
             ),
             http_options=GOOGLE_GENAI_HTTP_OPTIONS,
+            **GEMINI_TIMEOUT_RETRY,
         )
     elif provider == ServiceProviders.GOOGLE_VERTEX.value:
         # Vertex serves Gemini, Claude, and open MaaS models behind one config;
@@ -1363,6 +1376,7 @@ def create_llm_service_from_provider(
                     extra={"automatic_function_calling": {"disable": True}},
                 ),
                 http_options=GOOGLE_GENAI_HTTP_OPTIONS,
+                **GEMINI_TIMEOUT_RETRY,
             ),
         )
     elif provider == ServiceProviders.AZURE.value:

@@ -53,6 +53,7 @@ import {
     followUpKey,
     hourSpan,
     lastCallWords,
+    markKind,
     notAnsweringWords,
     RANGE_OPTIONS,
     rangeSentence,
@@ -385,7 +386,7 @@ function Attention({
                             busy={busy === followUpKey(item)}
                             // Done here only for the review kinds (no call to return).
                             onMarkDone={
-                                canMark && (item.kind === "unanswered_question" || item.kind === "time_was_full")
+                                canMark && markKind(item.kind) !== null
                                     ? (i) => void change(i, true)
                                     : undefined
                             }

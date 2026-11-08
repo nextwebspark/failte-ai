@@ -144,6 +144,16 @@ def checked_updates(
         if raw is not None and not isinstance(raw, str):
             raise BusinessFactsError(f"{field.label} must be text.")
         value = (raw or "").strip()
+        if field.type == "languages":
+            from api.services.workflow.agent_languages import (
+                AgentLanguagesError,
+                normalised_agent_languages,
+            )
+
+            try:
+                value = normalised_agent_languages(value) or ""
+            except AgentLanguagesError as exc:
+                raise BusinessFactsError(str(exc)) from None
         if not value and field.required:
             raise BusinessFactsError(f"{field.label} can't be empty.")
         if len(value) > field.max_length:

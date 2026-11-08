@@ -244,6 +244,7 @@ def test_good_answer_becomes_the_stored_review():
         "reason_label": "Reservations",
         "unanswered_questions": [],
         "time_was_full": False,
+        "emergency": False,
         "request_tags": [],
         "model": "m",
         "created_at": NOW.isoformat(),
@@ -480,3 +481,115 @@ def test_demo_seed_tags_match_what_was_said():
         "accessibility",
         "seating",
     }
+
+
+# --- caller language and emergencies -------------------------------------------
+
+
+def test_schema_asks_for_language_and_emergency_but_never_requires_them():
+    schema = response_schema(CLINIC)
+    assert schema["properties"]["caller_language"] == {"type": "string"}
+    assert schema["properties"]["emergency"] == {"type": "boolean"}
+    assert "caller_language" not in schema["required"]
+    assert "emergency" not in schema["required"]
+
+
+def test_prompt_counts_an_irish_greeting_as_english():
+    prompt = system_prompt(CLINIC)
+    assert "caller_language" in prompt and "Dia duit" in prompt
+    assert "112" in prompt and "gas" in prompt
+
+
+@pytest.mark.parametrize(
+    ("fact", "language", "other"),
+    [
+        (None, "pl", True),
+        ("English, Polish", "pl", False),
+        ("English, Polish", "PT-br", True),
+        (None, "en", False),
+        ("English", "en-IE", False),
+    ],
+)
+def test_caller_in_another_language_is_flagged_against_the_agents_languages(
+    fact, language, other
+):
+    review = parse_review(
+        _answer(caller_language=language),
+        RESTAURANT,
+        model="m",
+        now=NOW,
+        agent_languages=fact,
+    )
+    assert review["caller_language"] == language.lower().split("-")[0]
+    assert review["other_language"] is other
+
+
+@pytest.mark.parametrize("value", [None, "", "Polish", 7, "p", "english language"])
+def test_unknown_language_is_left_out(value):
+    review = parse_review(
+        _answer(caller_language=value), RESTAURANT, model="m", now=NOW
+    )
+    assert "caller_language" not in review and "other_language" not in review
+
+
+def test_answer_without_the_new_keys_still_parses():
+    review = parse_review(_answer(), CLINIC, model="m", now=NOW)
+    assert "caller_language" not in review
+    assert review["emergency"] is False
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"), [(True, True), ("true", False), (None, False)]
+)
+def test_emergency_only_when_true(value, expected):
+    review = parse_review(_answer(emergency=value), CLINIC, model="m", now=NOW)
+    assert review["emergency"] is expected
+
+
+def test_purge_drops_language_and_emergency():
+    review = parse_review(
+        _answer(caller_language="pl", emergency=True), CLINIC, model="m", now=NOW
+    )
+    kept = purged_review(review)
+    assert not {"caller_language", "other_language", "emergency"} & set(kept)
+
+
+def test_old_reviews_read_as_language_and_emergency_unknown():
+    from api.services.call_review.review import (
+        caller_language,
+        spoke_other_language,
+        was_emergency,
+    )
+
+    old = {"summary": "Asked about parking.", "reason": "questions"}
+    assert caller_language(old) is None
+    assert spoke_other_language(old) is False
+    assert was_emergency(old) is False
+
+
+def test_demo_seed_has_calls_in_another_language_and_an_emergency():
+    import random
+
+    from api.scripts import demo_businesses as demo
+    from api.scripts.seed_demo_accounts import _follow_up_kinds
+
+    def plan(business, scenario):
+        ctx = demo.Ctx(
+            rng=random.Random(1),
+            caller=business.callers[0],
+            started=datetime(2026, 11, 6, 12, 0),
+            business=business,
+            greeting="Hello.",
+        )
+        return scenario(ctx)
+
+    polish = plan(demo.RESTAURANT, demo.RESTAURANT.pinned[2])
+    assert polish.caller_language == "pl"
+    assert "other_language" in _follow_up_kinds(polish)
+    assert "agent_languages" not in demo.RESTAURANT.facts  # English only
+    pinned = {s.__name__ for s in demo.DENTAL.pinned.values()}
+    assert pinned == {"_d_portuguese", "_d_emergency"}
+    emergency = plan(demo.DENTAL, demo._d_emergency)
+    assert emergency.emergency and "emergency" in _follow_up_kinds(emergency)
+    said = " ".join(step.text for step in emergency.steps if step.kind == "agent")
+    assert "112 or 999" in said

@@ -36,6 +36,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import base64
+import copy
 import hashlib
 import io
 import json
@@ -75,6 +76,9 @@ from api.scripts.demo_businesses import (
 from api.services.call_review.categories import TEMPLATE_CATEGORY_FACT, reason_set
 from api.services.call_review.review import (
     CALL_REVIEW_KEY,
+    CALLER_LANGUAGE_KEY,
+    EMERGENCY_KEY,
+    OTHER_LANGUAGE_KEY,
     REQUEST_TAGS_KEY,
     REVIEW_VERSION,
     clean_request_tags,
@@ -93,6 +97,7 @@ from api.services.pipecat.realtime_feedback_events import (
 )
 from api.services.pronunciation import irish as irish_pronunciation
 from api.services.storage import get_current_storage_backend, storage_fs
+from api.services.workflow.agent_languages import AGENT_LANGUAGES_KEY, speaks
 from api.services.workflow.opening_hours import closed_transfer_result
 from api.utils.auth import hash_password
 from api.utils.transcript import generate_transcript_text
@@ -327,7 +332,35 @@ async def ensure_agent(business: Business, organization_id: int, owner: UserMode
         )
         workflow = await _agent(organization_id, name)
         assert workflow is not None
+    if await _refresh_safety_rules(workflow, template.category):
+        workflow = await _agent(organization_id, name)
+        assert workflow is not None
     return workflow
+
+
+async def _refresh_safety_rules(workflow: WorkflowModel, category: str | None) -> bool:
+    """Demo agents are LightMove's own, so a re-run brings an agent seeded
+    before the 8 Nov 2026 safety rules (emergencies, gas, Eircodes, languages,
+    ending the call) up to the current starter, keeping its facts, tools and
+    call history. A no-op once it has them. Customers' agents are never
+    touched: they keep the prompt they were created with."""
+    from api.services.workflow.starter_templates import with_current_safety_rules
+
+    definition = copy.deepcopy(workflow.workflow_definition or {})
+    changed = False
+    for node in definition.get("nodes", []):
+        if node.get("id") != "global":
+            continue
+        prompt = (node.get("data") or {}).get("prompt") or ""
+        updated = with_current_safety_rules(prompt, category)
+        if updated != prompt:
+            node["data"]["prompt"] = updated
+            changed = True
+    if changed:
+        await db_client.save_workflow_draft(workflow.id, workflow_definition=definition)
+        await db_client.publish_workflow_draft(workflow.id)
+        print(f"  {workflow.name}: added the current safety and language rules")
+    return changed
 
 
 async def _agent(organization_id: int, name: str) -> WorkflowModel | None:
@@ -589,7 +622,7 @@ async def render(
 ) -> Rendered:
     """The call log (and with ``speech`` the audio) of one planned call."""
     rng = random.Random(f"timing:{ctx.caller.name}:{start.isoformat()}")
-    voice = caller_voice(ctx)
+    voice = plan.caller_voice or caller_voice(ctx)
     events: list[dict] = []
     tool_results: list[dict] = []
     mixed: list[bytes] = []
@@ -825,6 +858,13 @@ def _review(plan: Plan, agent: Agent, created: datetime) -> dict:
         "model": REVIEW_MODEL,
         "created_at": created.isoformat(),
     }
+    if plan.speech:
+        # As the live review writes them: the language against the agent's.
+        review[CALLER_LANGUAGE_KEY] = plan.caller_language
+        review[OTHER_LANGUAGE_KEY] = not speaks(
+            agent.facts.get(AGENT_LANGUAGES_KEY), plan.caller_language
+        )
+    review[EMERGENCY_KEY] = plan.emergency
     if reasons.request_tags:
         # As the live review writes them: known tags, each once, in order.
         review[REQUEST_TAGS_KEY] = clean_request_tags(plan.request_tags, reasons)
@@ -841,6 +881,10 @@ def _follow_up_kinds(plan: Plan) -> list[str | None]:
         kinds.append(FollowUpKind.UNANSWERED_QUESTION.value)
     if plan.time_was_full and plan.outcome != BOOKING_MADE:
         kinds.append(FollowUpKind.TIME_WAS_FULL.value)
+    if plan.caller_language != "en":
+        kinds.append(FollowUpKind.OTHER_LANGUAGE.value)
+    if plan.emergency:
+        kinds.append(FollowUpKind.EMERGENCY.value)
     return kinds
 
 
@@ -989,7 +1033,10 @@ async def seed_calls(
             business=business,
             greeting=agent.greeting,
         )
-        plan = fit_to_opening_hours(_choose(business, rng)(ctx), ctx)
+        scenario = _choose(business, rng)
+        # A pinned call still draws, so every other call stays as it was.
+        scenario = business.pinned.get(index, scenario)
+        plan = fit_to_opening_hours(scenario(ctx), ctx)
         start = start_local.astimezone(UTC)
         recorded = index < recordings and speech is not None
         rendered = await render(plan, ctx, agent, start, speech if recorded else None)
