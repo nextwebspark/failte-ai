@@ -1267,6 +1267,7 @@ async def _run_pipeline_impl(
                 generation_started=engine.create_generation_started_callback(visit_id),
                 llm_text_frame=engine.create_llm_text_frame_callback(visit_id),
                 context=lambda: engine.context,
+                in_closing_step=lambda: engine.in_closing_step,
             )
 
         agent_factory = AgentRuntimeFactory(

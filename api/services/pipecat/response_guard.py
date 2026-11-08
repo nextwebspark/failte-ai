@@ -13,9 +13,10 @@ the LLM once more with the same context; if that also comes back empty, it
 speaks a fixed line instead. The line sends anyone describing an emergency to
 112/999, and otherwise asks the caller to say it again.
 
-Only generations that answer the caller are guarded: the context's last
+Only generations that answer the caller are retried: the context's last
 message must be the caller's. A generation after a tool result may rightly
-say nothing (the tool spoke, or the call is ending).
+say nothing (the tool spoke), except in the call's closing step, which must
+say goodbye: an empty one there gets a fixed short goodbye.
 """
 
 from __future__ import annotations
@@ -49,6 +50,8 @@ GAS_FALLBACK = (
     "ring Gas Networks Ireland on 1, 8, 0, 0, 2, 0, 5, 0, 5, 0. If anyone is "
     "unwell or there's a fire, dial 112 or 999."
 )
+# The closing step's goodbye, when the model gives nothing there.
+CLOSING_FALLBACK = "Thanks for calling. Goodbye."
 GENERIC_FALLBACK = (
     "Sorry, I didn't catch that. Could you say it again? If this is an "
     "emergency, please hang up and dial 112 or 999."
@@ -141,12 +144,15 @@ class EmptyResponseGuard(FrameProcessor):
         context_provider: ContextProvider,
         rerun: Rerun,
         on_retry: Callable[[], None] | None = None,
+        in_closing_step: Callable[[], bool] | None = None,
         retry_within_secs: float = _RETRY_WITHIN_SECS,
     ):
         super().__init__()
         self._context_provider = context_provider
         self._rerun = rerun
         self._on_retry = on_retry
+        self._in_closing_step = in_closing_step
+        self._closing_spoken = False
         self._retry_within_secs = retry_within_secs
         self._open = False
         self._started_at = 0.0
@@ -154,6 +160,15 @@ class EmptyResponseGuard(FrameProcessor):
         self._interrupted = False
         # Set when the next generation is this guard's own retry.
         self._retrying = False
+
+    def _closing_in_silence(self) -> bool:
+        """The call's closing step produced nothing, for the first time."""
+        if self._closing_spoken or self._in_closing_step is None:
+            return False
+        try:
+            return bool(self._in_closing_step())
+        except Exception:  # noqa: BLE001 - a guard must never break the call
+            return False
 
     def _reset_response(self) -> None:
         self._open = True
@@ -206,6 +221,15 @@ class EmptyResponseGuard(FrameProcessor):
         caller_text = _last_caller_message(context)
         if caller_text is None:
             await self.push_frame(frame, direction)
+            if self._closing_in_silence():
+                logger.warning(
+                    f"{self}: the closing step said nothing; speaking the "
+                    f"fixed goodbye: {CLOSING_FALLBACK!r}"
+                )
+                self._closing_spoken = True
+                await self.push_frame(
+                    TTSSpeakFrame(CLOSING_FALLBACK, append_to_context=True)
+                )
             return
 
         elapsed = time.monotonic() - self._started_at

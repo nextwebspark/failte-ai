@@ -17,6 +17,7 @@ from pipecat.processors.aggregators.llm_context import LLMContext
 from pipecat.processors.frame_processor import FrameDirection
 
 from api.services.pipecat.response_guard import (
+    CLOSING_FALLBACK,
     EMERGENCY_FALLBACK,
     GAS_FALLBACK,
     GENERIC_FALLBACK,
@@ -127,6 +128,32 @@ async def test_after_a_tool_result_silence_is_allowed():
     guard, rerun, _ = _guard(context)
     await _response(guard)
     rerun.assert_not_awaited()
+    assert not any(isinstance(f, TTSSpeakFrame) for f in _pushed(guard))
+
+
+@pytest.mark.asyncio
+async def test_a_silent_closing_step_says_a_fixed_goodbye_once():
+    context = _context(
+        {"role": "user", "content": "OK, thanks."},
+        {"role": "assistant", "content": "", "tool_calls": []},
+        {"role": "tool", "content": "ok", "tool_call_id": "1"},
+    )
+    guard, rerun, _ = _guard(context, in_closing_step=lambda: True)
+    await _response(guard)
+    await _response(guard)
+    rerun.assert_not_awaited()
+    spoken = [f.text for f in _pushed(guard) if isinstance(f, TTSSpeakFrame)]
+    assert spoken == [CLOSING_FALLBACK]
+
+
+@pytest.mark.asyncio
+async def test_a_spoken_goodbye_needs_no_fixed_one():
+    context = _context(
+        {"role": "user", "content": "OK, thanks."},
+        {"role": "tool", "content": "ok", "tool_call_id": "1"},
+    )
+    guard, _, _ = _guard(context, in_closing_step=lambda: True)
+    await _response(guard, LLMTextFrame("Thanks for calling, goodbye."))
     assert not any(isinstance(f, TTSSpeakFrame) for f in _pushed(guard))
 
 

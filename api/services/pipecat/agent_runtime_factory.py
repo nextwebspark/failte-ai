@@ -64,6 +64,8 @@ class AgentGenerationCallbacks:
     llm_text_frame: Callable[[str], Any]
     # The call's LLM context, for EmptyResponseGuard. None: no guard.
     context: Callable[[], Any] | None = None
+    # Whether the call is in its closing step, for EmptyResponseGuard.
+    in_closing_step: Callable[[], bool] | None = None
 
 
 class AgentRuntimeFactory:
@@ -281,7 +283,9 @@ class AgentRuntimeFactory:
         )
         response_guard = (
             EmptyResponseGuard(
-                context_provider=callbacks.context, rerun=runtime.run_llm
+                context_provider=callbacks.context,
+                rerun=runtime.run_llm,
+                in_closing_step=callbacks.in_closing_step,
             )
             if callbacks.context is not None
             else None

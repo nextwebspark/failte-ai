@@ -337,6 +337,12 @@ class PipecatEngine:
         return self._active_agent
 
     @property
+    def in_closing_step(self) -> bool:
+        """Whether the call has reached an end node (its goodbye)."""
+        node = self._active_agent.current_node if self._active_agent else None
+        return bool(node is not None and node.is_end)
+
+    @property
     def pending_agent(self) -> Optional[AgentRuntime]:
         """An agent prepared for a handoff that has not committed yet."""
         return self.__dict__.get("_pending_agent")
