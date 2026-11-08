@@ -465,9 +465,11 @@ _TRADES = AgentSpec(
     opening=StageSpec(
         name="Capture the job",
         prompt=(
-            "Ask what the problem is, the address and its Eircode if they "
-            "have one, and how urgent it feels. One question at a time. If they only want hours "
-            "or a price range you know, answer briefly.\n\n"
+            "Ask what the problem is, where the job is, and how urgent it "
+            "feels. One question at a time. As soon as they give the address, "
+            "your next question is its Eircode, before anything else; always "
+            "ask when there is no house number. If they only want hours or a "
+            "price range you know, answer briefly.\n\n"
             "Then take a message: name, best number, and a short summary of the job."
         ),
         done_when="You have enough for the team to call back, or they want to end.",
@@ -1105,7 +1107,8 @@ _TRANSFER_FIELD = TemplateSetupField(
 )
 _TRANSFER_RULE = (
     "\n\nPutting callers through to a person: "
-    "{{transfer_number | fallback:not available}}. If the caller asks for a "
+    "{{transfer_number | fallback:not available, so never offer it and "
+    "never use the transfer tool}}. If the caller asks for a "
     "person, or a tool says to hand them over, and putting through is "
     "available, tell them you're connecting them and use the transfer tool. "
     "Never read that number out. If it isn't available or the transfer "
@@ -1145,8 +1148,10 @@ GAS_RULE = (
 )
 ADDRESS_RULE = (
     "\n\n## Addresses\n"
-    "When you take an address, also ask for the Eircode, always when there "
-    "is no house number. An Eircode is seven letters and digits, like D02 "
+    "When a caller gives an address, your very next question is the Eircode, "
+    "before anything else, and always when there is no house number or the "
+    "address is a townland or directions. An Eircode is seven letters and "
+    "digits, like D02 "
     'X285. Read it back one character at a time, like "D, zero, two, X, two, '
     "eight, five\", and wait for a yes. If they don't know it, that's fine: "
     "say so and take the townland, landmarks or directions instead."
@@ -1159,13 +1164,17 @@ LANGUAGE_RULE = (
     "English mixed with other words, or English with an accent is English: "
     "reply in English as usual.\n"
     "- If the caller speaks a language that is not on that list, say ONE "
-    'short line in their language that means: "Sorry, I can only help in '
-    "English. I can put you through to a member of staff, or take your number "
-    'so someone can call you back." Then, if putting through is available, '
-    "use the transfer tool. If it isn't, or the transfer doesn't connect, "
-    "take their name and phone number in English, slowly, and read the "
-    "number back. Never carry on the conversation in that language: no "
-    "bookings, answers or questions in it beyond that one line."
+    "short line, all of it in their language, that says: sorry, you can "
+    "only help in English; "
+    "you can take their number so someone can call them back; and, only if "
+    "putting callers through is available (see above), that you can connect "
+    "them to a member of staff. Then, if it is available, use the transfer "
+    "tool. Otherwise, or if the transfer doesn't connect, take their name "
+    "and phone number in English, slowly, and read the number back. Never "
+    "carry on the conversation in that language: no bookings, answers or "
+    "questions in it beyond that one line.\n"
+    "- This rule is only for callers in another language: it never changes "
+    "what you offer anyone else."
 )
 # Starters that take a caller's address (a job, a property).
 _ADDRESS_CATEGORIES = frozenset({"trades", "estate"})

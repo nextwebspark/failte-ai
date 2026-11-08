@@ -59,7 +59,8 @@ def test_address_taking_starters_ask_for_the_eircode(starter):
 
 
 def test_every_starter_ends_the_call_with_the_tool():
-    assert "use the end_call or finish_call tool" in VOICE_RULES
+    assert "finish_call tool straight away, with no text" in VOICE_RULES
+    assert "there you say a short goodbye" in VOICE_RULES
     for starter in STARTER_TEMPLATES:
         assert "Never say goodbye and leave the line open." in _global_prompt(
             starter.definition

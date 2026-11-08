@@ -142,7 +142,10 @@ def test_inbound_templates_can_put_callers_through_to_a_person():
         persona, {k: v for k, v in facts.items() if k != "transfer_number"}
     )
     assert "Never read that number out" in on
-    assert "Putting callers through to a person: not available." in off
+    assert (
+        "Putting callers through to a person: not available, so never offer "
+        "it and never use the transfer tool." in off
+    )
 
 
 def test_the_placeholder_becomes_the_agents_transfer_tool():

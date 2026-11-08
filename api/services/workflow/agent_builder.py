@@ -69,10 +69,12 @@ VOICE_RULES: Final = (
     "- Read numbers, dates and email addresses back slowly to confirm them.\n"
     "- Never invent facts, prices or policies. If you do not know, say so and "
     "offer a follow-up.\n"
-    "- When the call is over (the caller says goodbye or needs nothing else, "
-    "it is a wrong number, or it is a sales call), use the end_call or "
-    "finish_call tool in that same reply instead of saying goodbye yourself: "
-    "the goodbye is said for you. Never say goodbye and leave the line open."
+    "- When the call is over (the caller says goodbye, thanks you and needs "
+    "nothing else, it was a wrong number, or it is a sales call), don't say "
+    'goodbye yet ("goodbye", "have a lovely day", "take care"): call the '
+    "end_call or finish_call tool straight away, with no text. That moves "
+    "the call to its closing step, and there you say a short goodbye. Never "
+    "say goodbye and leave the line open."
 )
 
 EARLY_EXIT_PROMPT: Final = (
