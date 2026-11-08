@@ -233,6 +233,17 @@ class AppointmentTypesCard(BaseModel):
     other_calls: int
 
 
+class ProductAsked(BaseModel):
+    label: str
+    calls: int
+
+
+class TopProductsCard(BaseModel):
+    products: list[ProductAsked]
+    other_products: int
+    calls_with_product: int
+
+
 class EmergenciesByHourCard(BaseModel):
     hours: list[int]
     count: int
@@ -359,6 +370,11 @@ class ReportCards(BaseModel):
     call_spikes: SpikesCard | None = None
     repeat_callers: RepeatCallersCard | None = None
     waiting_for_team: WaitingCard | None = None
+    product_enquiries: ReasonCard | None = None
+    orders_delivery: ReasonCard | None = None
+    returns: ReasonCard | None = None
+    servicing_requests: ReasonCard | None = None
+    top_products: TopProductsCard | None = None
 
 
 # ----------------------------------------------------------------- layout

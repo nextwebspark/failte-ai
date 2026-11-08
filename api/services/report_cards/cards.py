@@ -680,6 +680,47 @@ def appointment_types(calls: Sequence[ReportCall]) -> dict[str, Any]:
     }
 
 
+# -------------------------------------------------------------- retail
+
+# What the call review files each retail card's calls under.
+RETAIL_REASON_CARDS = {
+    Card.PRODUCT_ENQUIRIES: "product_stock",
+    Card.ORDERS_DELIVERY: "orders_delivery",
+    Card.RETURNS: "returns_faults",
+    Card.SERVICING_REQUESTS: "servicing",
+}
+
+
+def top_products(calls: Sequence[ReportCall]) -> dict[str, Any]:
+    """The products callers asked about, as the agent wrote them down
+    (``product_asked_about``; several on one call separated by commas or
+    semicolons), most asked first."""
+    asked: Counter[str] = Counter()
+    labels: dict[str, str] = {}
+    with_product = 0
+    for call in calls:
+        value = call.detail("product_asked_about")
+        if not value:
+            continue
+        with_product += 1
+        names = {
+            " ".join(part.lower().split()): part.strip()
+            for part in value.replace(";", ",").split(",")
+            if part.strip()
+        }
+        for key, words in names.items():
+            labels.setdefault(key, words[:1].upper() + words[1:])
+            asked[key] += 1
+    ranked = sorted(asked, key=lambda k: (-asked[k], k))
+    return {
+        "products": [
+            {"label": labels[k], "calls": asked[k]} for k in ranked[:MAX_LIST]
+        ],
+        "other_products": sum(asked[k] for k in ranked[MAX_LIST:]),
+        "calls_with_product": with_product,
+    }
+
+
 # ------------------------------------------------------------- trades
 
 
@@ -1003,6 +1044,10 @@ def build_cards(
             out[key] = call_spikes(calls, span)
         elif key == Card.REPEAT_CALLERS:
             out[key] = repeat_callers(calls)
+        elif key in RETAIL_REASON_CARDS:
+            out[key] = _reason_card(calls, previous, RETAIL_REASON_CARDS[key], span)
+        elif key == Card.TOP_PRODUCTS:
+            out[key] = top_products(calls)
     if not previous:
         # Nothing to compare with (a new business, or before its first
         # call): "up 115" against an empty period would only mislead.

@@ -293,6 +293,20 @@ export function ReportCard({ cardKey, title, ctx }: { cardKey: string; title: st
             };
             return <Kpi id={id} title={title} value={c.count} change={c.change} note={c.count ? notes[cardKey] : undefined} />;
         }
+        case "product_enquiries":
+        case "orders_delivery":
+        case "returns":
+        case "servicing_requests": {
+            const c = cards[cardKey];
+            if (!c) return null;
+            const parts = [
+                c.handled ? `${c.handled} answered by your agent` : null,
+                c.needed_person ? `${c.needed_person} needed your team` : null,
+            ].filter(Boolean);
+            return (
+                <Kpi id={id} title={title} value={c.count} change={c.change} note={c.count && parts.length ? parts.join(", ") : undefined} />
+            );
+        }
         case "after_hours_callouts": {
             const c = cards.after_hours_callouts;
             if (!c) return null;
@@ -679,6 +693,25 @@ export function ReportCard({ cardKey, title, ctx }: { cardKey: string; title: st
                                 .join(" · ")}
                         </p>
                     ) : null}
+                </Panel>
+            );
+        }
+        case "top_products": {
+            const c = cards.top_products;
+            if (!c) return null;
+            const max = Math.max(0, ...c.products.map((p) => p.calls));
+            return (
+                <Panel id={id} title={title} subtitle="As your agent wrote them down">
+                    {c.products.length ? (
+                        <ul className="flex flex-col gap-3">
+                            {c.products.map((p) => (
+                                <BarRow key={p.label} label={p.label} value={p.calls} max={max} />
+                            ))}
+                            {c.other_products ? <li className="text-caption text-ink-3">Other products: {c.other_products}</li> : null}
+                        </ul>
+                    ) : (
+                        <Empty>No products written down in this period.</Empty>
+                    )}
                 </Panel>
             );
         }

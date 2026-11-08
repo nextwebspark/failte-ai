@@ -234,8 +234,49 @@ GENERAL = ReasonSet(
     bookings_label="appointments booked",
 )
 
+# A shop's sales and support line (a chandlery, an outdoor or hardware
+# store): no starter template of its own; an agent gets it from the
+# ``template_category`` its business facts carry.
+RETAIL = ReasonSet(
+    template="retail",
+    business="a shop's sales and support line (in store and online)",
+    reasons=(
+        Reason(
+            "product_stock",
+            "Product & stock",
+            "a product, its price, whether it is stocked, sizes, brands",
+        ),
+        Reason(
+            "orders_delivery",
+            "Orders & delivery",
+            "an order's status, delivery costs and times, where to send it",
+        ),
+        Reason(
+            "returns_faults",
+            "Returns & faults",
+            "returning or exchanging an item, a refund, a faulty or wrong item",
+        ),
+        Reason(
+            "servicing",
+            "Servicing & bookings",
+            "booking a service (such as a lifejacket service), a fitting or a visit",
+        ),
+        Reason(
+            "technical_advice",
+            "Technical advice",
+            "which part fits, how to fit or wire something, how much is needed",
+        ),
+        Reason(
+            OTHER,
+            "Other",
+            "store hours and directions, trade accounts, wrong numbers, sales calls",
+        ),
+    ),
+    bookings_label=None,
+)
+
 REASON_SETS: dict[str, ReasonSet] = {
-    s.template: s for s in (RESTAURANT, CLINIC, SALON, TRADES, ESTATE, GENERAL)
+    s.template: s for s in (RESTAURANT, CLINIC, SALON, TRADES, ESTATE, GENERAL, RETAIL)
 }
 # Starter categories without a set of their own.
 _ALIASES = {"telephony": "general"}
