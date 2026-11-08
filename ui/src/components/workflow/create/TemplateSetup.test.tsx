@@ -83,3 +83,33 @@ describe("TemplateSetup with Calendly", () => {
         );
     });
 });
+
+describe("TemplateSetup languages question", () => {
+    it("asks for languages with switches, English always on, not a text box", () => {
+        const onAnswer = vi.fn();
+        const template = {
+            ...TEMPLATE,
+            integrations: [],
+            setup_fields: [
+                { key: "agent_languages", label: "Languages your agent speaks", type: "languages", required: false, max_length: 300 },
+            ],
+        } as unknown as WorkflowTemplateResponse;
+        render(
+            <TemplateSetup
+                template={template}
+                answers={{}}
+                errors={{}}
+                onAnswer={onAnswer}
+                calendar={null}
+                useCalendar={false}
+                onUseCalendarChange={vi.fn()}
+                hours={HOURS}
+            />,
+        );
+        expect(screen.getByText("Languages your agent speaks")).toBeTruthy();
+        expect(screen.queryByRole("textbox")).toBeNull();
+        expect(screen.getByRole("button", { name: "English (always on)" }).hasAttribute("disabled")).toBe(true);
+        fireEvent.click(screen.getByRole("button", { name: "Irish" }));
+        expect(onAnswer).toHaveBeenCalledWith("agent_languages", "English, Irish");
+    });
+});

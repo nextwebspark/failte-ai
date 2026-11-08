@@ -165,6 +165,10 @@ class FollowUpItem(BaseModel):
     summary: str | None
     # The questions the agent couldn't answer (``unanswered_question`` only).
     questions: list[str]
+    # The language the caller spoke, from the call review, when known: an
+    # ISO 639-1 code ("pl") and its English name ("Polish").
+    caller_language: str | None = None
+    caller_language_name: str | None = None
 
 
 class FollowUpWeek(BaseModel):
@@ -301,7 +305,8 @@ KindQuery = Annotated[
     Query(
         description=(
             "The follow-up's kind. Needed for the call-review kinds "
-            "(unanswered_question, time_was_full), which are done on their own; "
+            "(unanswered_question, time_was_full, other_language, emergency), "
+            "which are done on their own; "
             "the other kinds share one mark per call."
         )
     ),

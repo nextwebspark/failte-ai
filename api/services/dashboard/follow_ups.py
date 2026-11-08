@@ -7,9 +7,12 @@ What lands here, all read from the stored call:
 * a caller rang two or more times in a row and never reached anyone;
 * the call review found a question the agent couldn't answer;
 * the call review found the caller wanted a time that was full (unless a
-  booking was made on the call anyway).
+  booking was made on the call anyway);
+* the call review found the caller spoke a language the agent doesn't speak
+  ("Spoke Polish"): the agent only offered staff or a call back;
+* the call review found an emergency: the caller was sent to 112/999.
 
-Done is stored on the call (``annotations.follow_up``, and for the two
+Done is stored on the call (``annotations.follow_up``, and for the
 call-review kinds ``annotations.follow_up_kinds.<kind>``, so each is done on
 its own), so it needs no table of its own. A repeat caller's item sits on their latest unreached call: if they
 ring again and still reach nobody, a new item opens.
@@ -24,12 +27,18 @@ from enum import StrEnum
 from statistics import median
 from typing import Any
 
+from api.services.call_review.review import (
+    caller_language,
+    spoke_other_language,
+    was_emergency,
+)
 from api.services.dashboard.calls import (
     UNREACHED_RESULTS,
     CallResult,
     CallView,
     number_key,
 )
+from api.services.workflow.agent_languages import language_name
 
 # Calls this far back can raise a follow-up.
 LOOKBACK = timedelta(days=30)
@@ -45,10 +54,19 @@ class FollowUpKind(StrEnum):
     REPEAT_CALLER = "repeat_caller"
     UNANSWERED_QUESTION = "unanswered_question"
     TIME_WAS_FULL = "time_was_full"
+    OTHER_LANGUAGE = "other_language"
+    EMERGENCY = "emergency"
 
 
 # Kinds raised by the call review, each marked done on its own.
-REVIEW_KINDS = frozenset({FollowUpKind.UNANSWERED_QUESTION, FollowUpKind.TIME_WAS_FULL})
+REVIEW_KINDS = frozenset(
+    {
+        FollowUpKind.UNANSWERED_QUESTION,
+        FollowUpKind.TIME_WAS_FULL,
+        FollowUpKind.OTHER_LANGUAGE,
+        FollowUpKind.EMERGENCY,
+    }
+)
 
 
 class FollowUpStatus(StrEnum):
@@ -155,6 +173,10 @@ def follow_ups(calls: Iterable[CallView]) -> list[FollowUp]:
             reviewed.append(FollowUp(FollowUpKind.UNANSWERED_QUESTION, call))
         if _time_was_full(call):
             reviewed.append(FollowUp(FollowUpKind.TIME_WAS_FULL, call))
+        if spoke_other_language(call.review):
+            reviewed.append(FollowUp(FollowUpKind.OTHER_LANGUAGE, call))
+        if was_emergency(call.review):
+            reviewed.append(FollowUp(FollowUpKind.EMERGENCY, call))
     return [*items.values(), *reviewed]
 
 
@@ -283,6 +305,7 @@ def follow_up_row(item: FollowUp) -> dict[str, Any]:
     call = item.call
     mark = item.mark or {}
     summary = (call.review or {}).get("summary")
+    language = caller_language(call.review)
     return {
         "run_id": call.run_id,
         "workflow_id": call.workflow_id,
@@ -303,6 +326,9 @@ def follow_up_row(item: FollowUp) -> dict[str, Any]:
         "questions": unanswered_questions(call)
         if item.kind == FollowUpKind.UNANSWERED_QUESTION
         else [],
+        # The language the caller spoke, from the call review ("pl", "Polish").
+        "caller_language": language,
+        "caller_language_name": language_name(language),
     }
 
 

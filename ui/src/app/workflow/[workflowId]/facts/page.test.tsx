@@ -474,4 +474,32 @@ describe("What your agent knows", () => {
             );
         });
     });
+
+    it("switches languages on with English always on, and saves them as names", async () => {
+        const languages = {
+            key: "agent_languages",
+            label: "Languages your agent speaks",
+            type: "languages",
+            required: false,
+            max_length: 300,
+            value: "",
+        };
+        mocks.get.mockResolvedValue({ data: { facts: [...FACTS, languages] } });
+        render(<WhatYourAgentKnowsPage />);
+        const english = await screen.findByRole("button", { name: "English (always on)" });
+        expect(english.getAttribute("aria-pressed")).toBe("true");
+        expect(english.hasAttribute("disabled")).toBe(true);
+        expect(screen.getByText(/read in your agent's own voice/)).toBeTruthy();
+        const polish = screen.getByRole("button", { name: "Polish" });
+        expect(polish.getAttribute("aria-pressed")).toBe("false");
+        fireEvent.click(polish);
+        expect(polish.getAttribute("aria-pressed")).toBe("true");
+        fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+        await waitFor(() =>
+            expect(mocks.put).toHaveBeenCalledWith({
+                path: { workflow_id: 12 },
+                body: { facts: { agent_languages: "English, Polish" } },
+            }),
+        );
+    });
 });
