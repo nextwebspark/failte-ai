@@ -1231,8 +1231,9 @@ _LANGUAGES_FIELD = TemplateSetupField(
     label="Languages your agent speaks",
     type=SetupFieldType.LANGUAGES,
     help=(
-        "English is always on. Callers in a language that isn't on are "
-        "offered a member of staff or a call back, in English."
+        "English is always on. A caller in a language that isn't on hears "
+        "one short line in their language offering a member of staff or a "
+        "call back."
     ),
     required=False,
     max_length=300,
