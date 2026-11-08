@@ -409,7 +409,7 @@ def test_recipients_prefer_support_emails():
         {"SUPPORT_EMAILS": "a@x.ie, b@x.ie", "OPERATOR_ALERT_EMAILS": "o@x.ie"}
     ) == ["a@x.ie", "b@x.ie"]
     assert support_recipients({"OPERATOR_ALERT_EMAILS": "o@x.ie"}) == ["o@x.ie"]
-    assert support_recipients({}) == []
+    assert support_recipients({}) == ["support@lightmove.ai"]
 
 
 def test_references_look_like_lm_1234_and_are_unique():

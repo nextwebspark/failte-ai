@@ -5,9 +5,9 @@ import { BRAND } from "@/config/brand";
 import { publicDocsHref } from "./externalDocs";
 
 describe("publicDocsHref", () => {
-  it("points our docs at the website, which publishes them", () => {
-    expect(BRAND.docsUrl).toBe("https://lightmove.ai/docs");
-    const ari = "https://lightmove.ai/docs/integrations/telephony/asterisk-ari";
+  it("points our docs at the docs subdomain", () => {
+    expect(BRAND.docsUrl).toBe("https://docs.lightmove.ai");
+    const ari = "https://docs.lightmove.ai/integrations/telephony/asterisk-ari";
     expect(publicDocsHref(ari)).toBe(ari);
   });
 

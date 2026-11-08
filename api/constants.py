@@ -12,13 +12,16 @@ ENVIRONMENT = os.getenv("ENVIRONMENT", Environment.LOCAL.value)
 BRAND_NAME: Final = "LightMove.ai"
 BRAND_DOMAIN: Final = "lightmove.ai"
 BRAND_APP_URL: Final = f"https://app.{BRAND_DOMAIN}"
-# Public docs live on the website (lightmove-website, Starlight at /docs), not on
-# a docs.* subdomain. Provider and node docs links are built from this.
-# DOCS_BASE_URL overrides it, e.g. http://localhost:4321/docs to read the local
-# website's docs before they are released.
+# Public docs live on their own subdomain (docs.lightmove.ai, built from the
+# lightmove-website repo). Provider and node docs links are built from this,
+# e.g. https://docs.lightmove.ai/integrations/telephony/twilio.
+# DOCS_BASE_URL overrides it, e.g. http://localhost:4322 to read the local
+# docs site before it is released.
 BRAND_DOCS_URL: Final = (
-    os.getenv("DOCS_BASE_URL") or f"https://{BRAND_DOMAIN}/docs"
+    os.getenv("DOCS_BASE_URL") or f"https://docs.{BRAND_DOMAIN}"
 ).rstrip("/")
+# Where support tickets from the in-app Help panel go (SUPPORT_EMAILS overrides).
+BRAND_SUPPORT_EMAIL: Final = f"support@{BRAND_DOMAIN}"
 # Absolute path to the project root directory (i.e. the directory containing
 # the top-level api/ package). Having a single canonical location helps
 # when constructing file-system paths elsewhere in the codebase.
