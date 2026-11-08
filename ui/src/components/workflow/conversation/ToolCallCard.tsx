@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { cn } from "@/lib/utils";
 
+import { toolResultSummary } from "./toolSummary";
 import type { ToolCallStatus } from "./types";
 import { formatConversationValue } from "./utils";
 
@@ -37,6 +38,7 @@ export function ToolCallCard({
     const hasArguments = argumentsValue !== undefined;
     const hasResult = resultValue !== undefined;
     const hasDetails = hasArguments || hasResult;
+    const summary = hasResult ? toolResultSummary(resultValue) : null;
 
     return (
         <div className="flex justify-center">
@@ -74,6 +76,11 @@ export function ToolCallCard({
                                     {STATUS_LABELS[status]}
                                 </Badge>
                             </div>
+                            {summary ? (
+                                <p className="mt-1.5 text-xs font-medium text-foreground" data-testid="tool-result-summary">
+                                    {summary}
+                                </p>
+                            ) : null}
                             {hasDetails ? (
                                 <div className="mt-2">
                                     <CollapsibleTrigger asChild>

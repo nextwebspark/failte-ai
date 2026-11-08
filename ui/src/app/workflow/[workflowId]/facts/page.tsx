@@ -33,6 +33,7 @@ import { CustomVoice } from "./CustomVoice";
 import { bookingLine, bookingTimesByDay, bookingTitle, fillGreeting, WEEK, WEEK_LONG } from "./knowledge";
 import { forSave, type OpeningHours, openingHoursProblem, sameOpeningHours } from "./openingHours";
 import { OpeningHoursField } from "./OpeningHoursEditor";
+import { SampleOrdersLink } from "./SampleOrdersLink";
 import { TransferOptions } from "./TransferOptions";
 import { type AgentKnowledge, type CalendarInfo, useAgentKnowledge } from "./useAgentKnowledge";
 import { VoiceChips } from "./VoiceChips";
@@ -327,6 +328,7 @@ export default function WhatYourAgentKnowsPage() {
                     <div className="flex min-w-0 flex-col gap-4">
                         <HowItSounds workflowId={workflowId} knowledge={knowledge} values={values} />
                         <ReadyForCalls workflowId={workflowId} facts={facts} knowledge={knowledge} />
+                        <SampleOrdersLink />
                     </div>
                 </div>
             )}
