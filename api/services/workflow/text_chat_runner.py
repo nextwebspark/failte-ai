@@ -713,6 +713,7 @@ async def execute_text_chat_pending_turn(
         rerun=rerun_llm,
         on_retry=response_window.note_direct_context_request,
         in_closing_step=lambda: engine.in_closing_step,
+        on_farewell=engine.end_call_after_farewell,
     )
     pipeline = Pipeline(
         [

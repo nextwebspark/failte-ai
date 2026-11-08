@@ -66,6 +66,8 @@ class AgentGenerationCallbacks:
     context: Callable[[], Any] | None = None
     # Whether the call is in its closing step, for EmptyResponseGuard.
     in_closing_step: Callable[[], bool] | None = None
+    # Ends the call after a goodbye said without the end-call tool.
+    on_farewell: Callable[[], None] | None = None
 
 
 class AgentRuntimeFactory:
@@ -286,6 +288,7 @@ class AgentRuntimeFactory:
                 context_provider=callbacks.context,
                 rerun=runtime.run_llm,
                 in_closing_step=callbacks.in_closing_step,
+                on_farewell=callbacks.on_farewell,
             )
             if callbacks.context is not None
             else None

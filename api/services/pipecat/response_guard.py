@@ -17,6 +17,11 @@ Only generations that answer the caller are retried: the context's last
 message must be the caller's. A generation after a tool result may rightly
 say nothing (the tool spoke), except in the call's closing step, which must
 say goodbye: an empty one there gets a fixed short goodbye.
+
+It also keeps a goodbye from leaving the line open: a reply whose last words
+are a farewell ("... Have a lovely day!"), with no tool call and outside the
+closing step, makes the engine end the call after it, the way the end-call
+tool would.
 """
 
 from __future__ import annotations
@@ -65,6 +70,14 @@ _EMERGENCY_WORDS = re.compile(
     r"choking|anaphyla|allerg|overdose|suicid|kill (my|him|her)self|"
     r"hurt (my|him|her)self|ambulance|emergency|accident|fire|smoke|"
     r"numb|paralys|can'?t (move|breathe)",
+    re.IGNORECASE,
+)
+# A reply that ends the conversation: its last words are a farewell.
+_FAREWELL = re.compile(
+    r"\b(good ?bye|bye(\s+(now|for now))?|take care|all the best|"
+    r"have a (lovely|good|great|nice|wonderful|safe) "
+    r"(day|evening|night|weekend|afternoon|morning|one))"
+    r"[\s.!]*$",
     re.IGNORECASE,
 )
 # A stall shorter than this was a fast empty answer (blocked, malformed, or
@@ -125,6 +138,11 @@ def _last_caller_message(context: Any) -> str | None:
     return None
 
 
+def is_farewell(text: str) -> bool:
+    """Whether a reply's last words say goodbye ("... Have a lovely day!")."""
+    return bool(_FAREWELL.search(text.strip()))
+
+
 def fallback_line(caller_text: str | None) -> str:
     """The fixed line for a caller the model gave nothing: gas first, then
     any sign of an emergency, else a plain "say that again"."""
@@ -145,6 +163,7 @@ class EmptyResponseGuard(FrameProcessor):
         rerun: Rerun,
         on_retry: Callable[[], None] | None = None,
         in_closing_step: Callable[[], bool] | None = None,
+        on_farewell: Callable[[], None] | None = None,
         retry_within_secs: float = _RETRY_WITHIN_SECS,
     ):
         super().__init__()
@@ -152,6 +171,9 @@ class EmptyResponseGuard(FrameProcessor):
         self._rerun = rerun
         self._on_retry = on_retry
         self._in_closing_step = in_closing_step
+        self._on_farewell = on_farewell
+        self._text: list[str] = []
+        self._tool_called = False
         self._closing_spoken = False
         self._retry_within_secs = retry_within_secs
         self._open = False
@@ -160,6 +182,19 @@ class EmptyResponseGuard(FrameProcessor):
         self._interrupted = False
         # Set when the next generation is this guard's own retry.
         self._retrying = False
+
+    def _said_goodbye_and_left_the_line_open(self) -> bool:
+        """This reply was a farewell with no tool call, outside the closing
+        step (which ends the call itself)."""
+        if self._on_farewell is None or self._tool_called or self._interrupted:
+            return False
+        if not is_farewell("".join(self._text)):
+            return False
+        try:
+            closing = bool(self._in_closing_step and self._in_closing_step())
+        except Exception:  # noqa: BLE001 - a guard must never break the call
+            return False
+        return not closing
 
     def _closing_in_silence(self) -> bool:
         """The call's closing step produced nothing, for the first time."""
@@ -175,6 +210,8 @@ class EmptyResponseGuard(FrameProcessor):
         self._started_at = time.monotonic()
         self._acted = False
         self._interrupted = False
+        self._text = []
+        self._tool_called = False
 
     async def process_frame(self, frame: Frame, direction: FrameDirection):
         await super().process_frame(frame, direction)
@@ -189,6 +226,7 @@ class EmptyResponseGuard(FrameProcessor):
             if isinstance(frame, LLMFullResponseStartFrame):
                 self._reset_response()
             elif self._open and isinstance(frame, LLMTextFrame):
+                self._text.append(frame.text or "")
                 if _speakable(frame.text or ""):
                     self._acted = True
             elif isinstance(frame, TTSSpeakFrame) and _speakable(frame.text or ""):
@@ -202,6 +240,7 @@ class EmptyResponseGuard(FrameProcessor):
             ),
         ):
             self._acted = True
+            self._tool_called = True
 
         is_end = (
             isinstance(frame, LLMFullResponseEndFrame)
@@ -216,6 +255,12 @@ class EmptyResponseGuard(FrameProcessor):
         was_retry, self._retrying = self._retrying, False
         if self._acted or self._interrupted:
             await self.push_frame(frame, direction)
+            if self._said_goodbye_and_left_the_line_open():
+                logger.warning(
+                    f"{self}: the agent said goodbye without its end-call tool; "
+                    "ending the call after that reply"
+                )
+                self._on_farewell()
             return
         context = self._context_provider()
         caller_text = _last_caller_message(context)

@@ -23,6 +23,7 @@ from api.services.pipecat.response_guard import (
     GENERIC_FALLBACK,
     EmptyResponseGuard,
     fallback_line,
+    is_farewell,
 )
 
 DOWN = FrameDirection.DOWNSTREAM
@@ -155,6 +156,55 @@ async def test_a_spoken_goodbye_needs_no_fixed_one():
     guard, _, _ = _guard(context, in_closing_step=lambda: True)
     await _response(guard, LLMTextFrame("Thanks for calling, goodbye."))
     assert not any(isinstance(f, TTSSpeakFrame) for f in _pushed(guard))
+
+
+@pytest.mark.asyncio
+async def test_a_goodbye_without_the_end_call_tool_ends_the_call():
+    context = _context({"role": "user", "content": "Oh, sorry, wrong number then."})
+    ended = MagicMock()
+    guard, _, _ = _guard(context, on_farewell=ended, in_closing_step=lambda: False)
+    await _response(
+        guard, LLMTextFrame("No problem at all! "), LLMTextFrame("Have a lovely day.")
+    )
+    ended.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_a_goodbye_with_a_tool_call_or_in_the_closing_step_is_left_alone():
+    context = _context({"role": "user", "content": "Thanks, bye."})
+    ended = MagicMock()
+    guard, _, _ = _guard(context, on_farewell=ended, in_closing_step=lambda: False)
+    call = FunctionCallFromLLM(
+        function_name="end_call", tool_call_id="1", arguments={}, context=context
+    )
+    await _response(
+        guard,
+        LLMTextFrame("Goodbye!"),
+        FunctionCallsFromLLMInfoFrame(function_calls=[call]),
+    )
+    closing, _, _ = _guard(context, on_farewell=ended, in_closing_step=lambda: True)
+    await _response(closing, LLMTextFrame("Thanks for calling. Goodbye."))
+    asking, _, _ = _guard(context, on_farewell=ended, in_closing_step=lambda: False)
+    await _response(asking, LLMTextFrame("Is there anything else before you go?"))
+    ended.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "text,expected",
+    [
+        ("No problem at all! Have a lovely day.", True),
+        ("Take care and goodbye.", True),
+        ("Thanks, bye now!", True),
+        ("Have a good evening!", True),
+        ("Goodbye, Gerry. Take care.", True),
+        ("Would you like me to take a message?", False),
+        ("Please hang up now and dial 112 or 999.", False),
+        ("I'll pass it on. Is there anything else?", False),
+        ("We're near the Abbey.", False),
+    ],
+)
+def test_what_counts_as_a_goodbye(text, expected):
+    assert is_farewell(text) is expected
 
 
 @pytest.mark.asyncio
