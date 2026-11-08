@@ -21,6 +21,9 @@ class SetupFieldType(StrEnum):
     TOGGLES = "toggles"
     # Answered with the request's structured ``appointment_hours``.
     APPOINTMENT_HOURS = "appointment_hours"
+    # Languages the agent speaks, as comma-separated names ("English, Polish");
+    # English is always on (services/workflow/agent_languages.py).
+    LANGUAGES = "languages"
 
 
 class SetupOption(BaseModel):
