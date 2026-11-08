@@ -108,6 +108,7 @@ def build_agent_generation_pipeline(
     recording_router=None,
     fast_router=None,
     ack_gate=None,
+    response_guard=None,
 ):
     """Build the generation stage that runs in one agent visit's own worker.
 
@@ -120,11 +121,16 @@ def build_agent_generation_pipeline(
             directly before the main LLM to acknowledge the caller early.
         ack_gate: The AckGate paired with ``fast_router``. Inserted directly
             before TTS so an acknowledgement never interrupts an answer.
+        response_guard: Optional EmptyResponseGuard, directly after the LLM,
+            so an empty answer to the caller is retried or replaced.
     """
     processors = []
     if fast_router:
         processors.append(fast_router)
-    processors.extend([llm, generation_callback_processor])
+    processors.append(llm)
+    if response_guard:
+        processors.append(response_guard)
+    processors.append(generation_callback_processor)
     if recording_router:
         processors.append(recording_router)
     if ack_gate:
