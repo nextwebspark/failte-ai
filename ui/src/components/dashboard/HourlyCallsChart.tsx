@@ -23,11 +23,21 @@ const CHART_HEIGHT = 196;
  * hour (only when it clearly stands out) in full brand with a label, the rest
  * a step lighter. Axis text is 12px ink; on a narrow card the hour labels go
  * every six hours instead of three. A table carries the same numbers for
- * screen readers.
+ * screen readers. The business's open hours, when given, are a faint
+ * neutral band behind the bars (explained by the legend under the chart).
  */
-export function HourlyCallsChart({ hours, caption }: { hours: number[]; caption: string }) {
+export function HourlyCallsChart({
+    hours,
+    caption,
+    openRanges = [],
+}: {
+    hours: number[];
+    caption: string;
+    /** Open times to shade, in minutes after local midnight. */
+    openRanges?: { start: number; end: number }[];
+}) {
     const [active, setActive] = useState<number | null>(null);
-    const { start, end } = hourWindow(hours);
+    const { start, end } = hourWindow(hours, openRanges);
     const shown = Array.from({ length: end - start + 1 }, (_, i) => start + i);
     const top = niceMax(Math.max(0, ...hours));
     const peak = busiestHour(hours);
@@ -52,8 +62,27 @@ export function HourlyCallsChart({ hours, caption }: { hours: number[]; caption:
                     ))}
                 </div>
 
-                {/* Bars */}
+                {/* Bars, over the open-hours band */}
                 <div className="relative flex items-end gap-[3px]" style={{ height: CHART_HEIGHT }} onMouseLeave={() => setActive(null)}>
+                    {openRanges.map((range) => {
+                        const from = Math.max(0, range.start / 60 - start);
+                        const to = Math.min(shown.length, range.end / 60 - start);
+                        if (to <= from) return null;
+                        // Each hour's slot is (width + gap) / hours wide; the
+                        // band's edges sit in the gaps between bars.
+                        const unit = `(100% + 3px) / ${shown.length}`;
+                        return (
+                            <span
+                                key={`${range.start}-${range.end}`}
+                                className="pointer-events-none absolute inset-y-0 rounded-[4px] bg-ink-3/[0.08]"
+                                style={{
+                                    left: `max(0px, calc(${from} * ${unit} - 1.5px))`,
+                                    width: `min(100%, calc(${to - from} * ${unit}))`,
+                                }}
+                                aria-hidden
+                            />
+                        );
+                    })}
                     {shown.map((hour, index) => {
                         // Keep the tooltip inside the card near either edge.
                         const tipSide =

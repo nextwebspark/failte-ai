@@ -1,7 +1,7 @@
 "use client";
 
 import { format } from "date-fns";
-import { CalendarDays, Check, ChevronDown, Search, SlidersHorizontal, X } from "lucide-react";
+import { CalendarDays, Check, ChevronDown, Moon, Search, SlidersHorizontal, X } from "lucide-react";
 import { type FormEvent, useEffect, useRef, useState } from "react";
 import type { DateRange } from "react-day-picker";
 
@@ -208,6 +208,19 @@ export function CallsFilterBar({
                         </DropdownMenuRadioGroup>
                     </DropdownMenuContent>
                 </DropdownMenu>
+
+                {/* Calls that came in while the business was closed, by the
+                    agents' opening hours set as times (as Home counts them). */}
+                <button
+                    type="button"
+                    aria-pressed={query.afterHours}
+                    onClick={() => onChange({ afterHours: !query.afterHours })}
+                    className={cn(CHIP, query.afterHours ? CHIP_ON : CHIP_OFF)}
+                >
+                    <Moon className="size-3.5" aria-hidden />
+                    Outside opening hours
+                    {query.afterHours && <X className="size-3.5" aria-hidden />}
+                </button>
 
                 <button
                     type="button"

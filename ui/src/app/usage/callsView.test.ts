@@ -47,6 +47,7 @@ describe("the URL", () => {
             end: "2026-11-03",
             outcome: "callback_requested",
             who: "agent" as const,
+            afterHours: true,
             page: 3,
         };
         const params = callsQueryToParams(query, { filters: "[]", call: 42 });
@@ -104,6 +105,15 @@ describe("filters", () => {
             { attribute: "handledBy", type: "radio", value: { status: "team" } },
         ]);
         expect(chipFilters({ q: " ", outcome: null, who: null })).toEqual([]);
+    });
+
+    it("asks the server for after-hours calls, sending no hours of its own", () => {
+        expect(chipFilters({ q: "", outcome: null, who: null, afterHours: true })).toEqual([
+            { attribute: "afterHours", type: "openingHours", value: {} },
+        ]);
+        const params = callsQueryToParams({ ...DEFAULT_QUERY, afterHours: true, when: "today" });
+        expect(params.toString()).toBe("when=today&hours=after");
+        expect(callsQueryFromParams(params).afterHours).toBe(true);
     });
 });
 

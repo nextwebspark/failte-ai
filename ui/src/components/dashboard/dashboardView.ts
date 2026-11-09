@@ -375,11 +375,19 @@ export function turnedAwayWords(today: { calls: number; forwarded: number; voice
     return `${callers} rang while all your lines were busy today${extras.length ? ` (${extras.join(", ")})` : ""}.`;
 }
 
-/** Calls-per-hour bars to draw: from 08:00 to 20:00, widened to any hour with calls. */
-export function hourWindow(hours: number[]): { start: number; end: number } {
+/**
+ * Calls-per-hour bars to draw: from 08:00 to 20:00, widened to any hour with
+ * calls and to the open hours shaded behind them.
+ */
+export function hourWindow(
+    hours: number[],
+    open: { start: number; end: number }[] = [],
+): { start: number; end: number } {
     const busy = hours.map((n, h) => (n > 0 ? h : -1)).filter((h) => h >= 0);
-    const start = Math.min(8, ...(busy.length ? [busy[0]] : []));
-    const end = Math.max(20, ...(busy.length ? [busy[busy.length - 1]] : []));
+    const firstOpen = open.map((r) => Math.floor(r.start / 60));
+    const lastOpen = open.map((r) => Math.ceil(r.end / 60) - 1);
+    const start = Math.min(8, ...(busy.length ? [busy[0]] : []), ...firstOpen);
+    const end = Math.min(23, Math.max(20, ...(busy.length ? [busy[busy.length - 1]] : []), ...lastOpen));
     return { start, end };
 }
 
@@ -447,4 +455,83 @@ export function todayLine(
 /** "09:00–10:00" for an hour of the day. */
 export function hourSpan(hour: number): string {
     return `${hourLabel(hour)}–${hourLabel((hour + 1) % 24)}`;
+}
+
+/* ---------- Opening hours on "When people called" ---------- */
+
+type OpenRange = { start: number; end: number };
+
+/** [number, suffix] for minutes after midnight: 540 → ["9", "am"], 1050 → ["5:30", "pm"]. */
+function clockParts(minutes: number): [string, string] {
+    const hour = Math.floor((minutes % 1440) / 60);
+    const minute = minutes % 60;
+    const number = `${hour % 12 || 12}${minute ? `:${String(minute).padStart(2, "0")}` : ""}`;
+    return [number, hour < 12 ? "am" : "pm"];
+}
+
+/** "9 am–5:30 pm", "12–3 pm", "6 pm–2 am", "5 pm–midnight", "24 hours". */
+export function openRangeWords(range: OpenRange): string {
+    if (range.start === 0 && range.end >= 1440) return "24 hours";
+    const [openNumber, openSuffix] = clockParts(range.start);
+    if (range.end % 1440 === 0) return `${openNumber} ${openSuffix}–midnight`;
+    const [closeNumber, closeSuffix] = clockParts(range.end);
+    if (range.start % 1440 === 0) return `midnight–${closeNumber} ${closeSuffix}`;
+    // Same half of the day, and not past midnight: say the suffix once.
+    if (openSuffix === closeSuffix && range.end > range.start) return `${openNumber}–${closeNumber} ${closeSuffix}`;
+    return `${openNumber} ${openSuffix}–${closeNumber} ${closeSuffix}`;
+}
+
+/**
+ * The band's ranges as said: a range that ends at midnight and one that
+ * starts at midnight (yesterday's late opening) read as one, "6 pm–2 am".
+ */
+export function openRangesWords(ranges: OpenRange[]): string {
+    let list = ranges;
+    if (list.length > 1 && list[0].start === 0 && list[list.length - 1].end === 1440) {
+        const late = list[list.length - 1];
+        list = [...list.slice(1, -1), { start: late.start, end: list[0].end + 1440 }];
+    }
+    const words = list.map(openRangeWords);
+    return words.length <= 1 ? words.join("") : `${words.slice(0, -1).join(", ")} and ${words[words.length - 1]}`;
+}
+
+export type OpenHoursLegend = {
+    /** "Open 9 am–5:30 pm", "Closed today", "Opening hours differ by agent". */
+    label: string;
+    /** Whether the chart shows a shaded band the label explains. */
+    band: boolean;
+    /** The week's hours in words, when the band is only part of the story. */
+    note: string | null;
+};
+
+/**
+ * What the chart's open-hours legend says, from the API's band: Today's
+ * hours; over 7 or 30 days the hours when every day has the same ones, or
+ * else the times open on most of the days (with the week's hours spelled
+ * out under it). Null when no agent shown has opening hours set as times.
+ */
+export function openHoursLegend(opening: {
+    kind: "none" | "differ" | "same" | "most_days";
+    ranges: OpenRange[];
+    days: number;
+    description: string | null;
+} | undefined, range: DashboardRange): OpenHoursLegend | null {
+    if (!opening || opening.kind === "none") return null;
+    if (opening.kind === "differ") return { label: "Opening hours differ by agent", band: false, note: null };
+    const today = range === "today";
+    const hours = opening.ranges.length ? openRangesWords(opening.ranges) : null;
+    const open = hours === "24 hours" ? "Open 24 hours" : `Open ${hours}`;
+    if (opening.kind === "same") {
+        if (!hours) return { label: today ? "Closed today" : `Closed all ${opening.days} days`, band: false, note: null };
+        return { label: today ? open : `${open} every day`, band: true, note: null };
+    }
+    const note = opening.description ? `Your hours: ${opening.description}` : null;
+    if (!hours) return { label: "Hours vary from day to day", band: false, note };
+    return { label: `${open} on most days`, band: true, note };
+}
+
+/** "Today 9:14 pm", "Yesterday 7:02 am", "Thu 5 Nov, 10:30 pm": a call's day and time. */
+export function callDayAndTime(value: string, timezone: string | null | undefined, now: Date = new Date()): string {
+    const words = callWhen(value, timezone, now);
+    return /^\d/.test(words) ? `Today ${words}` : words;
 }
