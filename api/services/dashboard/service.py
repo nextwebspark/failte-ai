@@ -8,6 +8,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from api.constants import BILLING_PROVIDER
 from api.db import db_client
+from api.enums import OrganizationConfigurationKey
 from api.services.billing import pricing
 from api.services.call_review.categories import reason_set, template_for_workflow
 from api.services.dashboard.calls import CallView, call_view
@@ -32,11 +33,13 @@ from api.services.dashboard.summary import (
     callers_wanted,
     calls_by_hour,
     credit_summary,
+    opening_hours_band,
     range_bounds,
     recent_calls,
     tiles,
     turned_away_today,
 )
+from api.services.workflow.opening_hours import parse_opening_hours
 
 DEFAULT_TIMEZONE = "Europe/Dublin"
 
@@ -187,6 +190,9 @@ async def dashboard_summary(
         "calls_change": call_change(len(calls), previous_calls),
         "calls_by_hour": calls_by_hour(calls, tz),
         "after_hours": after_hours(calls, scoped_agents),
+        "opening_hours": opening_hours_band(
+            calls, scoped_agents, tz, bounds.start, bounds.end
+        ),
         "turned_away_today": turned_away_today(calls, tz, now),
         "recent_calls": recent_calls(calls),
         "callers_wanted": callers_wanted(calls),
@@ -199,6 +205,24 @@ async def dashboard_summary(
             {"id": a["id"], "name": a["name"], "active": a.get("status") == "active"}
             for a in scoped_agents
         ],
+    }
+
+
+async def after_hours_filter_value(organization_id: int) -> dict[str, Any]:
+    """What the Calls list's ``afterHours`` filter reads: each agent's
+    opening hours set as times, and whether browser test calls count as
+    phone calls (a demo workspace, as on Home)."""
+    agents = await db_client.get_dashboard_agents(organization_id)
+    demo = await db_client.get_configuration(
+        organization_id, OrganizationConfigurationKey.DEMO_ACCOUNT.value
+    )
+    return {
+        "agents": [
+            {"id": a["id"], "hours": hours.model_dump(mode="json")}
+            for a in agents
+            if (hours := parse_opening_hours(a.get("opening_hours_schedule")))
+        ],
+        "browser_calls": demo is not None,
     }
 
 

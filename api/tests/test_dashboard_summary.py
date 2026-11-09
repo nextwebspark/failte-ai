@@ -422,3 +422,101 @@ def test_recent_calls_carry_the_summary():
 
 def test_bookings_taken_counts_calendar_bookings():
     assert tiles([])["bookings_taken"] == 0
+
+
+# ------------------------------------------------- open hours behind the chart
+
+
+def _agent(agent_id, days, status="active", tz="Europe/Dublin"):
+    import json
+
+    schedule = (
+        None
+        if days is None
+        else json.dumps(
+            {
+                "days": [[{"open": o, "close": c} for o, c in day] for day in days],
+                "timezone": tz,
+            }
+        )
+    )
+    return {
+        "id": agent_id,
+        "name": f"Agent {agent_id}",
+        "status": status,
+        "opening_hours_schedule": schedule,
+    }
+
+
+_NINE_TO_530 = [("09:00", "17:30")]
+_WEEKDAYS = [_NINE_TO_530] * 5 + [[], []]
+_DUBLIN = ZoneInfo("Europe/Dublin")
+
+
+def _band(agents, range_, now):
+    from api.services.dashboard.summary import opening_hours_band
+
+    bounds = range_bounds(range_, _DUBLIN, now)
+    return opening_hours_band([], agents, _DUBLIN, bounds.start, bounds.end)
+
+
+# Monday 9 November 2026, 3 pm in Dublin.
+_MONDAY = datetime(2026, 11, 9, 15, 0, tzinfo=UTC)
+
+
+def test_band_today_is_todays_hours():
+    band = _band([_agent(1, _WEEKDAYS)], DashboardRange.TODAY, _MONDAY)
+    assert band["kind"] == "same"
+    assert band["ranges"] == [{"start": 540, "end": 1050}]
+    assert (band["days"], band["days_open"]) == (1, 1)
+    assert band["description"].startswith("Monday to Friday")
+
+
+def test_band_today_closed():
+    sunday = datetime(2026, 11, 8, 15, 0, tzinfo=UTC)
+    band = _band([_agent(1, _WEEKDAYS)], DashboardRange.TODAY, sunday)
+    assert band["kind"] == "same"
+    assert band["ranges"] == []
+    assert band["days_open"] == 0
+
+
+def test_band_over_days_same_every_day():
+    band = _band([_agent(1, [_NINE_TO_530] * 7)], DashboardRange.LAST_7_DAYS, _MONDAY)
+    assert band["kind"] == "same"
+    assert band["ranges"] == [{"start": 540, "end": 1050}]
+    assert (band["days"], band["days_open"]) == (7, 7)
+
+
+def test_band_over_days_that_differ_is_the_hours_open_on_most_days():
+    # Weekdays 9-5:30, Saturday 10-2: 10-2 is open on 6 of 7 days, 9-5:30 on
+    # 5; Saturday's hours alone are on one day, so they add nothing.
+    days = [_NINE_TO_530] * 5 + [[("10:00", "14:00")], []]
+    band = _band([_agent(1, days)], DashboardRange.LAST_7_DAYS, _MONDAY)
+    assert band["kind"] == "most_days"
+    assert band["ranges"] == [{"start": 540, "end": 1050}]
+    assert (band["days"], band["days_open"]) == (7, 6)
+
+
+def test_band_over_days_with_nothing_open_on_most_days():
+    days = [_NINE_TO_530] * 3 + [[], [], [], []]
+    band = _band([_agent(1, days)], DashboardRange.LAST_30_DAYS, _MONDAY)
+    assert band["kind"] == "most_days"
+    assert band["ranges"] == []
+    assert band["days"] == 30
+
+
+def test_band_only_when_the_agents_share_hours():
+    same = [_agent(1, _WEEKDAYS), _agent(2, _WEEKDAYS)]
+    assert _band(same, DashboardRange.TODAY, _MONDAY)["kind"] == "same"
+    differ = [_agent(1, _WEEKDAYS), _agent(2, [_NINE_TO_530] * 7)]
+    band = _band(differ, DashboardRange.TODAY, _MONDAY)
+    assert band["kind"] == "differ"
+    assert band["ranges"] == [] and band["description"] is None
+    # An archived agent with no calls isn't shown, so it doesn't count.
+    archived = [_agent(1, _WEEKDAYS), _agent(2, [_NINE_TO_530] * 7, "archived")]
+    assert _band(archived, DashboardRange.TODAY, _MONDAY)["kind"] == "same"
+
+
+def test_no_band_without_hours_as_times():
+    band = _band([_agent(1, None)], DashboardRange.TODAY, _MONDAY)
+    assert band["kind"] == "none" and band["ranges"] == []
