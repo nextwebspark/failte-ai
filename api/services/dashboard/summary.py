@@ -127,6 +127,8 @@ def tiles(calls: Sequence[CallView]) -> dict[str, Any]:
         "in_progress": counts.get(CallResult.IN_PROGRESS, 0),
         # Bookings the calendar confirmed on the call.
         "bookings_taken": counts.get(CallResult.BOOKING_MADE, 0),
+        # Every line was busy and nobody on the team took the call.
+        "lines_busy": counts.get(CallResult.LINES_BUSY, 0),
         "average_call_seconds": (
             round(sum(durations) / len(durations)) if durations else None
         ),
@@ -159,9 +161,26 @@ def _review_text(call: CallView, key: str) -> str | None:
 
 NOT_REVIEWED = "not_reviewed"
 NOT_REVIEWED_LABEL = "Not reviewed yet"
-# Calls no review is ever written for: nobody was on the line yet, or the
-# call never connected.
-_NEVER_REVIEWED = frozenset({CallResult.IN_PROGRESS, CallResult.NOT_CONNECTED})
+# Calls no review is ever written for: nobody was on the line yet, the call
+# never connected, or every line was busy (the agent never took it).
+_NEVER_REVIEWED = frozenset(
+    {CallResult.IN_PROGRESS, CallResult.NOT_CONNECTED, CallResult.LINES_BUSY}
+)
+
+
+def turned_away_today(
+    calls: Iterable[CallView], tz: ZoneInfo, now: datetime
+) -> dict[str, int]:
+    """Today's callers who rang while every line was busy (the business's
+    calls-at-once limit), and what came of them. Every range Home shows
+    ends now and includes today, so today's calls are always loaded."""
+    midnight = datetime.combine(now.astimezone(tz).date(), time.min, tzinfo=tz)
+    today = [c for c in calls if c.lines_busy and c.created_at >= midnight]
+    return {
+        "calls": len(today),
+        "forwarded": sum(1 for c in today if c.lines_busy == "forwarded"),
+        "voicemails": sum(1 for c in today if c.lines_busy == "voicemail"),
+    }
 
 
 def _percents(counts: Sequence[int]) -> list[int]:
@@ -185,7 +204,7 @@ def callers_wanted(calls: Iterable[CallView]) -> list[dict[str, Any]]:
             counts[reason] = counts.get(reason, 0) + 1
             seen = labels.setdefault(reason, {})
             seen[label] = seen.get(label, 0) + 1
-        elif call.result not in _NEVER_REVIEWED:
+        elif call.result not in _NEVER_REVIEWED and not call.lines_busy:
             counts[NOT_REVIEWED] = counts.get(NOT_REVIEWED, 0) + 1
             labels[NOT_REVIEWED] = {NOT_REVIEWED_LABEL: 1}
 

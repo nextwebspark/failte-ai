@@ -41,6 +41,7 @@ class Card(StrEnum):
     FOLLOW_UPS = "follow_ups"
     AFTER_HOURS = "after_hours"
     AGENT_PERFORMANCE = "agent_performance"
+    LINES_BUSY = "lines_busy"
     # Restaurant
     BOOKINGS_TAKEN = "bookings_taken"
     COVERS_BOOKED = "covers_booked"
@@ -122,6 +123,12 @@ _SHARED_PANELS = (
         email=True,
     ),
     CardSpec(Card.FOLLOW_UPS, "Follow-ups", CardSize.PANEL, email=True),
+    CardSpec(
+        Card.LINES_BUSY,
+        "Callers who couldn't get through",
+        CardSize.PANEL,
+        email=True,
+    ),
     CardSpec(Card.AFTER_HOURS, "Calls while you were closed", CardSize.PANEL),
     CardSpec(Card.AGENT_PERFORMANCE, "How your agent did", CardSize.PANEL),
 )

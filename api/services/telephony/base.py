@@ -499,6 +499,27 @@ class TelephonyProvider(ABC):
         """
         raise NotImplementedError
 
+    def lines_busy_support(self) -> frozenset[str]:
+        """What this provider can do for a caller who rang while every line
+        was busy (``api.services.calls.lines_busy``: ``SAY``, ``FORWARD``,
+        ``VOICEMAIL``). Empty, the default: the caller hears the busy line
+        from ``generate_validation_error_response`` and the call is still
+        recorded."""
+        return frozenset()
+
+    async def lines_busy_response(
+        self,
+        *,
+        plan: Any,
+        workflow_run_id: int,
+        normalized_data: "NormalizedInboundData",
+        backend_endpoint: str,
+    ) -> Any:
+        """Carry out *plan* (a ``LinesBusyPlan``) on the inbound call: the
+        webhook response, as ``start_inbound_stream`` returns one. Only
+        called when ``lines_busy_support`` is not empty."""
+        raise NotImplementedError
+
     @staticmethod
     @abstractmethod
     def generate_error_response(error_type: str, message: str) -> tuple:

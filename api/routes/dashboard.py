@@ -52,6 +52,17 @@ class DashboardTiles(BaseModel):
     average_call_seconds: int | None
     # Bookings the calendar confirmed on the call.
     bookings_taken: int
+    # Every line was busy (the calls-at-once limit) and nobody on the team
+    # took the call.
+    lines_busy: int = 0
+
+
+class DashboardTurnedAway(BaseModel):
+    # Callers today who rang while every line was busy.
+    calls: int
+    # Of those: put through to someone on the team, left a voicemail.
+    forwarded: int
+    voicemails: int
 
 
 class DashboardRecentCall(BaseModel):
@@ -132,6 +143,8 @@ class DashboardSummaryResponse(BaseModel):
     # Calls per local hour of the day, 0-23, summed over the range.
     calls_by_hour: list[int]
     after_hours: DashboardAfterHours
+    # Today's callers who couldn't get through because every line was busy.
+    turned_away_today: DashboardTurnedAway
     recent_calls: list[DashboardRecentCall]
     # What callers wanted, from the call reviews, most common first.
     callers_wanted: list[DashboardReason]
@@ -169,6 +182,10 @@ class FollowUpItem(BaseModel):
     # ISO 639-1 code ("pl") and its English name ("Polish").
     caller_language: str | None = None
     caller_language_name: str | None = None
+    # ``lines_busy`` only: what came of the call ("voicemail", "no_message",
+    # "told_busy"), and the voicemail's length when one was left.
+    lines_busy: str | None = None
+    voicemail_seconds: int | None = None
 
 
 class FollowUpWeek(BaseModel):

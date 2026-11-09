@@ -1981,6 +1981,32 @@ class LastCampaignSettingsResponse(BaseModel):
     circuit_breaker: Optional[CircuitBreakerConfigResponse] = None
 
 
+class CallLimitResponse(BaseModel):
+    # How many calls the business's agents can take at the same time. Set
+    # by LightMove (``CONCURRENT_CALL_LIMIT``, else the default); read only.
+    calls_at_once: int
+
+
+@router.get(
+    "/call-limit",
+    response_model=CallLimitResponse,
+    dependencies=requires(Permission.CALLS_READ),
+)
+async def get_call_limit(user: UserModel = Depends(get_user)) -> CallLimitResponse:
+    """How many calls the business can take at once ("Calls at once" in
+    Settings). Callers beyond it are forwarded, asked for a voicemail or
+    told the lines are busy, as the owner chose."""
+    from api.services.call_concurrency import call_concurrency
+
+    if not user.selected_organization_id:
+        raise HTTPException(status_code=400, detail="No organization selected")
+    return CallLimitResponse(
+        calls_at_once=await call_concurrency.get_org_concurrent_limit(
+            user.selected_organization_id
+        )
+    )
+
+
 class CampaignDefaultsResponse(BaseModel):
     concurrent_call_limit: int
     from_numbers_count: int

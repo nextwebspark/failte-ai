@@ -23,6 +23,7 @@ from zoneinfo import ZoneInfo
 from api.schemas.opening_hours import OpeningHours
 from api.services.call_review.categories import OTHER, ReasonSet
 from api.services.call_review.review import request_tags
+from api.services.calls.lines_busy import PLAN_KEY, LinesBusyOutcome, was_forwarded
 from api.services.dashboard.calls import (
     HANDLED_RESULTS,
     UNREACHED_RESULTS,
@@ -391,6 +392,42 @@ def after_hours(calls: Sequence[ReportCall], span: Span) -> dict[str, Any]:
         "callbacks": results[CallResult.CALLBACK_REQUESTED],
         "handled": sum(results[r] for r in HANDLED_RESULTS),
         "agents_without_hours": list(span.agents_without_hours),
+    }
+
+
+MAX_BUSY_SLOTS = 3
+
+
+def lines_busy(calls: Sequence[ReportCall], span: Span) -> dict[str, Any]:
+    """Callers who rang while every line was busy (the calls-at-once
+    limit): how many, how many were put through to the team or left a
+    voicemail, and the hours it happened most (weekday and local hour)."""
+    busy = [c for c in calls if c.view.lines_busy]
+    outcomes = Counter(c.view.lines_busy for c in busy)
+    slots: Counter[tuple[int, int]] = Counter()
+    for call in busy:
+        local = _local(call, span)
+        slots[(local.weekday(), local.hour)] += 1
+    ranked = sorted(slots.items(), key=lambda s: (-s[1], s[0]))
+    limit = None
+    for call in sorted(busy, key=lambda c: c.view.created_at, reverse=True):
+        value = (call.gathered.get(PLAN_KEY) or {}).get("limit")
+        if isinstance(value, int) and not isinstance(value, bool):
+            limit = value
+            break
+    return {
+        "calls": len(busy),
+        # Rang the team's phone, and of those, someone picked up.
+        "forwarded": sum(1 for c in busy if was_forwarded(c.gathered)),
+        "answered": outcomes[LinesBusyOutcome.FORWARDED.value],
+        "voicemails": outcomes[LinesBusyOutcome.VOICEMAIL.value],
+        "no_message": outcomes[LinesBusyOutcome.NO_MESSAGE.value],
+        "told_busy": outcomes[LinesBusyOutcome.TOLD_BUSY.value],
+        "busiest": [
+            {"weekday": day, "hour": hour, "calls": count}
+            for (day, hour), count in ranked[:MAX_BUSY_SLOTS]
+        ],
+        "limit": limit,
     }
 
 
@@ -967,6 +1004,12 @@ def build_cards(
     is None."""
     keys = [k for k in pack.keys if wanted is None or k in set(wanted)]
     out: dict[str, Any] = {}
+    # Callers turned away because every line was busy never reached the
+    # agent: they have their own card (and their follow-ups), and are left
+    # out of the cards about the calls the agent took.
+    every_call = calls
+    calls = [c for c in calls if not c.view.lines_busy]
+    previous = [c for c in previous if not c.view.lines_busy]
     split: dict[str, Any] | None = None
 
     def booked_units(of: Sequence[ReportCall]) -> int:
@@ -982,7 +1025,9 @@ def build_cards(
         elif key == Card.UNANSWERED_QUESTIONS:
             out[key] = unanswered(calls)
         elif key == Card.FOLLOW_UPS:
-            out[key] = follow_up_stats(calls)
+            out[key] = follow_up_stats(every_call)
+        elif key == Card.LINES_BUSY:
+            out[key] = lines_busy(every_call, span)
         elif key == Card.AFTER_HOURS:
             out[key] = after_hours(calls, span)
         elif key == Card.AGENT_PERFORMANCE:

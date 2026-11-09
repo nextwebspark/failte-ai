@@ -272,6 +272,7 @@ def test_kind_counts_lists_every_kind():
         "time_was_full": 0,
         "other_language": 0,
         "emergency": 0,
+        "lines_busy": 0,
     }
 
 
