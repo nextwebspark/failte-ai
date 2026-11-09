@@ -55,7 +55,7 @@ import httpx
 from loguru import logger
 from sqlalchemy import select, text
 
-from api.constants import APP_ROOT_DIR, ENVIRONMENT
+from api.constants import APP_ROOT_DIR, DEFAULT_ORG_CONCURRENCY_LIMIT, ENVIRONMENT
 from api.db import db_client
 from api.db.models import UserModel, WorkflowModel, WorkflowRunModel
 from api.enums import OrganizationConfigurationKey, OrgRole
@@ -68,6 +68,7 @@ from api.scripts.demo_businesses import (
     SILENT,
     TRANSFER_NOT_ANSWERED,
     Business,
+    BusyCall,
     Ctx,
     Plan,
     call_dates,
@@ -1148,6 +1149,149 @@ async def seed_calls(
     return totals
 
 
+# --- callers turned away because every line was busy ---------------------------
+
+
+def busy_call_time(call: BusyCall, now_local: datetime) -> datetime:
+    """The most recent ``call.weekday`` at ``call.at`` that is already past."""
+    hour, minute = (int(part) for part in call.at.split(":"))
+    days_back = (now_local.weekday() - call.weekday) % 7
+    moment = (now_local - timedelta(days=days_back)).replace(
+        hour=hour, minute=minute, second=0, microsecond=0
+    )
+    return moment - timedelta(days=7) if moment > now_local else moment
+
+
+def busy_call_run(
+    business: Business,
+    agent: Agent,
+    call: BusyCall,
+    caller,
+    start: datetime,
+    *,
+    voicemail_seconds: int,
+    rng: random.Random,
+) -> WorkflowRunModel:
+    """A turned-away call shaped as ``api.services.telephony.lines_busy``
+    stores one. The demo agents' "Pass calls to your team" number is the
+    reserved demo number, which is never dialled, so these calls were asked
+    for a voicemail instead of being forwarded (reason ``demo_number``)."""
+    gathered: dict[str, Any] = {
+        "call_id": f"CA{rng.getrandbits(128):032x}",
+        "mapped_call_disposition": "lines_busy",
+        "lines_busy": {
+            "action": "voicemail",
+            "chosen": None,
+            "reason": "demo_number",
+            "limit": int(DEFAULT_ORG_CONCURRENCY_LIMIT),
+            "forward_to": None,
+            "voicemail_fallback": False,
+            "at": _iso(start),
+        },
+    }
+    if call.message is not None:
+        gathered["lines_busy_voicemail"] = {
+            "seconds": voicemail_seconds,
+            "stored": voicemail_seconds > 0,
+        }
+    return WorkflowRunModel(
+        name=f"WR-TEL-BUSY-{rng.randint(0, 99_999_999):08d}",
+        workflow_id=agent.workflow.id,
+        mode="twilio",
+        call_type="inbound",
+        state="completed",
+        is_completed=True,
+        storage_backend=get_current_storage_backend().value,
+        # No call time: a turned-away call is never billed.
+        usage_info={},
+        cost_info={},
+        initial_context={
+            "caller_number": caller.number or "anonymous",
+            "called_number": business.called_number,
+            "direction": "inbound",
+            "provider": "twilio",
+        },
+        gathered_context=gathered,
+        logs={},
+        annotations={},
+        extra={SEED_MARK: {"version": SEED_VERSION, "business": business.slug}},
+        created_at=start,
+    )
+
+
+async def seed_lines_busy_calls(
+    business: Business,
+    organization_id: int,
+    agent: Agent,
+    *,
+    now: datetime,
+    speech: Speech | None,
+) -> int:
+    """Add the business's "Lines were busy" calls (``business.lines_busy``).
+    Run after ``seed_calls``, which clears every seeded call first. Without
+    audio (``--no-audio``) there is no voicemail to keep, so those callers
+    read as having left none."""
+    now_local = now.astimezone(TIMEZONE)
+    backend = get_current_storage_backend().value
+    added = 0
+    for index, call in enumerate(business.lines_busy):
+        rng = random.Random(f"{business.slug}:busy:{index}")
+        caller = next(
+            c for c in (_caller(business, rng) for _ in range(50)) if c.number
+        )
+        start = busy_call_time(call, now_local).astimezone(UTC)
+        audio = b""
+        seconds = 0
+        if call.message is not None and speech is not None:
+            ctx = Ctx(
+                rng=rng,
+                caller=caller,
+                started=start.astimezone(TIMEZONE),
+                business=business,
+                greeting=agent.greeting,
+            )
+            words = call.message.format(first=caller.first, number=ctx.number_words())
+            pcm = _silence(0.4) + _trim(
+                await speech.pcm(caller_voice(ctx), spoken(words))
+            )
+            pcm += _silence(0.8)
+            audio = _wav(pcm)
+            seconds = max(1, round(len(pcm) / 2 / SAMPLE_RATE))
+        run = busy_call_run(
+            business,
+            agent,
+            call,
+            caller,
+            start,
+            voicemail_seconds=seconds,
+            rng=rng,
+        )
+        async with db_client.async_session() as session:
+            session.add(run)
+            await session.commit()
+            run_id = run.id
+        if audio:
+            key = f"recordings/{run_id}.wav"
+            await _put(key, audio, "audio/wav")
+            async with db_client.async_session() as session:
+                stored = await session.get(WorkflowRunModel, run_id)
+                stored.recording_url = key
+                stored.extra = {
+                    **(stored.extra or {}),
+                    "recordings": {
+                        "mixed": {
+                            "storage_key": key,
+                            "storage_backend": backend,
+                            "format": "wav",
+                            "track": "mixed",
+                        }
+                    },
+                }
+                await session.commit()
+        added += 1
+    return added
+
+
 # --- deleting --------------------------------------------------------------------
 
 
@@ -1250,6 +1394,9 @@ async def seed_business(
         recordings=recordings,
         speech=speech,
     )
+    lines_busy = await seed_lines_busy_calls(
+        business, organization_id, agent, now=now, speech=speech
+    )
     # Counted the way Follow-ups counts them.
     from api.services.dashboard.follow_ups import FollowUpStatus
     from api.services.dashboard.service import follow_up_list
@@ -1264,6 +1411,7 @@ async def seed_business(
         "owner": owner.email,
         "staff": staff.email,
         "calls": totals.calls,
+        "lines_busy_calls": lines_busy,
         "calls_today": totals.today,
         "recordings": totals.recordings,
         "tts_chars_synthesised": (speech.synthesised_chars - before[0])

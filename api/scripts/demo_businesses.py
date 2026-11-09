@@ -222,6 +222,17 @@ class Talk:
 
 
 @dataclass
+class BusyCall:
+    """A caller who rang while every line was busy (the calls-at-once
+    limit), on the most recent ``weekday`` at ``at``. ``message`` is the
+    voicemail they left; None: they hung up without leaving one."""
+
+    weekday: int  # Monday is 0
+    at: str  # "20:10", local time
+    message: str | None = None
+
+
+@dataclass
 class Business:
     slug: str
     name: str
@@ -245,6 +256,8 @@ class Business:
     # Calls that are always this scenario, by index (0 is the newest call),
     # so the history always shows them; every other call is drawn by weight.
     pinned: dict[int, Callable[[Ctx], Plan]] = field(default_factory=dict)
+    # Callers turned away because every line was busy ("Lines were busy").
+    lines_busy: tuple[BusyCall, ...] = ()
 
 
 def _week(
@@ -883,6 +896,17 @@ RESTAURANT = Business(
     name=RESTAURANT_NAME,
     kind="restaurant",
     template_name="Restaurant bookings",
+    # The Saturday dinner rush: every line busy twice in a few minutes.
+    lines_busy=(
+        BusyCall(
+            5,
+            "20:12",
+            "Hi, it's {first} here. I was hoping to book a table for four "
+            "tomorrow evening, around seven if you have it. Could you ring me "
+            "back on {number}? Thanks a million.",
+        ),
+        BusyCall(5, "20:16"),
+    ),
     opening_hours=_week(
         (),
         (("12:00", "15:00"), ("17:00", "21:30")),
