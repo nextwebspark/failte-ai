@@ -1646,6 +1646,24 @@ export type BusinessFactsResponse = {
 };
 
 /**
+ * BusySlot
+ */
+export type BusySlot = {
+    /**
+     * Weekday
+     */
+    weekday: number;
+    /**
+     * Hour
+     */
+    hour: number;
+    /**
+     * Calls
+     */
+    calls: number;
+};
+
+/**
  * CalculatorToolDefinition
  *
  * Tool definition for Calculator tools.
@@ -1819,6 +1837,16 @@ export type CallEventsSettings = {
 };
 
 /**
+ * CallLimitResponse
+ */
+export type CallLimitResponse = {
+    /**
+     * Calls At Once
+     */
+    calls_at_once: number;
+};
+
+/**
  * CallNotificationSettings
  *
  * Who hears about a workspace's calls. Stored per organization.
@@ -1939,7 +1967,7 @@ export type CallNotificationSettingsResponse = {
  *
  * One outcome per call, checked in this order.
  */
-export type CallResult = 'in_progress' | 'passed_to_team' | 'booking_made' | 'transfer_not_answered' | 'callback_requested' | 'hung_up_silent' | 'hung_up_early' | 'not_connected' | 'call_dropped' | 'handled';
+export type CallResult = 'in_progress' | 'passed_to_team' | 'booking_made' | 'transfer_not_answered' | 'callback_requested' | 'hung_up_silent' | 'hung_up_early' | 'not_connected' | 'call_dropped' | 'lines_busy' | 'handled';
 
 /**
  * CallType
@@ -3587,6 +3615,7 @@ export type DashboardSummaryResponse = {
      */
     calls_by_hour: Array<number>;
     after_hours: DashboardAfterHours;
+    turned_away_today: DashboardTurnedAway;
     /**
      * Recent Calls
      */
@@ -3660,6 +3689,28 @@ export type DashboardTiles = {
      * Bookings Taken
      */
     bookings_taken: number;
+    /**
+     * Lines Busy
+     */
+    lines_busy?: number;
+};
+
+/**
+ * DashboardTurnedAway
+ */
+export type DashboardTurnedAway = {
+    /**
+     * Calls
+     */
+    calls: number;
+    /**
+     * Forwarded
+     */
+    forwarded: number;
+    /**
+     * Voicemails
+     */
+    voicemails: number;
 };
 
 /**
@@ -4965,12 +5016,20 @@ export type FollowUpItem = {
      * Caller Language Name
      */
     caller_language_name?: string | null;
+    /**
+     * Lines Busy
+     */
+    lines_busy?: string | null;
+    /**
+     * Voicemail Seconds
+     */
+    voicemail_seconds?: number | null;
 };
 
 /**
  * FollowUpKind
  */
-export type FollowUpKind = 'callback' | 'transfer_not_answered' | 'repeat_caller' | 'unanswered_question' | 'time_was_full' | 'other_language' | 'emergency';
+export type FollowUpKind = 'callback' | 'transfer_not_answered' | 'repeat_caller' | 'unanswered_question' | 'time_was_full' | 'other_language' | 'emergency' | 'lines_busy';
 
 /**
  * FollowUpListResponse
@@ -6850,6 +6909,49 @@ export type LibrarySkillSummaryResponse = {
      * Updated At
      */
     updated_at: string;
+};
+
+/**
+ * LinesBusyAction
+ */
+export type LinesBusyAction = 'forward' | 'voicemail' | 'busy_message';
+
+/**
+ * LinesBusyCard
+ */
+export type LinesBusyCard = {
+    /**
+     * Calls
+     */
+    calls: number;
+    /**
+     * Forwarded
+     */
+    forwarded: number;
+    /**
+     * Answered
+     */
+    answered: number;
+    /**
+     * Voicemails
+     */
+    voicemails: number;
+    /**
+     * No Message
+     */
+    no_message: number;
+    /**
+     * Told Busy
+     */
+    told_busy: number;
+    /**
+     * Busiest
+     */
+    busiest: Array<BusySlot>;
+    /**
+     * Limit
+     */
+    limit: number | null;
 };
 
 /**
@@ -9636,6 +9738,7 @@ export type ReportCards = {
     follow_ups?: FollowUpsCard | null;
     after_hours?: AfterHoursCard | null;
     agent_performance?: AgentPerformanceCard | null;
+    lines_busy?: LinesBusyCard | null;
     bookings_taken?: BookingsCard | null;
     covers_booked?: CoversCard | null;
     tables_full?: TablesFullCard | null;
@@ -12725,6 +12828,12 @@ export type TransferSettings = {
      * Providers
      */
     providers: Array<string>;
+    lines_busy?: LinesBusyAction;
+    lines_busy_chosen?: LinesBusyAction | null;
+    /**
+     * Lines Busy Busy Line Only
+     */
+    lines_busy_busy_line_only?: Array<string>;
 };
 
 /**
@@ -13176,7 +13285,8 @@ export type UpdateTransferSettingsRequest = {
     /**
      * Show Caller Number
      */
-    show_caller_number: boolean;
+    show_caller_number?: boolean | null;
+    lines_busy?: LinesBusyAction | null;
 };
 
 /**
@@ -20897,6 +21007,45 @@ export type SaveLangfuseCredentialsApiV1OrganizationsLangfuseCredentialsPostResp
      */
     200: unknown;
 };
+
+export type GetCallLimitApiV1OrganizationsCallLimitGetData = {
+    body?: never;
+    headers?: {
+        /**
+         * Authorization
+         */
+        authorization?: string | null;
+        /**
+         * X-Api-Key
+         */
+        'X-API-Key'?: string | null;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/v1/organizations/call-limit';
+};
+
+export type GetCallLimitApiV1OrganizationsCallLimitGetErrors = {
+    /**
+     * Not found
+     */
+    404: unknown;
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type GetCallLimitApiV1OrganizationsCallLimitGetError = GetCallLimitApiV1OrganizationsCallLimitGetErrors[keyof GetCallLimitApiV1OrganizationsCallLimitGetErrors];
+
+export type GetCallLimitApiV1OrganizationsCallLimitGetResponses = {
+    /**
+     * Successful Response
+     */
+    200: CallLimitResponse;
+};
+
+export type GetCallLimitApiV1OrganizationsCallLimitGetResponse = GetCallLimitApiV1OrganizationsCallLimitGetResponses[keyof GetCallLimitApiV1OrganizationsCallLimitGetResponses];
 
 export type GetCampaignDefaultsApiV1OrganizationsCampaignDefaultsGetData = {
     body?: never;

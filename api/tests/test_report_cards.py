@@ -185,6 +185,7 @@ def test_every_pack_has_the_shared_cards_once():
         Card.FOLLOW_UPS,
         Card.AFTER_HOURS,
         Card.AGENT_PERFORMANCE,
+        Card.LINES_BUSY,
     }
     for pack in [*PACKS.values(), pack_for_template("general")]:
         assert shared <= set(pack.keys), pack.pack

@@ -70,6 +70,7 @@ FOLLOW_UP_KINDS = {
     "time_was_full": "Time was full",
     "other_language": "Spoke another language",
     "emergency": "Emergency call",
+    "lines_busy": "Lines were busy",
 }
 
 
@@ -339,6 +340,34 @@ def _panel(
                 Tile("Bookings made", str(card["bookings"])),
                 Tile("Left a number", str(card["callbacks"])),
             ),
+        )
+    if key == Card.LINES_BUSY:
+        if not card.get("calls"):
+            return EmailBlock(
+                "note",
+                key,
+                title,
+                note="Every caller got through: your lines were never all busy.",
+            )
+        busiest = card.get("busiest") or []
+        note = None
+        if busiest:
+            top = busiest[0]
+            note = (
+                f"Most often {_WEEKDAYS[top['weekday']]} "
+                f"{_hours(top['hour'], top['hour'] + 1)}. "
+                "Need more calls at once? Contact us."
+            )
+        return EmailBlock(
+            "tiles",
+            key,
+            title,
+            tiles=(
+                Tile("Couldn't get through", str(card["calls"])),
+                Tile("Put through to your team", str(card["answered"])),
+                Tile("Left a voicemail", str(card["voicemails"])),
+            ),
+            note=note,
         )
     if key == Card.AGENT_PERFORMANCE:
         if not card.get("calls"):

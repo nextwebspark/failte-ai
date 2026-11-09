@@ -36,6 +36,7 @@ from api.services.call_review.review import (
     transcript_lines,
     user_prompt,
 )
+from api.services.calls.lines_busy import is_lines_busy
 from api.services.workflow.agent_languages import AGENT_LANGUAGES_KEY
 
 _PHONE_MODES = frozenset(
@@ -57,6 +58,8 @@ class ReviewOutcome(StrEnum):
     NEVER_CONNECTED = "never_connected"
     CONTENT_DELETED = "content_deleted"
     NO_TRANSCRIPT = "no_transcript"
+    # Every line was busy: the agent never took the call.
+    LINES_BUSY = "lines_busy"
     FAILED = "failed"
 
 
@@ -99,6 +102,8 @@ async def _review_call(workflow_run_id: int, *, redo: bool) -> ReviewOutcome:
         return ReviewOutcome.ALREADY_REVIEWED
 
     gathered = run.gathered_context or {}
+    if is_lines_busy(gathered):
+        return ReviewOutcome.LINES_BUSY
     if (
         missed_reason(gathered, run.logs, run.usage_info)
         == MissedReason.NEVER_CONNECTED

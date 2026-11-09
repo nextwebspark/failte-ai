@@ -35,6 +35,7 @@ from api.services.dashboard.summary import (
     range_bounds,
     recent_calls,
     tiles,
+    turned_away_today,
 )
 
 DEFAULT_TIMEZONE = "Europe/Dublin"
@@ -186,6 +187,7 @@ async def dashboard_summary(
         "calls_change": call_change(len(calls), previous_calls),
         "calls_by_hour": calls_by_hour(calls, tz),
         "after_hours": after_hours(calls, scoped_agents),
+        "turned_away_today": turned_away_today(calls, tz, now),
         "recent_calls": recent_calls(calls),
         "callers_wanted": callers_wanted(calls),
         "wording": await _wording(organization_id, workflow_id, agents),

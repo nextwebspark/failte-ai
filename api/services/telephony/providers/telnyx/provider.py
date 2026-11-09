@@ -769,6 +769,105 @@ class TelnyxProvider(TelephonyProvider):
             media_type="application/json",
         )
 
+    # ======== LINES BUSY ========
+
+    def lines_busy_support(self) -> frozenset[str]:
+        from api.services.calls.lines_busy import FORWARD, SAY, VOICEMAIL
+
+        return frozenset({SAY, FORWARD, VOICEMAIL})
+
+    async def lines_busy_response(
+        self,
+        *,
+        plan: Any,
+        workflow_run_id: int,
+        normalized_data: NormalizedInboundData,
+        backend_endpoint: str,
+    ) -> Any:
+        """Answer the turned-away call without a media stream; the rest
+        follows on its events (``lines_busy.handle_event``)."""
+        from api.services.telephony.providers.telnyx.lines_busy import events_url
+
+        ok = await self.call_command(
+            normalized_data.call_id,
+            "answer",
+            {
+                "webhook_url": events_url(backend_endpoint, workflow_run_id),
+                "webhook_url_method": "POST",
+            },
+        )
+        if not ok:
+            raise RuntimeError("Telnyx refused to answer the turned-away call")
+        return {"status": "ok"}
+
+    async def call_command(
+        self,
+        call_control_id: str,
+        action: str,
+        payload: Dict[str, Any],
+        *,
+        quiet: bool = False,
+    ) -> bool:
+        """POST /calls/{id}/actions/{action}. ``quiet``: a refusal is
+        expected (the caller may have hung up) and only logged at debug."""
+        endpoint = f"{self.TELNYX_API_BASE}/calls/{call_control_id}/actions/{action}"
+        try:
+            async with aiohttp.ClientSession(
+                timeout=aiohttp.ClientTimeout(total=10)
+            ) as session:
+                async with session.post(
+                    endpoint, json=payload, headers=self._headers()
+                ) as response:
+                    if response.status == 200:
+                        return True
+                    body = await response.text()
+                    log = logger.debug if quiet else logger.warning
+                    log(f"Telnyx {action} refused: {response.status} {body}")
+                    return False
+        except Exception as e:
+            logger.warning(f"Telnyx {action} failed: {e}")
+            return False
+
+    async def download_recording(self, url: str | None) -> bytes | None:
+        """A recording file from the pre-signed link in
+        ``call.recording.saved`` (valid for a few minutes)."""
+        if not url or not url.startswith("https://"):
+            return None
+        try:
+            async with aiohttp.ClientSession(
+                timeout=aiohttp.ClientTimeout(total=20)
+            ) as session:
+                async with session.get(url) as response:
+                    if response.status != 200:
+                        logger.error(
+                            f"Telnyx recording download failed: {response.status}"
+                        )
+                        return None
+                    return await response.read()
+        except Exception as e:
+            logger.error(f"Telnyx recording download failed: {e}")
+            return None
+
+    async def delete_recording(self, recording_id: str | None) -> None:
+        """Remove the recording from Telnyx once we have stored it."""
+        if not recording_id or not re.fullmatch(r"[0-9a-fA-F-]{8,64}", recording_id):
+            return
+        try:
+            async with aiohttp.ClientSession(
+                timeout=aiohttp.ClientTimeout(total=10)
+            ) as session:
+                async with session.delete(
+                    f"{self.TELNYX_API_BASE}/recordings/{recording_id}",
+                    headers=self._headers(),
+                ) as response:
+                    if response.status not in (200, 204):
+                        logger.warning(
+                            f"Telnyx recording {recording_id} not deleted: "
+                            f"{response.status}"
+                        )
+        except Exception as e:
+            logger.warning(f"Telnyx recording {recording_id} not deleted: {e}")
+
     # ======== CALL TRANSFER METHODS ========
 
     def transfer_caller_number_params(

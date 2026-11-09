@@ -39,6 +39,7 @@ from api.scripts.demo_businesses import (
     TRANSFERRED,
     UNANSWERED,
     Business,
+    BusyCall,
     Ctx,
     Plan,
     Talk,
@@ -1636,6 +1637,16 @@ def _business() -> ChMarineBusiness:
         template_name="AI Receptionist",
         opening_hours=OPENING_HOURS,
         facts=FACTS,
+        # Saturday morning before the season: every line busy once.
+        lines_busy=(
+            BusyCall(
+                5,
+                "10:41",
+                "Hello, this is {first}. I'm after a quote for servicing a "
+                "Yamaha outboard before Easter. Could someone call me back on "
+                "{number}? Thanks.",
+            ),
+        ),
         # Placeholders, not CH Marine's people.
         owner_name="Ciarán Walsh",
         staff_name="Aisling Murphy",

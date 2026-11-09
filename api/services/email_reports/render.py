@@ -394,7 +394,7 @@ def _block(block: EmailBlock, report: Report, links: Links) -> str:
     if block.kind == "when":
         return _column_chart(report, title=block.title) + _block_note(block.note)
     if block.kind == "tiles":
-        return _block_tiles(block)
+        return _block_tiles(block) + _block_note(block.note)
     if block.kind == "bars":
         return _block_bars(block)
     if block.kind == "list":

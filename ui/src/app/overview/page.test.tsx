@@ -50,6 +50,7 @@ function summary(overrides: Partial<DashboardSummaryResponse> = {}): DashboardSu
         calls_change: null,
         calls_by_hour: hours,
         after_hours: { calls: 2, agents_without_hours: [] },
+        turned_away_today: { calls: 0, forwarded: 0, voicemails: 0 },
         recent_calls: [
             {
                 run_id: 501,

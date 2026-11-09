@@ -134,6 +134,30 @@ class AfterHoursCard(BaseModel):
     agents_without_hours: list[str]
 
 
+class BusySlot(BaseModel):
+    # Monday is 0; the hour is local (0-23).
+    weekday: int
+    hour: int
+    calls: int
+
+
+class LinesBusyCard(BaseModel):
+    # Callers who rang while every line was busy (the calls-at-once limit).
+    calls: int
+    # Rang the team's phone; of those, someone picked up.
+    forwarded: int
+    answered: int
+    voicemails: int
+    # Offered a voicemail (or the forward rang out) and left none.
+    no_message: int
+    # Heard the busy line only.
+    told_busy: int
+    # The hours it happened most, busiest first.
+    busiest: list[BusySlot]
+    # The calls-at-once limit when it last happened.
+    limit: int | None
+
+
 class AgentPerformanceCard(BaseModel):
     calls: int
     handled: int
@@ -345,6 +369,7 @@ class ReportCards(BaseModel):
     follow_ups: FollowUpsCard | None = None
     after_hours: AfterHoursCard | None = None
     agent_performance: AgentPerformanceCard | None = None
+    lines_busy: LinesBusyCard | None = None
     bookings_taken: BookingsCard | None = None
     covers_booked: CoversCard | None = None
     tables_full: TablesFullCard | None = None

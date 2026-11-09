@@ -607,6 +607,83 @@ class TwilioProvider(TelephonyProvider):
 
         return Response(content=twiml_content, media_type="application/xml")
 
+    # ======== LINES BUSY ========
+
+    def lines_busy_support(self) -> frozenset[str]:
+        from api.services.calls.lines_busy import FORWARD, SAY, VOICEMAIL
+
+        return frozenset({SAY, FORWARD, VOICEMAIL})
+
+    async def lines_busy_response(
+        self,
+        *,
+        plan: Any,
+        workflow_run_id: int,
+        normalized_data: NormalizedInboundData,
+        backend_endpoint: str,
+    ) -> Any:
+        """TwiML for a caller turned away because every line is busy."""
+        from fastapi import Response
+
+        from api.services.calls.lines_busy import LinesBusyAction
+        from api.services.telephony.providers.twilio import lines_busy as twiml
+
+        if plan.action == LinesBusyAction.FORWARD and plan.destination:
+            content = twiml.forward_twiml(
+                backend_endpoint, workflow_run_id, plan.destination
+            )
+        elif plan.action == LinesBusyAction.VOICEMAIL:
+            content = twiml.voicemail_twiml(backend_endpoint, workflow_run_id)
+        else:
+            content = twiml.busy_twiml()
+        return Response(content=content, media_type="application/xml")
+
+    async def download_recording(self, recording_url: str) -> bytes | None:
+        """A finished recording as WAV, fetched with the account's own
+        credentials (Twilio recording URLs need HTTP basic auth)."""
+        if not recording_url.startswith("https://api.twilio.com/"):
+            logger.warning("Refusing to download a recording from outside Twilio")
+            return None
+        url = (
+            recording_url if recording_url.endswith(".wav") else f"{recording_url}.wav"
+        )
+        try:
+            async with aiohttp.ClientSession(
+                timeout=aiohttp.ClientTimeout(total=20)
+            ) as session:
+                async with session.get(
+                    url, auth=aiohttp.BasicAuth(self.account_sid, self.auth_token)
+                ) as response:
+                    if response.status != 200:
+                        logger.error(
+                            f"Twilio recording download failed: {response.status}"
+                        )
+                        return None
+                    return await response.read()
+        except Exception as e:
+            logger.error(f"Twilio recording download failed: {e}")
+            return None
+
+    async def delete_recording(self, recording_sid: str) -> None:
+        """Remove our copy's source from Twilio once we have stored it."""
+        if not re.fullmatch(r"RE[0-9a-fA-F]{32}", recording_sid or ""):
+            return
+        try:
+            async with aiohttp.ClientSession(
+                timeout=aiohttp.ClientTimeout(total=10)
+            ) as session:
+                async with session.delete(
+                    f"{self.base_url}/Recordings/{recording_sid}.json",
+                    auth=aiohttp.BasicAuth(self.account_sid, self.auth_token),
+                ) as response:
+                    if response.status not in (200, 204):
+                        logger.warning(
+                            f"Twilio recording {recording_sid} not deleted: "
+                            f"{response.status}"
+                        )
+        except Exception as e:
+            logger.warning(f"Twilio recording {recording_sid} not deleted: {e}")
+
     # ======== CALL TRANSFER METHODS ========
 
     def transfer_caller_number_params(

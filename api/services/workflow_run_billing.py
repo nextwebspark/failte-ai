@@ -18,6 +18,7 @@ from api.constants import BILLING_PROVIDER, DEPLOYMENT_MODE
 from api.db import db_client
 from api.enums import WorkflowRunMode
 from api.services.billing.charging import charge_workflow_run
+from api.services.calls.lines_busy import is_lines_busy
 from api.services.managed_model_services import get_mps_correlation_id
 from api.services.mps_service_key_client import mps_service_key_client
 
@@ -58,6 +59,12 @@ async def report_workflow_run_platform_usage(workflow_run) -> None:
             "Skipping platform usage report for text chat workflow run {}",
             workflow_run.id,
         )
+        return
+
+    if is_lines_busy(getattr(workflow_run, "gathered_context", None)):
+        # Turned away because every line was busy: the agent never took it,
+        # and a forward or voicemail is the provider's own, not ours.
+        logger.info("Not billing workflow run {}: every line was busy", workflow_run.id)
         return
 
     if not getattr(workflow_run, "is_completed", False):

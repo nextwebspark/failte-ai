@@ -7,6 +7,7 @@ import type { ReactNode } from "react";
 import type { FollowUpKind, ReportCards, ReportOverviewResponse, WaitingCard } from "@/client/types.gen";
 import { reasonColours } from "@/components/dashboard/CallersWantedChart";
 import { callWhen, FOLLOW_UP_WORDS, waitWords } from "@/components/dashboard/dashboardView";
+import { ContactSupportLink } from "@/components/help/ContactSupportLink";
 import { cn } from "@/lib/utils";
 
 import {
@@ -18,6 +19,7 @@ import {
     shortDay,
     shortHour,
     tipWords,
+    WEEKDAYS,
 } from "../reportView";
 import { BarRow, Columns, Heatmap, type Series, StackedColumns } from "./charts";
 
@@ -471,6 +473,57 @@ export function ReportCard({ cardKey, title, ctx }: { cardKey: string; title: st
                         </>
                     ) : (
                         <Empty>No calls needed a person in this period.</Empty>
+                    )}
+                </Panel>
+            );
+        }
+        case "lines_busy": {
+            const c = cards.lines_busy;
+            if (!c) return null;
+            const most = Math.max(0, ...c.busiest.map((b) => b.calls));
+            return (
+                <Panel id={id} title={title} subtitle="Rang while every line was in use">
+                    {c.calls ? (
+                        <>
+                            <div className="grid grid-cols-3 gap-2">
+                                <Stat value={c.calls} label="couldn't get through" />
+                                <Stat value={c.answered} label="put through to your team" />
+                                <Stat value={c.voicemails} label="left a voicemail" />
+                            </div>
+                            {c.busiest.length ? (
+                                <>
+                                    <h3 className="mt-4 text-caption font-semibold text-ink-2">When it happened most</h3>
+                                    <ul className="mt-2 flex flex-col gap-3">
+                                        {c.busiest.map((b) => (
+                                            <BarRow
+                                                key={`${b.weekday}-${b.hour}`}
+                                                label={`${WEEKDAYS[b.weekday].slice(0, 3)} ${shortHour(b.hour)}–${shortHour(b.hour + 1)}`}
+                                                value={b.calls}
+                                                max={most}
+                                            />
+                                        ))}
+                                    </ul>
+                                </>
+                            ) : null}
+                            <Note tone="amber">
+                                <span>
+                                    {c.limit
+                                        ? `Your agents take up to ${plural(c.limit, "call")} at once. `
+                                        : "Your agents take a set number of calls at once. "}
+                                    <ContactSupportLink>Need more? Contact us</ContactSupportLink>
+                                </span>
+                            </Note>
+                            {c.calls - c.answered > 0 ? (
+                                <Link
+                                    href="/follow-ups?kind=lines_busy"
+                                    className="mt-3 inline-block text-caption font-semibold text-brand hover:underline"
+                                >
+                                    Ring them back in Follow-ups
+                                </Link>
+                            ) : null}
+                        </>
+                    ) : (
+                        <Empty>Every caller got through: your lines were never all busy.</Empty>
                     )}
                 </Panel>
             );

@@ -46,6 +46,13 @@ from api.services.auth.depends import (
 )
 from api.services.auth.permissions import Permission
 from api.services.call_review.categories import TEMPLATE_CATEGORY_FACT
+from api.services.calls.lines_busy import (
+    LINES_BUSY_KEY,
+    LINES_BUSY_PROVIDERS,
+    LinesBusyAction,
+    effective_choice,
+    stored_choice,
+)
 from api.services.configuration.ai_model_configuration import (
     WORKFLOW_MODEL_CONFIGURATION_V2_OVERRIDE_KEY,
     CustomerKeysNotAllowedError,
@@ -2326,10 +2333,19 @@ class TransferSettings(BaseModel):
     # "agent" (the agent's number), or "unknown" (no phone number yet).
     staff_phone_shows: str
     providers: list[str]
+    # "When all lines are busy": what happens to a caller who rings while
+    # every line is in use. ``lines_busy`` is what applies (the owner's
+    # choice, else the default); ``lines_busy_chosen`` is None until they pick.
+    lines_busy: LinesBusyAction = LinesBusyAction.VOICEMAIL
+    lines_busy_chosen: LinesBusyAction | None = None
+    # The agent's phone providers that can only say the busy line (no
+    # forward or voicemail there).
+    lines_busy_busy_line_only: list[str] = []
 
 
 class UpdateTransferSettingsRequest(BaseModel):
-    show_caller_number: bool
+    show_caller_number: bool | None = None
+    lines_busy: LinesBusyAction | None = None
 
 
 async def _transfer_settings(workflow_id: int, organization_id: int):
@@ -2351,7 +2367,14 @@ async def _transfer_settings(workflow_id: int, organization_id: int):
     else:
         shows = "agent"
     return TransferSettings(
-        show_caller_number=show, staff_phone_shows=shows, providers=providers
+        show_caller_number=show,
+        staff_phone_shows=shows,
+        providers=providers,
+        lines_busy=effective_choice(facts),
+        lines_busy_chosen=stored_choice(facts),
+        lines_busy_busy_line_only=[
+            p for p in providers if p not in LINES_BUSY_PROVIDERS
+        ],
     )
 
 
@@ -2377,18 +2400,20 @@ async def update_transfer_settings(
     request: UpdateTransferSettingsRequest,
     user: UserModel = Depends(get_user),
 ) -> TransferSettings:
-    """Turn "Show the caller's number when we pass a call to you" on or off.
-    Applies from the next call."""
+    """Turn "Show the caller's number when we pass a call to you" on or off,
+    and pick what happens "When all lines are busy". Applies from the next
+    call."""
     organization_id = user.selected_organization_id
-    saved = await db_client.update_business_facts(
-        workflow_id,
-        organization_id,
-        {
-            SHOW_CALLER_NUMBER_KEY: None
-            if request.show_caller_number
-            else SHOW_CALLER_NUMBER_OFF
-        },
-    )
+    updates: dict[str, str | None] = {}
+    if request.show_caller_number is not None:
+        updates[SHOW_CALLER_NUMBER_KEY] = (
+            None if request.show_caller_number else SHOW_CALLER_NUMBER_OFF
+        )
+    if request.lines_busy is not None:
+        updates[LINES_BUSY_KEY] = request.lines_busy.value
+    if not updates:
+        raise HTTPException(status_code=422, detail="Nothing to change.")
+    saved = await db_client.update_business_facts(workflow_id, organization_id, updates)
     if saved is None:
         raise HTTPException(status_code=404, detail="Agent not found")
     return await _transfer_settings(workflow_id, organization_id)
