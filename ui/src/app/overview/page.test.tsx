@@ -19,6 +19,15 @@ vi.mock("@/client/sdk.gen", () => ({
 vi.mock("@/context/OrgConfigContext", () => ({
     useOrgConfig: () => ({ can: (...required: string[]) => required.every((p) => mocks.perms.includes(p)) }),
 }));
+// The agent screen's Test agent panel; stubbed so a test can see it open and close.
+vi.mock("@/app/workflow/[workflowId]/components/WorkflowTesterPanel", () => ({
+    WorkflowTesterPanel: ({ workflowId, onClose }: { workflowId: number; onClose?: () => void }) => (
+        <div data-testid="tester">
+            Test agent {workflowId}
+            <button onClick={onClose}>Close tester panel</button>
+        </div>
+    ),
+}));
 vi.mock("@/lib/auth", () => ({
     useAuth: () => ({ user: { displayName: "Mary Byrne" }, provider: "stack" }),
 }));
@@ -223,6 +232,44 @@ describe("Home", () => {
             "/workflow/14/home?onboarding=web_call",
         );
         expect(screen.getByText("All caught up")).toBeTruthy();
+    });
+
+    it("opens the agent's Test agent panel on Home from the header, without leaving Home", async () => {
+        mocks.perms = [...mocks.perms, "agents:write"];
+        render(<OverviewPage />);
+        await screen.findByText("Recent calls");
+        expect(screen.queryByTestId("tester")).toBeNull();
+        const header = screen.getByRole("heading", { level: 1 }).closest("header") as HTMLElement;
+        fireEvent.click(within(header).getByRole("button", { name: /try your agent/i }));
+        expect((await screen.findByTestId("tester")).textContent).toContain("Test agent 14");
+        // Closing it unmounts the panel, which ends any test call.
+        fireEvent.click(screen.getByRole("button", { name: "Close tester panel" }));
+        await waitFor(() => expect(screen.queryByTestId("tester")).toBeNull());
+    });
+
+    it("opens the same panel from the agent card and the quick link instead of linking away", async () => {
+        mocks.perms = [...mocks.perms, "agents:write"];
+        render(<OverviewPage />);
+        await screen.findByText("Recent calls");
+        const quick = within(screen.getByRole("navigation", { name: "Quick links" }));
+        expect(quick.queryByRole("link", { name: /try your agent/i })).toBeNull();
+        fireEvent.click(quick.getByRole("button", { name: /try your agent/i }));
+        expect(await screen.findByTestId("tester")).toBeTruthy();
+        fireEvent.click(screen.getByRole("button", { name: "Close tester panel" }));
+        await waitFor(() => expect(screen.queryByTestId("tester")).toBeNull());
+
+        const tries = screen.getAllByRole("button", { name: /try your agent/i });
+        // Header, agent card, quick link: all buttons, no links to the agent screen.
+        expect(tries.length).toBe(3);
+        expect(screen.queryAllByRole("link", { name: /try your agent/i })).toEqual([]);
+        fireEvent.click(tries[1]);
+        expect(await screen.findByTestId("tester")).toBeTruthy();
+    });
+
+    it("hides the header button for members who can't start a test call", async () => {
+        render(<OverviewPage />);
+        await screen.findByText("Recent calls");
+        expect(within(screen.getByRole("heading", { level: 1 }).closest("header") as HTMLElement).queryByRole("button", { name: /try your agent/i })).toBeNull();
     });
 
     it("warns when the agent isn't answering, with the fix the member may use", async () => {
