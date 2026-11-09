@@ -454,6 +454,12 @@ export function isPassedToTeam(gathered: Context): boolean {
     );
 }
 
+/** A "Lines were busy" call someone on the team picked up when it was forwarded. */
+export function linesBusyAnswered(gathered: Context): boolean {
+    const forward = gathered?.lines_busy_forward;
+    return Boolean(forward && typeof forward === "object" && (forward as Record<string, unknown>).result === "answered");
+}
+
 /** Plain words for the outcome codes the app writes itself. */
 const OUTCOME_WORDS: Record<string, string> = {
     transfer_call: "Passed to your team",
@@ -469,6 +475,7 @@ const OUTCOME_WORDS: Record<string, string> = {
     error: "Didn't connect",
     pipeline_error: "Call dropped",
     unexpected_error: "Call dropped",
+    lines_busy: "Lines were busy",
 };
 
 /**
@@ -495,6 +502,7 @@ const OUTCOME_TONES: Record<string, StatusTone> = {
     "no-answer": "bad",
     pipeline_error: "bad",
     unexpected_error: "bad",
+    lines_busy: "warn",
 };
 
 /** The outcome chip for a call: its stored outcome in plain words. */
@@ -513,6 +521,10 @@ export function callOutcome(
     const gathered = run.gathered_context;
     if (isPassedToTeam(gathered)) return { label: "Passed to your team", tone: "info" };
     const code = run.disposition ?? text(gathered?.mapped_call_disposition);
+    // Every line was busy: Home's rule, put through to the team when someone picked up.
+    if (code === "lines_busy" && linesBusyAnswered(gathered)) {
+        return { label: "Lines were busy · passed to your team", tone: "info" };
+    }
     const tags = gathered?.call_tags;
     // The engine tags a call where the caller spoke; a hang-up without that tag never got going.
     if (code === "user_hangup" && Array.isArray(tags) && !tags.includes("user_speech") && tags.length > 0) {

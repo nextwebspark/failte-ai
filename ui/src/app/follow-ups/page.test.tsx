@@ -55,7 +55,7 @@ function item(overrides: Partial<FollowUpItem>): FollowUpItem {
 }
 
 function response(items: FollowUpItem[], status: "open" | "done" | "all" = "open"): FollowUpListResponse {
-    const counts = { callback: 0, transfer_not_answered: 0, repeat_caller: 0, unanswered_question: 0, time_was_full: 0, other_language: 0, emergency: 0 };
+    const counts = { callback: 0, transfer_not_answered: 0, repeat_caller: 0, unanswered_question: 0, time_was_full: 0, other_language: 0, emergency: 0, lines_busy: 0 };
     for (const i of items) counts[i.kind] += 1;
     return {
         status,

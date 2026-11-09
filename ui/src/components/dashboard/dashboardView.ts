@@ -41,6 +41,7 @@ export const RESULT_WORDS: Record<CallResult, { label: string; tone: ChipTone }>
     hung_up_early: { label: "Hung up early", tone: "neutral" },
     not_connected: { label: "Didn't connect", tone: "neutral" },
     call_dropped: { label: "Call dropped", tone: "danger" },
+    lines_busy: { label: "Lines were busy", tone: "amber" },
     in_progress: { label: "On the line now", tone: "sky" },
 };
 
@@ -52,6 +53,7 @@ export const FOLLOW_UP_WORDS: Record<FollowUpKind, { chip: string; filter: strin
     time_was_full: { chip: "Time was full", filter: "Time was full", tone: "amber" },
     other_language: { chip: "Spoke another language", filter: "Spoke another language", tone: "sky" },
     emergency: { chip: "Emergency call", filter: "Emergency call", tone: "danger" },
+    lines_busy: { chip: "Lines were busy", filter: "Lines were busy", tone: "amber" },
 };
 
 export const FOLLOW_UP_KINDS: FollowUpKind[] = [
@@ -62,6 +64,7 @@ export const FOLLOW_UP_KINDS: FollowUpKind[] = [
     "time_was_full",
     "other_language",
     "emergency",
+    "lines_busy",
 ];
 
 /** One follow-up's key: a call can have one per kind. */
@@ -295,6 +298,8 @@ export function followUpTitle(item: FollowUpItem): string {
             return spokeWords(item);
         case "emergency":
             return "Emergency: sent to 112/999";
+        case "lines_busy":
+            return item.lines_busy === "voicemail" ? `${callerWords(item)} left a voicemail` : `Call back ${callerWords(item)}`;
         case "repeat_caller":
         default:
             return `${callerWords(item)} rang ${item.repeat_count ?? 2} times`;
@@ -331,10 +336,43 @@ export function followUpDetail(item: FollowUpItem, timezone?: string | null, now
             );
         case "emergency":
             return item.summary ?? "The caller described an emergency and was told to hang up and dial 112 or 999.";
+        case "lines_busy": {
+            const base = linesBusyWords(item);
+            return repeat ? `${base} ${repeat}` : base;
+        }
         case "repeat_caller":
         default:
             return repeat ?? "Rang more than once and didn't reach anyone.";
     }
+}
+
+/** Why a "Lines were busy" caller needs a call back, in the owner's words. */
+export function linesBusyWords(item: Pick<FollowUpItem, "lines_busy" | "voicemail_seconds">): string {
+    const busy = "All your lines were busy when they rang, so they didn't reach your agent.";
+    switch (item.lines_busy) {
+        case "voicemail": {
+            const length = callLength(item.voicemail_seconds);
+            return `${busy} They left a voicemail${length ? ` (${length})` : ""}. Listen, then ring them back.`;
+        }
+        case "told_busy":
+            return `${busy} They heard the busy message. Ring them back.`;
+        default:
+            return `${busy} They didn't leave a message. Ring them back.`;
+    }
+}
+
+/**
+ * Home's "Needs your attention" note for callers turned away today because
+ * every line was busy; null when there were none.
+ */
+export function turnedAwayWords(today: { calls: number; forwarded: number; voicemails: number } | null | undefined): string | null {
+    if (!today || today.calls <= 0) return null;
+    const callers = today.calls === 1 ? "1 caller" : `${today.calls} callers`;
+    const extras = [
+        today.forwarded ? `${today.forwarded} put through to your team` : null,
+        today.voicemails ? `${today.voicemails === 1 ? "1 voicemail" : `${today.voicemails} voicemails`}` : null,
+    ].filter(Boolean);
+    return `${callers} rang while all your lines were busy today${extras.length ? ` (${extras.join(", ")})` : ""}.`;
 }
 
 /** Calls-per-hour bars to draw: from 08:00 to 20:00, widened to any hour with calls. */

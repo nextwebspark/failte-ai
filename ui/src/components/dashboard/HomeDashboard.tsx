@@ -60,6 +60,7 @@ import {
     RESULT_WORDS,
     telHref,
     todayLine,
+    turnedAwayWords,
 } from "./dashboardView";
 import { Chip, FollowUpRow } from "./FollowUpRow";
 import { HomeSkeleton } from "./HomeSkeleton";
@@ -340,6 +341,7 @@ function Attention({
     now,
     followUpsHref,
     onAddAnswer,
+    turnedAway,
 }: {
     items: FollowUpItem[] | null;
     openCount: number | null;
@@ -347,10 +349,21 @@ function Attention({
     now: Date;
     followUpsHref: string;
     onAddAnswer: (item: FollowUpItem) => void;
+    /** Callers turned away today because every line was busy. */
+    turnedAway?: string | null;
 }) {
     const { can } = useOrgConfig();
     const { busy, change } = useFollowUpMarking();
     const canMark = can("followups:manage");
+    const busyNote = turnedAway ? (
+        <Link
+            href={`${followUpsHref}?kind=lines_busy`}
+            className="mb-2 flex items-start gap-2.5 rounded-lg bg-amber-dim px-3 py-2 text-sm text-foreground outline-none hover:underline focus-visible:ring-[3px] focus-visible:ring-ring/40"
+        >
+            <PhoneOff className="mt-0.5 size-4 flex-none text-amber" aria-hidden />
+            <span>{turnedAway}</span>
+        </Link>
+    ) : null;
     return (
         <Card
             titleId="home-attention"
@@ -362,6 +375,7 @@ function Attention({
             }
             action={<CardLink href={followUpsHref}>All follow-ups</CardLink>}
         >
+            {busyNote}
             {items === null ? (
                 <p className="py-4 text-sm text-ink-3">Couldn&apos;t load follow-ups. They&apos;re on the Follow-ups page.</p>
             ) : items.length === 0 ? (
@@ -1031,6 +1045,7 @@ export function HomeDashboard({ heading, workflowId, onTryAgent }: HomeDashboard
                                     now={now}
                                     followUpsHref={followUpsHref}
                                     onAddAnswer={setAnswering}
+                                    turnedAway={turnedAwayWords(summary.turned_away_today)}
                                 />
                             </div>
                             <div className="order-4 min-w-0 @4xl:order-none">
