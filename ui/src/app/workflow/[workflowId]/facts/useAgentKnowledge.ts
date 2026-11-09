@@ -11,6 +11,7 @@ import {
   listPhoneNumbersApiV1OrganizationsTelephonyConfigsConfigIdPhoneNumbersGet,
   listTelephonyConfigurationsApiV1OrganizationsTelephonyConfigsGet,
   listToolsApiV1ToolsGet,
+  setAgentCalendarApiV1WorkflowWorkflowIdCalendarPut,
   updateWorkflowApiV1WorkflowWorkflowIdPut,
 } from "@/client/sdk.gen";
 import type { PlatformModelCatalog, WorkflowConfigurationDefaults } from "@/client/types.gen";
@@ -45,7 +46,10 @@ export type VoiceInfo = Loadable<{
   choices?: VoiceChoices | null;
 }>;
 
-/** "none": the agent doesn't book. */
+/** A booking calendar connected to the workspace (under Integrations). */
+export type CalendarChoice = { toolUuid: string; provider: BookingProvider; name: string };
+
+/** "none": the agent doesn't book; *available* are the workspace's calendars it could book with. */
 export type CalendarInfo =
   | Loadable<{
       /** Which calendar the agent books with. */
@@ -61,7 +65,7 @@ export type CalendarInfo =
       connectionId: string | null;
       rules: unknown;
     }>
-  | { state: "none" };
+  | { state: "none"; available: CalendarChoice[] };
 
 export type PhoneInfo = Loadable<{ numbers: string[] }>;
 
@@ -71,6 +75,8 @@ export type AgentKnowledge = {
   calendar: CalendarInfo;
   phone: PhoneInfo;
   setCalendar: (update: (current: CalendarInfo) => CalendarInfo) => void;
+  /** Book with this connected calendar (null: with none); throws the reason it couldn't. */
+  chooseCalendar?: (toolUuid: string | null) => Promise<void>;
   /** Give this agent *voice* (a `VoiceOption.value`); throws the reason it couldn't. */
   switchVoice?: (voice: string) => Promise<void>;
 };
@@ -204,7 +210,24 @@ export function useAgentKnowledge(workflowId: number): AgentKnowledge {
     [workflowId],
   );
 
-  return { greeting, voice, calendar, phone, setCalendar: setCalendarState, switchVoice };
+  // Attach a connected calendar to the agent (or take it off), then read
+  // the agent again so the card shows what calls will now use.
+  const chooseCalendar = useCallback(
+    async (toolUuid: string | null) => {
+      const res = await setAgentCalendarApiV1WorkflowWorkflowIdCalendarPut({
+        path: { workflow_id: workflowId },
+        body: { tool_uuid: toolUuid },
+      });
+      if (res.error || !res.data) {
+        throw new Error(detailFromError(res.error, "Couldn't change the calendar. Please try again."));
+      }
+      const agent = await getWorkflowApiV1WorkflowFetchWorkflowIdGet({ path: { workflow_id: workflowId } });
+      if (agent.data) setCalendarState(await loadCalendar(agent.data.workflow_definition, may));
+    },
+    [workflowId, may],
+  );
+
+  return { greeting, voice, calendar, phone, setCalendar: setCalendarState, switchVoice, chooseCalendar };
 }
 
 function voiceInfo(configuration: unknown, catalog: PlatformModelCatalog): VoiceInfo {
@@ -249,19 +272,23 @@ async function loadCalendar(
   may: (permission: "integrations:read" | "calls:read" | "agents:read") => boolean,
 ): Promise<CalendarInfo> {
   const attached = attachedToolUuids(definition);
-  if (attached.size === 0) return { state: "none" };
   let calendarTool: string | null = null;
   let provider: BookingProvider | null = null;
+  let available: CalendarChoice[] = [];
   try {
     const tools = await listToolsApiV1ToolsGet({ query: { status: "active" } });
     if (!tools.data) return { state: "hidden" };
-    const tool = tools.data.find((t) => attached.has(t.tool_uuid) && calendarProvider(t) !== null);
-    calendarTool = tool?.tool_uuid ?? null;
-    provider = tool ? calendarProvider(tool) : null;
+    available = tools.data.flatMap((t) => {
+      const kind = calendarProvider(t);
+      return kind ? [{ toolUuid: t.tool_uuid, provider: kind, name: t.name }] : [];
+    });
+    const tool = available.find((c) => attached.has(c.toolUuid));
+    calendarTool = tool?.toolUuid ?? null;
+    provider = tool?.provider ?? null;
   } catch {
     return { state: "hidden" };
   }
-  if (!calendarTool || !provider) return { state: "none" };
+  if (!calendarTool || !provider) return { state: "none", available };
 
   let connection: { id: string; status: string; config?: Record<string, unknown> } | null = null;
   if (may("integrations:read")) {

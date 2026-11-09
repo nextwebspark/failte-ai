@@ -344,6 +344,20 @@ export type AfterHoursCard = {
 };
 
 /**
+ * AgentCalendar
+ */
+export type AgentCalendar = {
+    /**
+     * Tool Uuid
+     */
+    tool_uuid?: string | null;
+    /**
+     * Provider
+     */
+    provider?: string | null;
+};
+
+/**
  * AgentPerformanceCard
  */
 export type AgentPerformanceCard = {
@@ -10435,6 +10449,16 @@ export type ServiceKeyResponse = {
 };
 
 /**
+ * SetAgentCalendarRequest
+ */
+export type SetAgentCalendarRequest = {
+    /**
+     * Tool Uuid
+     */
+    tool_uuid?: string | null;
+};
+
+/**
  * SetupFieldType
  *
  * How the Create agent dialog asks a setup question.
@@ -16670,6 +16694,50 @@ export type UpdateBusinessFactsApiV1WorkflowWorkflowIdBusinessFactsPutResponses 
 };
 
 export type UpdateBusinessFactsApiV1WorkflowWorkflowIdBusinessFactsPutResponse = UpdateBusinessFactsApiV1WorkflowWorkflowIdBusinessFactsPutResponses[keyof UpdateBusinessFactsApiV1WorkflowWorkflowIdBusinessFactsPutResponses];
+
+export type SetAgentCalendarApiV1WorkflowWorkflowIdCalendarPutData = {
+    body: SetAgentCalendarRequest;
+    headers?: {
+        /**
+         * Authorization
+         */
+        authorization?: string | null;
+        /**
+         * X-Api-Key
+         */
+        'X-API-Key'?: string | null;
+    };
+    path: {
+        /**
+         * Workflow Id
+         */
+        workflow_id: number;
+    };
+    query?: never;
+    url: '/api/v1/workflow/{workflow_id}/calendar';
+};
+
+export type SetAgentCalendarApiV1WorkflowWorkflowIdCalendarPutErrors = {
+    /**
+     * Not found
+     */
+    404: unknown;
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type SetAgentCalendarApiV1WorkflowWorkflowIdCalendarPutError = SetAgentCalendarApiV1WorkflowWorkflowIdCalendarPutErrors[keyof SetAgentCalendarApiV1WorkflowWorkflowIdCalendarPutErrors];
+
+export type SetAgentCalendarApiV1WorkflowWorkflowIdCalendarPutResponses = {
+    /**
+     * Successful Response
+     */
+    200: AgentCalendar;
+};
+
+export type SetAgentCalendarApiV1WorkflowWorkflowIdCalendarPutResponse = SetAgentCalendarApiV1WorkflowWorkflowIdCalendarPutResponses[keyof SetAgentCalendarApiV1WorkflowWorkflowIdCalendarPutResponses];
 
 export type CheckTransferNumberRouteApiV1WorkflowTransferNumberCheckPostData = {
     body: TransferNumberCheckRequest;

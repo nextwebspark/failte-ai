@@ -143,9 +143,11 @@ from api.services.workflow.template_setup import (
     TemplateSetupError,
     attach_integration_tools,
     attach_tool_placeholder,
+    calendar_tool_provider,
     check_integration_tools,
     fill_template,
     parse_setup_fields,
+    set_calendar_tool,
     uses_tool_placeholder,
 )
 from api.services.workflow.tool_name_validation import (
@@ -2284,6 +2286,58 @@ async def update_business_facts(
         raise HTTPException(status_code=404, detail="Agent not found")
     workflow, fields = await _agent_facts(workflow_id, organization_id)
     return _facts_response(workflow, fields)
+
+
+class AgentCalendar(BaseModel):
+    # The calendar tool the agent books with; null when it books with none
+    # (it takes callers' details for the team instead).
+    tool_uuid: str | None = None
+    provider: str | None = None
+
+
+class SetAgentCalendarRequest(BaseModel):
+    # A booking calendar tool of this workspace (Google Calendar or
+    # Calendly, connected under Integrations); null stops booking.
+    tool_uuid: str | None = None
+
+
+@router.put(
+    "/{workflow_id}/calendar",
+    dependencies=requires(Permission.AGENTS_FACTS),
+)
+async def set_agent_calendar(
+    workflow_id: int,
+    request: SetAgentCalendarRequest,
+    user: UserModel = Depends(get_user),
+) -> AgentCalendar:
+    """Book with this calendar (or with none). Attaches the connected
+    calendar to the steps that talk to callers, from the next call, without
+    publishing any unfinished changes to the agent itself. An agent books
+    with one calendar, so any other calendar it had is taken off."""
+    organization_id = user.selected_organization_id
+    tools = await db_client.get_tools_for_organization(organization_id)
+    calendars = {
+        tool.tool_uuid: provider
+        for tool in tools
+        if (provider := calendar_tool_provider(tool.category, tool.definition))
+    }
+    if request.tool_uuid is not None and request.tool_uuid not in calendars:
+        raise HTTPException(
+            status_code=404, detail="That calendar isn't connected to this workspace."
+        )
+    saved = await db_client.update_agent_steps(
+        workflow_id,
+        organization_id,
+        lambda definition: set_calendar_tool(
+            definition, request.tool_uuid, set(calendars)
+        ),
+    )
+    if saved is None:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    return AgentCalendar(
+        tool_uuid=request.tool_uuid,
+        provider=calendars.get(request.tool_uuid) if request.tool_uuid else None,
+    )
 
 
 class TransferNumberCheckRequest(BaseModel):

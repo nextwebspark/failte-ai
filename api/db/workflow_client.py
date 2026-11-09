@@ -1,3 +1,4 @@
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from typing import Optional
@@ -402,6 +403,52 @@ class WorkflowClient(BaseDBClient):
             # Read before the commit: it expires the row, and reloading an
             # attribute outside the session's await fails (MissingGreenlet).
             saved = dict(workflow.template_context_variables)
+            await session.commit()
+            return saved
+
+    async def update_agent_steps(
+        self,
+        workflow_id: int,
+        organization_id: int,
+        change: Callable[[dict], dict],
+    ) -> dict | None:
+        """Apply *change* (definition -> definition) to the agent, its live
+        version and any draft, so the next call uses it without publishing a
+        developer's unfinished draft (as update_business_facts does for
+        facts). Returns the live definition after the change, or None if the
+        agent isn't in the organization."""
+        async with self.async_session() as session:
+            workflow = (
+                await session.execute(
+                    select(WorkflowModel)
+                    .where(
+                        WorkflowModel.id == workflow_id,
+                        WorkflowModel.organization_id == organization_id,
+                    )
+                    .with_for_update()
+                )
+            ).scalar_one_or_none()
+            if workflow is None:
+                return None
+            workflow.workflow_definition = change(workflow.workflow_definition or {})
+            live: dict | None = None
+            definitions = (
+                await session.execute(
+                    select(WorkflowDefinitionModel).where(
+                        WorkflowDefinitionModel.workflow_id == workflow_id,
+                        or_(
+                            WorkflowDefinitionModel.id
+                            == workflow.released_definition_id,
+                            WorkflowDefinitionModel.status == "draft",
+                        ),
+                    )
+                )
+            ).scalars()
+            for definition in definitions:
+                definition.workflow_json = change(definition.workflow_json or {})
+                if definition.id == workflow.released_definition_id:
+                    live = definition.workflow_json
+            saved = live if live is not None else dict(workflow.workflow_definition)
             await session.commit()
             return saved
 

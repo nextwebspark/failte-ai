@@ -547,3 +547,58 @@ def test_agents_check_the_caller_before_changing_a_booking():
             assert "Never say a booking is moved or cancelled" in text, starter.name
         assert "update the booking" not in text, starter.name
         assert "reschedule via calendar tools" not in text, starter.name
+
+
+def _calendar_definition(*tools_per_node):
+    types = ["startCall", "agentNode", "endCall", "globalNode"]
+    return {
+        "nodes": [
+            {"id": str(i), "type": types[i], "data": {"tool_uuids": list(tools)}}
+            for i, tools in enumerate(tools_per_node)
+        ]
+    }
+
+
+def test_calendar_tool_provider_reads_the_tools_service_url():
+    from api.services.workflow.template_setup import calendar_tool_provider
+
+    def mcp(url):
+        return {"config": {"url": url}}
+
+    assert (
+        calendar_tool_provider("mcp", mcp("http://t:8010/mcp/calendly")) == "calendly"
+    )
+    assert (
+        calendar_tool_provider("mcp", mcp("https://t/mcp/google-calendar/"))
+        == "google-calendar"
+    )
+    assert calendar_tool_provider("mcp", mcp("https://t/mcp/hubspot")) is None
+    assert calendar_tool_provider("http_api", mcp("http://t/mcp/calendly")) is None
+    assert calendar_tool_provider("mcp", None) is None
+
+
+def test_set_calendar_tool_attaches_to_the_steps_that_talk_to_callers():
+    from api.services.workflow.template_setup import set_calendar_tool
+
+    definition = _calendar_definition(["transfer"], ["transfer", "orders"], [], [])
+    result = set_calendar_tool(definition, "cal", {"cal"})
+    tools = [n["data"]["tool_uuids"] for n in result["nodes"]]
+    assert tools == [["transfer", "cal"], ["transfer", "orders", "cal"], [], []]
+    # Again: still one copy.
+    again = set_calendar_tool(result, "cal", {"cal"})
+    assert again == result
+
+
+def test_set_calendar_tool_swaps_or_removes_the_calendar():
+    from api.services.workflow.template_setup import set_calendar_tool
+
+    definition = _calendar_definition(["google", "x"], ["google"], [], [])
+    swapped = set_calendar_tool(definition, "calendly", {"google", "calendly"})
+    assert [n["data"]["tool_uuids"] for n in swapped["nodes"]] == [
+        ["x", "calendly"],
+        ["calendly"],
+        [],
+        [],
+    ]
+    removed = set_calendar_tool(swapped, None, {"google", "calendly"})
+    assert [n["data"]["tool_uuids"] for n in removed["nodes"]] == [["x"], [], [], []]

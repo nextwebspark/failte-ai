@@ -57,7 +57,7 @@ const FACTS = [
 const HIDDEN: AgentKnowledge = {
     greeting: { state: "hidden" },
     voice: { state: "hidden" },
-    calendar: { state: "none" },
+    calendar: { state: "none", available: [] },
     phone: { state: "hidden" },
     setCalendar: vi.fn(),
 };
@@ -204,6 +204,45 @@ describe("What your agent knows", () => {
         await screen.findByLabelText("Opening hours");
         expect(screen.queryByText("Take bookings")).toBeNull();
         expect(screen.queryByRole("switch")).toBeNull();
+    });
+
+    it("offers a connected calendar the agent doesn't use yet, and attaches it", async () => {
+        const chooseCalendar = vi.fn().mockResolvedValue(undefined);
+        mocks.knowledge = {
+            ...HIDDEN,
+            calendar: { state: "none", available: [{ toolUuid: "cal-1", provider: "calendly", name: "Calendly" }] },
+            chooseCalendar,
+        };
+        render(<WhatYourAgentKnowsPage />);
+        await screen.findByLabelText("Opening hours");
+        expect(screen.getByText("Take bookings")).toBeTruthy();
+        expect(screen.getByText(/Calendly is connected, but this agent doesn't use it yet/)).toBeTruthy();
+        fireEvent.click(screen.getByRole("button", { name: "Book with Calendly" }));
+        await waitFor(() => expect(chooseCalendar).toHaveBeenCalledWith("cal-1"));
+        expect(toast.success).toHaveBeenCalledWith("Your agent books with this calendar from the next call.");
+    });
+
+    it("doesn't offer the calendar to people who can't change the agent", async () => {
+        mocks.can.mockImplementation((p) => p !== "agents:facts");
+        mocks.knowledge = {
+            ...HIDDEN,
+            calendar: { state: "none", available: [{ toolUuid: "cal-1", provider: "calendly", name: "Calendly" }] },
+            chooseCalendar: vi.fn(),
+        };
+        render(<WhatYourAgentKnowsPage />);
+        await screen.findByLabelText("Opening hours");
+        expect(screen.queryByRole("button", { name: "Book with Calendly" })).toBeNull();
+    });
+
+    it("says why attaching the calendar failed", async () => {
+        mocks.knowledge = {
+            ...HIDDEN,
+            calendar: { state: "none", available: [{ toolUuid: "cal-1", provider: "calendly", name: "Calendly" }] },
+            chooseCalendar: vi.fn().mockRejectedValue(new Error("That calendar isn't connected to this workspace.")),
+        };
+        render(<WhatYourAgentKnowsPage />);
+        fireEvent.click(await screen.findByRole("button", { name: "Book with Calendly" }));
+        await waitFor(() => expect(toast.error).toHaveBeenCalledWith("That calendar isn't connected to this workspace."));
     });
 
     it("lists what is ready from real data, and says when no phone number rings the agent", async () => {

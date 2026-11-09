@@ -285,3 +285,43 @@ def attach_integration_tools(
             node = {**node, "data": {**data, "tool_uuids": resolved}}
         nodes.append(node)
     return {**definition, "nodes": nodes}
+
+
+# The steps that talk to callers: where a template puts its calendar tool.
+CALENDAR_STEP_TYPES = ("startCall", "agentNode")
+
+
+def calendar_tool_provider(category: str | None, definition: Any) -> str | None:
+    """GOOGLE_CALENDAR or CALENDLY when the tool is a booking calendar (an
+    MCP tool served by the tools service at ``/mcp/<provider>``), else None.
+    The same rule as the app's ``calendarProvider``."""
+    if category != "mcp" or not isinstance(definition, Mapping):
+        return None
+    config = definition.get("config")
+    url = config.get("url") if isinstance(config, Mapping) else None
+    if not isinstance(url, str):
+        return None
+    path = url.rstrip("/")
+    for provider in (GOOGLE_CALENDAR, CALENDLY):
+        if path.endswith(f"/mcp/{provider}"):
+            return provider
+    return None
+
+
+def set_calendar_tool(
+    definition: dict[str, Any], tool_uuid: str | None, calendar_tools: set[str]
+) -> dict[str, Any]:
+    """The agent with *tool_uuid* as its one booking calendar: every tool in
+    *calendar_tools* (the workspace's calendar tools) leaves every step, then
+    *tool_uuid* joins the steps that talk to callers. None: no calendar, so
+    the agent takes callers' details instead (as its instructions say)."""
+    nodes = []
+    for node in definition.get("nodes", []):
+        data = node.get("data") or {}
+        uuids = [u for u in (data.get("tool_uuids") or []) if u not in calendar_tools]
+        if tool_uuid and node.get("type") in CALENDAR_STEP_TYPES:
+            uuids.append(tool_uuid)
+        if uuids != (data.get("tool_uuids") or []):
+            node = {**node, "data": {**data, "tool_uuids": uuids}}
+        nodes.append(node)
+    return {**definition, "nodes": nodes}
