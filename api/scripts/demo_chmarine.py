@@ -1637,8 +1637,8 @@ def _business() -> ChMarineBusiness:
         opening_hours=OPENING_HOURS,
         facts=FACTS,
         # Placeholders, not CH Marine's people.
-        owner_name="CH Marine demo owner",
-        staff_name="CH Marine demo staff",
+        owner_name="Ciarán Walsh",
+        staff_name="Aisling Murphy",
         # The line the demo calls came in on: a 555 number, never dialled
         # (CH Marine's real Cork number is in the facts the agent reads).
         called_number="+353215550170",

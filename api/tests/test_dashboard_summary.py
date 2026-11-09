@@ -219,6 +219,16 @@ def test_tiles_count_each_call_once():
     assert result["hung_up_silent"] == 1
     assert result["callbacks_requested"] == 1
     assert result["in_progress"] == 1
+    assert result["no_conversation"] == 1
+    # The tiles add up: every call is in exactly one group.
+    assert (
+        result["handled"]
+        + result["callbacks_requested"]
+        + result["passed_to_team"]
+        + result["no_conversation"]
+        + result["in_progress"]
+        == result["calls"]
+    )
     # The call in progress and zero lengths are left out of the average.
     assert result["average_call_seconds"] == round((120 + 60 + 200 + 40 + 3 + 80) / 6)
 

@@ -47,6 +47,8 @@ class DashboardTiles(BaseModel):
     transfer_not_answered: int
     # The engine heard no speech from the caller.
     hung_up_silent: int
+    # Silent, hung up at once, never connected or dropped.
+    no_conversation: int = 0
     callbacks_requested: int
     in_progress: int
     average_call_seconds: int | None

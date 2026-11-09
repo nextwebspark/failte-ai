@@ -15,8 +15,8 @@ import {
     Mic,
     Moon,
     Phone,
+    PhoneCall,
     PhoneForwarded,
-    PhoneOff,
     Play,
     RefreshCw,
 } from "lucide-react";
@@ -269,6 +269,19 @@ function Tiles({ summary, now }: { summary: DashboardSummaryResponse; now: Date 
     const t = summary.tiles;
     const change = changeWords(summary.range, summary.calls_change, now, summary.timezone);
     const average = callLength(t.average_call_seconds);
+    // The three tiles after "Calls" plus this line account for every call,
+    // so the numbers on Home always add up to the total.
+    const noConversation = t.no_conversation ?? t.hung_up_silent;
+    const rest = [
+        noConversation > 0 ? `${noConversation} hung up or didn't connect` : null,
+        t.in_progress > 0 ? `${t.in_progress} in progress` : null,
+    ].filter(Boolean).join(" · ");
+    const callsCaption = (
+        <>
+            {change ? <Trend change={change} /> : average ? `Average call ${average}` : null}
+            {rest && <span className="mt-1 block text-ink-3">{rest}</span>}
+        </>
+    );
     return (
         <div className="grid grid-cols-2 gap-3 @3xl:grid-cols-4 @3xl:gap-4">
             <Tile
@@ -278,7 +291,7 @@ function Tiles({ summary, now }: { summary: DashboardSummaryResponse; now: Date 
                 shortLabel="Calls"
                 value={t.calls}
                 phoneCaption={change ? <Trend change={change} /> : null}
-                caption={change ? <Trend change={change} /> : average ? `Average call ${average}` : null}
+                caption={callsCaption}
             />
             <Tile
                 icon={Check}
@@ -296,8 +309,16 @@ function Tiles({ summary, now }: { summary: DashboardSummaryResponse; now: Date 
                 caption="Answered start to finish, no staff needed"
             />
             <Tile
-                icon={PhoneForwarded}
+                icon={PhoneCall}
                 tone="bg-amber-dim text-amber"
+                label="Need a call back"
+                shortLabel="Call backs"
+                value={t.callbacks_requested}
+                caption="Your agent took their details; someone needs to ring them"
+            />
+            <Tile
+                icon={PhoneForwarded}
+                tone="bg-sky-dim text-sky"
                 label="Passed to your team"
                 shortLabel="Passed to team"
                 value={t.passed_to_team}
@@ -321,13 +342,6 @@ function Tiles({ summary, now }: { summary: DashboardSummaryResponse; now: Date 
                         "Calls your agent put through to a person"
                     )
                 }
-            />
-            <Tile
-                icon={PhoneOff}
-                tone="bg-danger-dim text-danger"
-                label="Hung up without speaking"
-                value={t.hung_up_silent}
-                caption="Callers who rang off before saying anything"
             />
         </div>
     );

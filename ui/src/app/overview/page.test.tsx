@@ -114,11 +114,14 @@ describe("Home", () => {
         expect(headings[0].textContent).toMatch(/^Good (morning|afternoon|evening), Mary$/);
     });
 
-    it("shows the four tiles from the API's counts", async () => {
+    it("shows the four tiles from the API's counts, adding up to the total", async () => {
         render(<OverviewPage />);
         expect(await screen.findByText("Handled by your agent")).toBeTruthy();
         expect(screen.getByText("Passed to your team")).toBeTruthy();
-        expect(screen.getByText("Hung up without speaking")).toBeTruthy();
+        expect(screen.getByText("Need a call back")).toBeTruthy();
+        // No separate hang-up tile: those calls are a line under the total, so the tiles add up.
+        expect(screen.queryByText("Hung up without speaking")).toBeNull();
+        expect(screen.getByText("1 hung up or didn't connect")).toBeTruthy();
         expect(screen.getByText("50%")).toBeTruthy();
         expect(screen.getAllByText("1 not answered").length).toBeGreaterThan(0);
         expect(screen.getAllByText(/Answering calls/).length).toBeGreaterThan(0);

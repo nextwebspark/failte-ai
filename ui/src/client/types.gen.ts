@@ -3641,6 +3641,10 @@ export type DashboardTiles = {
      */
     hung_up_silent: number;
     /**
+     * No Conversation
+     */
+    no_conversation?: number;
+    /**
      * Callbacks Requested
      */
     callbacks_requested: number;

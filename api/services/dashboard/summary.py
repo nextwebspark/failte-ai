@@ -123,6 +123,18 @@ def tiles(calls: Sequence[CallView]) -> dict[str, Any]:
         "transfer_picked_up": picked_up,
         "transfer_not_answered": not_answered,
         "hung_up_silent": counts.get(CallResult.HUNG_UP_SILENT, 0),
+        # Calls with no conversation: silent, hung up at once, never connected
+        # or dropped. With handled, callbacks, passed to team and in progress
+        # this accounts for every call, so the tiles add up to the total.
+        "no_conversation": sum(
+            counts.get(result, 0)
+            for result in (
+                CallResult.HUNG_UP_SILENT,
+                CallResult.HUNG_UP_EARLY,
+                CallResult.NOT_CONNECTED,
+                CallResult.CALL_DROPPED,
+            )
+        ),
         "callbacks_requested": counts.get(CallResult.CALLBACK_REQUESTED, 0),
         "in_progress": counts.get(CallResult.IN_PROGRESS, 0),
         # Bookings the calendar confirmed on the call.
