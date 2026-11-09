@@ -17,6 +17,7 @@ import {
     Phone,
     PhoneCall,
     PhoneForwarded,
+    PhoneOff,
     Play,
     RefreshCw,
 } from "lucide-react";
@@ -275,6 +276,7 @@ function Tiles({ summary, now }: { summary: DashboardSummaryResponse; now: Date 
     const noConversation = t.no_conversation ?? t.hung_up_silent;
     const rest = [
         noConversation > 0 ? `${noConversation} hung up or didn't connect` : null,
+        (t.lines_busy ?? 0) > 0 ? `${t.lines_busy} couldn't get through (lines busy)` : null,
         t.in_progress > 0 ? `${t.in_progress} in progress` : null,
     ].filter(Boolean).join(" · ");
     const callsCaption = (

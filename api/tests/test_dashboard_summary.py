@@ -226,6 +226,7 @@ def test_tiles_count_each_call_once():
         + result["callbacks_requested"]
         + result["passed_to_team"]
         + result["no_conversation"]
+        + result["lines_busy"]
         + result["in_progress"]
         == result["calls"]
     )
