@@ -688,7 +688,7 @@ function CanDo({
         <Card title="What your agent can do" id="can-do">
             {offer && (
                 <div className="grid gap-2 border-t border-line-soft py-3 first:border-t-0">
-                    <div className="flex flex-wrap items-start justify-between gap-2">
+                    <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3">
                         <div className="min-w-0">
                             <p className="text-body font-semibold text-foreground">Take bookings</p>
                             <p className="mt-0.5 text-caption leading-relaxed text-ink-3">
