@@ -67,6 +67,7 @@ import {
 } from "./dashboardView";
 import { Chip, FollowUpRow } from "./FollowUpRow";
 import { HomeSkeleton } from "./HomeSkeleton";
+import { HomeTestSheet } from "./HomeTestSheet";
 import { HourlyCallsChart } from "./HourlyCallsChart";
 import { useDashboardSummary, useFollowUpMarking, useFollowUps } from "./useDashboardData";
 
@@ -1050,6 +1051,16 @@ export function HomeDashboard({ heading, workflowId, onTryAgent }: HomeDashboard
     const summary = result.state === "ready" ? result.data : null;
     const timezone = summary?.timezone ?? null;
 
+    // On Home (no agent page around it), "Try your agent" opens the agent's
+    // Test agent panel beside Home instead of leaving for the agent screen,
+    // for members who may start a test call (creating a run needs agents:write).
+    const { can } = useOrgConfig();
+    const [testing, setTesting] = useState(false);
+    const homeAgentId = summary ? primaryAgentId(summary) : null;
+    const homeAgentName = summary?.agents.find((a) => a.id === homeAgentId)?.name ?? null;
+    const tryOnHome = !onTryAgent && homeAgentId != null && can("agents:write");
+    const tryAgent = onTryAgent ?? (tryOnHome ? () => setTesting(true) : undefined);
+
     const header = (
         <header className="flex flex-col gap-3 @4xl:flex-row @4xl:items-end @4xl:justify-between @4xl:gap-6">
             <div className="min-w-0">
@@ -1059,13 +1070,21 @@ export function HomeDashboard({ heading, workflowId, onTryAgent }: HomeDashboard
                 <p className="mt-1 text-body text-ink-3">{rangeSentence(range, now, timezone)}</p>
                 {summary && <TodayLine summary={summary} />}
             </div>
-            <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center @4xl:flex-nowrap">
-                {summary && (
-                    <div>
-                        <StatusPill summary={summary} />
-                    </div>
+            <div className="flex flex-col gap-3 @4xl:items-end">
+                {tryOnHome && (
+                    <Button variant="soft" className="self-start @4xl:self-end" onClick={() => setTesting(true)}>
+                        <Mic aria-hidden />
+                        Try your agent
+                    </Button>
                 )}
-                <RangeSwitch value={range} onChange={setRange} />
+                <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center @4xl:flex-nowrap">
+                    {summary && (
+                        <div>
+                            <StatusPill summary={summary} />
+                        </div>
+                    )}
+                    <RangeSwitch value={range} onChange={setRange} />
+                </div>
             </div>
         </header>
     );
@@ -1113,7 +1132,7 @@ export function HomeDashboard({ heading, workflowId, onTryAgent }: HomeDashboard
             range={range}
             onRange={setRange}
             tryHref={agentId != null ? agentTalkHref(agentId) : null}
-            onTryAgent={onTryAgent}
+            onTryAgent={tryAgent}
         />
     );
 
@@ -1124,8 +1143,8 @@ export function HomeDashboard({ heading, workflowId, onTryAgent }: HomeDashboard
 
             {setUp && (
                 <div className="grid grid-cols-1 gap-4 @4xl:grid-cols-[minmax(0,7fr)_minmax(0,5fr)] @4xl:gap-5">
-                    <GetStarted summary={summary} onTryAgent={onTryAgent} />
-                    <AgentCard summary={summary} now={now} onTryAgent={onTryAgent} />
+                    <GetStarted summary={summary} onTryAgent={tryAgent} />
+                    <AgentCard summary={summary} now={now} onTryAgent={tryAgent} />
                 </div>
             )}
 
@@ -1154,7 +1173,7 @@ export function HomeDashboard({ heading, workflowId, onTryAgent }: HomeDashboard
                                 <RecentCalls summary={summary} now={now} empty={empty} />
                             </div>
                             <div className="order-5 min-w-0 @4xl:order-none">
-                                <AgentCard summary={summary} now={now} onTryAgent={onTryAgent} />
+                                <AgentCard summary={summary} now={now} onTryAgent={tryAgent} />
                             </div>
                         </div>
                         <div className="contents @4xl:flex @4xl:min-w-0 @4xl:flex-col @4xl:gap-5">
@@ -1169,8 +1188,16 @@ export function HomeDashboard({ heading, workflowId, onTryAgent }: HomeDashboard
                 </>
             )}
 
-            <QuickLinks summary={summary} onTryAgent={onTryAgent} />
+            <QuickLinks summary={summary} onTryAgent={tryAgent} />
             <AddAnswerDialog item={answering} onClose={() => setAnswering(null)} />
+            {tryOnHome && homeAgentId != null && (
+                <HomeTestSheet
+                    workflowId={homeAgentId}
+                    agentName={homeAgentName}
+                    open={testing}
+                    onOpenChange={setTesting}
+                />
+            )}
         </div>
     );
 }
