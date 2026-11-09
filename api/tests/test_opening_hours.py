@@ -5,7 +5,7 @@ transfer gate, the owner's save and the after-hours count. Pure."""
 from __future__ import annotations
 
 import json
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 import pytest
@@ -22,6 +22,8 @@ from api.services.workflow.opening_hours import (
     closed_transfer_result,
     describe_opening_hours,
     is_open,
+    minute_ranges,
+    open_minutes,
     opening_hours_facts,
     opening_hours_updates,
     parse_opening_hours,
@@ -412,11 +414,67 @@ def test_dashboard_after_hours_names_agents_left_out():
         _call(3, 2, datetime(2026, 11, 9, 13, 0, tzinfo=UTC)),
         _call(4, 4, datetime(2026, 11, 9, 13, 0, tzinfo=UTC)),
     ]
-    assert after_hours(calls, agents) == {
-        "calls": 1,
-        "agents_without_hours": [
-            {"id": 2, "name": "Free text"},
-            {"id": 4, "name": "Archived, called"},
-        ],
-    }
+    result = after_hours(calls, agents)
+    assert result["calls"] == 1
+    assert result["agents_without_hours"] == [
+        {"id": 2, "name": "Free text"},
+        {"id": 4, "name": "Archived, called"},
+    ]
+    assert [c["run_id"] for c in result["recent"]] == [1]
     assert after_hours(calls, agents[1:])["calls"] is None
+
+
+def test_after_hours_lists_the_newest_five_with_who_and_how():
+    from api.services.dashboard.summary import after_hours
+
+    agents = [
+        {
+            "id": 1,
+            "name": "Restaurant",
+            "status": "active",
+            "opening_hours_schedule": opening_hours_facts(RESTAURANT)[SCHEDULE_KEY],
+        }
+    ]
+    monday = datetime(2026, 11, 9, 10, 0, tzinfo=UTC)  # closed all day
+    # Newest first, as Home loads them; one open-hours call in between.
+    calls = [_call(i, 1, monday - timedelta(minutes=i)) for i in range(1, 8)]
+    calls.insert(2, _call(99, 1, datetime(2026, 11, 10, 13, 0, tzinfo=UTC)))
+    result = after_hours(calls, agents)
+    assert result["calls"] == 7
+    assert [c["run_id"] for c in result["recent"]] == [1, 2, 3, 4, 5]
+    first = result["recent"][0]
+    assert set(first) == {
+        "run_id",
+        "workflow_id",
+        "created_at",
+        "caller_number",
+        "caller_name",
+        "result",
+    }
+    assert (
+        after_hours(calls, [{**agents[0], "opening_hours_schedule": None}])["recent"]
+        == []
+    )
+
+
+# ------------------------------------------------------------ the open band
+
+
+def test_open_minutes_include_last_nights_late_range():
+    late = week(*[()] * 5, (("18:00", "02:00"),), ())
+    saturday = open_minutes(late, date(2026, 11, 7), DUBLIN)
+    sunday = open_minutes(late, date(2026, 11, 8), DUBLIN)
+    assert minute_ranges(saturday) == [(1080, 1440)]
+    assert minute_ranges(sunday) == [(0, 120)]
+
+
+def test_open_minutes_in_another_zone_follow_the_business_clock():
+    weekdays = week(*[(("09:00", "17:00"),)] * 5, (), ())
+    # Paris is an hour ahead of Dublin in winter.
+    paris = open_minutes(weekdays, date(2026, 11, 9), ZoneInfo("Europe/Paris"))
+    assert minute_ranges(paris) == [(600, 1080)]
+
+
+def test_minute_ranges():
+    assert minute_ranges([False, True, True, False, True]) == [(1, 3), (4, 5)]
+    assert minute_ranges([False] * 3) == []

@@ -22,7 +22,11 @@ from api.services.dashboard.service import (
     follow_up_list,
     open_follow_up_count,
 )
-from api.services.dashboard.summary import DashboardRange, NotAnsweringReason
+from api.services.dashboard.summary import (
+    DashboardRange,
+    NotAnsweringReason,
+    OpeningHoursBand,
+)
 
 router = APIRouter(tags=["dashboard"])
 
@@ -123,12 +127,42 @@ class DashboardAgentRef(BaseModel):
     name: str
 
 
+class DashboardAfterHoursCall(BaseModel):
+    run_id: int
+    workflow_id: int
+    created_at: datetime
+    caller_number: str | None
+    caller_name: str | None
+    result: CallResult
+
+
 class DashboardAfterHours(BaseModel):
     # Calls that arrived while the business was closed, by each agent's
     # opening hours set as times; None when no agent has them.
     calls: int | None
     # Agents whose calls aren't counted: no opening hours set as times.
     agents_without_hours: list[DashboardAgentRef]
+    # The newest of those calls (up to five), newest first.
+    recent: list[DashboardAfterHoursCall] = []
+
+
+class DashboardOpenRange(BaseModel):
+    # Minutes after local midnight (in ``timezone``), end exclusive; 0-1440.
+    start: int
+    end: int
+
+
+class DashboardOpeningHours(BaseModel):
+    # What the calls-per-hour chart can shade (see ``OpeningHoursBand``).
+    kind: OpeningHoursBand
+    # The open times to shade; empty when closed (or none apply).
+    ranges: list[DashboardOpenRange]
+    # Days in the range, and how many of them the business was open at all.
+    days: int
+    days_open: int
+    # The hours in words, e.g. "Monday to Friday 9 am to 5:30 pm, closed
+    # Saturday and Sunday"; None unless one set of hours applies.
+    description: str | None
 
 
 class DashboardSummaryResponse(BaseModel):
@@ -145,6 +179,8 @@ class DashboardSummaryResponse(BaseModel):
     # Calls per local hour of the day, 0-23, summed over the range.
     calls_by_hour: list[int]
     after_hours: DashboardAfterHours
+    # The open hours behind the calls-per-hour chart.
+    opening_hours: DashboardOpeningHours
     # Today's callers who couldn't get through because every line was busy.
     turned_away_today: DashboardTurnedAway
     recent_calls: list[DashboardRecentCall]

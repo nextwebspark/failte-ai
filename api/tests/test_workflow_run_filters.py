@@ -170,3 +170,63 @@ def test_needs_follow_up_without_ids_matches_nothing():
     assert "false" in _where(_filter("needsFollowUp", "runIds", {}))
     # Ids smuggled in under another type are ignored too.
     assert "false" in _where(_filter("needsFollowUp", "multiSelect", {"ids": [1]}))
+
+
+def _after_hours(value) -> list[dict]:
+    return [{"attribute": "afterHours", "type": "openingHours", "value": value}]
+
+
+_WEEKDAYS_9_TO_530 = {
+    "days": [[{"open": "09:00", "close": "17:30"}]] * 5 + [[], []],
+    "timezone": "Europe/Dublin",
+}
+
+
+def test_after_hours_reads_the_wall_clock_in_the_business_zone():
+    where = _where(_after_hours({"agents": [{"id": 7, "hours": _WEEKDAYS_9_TO_530}]}))
+
+    assert "workflow_runs.call_type = 'inbound'" in where
+    assert "'twilio'" in where and "'smallwebrtc'" not in where
+    assert "workflow_runs.workflow_id = 7" in where
+    assert "timezone('Europe/Dublin', workflow_runs.created_at)" in where
+    assert "EXTRACT(isodow FROM" in where
+    # 9:00 is minute 540, 17:30 is 1050 (exclusive).
+    assert ">= 540" in where and "< 1050" in where
+    assert where.count("NOT (") == 1
+
+
+def test_after_hours_past_midnight_goes_on_into_the_next_day():
+    late = {
+        "days": [[]] * 6 + [[{"open": "18:00", "close": "02:00"}]],
+        "timezone": "Europe/Dublin",
+    }
+    where = _where(_after_hours({"agents": [{"id": 1, "hours": late}]}))
+
+    # Sunday (7) 18:00 to midnight, then Monday (1) up to 2 am.
+    assert "= 7" in where and ">= 1080" in where and "< 1440" in where
+    assert "= 1" in where and "< 120" in where
+
+
+def test_after_hours_counts_browser_calls_only_in_demo_workspaces():
+    hours = [{"id": 7, "hours": _WEEKDAYS_9_TO_530}]
+    assert "'smallwebrtc'" in _where(
+        _after_hours({"agents": hours, "browser_calls": True})
+    )
+
+
+def test_after_hours_closed_all_week_matches_every_call_of_that_agent():
+    closed = {"days": [[]] * 7, "timezone": "Europe/Dublin"}
+    where = _where(_after_hours({"agents": [{"id": 3, "hours": closed}]}))
+    assert "workflow_runs.workflow_id = 3" in where
+    assert "NOT (" not in where
+
+
+def test_after_hours_without_resolved_hours_matches_nothing():
+    assert _where(_after_hours({})) == "WHERE false"
+    assert _where(_after_hours({"agents": [{"id": 3, "hours": {"days": "x"}}]})) == (
+        "WHERE false"
+    )
+    # Hours are never taken from a filter the route didn't fill in.
+    assert _where(
+        [{"attribute": "afterHours", "type": "radio", "value": {"status": "x"}}]
+    ) == ("WHERE false")

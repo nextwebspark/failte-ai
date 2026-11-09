@@ -50,6 +50,7 @@ function summary(overrides: Partial<DashboardSummaryResponse> = {}): DashboardSu
         calls_change: null,
         calls_by_hour: hours,
         after_hours: { calls: 2, agents_without_hours: [] },
+        opening_hours: { kind: "none", ranges: [], days: 1, days_open: 0, description: null },
         turned_away_today: { calls: 0, forwarded: 0, voicemails: 0 },
         recent_calls: [
             {
@@ -135,6 +136,71 @@ describe("Home", () => {
         render(<OverviewPage />);
         expect(await screen.findByText("2 calls came in outside opening hours")).toBeTruthy();
         expect(screen.getByText(/Not counted: Front desk/)).toBeTruthy();
+    });
+
+    it("shades today's opening hours on the chart and names them", async () => {
+        mocks.summary.mockResolvedValue({
+            data: summary({
+                opening_hours: {
+                    kind: "same",
+                    ranges: [{ start: 540, end: 1050 }],
+                    days: 1,
+                    days_open: 1,
+                    description: "Monday to Friday 9 am to 5:30 pm, closed Saturday and Sunday",
+                },
+            }),
+        });
+        render(<OverviewPage />);
+        expect(await screen.findByText("Open 9 am–5:30 pm")).toBeTruthy();
+    });
+
+    it("says when agents' hours differ instead of shading one of them", async () => {
+        mocks.summary.mockResolvedValue({
+            data: summary({ opening_hours: { kind: "differ", ranges: [], days: 1, days_open: 0, description: null } }),
+        });
+        render(<OverviewPage />);
+        expect(await screen.findByText("Opening hours differ by agent")).toBeTruthy();
+    });
+
+    it("lists who rang after hours, when, what happened, and links to Calls", async () => {
+        mocks.summary.mockResolvedValue({
+            data: summary({
+                after_hours: {
+                    calls: 2,
+                    agents_without_hours: [],
+                    recent: [
+                        {
+                            run_id: 610,
+                            workflow_id: 14,
+                            created_at: "2026-11-05T07:30:00Z",
+                            caller_number: "+353871234567",
+                            caller_name: "Aoife Kelly",
+                            result: "callback_requested",
+                        },
+                        {
+                            run_id: 609,
+                            workflow_id: 14,
+                            created_at: "2026-11-04T22:10:00Z",
+                            caller_number: "+353861112222",
+                            caller_name: null,
+                            result: "handled",
+                        },
+                    ],
+                },
+            }),
+        });
+        render(<OverviewPage />);
+        expect(await screen.findByText("2 calls came in outside opening hours")).toBeTruthy();
+        const list = screen.getByRole("list", { name: /outside opening hours/ });
+        const rows = within(list).getAllByRole("link");
+        expect(rows).toHaveLength(2);
+        expect(rows[0].textContent).toContain("Aoife Kelly");
+        expect(rows[0].textContent).toContain("Callback requested");
+        expect(rows[0].getAttribute("href")).toBe("/usage?when=today&hours=after&call=610");
+        expect(rows[1].textContent).toContain("+353 86 111 2222");
+        expect(screen.getByRole("link", { name: /See all calls outside opening hours/ }).getAttribute("href")).toBe(
+            "/usage?when=today&hours=after",
+        );
     });
 
     it("asks the API again for 7 days", async () => {

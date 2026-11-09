@@ -3427,6 +3427,37 @@ export type DashboardAfterHours = {
      * Agents Without Hours
      */
     agents_without_hours: Array<DashboardAgentRef>;
+    /**
+     * Recent
+     */
+    recent?: Array<DashboardAfterHoursCall>;
+};
+
+/**
+ * DashboardAfterHoursCall
+ */
+export type DashboardAfterHoursCall = {
+    /**
+     * Run Id
+     */
+    run_id: number;
+    /**
+     * Workflow Id
+     */
+    workflow_id: number;
+    /**
+     * Created At
+     */
+    created_at: string;
+    /**
+     * Caller Number
+     */
+    caller_number: string | null;
+    /**
+     * Caller Name
+     */
+    caller_name: string | null;
+    result: CallResult;
 };
 
 /**
@@ -3508,6 +3539,43 @@ export type DashboardCredit = {
      * Running Low
      */
     running_low: boolean;
+};
+
+/**
+ * DashboardOpenRange
+ */
+export type DashboardOpenRange = {
+    /**
+     * Start
+     */
+    start: number;
+    /**
+     * End
+     */
+    end: number;
+};
+
+/**
+ * DashboardOpeningHours
+ */
+export type DashboardOpeningHours = {
+    kind: OpeningHoursBand;
+    /**
+     * Ranges
+     */
+    ranges: Array<DashboardOpenRange>;
+    /**
+     * Days
+     */
+    days: number;
+    /**
+     * Days Open
+     */
+    days_open: number;
+    /**
+     * Description
+     */
+    description: string | null;
 };
 
 /**
@@ -3615,6 +3683,7 @@ export type DashboardSummaryResponse = {
      */
     calls_by_hour: Array<number>;
     after_hours: DashboardAfterHours;
+    opening_hours: DashboardOpeningHours;
     turned_away_today: DashboardTurnedAway;
     /**
      * Recent Calls
@@ -7912,6 +7981,13 @@ export type OpeningHours = {
      */
     note?: string | null;
 };
+
+/**
+ * OpeningHoursBand
+ *
+ * What the calls-per-hour chart can shade as open.
+ */
+export type OpeningHoursBand = 'none' | 'differ' | 'same' | 'most_days';
 
 /**
  * OrgRole
@@ -22769,6 +22845,7 @@ export type GetUsageHistoryApiV1OrganizationsUsageRunsGetData = {
          * | `callChannel`   | `radio`       | `{ "status": "telephony" }`                  | `telephony`, `web`, or `chat` — the group of run modes for that channel |
          * | `callerSearch`  | `text`        | `{ "value": "Murphy" }`                      | the caller's captured name or number, the call's summary, or what was said |
          * | `needsFollowUp` | `runIds`      | `{}`                                         | calls with an open follow-up, as on Follow-ups (last 30 days; ignores any value sent) |
+         * | `afterHours`    | `openingHours` | `{}`                                        | inbound phone calls that came in outside their agent's opening hours (set as times), as Home counts them; ignores any value sent |
          *
          * Unknown attributes and unsupported `type` values are silently ignored.
          *
@@ -22864,6 +22941,7 @@ export type DownloadUsageRunsReportApiV1OrganizationsUsageRunsReportGetData = {
          * | `callChannel`   | `radio`       | `{ "status": "telephony" }`                  | `telephony`, `web`, or `chat` — the group of run modes for that channel |
          * | `callerSearch`  | `text`        | `{ "value": "Murphy" }`                      | the caller's captured name or number, the call's summary, or what was said |
          * | `needsFollowUp` | `runIds`      | `{}`                                         | calls with an open follow-up, as on Follow-ups (last 30 days; ignores any value sent) |
+         * | `afterHours`    | `openingHours` | `{}`                                        | inbound phone calls that came in outside their agent's opening hours (set as times), as Home counts them; ignores any value sent |
          *
          * Unknown attributes and unsupported `type` values are silently ignored.
          *

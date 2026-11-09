@@ -208,3 +208,37 @@ def test_calls_list_reads_a_call_the_way_home_does():
             now=now,
         )
         assert call_result_of(run, now) == home.value == expected
+
+
+def test_after_hours_is_an_allowed_list_filter():
+    assert "afterHours" in USAGE_ALLOWED_FILTERS
+
+
+@pytest.mark.asyncio
+async def test_after_hours_filter_takes_hours_from_the_agents(monkeypatch):
+    from api.routes.organization_usage import resolve_server_filters
+    from api.services.dashboard import service
+
+    async def follow_ups(*, organization_id, workflow_id=None, now=None):
+        raise AssertionError("not needed")
+
+    async def value(organization_id):
+        assert organization_id == 3
+        return {"agents": [{"id": 1, "hours": {}}], "browser_calls": False}
+
+    monkeypatch.setattr(service, "open_follow_up_run_ids", follow_ups)
+    monkeypatch.setattr(service, "after_hours_filter_value", value)
+    resolved = await resolve_server_filters(
+        3,
+        [
+            # Hours sent by the browser are never used.
+            {"attribute": "afterHours", "type": "openingHours", "value": {"x": 1}},
+        ],
+    )
+    assert resolved == [
+        {
+            "attribute": "afterHours",
+            "type": "openingHours",
+            "value": {"agents": [{"id": 1, "hours": {}}], "browser_calls": False},
+        }
+    ]

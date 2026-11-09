@@ -612,11 +612,13 @@ export default function UsagePage() {
                                                 ) : undefined
                                             }
                                         >
-                                            {query.tab === 'follow_up' && !query.q.trim() && !query.outcome && !query.who && !appliedExpert.length
+                                            {query.tab === 'follow_up' && !query.q.trim() && !query.outcome && !query.who && !query.afterHours && !appliedExpert.length
                                                 ? 'Nothing needs a follow-up. All caught up.'
                                                 : query.q.trim()
                                                     ? `Nothing for “${query.q.trim()}” ${tabUsesDates(query.tab) ? whenPhrase(query) : 'in the last 30 days'}.`
-                                                    : `No calls ${tabUsesDates(query.tab) ? whenPhrase(query) : 'in the last 30 days'}${query.outcome || query.who || appliedExpert.length ? ' with these filters' : ''}.`}
+                                                    : query.afterHours && !query.outcome && !query.who && !appliedExpert.length
+                                                        ? `No calls came in outside opening hours ${tabUsesDates(query.tab) ? whenPhrase(query) : 'in the last 30 days'}. Only agents with opening hours set as times are checked.`
+                                                        : `No calls ${tabUsesDates(query.tab) ? whenPhrase(query) : 'in the last 30 days'}${query.outcome || query.who || query.afterHours || appliedExpert.length ? ' with these filters' : ''}.`}
                                         </EmptyState>
                                     )
                                 ) : !tableFits || sideBySide ? (

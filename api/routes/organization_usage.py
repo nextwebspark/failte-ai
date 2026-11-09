@@ -503,6 +503,7 @@ Supported `attribute` / `type` / `value` combinations:
 | `callChannel`   | `radio`       | `{ "status": "telephony" }`                  | `telephony`, `web`, or `chat` — the group of run modes for that channel |
 | `callerSearch`  | `text`        | `{ "value": "Murphy" }`                      | the caller's captured name or number, the call's summary, or what was said |
 | `needsFollowUp` | `runIds`      | `{}`                                         | calls with an open follow-up, as on Follow-ups (last 30 days; ignores any value sent) |
+| `afterHours`    | `openingHours` | `{}`                                        | inbound phone calls that came in outside their agent's opening hours (set as times), as Home counts them; ignores any value sent |
 
 Unknown attributes and unsupported `type` values are silently ignored.
 
@@ -530,6 +531,37 @@ async def resolve_follow_up_filter(
         else f
         for f in filters
     ]
+
+
+async def resolve_after_hours_filter(
+    organization_id: int, filters: Optional[list]
+) -> Optional[list]:
+    """Fill an ``afterHours`` filter with the agents' stored opening hours
+    (set as times) and whether browser test calls count as phone calls
+    (demo workspaces, as on Home). Any value the request carried is
+    replaced."""
+    if not isinstance(filters, list) or not any(
+        isinstance(f, dict) and f.get("attribute") == "afterHours" for f in filters
+    ):
+        return filters
+    # Imported here: the dashboard service pulls in the billing stack.
+    from api.services.dashboard.service import after_hours_filter_value
+
+    value = await after_hours_filter_value(organization_id)
+    return [
+        {"attribute": "afterHours", "type": "openingHours", "value": value}
+        if isinstance(f, dict) and f.get("attribute") == "afterHours"
+        else f
+        for f in filters
+    ]
+
+
+async def resolve_server_filters(
+    organization_id: int, filters: Optional[list]
+) -> Optional[list]:
+    """The filters the server fills in itself: follow-ups and after hours."""
+    filters = await resolve_follow_up_filter(organization_id, filters)
+    return await resolve_after_hours_filter(organization_id, filters)
 
 
 @router.get(
@@ -588,7 +620,7 @@ async def get_usage_history(
         except json.JSONDecodeError:
             raise HTTPException(status_code=400, detail="Invalid filters format")
 
-    parsed_filters = await resolve_follow_up_filter(
+    parsed_filters = await resolve_server_filters(
         user.selected_organization_id, parsed_filters
     )
 
@@ -676,7 +708,7 @@ async def download_usage_runs_report(
         except json.JSONDecodeError:
             raise HTTPException(status_code=400, detail="Invalid filters format")
 
-    parsed_filters = await resolve_follow_up_filter(
+    parsed_filters = await resolve_server_filters(
         user.selected_organization_id, parsed_filters
     )
 

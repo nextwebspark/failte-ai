@@ -7,6 +7,7 @@ import {
     appendAnswer,
     busiestHour,
     callBackNumber,
+    callDayAndTime,
     callLength,
     callWhen,
     changeWords,
@@ -23,6 +24,9 @@ import {
     lastCallWords,
     markKind,
     notAnsweringWords,
+    openHoursLegend,
+    openRangesWords,
+    openRangeWords,
     rangeSentence,
     telHref,
     todayLine,
@@ -239,5 +243,61 @@ describe("todayLine and hourSpan", () => {
         expect(markKind("other_language")).toBe("other_language");
         expect(markKind("emergency")).toBe("emergency");
         expect(markKind("callback")).toBeNull();
+    });
+});
+
+describe("opening hours on the hourly chart", () => {
+    it("says a range the short way", () => {
+        expect(openRangeWords({ start: 540, end: 1050 })).toBe("9 am–5:30 pm");
+        expect(openRangeWords({ start: 720, end: 900 })).toBe("12–3 pm");
+        expect(openRangeWords({ start: 1020, end: 1440 })).toBe("5 pm–midnight");
+        expect(openRangeWords({ start: 0, end: 1440 })).toBe("24 hours");
+        expect(openRangesWords([{ start: 720, end: 900 }, { start: 1020, end: 1320 }])).toBe("12–3 pm and 5–10 pm");
+    });
+
+    it("joins last night's late hours to tonight's", () => {
+        expect(openRangesWords([{ start: 0, end: 120 }, { start: 1080, end: 1440 }])).toBe("6 pm–2 am");
+    });
+
+    const band = (kind: "none" | "differ" | "same" | "most_days", ranges: { start: number; end: number }[], days = 1) => ({
+        kind,
+        ranges,
+        days,
+        description: "Monday to Friday 9 am to 5:30 pm, closed Saturday and Sunday",
+    });
+
+    it("labels today's hours, or closed", () => {
+        expect(openHoursLegend(band("same", [{ start: 540, end: 1050 }]), "today")).toEqual({
+            label: "Open 9 am–5:30 pm",
+            band: true,
+            note: null,
+        });
+        expect(openHoursLegend(band("same", []), "today")?.label).toBe("Closed today");
+    });
+
+    it("over days, says every day or most days honestly", () => {
+        expect(openHoursLegend(band("same", [{ start: 540, end: 1050 }], 7), "7d")?.label).toBe(
+            "Open 9 am–5:30 pm every day",
+        );
+        const most = openHoursLegend(band("most_days", [{ start: 540, end: 1050 }], 7), "7d");
+        expect(most?.label).toBe("Open 9 am–5:30 pm on most days");
+        expect(most?.note).toBe("Your hours: Monday to Friday 9 am to 5:30 pm, closed Saturday and Sunday");
+        expect(openHoursLegend(band("most_days", [], 30), "30d")).toMatchObject({ band: false, label: "Hours vary from day to day" });
+    });
+
+    it("draws no band when agents differ or have no hours as times", () => {
+        expect(openHoursLegend(band("differ", []), "today")).toEqual({
+            label: "Opening hours differ by agent",
+            band: false,
+            note: null,
+        });
+        expect(openHoursLegend(band("none", []), "today")).toBeNull();
+        expect(openHoursLegend(undefined, "today")).toBeNull();
+    });
+
+    it("gives an after-hours call its day", () => {
+        const now = new Date("2026-11-09T15:00:00Z");
+        expect(callDayAndTime("2026-11-09T07:30:00Z", "Europe/Dublin", now)).toBe("Today 7:30 am");
+        expect(callDayAndTime("2026-11-08T21:05:00Z", "Europe/Dublin", now)).toBe("Yesterday 9:05 pm");
     });
 });

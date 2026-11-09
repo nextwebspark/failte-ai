@@ -5,16 +5,25 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
-from datetime import datetime, time, timedelta
+from datetime import date, datetime, time, timedelta
 from decimal import ROUND_FLOOR, Decimal
 from enum import StrEnum
 from typing import Any
 from zoneinfo import ZoneInfo
 
+from api.schemas.opening_hours import OpeningHours
 from api.services.dashboard.calls import HANDLED_RESULTS, CallResult, CallView
-from api.services.workflow.opening_hours import after_hours_count, parse_opening_hours
+from api.services.workflow.opening_hours import (
+    describe_opening_hours,
+    is_after_hours,
+    minute_ranges,
+    open_minutes,
+    parse_opening_hours,
+)
 
 RECENT_CALLS = 5
+# After-hours calls listed under the count, newest first.
+AFTER_HOURS_LISTED = 5
 
 # Below this many calls in both spans a change means nothing ("+1 on last
 # Tuesday"), so it is left out.
@@ -64,6 +73,22 @@ def calls_by_hour(calls: Iterable[CallView], tz: ZoneInfo) -> list[int]:
     return hours
 
 
+def _hours_by_agent(agents: Sequence[Mapping[str, Any]]) -> dict[int, OpeningHours]:
+    return {
+        a["id"]: parsed
+        for a in agents
+        if (parsed := parse_opening_hours(a.get("opening_hours_schedule")))
+    }
+
+
+def _shown_agents(
+    calls: Sequence[CallView], agents: Sequence[Mapping[str, Any]]
+) -> list[Mapping[str, Any]]:
+    """The agents Home speaks for: switched on, or with calls in the range."""
+    with_calls = {call.workflow_id for call in calls}
+    return [a for a in agents if a.get("status") == "active" or a["id"] in with_calls]
+
+
 def after_hours(
     calls: Sequence[CallView], agents: Sequence[Mapping[str, Any]]
 ) -> dict[str, Any]:
@@ -71,25 +96,106 @@ def after_hours(
     agent's structured opening hours (``get_dashboard_agents``). Agents
     without them aren't counted and are listed (those that are switched on
     or had calls), so the screen can say so; ``calls`` is None when none of
-    the agents has them."""
-    hours = {
-        a["id"]: parsed
-        for a in agents
-        if (parsed := parse_opening_hours(a.get("opening_hours_schedule")))
-    }
-    with_calls = {call.workflow_id for call in calls}
+    the agents has them. ``recent`` is the newest few of those calls
+    (``calls`` is newest first), so the owner can see who rang and when."""
+    hours = _hours_by_agent(agents)
+    closed = [
+        call
+        for call in calls
+        if is_after_hours(call.workflow_id, call.created_at, hours)
+    ]
     return {
-        "calls": after_hours_count(
-            [(call.workflow_id, call.created_at) for call in calls], hours
-        )
-        if hours
-        else None,
+        "calls": len(closed) if hours else None,
         "agents_without_hours": [
             {"id": a["id"], "name": a["name"]}
-            for a in agents
+            for a in _shown_agents(calls, agents)
             if a["id"] not in hours
-            and (a.get("status") == "active" or a["id"] in with_calls)
         ],
+        "recent": [
+            {
+                "run_id": call.run_id,
+                "workflow_id": call.workflow_id,
+                "created_at": call.created_at,
+                "caller_number": call.caller_number,
+                "caller_name": call.caller_name,
+                "result": call.result,
+            }
+            for call in closed[:AFTER_HOURS_LISTED]
+        ],
+    }
+
+
+class OpeningHoursBand(StrEnum):
+    """What the calls-per-hour chart can shade as open."""
+
+    # None of the agents shown has opening hours set as times.
+    NONE = "none"
+    # The agents shown have different hours: no one band is true for all.
+    DIFFER = "differ"
+    # The same open times on every day of the range (always so for Today);
+    # no ranges means closed all of it.
+    SAME = "same"
+    # The days differ: the band is the times open on more than half of the
+    # range's days (none when no time is).
+    MOST_DAYS = "most_days"
+
+
+def _range_days(start: datetime, end: datetime, tz: ZoneInfo) -> list[date]:
+    first = start.astimezone(tz).date()
+    last = end.astimezone(tz).date()
+    return [first + timedelta(days=i) for i in range((last - first).days + 1)]
+
+
+def opening_hours_band(
+    calls: Sequence[CallView],
+    agents: Sequence[Mapping[str, Any]],
+    tz: ZoneInfo,
+    start: datetime,
+    end: datetime,
+) -> dict[str, Any]:
+    """The open times to shade behind the calls-per-hour chart, as wall-clock
+    minute ranges in *tz* (Home's zone), for the agents shown.
+
+    Only when every agent shown that has hours set as times has the same
+    ones: else ``differ``. Over one day (Today) the band is that day's
+    hours. Over 7 or 30 days the chart sums every day, so the band is the
+    hours when they are the same each day (``same``); when the days differ
+    it is the times open on more than half of the days (``most_days``), and
+    ``days_open`` / ``days`` and the hours in words let the screen say so
+    plainly. Agents without hours as times are left out (``none`` when that
+    is all of them)."""
+    shown = _shown_agents(calls, agents) or list(agents)
+    hours = _hours_by_agent(shown)
+    days = _range_days(start, end, tz)
+    blank: dict[str, Any] = {
+        "kind": OpeningHoursBand.NONE,
+        "ranges": [],
+        "days": len(days),
+        "days_open": 0,
+        "description": None,
+    }
+    if not hours:
+        return blank
+    distinct = {(h.days, h.timezone) for h in hours.values()}
+    if len(distinct) > 1:
+        return {**blank, "kind": OpeningHoursBand.DIFFER}
+    shared = next(iter(hours.values()))
+    per_day = [open_minutes(shared, day, tz) for day in days]
+    if all(minutes == per_day[0] for minutes in per_day):
+        kind, band = OpeningHoursBand.SAME, per_day[0]
+    else:
+        kind = OpeningHoursBand.MOST_DAYS
+        band = [
+            sum(minutes[m] for minutes in per_day) * 2 > len(per_day)
+            for m in range(len(per_day[0]))
+        ]
+    return {
+        "kind": kind,
+        "ranges": [{"start": a, "end": b} for a, b in minute_ranges(band)],
+        "days": len(days),
+        "days_open": sum(1 for minutes in per_day if any(minutes)),
+        # The times only: the owner's note is said by the agent, not drawn.
+        "description": describe_opening_hours(shared.model_copy(update={"note": None})),
     }
 
 

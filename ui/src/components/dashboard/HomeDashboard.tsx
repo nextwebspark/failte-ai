@@ -24,9 +24,8 @@ import {
 import Link from "next/link";
 import { type ReactNode, useState } from "react";
 
-import { formatPhone } from "@/app/usage/callsView";
+import { callsQueryToParams, DEFAULT_QUERY, formatPhone } from "@/app/usage/callsView";
 import type {
-    DashboardAfterHours,
     DashboardRange,
     DashboardRecentCall,
     DashboardSummaryResponse,
@@ -45,6 +44,7 @@ import { CallersWantedChart } from "./CallersWantedChart";
 import {
     afterHoursWords,
     busiestHour,
+    callDayAndTime,
     callerWords,
     callLength,
     callsTileLabel,
@@ -56,6 +56,8 @@ import {
     lastCallWords,
     markKind,
     notAnsweringWords,
+    type OpenHoursLegend,
+    openHoursLegend,
     RANGE_OPTIONS,
     rangeSentence,
     RESULT_WORDS,
@@ -569,12 +571,13 @@ function RecentCalls({ summary, now, empty }: { summary: DashboardSummaryRespons
     );
 }
 
-function WhenPeopleCalled({ summary, empty }: { summary: DashboardSummaryResponse; empty: ReactNode }) {
+function WhenPeopleCalled({ summary, now, empty }: { summary: DashboardSummaryResponse; now: Date; empty: ReactNode }) {
     const sub =
         summary.range === "today"
             ? "Calls per hour, today"
             : `Calls per hour, last ${summary.range === "7d" ? "7" : "30"} days`;
     const peak = busiestHour(summary.calls_by_hour);
+    const legend = openHoursLegend(summary.opening_hours, summary.range);
     return (
         <Card titleId="home-hours" title="When people called" action={<CardHint>{sub}</CardHint>}>
             {summary.tiles.calls === 0 ? (
@@ -590,45 +593,128 @@ function WhenPeopleCalled({ summary, empty }: { summary: DashboardSummaryRespons
                             </span>
                         </p>
                     )}
-                    <HourlyCallsChart hours={summary.calls_by_hour} caption={sub} />
+                    <HourlyCallsChart
+                        hours={summary.calls_by_hour}
+                        caption={legend ? `${sub}. ${legend.label}.` : sub}
+                        openRanges={legend?.band ? summary.opening_hours?.ranges : undefined}
+                    />
+                    {legend && <OpenHoursKey legend={legend} />}
                 </>
             )}
-            <AfterHours afterHours={summary.after_hours} />
+            <AfterHours summary={summary} now={now} />
         </Card>
     );
 }
 
+/** The chart's legend for the open-hours band (or why there is none). */
+function OpenHoursKey({ legend }: { legend: OpenHoursLegend }) {
+    return (
+        <div className="mt-3 text-meta text-ink-3">
+            <p className="flex items-center gap-2">
+                {legend.band && (
+                    <span className="size-3 flex-none rounded-[3px] border border-line bg-ink-3/[0.08]" aria-hidden />
+                )}
+                <span className={cn(legend.band && "text-ink-2")}>{legend.label}</span>
+            </p>
+            {legend.note && <p className={cn("mt-1", legend.band && "pl-5")}>{legend.note}</p>}
+        </div>
+    );
+}
+
+/** The Calls page showing a range's after-hours calls (one of them open, when given). */
+function afterHoursCallsHref(summary: DashboardSummaryResponse, call?: number): string {
+    const filters =
+        summary.workflow_id !== null && summary.workflow_id !== undefined
+            ? JSON.stringify([{ id: "workflowId", value: { value: summary.workflow_id } }])
+            : null;
+    const params = callsQueryToParams(
+        { ...DEFAULT_QUERY, afterHours: true, when: summary.range },
+        { filters, call: call ?? null },
+    );
+    return `/usage?${params}`;
+}
+
 /**
  * Calls that came in while the business was closed, by each agent's opening
- * hours set as times. Agents without them are named, not guessed.
+ * hours set as times, and the newest of them: when, who and what happened,
+ * each opening on Calls. Agents without hours as times are named, not
+ * guessed.
  */
-function AfterHours({ afterHours }: { afterHours: DashboardAfterHours | undefined }) {
+function AfterHours({ summary, now }: { summary: DashboardSummaryResponse; now: Date }) {
     const { can } = useOrgConfig();
+    const afterHours = summary.after_hours;
     if (!afterHours) return null;
     const words = afterHoursWords(afterHours);
     if (!words.count && !words.note) return null;
     const missing = afterHours.agents_without_hours;
+    const listed = afterHours.recent ?? [];
     return (
-        <div className="mt-5 flex items-start gap-3 rounded-xl border border-line-soft bg-panel-2 px-4 py-3.5">
-            <span className="grid size-9 flex-none place-items-center rounded-[10px] bg-sky-dim text-sky" aria-hidden>
-                <Moon className="size-[18px]" />
-            </span>
-            <div className="min-w-0 pt-0.5">
-                {words.count && <p className="text-body font-semibold tabular-nums text-foreground">{words.count}</p>}
-                {words.note && (
-                    <p className={cn("text-caption text-ink-3", words.count && "mt-0.5")}>
-                        {words.note}
-                        {can("agents:facts") && missing.length === 1 && (
-                            <>
-                                {" "}
-                                <Link href={agentFactsHref(missing[0].id)} className="font-medium text-brand hover:underline">
-                                    Set the hours
-                                </Link>
-                            </>
+        <div className="mt-5 rounded-xl border border-line-soft bg-panel-2 px-4 py-3.5">
+            <div className="flex items-start gap-3">
+                <span className="grid size-9 flex-none place-items-center rounded-[10px] bg-sky-dim text-sky" aria-hidden>
+                    <Moon className="size-[18px]" />
+                </span>
+                <div className="min-w-0 flex-1 pt-0.5">
+                    <div className="flex items-baseline justify-between gap-3">
+                        {words.count && <p className="text-body font-semibold tabular-nums text-foreground">{words.count}</p>}
+                        {listed.length > 0 && (
+                            <Link
+                                href={afterHoursCallsHref(summary)}
+                                className="whitespace-nowrap text-sm font-semibold text-brand hover:underline"
+                                aria-label="See all calls outside opening hours on Calls"
+                            >
+                                See all
+                            </Link>
                         )}
-                    </p>
-                )}
+                    </div>
+                    {words.note && (
+                        <p className={cn("text-caption text-ink-3", words.count && "mt-0.5")}>
+                            {words.note}
+                            {can("agents:facts") && missing.length === 1 && (
+                                <>
+                                    {" "}
+                                    <Link href={agentFactsHref(missing[0].id)} className="font-medium text-brand hover:underline">
+                                        Set the hours
+                                    </Link>
+                                </>
+                            )}
+                        </p>
+                    )}
+                </div>
             </div>
+            {/* Full width on a phone; under the sentence on a wider card. */}
+            {listed.length > 0 && (
+                <ul className="mt-2 flex flex-col @md:pl-12" aria-label="Calls outside opening hours, newest first">
+                    {listed.map((call) => {
+                        const result = RESULT_WORDS[call.result];
+                        return (
+                            <li key={call.run_id} className="border-t border-line-soft first:border-t-0">
+                                <Link
+                                    href={afterHoursCallsHref(summary, call.run_id)}
+                                    className="group flex items-center gap-3 rounded-md py-2.5 outline-none focus-visible:ring-[3px] focus-visible:ring-ring/40"
+                                >
+                                    <span className="min-w-0 flex-1">
+                                        <span className="flex flex-wrap items-baseline gap-x-2">
+                                            <span className="truncate text-body font-medium text-foreground group-hover:underline">
+                                                {callerWords(call)}
+                                            </span>
+                                            {call.caller_name && call.caller_number && (
+                                                <span className="text-caption tabular-nums text-ink-3">{formatPhone(call.caller_number)}</span>
+                                            )}
+                                        </span>
+                                        <span className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-meta tabular-nums text-ink-3">
+                                            {callDayAndTime(call.created_at, summary.timezone, now)}
+                                            <Chip tone={result.tone} className="text-meta">{result.label}</Chip>
+                                        </span>
+                                    </span>
+                                    <ArrowRight className="size-4 flex-none text-ink-3 group-hover:text-foreground" aria-hidden />
+                                    <span className="sr-only">Open this call on Calls</span>
+                                </Link>
+                            </li>
+                        );
+                    })}
+                </ul>
+            )}
         </div>
     );
 }
@@ -1076,7 +1162,7 @@ export function HomeDashboard({ heading, workflowId, onTryAgent }: HomeDashboard
                                 <CallersWanted summary={summary} empty={empty} />
                             </div>
                             <div className="order-3 min-w-0 @4xl:order-none">
-                                <WhenPeopleCalled summary={summary} empty={empty} />
+                                <WhenPeopleCalled summary={summary} now={now} empty={empty} />
                             </div>
                         </div>
                     </div>
