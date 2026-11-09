@@ -125,6 +125,48 @@ async def record_turned_away_call(
     return run.id
 
 
+async def record_hung_up_call(
+    *,
+    workflow,
+    organization_id: int,
+    provider: str,
+    caller_number: str | None,
+    called_number: str | None,
+    call_id: str,
+    telephony_configuration_id: int | None,
+    phone_number_id: int | None,
+    limit: int | None,
+) -> int | None:
+    """Keep a turned-away call on a provider that can only end it (no busy
+    line, no forward, no voicemail), so the owner still sees it and can ring
+    the caller back."""
+    from types import SimpleNamespace
+
+    from api.services.calls.lines_busy import HUNG_UP_REASON, stored_choice
+
+    facts = getattr(workflow, "template_context_variables", None) or {}
+    return await record_turned_away_call(
+        workflow=workflow,
+        organization_id=organization_id,
+        provider=provider,
+        normalized_data=SimpleNamespace(
+            from_number=caller_number,
+            to_number=called_number,
+            call_id=call_id,
+            account_id=None,
+            from_country=None,
+            to_country=None,
+            raw_data={},
+        ),
+        telephony_configuration_id=telephony_configuration_id,
+        phone_number_id=phone_number_id,
+        plan=LinesBusyPlan(
+            LinesBusyAction.BUSY_MESSAGE, stored_choice(facts), reason=HUNG_UP_REASON
+        ),
+        limit=limit,
+    )
+
+
 async def finish_turned_away_call(
     workflow_run_id: int, gathered: dict[str, Any] | None = None
 ) -> None:

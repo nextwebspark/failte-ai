@@ -101,6 +101,11 @@ VOICEMAIL = "voicemail"
 LINES_BUSY_PROVIDERS = frozenset({"twilio", "telnyx"})
 
 
+# The provider can't say anything either: the call was just ended
+# (Asterisk/ARI hangs up the channel).
+HUNG_UP_REASON = "hung_up"
+
+
 class NotForwardedReason(StrEnum):
     NO_NUMBER = "no_number"
     CLOSED = "closed"
@@ -281,6 +286,8 @@ def lines_busy_outcome(gathered: Mapping[str, Any] | None) -> LinesBusyOutcome |
     if left_voicemail(gathered):
         return LinesBusyOutcome.VOICEMAIL
     if planned_action(gathered) == LinesBusyAction.BUSY_MESSAGE:
+        if _part(gathered, PLAN_KEY).get("reason") == HUNG_UP_REASON:
+            return LinesBusyOutcome.NO_MESSAGE
         return LinesBusyOutcome.TOLD_BUSY
     return LinesBusyOutcome.NO_MESSAGE
 

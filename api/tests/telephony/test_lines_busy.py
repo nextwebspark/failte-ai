@@ -779,3 +779,27 @@ async def test_turned_away_calls_are_not_reviewed():
         outcome = await review.review_call(77)
     assert outcome == review.ReviewOutcome.LINES_BUSY
     ask.assert_not_awaited()
+
+
+async def test_asterisk_turned_away_call_is_kept_as_no_message():
+    db = Mock()
+    db.create_workflow_run = AsyncMock(return_value=SimpleNamespace(id=901))
+    db.update_workflow_run = AsyncMock()
+    with patch.object(service, "db_client", db):
+        run_id = await service.record_hung_up_call(
+            workflow=_workflow({"transfer_number": TEAM}),
+            organization_id=11,
+            provider="ari",
+            caller_number="+353870000009",
+            called_number="1001",
+            call_id="chan-1",
+            telephony_configuration_id=4,
+            phone_number_id=8,
+            limit=10,
+        )
+    assert run_id == 901
+    gathered = db.create_workflow_run.call_args.kwargs["gathered_context"]
+    assert gathered["lines_busy"]["reason"] == "hung_up"
+    # Nobody heard a busy line: the follow-up says they left no message.
+    assert rules.lines_busy_outcome(gathered) == LinesBusyOutcome.NO_MESSAGE
+    assert db.update_workflow_run.await_args.kwargs["is_completed"] is True
