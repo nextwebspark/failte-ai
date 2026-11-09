@@ -1268,8 +1268,10 @@ async def seed_lines_busy_calls(
         )
         async with db_client.async_session() as session:
             session.add(run)
-            await session.commit()
+            # Read the id before commit: commit expires the instance.
+            await session.flush()
             run_id = run.id
+            await session.commit()
         if audio:
             key = f"recordings/{run_id}.wav"
             await _put(key, audio, "audio/wav")
