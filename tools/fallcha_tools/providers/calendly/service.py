@@ -306,10 +306,15 @@ class CalendlyService:
                         "email": email,
                         "timezone": zone.key,
                     },
+                    # Calendly refuses a tracking object without all six
+                    # fields (each may be null).
                     "tracking": {
+                        "utm_campaign": None,
                         "utm_source": TRACKING_SOURCE,
                         "utm_medium": TRACKING_MEDIUM,
                         "utm_content": str(self.connection_id),
+                        "utm_term": None,
+                        "salesforce_uuid": None,
                     },
                 }
                 if details.location is not None:

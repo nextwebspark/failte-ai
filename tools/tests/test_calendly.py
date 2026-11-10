@@ -360,6 +360,15 @@ async def test_book_creates_a_real_calendly_booking(
     ]
     assert body["tracking"]["utm_source"] == "lightmove-ai"
     assert body["tracking"]["utm_content"] == str(CONNECTION_ID)
+    # Calendly answers 400 unless all six tracking fields are sent.
+    assert set(body["tracking"]) == {
+        "utm_campaign",
+        "utm_source",
+        "utm_medium",
+        "utm_content",
+        "utm_term",
+        "salesforce_uuid",
+    }
     assert post.calls[0].request.headers["Authorization"] == f"Bearer {TOKEN}"
 
 
