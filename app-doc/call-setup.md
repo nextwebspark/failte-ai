@@ -125,7 +125,10 @@ caller: it's busy on the call, so the transfer would fail or hit voicemail.
 
 1. **Open a Telnyx account and add $10.** New accounts are verified before
    international numbers can be bought; allow a day.
-2. **Buy an Irish local number** (e.g. Dublin, 01). Telnyx asks for a name,
+2. **Buy an Irish local number** (e.g. Dublin, 01). Search Ireland → Local,
+   not Mobile: Telnyx has no Irish mobile numbers, and the agent doesn't need
+   one. If no local numbers show either, use Twilio ($1.80 a month) or Plivo
+   ($0.85 a month, fewer features). Telnyx asks for a name,
    contact details, ID (personal) or company registration (business), and an
    address in the number's area with proof of address from the last 3 months.
    Approval can take a few days.
