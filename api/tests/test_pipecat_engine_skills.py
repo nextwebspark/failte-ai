@@ -323,7 +323,9 @@ async def test_narrowing_and_preload(patched_db) -> None:
     await h.engine.set_node("help")
 
     prompt = h.system_prompt
-    assert prompt.startswith("HELP PROMPT")
+    # The date line comes first, then the step's prompt.
+    assert prompt.startswith("Today is ")
+    assert prompt.split("\n\n", 1)[1].startswith("HELP PROMPT")
     assert RETURNS.body_md in prompt  # inlined
     assert "references/policy.md" in prompt
     assert "- appointment-booking: Book an appointment." in prompt
