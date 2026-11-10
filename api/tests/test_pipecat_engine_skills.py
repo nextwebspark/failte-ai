@@ -158,6 +158,13 @@ def _workflow(
     )
 
 
+@pytest.fixture(autouse=True)
+def no_date_line(monkeypatch):
+    """These tests compare whole prompts; the date line that opens every
+    agent's instructions is tested in test_call_date."""
+    monkeypatch.setattr(pipecat_engine_module, "todays_date_line", lambda *_: "")
+
+
 @pytest.fixture
 def patched_db(monkeypatch):
     monkeypatch.setattr(
@@ -237,10 +244,7 @@ async def test_index_only_before_load(patched_db) -> None:
     h = _Harness(_workflow(), SKILLS)
     await h.start()
 
-    # Every agent's instructions open with today's date, then the step's prompt.
-    date_line, rest = h.system_prompt.split("\n\n", 1)
-    assert date_line.startswith("Today is ")
-    assert rest.startswith("START PROMPT")
+    assert h.system_prompt.startswith("START PROMPT")
     assert INDEX_HEADER in h.system_prompt
     assert "- returns-policy: Handle return and refund requests." in h.system_prompt
     assert RETURNS.body_md not in h.system_prompt
@@ -323,9 +327,7 @@ async def test_narrowing_and_preload(patched_db) -> None:
     await h.engine.set_node("help")
 
     prompt = h.system_prompt
-    # The date line comes first, then the step's prompt.
-    assert prompt.startswith("Today is ")
-    assert prompt.split("\n\n", 1)[1].startswith("HELP PROMPT")
+    assert prompt.startswith("HELP PROMPT")
     assert RETURNS.body_md in prompt  # inlined
     assert "references/policy.md" in prompt
     assert "- appointment-booking: Book an appointment." in prompt
