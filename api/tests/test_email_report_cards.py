@@ -226,7 +226,7 @@ def test_card_email_renders_with_tables_only_and_escapes():
 def test_no_calls_email_is_unchanged_by_cards():
     report = replace(_report([]), calls=0)
     html = render_html(report, to="a@b.ie", links=LINKS)
-    assert "No calls today" in html and "Needs your attention" in html
+    assert "No calls since the last report" in html and "Needs your attention" in html
 
 
 async def test_email_still_goes_in_the_fixed_layout_if_cards_fail(monkeypatch):

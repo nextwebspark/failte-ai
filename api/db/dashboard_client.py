@@ -69,6 +69,34 @@ def _inbound_phone_call(organization_id: int, workflow_id: int | None):
 
 
 class DashboardClient(BaseDBClient):
+    async def get_calendar_tool_calls(
+        self,
+        organization_id: int,
+        start_utc: datetime | None,
+        end_utc: datetime | None,
+    ) -> list[tuple[int, dict[str, Any]]]:
+        """``(run id, gathered_context)`` of the workspace's calls on which a
+        calendar tool (book, move or cancel an appointment) ran, created in
+        ``[start_utc, end_utc]`` (either end open). Which of them made a
+        booking is for ``classify_call`` to say."""
+        async with self.async_session() as session:
+            query = (
+                select(WorkflowRunModel.id, WorkflowRunModel.gathered_context)
+                .join(WorkflowModel, WorkflowRunModel.workflow_id == WorkflowModel.id)
+                .where(
+                    WorkflowModel.organization_id == organization_id,
+                    func.cast(WorkflowRunModel.gathered_context, String).like(
+                        "%_appointment%"
+                    ),
+                )
+            )
+            if start_utc is not None:
+                query = query.where(WorkflowRunModel.created_at >= start_utc)
+            if end_utc is not None:
+                query = query.where(WorkflowRunModel.created_at <= end_utc)
+            rows = (await session.execute(query)).all()
+            return [(row.id, row.gathered_context or {}) for row in rows]
+
     async def get_inbound_calls_for_dashboard(
         self,
         organization_id: int,

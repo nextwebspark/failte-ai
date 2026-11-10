@@ -94,7 +94,7 @@ describe("dates", () => {
 describe("filters", () => {
     it("gives each tab a filter the API can count", () => {
         expect(tabFilter("all")).toBeNull();
-        expect(tabFilter("bookings")?.attribute).toBe("bookingOutcome");
+        expect(tabFilter("bookings")?.attribute).toBe("bookingMade");
         expect(tabFilter("team")).toEqual({ attribute: "handledBy", type: "radio", value: { status: "team" } });
     });
 

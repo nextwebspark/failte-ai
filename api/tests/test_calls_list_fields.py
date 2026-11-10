@@ -1,6 +1,7 @@
 """The Calls list: the stored review's fields on each row, the
 "Needs follow-up" filter resolved from Follow-ups, and the CSV headers."""
 
+import json
 from datetime import UTC, datetime
 from types import SimpleNamespace
 
@@ -49,6 +50,7 @@ def test_older_calls_without_a_review_have_empty_fields(annotations):
 
 def test_needs_follow_up_is_an_allowed_list_filter():
     assert "needsFollowUp" in USAGE_ALLOWED_FILTERS
+    assert "bookingMade" in USAGE_ALLOWED_FILTERS
 
 
 @pytest.mark.asyncio
@@ -242,3 +244,73 @@ async def test_after_hours_filter_takes_hours_from_the_agents(monkeypatch):
             "value": {"agents": [{"id": 1, "hours": {}}], "browser_calls": False},
         }
     ]
+
+
+def _tool(name, result, arguments=None):
+    return {
+        "function_name": name,
+        "status": "completed",
+        "arguments": arguments or {},
+        "result": json.dumps(result),
+    }
+
+
+@pytest.mark.asyncio
+async def test_bookings_tab_takes_the_calls_the_calendar_confirmed(monkeypatch):
+    """The Calls "Bookings" tab counts what Home and Reports call "bookings
+    taken": a booking the calendar confirmed. A booking the agent only noted
+    down ("requested") or a refused attempt is not one."""
+    from api.routes import organization_usage
+
+    booked = {
+        "tool_results": [
+            _tool(
+                "book_appointment",
+                {
+                    "booked": True,
+                    "event_id": "e1",
+                    "starts_at": "2026-11-06T12:30:00+00:00",
+                },
+            )
+        ]
+    }
+    refused = {"tool_results": [_tool("book_appointment", {"booked": False})]}
+    noted = {
+        "booking_outcome": "requested",
+        "tool_results": [_tool("check_appointment_availability", {})],
+    }
+    asked = {}
+
+    async def calendar_calls(organization_id, start, end):
+        asked["args"] = (organization_id, start, end)
+        return [(21, booked), (22, refused), (23, noted)]
+
+    monkeypatch.setattr(
+        organization_usage.db_client, "get_calendar_tool_calls", calendar_calls
+    )
+    start = datetime(2026, 11, 4, tzinfo=UTC)
+    end = datetime(2026, 11, 10, 23, 59, tzinfo=UTC)
+    resolved = await organization_usage.resolve_booking_made_filter(
+        3,
+        # Ids sent by the browser are never used.
+        [{"attribute": "bookingMade", "type": "runIds", "value": {"ids": [999]}}],
+        start,
+        end,
+    )
+
+    assert asked["args"] == (3, start, end)
+    assert resolved == [
+        {"attribute": "bookingMade", "type": "runIds", "value": {"ids": [21]}}
+    ]
+
+
+@pytest.mark.asyncio
+async def test_other_filters_skip_the_bookings_lookup(monkeypatch):
+    from api.routes import organization_usage
+
+    async def boom(*_):
+        raise AssertionError("not needed")
+
+    monkeypatch.setattr(organization_usage.db_client, "get_calendar_tool_calls", boom)
+    filters = [{"attribute": "callerSearch", "type": "text", "value": {"value": "x"}}]
+    assert await organization_usage.resolve_booking_made_filter(3, filters) == filters

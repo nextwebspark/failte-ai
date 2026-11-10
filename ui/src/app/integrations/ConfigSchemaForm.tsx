@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
+import { DEFAULT_TIMEZONE, timeZoneOptions } from "@/lib/appointmentHours";
 import { cn } from "@/lib/utils";
 
 import type { EnumOption, FormErrors, FormValue, FormValues, SchemaField } from "./schemaForm";
@@ -81,6 +82,11 @@ interface SchemaFieldInputProps {
     onChange: (value: FormValue) => void;
     disabled: boolean;
     id: string;
+}
+
+/** A setting that holds a time zone ("timezone", "time_zone", "calendar_timezone"). */
+export function isTimeZoneKey(key: string): boolean {
+    return /(^|_)time_?zone$/i.test(key);
 }
 
 function SchemaFieldInput({ field, value, error, onChange, disabled, id }: SchemaFieldInputProps) {
@@ -182,6 +188,35 @@ function SchemaFieldInput({ field, value, error, onChange, disabled, id }: Schem
                 </div>
                 {hints}
             </fieldset>
+        );
+    }
+
+    if (field.kind === "string" && isTimeZoneKey(field.key)) {
+        // A list of real zones rather than a box to type "Europe/Dublin" into.
+        const current = typeof value === "string" ? value : "";
+        const zones = timeZoneOptions(current || DEFAULT_TIMEZONE);
+        return (
+            <div className="grid gap-1.5">
+                <Label htmlFor={id}>{label}</Label>
+                <select
+                    id={id}
+                    className="h-9 w-full min-w-0 rounded-md border border-input bg-transparent px-3 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:opacity-50"
+                    value={current}
+                    onChange={(e) => onChange(e.target.value)}
+                    disabled={disabled}
+                    required={field.required}
+                    aria-invalid={Boolean(error)}
+                    aria-describedby={describedBy}
+                >
+                    {!field.required && <option value="">Not set: use the calendar&apos;s own time zone</option>}
+                    {zones.map((zone) => (
+                        <option key={zone} value={zone}>
+                            {zone.replaceAll("_", " ")}
+                        </option>
+                    ))}
+                </select>
+                {hints}
+            </div>
         );
     }
 

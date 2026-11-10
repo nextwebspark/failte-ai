@@ -54,7 +54,10 @@ def period_title(period: Period) -> str:
     """The span in words, as the subject and header say it."""
     start = period.start
     if period.frequency == Frequency.DAILY:
-        return day_label(start)
+        # Named after the day it is sent: the 24 hours end on that day (the
+        # day before, for a midnight send time).
+        last = (period.end - timedelta(microseconds=1)).astimezone(start.tzinfo)
+        return day_label(last)
     if period.frequency == Frequency.WEEKLY:
         last = period.end - timedelta(days=1)
         if start.month == last.month:
@@ -65,12 +68,25 @@ def period_title(period: Period) -> str:
 
 def period_subtitle(period: Period) -> str:
     if period.frequency == Frequency.DAILY:
+        since = daily_since(period)
         if not period.complete:
-            return f"Today so far, up to {clock(period.end)}"
-        return f"Midnight to {clock(period.end)}"
+            end = period.end.astimezone(period.start.tzinfo)
+            return f"{since[0].upper()}{since[1:]}, up to {clock(end)}"
+        if since == "since midnight":
+            return "The whole day"
+        return f"{clock(period.start)} yesterday to {clock(period.start)} today"
     if period.frequency == Frequency.WEEKLY:
         return "Monday to Sunday"
     return "The whole month"
+
+
+def daily_since(period: Period) -> str:
+    """Where a daily report starts, in words: "since 6 pm yesterday", or
+    "since midnight" when it is sent at midnight."""
+    start = period.start
+    if start.hour == 0 and start.minute == 0:
+        return "since midnight"
+    return f"since {clock(start)} yesterday"
 
 
 def report_name(frequency: Frequency) -> str:

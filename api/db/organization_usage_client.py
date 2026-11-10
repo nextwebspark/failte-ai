@@ -40,6 +40,7 @@ USAGE_ALLOWED_FILTERS = frozenset(
         "handledBy",
         "bookingOutcome",
         "needsFollowUp",
+        "bookingMade",
         "afterHours",
     }
 )

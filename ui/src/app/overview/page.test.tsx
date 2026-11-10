@@ -227,10 +227,13 @@ describe("Home", () => {
         const listen = screen.getAllByRole("link", { name: /listen to the call from declan murphy/i });
         expect(listen[0].getAttribute("href")).toBe("/workflow/14/run/501?from=%2Foverview");
         const quick = within(screen.getByRole("navigation", { name: "Quick links" }));
-        expect(quick.getByRole("link", { name: /opening hours/i }).getAttribute("href")).toBe("/workflow/14/facts");
-        expect(quick.getByRole("link", { name: /try your agent/i }).getAttribute("href")).toBe(
-            "/workflow/14/home?onboarding=web_call",
-        );
+        const hours = quick.getByRole("link", { name: /opening hours/i });
+        expect(hours.getAttribute("href")).toBe("/workflow/14/facts");
+        // Staff can't change the facts or start a test call (that needs
+        // agents:write), so they get no "Try your agent" anywhere on Home.
+        expect(hours.textContent).toContain("See what your agent tells callers");
+        expect(screen.queryByRole("link", { name: /try your agent/i })).toBeNull();
+        expect(screen.queryByRole("button", { name: /try your agent/i })).toBeNull();
         expect(screen.getByText("All caught up")).toBeTruthy();
     });
 

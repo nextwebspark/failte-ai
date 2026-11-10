@@ -149,7 +149,7 @@ describe("Calls list", () => {
         await screen.findByText("Sinéad O'Brien");
         await waitFor(() => expect(requests()).toHaveLength(4));
         const tabFilters = requests().slice(1).map(query => JSON.parse(String(query.filters))[0].attribute);
-        expect(tabFilters.sort()).toEqual(["bookingOutcome", "handledBy", "needsFollowUp"]);
+        expect(tabFilters.sort()).toEqual(["bookingMade", "handledBy", "needsFollowUp"]);
         expect(await screen.findByRole("button", { name: "Needs follow-up, 37 calls" })).toBeTruthy();
         // Needs follow-up keeps Follow-ups' own 30 days, so it sends no dates.
         const followUp = requests().find(query => String(query.filters).includes("needsFollowUp"))!;

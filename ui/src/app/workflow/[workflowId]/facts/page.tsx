@@ -209,7 +209,9 @@ export default function WhatYourAgentKnowsPage() {
                         What your agent knows
                     </h1>
                     <p className="mt-1.5 text-body text-ink-2">
-                        Change these any time. Your agent uses them on the next call.
+                        {canEdit
+                            ? "Change these any time. Your agent uses them on the next call."
+                            : "What your agent tells callers. The owner or an admin keeps it up to date."}
                     </p>
                 </div>
                 {facts && facts.length > 0 && (
@@ -232,9 +234,7 @@ export default function WhatYourAgentKnowsPage() {
                                 {saving ? "Saving…" : "Save changes"}
                             </Button>
                         </div>
-                    ) : (
-                        <p className="text-sm text-ink-3">Only the owner or an admin can change these.</p>
-                    )
+                    ) : null
                 )}
             </header>
 
@@ -883,12 +883,12 @@ function HowItSounds({
                     </div>
                 ) : null}
                 {can("agents:write") && (
-                    <Link
-                        href={`/workflow/${workflowId}/model`}
-                        className="-mt-1 self-start text-caption font-medium text-brand underline-offset-2 hover:underline"
-                    >
-                        {voice.state === "ready" && voice.choices ? "See all voices" : "Change the voice"}
-                    </Link>
+                        <Link
+                            href={`/workflow/${workflowId}/model`}
+                            className="-mt-1 self-start text-caption font-medium text-brand underline-offset-2 hover:underline"
+                        >
+                            {voice.state === "ready" && voice.choices ? "See all voices" : "Change the voice"}
+                        </Link>
                 )}
 
                 <CustomVoice workflowId={workflowId} canRequest={can("agents:write")} />
@@ -904,6 +904,7 @@ function HowItSounds({
                     </div>
                 )}
 
+                {can("agents:write") && (
                 <Button asChild variant="outline" className="h-9 self-start">
                     <Link
                         href={agentTalkHref(workflowId)}
@@ -917,6 +918,7 @@ function HowItSounds({
                         Try your agent
                     </Link>
                 </Button>
+                )}
             </div>
         </Card>
     );

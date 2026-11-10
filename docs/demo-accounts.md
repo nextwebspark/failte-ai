@@ -54,8 +54,10 @@ Every business has:
   agent couldn't answer and times that were full. Those older than three
   days are marked done (mostly by the staff member), about half of the
   last three days are done, and the last few hours are open.
-- **Email reports**: daily and weekly, to the owner's address (confirmed).
-  Locally, Mailpit (http://localhost:8025) catches them.
+- **Email reports**: daily (at 6 pm, covering the 24 hours since the last
+  one) and weekly (Mondays at 8 am), to the owner's address (confirmed).
+  Locally, Mailpit (http://localhost:8025) catches them. A daily sent before
+  the refresh has run says "no calls": refresh before 6 pm on the demo day.
 
 | Business | Template | What callers ring about |
 | --- | --- | --- |
@@ -70,9 +72,10 @@ own.
 
 ### What these screens can't show
 
-- **No phone number is linked.** Home says "Your agent isn't answering: no
-  phone number is linked" in a red banner. That is true: the demo
-  workspaces have no phone line, and the seed does not invent one.
+- **Phone numbers.** The seed links none. Locally, Linen Quay answers the
+  Asterisk extension `7000` and CH Marine `7002` (linked by hand for the
+  phone tests), so their Home says "Answering calls · 7000". The other three
+  have no number, and their Home says so in a red banner.
 - **Bookings is empty** ("Connect your calendar to take bookings"). The
   Bookings page reads live from a connected Google Calendar and no calendar
   is connected. The seeded history still has calls where a booking was
@@ -129,10 +132,14 @@ carry no cost.
    with its recording, transcript and what the agent wrote down. It gets
    no call review (reviews are written for phone calls only).
 
-It does not appear on **Home** or **Follow-ups**: those count inbound
-phone calls only, and a browser test call is not one. To show a call
-landing on Home and Follow-ups, the workspace needs a linked phone number
-and a real call to it.
+In a demo workspace it also lands on **Home** and **Follow-ups** like a
+phone call (anywhere else, browser tests stay off those pages), so a
+prospect sees their own call arrive.
+
+The refresh keeps test calls. Anything you say on one stays on Home and
+Follow-ups until it is marked done or deleted, so give a made-up name and a
+555 number, never your own. Only the owner (or an admin) can start one:
+staff don't see Try your agent.
 
 ### Transfers
 
@@ -150,6 +157,10 @@ it.
 
 Agents seeded with the old placeholder `+3530000000` get the new number
 the next time the seed runs (only against a local database).
+
+For a real phone test, put your own mobile in, and put the demo number back
+afterwards: the seed copies the agent's settings into every seeded call, so
+a real number left there ends up in the demo data.
 
 In a browser test call, asking for a person makes the agent try the
 transfer; the engine refuses it ("call transfers are not available for web

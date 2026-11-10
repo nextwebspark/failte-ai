@@ -250,7 +250,15 @@ const ROUTE_PERMISSIONS: Record<string, Permission> = {
   "/follow-ups": "calls:read",
 };
 
+/**
+ * An agent's editing screens (Advanced settings, Model and voice): only for
+ * people who may change the agent. Staff still see the agent's dashboard,
+ * facts, phone number and calls.
+ */
+const AGENT_EDIT_SCREEN = /^\/workflow\/\d+\/(settings|model)(\/|$)/;
+
 export function getRequiredPermission(pathname: string): Permission | null {
+  if (AGENT_EDIT_SCREEN.test(pathname)) return "agents:write";
   let match: Permission | null = null;
   let matchedLength = 0;
   for (const [prefix, permission] of Object.entries(ROUTE_PERMISSIONS)) {

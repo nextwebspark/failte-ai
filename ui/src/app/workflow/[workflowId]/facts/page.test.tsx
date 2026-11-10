@@ -293,7 +293,9 @@ describe("What your agent knows", () => {
         const hours = await screen.findByLabelText("Opening hours");
         expect(hours.hasAttribute("disabled")).toBe(true);
         expect(screen.queryByRole("button", { name: "Save changes" })).toBeNull();
-        expect(screen.getByText("Only the owner or an admin can change these.")).toBeTruthy();
+        expect(screen.getByText("What your agent tells callers. The owner or an admin keeps it up to date.")).toBeTruthy();
+        // Starting a test call needs agents:write.
+        expect(screen.queryByRole("link", { name: /try your agent/i })).toBeNull();
         // The builder link is for people who may edit the agent.
         expect(screen.queryByRole("link", { name: "Open advanced setup" })).toBeNull();
     });

@@ -503,6 +503,7 @@ Supported `attribute` / `type` / `value` combinations:
 | `callChannel`   | `radio`       | `{ "status": "telephony" }`                  | `telephony`, `web`, or `chat` — the group of run modes for that channel |
 | `callerSearch`  | `text`        | `{ "value": "Murphy" }`                      | the caller's captured name or number, the call's summary, or what was said |
 | `needsFollowUp` | `runIds`      | `{}`                                         | calls with an open follow-up, as on Follow-ups (last 30 days; ignores any value sent) |
+| `bookingMade`   | `runIds`      | `{}`                                         | calls on which the calendar confirmed a booking (made, moved or cancelled), as Home and Reports count bookings taken; ignores any value sent |
 | `afterHours`    | `openingHours` | `{}`                                        | inbound phone calls that came in outside their agent's opening hours (set as times), as Home counts them; ignores any value sent |
 
 Unknown attributes and unsupported `type` values are silently ignored.
@@ -556,11 +557,47 @@ async def resolve_after_hours_filter(
     ]
 
 
-async def resolve_server_filters(
-    organization_id: int, filters: Optional[list]
+async def resolve_booking_made_filter(
+    organization_id: int,
+    filters: Optional[list],
+    start: Optional[datetime] = None,
+    end: Optional[datetime] = None,
 ) -> Optional[list]:
-    """The filters the server fills in itself: follow-ups and after hours."""
+    """Turn a ``bookingMade`` filter into the ids of the calls on which the
+    calendar confirmed a booking, by the rule Home and Reports use
+    (``classify_call``), so the Calls tab and "Bookings taken" agree. Any ids
+    the request carried are replaced."""
+    if not isinstance(filters, list) or not any(
+        isinstance(f, dict) and f.get("attribute") == "bookingMade" for f in filters
+    ):
+        return filters
+    from api.services.call_notifications.outcome import CallEvent, classify_call
+
+    candidates = await db_client.get_calendar_tool_calls(organization_id, start, end)
+    ids = [
+        run_id
+        for run_id, gathered in candidates
+        if classify_call(gathered_context=gathered, logs=None, usage_info=None).event
+        is CallEvent.BOOKING_MADE
+    ]
+    return [
+        {"attribute": "bookingMade", "type": "runIds", "value": {"ids": ids}}
+        if isinstance(f, dict) and f.get("attribute") == "bookingMade"
+        else f
+        for f in filters
+    ]
+
+
+async def resolve_server_filters(
+    organization_id: int,
+    filters: Optional[list],
+    start: Optional[datetime] = None,
+    end: Optional[datetime] = None,
+) -> Optional[list]:
+    """The filters the server fills in itself: follow-ups, bookings made and
+    after hours."""
     filters = await resolve_follow_up_filter(organization_id, filters)
+    filters = await resolve_booking_made_filter(organization_id, filters, start, end)
     return await resolve_after_hours_filter(organization_id, filters)
 
 
@@ -621,7 +658,7 @@ async def get_usage_history(
             raise HTTPException(status_code=400, detail="Invalid filters format")
 
     parsed_filters = await resolve_server_filters(
-        user.selected_organization_id, parsed_filters
+        user.selected_organization_id, parsed_filters, start_dt, end_dt
     )
 
     try:
@@ -709,7 +746,7 @@ async def download_usage_runs_report(
             raise HTTPException(status_code=400, detail="Invalid filters format")
 
     parsed_filters = await resolve_server_filters(
-        user.selected_organization_id, parsed_filters
+        user.selected_organization_id, parsed_filters, start_dt, end_dt
     )
 
     output, filename = await generate_usage_runs_report_csv(

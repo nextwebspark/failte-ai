@@ -780,6 +780,8 @@ function AgentCard({
     const status = summary.agent_status;
     const agentId = primaryAgentId(summary);
     const credit = summary.credit;
+    // Starting a test call needs agents:write; staff don't get the button.
+    const { can } = useOrgConfig();
     return (
         <Card titleId="home-agent" title="Your agent">
             {/* At a glance: is it working, on which number, when it last
@@ -844,6 +846,7 @@ function AgentCard({
                 </p>
             )}
             {agentId != null &&
+                can("agents:write") &&
                 (onTryAgent ? (
                     <Button variant="soft" className="mt-4 w-full" onClick={onTryAgent}>
                         <Mic aria-hidden />
@@ -881,18 +884,21 @@ function QuickLinks({ summary, onTryAgent }: { summary: DashboardSummaryResponse
         );
     }
     if (agentId != null) {
-        links.push(
-            {
-                title: "Opening hours & what it says",
-                hint: "Change what your agent tells callers",
-                icon: Clock,
-                tone: "bg-amber-dim text-amber",
-                href: agentFactsHref(agentId),
-            },
-            onTryAgent
-                ? { title: "Try your agent", hint: "Talk to it in your browser", icon: Mic, tone: "bg-panel-2 text-ink-2", onClick: onTryAgent }
-                : { title: "Try your agent", hint: "Talk to it in your browser", icon: Mic, tone: "bg-panel-2 text-ink-2", href: agentTalkHref(agentId) },
-        );
+        links.push({
+            title: "Opening hours & what it says",
+            hint: can("agents:facts") ? "Change what your agent tells callers" : "See what your agent tells callers",
+            icon: Clock,
+            tone: "bg-amber-dim text-amber",
+            href: agentFactsHref(agentId),
+        });
+        // Starting a test call needs agents:write; staff don't get the link.
+        if (can("agents:write")) {
+            links.push(
+                onTryAgent
+                    ? { title: "Try your agent", hint: "Talk to it in your browser", icon: Mic, tone: "bg-panel-2 text-ink-2", onClick: onTryAgent }
+                    : { title: "Try your agent", hint: "Talk to it in your browser", icon: Mic, tone: "bg-panel-2 text-ink-2", href: agentTalkHref(agentId) },
+            );
+        }
     }
     if (links.length === 0) return null;
     const className =
@@ -937,6 +943,7 @@ function QuickLinks({ summary, onTryAgent }: { summary: DashboardSummaryResponse
 
 /** A brand-new business: what's set up, and a first call to make. */
 function GetStarted({ summary, onTryAgent }: { summary: DashboardSummaryResponse; onTryAgent?: () => void }) {
+    const { can } = useOrgConfig();
     const status = summary.agent_status;
     const agentId = primaryAgentId(summary);
     const number = status.phone_numbers[0];
@@ -988,7 +995,7 @@ function GetStarted({ summary, onTryAgent }: { summary: DashboardSummaryResponse
                             </a>
                         </Button>
                     </>
-                ) : agentId != null ? (
+                ) : agentId != null && can("agents:write") ? (
                     <>
                         <p className="text-body font-semibold text-foreground">Try your agent</p>
                         <p className="mt-0.5 text-sm text-ink-2">
@@ -1059,7 +1066,7 @@ export function HomeDashboard({ heading, workflowId, onTryAgent }: HomeDashboard
     const homeAgentId = summary ? primaryAgentId(summary) : null;
     const homeAgentName = summary?.agents.find((a) => a.id === homeAgentId)?.name ?? null;
     const tryOnHome = !onTryAgent && homeAgentId != null && can("agents:write");
-    const tryAgent = onTryAgent ?? (tryOnHome ? () => setTesting(true) : undefined);
+    const tryAgent = !can("agents:write") ? undefined : (onTryAgent ?? (tryOnHome ? () => setTesting(true) : undefined));
 
     const header = (
         <header className="flex flex-col gap-3 @4xl:flex-row @4xl:items-end @4xl:justify-between @4xl:gap-6">
@@ -1131,7 +1138,7 @@ export function HomeDashboard({ heading, workflowId, onTryAgent }: HomeDashboard
         <NoCallsYet
             range={range}
             onRange={setRange}
-            tryHref={agentId != null ? agentTalkHref(agentId) : null}
+            tryHref={agentId != null && can("agents:write") ? agentTalkHref(agentId) : null}
             onTryAgent={tryAgent}
         />
     );

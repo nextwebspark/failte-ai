@@ -105,7 +105,7 @@ export function AppSidebar({ docked = true }: { docked?: boolean }) {
   // The main menu stays on the agent screens it links to itself.
   const agentShell = isWorkspaceAgentScreen(pathname) ? null : agentShellContext;
   const isCollapsed = !isMobile && state === "collapsed";
-  const { role, orgContext } = useOrgConfig();
+  const { role, orgContext, can } = useOrgConfig();
   const { user } = useAuth();
   const sections = useWorkspaceNav();
   const agents = useWorkspaceAgents();
@@ -347,7 +347,7 @@ export function AppSidebar({ docked = true }: { docked?: boolean }) {
             </SidebarGroupLabel>
           )}
           <SidebarMenu className="gap-0.5">
-            {section.items.map((item) => (
+            {section.items.filter((item) => !item.editorsOnly || can("agents:write")).map((item) => (
               <SidebarMenuItem key={item.title}>
                 <SidebarLink
                   title={item.title}

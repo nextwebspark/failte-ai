@@ -22913,6 +22913,7 @@ export type GetUsageHistoryApiV1OrganizationsUsageRunsGetData = {
          * | `callChannel`   | `radio`       | `{ "status": "telephony" }`                  | `telephony`, `web`, or `chat` — the group of run modes for that channel |
          * | `callerSearch`  | `text`        | `{ "value": "Murphy" }`                      | the caller's captured name or number, the call's summary, or what was said |
          * | `needsFollowUp` | `runIds`      | `{}`                                         | calls with an open follow-up, as on Follow-ups (last 30 days; ignores any value sent) |
+         * | `bookingMade`   | `runIds`      | `{}`                                         | calls on which the calendar confirmed a booking (made, moved or cancelled), as Home and Reports count bookings taken; ignores any value sent |
          * | `afterHours`    | `openingHours` | `{}`                                        | inbound phone calls that came in outside their agent's opening hours (set as times), as Home counts them; ignores any value sent |
          *
          * Unknown attributes and unsupported `type` values are silently ignored.
@@ -23009,6 +23010,7 @@ export type DownloadUsageRunsReportApiV1OrganizationsUsageRunsReportGetData = {
          * | `callChannel`   | `radio`       | `{ "status": "telephony" }`                  | `telephony`, `web`, or `chat` — the group of run modes for that channel |
          * | `callerSearch`  | `text`        | `{ "value": "Murphy" }`                      | the caller's captured name or number, the call's summary, or what was said |
          * | `needsFollowUp` | `runIds`      | `{}`                                         | calls with an open follow-up, as on Follow-ups (last 30 days; ignores any value sent) |
+         * | `bookingMade`   | `runIds`      | `{}`                                         | calls on which the calendar confirmed a booking (made, moved or cancelled), as Home and Reports count bookings taken; ignores any value sent |
          * | `afterHours`    | `openingHours` | `{}`                                        | inbound phone calls that came in outside their agent's opening hours (set as times), as Home counts them; ignores any value sent |
          *
          * Unknown attributes and unsupported `type` values are silently ignored.

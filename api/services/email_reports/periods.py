@@ -5,8 +5,10 @@ workspace's zone, turned into an aware datetime by ``zoneinfo``, so a day that
 has 23 or 25 hours (the clocks going forward or back) is still midnight to
 midnight.
 
-* Daily: the local day from midnight up to the send time (18:00 by default),
-  sent at that time, compared with the same hours a week before.
+* Daily: the 24 hours up to the send time (18:00 by default): from the send
+  time the day before to the send time today, so each daily picks up where
+  the last one stopped and an evening call is never left out. Sent at that
+  time, compared with the same hours a week before.
 * Weekly: Monday to Sunday, sent on the Monday after at 08:00, compared with
   the week before.
 * Monthly: the calendar month, sent on the 1st of the next month at 08:00,
@@ -70,7 +72,9 @@ def _add_months(day: date, months: int) -> date:
 
 
 def daily_period(day: date, tz: ZoneInfo, send_time: time) -> Period:
-    start = _at(day, time.min, tz)
+    """The daily report sent on ``day``: from the send time the day before
+    up to the send time on ``day``."""
+    start = _at(day - timedelta(days=1), send_time, tz)
     end = _at(day, send_time, tz)
     week_before = day - timedelta(days=7)
     return Period(
@@ -78,7 +82,7 @@ def daily_period(day: date, tz: ZoneInfo, send_time: time) -> Period:
         key=day.isoformat(),
         start=start,
         end=end,
-        previous_start=_at(week_before, time.min, tz),
+        previous_start=_at(week_before - timedelta(days=1), send_time, tz),
         previous_end=_at(week_before, send_time, tz),
         send_at=end,
     )

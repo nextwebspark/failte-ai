@@ -206,14 +206,13 @@ export interface ApiFilter {
     value: unknown;
 }
 
-/** booking_outcome values that make a call a "booking" call. */
-export const BOOKING_OUTCOMES = ["booked", "moved", "requested", "cancelled"];
-
 /** The filter a tab adds, or null for All. */
 export function tabFilter(tab: CallsTab): ApiFilter | null {
     switch (tab) {
         case "bookings":
-            return { attribute: "bookingOutcome", type: "multiSelect", value: { codes: BOOKING_OUTCOMES } };
+            // The calls the calendar confirmed a booking on, as Home and
+            // Reports count "Bookings taken"; the server fills in the calls.
+            return { attribute: "bookingMade", type: "runIds", value: {} };
         case "team":
             return { attribute: "handledBy", type: "radio", value: { status: "team" } };
         case "follow_up":

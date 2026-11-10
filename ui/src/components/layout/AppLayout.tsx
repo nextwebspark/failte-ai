@@ -249,7 +249,7 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
                       children
                     )}
                   </main>
-                  {showTestRail && <AgentTestRail />}
+                  {showTestRail && can("agents:write") && <AgentTestRail />}
                 </div>
                 {showTabBar && <MobileTabBar />}
               </div>

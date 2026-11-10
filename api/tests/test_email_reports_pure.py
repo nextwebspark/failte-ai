@@ -11,9 +11,11 @@ from api.services.email_reports import tokens
 from api.services.email_reports.content import build_report, callers_wanted
 from api.services.email_reports.formatting import (
     change_text,
+    daily_since,
     duration_text,
     euro,
     mask_phone,
+    period_subtitle,
     period_title,
 )
 from api.services.email_reports.periods import (
@@ -54,12 +56,33 @@ def utc(*args) -> datetime:
 # ---------------------------------------------------------------- periods
 
 
-def test_daily_window_is_midnight_to_send_time_local():
+def test_daily_window_is_the_24_hours_up_to_the_send_time():
+    # From 6 pm the day before, so calls after one daily's send time are in
+    # the next one (a restaurant's dinner service, a plumber's evening).
     period = daily_period(datetime(2026, 11, 6).date(), DUBLIN, SIX_PM)
     assert period.key == "2026-11-06"
-    assert period.start == datetime(2026, 11, 6, 0, 0, tzinfo=DUBLIN)
+    assert period.start == datetime(2026, 11, 5, 18, 0, tzinfo=DUBLIN)
     assert period.end == period.send_at == datetime(2026, 11, 6, 18, 0, tzinfo=DUBLIN)
-    assert period.previous_start == datetime(2026, 10, 30, 0, 0, tzinfo=DUBLIN)
+    assert period.previous_start == datetime(2026, 10, 29, 18, 0, tzinfo=DUBLIN)
+    assert period.previous_end == datetime(2026, 10, 30, 18, 0, tzinfo=DUBLIN)
+
+
+def test_consecutive_dailies_leave_no_gap():
+    friday = daily_period(datetime(2026, 11, 6).date(), DUBLIN, SIX_PM)
+    saturday = daily_period(datetime(2026, 11, 7).date(), DUBLIN, SIX_PM)
+    assert saturday.start == friday.end
+
+
+def test_daily_wording_names_the_day_it_is_sent():
+    period = daily_period(datetime(2026, 11, 6).date(), DUBLIN, SIX_PM)
+    assert period_title(period) == "Friday 6 November"
+    assert period_subtitle(period) == "6 pm yesterday to 6 pm today"
+    assert daily_since(period) == "since 6 pm yesterday"
+    # Sent at midnight, a daily is the whole day before, named after it.
+    midnight = daily_period(datetime(2026, 11, 7).date(), DUBLIN, time(0, 0))
+    assert period_title(midnight) == "Friday 6 November"
+    assert period_subtitle(midnight) == "The whole day"
+    assert daily_since(midnight) == "since midnight"
 
 
 def test_daily_due_only_after_send_time():
@@ -81,11 +104,11 @@ def test_daily_send_time_follows_summer_time():
     )
 
 
-def test_day_the_clocks_go_back_has_25_hours():
-    period = daily_period(datetime(2026, 10, 25).date(), DUBLIN, time(23, 59))
+def test_daily_across_the_clocks_going_back_has_25_hours():
+    period = daily_period(datetime(2026, 10, 25).date(), DUBLIN, SIX_PM)
     # Same-zone subtraction is wall-clock in Python; compare in UTC.
     assert period.end.astimezone(UTC) - period.start.astimezone(UTC) == timedelta(
-        hours=24, minutes=59
+        hours=25
     )
 
 
@@ -513,7 +536,8 @@ def test_quiet_day_still_sends_and_says_why():
     report = _report([])
     assert subject(report) == "Bia <Bistro> · Friday 6 November: no calls"
     html = render_html(report, to="a@b.ie", links=LINKS)
-    assert "No calls today" in html and "just been quiet" in html
+    assert "No calls since the last report" in html and "just been quiet" in html
+    assert "Nobody has rung since 6 pm yesterday." in html
     off = _report([], status={"answering": False, "reason": "number_off"})
     html_off = render_html(off, to="a@b.ie", links=LINKS)
     assert "phone number is switched off" in html_off

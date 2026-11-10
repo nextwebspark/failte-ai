@@ -22,6 +22,7 @@ from api.services.email_reports.content import Bar, Report
 from api.services.email_reports.formatting import (
     change_text,
     clock,
+    daily_since,
     day_label,
     duration_text,
     euro,
@@ -500,16 +501,18 @@ def _credit(report: Report, links: Links) -> str:
 def _no_calls(report: Report) -> str:
     frequency = report.period.frequency
     span = {
-        Frequency.DAILY: f"between midnight and {clock(report.period.end.astimezone(report.tz))}",
+        Frequency.DAILY: daily_since(report.period),
         Frequency.WEEKLY: "this week",
         Frequency.MONTHLY: "this month",
     }[frequency]
+    # "Nobody has rung since 6 pm yesterday", "Nobody rang this week".
+    rang = "has rung" if frequency == Frequency.DAILY else "rang"
     if report.not_answering:
-        text = f"Nobody rang {span}."
+        text = f"Nobody {rang} {span}."
     else:
-        text = f"Nobody rang {span}. Your agent is switched on and answering, so it's just been quiet."
+        text = f"Nobody {rang} {span}. Your agent is switched on and answering, so it's just been quiet."
     heading = {
-        Frequency.DAILY: "No calls today",
+        Frequency.DAILY: "No calls since the last report",
         Frequency.WEEKLY: "No calls this week",
         Frequency.MONTHLY: "No calls this month",
     }[frequency]

@@ -80,6 +80,7 @@ ATTRIBUTE_FIELD_MAPPING = {
     "handledBy": "handled_by",
     "bookingOutcome": "gathered_context.booking_outcome",
     "needsFollowUp": "follow_up",
+    "bookingMade": "booking_made",
     "afterHours": "after_hours",
 }
 
@@ -281,6 +282,10 @@ def apply_workflow_run_filters(
     - needsFollowUp: the calls with an open follow-up. The route resolves
       these with the Follow-ups service and passes the run ids in
       ``value.ids`` (type "runIds"); without resolved ids nothing matches.
+    - bookingMade: the calls on which the calendar confirmed a booking (made,
+      moved or cancelled), as Home and Reports count "bookings taken". The
+      route resolves them (type "runIds"); without resolved ids nothing
+      matches.
     - afterHours: inbound phone calls that arrived outside their agent's
       opening hours (set as times). The route fills in the agents' hours
       (type "openingHours"); without them nothing matches.
@@ -436,9 +441,10 @@ def apply_workflow_run_filters(
                 if text:
                     filter_conditions.append(caller_search(text))
 
-            elif field == "follow_up":
+            elif field in ("follow_up", "booking_made"):
                 # Never trust ids from the request: the route replaces this
-                # filter's value with the Follow-ups service's open items.
+                # filter's value with the Follow-ups service's open items, or
+                # the calls the calendar confirmed a booking on.
                 ids = value.get("ids") if filter_type == "runIds" else None
                 run_ids = (
                     [i for i in ids if isinstance(i, int) and not isinstance(i, bool)]

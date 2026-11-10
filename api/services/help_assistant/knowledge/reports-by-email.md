@@ -13,7 +13,7 @@ To find it:
 
 Under **Which reports**, switch on any of:
 
-1. **Daily**: today's calls, from midnight to your send time. Arrives every day at that time. Change it with **Send at**.
+1. **Daily**: the last 24 hours of calls, from your send time the day before up to your send time today, so calls in the evening are in the next day's report. Arrives every day at that time. Change it with **Send at**.
 2. **Weekly**: last week's calls, Monday to Sunday. Arrives Mondays at 8 am.
 3. **Monthly**: last month's calls. Arrives on the 1st at 8 am.
 
