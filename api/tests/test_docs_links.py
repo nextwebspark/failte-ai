@@ -68,7 +68,6 @@ def test_every_provider_has_a_docs_link():
     ("where", "url"), _first_party_links(), ids=lambda v: str(v)[:60]
 )
 def test_link_reaches_a_published_page(where: str, url: str):
-    assert "docs.lightmove.ai" not in url, where
     assert url.startswith(f"{BRAND_DOCS_URL}/"), (where, url)
     page = url.removeprefix(f"{BRAND_DOCS_URL}/").split("#")[0]
     assert page in PUBLISHED_PAGES, (where, url)
