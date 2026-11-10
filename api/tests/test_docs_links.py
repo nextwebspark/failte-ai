@@ -51,8 +51,8 @@ def _first_party_links() -> list[tuple[str, str]]:
     return links
 
 
-def test_docs_live_on_the_website():
-    assert BRAND_DOCS_URL == "https://lightmove.ai/docs"
+def test_docs_live_on_their_own_subdomain():
+    assert BRAND_DOCS_URL == "https://docs.lightmove.ai"
 
 
 def test_every_provider_has_a_docs_link():
