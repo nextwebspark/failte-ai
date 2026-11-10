@@ -238,9 +238,7 @@ async def test_index_only_before_load(patched_db) -> None:
     await h.start()
 
     # Every agent's instructions open with today's date, then the step's prompt.
-    date_line, rest = h.system_prompt.split("
-
-", 1)
+    date_line, rest = h.system_prompt.split("\n\n", 1)
     assert date_line.startswith("Today is ")
     assert rest.startswith("START PROMPT")
     assert INDEX_HEADER in h.system_prompt
