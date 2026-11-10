@@ -13,7 +13,8 @@ from pydantic import BaseModel, Field
 
 from api.db import db_client
 from api.db.models import UserModel
-from api.services.auth.depends import get_user
+from api.services.auth.depends import get_user, requires
+from api.services.auth.permissions import Permission
 from api.services.help_assistant import guardrails
 from api.services.help_assistant.assistant import answer_question
 from api.services.help_assistant.feedback import HelpFeedbackIn, record_feedback
@@ -93,7 +94,11 @@ async def _agent_for(organization_id: int, page: str | None) -> int | None:
     return agents[0].id if len(agents) == 1 else None
 
 
-@router.post("/ask", response_model=HelpAnswerOut)
+@router.post(
+    "/ask",
+    response_model=HelpAnswerOut,
+    dependencies=requires(Permission.AGENTS_READ),
+)
 async def ask_help(
     body: HelpAskIn,
     user: Annotated[UserModel, Depends(get_user)],
@@ -126,7 +131,11 @@ async def ask_help(
     )
 
 
-@router.post("/feedback", status_code=204)
+@router.post(
+    "/feedback",
+    status_code=204,
+    dependencies=requires(Permission.AGENTS_READ),
+)
 async def help_feedback(
     body: HelpFeedbackIn,
     user: Annotated[UserModel, Depends(get_user)],
@@ -143,14 +152,22 @@ async def help_feedback(
     await record_feedback(organization_id, body)
 
 
-@router.get("/tickets", response_model=HelpTicketsOut)
+@router.get(
+    "/tickets",
+    response_model=HelpTicketsOut,
+    dependencies=requires(Permission.AGENTS_READ),
+)
 async def get_help_tickets(user: Annotated[UserModel, Depends(get_user)]):
     """Your recent support tickets in this workspace and their status."""
     organization_id = _organization(user)
     return HelpTicketsOut(tickets=await list_tickets(organization_id, user.id))
 
 
-@router.post("/tickets", response_model=HelpTicketOut)
+@router.post(
+    "/tickets",
+    response_model=HelpTicketOut,
+    dependencies=requires(Permission.AGENTS_READ),
+)
 async def create_help_ticket(
     body: TicketIn,
     user: Annotated[UserModel, Depends(get_user)],
