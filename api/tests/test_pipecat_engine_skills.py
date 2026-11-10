@@ -237,7 +237,12 @@ async def test_index_only_before_load(patched_db) -> None:
     h = _Harness(_workflow(), SKILLS)
     await h.start()
 
-    assert h.system_prompt.startswith("START PROMPT")
+    # Every agent's instructions open with today's date, then the step's prompt.
+    date_line, rest = h.system_prompt.split("
+
+", 1)
+    assert date_line.startswith("Today is ")
+    assert rest.startswith("START PROMPT")
     assert INDEX_HEADER in h.system_prompt
     assert "- returns-policy: Handle return and refund requests." in h.system_prompt
     assert RETURNS.body_md not in h.system_prompt
