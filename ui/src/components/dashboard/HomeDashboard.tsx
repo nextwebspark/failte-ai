@@ -22,7 +22,7 @@ import {
     RefreshCw,
 } from "lucide-react";
 import Link from "next/link";
-import { type ReactNode, useState } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 
 import { callsQueryToParams, DEFAULT_QUERY, formatPhone } from "@/app/usage/callsView";
 import type {
@@ -114,6 +114,38 @@ function CardLink({ href, children }: { href: string; children: ReactNode }) {
 /** The quiet note in a card's header slot ("Today", "Calls per hour, today"). */
 function CardHint({ children }: { children: ReactNode }) {
     return <span className="text-right text-caption text-ink-3">{children}</span>;
+}
+
+/** "Updated 3:42 pm" and a button to look for new calls now. Home also
+ * looks by itself every 30 seconds while it is open. */
+function RefreshControl({
+    refreshing,
+    updatedAt,
+    onRefresh,
+}: {
+    refreshing: boolean;
+    updatedAt: Date | null;
+    onRefresh: () => void;
+}) {
+    return (
+        <div className="flex items-center gap-2 self-start text-caption text-ink-3 @4xl:self-end">
+            {updatedAt && (
+                <span aria-live="polite">
+                    Updated {updatedAt.toLocaleTimeString("en-IE", { hour: "numeric", minute: "2-digit" })}
+                </span>
+            )}
+            <Button
+                variant="ghost"
+                size="sm"
+                className="h-8 gap-1.5 px-2 text-caption"
+                onClick={onRefresh}
+                disabled={refreshing}
+            >
+                <RefreshCw className={cn("size-3.5", refreshing && "animate-spin")} aria-hidden />
+                {refreshing ? "Refreshing…" : "Refresh"}
+            </Button>
+        </div>
+    );
 }
 
 function RangeSwitch({ value, onChange }: { value: DashboardRange; onChange: (v: DashboardRange) => void }) {
@@ -1048,8 +1080,13 @@ export interface HomeDashboardProps {
 export function HomeDashboard({ heading, workflowId, onTryAgent }: HomeDashboardProps) {
     useOwnsPageHeading();
     const [range, setRange] = useState<DashboardRange>("today");
-    const { result, reload } = useDashboardSummary(range, workflowId);
+    const { result, reload, refresh, refreshing, updatedAt } = useDashboardSummary(range, workflowId);
     const followUps = useFollowUps("open", workflowId);
+    // Refresh the calls and the follow-ups together.
+    const refreshAll = () => {
+        refresh();
+        followUps.reloadQuietly();
+    };
     const [answering, setAnswering] = useState<FollowUpItem | null>(null);
     // One clock per render, so every relative time agrees.
     const now = new Date();
@@ -1066,6 +1103,13 @@ export function HomeDashboard({ heading, workflowId, onTryAgent }: HomeDashboard
     const homeAgentId = summary ? primaryAgentId(summary) : null;
     const homeAgentName = summary?.agents.find((a) => a.id === homeAgentId)?.name ?? null;
     const tryOnHome = !onTryAgent && homeAgentId != null && can("agents:write");
+    const afterTest = useRef<number | null>(null);
+    useEffect(() => {
+        if (testing || afterTest.current === null) return;
+        const timers = [4_000, 15_000].map((delay) => window.setTimeout(refreshAll, delay));
+        return () => timers.forEach((t) => window.clearTimeout(t));
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [testing]);
     const tryAgent = !can("agents:write") ? undefined : (onTryAgent ?? (tryOnHome ? () => setTesting(true) : undefined));
 
     const header = (
@@ -1092,6 +1136,7 @@ export function HomeDashboard({ heading, workflowId, onTryAgent }: HomeDashboard
                     )}
                     <RangeSwitch value={range} onChange={setRange} />
                 </div>
+                {summary && <RefreshControl refreshing={refreshing} updatedAt={updatedAt} onRefresh={refreshAll} />}
             </div>
         </header>
     );
@@ -1202,7 +1247,12 @@ export function HomeDashboard({ heading, workflowId, onTryAgent }: HomeDashboard
                     workflowId={homeAgentId}
                     agentName={homeAgentName}
                     open={testing}
-                    onOpenChange={setTesting}
+                    onOpenChange={(open) => {
+                        setTesting(open);
+                        // A test call shows up once it has been saved and
+                        // read: look again shortly after the panel closes.
+                        if (!open) afterTest.current = Date.now();
+                    }}
                 />
             )}
         </div>

@@ -7,7 +7,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { DateRange } from 'react-day-picker';
 import { toast } from 'sonner';
 
-import { getReportCallsApiV1OrganizationsReportsCallsGet, getReportOverviewApiV1OrganizationsReportsOverviewGet } from '@/client/sdk.gen';
+import {
+    emailMeThisReportApiV1OrganizationsReportsEmailMePost,
+    getReportCallsApiV1OrganizationsReportsCallsGet,
+    getReportOverviewApiV1OrganizationsReportsOverviewGet,
+} from '@/client/sdk.gen';
 import type { ReportLayoutView, ReportOverviewResponse, ReportRange } from '@/client/types.gen';
 import { AddAnswerDialog } from '@/components/dashboard/AddAnswerDialog';
 import { RESULT_WORDS } from '@/components/dashboard/dashboardView';
@@ -66,6 +70,7 @@ export default function ReportsPage() {
     const [answering, setAnswering] = useState<{ run_id: number; workflow_id: number; questions: string[] } | null>(null);
     const [downloading, setDownloading] = useState(false);
     const downloadingRef = useRef(false);
+    const [emailing, setEmailing] = useState(false);
     const [now] = useState(() => new Date());
 
     const query = useMemo<Query | null>(() => {
@@ -116,6 +121,25 @@ export default function ReportsPage() {
         },
         [],
     );
+
+    // The days and agent on screen, sent now to your own sign-in address.
+    const emailMe = async () => {
+        if (!auth.isAuthenticated || !query || emailing || !report) return;
+        setEmailing(true);
+        try {
+            const response = await emailMeThisReportApiV1OrganizationsReportsEmailMePost({ query });
+            if (response.error || !response.data) {
+                const detail = (response.error as { detail?: unknown } | undefined)?.detail;
+                toast.error(typeof detail === 'string' ? detail : "Couldn't send the report. Please try again.");
+                return;
+            }
+            toast.success(`Sent to ${response.data.sent_to}. It can take a minute to arrive.`);
+        } catch {
+            toast.error("Couldn't send the report. Please try again.");
+        } finally {
+            setEmailing(false);
+        }
+    };
 
     const download = async () => {
         if (!auth.isAuthenticated || !query || downloadingRef.current || !report) return;
@@ -273,6 +297,10 @@ export default function ReportsPage() {
                                 <Download aria-hidden />
                                 {downloading ? 'Preparing…' : 'Download'}
                             </Button>
+                            <Button variant="outline" className="h-10 flex-1 bg-panel sm:flex-none" onClick={emailMe} disabled={emailing || !report}>
+                                <Mail aria-hidden />
+                                {emailing ? 'Sending…' : 'Email me'}
+                            </Button>
                             {report?.layout.can_customise ? (
                                 <Button className="h-10 flex-1 sm:flex-none" onClick={() => setCustomising(true)}>
                                     <Settings2 aria-hidden />
@@ -340,7 +368,7 @@ export default function ReportsPage() {
                             <span>Times in {report.timezone.replace(/_/g, ' ')} time.</span>
                             <Link href="/settings/reports" className="inline-flex items-center gap-1 font-medium text-brand hover:underline">
                                 <Mail className="size-3.5" aria-hidden />
-                                Get this report by email
+                                Get it every day or week by email
                             </Link>
                         </p>
                     </div>

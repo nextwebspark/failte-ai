@@ -9,7 +9,9 @@ To find it:
 
 - **On a computer:** choose **Settings** in the left menu (under **Your agent**), then **Reports by email**.
 - **On a phone:** tap **More** in the bottom tab bar, then **Settings**, then **Reports by email**.
-- Or press **Get this report by email** at the bottom of the **Reports** screen.
+- Or press **Get it every day or week by email** at the bottom of the **Reports** screen.
+
+To send the report you're looking at once, now, press **Email me** at the top of the **Reports** screen. It sends the days and agent you picked to your own sign-in address only.
 
 Under **Which reports**, switch on any of:
 

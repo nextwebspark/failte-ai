@@ -54,6 +54,9 @@ from api.services.pipecat.pipeline_builder import (
 from api.services.pipecat.pipeline_metrics_aggregator import PipelineMetricsAggregator
 from api.services.pipecat.pre_call_fetch import execute_pre_call_fetch
 from api.services.pipecat.processors.answer_supervisor import AnswerSupervisor
+from api.services.pipecat.realtime.user_transcripts import (
+    keep_realtime_user_transcripts,
+)
 from api.services.pipecat.realtime_feedback_events import (
     build_node_transition_event,
 )
@@ -1068,6 +1071,9 @@ async def _run_pipeline_impl(
             ),
         )
         user_context_aggregator, assistant_context_aggregator = context_aggregator
+        # Keep caller lines the model reports late (while muted, or as a tool
+        # starts), so the transcript and the call's record have them.
+        keep_realtime_user_transcripts(user_context_aggregator)
     else:
         user_context_aggregator, assistant_context_aggregator = (
             LLMContextAggregatorPair(

@@ -20,6 +20,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta
 from enum import StrEnum
+from typing import Literal
 from zoneinfo import ZoneInfo
 
 
@@ -28,6 +29,12 @@ class Frequency(StrEnum):
     WEEKLY = "weekly"
     MONTHLY = "monthly"
 
+
+# A report asked for from the Reports screen ("Email me this report"): the
+# span on screen, sent once, never scheduled. Not a Frequency, so nothing that
+# loops over the scheduled reports ever meets it.
+ON_DEMAND: Literal["on_demand"] = "on_demand"
+ReportKind = Frequency | Literal["on_demand"]
 
 DEFAULT_DAILY_SEND_TIME = time(18, 0)
 # Weekly and monthly reports arrive at the start of the working day.
@@ -44,7 +51,7 @@ GRACE: dict[Frequency, timedelta] = {
 
 @dataclass(frozen=True, slots=True)
 class Period:
-    frequency: Frequency
+    frequency: ReportKind
     # Stable id of the span: "2026-11-06", "2026-W45" (ISO week), "2026-10".
     key: str
     start: datetime
@@ -189,3 +196,34 @@ def parse_clock(value: str) -> time:
     if len(hour) != 2 or len(minute) != 2:
         raise ValueError("Use HH:MM")
     return time(int(hour), int(minute))
+
+
+def is_hourly(period: Period) -> bool:
+    """Whether the report's chart goes by hour (a daily, or a one-day span
+    asked for on demand) rather than by day."""
+    if period.frequency == Frequency.DAILY:
+        return True
+    return period.frequency == ON_DEMAND and period.end - period.start <= timedelta(
+        hours=25
+    )
+
+
+def on_demand_period(
+    start: datetime,
+    end: datetime,
+    previous_start: datetime,
+    previous_end: datetime,
+    now: datetime,
+) -> Period:
+    """The span shown on the Reports screen, as an emailed report."""
+    return Period(
+        frequency=ON_DEMAND,
+        key=f"{start.date().isoformat()}..{end.date().isoformat()}",
+        start=start,
+        end=end,
+        previous_start=previous_start,
+        previous_end=previous_end,
+        send_at=now,
+        # A span cut off at now (it includes today) is still running.
+        complete=end < now,
+    )

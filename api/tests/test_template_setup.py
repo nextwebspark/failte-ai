@@ -602,3 +602,19 @@ def test_set_calendar_tool_swaps_or_removes_the_calendar():
     ]
     removed = set_calendar_tool(swapped, None, {"google", "calendly"})
     assert [n["data"]["tool_uuids"] for n in removed["nodes"]] == [["x"], [], [], []]
+
+
+def test_restaurant_opens_openly_and_offers_a_person_before_goodbye():
+    definition = _restaurant().definition
+    start = next(n for n in definition["nodes"] if n["type"] == "startCall")
+    # Not "Would you like to book a table": the caller says what they want.
+    assert start["data"]["greeting"].endswith("How can I help you today?")
+    prompt = start["data"]["prompt"]
+    assert "how many people" in prompt
+    assert "put you through to someone on the team" in prompt
+    # A corrected email is read back again before booking.
+    assert "spell the corrected address back again" in prompt
+    conditions = [e["data"]["condition"] for e in definition["edges"]]
+    assert any("closing offer" in c for c in conditions)
+    # Booking alone doesn't move on to taking a message.
+    assert not any(c.startswith("The booking is done") for c in conditions)

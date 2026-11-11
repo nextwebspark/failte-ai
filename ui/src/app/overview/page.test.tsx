@@ -365,4 +365,14 @@ describe("Home", () => {
         fireEvent.click(screen.getByRole("button", { name: /try again/i }));
         expect(await screen.findByText("Handled by your agent")).toBeTruthy();
     });
+    it("looks for new calls on Refresh without blanking the page", async () => {
+        render(<OverviewPage />);
+        await screen.findByText("Recent calls");
+        expect(mocks.summary).toHaveBeenCalledTimes(1);
+        expect(screen.getByText(/^Updated /)).toBeTruthy();
+        fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
+        await waitFor(() => expect(mocks.summary).toHaveBeenCalledTimes(2));
+        // The numbers stay on screen while it looks.
+        expect(screen.getByText("Recent calls")).toBeTruthy();
+    });
 });

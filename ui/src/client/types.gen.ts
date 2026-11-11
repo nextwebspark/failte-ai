@@ -4530,6 +4530,16 @@ export type ElevenlabsTtsConfiguration = {
 };
 
 /**
+ * EmailMeResponse
+ */
+export type EmailMeResponse = {
+    /**
+     * Sent To
+     */
+    sent_to: string;
+};
+
+/**
  * EmailReportSettingsResponse
  */
 export type EmailReportSettingsResponse = {
@@ -23451,6 +23461,65 @@ export type GetReportCallsApiV1OrganizationsReportsCallsGetResponses = {
 };
 
 export type GetReportCallsApiV1OrganizationsReportsCallsGetResponse = GetReportCallsApiV1OrganizationsReportsCallsGetResponses[keyof GetReportCallsApiV1OrganizationsReportsCallsGetResponses];
+
+export type EmailMeThisReportApiV1OrganizationsReportsEmailMePostData = {
+    body?: never;
+    headers?: {
+        /**
+         * Authorization
+         */
+        authorization?: string | null;
+        /**
+         * X-Api-Key
+         */
+        'X-API-Key'?: string | null;
+    };
+    path?: never;
+    query?: {
+        range?: ReportRange;
+        /**
+         * Start Date
+         */
+        start_date?: string | null;
+        /**
+         * End Date
+         */
+        end_date?: string | null;
+        /**
+         * Workflow Id
+         */
+        workflow_id?: number | null;
+        /**
+         * Timezone
+         *
+         * IANA zone; defaults to the agent's or workspace's
+         */
+        timezone?: string | null;
+    };
+    url: '/api/v1/organizations/reports/email-me';
+};
+
+export type EmailMeThisReportApiV1OrganizationsReportsEmailMePostErrors = {
+    /**
+     * Not found
+     */
+    404: unknown;
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type EmailMeThisReportApiV1OrganizationsReportsEmailMePostError = EmailMeThisReportApiV1OrganizationsReportsEmailMePostErrors[keyof EmailMeThisReportApiV1OrganizationsReportsEmailMePostErrors];
+
+export type EmailMeThisReportApiV1OrganizationsReportsEmailMePostResponses = {
+    /**
+     * Successful Response
+     */
+    200: EmailMeResponse;
+};
+
+export type EmailMeThisReportApiV1OrganizationsReportsEmailMePostResponse = EmailMeThisReportApiV1OrganizationsReportsEmailMePostResponses[keyof EmailMeThisReportApiV1OrganizationsReportsEmailMePostResponses];
 
 export type ResetReportLayoutApiV1OrganizationsReportsLayoutDeleteData = {
     body?: never;

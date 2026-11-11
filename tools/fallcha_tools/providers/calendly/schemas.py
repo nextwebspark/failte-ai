@@ -30,6 +30,7 @@ __all__ = [
     "CallerPhone",
     "Handoff",
     "PartOfDay",
+    "PartySize",
     "Reason",
     "RelativeDay",
     "Slot",
@@ -54,6 +55,18 @@ CallerPhone = Annotated[
         description=(
             "The caller's phone number, digits only, as confirmed back to them. "
             "Leave empty if they did not give one."
+        ),
+    ),
+]
+
+PartySize = Annotated[
+    int | None,
+    Field(
+        ge=1,
+        le=500,
+        description=(
+            "How many people the booking is for (a table for four: 4), if the "
+            "caller said. Leave empty for a booking that isn't for a group."
         ),
     ),
 ]

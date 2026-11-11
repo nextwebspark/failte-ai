@@ -37,6 +37,7 @@ import {
     type RangeKey,
     totals,
 } from "./bookingsView";
+import { BookingWeek } from "./BookingWeek";
 
 export default function BookingsPage() {
     const { can, role, loading } = useOrgConfig();
@@ -62,6 +63,8 @@ function BookingsScreen() {
 
     const [range, setRange] = useState<RangeKey>("next7");
     const [showCancelled, setShowCancelled] = useState(false);
+    // The days as a list, or as a week grid of hours.
+    const [view, setView] = useState<"list" | "week">("list");
     const [data, setData] = useState<BookingListResponse | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<FriendlyError | null>(null);
@@ -243,6 +246,29 @@ function BookingsScreen() {
                             Bookings your agent took on the phone, read live from your calendar. Ones your team adds
                             straight into the calendar aren&apos;t listed here.
                         </p>
+                        <div className="flex flex-none flex-wrap items-center gap-4">
+                        <div
+                            className="grid grid-cols-2 gap-1 rounded-lg border border-line bg-panel p-1"
+                            role="group"
+                            aria-label="Show as"
+                        >
+                            {(["list", "week"] as const).map((option) => (
+                                <button
+                                    key={option}
+                                    type="button"
+                                    aria-pressed={view === option}
+                                    onClick={() => setView(option)}
+                                    className={cn(
+                                        "min-h-9 rounded-md px-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/40 motion-reduce:transition-none md:min-h-8",
+                                        view === option
+                                            ? "bg-brand text-primary-foreground"
+                                            : "text-ink-2 hover:bg-brand-dim hover:text-brand",
+                                    )}
+                                >
+                                    {option === "list" ? "List" : "Week"}
+                                </button>
+                            ))}
+                        </div>
                         {sums.cancelled > 0 && (
                             <div className="flex min-h-10 flex-none items-center gap-2">
                                 <Switch
@@ -254,6 +280,7 @@ function BookingsScreen() {
                                 <Label htmlFor="show-cancelled">Show cancelled</Label>
                             </div>
                         )}
+                        </div>
                     </div>
                 </section>
 
@@ -264,6 +291,8 @@ function BookingsScreen() {
                                 ? "When your agent books a table or appointment, it shows up here straight away."
                                 : "Your agent isn't taking bookings at the moment. You can switch it on below."}
                         </EmptyState>
+                    ) : view === "week" ? (
+                        <BookingWeek days={days} />
                     ) : (
                         <BookingDays days={days} calendarNames={names} />
                     )}

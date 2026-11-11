@@ -100,12 +100,13 @@ describe("BookingsPage", () => {
         mocks.update.mockResolvedValue({ data: {} });
     });
 
-    it("lists bookings by day with the party size, or Not asked", async () => {
+    it("lists bookings by day with the party size when there is one", async () => {
         render(<BookingsPage />);
 
         expect(await screen.findByText("Mary Byrne")).toBeTruthy();
         expect(screen.getByText("4 guests")).toBeTruthy();
-        expect(screen.getByText("Not asked")).toBeTruthy();
+        // No party size (a shop or clinic booking): no party row at all.
+        expect(screen.queryByText("Not asked")).toBeNull();
         expect(screen.getByText(/^Today ·/)).toBeTruthy();
         expect(screen.getByText(/^Tomorrow ·/)).toBeTruthy();
         expect(screen.getByRole("link", { name: /087 123 4567/ }).getAttribute("href")).toBe("tel:0871234567");
@@ -401,5 +402,13 @@ describe("BookingsPage", () => {
         // Tomorrow's cancelled booking is counted while hidden.
         expect(within(days).getByText("1 booking · 1 cancelled")).toBeTruthy();
         expect(screen.getAllByText(/^Booked by your agent/).length).toBeGreaterThan(0);
+    });
+    it("shows the same bookings on a week grid", async () => {
+        render(<BookingsPage />);
+        expect(await screen.findByText("Mary Byrne")).toBeTruthy();
+        fireEvent.click(screen.getByRole("button", { name: "Week" }));
+        expect(screen.getByRole("button", { name: "Week" }).getAttribute("aria-pressed")).toBe("true");
+        const grid = screen.getAllByRole("group", { name: /^Week of/ })[0];
+        expect(within(grid).getByText(/Mary Byrne · 4 guests/)).toBeTruthy();
     });
 });

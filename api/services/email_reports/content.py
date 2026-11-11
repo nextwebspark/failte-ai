@@ -25,7 +25,7 @@ from api.services.dashboard.summary import (
     tiles,
 )
 from api.services.email_reports.cards import EmailBlock, email_blocks
-from api.services.email_reports.periods import Frequency, Period
+from api.services.email_reports.periods import Period, is_hourly
 
 TOP_FOLLOW_UPS = 5
 TOP_REASONS = 6
@@ -131,11 +131,7 @@ def build_report(
     """*agents* are the report's agents (all, or the one it is about), for
     the after-hours count."""
     counted = tiles(calls)
-    when = (
-        hour_bars(calls, tz)
-        if period.frequency == Frequency.DAILY
-        else day_bars(calls, period, tz)
-    )
+    when = hour_bars(calls, tz) if is_hourly(period) else day_bars(calls, period, tz)
     reason = None
     if agent_status is not None and not agent_status.get("answering", True):
         raw = agent_status.get("reason")

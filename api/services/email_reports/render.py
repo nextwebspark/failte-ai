@@ -34,7 +34,7 @@ from api.services.email_reports.formatting import (
     report_name,
     short_day,
 )
-from api.services.email_reports.periods import Frequency
+from api.services.email_reports.periods import ON_DEMAND, Frequency, is_hourly
 
 # Brand (brand-kit/lightmove-brand, ui/src/app/globals.css).
 BRAND = "#0e7a4b"
@@ -271,10 +271,10 @@ def _reason_bars(bars: list[Bar]) -> str:
 def _bar_labels(report: Report) -> list[str]:
     bars = report.when
     frequency = report.period.frequency
-    if frequency == Frequency.DAILY:
+    if is_hourly(report.period):
         return [hour_label(int(b.label)) if int(b.label) % 3 == 0 else "" for b in bars]
     days = [date.fromisoformat(b.label) for b in bars]
-    if frequency == Frequency.WEEKLY:
+    if frequency == Frequency.WEEKLY or (frequency == ON_DEMAND and len(days) <= 7):
         return [d.strftime("%a") for d in days]
     return [str(d.day) if d.day in (1, 8, 15, 22, 29) else "" for d in days]
 
@@ -462,7 +462,7 @@ def _column_chart(report: Report, title: str = "When people called") -> str:
             f'white-space:nowrap">{_e(label)}</td>'
         )
     busiest = max(bars, key=lambda b: b.count)
-    if report.period.frequency == Frequency.DAILY:
+    if is_hourly(report.period):
         peak = f"Busiest hour: {hour_label(int(busiest.label))} ({plural(busiest.count, 'call')})."
     else:
         peak_day = date.fromisoformat(busiest.label)
@@ -501,6 +501,7 @@ def _credit(report: Report, links: Links) -> str:
 def _no_calls(report: Report) -> str:
     frequency = report.period.frequency
     span = {
+        ON_DEMAND: "in this time",
         Frequency.DAILY: daily_since(report.period),
         Frequency.WEEKLY: "this week",
         Frequency.MONTHLY: "this month",
@@ -512,6 +513,7 @@ def _no_calls(report: Report) -> str:
     else:
         text = f"Nobody {rang} {span}. Your agent is switched on and answering, so it's just been quiet."
     heading = {
+        ON_DEMAND: "No calls in this time",
         Frequency.DAILY: "No calls since the last report",
         Frequency.WEEKLY: "No calls this week",
         Frequency.MONTHLY: "No calls this month",

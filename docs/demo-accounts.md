@@ -76,12 +76,15 @@ own.
   Asterisk extension `7000` and CH Marine `7002` (linked by hand for the
   phone tests), so their Home says "Answering calls · 7000". The other three
   have no number, and their Home says so in a red banner.
-- **Bookings is empty** ("Connect your calendar to take bookings"). The
-  Bookings page reads live from a connected Google Calendar and no calendar
-  is connected. The seeded history still has calls where a booking was
-  made (as if a calendar had been connected then), so Home counts
-  "bookings taken" and Calls shows them; the live agent, with no calendar,
-  takes a message for a booking instead.
+- **Bookings** reads live from a connected calendar, so it only lists real
+  bookings. The seed connects none: it says "Connect your calendar". The
+  seeded history still has calls where a booking was made, so Home counts
+  "bookings taken" and Calls shows them. Locally, Linen Quay and CH Marine
+  are connected to the test Calendly (lightmove.ai@gmail.com), so a test
+  call can book for real: it appears on Bookings (List or Week), with the
+  phone number and party size the caller gave, and Calendly emails the
+  address the caller spelled out. Its slot length is the Calendly event
+  type's (30 minutes on the test account).
 - **Today** is only as busy as the time of day allows: run the refresh on
   the morning of the demo (after 10am a handful of calls today is
   guaranteed). Just after midnight Today is empty and honestly so.
@@ -130,7 +133,14 @@ carry no cost.
    table, ask about parking, report an outage.
 3. The call appears on **Calls** as soon as it ends, as a "Test call",
    with its recording, transcript and what the agent wrote down. It gets
-   no call review (reviews are written for phone calls only).
+   no call review (reviews are written for phone calls only). Home looks
+   for new calls by itself (every 30 seconds, and a few seconds after the
+   test panel closes); **Refresh** next to the date range looks now.
+
+The restaurant agent opens with "How can I help you today?", asks how many
+people before looking for times, spells a corrected email back before
+booking, and before saying goodbye asks whether there's anything else or
+whether the caller wants to speak to someone on the team.
 
 In a demo workspace it also lands on **Home** and **Follow-ups** like a
 phone call (anywhere else, browser tests stay off those pages), so a

@@ -21,6 +21,7 @@ from fallcha_tools.providers.calendly.schemas import (
     CallerName,
     CallerPhone,
     PartOfDay,
+    PartySize,
     Reason,
     RelativeDay,
     SlotId,
@@ -72,11 +73,13 @@ def register_calendly_tools(
         caller_email: CallerEmail,
         caller_phone: CallerPhone = None,
         reason: Reason = None,
+        party_size: PartySize = None,
     ) -> BookingResult:
         """Use only after check_appointment_availability returned slots and the
         caller picked one. Calendly needs the caller's email address to book:
         ask for it, spell it back letter by letter and get a yes before calling
-        this. Also pass their phone number if they gave one. Books it in the
+        this. Also pass their phone number if they gave one, and how many people
+        it is for if they said. Books it in the
         business's Calendly, which emails the caller the details. If "booked"
         is false, read the "say" field: it offers other times, asks for the
         email again ("needs_email"), or, when "handoff" is set, transfer the
@@ -85,5 +88,12 @@ def register_calendly_tools(
         use the links in their Calendly email, or take a message."""
         svc = await service()
         return await _guard(
-            svc.book(slot_id, caller_name, caller_email, caller_phone, reason)
+            svc.book(
+                slot_id,
+                caller_name,
+                caller_email,
+                caller_phone,
+                reason,
+                party_size=party_size,
+            )
         )

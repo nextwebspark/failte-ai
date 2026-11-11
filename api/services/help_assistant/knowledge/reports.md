@@ -85,7 +85,9 @@ You can also add answers from [Follow-ups](/follow-ups) or on [What your agent k
 
 ## How do I get the report by email?
 
-At the bottom of the **Reports** screen, press **Get this report by email**. It takes you to **Settings > Reports by email**, where you choose daily, weekly or monthly reports and who gets them.
+To send the report on screen once, now, press **Email me** at the top of the **Reports** screen: it goes to your own sign-in address, with the days and agent you picked.
+
+For regular reports, press **Get it every day or week by email** at the bottom of the **Reports** screen. It takes you to **Settings > Reports by email**, where you choose daily, weekly or monthly reports and who gets them.
 
 The email includes the cards ticked **in email** under **Customise**, in the same order as on the page.
 

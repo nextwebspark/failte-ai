@@ -209,7 +209,9 @@ def _booking_steps(thing: str, details: str, check_with: str, read_back: str) ->
         "and wait for a clear yes.\n"
         "4. Book it, then confirm the day and time the calendar gave. If the "
         "booking needs an email address (Calendly does), ask for it, spell it "
-        "back and get a yes first.\n"
+        "back and get a yes first. If they correct it, spell the corrected "
+        "address back again and wait for a clear yes: never book with an "
+        "address they haven't confirmed.\n"
         "If a calendar answer has a handoff (booking is switched off, the group "
         "is too big, or it is fully booked), read its line to the caller, then "
         "transfer them to the team if you can; otherwise take a message with the "
@@ -233,6 +235,21 @@ def _booking_steps(thing: str, details: str, check_with: str, read_back: str) ->
 
 
 BOOKING_QUESTIONS = "booking_questions"
+
+# Before saying goodbye after a real enquiry, offer a person (as CH Marine
+# asked for its agent). Asked once; whether a person can be reached is the
+# transfer tool's call (opening hours, a number set).
+CLOSING_OFFER = (
+    "Before you say goodbye to a caller who asked for something (a booking, "
+    'a question, a change), ask once: "Is there anything else, or would you '
+    'like me to put you through to someone on the team?" If they want a '
+    "person, tell them you are putting them through and use the transfer "
+    "tool; if you have no transfer tool, it is outside opening hours or "
+    "nobody answers, take a message for the team instead. Don't ask it on a "
+    "wrong number, a silent call or a sales call, right after taking a "
+    "message or putting them through, or if you already offered a person on "
+    "this call."
+)
 
 
 def _booking_toggles(*options: SetupOption) -> TemplateSetupField:
@@ -507,34 +524,33 @@ _RESTAURANT = AgentSpec(
         "{{extra_info | fallback:nothing else.}}\n\n"
         "Be warm and concise. Never invent availability you do not have tools for."
     ),
-    greeting=(
-        "Hello, {{business_name}}. Would you like to book a table, or can I help "
-        "with something else?"
-    ),
+    greeting="Hello, {{business_name}}. How can I help you today?",
     opening=StageSpec(
         name="Take a booking or answer",
         prompt=(
             _booking_steps(
                 "a table",
-                "the day, the time, the name for the booking and a mobile number",
+                "how many people, the day, the time, the name for the booking "
+                "and a mobile number",
                 "the day, the part of the day and, once you know it, the number "
                 "of people",
                 "A table for four on Friday at half seven, under Mary Byrne. Shall I book that?",
             )
             + "\n\n"
             "Answer simple questions about hours, location or notes from the facts "
-            "you have."
+            "you have.\n\n" + CLOSING_OFFER
         ),
-        done_when=(
-            "The booking is done, you have a message for the team, or they need a person."
-        ),
+        # Not "the booking is done": the agent stays here after booking, to
+        # make the closing offer before the call ends.
+        done_when=("They want to leave a message for the team, or they need a person."),
     ),
     stages=[_message_stage()],
     closing_prompt=(
         "Thank them for choosing {{business_name}} and say a short goodbye."
     ),
     end_call_when=(
-        "The booking or message is done, they say goodbye, or it is a wrong number."
+        "The booking or message is done and you have made the closing offer "
+        "(or it doesn't apply), they say goodbye, or it is a wrong number."
     ),
     captured_fields=[
         *_message_fields(),

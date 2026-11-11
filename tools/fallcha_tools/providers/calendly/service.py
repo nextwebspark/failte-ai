@@ -97,6 +97,22 @@ _PLAIN_LOCATIONS = frozenset(
 )
 _TEXT_QUESTIONS = frozenset({"string", "text"})
 _PHONE_WORDS = ("phone", "mobile", "number", "contact")
+# A question about the group, e.g. "Number of people" or "How many guests?".
+# Checked before the phone words, since "number" is in both.
+_PARTY_WORDS = (
+    "people",
+    "guests",
+    "party",
+    "covers",
+    "how many",
+    "group size",
+    "persons",
+)
+
+
+def _asks_party(question: str) -> bool:
+    return any(word in question.lower() for word in _PARTY_WORDS)
+
 
 SAY_BOOKING_OFF = (
     "I can't book that on this call, but I can take your details and the team "
@@ -271,6 +287,8 @@ class CalendlyService:
         caller_email: str,
         caller_phone: str | None = None,
         reason: str | None = None,
+        *,
+        party_size: int | None = None,
     ) -> BookingResult:
         refusal = self._refusal()
         if refusal is not None:
@@ -288,6 +306,7 @@ class CalendlyService:
                     await self._event_type(),
                     phone=self._phone(caller_phone, zone),
                     reason=_text(reason),
+                    party_size=party_size,
                 )
                 if details.ask_phone:
                     return BookingResult(booked=False, say=SAY_ASK_PHONE)
@@ -546,7 +565,11 @@ class CalendlyService:
 
     @staticmethod
     def _booking_details(
-        event_type: Mapping[str, Any], *, phone: str | None, reason: str | None
+        event_type: Mapping[str, Any],
+        *,
+        phone: str | None,
+        reason: str | None,
+        party_size: int | None = None,
     ) -> _Booking:
         location: dict[str, JsonValue] | None = None
         locations = [
@@ -572,7 +595,7 @@ class CalendlyService:
                     return _Booking(ask_phone=True)
                 return _Booking(refusal="its location needs the caller to type one")
         answers: list[dict[str, JsonValue]] = []
-        phone_given = reason_given = False
+        phone_given = reason_given = party_given = False
         questions = [
             q for q in event_type.get("custom_questions") or [] if isinstance(q, dict)
         ]
@@ -584,12 +607,17 @@ class CalendlyService:
             if not isinstance(name, str) or not isinstance(position, int):
                 continue
             kind = question.get("type")
+            asks_party = kind in _TEXT_QUESTIONS and _asks_party(name)
             asks_phone = kind == "phone_number" or (
                 kind in _TEXT_QUESTIONS
+                and not asks_party
                 and any(word in name.lower() for word in _PHONE_WORDS)
             )
             answer: str | None = None
-            if asks_phone and phone and not phone_given:
+            if asks_party:
+                if party_size and not party_given:
+                    answer, party_given = str(party_size), True
+            elif asks_phone and phone and not phone_given:
                 answer, phone_given = phone, True
             elif (
                 kind in _TEXT_QUESTIONS
@@ -691,12 +719,16 @@ class CalendlyService:
                 continue
             phone = None
             reason = None
+            party_size = None
             for qa in invitee.get("questions_and_answers") or []:
                 if not isinstance(qa, dict):
                     continue
                 question = str(qa.get("question") or "").lower()
                 answer = _text(qa.get("answer"))
-                if any(word in question for word in _PHONE_WORDS):
+                if _asks_party(question):
+                    digits = "".join(ch for ch in answer or "" if ch.isdigit())
+                    party_size = party_size or (int(digits) if digits else None)
+                elif any(word in question for word in _PHONE_WORDS):
                     phone = phone or answer
                 else:
                     reason = reason or answer
@@ -717,6 +749,7 @@ class CalendlyService:
                 status="cancelled" if cancelled else "confirmed",
                 caller_name=_text(invitee.get("name")),
                 caller_phone=phone,
+                party_size=party_size,
                 reason=reason,
                 created_at=_parse_time(invitee.get("created_at")),
             )

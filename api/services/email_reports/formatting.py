@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 from decimal import Decimal
 
 from api.services.call_notifications.phone import to_e164
-from api.services.email_reports.periods import Frequency, Period
+from api.services.email_reports.periods import ON_DEMAND, Frequency, Period, ReportKind
 
 _MONTHS = [
     "January",
@@ -58,6 +58,13 @@ def period_title(period: Period) -> str:
         # day before, for a midnight send time).
         last = (period.end - timedelta(microseconds=1)).astimezone(start.tzinfo)
         return day_label(last)
+    if period.frequency == ON_DEMAND:
+        last = (period.end - timedelta(microseconds=1)).astimezone(start.tzinfo)
+        if last.date() == start.date():
+            return day_label(start)
+        if start.month == last.month:
+            return f"{start.day}–{last.day} {_MONTHS[start.month - 1]}"
+        return f"{short_day(start)} – {short_day(last)}"
     if period.frequency == Frequency.WEEKLY:
         last = period.end - timedelta(days=1)
         if start.month == last.month:
@@ -75,6 +82,11 @@ def period_subtitle(period: Period) -> str:
         if since == "since midnight":
             return "The whole day"
         return f"{clock(period.start)} yesterday to {clock(period.start)} today"
+    if period.frequency == ON_DEMAND:
+        if not period.complete:
+            end = period.end.astimezone(period.start.tzinfo)
+            return f"So far, up to {clock(end)}"
+        return "As picked on your Reports screen"
     if period.frequency == Frequency.WEEKLY:
         return "Monday to Sunday"
     return "The whole month"
@@ -89,23 +101,25 @@ def daily_since(period: Period) -> str:
     return f"since {clock(start)} yesterday"
 
 
-def report_name(frequency: Frequency) -> str:
+def report_name(frequency: ReportKind) -> str:
     return {
+        ON_DEMAND: "report",
         Frequency.DAILY: "daily report",
         Frequency.WEEKLY: "weekly report",
         Frequency.MONTHLY: "monthly report",
     }[frequency]
 
 
-def compared_with(frequency: Frequency) -> str:
+def compared_with(frequency: ReportKind) -> str:
     return {
+        ON_DEMAND: "the time just before",
         Frequency.DAILY: "the same time last week",
         Frequency.WEEKLY: "the week before",
         Frequency.MONTHLY: "the month before",
     }[frequency]
 
 
-def change_text(change: int | None, frequency: Frequency) -> str | None:
+def change_text(change: int | None, frequency: ReportKind) -> str | None:
     """ "4 more than the same time last week", or None when too few calls."""
     if change is None:
         return None
