@@ -17,7 +17,7 @@ Open it here: [Phone number](/workflow/{agent}/deployment).
 
 Phone setup on the **Phone number** screen is for an **Admin** or a **Developer**. They can get a number, connect a phone provider account and press the check button.
 
-If you're the **Owner** or **Staff**, the screen shows "Ask a workspace admin to set up a phone number for this agent." Ask an Admin in your workspace to do it.
+If you're the **Owner** or **Staff**, the screen shows "Only the owner or an admin can set up or change this agent's phone number. Home shows the number it answers on." Ask an Admin in your workspace to do it.
 
 The Owner can still change everything on [What your agent knows](/workflow/{agent}/facts), including the number calls are passed to.
 <!-- source: ui/src/app/workflow/[workflowId]/deployment/PhoneSetup.tsx, api/routes/phone_setup.py, api/services/auth/permissions.py, ui/src/lib/auth/roles.ts -->

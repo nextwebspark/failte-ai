@@ -27,6 +27,7 @@ from api.services.report_cards.service import (
     ReportRange,
     change_layout,
     layout_view,
+    report_bounds,
     report_calls,
     report_overview,
     resolve_pack,
@@ -134,6 +135,30 @@ class AfterHoursCard(BaseModel):
     agents_without_hours: list[str]
 
 
+class BusySlot(BaseModel):
+    # Monday is 0; the hour is local (0-23).
+    weekday: int
+    hour: int
+    calls: int
+
+
+class LinesBusyCard(BaseModel):
+    # Callers who rang while every line was busy (the calls-at-once limit).
+    calls: int
+    # Rang the team's phone; of those, someone picked up.
+    forwarded: int
+    answered: int
+    voicemails: int
+    # Offered a voicemail (or the forward rang out) and left none.
+    no_message: int
+    # Heard the busy line only.
+    told_busy: int
+    # The hours it happened most, busiest first.
+    busiest: list[BusySlot]
+    # The calls-at-once limit when it last happened.
+    limit: int | None
+
+
 class AgentPerformanceCard(BaseModel):
     calls: int
     handled: int
@@ -231,6 +256,17 @@ class AppointmentType(BaseModel):
 class AppointmentTypesCard(BaseModel):
     types: list[AppointmentType]
     other_calls: int
+
+
+class ProductAsked(BaseModel):
+    label: str
+    calls: int
+
+
+class TopProductsCard(BaseModel):
+    products: list[ProductAsked]
+    other_products: int
+    calls_with_product: int
 
 
 class EmergenciesByHourCard(BaseModel):
@@ -334,6 +370,7 @@ class ReportCards(BaseModel):
     follow_ups: FollowUpsCard | None = None
     after_hours: AfterHoursCard | None = None
     agent_performance: AgentPerformanceCard | None = None
+    lines_busy: LinesBusyCard | None = None
     bookings_taken: BookingsCard | None = None
     covers_booked: CoversCard | None = None
     tables_full: TablesFullCard | None = None
@@ -359,6 +396,11 @@ class ReportCards(BaseModel):
     call_spikes: SpikesCard | None = None
     repeat_callers: RepeatCallersCard | None = None
     waiting_for_team: WaitingCard | None = None
+    product_enquiries: ReasonCard | None = None
+    orders_delivery: ReasonCard | None = None
+    returns: ReasonCard | None = None
+    servicing_requests: ReasonCard | None = None
+    top_products: TopProductsCard | None = None
 
 
 # ----------------------------------------------------------------- layout
@@ -509,6 +551,62 @@ async def get_report_calls(
         )
     except RangeError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+class EmailMeResponse(BaseModel):
+    sent_to: str
+
+
+@router.post("/email-me", response_model=EmailMeResponse)
+async def email_me_this_report(
+    membership: ReportsReader,
+    range: RangeQuery = ReportRange.LAST_7_DAYS,
+    start_date: DayQuery = None,
+    end_date: DayQuery = None,
+    workflow_id: WorkflowQuery = None,
+    timezone: ZoneQuery = None,
+) -> Any:
+    """ "Email me this report": the days and agent on the Reports screen, as
+    the emailed report, sent now to the member asking and nobody else."""
+    from api.services.dashboard.service import resolve_timezone
+    from api.services.email import get_email_sender
+    from api.services.email_reports import service as email_reports
+
+    to = membership.user.email
+    if not to:
+        raise HTTPException(
+            status_code=422, detail="Your account has no email address."
+        )
+    try:
+        delivers = get_email_sender().delivers
+    except Exception:  # noqa: BLE001 - a misconfigured provider sends nothing
+        delivers = False
+    if not delivers:
+        raise HTTPException(
+            status_code=503, detail="Email isn't set up on this server yet."
+        )
+    agents = await _check_workflow(membership.organization_id, workflow_id)
+    tz = await resolve_timezone(
+        membership.organization_id, timezone, workflow_id, agents
+    )
+    try:
+        bounds = report_bounds(range, tz, datetime.now(UTC), start_date, end_date)
+    except RangeError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    error = await email_reports.send_on_demand(
+        membership.organization_id,
+        user_id=membership.user.id,
+        to=to,
+        start=bounds.start,
+        end=bounds.end,
+        previous_start=bounds.previous_start,
+        previous_end=bounds.previous_end,
+        workflow_id=workflow_id,
+        show_credit=membership.can(Permission.BILLING_READ),
+    )
+    if error:
+        raise HTTPException(status_code=429 if "hour" in error else 503, detail=error)
+    return EmailMeResponse(sent_to=to)
 
 
 def _who(membership: OrgMembership) -> str | None:

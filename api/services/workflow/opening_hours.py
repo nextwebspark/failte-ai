@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Mapping, Sequence
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime, time, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo
 
@@ -244,6 +244,15 @@ def transfer_closed(
     return not is_open(hours, now or datetime.now(UTC))
 
 
+def is_after_hours(
+    agent_id: int, arrived: datetime, hours_by_agent: Mapping[int, OpeningHours]
+) -> bool:
+    """Whether a call to *agent_id* arrived while its business was closed.
+    False for agents without structured hours: nothing is guessed."""
+    hours = hours_by_agent.get(agent_id)
+    return hours is not None and not is_open(hours, arrived)
+
+
 def after_hours_count(
     calls: Sequence[tuple[int, datetime]],
     hours_by_agent: Mapping[int, OpeningHours],
@@ -254,5 +263,50 @@ def after_hours_count(
     return sum(
         1
         for agent_id, arrived in calls
-        if agent_id in hours_by_agent and not is_open(hours_by_agent[agent_id], arrived)
+        if is_after_hours(agent_id, arrived, hours_by_agent)
     )
+
+
+# How finely open time is read when the day is shown in another zone than
+# the business's own (rare: Home shows the workspace's zone for all agents).
+_OTHER_ZONE_STEP = 5
+
+
+def open_minutes(hours: OpeningHours, day: date, zone: ZoneInfo) -> list[bool]:
+    """For each of the 1440 wall-clock minutes of *day* in *zone*, whether
+    the business is open, by the same rule as ``is_open`` (yesterday's range
+    that runs past midnight included). In the business's own zone it is read
+    straight from the times; in another zone it is checked every few
+    minutes."""
+    if zone.key == hours.timezone:
+        minutes = [False] * DAY_MINUTES
+        weekday = day.weekday()
+        for r in hours.days[weekday]:
+            for m in range(r.start, min(r.end, DAY_MINUTES)):
+                minutes[m] = True
+        for r in hours.days[(weekday - 1) % 7]:
+            for m in range(0, max(0, r.end - DAY_MINUTES)):
+                minutes[m] = True
+        return minutes
+    midnight = datetime.combine(day, time.min, tzinfo=zone)
+    minutes = []
+    for start in range(0, DAY_MINUTES, _OTHER_ZONE_STEP):
+        at = midnight + timedelta(minutes=start)
+        minutes.extend([is_open(hours, at)] * _OTHER_ZONE_STEP)
+    return minutes[:DAY_MINUTES]
+
+
+def minute_ranges(minutes: Sequence[bool]) -> list[tuple[int, int]]:
+    """Runs of open minutes as ``(start, end)`` minute pairs, end exclusive:
+    [F, T, T, F] → [(1, 3)]."""
+    ranges: list[tuple[int, int]] = []
+    start: int | None = None
+    for m, value in enumerate(minutes):
+        if value and start is None:
+            start = m
+        elif not value and start is not None:
+            ranges.append((start, m))
+            start = None
+    if start is not None:
+        ranges.append((start, len(minutes)))
+    return ranges

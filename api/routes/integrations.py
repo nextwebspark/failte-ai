@@ -132,7 +132,26 @@ async def list_bookings(
         raise IntegrationInvalidRequestError(
             "Give a range of up to 62 days, with start before end"
         )
-    return await integrations.list_bookings(_actor(membership), start, end)
+    listed = await integrations.list_bookings(_actor(membership), start, end)
+    if not listed.bookings:
+        return listed
+    # What the calendar didn't keep (a phone number, the party size), from the
+    # calls that made the bookings. Bookings are made at most a few months
+    # ahead, so the calls are recent.
+    from datetime import UTC
+
+    from api.db import db_client
+    from api.services.tool_integrations.booking_details import (
+        details_by_event,
+        fill_in,
+    )
+
+    calls = await db_client.get_calendar_tool_calls(
+        membership.organization_id, datetime.now(UTC) - timedelta(days=180), None
+    )
+    return listed.model_copy(
+        update={"bookings": fill_in(listed.bookings, details_by_event(calls))}
+    )
 
 
 @router.put("/bookings/calendars/{connection_id}")

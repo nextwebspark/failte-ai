@@ -10,6 +10,7 @@ import ReportsPage from './page';
 const mocks = vi.hoisted(() => ({
     overview: vi.fn(),
     calls: vi.fn(),
+    emailMe: vi.fn(),
     save: vi.fn(),
     reset: vi.fn(),
     auth: { isAuthenticated: true },
@@ -28,6 +29,7 @@ vi.stubGlobal(
 vi.mock('@/client/sdk.gen', () => ({
     getReportOverviewApiV1OrganizationsReportsOverviewGet: mocks.overview,
     getReportCallsApiV1OrganizationsReportsCallsGet: mocks.calls,
+    emailMeThisReportApiV1OrganizationsReportsEmailMePost: mocks.emailMe,
     saveReportLayoutApiV1OrganizationsReportsLayoutPut: mocks.save,
     resetReportLayoutApiV1OrganizationsReportsLayoutDelete: mocks.reset,
     getBusinessFactsApiV1WorkflowWorkflowIdBusinessFactsGet: vi.fn(),
@@ -288,5 +290,14 @@ describe('ReportsPage', () => {
         render(<ReportsPage />);
         fireEvent.click(await screen.findByRole('button', { name: 'Download' }));
         await waitFor(() => expect(toast.error).toHaveBeenCalledWith("Couldn't download the calls. Please try again."));
+    });
+    it('emails the report on screen to the member asking', async () => {
+        mocks.emailMe.mockResolvedValue({ data: { sent_to: 'niamh@example.ie' } });
+        render(<ReportsPage />);
+        fireEvent.click(await screen.findByRole('button', { name: 'Email me' }));
+        await waitFor(() => expect(mocks.emailMe).toHaveBeenCalledTimes(1));
+        // The same days and agent as the report on screen.
+        expect(mocks.emailMe.mock.calls[0][0]).toEqual({ query: mocks.overview.mock.calls.at(-1)?.[0].query });
+        await waitFor(() => expect(toast.success).toHaveBeenCalledWith(expect.stringContaining('niamh@example.ie')));
     });
 });

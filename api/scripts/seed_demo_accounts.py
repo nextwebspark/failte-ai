@@ -36,6 +36,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import base64
+import copy
 import hashlib
 import io
 import json
@@ -54,7 +55,7 @@ import httpx
 from loguru import logger
 from sqlalchemy import select, text
 
-from api.constants import APP_ROOT_DIR, ENVIRONMENT
+from api.constants import APP_ROOT_DIR, DEFAULT_ORG_CONCURRENCY_LIMIT, ENVIRONMENT
 from api.db import db_client
 from api.db.models import UserModel, WorkflowModel, WorkflowRunModel
 from api.enums import OrganizationConfigurationKey, OrgRole
@@ -67,14 +68,19 @@ from api.scripts.demo_businesses import (
     SILENT,
     TRANSFER_NOT_ANSWERED,
     Business,
+    BusyCall,
     Ctx,
     Plan,
     call_dates,
     fit_to_opening_hours,
 )
+from api.scripts.demo_chmarine import CHMARINE
 from api.services.call_review.categories import TEMPLATE_CATEGORY_FACT, reason_set
 from api.services.call_review.review import (
     CALL_REVIEW_KEY,
+    CALLER_LANGUAGE_KEY,
+    EMERGENCY_KEY,
+    OTHER_LANGUAGE_KEY,
     REQUEST_TAGS_KEY,
     REVIEW_VERSION,
     clean_request_tags,
@@ -93,6 +99,7 @@ from api.services.pipecat.realtime_feedback_events import (
 )
 from api.services.pronunciation import irish as irish_pronunciation
 from api.services.storage import get_current_storage_backend, storage_fs
+from api.services.workflow.agent_languages import AGENT_LANGUAGES_KEY, speaks
 from api.services.workflow.opening_hours import closed_transfer_result
 from api.utils.auth import hash_password
 from api.utils.transcript import generate_transcript_text
@@ -316,7 +323,17 @@ async def ensure_agent(business: Business, organization_id: int, owner: UserMode
         workflow = await _agent(organization_id, name)
         assert workflow is not None
         facts = workflow.template_context_variables or {}
-    if facts.get(TEMPLATE_CATEGORY_FACT) != template.category:
+    # A business may file its calls under a category of its own (CH Marine:
+    # "retail"), set over the starter's on the agent it made.
+    category = getattr(business, "template_category", None) or template.category
+    if facts.get(TEMPLATE_CATEGORY_FACT) == template.category != category:
+        await db_client.update_business_facts(
+            workflow.id, organization_id, {TEMPLATE_CATEGORY_FACT: category}
+        )
+        workflow = await _agent(organization_id, name)
+        assert workflow is not None
+        facts = workflow.template_context_variables or {}
+    if facts.get(TEMPLATE_CATEGORY_FACT) != category:
         raise RuntimeError(f"{name}: template_category was not set")
     if business.opening_hours is not None:
         # Set on every run, so agents seeded before keep up with the hours.
@@ -327,7 +344,35 @@ async def ensure_agent(business: Business, organization_id: int, owner: UserMode
         )
         workflow = await _agent(organization_id, name)
         assert workflow is not None
+    if await _refresh_safety_rules(workflow, template.category):
+        workflow = await _agent(organization_id, name)
+        assert workflow is not None
     return workflow
+
+
+async def _refresh_safety_rules(workflow: WorkflowModel, category: str | None) -> bool:
+    """Demo agents are LightMove's own, so a re-run brings an agent seeded
+    before the 8 Nov 2026 safety rules (emergencies, gas, Eircodes, languages,
+    ending the call) up to the current starter, keeping its facts, tools and
+    call history. A no-op once it has them. Customers' agents are never
+    touched: they keep the prompt they were created with."""
+    from api.services.workflow.starter_templates import with_current_safety_rules
+
+    definition = copy.deepcopy(workflow.workflow_definition or {})
+    changed = False
+    for node in definition.get("nodes", []):
+        if node.get("id") != "global":
+            continue
+        prompt = (node.get("data") or {}).get("prompt") or ""
+        updated = with_current_safety_rules(prompt, category)
+        if updated != prompt:
+            node["data"]["prompt"] = updated
+            changed = True
+    if changed:
+        await db_client.save_workflow_draft(workflow.id, workflow_definition=definition)
+        await db_client.publish_workflow_draft(workflow.id)
+        print(f"  {workflow.name}: added the current safety and language rules")
+    return changed
 
 
 async def _agent(organization_id: int, name: str) -> WorkflowModel | None:
@@ -589,7 +634,7 @@ async def render(
 ) -> Rendered:
     """The call log (and with ``speech`` the audio) of one planned call."""
     rng = random.Random(f"timing:{ctx.caller.name}:{start.isoformat()}")
-    voice = caller_voice(ctx)
+    voice = plan.caller_voice or caller_voice(ctx)
     events: list[dict] = []
     tool_results: list[dict] = []
     mixed: list[bytes] = []
@@ -825,6 +870,13 @@ def _review(plan: Plan, agent: Agent, created: datetime) -> dict:
         "model": REVIEW_MODEL,
         "created_at": created.isoformat(),
     }
+    if plan.speech:
+        # As the live review writes them: the language against the agent's.
+        review[CALLER_LANGUAGE_KEY] = plan.caller_language
+        review[OTHER_LANGUAGE_KEY] = not speaks(
+            agent.facts.get(AGENT_LANGUAGES_KEY), plan.caller_language
+        )
+    review[EMERGENCY_KEY] = plan.emergency
     if reasons.request_tags:
         # As the live review writes them: known tags, each once, in order.
         review[REQUEST_TAGS_KEY] = clean_request_tags(plan.request_tags, reasons)
@@ -841,6 +893,10 @@ def _follow_up_kinds(plan: Plan) -> list[str | None]:
         kinds.append(FollowUpKind.UNANSWERED_QUESTION.value)
     if plan.time_was_full and plan.outcome != BOOKING_MADE:
         kinds.append(FollowUpKind.TIME_WAS_FULL.value)
+    if plan.caller_language != "en":
+        kinds.append(FollowUpKind.OTHER_LANGUAGE.value)
+    if plan.emergency:
+        kinds.append(FollowUpKind.EMERGENCY.value)
     return kinds
 
 
@@ -989,7 +1045,10 @@ async def seed_calls(
             business=business,
             greeting=agent.greeting,
         )
-        plan = fit_to_opening_hours(_choose(business, rng)(ctx), ctx)
+        scenario = _choose(business, rng)
+        # A pinned call still draws, so every other call stays as it was.
+        scenario = business.pinned.get(index, scenario)
+        plan = fit_to_opening_hours(scenario(ctx), ctx)
         start = start_local.astimezone(UTC)
         recorded = index < recordings and speech is not None
         rendered = await render(plan, ctx, agent, start, speech if recorded else None)
@@ -1090,6 +1149,151 @@ async def seed_calls(
     return totals
 
 
+# --- callers turned away because every line was busy ---------------------------
+
+
+def busy_call_time(call: BusyCall, now_local: datetime) -> datetime:
+    """The most recent ``call.weekday`` at ``call.at`` that is already past."""
+    hour, minute = (int(part) for part in call.at.split(":"))
+    days_back = (now_local.weekday() - call.weekday) % 7
+    moment = (now_local - timedelta(days=days_back)).replace(
+        hour=hour, minute=minute, second=0, microsecond=0
+    )
+    return moment - timedelta(days=7) if moment > now_local else moment
+
+
+def busy_call_run(
+    business: Business,
+    agent: Agent,
+    call: BusyCall,
+    caller,
+    start: datetime,
+    *,
+    voicemail_seconds: int,
+    rng: random.Random,
+) -> WorkflowRunModel:
+    """A turned-away call shaped as ``api.services.telephony.lines_busy``
+    stores one. The demo agents' "Pass calls to your team" number is the
+    reserved demo number, which is never dialled, so these calls were asked
+    for a voicemail instead of being forwarded (reason ``demo_number``)."""
+    gathered: dict[str, Any] = {
+        "call_id": f"CA{rng.getrandbits(128):032x}",
+        "mapped_call_disposition": "lines_busy",
+        "lines_busy": {
+            "action": "voicemail",
+            "chosen": None,
+            "reason": "demo_number",
+            "limit": int(DEFAULT_ORG_CONCURRENCY_LIMIT),
+            "forward_to": None,
+            "voicemail_fallback": False,
+            "at": _iso(start),
+        },
+    }
+    if call.message is not None:
+        gathered["lines_busy_voicemail"] = {
+            "seconds": voicemail_seconds,
+            "stored": voicemail_seconds > 0,
+        }
+    return WorkflowRunModel(
+        name=f"WR-TEL-BUSY-{rng.randint(0, 99_999_999):08d}",
+        workflow_id=agent.workflow.id,
+        mode="twilio",
+        call_type="inbound",
+        state="completed",
+        is_completed=True,
+        storage_backend=get_current_storage_backend().value,
+        # No call time: a turned-away call is never billed.
+        usage_info={},
+        cost_info={},
+        initial_context={
+            "caller_number": caller.number or "anonymous",
+            "called_number": business.called_number,
+            "direction": "inbound",
+            "provider": "twilio",
+        },
+        gathered_context=gathered,
+        logs={},
+        annotations={},
+        extra={SEED_MARK: {"version": SEED_VERSION, "business": business.slug}},
+        created_at=start,
+    )
+
+
+async def seed_lines_busy_calls(
+    business: Business,
+    organization_id: int,
+    agent: Agent,
+    *,
+    now: datetime,
+    speech: Speech | None,
+) -> int:
+    """Add the business's "Lines were busy" calls (``business.lines_busy``).
+    Run after ``seed_calls``, which clears every seeded call first. Without
+    audio (``--no-audio``) there is no voicemail to keep, so those callers
+    read as having left none."""
+    now_local = now.astimezone(TIMEZONE)
+    backend = get_current_storage_backend().value
+    added = 0
+    for index, call in enumerate(business.lines_busy):
+        rng = random.Random(f"{business.slug}:busy:{index}")
+        caller = next(
+            c for c in (_caller(business, rng) for _ in range(50)) if c.number
+        )
+        start = busy_call_time(call, now_local).astimezone(UTC)
+        audio = b""
+        seconds = 0
+        if call.message is not None and speech is not None:
+            ctx = Ctx(
+                rng=rng,
+                caller=caller,
+                started=start.astimezone(TIMEZONE),
+                business=business,
+                greeting=agent.greeting,
+            )
+            words = call.message.format(first=caller.first, number=ctx.number_words())
+            pcm = _silence(0.4) + _trim(
+                await speech.pcm(caller_voice(ctx), spoken(words))
+            )
+            pcm += _silence(0.8)
+            audio = _wav(pcm)
+            seconds = max(1, round(len(pcm) / 2 / SAMPLE_RATE))
+        run = busy_call_run(
+            business,
+            agent,
+            call,
+            caller,
+            start,
+            voicemail_seconds=seconds,
+            rng=rng,
+        )
+        async with db_client.async_session() as session:
+            session.add(run)
+            # Read the id before commit: commit expires the instance.
+            await session.flush()
+            run_id = run.id
+            await session.commit()
+        if audio:
+            key = f"recordings/{run_id}.wav"
+            await _put(key, audio, "audio/wav")
+            async with db_client.async_session() as session:
+                stored = await session.get(WorkflowRunModel, run_id)
+                stored.recording_url = key
+                stored.extra = {
+                    **(stored.extra or {}),
+                    "recordings": {
+                        "mixed": {
+                            "storage_key": key,
+                            "storage_backend": backend,
+                            "format": "wav",
+                            "track": "mixed",
+                        }
+                    },
+                }
+                await session.commit()
+        added += 1
+    return added
+
+
 # --- deleting --------------------------------------------------------------------
 
 
@@ -1101,6 +1305,9 @@ async def delete_demo_org(business: Business) -> bool:
     if org is None:
         return False
     await assert_demo_org(org.id, provider_id)
+    before_delete = getattr(business, "before_delete", None)
+    if before_delete is not None:
+        await before_delete(org.id)
     async with db_client.async_session() as session:
         runs = await session.execute(
             select(WorkflowRunModel)
@@ -1174,6 +1381,9 @@ async def seed_business(
     organization_id = await ensure_org(business, owner, staff)
     owner = await db_client.get_user_by_id(owner.id)
     workflow = await ensure_agent(business, organization_id, owner)
+    customise = getattr(business, "customise_agent", None)
+    if customise is not None:
+        workflow = await customise(organization_id, owner, workflow, now)
     await ensure_email_reports(organization_id, owner)
     agent = agent_shape(workflow, await _transfer_function(organization_id))
     before = (speech.synthesised_chars, speech.cached_chars) if speech else (0, 0)
@@ -1185,6 +1395,9 @@ async def seed_business(
         now=now,
         recordings=recordings,
         speech=speech,
+    )
+    lines_busy = await seed_lines_busy_calls(
+        business, organization_id, agent, now=now, speech=speech
     )
     # Counted the way Follow-ups counts them.
     from api.services.dashboard.follow_ups import FollowUpStatus
@@ -1200,6 +1413,7 @@ async def seed_business(
         "owner": owner.email,
         "staff": staff.email,
         "calls": totals.calls,
+        "lines_busy_calls": lines_busy,
         "calls_today": totals.today,
         "recordings": totals.recordings,
         "tts_chars_synthesised": (speech.synthesised_chars - before[0])
@@ -1219,7 +1433,9 @@ async def _main(args: argparse.Namespace) -> None:
             f"Refusing to run with ENVIRONMENT={ENVIRONMENT!r}: demo accounts are "
             "for local and development databases only."
         )
-    businesses = [b for b in BUSINESSES if not args.only or b.slug in args.only]
+    businesses = [
+        b for b in [*BUSINESSES, CHMARINE] if not args.only or b.slug in args.only
+    ]
     if args.reset or args.delete:
         for business in businesses:
             deleted = await delete_demo_org(business)

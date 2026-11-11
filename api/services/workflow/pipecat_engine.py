@@ -337,6 +337,29 @@ class PipecatEngine:
         return self._active_agent
 
     @property
+    def in_closing_step(self) -> bool:
+        """Whether the call has reached an end node (its goodbye)."""
+        node = self._active_agent.current_node if self._active_agent else None
+        return bool(node is not None and node.is_end)
+
+    def end_call_after_farewell(self) -> None:
+        """The agent said goodbye without its end-call tool: end the call as
+        that tool would (gracefully, so the goodbye still plays), instead of
+        leaving the caller's line open. Runs in its own task, as the end
+        node's own hang-up does, so the pipeline that saw the goodbye is free
+        to finish speaking it. Tagged so the call shows how it ended."""
+        if self._call_disposed or self._shutdown_task is not None:
+            return
+        tags = self._gathered_context.setdefault("call_tags", [])
+        if isinstance(tags, list) and "ended_after_farewell" not in tags:
+            tags.append("ended_after_farewell")
+        # Kept so the task isn't garbage-collected before it has run.
+        self._farewell_end_task = asyncio.get_running_loop().create_task(
+            self.end_call_with_reason(EndTaskReason.END_CALL.value),
+            name="end-call-after-farewell",
+        )
+
+    @property
     def pending_agent(self) -> Optional[AgentRuntime]:
         """An agent prepared for a handoff that has not committed yet."""
         return self.__dict__.get("_pending_agent")

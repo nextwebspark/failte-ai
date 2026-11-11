@@ -58,6 +58,13 @@ class Plan:
     speech: bool = True
     # A silent caller stays on the line this long after the greeting.
     silence_seconds: float = 0.0
+    # The call review's caller_language (ISO 639-1): what the caller spoke.
+    caller_language: str = "en"
+    # The call review's emergency flag: sent to 112/999.
+    emergency: bool = False
+    # The caller's voice when it isn't the pooled caller's (a caller speaking
+    # another language): a Chirp 3 HD voice name.
+    caller_voice: str | None = None
 
 
 # Outcomes (the result the dashboard reads from the stored call).
@@ -215,6 +222,17 @@ class Talk:
 
 
 @dataclass
+class BusyCall:
+    """A caller who rang while every line was busy (the calls-at-once
+    limit), on the most recent ``weekday`` at ``at``. ``message`` is the
+    voicemail they left; None: they hung up without leaving one."""
+
+    weekday: int  # Monday is 0
+    at: str  # "20:10", local time
+    message: str | None = None
+
+
+@dataclass
 class Business:
     slug: str
     name: str
@@ -235,6 +253,11 @@ class Business:
     # The opening hours as times (the same hours as the ``opening_hours``
     # text above); the seed saves them on the agent.
     opening_hours: OpeningHours | None = None
+    # Calls that are always this scenario, by index (0 is the newest call),
+    # so the history always shows them; every other call is drawn by weight.
+    pinned: dict[int, Callable[[Ctx], Plan]] = field(default_factory=dict)
+    # Callers turned away because every line was busy ("Lines were busy").
+    lines_busy: tuple[BusyCall, ...] = ()
 
 
 def _week(
@@ -816,6 +839,44 @@ def _r_manager(c: Ctx, answered: bool) -> Plan:
     )
 
 
+def _r_polish(c: Ctx) -> Plan:
+    """A caller who speaks Polish: the agent speaks English only, so it says
+    one line in Polish offering staff or a call back, then takes the number
+    in English."""
+    name = "Agnieszka Kowalska"
+    t = Talk(c.greeting)
+    t.c(
+        "Dzień dobry, chciałabym zarezerwować stolik dla czterech osób na "
+        "sobotę wieczorem."
+    )
+    t.a(
+        "Przepraszam, mogę pomóc tylko po angielsku. Mogę połączyć Panią z "
+        "pracownikiem albo wziąć numer, żeby ktoś oddzwonił."
+    )
+    t.c("Call back, please. My English is not so good.")
+    t.message()
+    t.a("Of course. What's your name?")
+    t.c(name)
+    t.a("And the best number for you?")
+    t.c(c.number_words())
+    t.a(f"That's {c.number_words()}. Someone from the team will call you back.")
+    t.bye(f"Thank you for calling {RESTAURANT_NAME}. Goodbye.")
+    return Plan(
+        t.steps,
+        CALLBACK,
+        {
+            "caller_name": name,
+            "callback_number": c.number_digits(),
+            "call_reason": "Table for 4 on Saturday evening (spoke Polish)",
+        },
+        "Asked in Polish about a table for 4 on Saturday evening. Was offered a "
+        "call back and left a number.",
+        "reservations",
+        caller_language="pl",
+        caller_voice="pl-PL-Chirp3-HD-Kore",
+    )
+
+
 def _silent(c: Ctx) -> Plan:
     t = Talk(c.greeting)
     return Plan(
@@ -835,6 +896,17 @@ RESTAURANT = Business(
     name=RESTAURANT_NAME,
     kind="restaurant",
     template_name="Restaurant bookings",
+    # The Saturday dinner rush: every line busy twice in a few minutes.
+    lines_busy=(
+        BusyCall(
+            5,
+            "20:12",
+            "Hi, it's {first} here. I was hoping to book a table for four "
+            "tomorrow evening, around seven if you have it. Could you ring me "
+            "back on {number}? Thanks a million.",
+        ),
+        BusyCall(5, "20:16"),
+    ),
     opening_hours=_week(
         (),
         (("12:00", "15:00"), ("17:00", "21:30")),
@@ -902,6 +974,8 @@ RESTAURANT = Business(
     ],
     callers=_callers("linen-quay", ("85", "87", "86", "83", "89"), 70),
     closed_days=(0,),
+    # Recent enough to be waiting on Home, and among the recorded calls.
+    pinned={2: _r_polish},
 )
 
 
@@ -1462,6 +1536,66 @@ def _d_pain(c: Ctx, answered: bool | None) -> Plan:
     )
 
 
+def _d_portuguese(c: Ctx) -> Plan:
+    """A caller who speaks Portuguese, offered staff or a call back in one
+    Portuguese line; the number is taken in English."""
+    name = "Rafael Costa"
+    t = Talk(c.greeting)
+    t.c("Bom dia, preciso marcar uma limpeza dos dentes, por favor.")
+    t.a(
+        "Desculpe, só posso ajudar em inglês. Posso transferir para um "
+        "funcionário, ou anotar o seu número para alguém ligar de volta."
+    )
+    t.c("Ah, OK. Call back, please.")
+    t.message()
+    t.a("Of course. Can I take your name?")
+    t.c(name)
+    t.a("And the best number for you?")
+    t.c(c.number_words())
+    t.a(f"That's {c.number_words()}. Reception will call you back.")
+    t.bye(f"Thank you for calling {DENTAL_NAME}.")
+    return Plan(
+        t.steps,
+        CALLBACK,
+        {
+            "caller_name": name,
+            "callback_number": c.number_digits(),
+            "call_reason": "Wants to book a cleaning (spoke Portuguese)",
+            "appointment_type": "cleaning",
+        },
+        "Asked in Portuguese to book a cleaning. Was offered a call back and "
+        "left a number.",
+        "appointments",
+        caller_language="pt",
+        caller_voice="pt-BR-Chirp3-HD-Puck",
+    )
+
+
+def _d_emergency(c: Ctx) -> Plan:
+    """An emergency: the agent sends the caller to 112/999 at once and ends
+    the call, without triage or a message (the template's emergency rule)."""
+    t = Talk(c.greeting)
+    t.c(
+        "Hi, my face has swollen up really badly since this morning and I'm "
+        "finding it hard to swallow and breathe."
+    )
+    t.a(
+        "Please hang up now and dial 112 or 999. The emergency services can "
+        "help you straight away."
+    )
+    t.c("OK. OK, thanks.")
+    t.bye("Take care.")
+    return Plan(
+        t.steps,
+        HANDLED,
+        {"call_reason": "Facial swelling, trouble swallowing and breathing"},
+        "Described facial swelling and trouble breathing. Was told to hang up "
+        "and dial 112 or 999.",
+        "urgent",
+        emergency=True,
+    )
+
+
 def _d_question(c: Ctx) -> Plan:
     question, answer, summary = c.pick(
         [
@@ -1653,6 +1787,7 @@ DENTAL = Business(
         (8, _silent),
     ],
     callers=_callers("larchfield-dental", ("87", "86", "85", "89"), 60),
+    pinned={3: _d_portuguese, 11: _d_emergency},
     closed_days=(6,),
 )
 

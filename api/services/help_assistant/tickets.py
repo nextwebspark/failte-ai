@@ -17,6 +17,7 @@ from typing import Any, Literal
 from loguru import logger
 from pydantic import BaseModel, Field, field_validator
 
+from api.constants import BRAND_SUPPORT_EMAIL
 from api.db import db_client
 from api.enums import OrganizationConfigurationKey
 from api.services.help_assistant.knowledge import normalise_page
@@ -81,7 +82,11 @@ class TicketSummary(BaseModel):
 
 def support_recipients(env: dict[str, str] | None = None) -> list[str]:
     env = env if env is not None else dict(os.environ)
-    raw = env.get("SUPPORT_EMAILS") or env.get("OPERATOR_ALERT_EMAILS") or ""
+    raw = (
+        env.get("SUPPORT_EMAILS")
+        or env.get("OPERATOR_ALERT_EMAILS")
+        or BRAND_SUPPORT_EMAIL
+    )
     return [part.strip() for part in raw.split(",") if part.strip()]
 
 

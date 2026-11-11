@@ -41,6 +41,20 @@ def toggles_answer(field: TemplateSetupField, raw: str | None) -> str:
     return field.sentence.replace("{items}", _join(prompts)) if prompts else ""
 
 
+def languages_answer(field: TemplateSetupField, raw: str | None) -> str:
+    """A ``languages`` answer as it is stored: names, English first ("English,
+    Polish"), or "" for English only, so the prompt's fallback applies."""
+    from api.services.workflow.agent_languages import (
+        AgentLanguagesError,
+        normalised_agent_languages,
+    )
+
+    try:
+        return normalised_agent_languages(raw) or ""
+    except AgentLanguagesError as exc:
+        raise TemplateSetupError(f"{field.label}: {exc}") from exc
+
+
 def parse_setup_fields(raw: Any) -> list[TemplateSetupField]:
     """Read a template's stored ``setup_fields``; raise on a malformed list."""
     try:
@@ -81,6 +95,8 @@ def fill_template_values(
             continue
         if rendered and field.key in rendered:
             value = rendered[field.key]
+        elif field.type == "languages":
+            value = languages_answer(field, values.get(field.key))
         else:
             value = (values.get(field.key) or "").strip()
         if not value.strip() and field.required:
@@ -131,11 +147,15 @@ def fill_template(
         for f in fields
         if f.stored and f.type != "toggles" and f.key not in (rendered or {})
     ]
-    facts = {
-        f.key: (values.get(f.key) or "").strip()
+    answers = {
+        f.key: (
+            languages_answer(f, values.get(f.key))
+            if f.type == "languages"
+            else (values.get(f.key) or "").strip()
+        )
         for f in stored
-        if (values.get(f.key) or "").strip()
     }
+    facts = {key: value for key, value in answers.items() if value}
     if stored:
         keys = "|".join(re.escape(f.key) for f in stored)
         pattern = re.compile(r"\{\{\s*(" + keys + r")(\s*(?:\|[^}]*)?)\}\}")
@@ -263,5 +283,45 @@ def attach_integration_tools(
                 elif uuid not in resolved:
                     resolved.append(uuid)
             node = {**node, "data": {**data, "tool_uuids": resolved}}
+        nodes.append(node)
+    return {**definition, "nodes": nodes}
+
+
+# The steps that talk to callers: where a template puts its calendar tool.
+CALENDAR_STEP_TYPES = ("startCall", "agentNode")
+
+
+def calendar_tool_provider(category: str | None, definition: Any) -> str | None:
+    """GOOGLE_CALENDAR or CALENDLY when the tool is a booking calendar (an
+    MCP tool served by the tools service at ``/mcp/<provider>``), else None.
+    The same rule as the app's ``calendarProvider``."""
+    if category != "mcp" or not isinstance(definition, Mapping):
+        return None
+    config = definition.get("config")
+    url = config.get("url") if isinstance(config, Mapping) else None
+    if not isinstance(url, str):
+        return None
+    path = url.rstrip("/")
+    for provider in (GOOGLE_CALENDAR, CALENDLY):
+        if path.endswith(f"/mcp/{provider}"):
+            return provider
+    return None
+
+
+def set_calendar_tool(
+    definition: dict[str, Any], tool_uuid: str | None, calendar_tools: set[str]
+) -> dict[str, Any]:
+    """The agent with *tool_uuid* as its one booking calendar: every tool in
+    *calendar_tools* (the workspace's calendar tools) leaves every step, then
+    *tool_uuid* joins the steps that talk to callers. None: no calendar, so
+    the agent takes callers' details instead (as its instructions say)."""
+    nodes = []
+    for node in definition.get("nodes", []):
+        data = node.get("data") or {}
+        uuids = [u for u in (data.get("tool_uuids") or []) if u not in calendar_tools]
+        if tool_uuid and node.get("type") in CALENDAR_STEP_TYPES:
+            uuids.append(tool_uuid)
+        if uuids != (data.get("tool_uuids") or []):
+            node = {**node, "data": {**data, "tool_uuids": uuids}}
         nodes.append(node)
     return {**definition, "nodes": nodes}

@@ -47,29 +47,64 @@ function useOnFollowUpsChanged(reload: () => void) {
     }, [reload]);
 }
 
-/** Home's numbers for the range, from the dashboard endpoint. */
+/** How often Home checks for new calls while it is open and in view. */
+export const HOME_REFRESH_MS = 30_000;
+
+/**
+ * Home's numbers for the range, from the dashboard endpoint. Kept fresh while
+ * the page is open: every 30 seconds while in view, and when the tab comes
+ * back. A refresh keeps the numbers on screen (no skeleton) and, if it fails,
+ * keeps the last ones rather than showing an error.
+ */
 export function useDashboardSummary(range: DashboardRange, workflowId?: number) {
     const [result, setResult] = useState<Loadable<DashboardSummaryResponse>>({ state: "loading" });
+    const [updatedAt, setUpdatedAt] = useState<Date | null>(null);
+    const [refreshing, setRefreshing] = useState(false);
     const ready = useAuthReady();
+    // Only the newest request may set the numbers.
+    const latest = useRef(0);
 
-    const load = useCallback(async () => {
-        if (!ready) return;
-        setResult({ state: "loading" });
-        try {
-            const res = await getDashboardSummaryApiV1DashboardSummaryGet({
-                query: { range, workflow_id: workflowId ?? null },
-            });
-            setResult(res.data && !res.error ? { state: "ready", data: res.data } : { state: "error" });
-        } catch {
-            setResult({ state: "error" });
-        }
-    }, [range, workflowId, ready]);
+    const load = useCallback(
+        async (quiet = false) => {
+            if (!ready) return;
+            const request = ++latest.current;
+            if (quiet) setRefreshing(true);
+            else setResult({ state: "loading" });
+            try {
+                const res = await getDashboardSummaryApiV1DashboardSummaryGet({
+                    query: { range, workflow_id: workflowId ?? null },
+                });
+                if (request !== latest.current) return;
+                if (res.data && !res.error) {
+                    setResult({ state: "ready", data: res.data });
+                    setUpdatedAt(new Date());
+                } else if (!quiet) {
+                    setResult({ state: "error" });
+                }
+            } catch {
+                if (request === latest.current && !quiet) setResult({ state: "error" });
+            } finally {
+                if (request === latest.current) setRefreshing(false);
+            }
+        },
+        [range, workflowId, ready],
+    );
 
     useEffect(() => {
         void load();
+        const refresh = () => {
+            if (document.visibilityState === "visible") void load(true);
+        };
+        const timer = window.setInterval(refresh, HOME_REFRESH_MS);
+        document.addEventListener("visibilitychange", refresh);
+        return () => {
+            window.clearInterval(timer);
+            document.removeEventListener("visibilitychange", refresh);
+        };
     }, [load]);
 
-    return { result, reload: load };
+    const refresh = useCallback(() => void load(true), [load]);
+    return { result, reload: () => load(), refresh, refreshing, updatedAt };
 }
 
 /** What the Follow-ups page narrows the list to; the API counts under the same. */

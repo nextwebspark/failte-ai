@@ -5,6 +5,9 @@ working agent, for showing LightMove.ai to prospects. Everything in them is
 made up: the businesses, their people, their callers and every phone number
 (all in the 555 range; none is ever dialled).
 
+A fifth, CH Marine, is built on a real company's published facts for a
+partner presentation: see `docs/demo-chmarine.md` (`--only chmarine`).
+
 They are built by `api/scripts/seed_demo_accounts.py` (the business and call
 scripts are in `api/scripts/demo_businesses.py`). Local and development
 databases only: the script refuses to run with any other `ENVIRONMENT`.
@@ -51,8 +54,10 @@ Every business has:
   agent couldn't answer and times that were full. Those older than three
   days are marked done (mostly by the staff member), about half of the
   last three days are done, and the last few hours are open.
-- **Email reports**: daily and weekly, to the owner's address (confirmed).
-  Locally, Mailpit (http://localhost:8025) catches them.
+- **Email reports**: daily (at 6 pm, covering the 24 hours since the last
+  one) and weekly (Mondays at 8 am), to the owner's address (confirmed).
+  Locally, Mailpit (http://localhost:8025) catches them. A daily sent before
+  the refresh has run says "no calls": refresh before 6 pm on the demo day.
 
 | Business | Template | What callers ring about |
 | --- | --- | --- |
@@ -67,15 +72,19 @@ own.
 
 ### What these screens can't show
 
-- **No phone number is linked.** Home says "Your agent isn't answering: no
-  phone number is linked" in a red banner. That is true: the demo
-  workspaces have no phone line, and the seed does not invent one.
-- **Bookings is empty** ("Connect your calendar to take bookings"). The
-  Bookings page reads live from a connected Google Calendar and no calendar
-  is connected. The seeded history still has calls where a booking was
-  made (as if a calendar had been connected then), so Home counts
-  "bookings taken" and Calls shows them; the live agent, with no calendar,
-  takes a message for a booking instead.
+- **Phone numbers.** The seed links none. Locally, Linen Quay answers the
+  Asterisk extension `7000` and CH Marine `7002` (linked by hand for the
+  phone tests), so their Home says "Answering calls · 7000". The other three
+  have no number, and their Home says so in a red banner.
+- **Bookings** reads live from a connected calendar, so it only lists real
+  bookings. The seed connects none: it says "Connect your calendar". The
+  seeded history still has calls where a booking was made, so Home counts
+  "bookings taken" and Calls shows them. Locally, Linen Quay and CH Marine
+  are connected to the test Calendly (lightmove.ai@gmail.com), so a test
+  call can book for real: it appears on Bookings (List or Week), with the
+  phone number and party size the caller gave, and Calendly emails the
+  address the caller spelled out. Its slot length is the Calendly event
+  type's (30 minutes on the test account).
 - **Today** is only as busy as the time of day allows: run the refresh on
   the morning of the demo (after 10am a handful of calls today is
   guaranteed). Just after midnight Today is empty and honestly so.
@@ -124,12 +133,23 @@ carry no cost.
    table, ask about parking, report an outage.
 3. The call appears on **Calls** as soon as it ends, as a "Test call",
    with its recording, transcript and what the agent wrote down. It gets
-   no call review (reviews are written for phone calls only).
+   no call review (reviews are written for phone calls only). Home looks
+   for new calls by itself (every 30 seconds, and a few seconds after the
+   test panel closes); **Refresh** next to the date range looks now.
 
-It does not appear on **Home** or **Follow-ups**: those count inbound
-phone calls only, and a browser test call is not one. To show a call
-landing on Home and Follow-ups, the workspace needs a linked phone number
-and a real call to it.
+The restaurant agent opens with "How can I help you today?", asks how many
+people before looking for times, spells a corrected email back before
+booking, and before saying goodbye asks whether there's anything else or
+whether the caller wants to speak to someone on the team.
+
+In a demo workspace it also lands on **Home** and **Follow-ups** like a
+phone call (anywhere else, browser tests stay off those pages), so a
+prospect sees their own call arrive.
+
+The refresh keeps test calls. Anything you say on one stays on Home and
+Follow-ups until it is marked done or deleted, so give a made-up name and a
+555 number, never your own. Only the owner (or an admin) can start one:
+staff don't see Try your agent.
 
 ### Transfers
 
@@ -147,6 +167,10 @@ it.
 
 Agents seeded with the old placeholder `+3530000000` get the new number
 the next time the seed runs (only against a local database).
+
+For a real phone test, put your own mobile in, and put the demo number back
+afterwards: the seed copies the agent's settings into every seeded call, so
+a real number left there ends up in the demo data.
 
 In a browser test call, asking for a person makes the agent try the
 transfer; the engine refuses it ("call transfers are not available for web

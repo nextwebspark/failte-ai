@@ -1,6 +1,6 @@
 # Telephony Provider Implementation
 
-This module implements the telephony provider abstraction for LightMove.ai. For user-facing documentation, see the [telephony docs](https://lightmove.ai/docs/integrations/telephony) on the website.
+This module implements the telephony provider abstraction for LightMove.ai. For user-facing documentation, see the [telephony docs](https://docs.lightmove.ai/integrations/telephony).
 
 ## Architecture
 
@@ -170,7 +170,7 @@ await provider.initiate_call(...)
 
 ## Related Documentation
 
-- [User Documentation](https://lightmove.ai/docs/integrations/telephony)
-- [Twilio Integration](https://lightmove.ai/docs/integrations/telephony/twilio)
+- [User Documentation](https://docs.lightmove.ai/integrations/telephony)
+- [Twilio Integration](https://docs.lightmove.ai/integrations/telephony/twilio)
 - [Custom Providers](../../../docs/integrations/telephony/custom.mdx) (in-repo, not published)
 - [Webhooks Guide](../../../docs/integrations/telephony/webhooks.mdx) (in-repo, not published)

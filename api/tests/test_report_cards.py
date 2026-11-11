@@ -185,6 +185,7 @@ def test_every_pack_has_the_shared_cards_once():
         Card.FOLLOW_UPS,
         Card.AFTER_HOURS,
         Card.AGENT_PERFORMANCE,
+        Card.LINES_BUSY,
     }
     for pack in [*PACKS.values(), pack_for_template("general")]:
         assert shared <= set(pack.keys), pack.pack
@@ -768,3 +769,37 @@ def test_no_change_shown_when_the_period_before_had_no_calls():
         pack=pack, reasons=RESTAURANT, calls=calls, previous=calls[:2], span=_span()
     )
     assert later[Card.CALLS_ANSWERED]["change"] == 6
+
+
+def test_retail_pack_counts_its_reasons_and_the_products_asked_about():
+    from api.services.call_review.categories import RETAIL
+
+    pack = pack_for_template("retail")
+    calls = [
+        _call(
+            1,
+            review={"reason": "product_stock"},
+            gathered={"product_asked_about": "Ocean Signal PLB1, Musto jacket"},
+        ),
+        _call(
+            2,
+            review={"reason": "product_stock"},
+            gathered={"product_asked_about": "ocean signal  plb1"},
+        ),
+        _call(
+            3,
+            review={"reason": "orders_delivery"},
+            gathered={"order_number": "CHM-104203"},
+        ),
+        _call(4, review={"reason": "returns_faults"}),
+    ]
+    out = c.build_cards(
+        pack=pack, reasons=RETAIL, calls=calls, previous=[], span=_span()
+    )
+    assert out[Card.PRODUCT_ENQUIRIES]["count"] == 2
+    assert out[Card.ORDERS_DELIVERY]["count"] == 1
+    assert out[Card.RETURNS]["count"] == 1
+    assert out[Card.SERVICING_REQUESTS]["count"] == 0
+    top = out[Card.TOP_PRODUCTS]
+    assert top["products"][0] == {"label": "Ocean Signal PLB1", "calls": 2}
+    assert top["calls_with_product"] == 2

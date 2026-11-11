@@ -344,6 +344,20 @@ export type AfterHoursCard = {
 };
 
 /**
+ * AgentCalendar
+ */
+export type AgentCalendar = {
+    /**
+     * Tool Uuid
+     */
+    tool_uuid?: string | null;
+    /**
+     * Provider
+     */
+    provider?: string | null;
+};
+
+/**
  * AgentPerformanceCard
  */
 export type AgentPerformanceCard = {
@@ -1646,6 +1660,24 @@ export type BusinessFactsResponse = {
 };
 
 /**
+ * BusySlot
+ */
+export type BusySlot = {
+    /**
+     * Weekday
+     */
+    weekday: number;
+    /**
+     * Hour
+     */
+    hour: number;
+    /**
+     * Calls
+     */
+    calls: number;
+};
+
+/**
  * CalculatorToolDefinition
  *
  * Tool definition for Calculator tools.
@@ -1819,6 +1851,16 @@ export type CallEventsSettings = {
 };
 
 /**
+ * CallLimitResponse
+ */
+export type CallLimitResponse = {
+    /**
+     * Calls At Once
+     */
+    calls_at_once: number;
+};
+
+/**
  * CallNotificationSettings
  *
  * Who hears about a workspace's calls. Stored per organization.
@@ -1939,7 +1981,7 @@ export type CallNotificationSettingsResponse = {
  *
  * One outcome per call, checked in this order.
  */
-export type CallResult = 'in_progress' | 'passed_to_team' | 'booking_made' | 'transfer_not_answered' | 'callback_requested' | 'hung_up_silent' | 'hung_up_early' | 'not_connected' | 'call_dropped' | 'handled';
+export type CallResult = 'in_progress' | 'passed_to_team' | 'booking_made' | 'transfer_not_answered' | 'callback_requested' | 'hung_up_silent' | 'hung_up_early' | 'not_connected' | 'call_dropped' | 'lines_busy' | 'handled';
 
 /**
  * CallType
@@ -3399,6 +3441,37 @@ export type DashboardAfterHours = {
      * Agents Without Hours
      */
     agents_without_hours: Array<DashboardAgentRef>;
+    /**
+     * Recent
+     */
+    recent?: Array<DashboardAfterHoursCall>;
+};
+
+/**
+ * DashboardAfterHoursCall
+ */
+export type DashboardAfterHoursCall = {
+    /**
+     * Run Id
+     */
+    run_id: number;
+    /**
+     * Workflow Id
+     */
+    workflow_id: number;
+    /**
+     * Created At
+     */
+    created_at: string;
+    /**
+     * Caller Number
+     */
+    caller_number: string | null;
+    /**
+     * Caller Name
+     */
+    caller_name: string | null;
+    result: CallResult;
 };
 
 /**
@@ -3480,6 +3553,43 @@ export type DashboardCredit = {
      * Running Low
      */
     running_low: boolean;
+};
+
+/**
+ * DashboardOpenRange
+ */
+export type DashboardOpenRange = {
+    /**
+     * Start
+     */
+    start: number;
+    /**
+     * End
+     */
+    end: number;
+};
+
+/**
+ * DashboardOpeningHours
+ */
+export type DashboardOpeningHours = {
+    kind: OpeningHoursBand;
+    /**
+     * Ranges
+     */
+    ranges: Array<DashboardOpenRange>;
+    /**
+     * Days
+     */
+    days: number;
+    /**
+     * Days Open
+     */
+    days_open: number;
+    /**
+     * Description
+     */
+    description: string | null;
 };
 
 /**
@@ -3587,6 +3697,8 @@ export type DashboardSummaryResponse = {
      */
     calls_by_hour: Array<number>;
     after_hours: DashboardAfterHours;
+    opening_hours: DashboardOpeningHours;
+    turned_away_today: DashboardTurnedAway;
     /**
      * Recent Calls
      */
@@ -3641,6 +3753,10 @@ export type DashboardTiles = {
      */
     hung_up_silent: number;
     /**
+     * No Conversation
+     */
+    no_conversation?: number;
+    /**
      * Callbacks Requested
      */
     callbacks_requested: number;
@@ -3656,6 +3772,28 @@ export type DashboardTiles = {
      * Bookings Taken
      */
     bookings_taken: number;
+    /**
+     * Lines Busy
+     */
+    lines_busy?: number;
+};
+
+/**
+ * DashboardTurnedAway
+ */
+export type DashboardTurnedAway = {
+    /**
+     * Calls
+     */
+    calls: number;
+    /**
+     * Forwarded
+     */
+    forwarded: number;
+    /**
+     * Voicemails
+     */
+    voicemails: number;
 };
 
 /**
@@ -4392,6 +4530,16 @@ export type ElevenlabsTtsConfiguration = {
 };
 
 /**
+ * EmailMeResponse
+ */
+export type EmailMeResponse = {
+    /**
+     * Sent To
+     */
+    sent_to: string;
+};
+
+/**
  * EmailReportSettingsResponse
  */
 export type EmailReportSettingsResponse = {
@@ -4953,12 +5101,28 @@ export type FollowUpItem = {
      * Questions
      */
     questions: Array<string>;
+    /**
+     * Caller Language
+     */
+    caller_language?: string | null;
+    /**
+     * Caller Language Name
+     */
+    caller_language_name?: string | null;
+    /**
+     * Lines Busy
+     */
+    lines_busy?: string | null;
+    /**
+     * Voicemail Seconds
+     */
+    voicemail_seconds?: number | null;
 };
 
 /**
  * FollowUpKind
  */
-export type FollowUpKind = 'callback' | 'transfer_not_answered' | 'repeat_caller' | 'unanswered_question' | 'time_was_full';
+export type FollowUpKind = 'callback' | 'transfer_not_answered' | 'repeat_caller' | 'unanswered_question' | 'time_was_full' | 'other_language' | 'emergency' | 'lines_busy';
 
 /**
  * FollowUpListResponse
@@ -6841,6 +7005,49 @@ export type LibrarySkillSummaryResponse = {
 };
 
 /**
+ * LinesBusyAction
+ */
+export type LinesBusyAction = 'forward' | 'voicemail' | 'busy_message';
+
+/**
+ * LinesBusyCard
+ */
+export type LinesBusyCard = {
+    /**
+     * Calls
+     */
+    calls: number;
+    /**
+     * Forwarded
+     */
+    forwarded: number;
+    /**
+     * Answered
+     */
+    answered: number;
+    /**
+     * Voicemails
+     */
+    voicemails: number;
+    /**
+     * No Message
+     */
+    no_message: number;
+    /**
+     * Told Busy
+     */
+    told_busy: number;
+    /**
+     * Busiest
+     */
+    busiest: Array<BusySlot>;
+    /**
+     * Limit
+     */
+    limit: number | null;
+};
+
+/**
  * LinkResult
  */
 export type LinkResult = {
@@ -6900,6 +7107,32 @@ export type LoginRequest = {
      * Password
      */
     password: string;
+};
+
+/**
+ * LookupRequest
+ */
+export type LookupRequest = {
+    /**
+     * Order Number
+     */
+    order_number?: string;
+    /**
+     * Email
+     */
+    email?: string | null;
+    /**
+     * Phone
+     */
+    phone?: string | null;
+    /**
+     * Caller Name
+     */
+    caller_name?: string | null;
+    /**
+     * Call Ref
+     */
+    call_ref?: string;
 };
 
 /**
@@ -7774,6 +8007,13 @@ export type OpeningHours = {
 };
 
 /**
+ * OpeningHoursBand
+ *
+ * What the calls-per-hour chart can shade as open.
+ */
+export type OpeningHoursBand = 'none' | 'differ' | 'same' | 'most_days';
+
+/**
  * OrgRole
  *
  * Role a user holds within one organization (stored on the membership).
@@ -7984,7 +8224,7 @@ export type OrganizationPreferencesResponse = {
 /**
  * Pack
  */
-export type Pack = 'restaurant' | 'clinic' | 'trades' | 'voip' | 'standard';
+export type Pack = 'restaurant' | 'clinic' | 'trades' | 'voip' | 'retail' | 'standard';
 
 /**
  * PatientStatusCard
@@ -8732,6 +8972,20 @@ export type ProcessDocumentRequestSchema = {
      * Retrieval mode: 'chunked' for vector search or 'full_document' for full text retrieval
      */
     retrieval_mode?: string;
+};
+
+/**
+ * ProductAsked
+ */
+export type ProductAsked = {
+    /**
+     * Label
+     */
+    label: string;
+    /**
+     * Calls
+     */
+    calls: number;
 };
 
 /**
@@ -9584,6 +9838,7 @@ export type ReportCards = {
     follow_ups?: FollowUpsCard | null;
     after_hours?: AfterHoursCard | null;
     agent_performance?: AgentPerformanceCard | null;
+    lines_busy?: LinesBusyCard | null;
     bookings_taken?: BookingsCard | null;
     covers_booked?: CoversCard | null;
     tables_full?: TablesFullCard | null;
@@ -9609,6 +9864,11 @@ export type ReportCards = {
     call_spikes?: SpikesCard | null;
     repeat_callers?: RepeatCallersCard | null;
     waiting_for_team?: WaitingCard | null;
+    product_enquiries?: ReasonCard | null;
+    orders_delivery?: ReasonCard | null;
+    returns?: ReasonCard | null;
+    servicing_requests?: ReasonCard | null;
+    top_products?: TopProductsCard | null;
 };
 
 /**
@@ -9983,6 +10243,26 @@ export type SipTransportDetails = {
 };
 
 /**
+ * SampleOrdersView
+ */
+export type SampleOrdersView = {
+    /**
+     * Available
+     */
+    available: boolean;
+    /**
+     * Note
+     */
+    note?: string | null;
+    /**
+     * Orders
+     */
+    orders?: Array<{
+        [key: string]: unknown;
+    }>;
+};
+
+/**
  * Sarvam
  */
 export type SarvamLlmConfiguration = {
@@ -10179,11 +10459,21 @@ export type ServiceKeyResponse = {
 };
 
 /**
+ * SetAgentCalendarRequest
+ */
+export type SetAgentCalendarRequest = {
+    /**
+     * Tool Uuid
+     */
+    tool_uuid?: string | null;
+};
+
+/**
  * SetupFieldType
  *
  * How the Create agent dialog asks a setup question.
  */
-export type SetupFieldType = 'text' | 'textarea' | 'url' | 'email' | 'phone' | 'toggles' | 'appointment_hours';
+export type SetupFieldType = 'text' | 'textarea' | 'url' | 'email' | 'phone' | 'toggles' | 'appointment_hours' | 'languages';
 
 /**
  * SetupOption
@@ -12247,6 +12537,24 @@ export type ToolTestResponse = {
 };
 
 /**
+ * TopProductsCard
+ */
+export type TopProductsCard = {
+    /**
+     * Products
+     */
+    products: Array<ProductAsked>;
+    /**
+     * Other Products
+     */
+    other_products: number;
+    /**
+     * Calls With Product
+     */
+    calls_with_product: number;
+};
+
+/**
  * TopUpRequest
  */
 export type TopUpRequest = {
@@ -12630,6 +12938,12 @@ export type TransferSettings = {
      * Providers
      */
     providers: Array<string>;
+    lines_busy?: LinesBusyAction;
+    lines_busy_chosen?: LinesBusyAction | null;
+    /**
+     * Lines Busy Busy Line Only
+     */
+    lines_busy_busy_line_only?: Array<string>;
 };
 
 /**
@@ -13081,7 +13395,8 @@ export type UpdateTransferSettingsRequest = {
     /**
      * Show Caller Number
      */
-    show_caller_number: boolean;
+    show_caller_number?: boolean | null;
+    lines_busy?: LinesBusyAction | null;
 };
 
 /**
@@ -16389,6 +16704,50 @@ export type UpdateBusinessFactsApiV1WorkflowWorkflowIdBusinessFactsPutResponses 
 };
 
 export type UpdateBusinessFactsApiV1WorkflowWorkflowIdBusinessFactsPutResponse = UpdateBusinessFactsApiV1WorkflowWorkflowIdBusinessFactsPutResponses[keyof UpdateBusinessFactsApiV1WorkflowWorkflowIdBusinessFactsPutResponses];
+
+export type SetAgentCalendarApiV1WorkflowWorkflowIdCalendarPutData = {
+    body: SetAgentCalendarRequest;
+    headers?: {
+        /**
+         * Authorization
+         */
+        authorization?: string | null;
+        /**
+         * X-Api-Key
+         */
+        'X-API-Key'?: string | null;
+    };
+    path: {
+        /**
+         * Workflow Id
+         */
+        workflow_id: number;
+    };
+    query?: never;
+    url: '/api/v1/workflow/{workflow_id}/calendar';
+};
+
+export type SetAgentCalendarApiV1WorkflowWorkflowIdCalendarPutErrors = {
+    /**
+     * Not found
+     */
+    404: unknown;
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type SetAgentCalendarApiV1WorkflowWorkflowIdCalendarPutError = SetAgentCalendarApiV1WorkflowWorkflowIdCalendarPutErrors[keyof SetAgentCalendarApiV1WorkflowWorkflowIdCalendarPutErrors];
+
+export type SetAgentCalendarApiV1WorkflowWorkflowIdCalendarPutResponses = {
+    /**
+     * Successful Response
+     */
+    200: AgentCalendar;
+};
+
+export type SetAgentCalendarApiV1WorkflowWorkflowIdCalendarPutResponse = SetAgentCalendarApiV1WorkflowWorkflowIdCalendarPutResponses[keyof SetAgentCalendarApiV1WorkflowWorkflowIdCalendarPutResponses];
 
 export type CheckTransferNumberRouteApiV1WorkflowTransferNumberCheckPostData = {
     body: TransferNumberCheckRequest;
@@ -20803,6 +21162,45 @@ export type SaveLangfuseCredentialsApiV1OrganizationsLangfuseCredentialsPostResp
     200: unknown;
 };
 
+export type GetCallLimitApiV1OrganizationsCallLimitGetData = {
+    body?: never;
+    headers?: {
+        /**
+         * Authorization
+         */
+        authorization?: string | null;
+        /**
+         * X-Api-Key
+         */
+        'X-API-Key'?: string | null;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/v1/organizations/call-limit';
+};
+
+export type GetCallLimitApiV1OrganizationsCallLimitGetErrors = {
+    /**
+     * Not found
+     */
+    404: unknown;
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type GetCallLimitApiV1OrganizationsCallLimitGetError = GetCallLimitApiV1OrganizationsCallLimitGetErrors[keyof GetCallLimitApiV1OrganizationsCallLimitGetErrors];
+
+export type GetCallLimitApiV1OrganizationsCallLimitGetResponses = {
+    /**
+     * Successful Response
+     */
+    200: CallLimitResponse;
+};
+
+export type GetCallLimitApiV1OrganizationsCallLimitGetResponse = GetCallLimitApiV1OrganizationsCallLimitGetResponses[keyof GetCallLimitApiV1OrganizationsCallLimitGetResponses];
+
 export type GetCampaignDefaultsApiV1OrganizationsCampaignDefaultsGetData = {
     body?: never;
     headers?: {
@@ -22525,6 +22923,8 @@ export type GetUsageHistoryApiV1OrganizationsUsageRunsGetData = {
          * | `callChannel`   | `radio`       | `{ "status": "telephony" }`                  | `telephony`, `web`, or `chat` — the group of run modes for that channel |
          * | `callerSearch`  | `text`        | `{ "value": "Murphy" }`                      | the caller's captured name or number, the call's summary, or what was said |
          * | `needsFollowUp` | `runIds`      | `{}`                                         | calls with an open follow-up, as on Follow-ups (last 30 days; ignores any value sent) |
+         * | `bookingMade`   | `runIds`      | `{}`                                         | calls on which the calendar confirmed a booking (made, moved or cancelled), as Home and Reports count bookings taken; ignores any value sent |
+         * | `afterHours`    | `openingHours` | `{}`                                        | inbound phone calls that came in outside their agent's opening hours (set as times), as Home counts them; ignores any value sent |
          *
          * Unknown attributes and unsupported `type` values are silently ignored.
          *
@@ -22620,6 +23020,8 @@ export type DownloadUsageRunsReportApiV1OrganizationsUsageRunsReportGetData = {
          * | `callChannel`   | `radio`       | `{ "status": "telephony" }`                  | `telephony`, `web`, or `chat` — the group of run modes for that channel |
          * | `callerSearch`  | `text`        | `{ "value": "Murphy" }`                      | the caller's captured name or number, the call's summary, or what was said |
          * | `needsFollowUp` | `runIds`      | `{}`                                         | calls with an open follow-up, as on Follow-ups (last 30 days; ignores any value sent) |
+         * | `bookingMade`   | `runIds`      | `{}`                                         | calls on which the calendar confirmed a booking (made, moved or cancelled), as Home and Reports count bookings taken; ignores any value sent |
+         * | `afterHours`    | `openingHours` | `{}`                                        | inbound phone calls that came in outside their agent's opening hours (set as times), as Home counts them; ignores any value sent |
          *
          * Unknown attributes and unsupported `type` values are silently ignored.
          *
@@ -23060,6 +23462,65 @@ export type GetReportCallsApiV1OrganizationsReportsCallsGetResponses = {
 
 export type GetReportCallsApiV1OrganizationsReportsCallsGetResponse = GetReportCallsApiV1OrganizationsReportsCallsGetResponses[keyof GetReportCallsApiV1OrganizationsReportsCallsGetResponses];
 
+export type EmailMeThisReportApiV1OrganizationsReportsEmailMePostData = {
+    body?: never;
+    headers?: {
+        /**
+         * Authorization
+         */
+        authorization?: string | null;
+        /**
+         * X-Api-Key
+         */
+        'X-API-Key'?: string | null;
+    };
+    path?: never;
+    query?: {
+        range?: ReportRange;
+        /**
+         * Start Date
+         */
+        start_date?: string | null;
+        /**
+         * End Date
+         */
+        end_date?: string | null;
+        /**
+         * Workflow Id
+         */
+        workflow_id?: number | null;
+        /**
+         * Timezone
+         *
+         * IANA zone; defaults to the agent's or workspace's
+         */
+        timezone?: string | null;
+    };
+    url: '/api/v1/organizations/reports/email-me';
+};
+
+export type EmailMeThisReportApiV1OrganizationsReportsEmailMePostErrors = {
+    /**
+     * Not found
+     */
+    404: unknown;
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type EmailMeThisReportApiV1OrganizationsReportsEmailMePostError = EmailMeThisReportApiV1OrganizationsReportsEmailMePostErrors[keyof EmailMeThisReportApiV1OrganizationsReportsEmailMePostErrors];
+
+export type EmailMeThisReportApiV1OrganizationsReportsEmailMePostResponses = {
+    /**
+     * Successful Response
+     */
+    200: EmailMeResponse;
+};
+
+export type EmailMeThisReportApiV1OrganizationsReportsEmailMePostResponse = EmailMeThisReportApiV1OrganizationsReportsEmailMePostResponses[keyof EmailMeThisReportApiV1OrganizationsReportsEmailMePostResponses];
+
 export type ResetReportLayoutApiV1OrganizationsReportsLayoutDeleteData = {
     body?: never;
     headers?: {
@@ -23339,7 +23800,7 @@ export type UndoFollowUpDoneApiV1FollowUpsRunIdDoneDeleteData = {
         /**
          * Kind
          *
-         * The follow-up's kind. Needed for the call-review kinds (unanswered_question, time_was_full), which are done on their own; the other kinds share one mark per call.
+         * The follow-up's kind. Needed for the call-review kinds (unanswered_question, time_was_full, other_language, emergency), which are done on their own; the other kinds share one mark per call.
          */
         kind?: FollowUpKind | null;
     };
@@ -23390,7 +23851,7 @@ export type MarkFollowUpDoneApiV1FollowUpsRunIdDonePostData = {
         /**
          * Kind
          *
-         * The follow-up's kind. Needed for the call-review kinds (unanswered_question, time_was_full), which are done on their own; the other kinds share one mark per call.
+         * The follow-up's kind. Needed for the call-review kinds (unanswered_question, time_was_full, other_language, emergency), which are done on their own; the other kinds share one mark per call.
          */
         kind?: FollowUpKind | null;
     };
@@ -23418,6 +23879,84 @@ export type MarkFollowUpDoneApiV1FollowUpsRunIdDonePostResponses = {
 };
 
 export type MarkFollowUpDoneApiV1FollowUpsRunIdDonePostResponse = MarkFollowUpDoneApiV1FollowUpsRunIdDonePostResponses[keyof MarkFollowUpDoneApiV1FollowUpsRunIdDonePostResponses];
+
+export type LookupOrderApiV1DemoSampleOrdersLookupPostData = {
+    body: LookupRequest;
+    headers?: {
+        /**
+         * Authorization
+         */
+        authorization?: string | null;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/v1/demo/sample-orders/lookup';
+};
+
+export type LookupOrderApiV1DemoSampleOrdersLookupPostErrors = {
+    /**
+     * Not found
+     */
+    404: unknown;
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type LookupOrderApiV1DemoSampleOrdersLookupPostError = LookupOrderApiV1DemoSampleOrdersLookupPostErrors[keyof LookupOrderApiV1DemoSampleOrdersLookupPostErrors];
+
+export type LookupOrderApiV1DemoSampleOrdersLookupPostResponses = {
+    /**
+     * Response Lookup Order Api V1 Demo Sample Orders Lookup Post
+     *
+     * Successful Response
+     */
+    200: {
+        [key: string]: unknown;
+    };
+};
+
+export type LookupOrderApiV1DemoSampleOrdersLookupPostResponse = LookupOrderApiV1DemoSampleOrdersLookupPostResponses[keyof LookupOrderApiV1DemoSampleOrdersLookupPostResponses];
+
+export type ListSampleOrdersApiV1DemoSampleOrdersGetData = {
+    body?: never;
+    headers?: {
+        /**
+         * Authorization
+         */
+        authorization?: string | null;
+        /**
+         * X-Api-Key
+         */
+        'X-API-Key'?: string | null;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/v1/demo/sample-orders';
+};
+
+export type ListSampleOrdersApiV1DemoSampleOrdersGetErrors = {
+    /**
+     * Not found
+     */
+    404: unknown;
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ListSampleOrdersApiV1DemoSampleOrdersGetError = ListSampleOrdersApiV1DemoSampleOrdersGetErrors[keyof ListSampleOrdersApiV1DemoSampleOrdersGetErrors];
+
+export type ListSampleOrdersApiV1DemoSampleOrdersGetResponses = {
+    /**
+     * Successful Response
+     */
+    200: SampleOrdersView;
+};
+
+export type ListSampleOrdersApiV1DemoSampleOrdersGetResponse = ListSampleOrdersApiV1DemoSampleOrdersGetResponses[keyof ListSampleOrdersApiV1DemoSampleOrdersGetResponses];
 
 export type GetEmailReportSettingsApiV1OrganizationsEmailReportsGetData = {
     body?: never;

@@ -56,7 +56,7 @@ Open **Phone number** in the left menu under **Your agent**, or go to [Phone num
 
 Follow the steps, then **Check it works**: ring the number, and the step turns green when your agent answers.
 
-Setting up numbers is for **Admins** and **Developers**. Others see "Ask a workspace admin to set up a phone number for this agent."
+Setting up numbers is for **Admins** and **Developers**. Others see "Only the owner or an admin can set up or change this agent's phone number. Home shows the number it answers on."
 <!-- source: ui/src/app/workflow/[workflowId]/deployment/PhoneSetup.tsx, ui/src/app/workflow/[workflowId]/deployment/phoneForwarding.ts, ui/src/components/layout/navConfig.ts -->
 
 ## How do I pass calls to my team?

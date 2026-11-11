@@ -10,17 +10,25 @@ from sqlalchemy import (
     and_,
     case,
     cast,
+    extract,
     false,
     func,
     literal,
     not_,
     or_,
     select,
+    true,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 
 from api.db.models import WorkflowRunModel
-from api.enums import WORKFLOW_RUN_MODES_BY_CHANNEL, CallType
+from api.enums import (
+    WORKFLOW_RUN_MODES_BY_CHANNEL,
+    CallType,
+    WorkflowRunChannel,
+    WorkflowRunMode,
+)
+from api.schemas.opening_hours import DAY_MINUTES, OpeningHours
 
 
 def get_workflow_run_order_clause(
@@ -72,6 +80,8 @@ ATTRIBUTE_FIELD_MAPPING = {
     "handledBy": "handled_by",
     "bookingOutcome": "gathered_context.booking_outcome",
     "needsFollowUp": "follow_up",
+    "bookingMade": "booking_made",
+    "afterHours": "after_hours",
 }
 
 # The stored events that hold what was said: the agent's lines and the
@@ -184,6 +194,69 @@ def caller_search(text: str):
     return or_(*conditions)
 
 
+# Browser test calls count as phone calls only in a demo workspace (as on
+# Home: ``api.db.dashboard_client``).
+_BROWSER_CALL_MODES = (WorkflowRunMode.WEBRTC.value, WorkflowRunMode.SMALLWEBRTC.value)
+
+
+def _closed_at_arrival(hours: OpeningHours):
+    """True in SQL when the call arrived while *hours* say the business was
+    closed: the same rule as ``opening_hours.is_open``, read on the wall
+    clock in the business's zone (a range runs from its opening time up to,
+    not including, its closing time; one past midnight goes on into the next
+    day)."""
+    local = func.timezone(hours.timezone, WorkflowRunModel.created_at)
+    minute = extract("hour", local) * 60 + extract("minute", local)
+    # ISO day of the week: Monday is 1.
+    weekday = extract("isodow", local)
+    open_now = []
+    for day, ranges in enumerate(hours.days):
+        for r in ranges:
+            open_now.append(
+                and_(
+                    weekday == day + 1,
+                    minute >= r.start,
+                    minute < min(r.end, DAY_MINUTES),
+                )
+            )
+            if r.end > DAY_MINUTES:
+                open_now.append(
+                    and_(weekday == (day + 1) % 7 + 1, minute < r.end - DAY_MINUTES)
+                )
+    return not_(or_(*open_now)) if open_now else true()
+
+
+def after_hours_condition(value: Any):
+    """Inbound phone calls that arrived while their agent's business was
+    closed, by each agent's structured opening hours. The route fills in
+    ``value``: ``{"agents": [{"id": 1, "hours": {...}}], "browser_calls":
+    bool}``; agents without hours aren't listed, so their calls never match
+    (nothing is guessed), and with no agents nothing matches."""
+    agents = value.get("agents") if isinstance(value, dict) else None
+    per_agent = []
+    for agent in agents if isinstance(agents, list) else []:
+        agent_id = agent.get("id") if isinstance(agent, dict) else None
+        if not isinstance(agent_id, int) or isinstance(agent_id, bool):
+            continue
+        try:
+            hours = OpeningHours.model_validate(agent.get("hours"))
+        except ValueError:
+            continue
+        per_agent.append(
+            and_(WorkflowRunModel.workflow_id == agent_id, _closed_at_arrival(hours))
+        )
+    if not per_agent:
+        return false()
+    modes = WORKFLOW_RUN_MODES_BY_CHANNEL[WorkflowRunChannel.TELEPHONY.value]
+    if value.get("browser_calls") is True:
+        modes = (*modes, *_BROWSER_CALL_MODES)
+    return and_(
+        WorkflowRunModel.call_type == CallType.INBOUND.value,
+        WorkflowRunModel.mode.in_(modes),
+        or_(*per_agent),
+    )
+
+
 def apply_workflow_run_filters(
     base_query,
     filters: Optional[List[Dict[str, Any]]] = None,
@@ -209,6 +282,13 @@ def apply_workflow_run_filters(
     - needsFollowUp: the calls with an open follow-up. The route resolves
       these with the Follow-ups service and passes the run ids in
       ``value.ids`` (type "runIds"); without resolved ids nothing matches.
+    - bookingMade: the calls on which the calendar confirmed a booking (made,
+      moved or cancelled), as Home and Reports count "bookings taken". The
+      route resolves them (type "runIds"); without resolved ids nothing
+      matches.
+    - afterHours: inbound phone calls that arrived outside their agent's
+      opening hours (set as times). The route fills in the agents' hours
+      (type "openingHours"); without them nothing matches.
     - handledBy: "agent" or "team" (passed to a person), as a radio value
     - bookingOutcome: gathered_context.booking_outcome, any of the codes
 
@@ -361,9 +441,10 @@ def apply_workflow_run_filters(
                 if text:
                     filter_conditions.append(caller_search(text))
 
-            elif field == "follow_up":
+            elif field in ("follow_up", "booking_made"):
                 # Never trust ids from the request: the route replaces this
-                # filter's value with the Follow-ups service's open items.
+                # filter's value with the Follow-ups service's open items, or
+                # the calls the calendar confirmed a booking on.
                 ids = value.get("ids") if filter_type == "runIds" else None
                 run_ids = (
                     [i for i in ids if isinstance(i, int) and not isinstance(i, bool)]
@@ -372,6 +453,15 @@ def apply_workflow_run_filters(
                 )
                 filter_conditions.append(
                     WorkflowRunModel.id.in_(run_ids) if run_ids else false()
+                )
+
+            elif field == "after_hours":
+                # As with follow-ups, the route replaces the value with the
+                # agents' stored hours; none sent means nothing matches.
+                filter_conditions.append(
+                    after_hours_condition(value)
+                    if filter_type == "openingHours"
+                    else false()
                 )
 
             elif filter_type == "radio" and field == "handled_by":

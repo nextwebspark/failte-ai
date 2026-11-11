@@ -29,7 +29,7 @@ from api.services.report_cards.catalogue import Card, CardSize, PackSpec
 # The reason colours of Home's "What callers wanted" (CallersWantedChart):
 # the template's booking reason, questions, changes, its own fourth; Other
 # grey, "Not reviewed yet" pale grey.
-REASON_SLOTS = ("#2a78d6", "#eb6834", "#1baf7a", "#eda100")
+REASON_SLOTS = ("#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#8a5cd1")
 OTHER_COLOUR = "#9aa1ad"
 NOT_REVIEWED_COLOUR = "#dfe3e9"
 _KEY_SLOT = {
@@ -46,6 +46,11 @@ _KEY_SLOT = {
     "walk_ins": 3,
     "selling": 3,
     "speak_to_someone": 3,
+    "product_stock": 0,
+    "orders_delivery": 1,
+    "returns_faults": 2,
+    "servicing": 3,
+    "technical_advice": 4,
 }
 _WEEKDAYS = (
     "Monday",
@@ -63,6 +68,9 @@ FOLLOW_UP_KINDS = {
     "repeat_caller": "Rang more than once",
     "unanswered_question": "Couldn't answer",
     "time_was_full": "Time was full",
+    "other_language": "Spoke another language",
+    "emergency": "Emergency call",
+    "lines_busy": "Lines were busy",
 }
 
 
@@ -120,7 +128,7 @@ def reason_colours(keys: Sequence[str]) -> dict[str, str]:
         elif key == "not_reviewed":
             colours[key] = NOT_REVIEWED_COLOUR
         else:
-            free = next((i for i in range(4) if i not in used), None)
+            free = next((i for i in range(len(REASON_SLOTS)) if i not in used), None)
             colours[key] = REASON_SLOTS[free] if free is not None else OTHER_COLOUR
             if free is not None:
                 used.add(free)
@@ -191,6 +199,10 @@ def _kpi(
         Card.EMERGENCIES,
         Card.CHANGES,
         Card.JOBS_QUOTES,
+        Card.PRODUCT_ENQUIRIES,
+        Card.ORDERS_DELIVERY,
+        Card.RETURNS,
+        Card.SERVICING_REQUESTS,
     ):
         waiting = card.get("needed_person") or 0
         note = _change(card, frequency) or (
@@ -329,6 +341,34 @@ def _panel(
                 Tile("Left a number", str(card["callbacks"])),
             ),
         )
+    if key == Card.LINES_BUSY:
+        if not card.get("calls"):
+            return EmailBlock(
+                "note",
+                key,
+                title,
+                note="Every caller got through: your lines were never all busy.",
+            )
+        busiest = card.get("busiest") or []
+        note = None
+        if busiest:
+            top = busiest[0]
+            note = (
+                f"Most often {_WEEKDAYS[top['weekday']]} "
+                f"{_hours(top['hour'], top['hour'] + 1)}. "
+                "Need more calls at once? Contact us."
+            )
+        return EmailBlock(
+            "tiles",
+            key,
+            title,
+            tiles=(
+                Tile("Couldn't get through", str(card["calls"])),
+                Tile("Put through to your team", str(card["answered"])),
+                Tile("Left a voicemail", str(card["voicemails"])),
+            ),
+            note=note,
+        )
     if key == Card.AGENT_PERFORMANCE:
         if not card.get("calls"):
             return None
@@ -398,6 +438,16 @@ def _panel(
                 BarRow(f"{t['label']} ({t['booked']} booked)", t["calls"])
                 for t in types
             ),
+        )
+    if key == Card.TOP_PRODUCTS:
+        products = card.get("products") or []
+        if not products:
+            return None
+        return EmailBlock(
+            "bars",
+            key,
+            title,
+            bars=tuple(BarRow(p["label"], p["calls"]) for p in products),
         )
     if key == Card.EMERGENCIES_BY_HOUR:
         hours = card.get("hours") or []

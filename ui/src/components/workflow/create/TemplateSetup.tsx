@@ -3,6 +3,7 @@
 import { CalendarDays, Check, ExternalLink, Loader2 } from 'lucide-react';
 
 import type { TemplateSetupField, WorkflowTemplateResponse } from '@/client/types.gen';
+import { AgentLanguageChips } from '@/components/agent/AgentLanguageChips';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
@@ -405,6 +406,16 @@ export function TemplateSetup({
                             value={answers[field.key] ?? ''}
                             onChange={(value) => onAnswer(field.key, value)}
                         />
+                    ) : field.type === 'languages' ? (
+                        <div key={field.key} className="flex flex-col gap-1.5">
+                            <span id={`setup-${field.key}-label`} className="text-caption font-semibold text-ink">
+                                {field.label}
+                            </span>
+                            <AgentLanguageChips
+                                value={answers[field.key] ?? ''}
+                                onChange={(value) => onAnswer(field.key, value)}
+                            />
+                        </div>
                     ) : (
                         <SetupInput
                             key={field.key}

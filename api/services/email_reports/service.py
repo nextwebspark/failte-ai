@@ -41,6 +41,7 @@ from api.services.email_reports.periods import (
     Period,
     due_to_send,
     latest_due,
+    on_demand_period,
     parse_clock,
     preview_period,
 )
@@ -560,6 +561,68 @@ async def send_test(
         ),
     )
     message = replace(message, subject=f"Test: {message.subject}")
+    error = await _deliver(sender or get_email_sender(), message)
+    return (
+        None
+        if error is None
+        else "The email service didn't accept it. Try again later."
+    )
+
+
+async def send_on_demand(
+    organization_id: int,
+    *,
+    user_id: int,
+    to: str,
+    start: datetime,
+    end: datetime,
+    previous_start: datetime,
+    previous_end: datetime,
+    workflow_id: int | None,
+    show_credit: bool,
+    sender: EmailSender | None = None,
+    now: datetime | None = None,
+) -> str | None:
+    """ "Email me this report" on the Reports screen: the span and agent on
+    screen, sent once to the member asking and nobody else. None when sent,
+    else why not."""
+    from datetime import timedelta
+
+    if not await _within(
+        f"email-report-on-demand:{user_id}", TESTS_PER_HOUR, timedelta(hours=1)
+    ):
+        return "You've sent a few already. Try again in an hour."
+    now = now or datetime.now(UTC)
+    settings = (await load_settings(organization_id)).model_copy(
+        update={"workflow_id": workflow_id}
+    )
+    tz, agents = await report_zone(organization_id, workflow_id)
+    period = on_demand_period(
+        start.astimezone(tz),
+        end.astimezone(tz),
+        previous_start.astimezone(tz),
+        previous_end.astimezone(tz),
+        now,
+    )
+    organization = await db_client.get_organization_by_id(organization_id)
+    report = await build(
+        organization_id,
+        getattr(organization, "name", None),
+        settings,
+        period,
+        tz,
+        agents,
+        now,
+    )
+    if not show_credit:
+        report = replace(report, credit=None)
+    message = render.report_message(
+        report,
+        to=to,
+        links=member_links(
+            "You asked for this report on the Reports screen. It went only to you."
+        ),
+    )
     error = await _deliver(sender or get_email_sender(), message)
     return (
         None

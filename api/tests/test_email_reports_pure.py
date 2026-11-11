@@ -1,7 +1,7 @@
 """Emailed reports: period windows, tokens, recipient rules, masking and
 rendering. Pure; no database or network."""
 
-from datetime import UTC, datetime, time, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
 import pytest
@@ -11,9 +11,11 @@ from api.services.email_reports import tokens
 from api.services.email_reports.content import build_report, callers_wanted
 from api.services.email_reports.formatting import (
     change_text,
+    daily_since,
     duration_text,
     euro,
     mask_phone,
+    period_subtitle,
     period_title,
 )
 from api.services.email_reports.periods import (
@@ -54,12 +56,33 @@ def utc(*args) -> datetime:
 # ---------------------------------------------------------------- periods
 
 
-def test_daily_window_is_midnight_to_send_time_local():
+def test_daily_window_is_the_24_hours_up_to_the_send_time():
+    # From 6 pm the day before, so calls after one daily's send time are in
+    # the next one (a restaurant's dinner service, a plumber's evening).
     period = daily_period(datetime(2026, 11, 6).date(), DUBLIN, SIX_PM)
     assert period.key == "2026-11-06"
-    assert period.start == datetime(2026, 11, 6, 0, 0, tzinfo=DUBLIN)
+    assert period.start == datetime(2026, 11, 5, 18, 0, tzinfo=DUBLIN)
     assert period.end == period.send_at == datetime(2026, 11, 6, 18, 0, tzinfo=DUBLIN)
-    assert period.previous_start == datetime(2026, 10, 30, 0, 0, tzinfo=DUBLIN)
+    assert period.previous_start == datetime(2026, 10, 29, 18, 0, tzinfo=DUBLIN)
+    assert period.previous_end == datetime(2026, 10, 30, 18, 0, tzinfo=DUBLIN)
+
+
+def test_consecutive_dailies_leave_no_gap():
+    friday = daily_period(datetime(2026, 11, 6).date(), DUBLIN, SIX_PM)
+    saturday = daily_period(datetime(2026, 11, 7).date(), DUBLIN, SIX_PM)
+    assert saturday.start == friday.end
+
+
+def test_daily_wording_names_the_day_it_is_sent():
+    period = daily_period(datetime(2026, 11, 6).date(), DUBLIN, SIX_PM)
+    assert period_title(period) == "Friday 6 November"
+    assert period_subtitle(period) == "6 pm yesterday to 6 pm today"
+    assert daily_since(period) == "since 6 pm yesterday"
+    # Sent at midnight, a daily is the whole day before, named after it.
+    midnight = daily_period(datetime(2026, 11, 7).date(), DUBLIN, time(0, 0))
+    assert period_title(midnight) == "Friday 6 November"
+    assert period_subtitle(midnight) == "The whole day"
+    assert daily_since(midnight) == "since midnight"
 
 
 def test_daily_due_only_after_send_time():
@@ -81,11 +104,11 @@ def test_daily_send_time_follows_summer_time():
     )
 
 
-def test_day_the_clocks_go_back_has_25_hours():
-    period = daily_period(datetime(2026, 10, 25).date(), DUBLIN, time(23, 59))
+def test_daily_across_the_clocks_going_back_has_25_hours():
+    period = daily_period(datetime(2026, 10, 25).date(), DUBLIN, SIX_PM)
     # Same-zone subtraction is wall-clock in Python; compare in UTC.
     assert period.end.astimezone(UTC) - period.start.astimezone(UTC) == timedelta(
-        hours=24, minutes=59
+        hours=25
     )
 
 
@@ -421,11 +444,11 @@ LINKS = Links(
 )
 
 
-def _report(calls, rows=(), status=None, follow_ups=()):
+def _report(calls, rows=(), status=None, follow_ups=(), period=None):
     return build_report(
         business_name="Bia <Bistro>",
         agent_name=None,
-        period=daily_period(datetime(2026, 11, 6).date(), DUBLIN, SIX_PM),
+        period=period or daily_period(datetime(2026, 11, 6).date(), DUBLIN, SIX_PM),
         tz=DUBLIN,
         calls=calls,
         rows=rows,
@@ -513,7 +536,8 @@ def test_quiet_day_still_sends_and_says_why():
     report = _report([])
     assert subject(report) == "Bia <Bistro> · Friday 6 November: no calls"
     html = render_html(report, to="a@b.ie", links=LINKS)
-    assert "No calls today" in html and "just been quiet" in html
+    assert "No calls since the last report" in html and "just been quiet" in html
+    assert "Nobody has rung since 6 pm yesterday." in html
     off = _report([], status={"answering": False, "reason": "number_off"})
     html_off = render_html(off, to="a@b.ie", links=LINKS)
     assert "phone number is switched off" in html_off
@@ -591,3 +615,38 @@ def test_report_counts_calls_outside_opening_hours_when_set():
     plain = _report(calls)
     assert plain.after_hours is None
     assert "Outside opening hours" not in render_text(plain, to="o@bia.ie", links=LINKS)
+
+
+def _on_demand(first, last, now):
+    from api.services.email_reports.periods import on_demand_period
+
+    start = datetime.combine(first, time.min, tzinfo=DUBLIN)
+    end = min(datetime.combine(last + timedelta(days=1), time.min, tzinfo=DUBLIN), now)
+    return on_demand_period(start, end, start - (end - start), start, now)
+
+
+def test_on_demand_report_is_the_span_on_the_reports_screen():
+    from api.services.email_reports.periods import ON_DEMAND, is_hourly
+
+    now = datetime(2026, 11, 11, 15, 30, tzinfo=DUBLIN)
+    week = _on_demand(date(2026, 11, 4), date(2026, 11, 10), now)
+    assert week.frequency == ON_DEMAND and week.complete
+    assert period_title(week) == "4–10 November"
+    assert period_subtitle(week) == "As picked on your Reports screen"
+    assert not is_hourly(week)
+    today = _on_demand(date(2026, 11, 11), date(2026, 11, 11), now)
+    assert period_title(today) == "Wednesday 11 November"
+    assert period_subtitle(today) == "So far, up to 3:30 pm"
+    assert is_hourly(today)
+
+
+def test_on_demand_report_renders_without_scheduled_wording():
+    now = datetime(2026, 11, 11, 15, 30, tzinfo=DUBLIN)
+    period = _on_demand(date(2026, 11, 4), date(2026, 11, 10), now)
+    report = _report([], period=period)
+    assert subject(report) == "Bia <Bistro> · 4–10 November: no calls"
+    html = render_html(report, to="a@b.ie", links=LINKS)
+    assert "No calls in this time" in html and "Nobody rang in this time." in html
+    busy = _report([_call(1, 9), _call(2, 13)], period=period)
+    assert "Week of" not in subject(busy)
+    assert "Busiest day" in render_html(busy, to="a@b.ie", links=LINKS)

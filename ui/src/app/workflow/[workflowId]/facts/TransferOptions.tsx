@@ -7,18 +7,20 @@ import {
     getTransferSettingsApiV1WorkflowWorkflowIdTransferSettingsGet,
     updateTransferSettingsApiV1WorkflowWorkflowIdTransferSettingsPut,
 } from "@/client/sdk.gen";
-import type { TransferSettings } from "@/client/types.gen";
+import type { LinesBusyAction, TransferSettings, UpdateTransferSettingsRequest } from "@/client/types.gen";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Switch } from "@/components/ui/switch";
 import { TransferNumberHint } from "@/components/workflow/TransferNumberHint";
 import { useOrgConfig } from "@/context/OrgConfigContext";
 import { detailFromError } from "@/lib/apiError";
-import { staffPhoneLine, transferHint, useTransferNumberCheck } from "@/lib/transferNumber";
+import { LINES_BUSY_OPTIONS, linesBusyNote, staffPhoneLine, transferHint, useTransferNumberCheck } from "@/lib/transferNumber";
 
 /**
  * Under "Pass calls to your team": the live check of the typed number
  * ("✓ Irish mobile · saved as +353 87 123 4567", why it can't be used, or
  * the demo-number warning) and "Show the caller's number when we pass a call
- * to you", with what the staff phone will actually show.
+ * to you", with what the staff phone will actually show, and "When all lines
+ * are busy" (what happens to a caller who rings while every line is in use).
  */
 export function TransferOptions({
     workflowId,
@@ -49,12 +51,12 @@ export function TransferOptions({
         void load();
     }, [load]);
 
-    const setShowCaller = async (show: boolean) => {
+    const save = async (body: UpdateTransferSettingsRequest) => {
         setSwitching(true);
         try {
             const res = await updateTransferSettingsApiV1WorkflowWorkflowIdTransferSettingsPut({
                 path: { workflow_id: workflowId },
-                body: { show_caller_number: show },
+                body,
             });
             if (res.error || !res.data) {
                 toast.error(detailFromError(res.error, "Couldn't change the setting. Please try again."));
@@ -81,11 +83,40 @@ export function TransferOptions({
                             aria-labelledby="show-caller-number"
                             checked={settings.show_caller_number}
                             disabled={disabled || switching || !can("agents:facts")}
-                            onCheckedChange={(checked) => void setShowCaller(checked)}
+                            onCheckedChange={(checked) => void save({ show_caller_number: checked })}
                         />
                     </div>
                     <p className="text-caption leading-relaxed text-ink-3">{staffPhoneLine(settings)}</p>
                 </div>
+            )}
+            {settings && (
+                <fieldset className="mt-4 flex flex-col gap-1.5" disabled={disabled || switching || !can("agents:facts")}>
+                    <legend id="lines-busy" className="text-caption font-medium text-foreground">
+                        When all lines are busy
+                    </legend>
+                    <RadioGroup
+                        aria-labelledby="lines-busy"
+                        value={settings.lines_busy ?? "voicemail"}
+                        onValueChange={(next) => void save({ lines_busy: next as LinesBusyAction })}
+                        className="mt-1 gap-2"
+                    >
+                        {LINES_BUSY_OPTIONS.map((option) => {
+                            const id = `lines-busy-${option.value}`;
+                            return (
+                                <div key={option.value} className="flex items-start gap-2">
+                                    <RadioGroupItem value={option.value} id={id} className="mt-0.5" />
+                                    <label htmlFor={id} className="text-caption leading-snug">
+                                        <span className="font-medium text-foreground">{option.label}</span>
+                                        <span className="block text-ink-3">{option.help}</span>
+                                    </label>
+                                </div>
+                            );
+                        })}
+                    </RadioGroup>
+                    {linesBusyNote(settings, value) ? (
+                        <p className="text-caption leading-relaxed text-ink-3">{linesBusyNote(settings, value)}</p>
+                    ) : null}
+                </fieldset>
             )}
         </>
     );

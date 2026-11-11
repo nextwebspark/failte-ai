@@ -46,6 +46,13 @@ from api.services.auth.depends import (
 )
 from api.services.auth.permissions import Permission
 from api.services.call_review.categories import TEMPLATE_CATEGORY_FACT
+from api.services.calls.lines_busy import (
+    LINES_BUSY_KEY,
+    LINES_BUSY_PROVIDERS,
+    LinesBusyAction,
+    effective_choice,
+    stored_choice,
+)
 from api.services.configuration.ai_model_configuration import (
     WORKFLOW_MODEL_CONFIGURATION_V2_OVERRIDE_KEY,
     CustomerKeysNotAllowedError,
@@ -136,9 +143,11 @@ from api.services.workflow.template_setup import (
     TemplateSetupError,
     attach_integration_tools,
     attach_tool_placeholder,
+    calendar_tool_provider,
     check_integration_tools,
     fill_template,
     parse_setup_fields,
+    set_calendar_tool,
     uses_tool_placeholder,
 )
 from api.services.workflow.tool_name_validation import (
@@ -2279,6 +2288,58 @@ async def update_business_facts(
     return _facts_response(workflow, fields)
 
 
+class AgentCalendar(BaseModel):
+    # The calendar tool the agent books with; null when it books with none
+    # (it takes callers' details for the team instead).
+    tool_uuid: str | None = None
+    provider: str | None = None
+
+
+class SetAgentCalendarRequest(BaseModel):
+    # A booking calendar tool of this workspace (Google Calendar or
+    # Calendly, connected under Integrations); null stops booking.
+    tool_uuid: str | None = None
+
+
+@router.put(
+    "/{workflow_id}/calendar",
+    dependencies=requires(Permission.AGENTS_FACTS),
+)
+async def set_agent_calendar(
+    workflow_id: int,
+    request: SetAgentCalendarRequest,
+    user: UserModel = Depends(get_user),
+) -> AgentCalendar:
+    """Book with this calendar (or with none). Attaches the connected
+    calendar to the steps that talk to callers, from the next call, without
+    publishing any unfinished changes to the agent itself. An agent books
+    with one calendar, so any other calendar it had is taken off."""
+    organization_id = user.selected_organization_id
+    tools = await db_client.get_tools_for_organization(organization_id)
+    calendars = {
+        tool.tool_uuid: provider
+        for tool in tools
+        if (provider := calendar_tool_provider(tool.category, tool.definition))
+    }
+    if request.tool_uuid is not None and request.tool_uuid not in calendars:
+        raise HTTPException(
+            status_code=404, detail="That calendar isn't connected to this workspace."
+        )
+    saved = await db_client.update_agent_steps(
+        workflow_id,
+        organization_id,
+        lambda definition: set_calendar_tool(
+            definition, request.tool_uuid, set(calendars)
+        ),
+    )
+    if saved is None:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    return AgentCalendar(
+        tool_uuid=request.tool_uuid,
+        provider=calendars.get(request.tool_uuid) if request.tool_uuid else None,
+    )
+
+
 class TransferNumberCheckRequest(BaseModel):
     number: str = Field(max_length=80)
     # The agent being edited, so its own numbers are refused; none in the
@@ -2326,10 +2387,19 @@ class TransferSettings(BaseModel):
     # "agent" (the agent's number), or "unknown" (no phone number yet).
     staff_phone_shows: str
     providers: list[str]
+    # "When all lines are busy": what happens to a caller who rings while
+    # every line is in use. ``lines_busy`` is what applies (the owner's
+    # choice, else the default); ``lines_busy_chosen`` is None until they pick.
+    lines_busy: LinesBusyAction = LinesBusyAction.VOICEMAIL
+    lines_busy_chosen: LinesBusyAction | None = None
+    # The agent's phone providers that can only say the busy line (no
+    # forward or voicemail there).
+    lines_busy_busy_line_only: list[str] = []
 
 
 class UpdateTransferSettingsRequest(BaseModel):
-    show_caller_number: bool
+    show_caller_number: bool | None = None
+    lines_busy: LinesBusyAction | None = None
 
 
 async def _transfer_settings(workflow_id: int, organization_id: int):
@@ -2351,7 +2421,14 @@ async def _transfer_settings(workflow_id: int, organization_id: int):
     else:
         shows = "agent"
     return TransferSettings(
-        show_caller_number=show, staff_phone_shows=shows, providers=providers
+        show_caller_number=show,
+        staff_phone_shows=shows,
+        providers=providers,
+        lines_busy=effective_choice(facts),
+        lines_busy_chosen=stored_choice(facts),
+        lines_busy_busy_line_only=[
+            p for p in providers if p not in LINES_BUSY_PROVIDERS
+        ],
     )
 
 
@@ -2377,18 +2454,20 @@ async def update_transfer_settings(
     request: UpdateTransferSettingsRequest,
     user: UserModel = Depends(get_user),
 ) -> TransferSettings:
-    """Turn "Show the caller's number when we pass a call to you" on or off.
-    Applies from the next call."""
+    """Turn "Show the caller's number when we pass a call to you" on or off,
+    and pick what happens "When all lines are busy". Applies from the next
+    call."""
     organization_id = user.selected_organization_id
-    saved = await db_client.update_business_facts(
-        workflow_id,
-        organization_id,
-        {
-            SHOW_CALLER_NUMBER_KEY: None
-            if request.show_caller_number
-            else SHOW_CALLER_NUMBER_OFF
-        },
-    )
+    updates: dict[str, str | None] = {}
+    if request.show_caller_number is not None:
+        updates[SHOW_CALLER_NUMBER_KEY] = (
+            None if request.show_caller_number else SHOW_CALLER_NUMBER_OFF
+        )
+    if request.lines_busy is not None:
+        updates[LINES_BUSY_KEY] = request.lines_busy.value
+    if not updates:
+        raise HTTPException(status_code=422, detail="Nothing to change.")
+    saved = await db_client.update_business_facts(workflow_id, organization_id, updates)
     if saved is None:
         raise HTTPException(status_code=404, detail="Agent not found")
     return await _transfer_settings(workflow_id, organization_id)

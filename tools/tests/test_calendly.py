@@ -360,6 +360,15 @@ async def test_book_creates_a_real_calendly_booking(
     ]
     assert body["tracking"]["utm_source"] == "lightmove-ai"
     assert body["tracking"]["utm_content"] == str(CONNECTION_ID)
+    # Calendly answers 400 unless all six tracking fields are sent.
+    assert set(body["tracking"]) == {
+        "utm_campaign",
+        "utm_source",
+        "utm_medium",
+        "utm_content",
+        "utm_term",
+        "salesforce_uuid",
+    }
     assert post.calls[0].request.headers["Authorization"] == f"Bearer {TOKEN}"
 
 
@@ -662,3 +671,78 @@ async def test_unreadable_bookings_give_an_admin_safe_error(
     with pytest.raises(BookingListFailed) as caught:
         await provider().list_bookings(ctx(http), NOW, NOW + timedelta(days=1))
     assert "stack trace" not in str(caught.value)
+
+
+async def test_party_size_answers_a_how_many_people_question(
+    http: httpx.AsyncClient, calendly: respx.MockRouter
+) -> None:
+    """ "Number of people" is the party size, not a phone number, although
+    both have "number" in them."""
+    questions = [
+        {
+            "name": "Number of people",
+            "type": "string",
+            "position": 0,
+            "enabled": True,
+            "required": True,
+            "answer_choices": [],
+            "include_other": False,
+        },
+        {
+            "name": "Phone number",
+            "type": "phone_number",
+            "position": 1,
+            "enabled": True,
+            "required": False,
+            "answer_choices": [],
+            "include_other": False,
+        },
+    ]
+    calendly.get(f"/event_types/{EVENT_TYPE_UUID}").respond(
+        200, json={"resource": event_type(locations=[], custom_questions=questions)}
+    )
+    post = calendly.post("/invitees").respond(
+        201, json={"resource": {"event": f"{API}/scheduled_events/EV-3"}}
+    )
+    result = (
+        await provider()
+        .service_for(ctx(http))
+        .book(
+            "2026-10-13T09:00:00+01:00",
+            "Mary",
+            "mary@example.ie",
+            "087 765 4321",
+            party_size=3,
+        )
+    )
+    assert result.booked is True
+    answers = json.loads(post.calls[0].request.content)["questions_and_answers"]
+    assert {a["question"]: a["answer"] for a in answers} == {
+        "Number of people": "3",
+        "Phone number": "+353877654321",
+    }
+
+
+async def test_required_party_question_without_a_size_is_handed_off(
+    http: httpx.AsyncClient, calendly: respx.MockRouter
+) -> None:
+    question = {
+        "name": "How many guests?",
+        "type": "text",
+        "position": 0,
+        "enabled": True,
+        "required": True,
+        "answer_choices": [],
+        "include_other": False,
+    }
+    calendly.get(f"/event_types/{EVENT_TYPE_UUID}").respond(
+        200, json={"resource": event_type(locations=[], custom_questions=[question])}
+    )
+    post = calendly.post("/invitees")
+    result = (
+        await provider()
+        .service_for(ctx(http))
+        .book("2026-10-13T09:00:00+01:00", "Mary", "mary@example.ie", "0877654321")
+    )
+    assert result.handoff == "cannot_book"
+    assert not post.called

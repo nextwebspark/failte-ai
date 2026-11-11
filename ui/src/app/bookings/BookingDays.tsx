@@ -112,18 +112,13 @@ export function BookingCard({ booking, calendarName }: { booking: CalendarBookin
                 </div>
 
                 <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-                    <span
-                        className={cn(
-                            "inline-flex items-center gap-1.5 text-sm sm:w-24",
-                            party === "Not asked" ? "text-ink-3" : "text-foreground",
-                        )}
-                    >
-                        <Users className="size-4 flex-none text-ink-3" aria-hidden />
-                        <span>
-                            {party === "Not asked" ? <span className="sr-only">Party size: </span> : null}
-                            {party}
+                    {/* Only when known: a shop or clinic booking has no party size. */}
+                    {party !== "Not asked" && (
+                        <span className="inline-flex items-center gap-1.5 text-sm text-foreground sm:w-24">
+                            <Users className="size-4 flex-none text-ink-3" aria-hidden />
+                            <span>{party}</span>
                         </span>
-                    </span>
+                    )}
                     {booking.caller_phone ? (
                         <a
                             className="inline-flex min-h-10 items-center gap-1.5 rounded-md border border-line px-3 font-mono text-sm text-foreground transition-colors hover:border-brand/50 hover:bg-brand-dim hover:text-brand focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/40 motion-reduce:transition-none sm:min-h-9"

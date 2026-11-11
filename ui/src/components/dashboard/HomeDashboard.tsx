@@ -15,17 +15,17 @@ import {
     Mic,
     Moon,
     Phone,
+    PhoneCall,
     PhoneForwarded,
     PhoneOff,
     Play,
     RefreshCw,
 } from "lucide-react";
 import Link from "next/link";
-import { type ReactNode, useState } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 
-import { formatPhone } from "@/app/usage/callsView";
+import { callsQueryToParams, DEFAULT_QUERY, formatPhone } from "@/app/usage/callsView";
 import type {
-    DashboardAfterHours,
     DashboardRange,
     DashboardRecentCall,
     DashboardSummaryResponse,
@@ -44,6 +44,7 @@ import { CallersWantedChart } from "./CallersWantedChart";
 import {
     afterHoursWords,
     busiestHour,
+    callDayAndTime,
     callerWords,
     callLength,
     callsTileLabel,
@@ -53,15 +54,20 @@ import {
     followUpKey,
     hourSpan,
     lastCallWords,
+    markKind,
     notAnsweringWords,
+    type OpenHoursLegend,
+    openHoursLegend,
     RANGE_OPTIONS,
     rangeSentence,
     RESULT_WORDS,
     telHref,
     todayLine,
+    turnedAwayWords,
 } from "./dashboardView";
 import { Chip, FollowUpRow } from "./FollowUpRow";
 import { HomeSkeleton } from "./HomeSkeleton";
+import { HomeTestSheet } from "./HomeTestSheet";
 import { HourlyCallsChart } from "./HourlyCallsChart";
 import { useDashboardSummary, useFollowUpMarking, useFollowUps } from "./useDashboardData";
 
@@ -108,6 +114,38 @@ function CardLink({ href, children }: { href: string; children: ReactNode }) {
 /** The quiet note in a card's header slot ("Today", "Calls per hour, today"). */
 function CardHint({ children }: { children: ReactNode }) {
     return <span className="text-right text-caption text-ink-3">{children}</span>;
+}
+
+/** "Updated 3:42 pm" and a button to look for new calls now. Home also
+ * looks by itself every 30 seconds while it is open. */
+function RefreshControl({
+    refreshing,
+    updatedAt,
+    onRefresh,
+}: {
+    refreshing: boolean;
+    updatedAt: Date | null;
+    onRefresh: () => void;
+}) {
+    return (
+        <div className="flex items-center gap-2 self-start text-caption text-ink-3 @4xl:self-end">
+            {updatedAt && (
+                <span aria-live="polite">
+                    Updated {updatedAt.toLocaleTimeString("en-IE", { hour: "numeric", minute: "2-digit" })}
+                </span>
+            )}
+            <Button
+                variant="ghost"
+                size="sm"
+                className="h-8 gap-1.5 px-2 text-caption"
+                onClick={onRefresh}
+                disabled={refreshing}
+            >
+                <RefreshCw className={cn("size-3.5", refreshing && "animate-spin")} aria-hidden />
+                {refreshing ? "Refreshing…" : "Refresh"}
+            </Button>
+        </div>
+    );
 }
 
 function RangeSwitch({ value, onChange }: { value: DashboardRange; onChange: (v: DashboardRange) => void }) {
@@ -268,6 +306,20 @@ function Tiles({ summary, now }: { summary: DashboardSummaryResponse; now: Date 
     const t = summary.tiles;
     const change = changeWords(summary.range, summary.calls_change, now, summary.timezone);
     const average = callLength(t.average_call_seconds);
+    // The three tiles after "Calls" plus this line account for every call,
+    // so the numbers on Home always add up to the total.
+    const noConversation = t.no_conversation ?? t.hung_up_silent;
+    const rest = [
+        noConversation > 0 ? `${noConversation} hung up or didn't connect` : null,
+        (t.lines_busy ?? 0) > 0 ? `${t.lines_busy} couldn't get through (lines busy)` : null,
+        t.in_progress > 0 ? `${t.in_progress} in progress` : null,
+    ].filter(Boolean).join(" · ");
+    const callsCaption = (
+        <>
+            {change ? <Trend change={change} /> : average ? `Average call ${average}` : null}
+            {rest && <span className="mt-1 block text-ink-3">{rest}</span>}
+        </>
+    );
     return (
         <div className="grid grid-cols-2 gap-3 @3xl:grid-cols-4 @3xl:gap-4">
             <Tile
@@ -277,7 +329,7 @@ function Tiles({ summary, now }: { summary: DashboardSummaryResponse; now: Date 
                 shortLabel="Calls"
                 value={t.calls}
                 phoneCaption={change ? <Trend change={change} /> : null}
-                caption={change ? <Trend change={change} /> : average ? `Average call ${average}` : null}
+                caption={callsCaption}
             />
             <Tile
                 icon={Check}
@@ -295,8 +347,16 @@ function Tiles({ summary, now }: { summary: DashboardSummaryResponse; now: Date 
                 caption="Answered start to finish, no staff needed"
             />
             <Tile
-                icon={PhoneForwarded}
+                icon={PhoneCall}
                 tone="bg-amber-dim text-amber"
+                label="Need a call back"
+                shortLabel="Call backs"
+                value={t.callbacks_requested}
+                caption="Your agent took their details; someone needs to ring them"
+            />
+            <Tile
+                icon={PhoneForwarded}
+                tone="bg-sky-dim text-sky"
                 label="Passed to your team"
                 shortLabel="Passed to team"
                 value={t.passed_to_team}
@@ -321,13 +381,6 @@ function Tiles({ summary, now }: { summary: DashboardSummaryResponse; now: Date 
                     )
                 }
             />
-            <Tile
-                icon={PhoneOff}
-                tone="bg-danger-dim text-danger"
-                label="Hung up without speaking"
-                value={t.hung_up_silent}
-                caption="Callers who rang off before saying anything"
-            />
         </div>
     );
 }
@@ -339,6 +392,7 @@ function Attention({
     now,
     followUpsHref,
     onAddAnswer,
+    turnedAway,
 }: {
     items: FollowUpItem[] | null;
     openCount: number | null;
@@ -346,10 +400,21 @@ function Attention({
     now: Date;
     followUpsHref: string;
     onAddAnswer: (item: FollowUpItem) => void;
+    /** Callers turned away today because every line was busy. */
+    turnedAway?: string | null;
 }) {
     const { can } = useOrgConfig();
     const { busy, change } = useFollowUpMarking();
     const canMark = can("followups:manage");
+    const busyNote = turnedAway ? (
+        <Link
+            href={`${followUpsHref}?kind=lines_busy`}
+            className="mb-2 flex items-start gap-2.5 rounded-lg bg-amber-dim px-3 py-2 text-sm text-foreground outline-none hover:underline focus-visible:ring-[3px] focus-visible:ring-ring/40"
+        >
+            <PhoneOff className="mt-0.5 size-4 flex-none text-amber" aria-hidden />
+            <span>{turnedAway}</span>
+        </Link>
+    ) : null;
     return (
         <Card
             titleId="home-attention"
@@ -361,6 +426,7 @@ function Attention({
             }
             action={<CardLink href={followUpsHref}>All follow-ups</CardLink>}
         >
+            {busyNote}
             {items === null ? (
                 <p className="py-4 text-sm text-ink-3">Couldn&apos;t load follow-ups. They&apos;re on the Follow-ups page.</p>
             ) : items.length === 0 ? (
@@ -385,7 +451,7 @@ function Attention({
                             busy={busy === followUpKey(item)}
                             // Done here only for the review kinds (no call to return).
                             onMarkDone={
-                                canMark && (item.kind === "unanswered_question" || item.kind === "time_was_full")
+                                canMark && markKind(item.kind) !== null
                                     ? (i) => void change(i, true)
                                     : undefined
                             }
@@ -538,12 +604,13 @@ function RecentCalls({ summary, now, empty }: { summary: DashboardSummaryRespons
     );
 }
 
-function WhenPeopleCalled({ summary, empty }: { summary: DashboardSummaryResponse; empty: ReactNode }) {
+function WhenPeopleCalled({ summary, now, empty }: { summary: DashboardSummaryResponse; now: Date; empty: ReactNode }) {
     const sub =
         summary.range === "today"
             ? "Calls per hour, today"
             : `Calls per hour, last ${summary.range === "7d" ? "7" : "30"} days`;
     const peak = busiestHour(summary.calls_by_hour);
+    const legend = openHoursLegend(summary.opening_hours, summary.range);
     return (
         <Card titleId="home-hours" title="When people called" action={<CardHint>{sub}</CardHint>}>
             {summary.tiles.calls === 0 ? (
@@ -559,45 +626,128 @@ function WhenPeopleCalled({ summary, empty }: { summary: DashboardSummaryRespons
                             </span>
                         </p>
                     )}
-                    <HourlyCallsChart hours={summary.calls_by_hour} caption={sub} />
+                    <HourlyCallsChart
+                        hours={summary.calls_by_hour}
+                        caption={legend ? `${sub}. ${legend.label}.` : sub}
+                        openRanges={legend?.band ? summary.opening_hours?.ranges : undefined}
+                    />
+                    {legend && <OpenHoursKey legend={legend} />}
                 </>
             )}
-            <AfterHours afterHours={summary.after_hours} />
+            <AfterHours summary={summary} now={now} />
         </Card>
     );
 }
 
+/** The chart's legend for the open-hours band (or why there is none). */
+function OpenHoursKey({ legend }: { legend: OpenHoursLegend }) {
+    return (
+        <div className="mt-3 text-meta text-ink-3">
+            <p className="flex items-center gap-2">
+                {legend.band && (
+                    <span className="size-3 flex-none rounded-[3px] border border-line bg-ink-3/[0.08]" aria-hidden />
+                )}
+                <span className={cn(legend.band && "text-ink-2")}>{legend.label}</span>
+            </p>
+            {legend.note && <p className={cn("mt-1", legend.band && "pl-5")}>{legend.note}</p>}
+        </div>
+    );
+}
+
+/** The Calls page showing a range's after-hours calls (one of them open, when given). */
+function afterHoursCallsHref(summary: DashboardSummaryResponse, call?: number): string {
+    const filters =
+        summary.workflow_id !== null && summary.workflow_id !== undefined
+            ? JSON.stringify([{ id: "workflowId", value: { value: summary.workflow_id } }])
+            : null;
+    const params = callsQueryToParams(
+        { ...DEFAULT_QUERY, afterHours: true, when: summary.range },
+        { filters, call: call ?? null },
+    );
+    return `/usage?${params}`;
+}
+
 /**
  * Calls that came in while the business was closed, by each agent's opening
- * hours set as times. Agents without them are named, not guessed.
+ * hours set as times, and the newest of them: when, who and what happened,
+ * each opening on Calls. Agents without hours as times are named, not
+ * guessed.
  */
-function AfterHours({ afterHours }: { afterHours: DashboardAfterHours | undefined }) {
+function AfterHours({ summary, now }: { summary: DashboardSummaryResponse; now: Date }) {
     const { can } = useOrgConfig();
+    const afterHours = summary.after_hours;
     if (!afterHours) return null;
     const words = afterHoursWords(afterHours);
     if (!words.count && !words.note) return null;
     const missing = afterHours.agents_without_hours;
+    const listed = afterHours.recent ?? [];
     return (
-        <div className="mt-5 flex items-start gap-3 rounded-xl border border-line-soft bg-panel-2 px-4 py-3.5">
-            <span className="grid size-9 flex-none place-items-center rounded-[10px] bg-sky-dim text-sky" aria-hidden>
-                <Moon className="size-[18px]" />
-            </span>
-            <div className="min-w-0 pt-0.5">
-                {words.count && <p className="text-body font-semibold tabular-nums text-foreground">{words.count}</p>}
-                {words.note && (
-                    <p className={cn("text-caption text-ink-3", words.count && "mt-0.5")}>
-                        {words.note}
-                        {can("agents:facts") && missing.length === 1 && (
-                            <>
-                                {" "}
-                                <Link href={agentFactsHref(missing[0].id)} className="font-medium text-brand hover:underline">
-                                    Set the hours
-                                </Link>
-                            </>
+        <div className="mt-5 rounded-xl border border-line-soft bg-panel-2 px-4 py-3.5">
+            <div className="flex items-start gap-3">
+                <span className="grid size-9 flex-none place-items-center rounded-[10px] bg-sky-dim text-sky" aria-hidden>
+                    <Moon className="size-[18px]" />
+                </span>
+                <div className="min-w-0 flex-1 pt-0.5">
+                    <div className="flex items-baseline justify-between gap-3">
+                        {words.count && <p className="text-body font-semibold tabular-nums text-foreground">{words.count}</p>}
+                        {listed.length > 0 && (
+                            <Link
+                                href={afterHoursCallsHref(summary)}
+                                className="whitespace-nowrap text-sm font-semibold text-brand hover:underline"
+                                aria-label="See all calls outside opening hours on Calls"
+                            >
+                                See all
+                            </Link>
                         )}
-                    </p>
-                )}
+                    </div>
+                    {words.note && (
+                        <p className={cn("text-caption text-ink-3", words.count && "mt-0.5")}>
+                            {words.note}
+                            {can("agents:facts") && missing.length === 1 && (
+                                <>
+                                    {" "}
+                                    <Link href={agentFactsHref(missing[0].id)} className="font-medium text-brand hover:underline">
+                                        Set the hours
+                                    </Link>
+                                </>
+                            )}
+                        </p>
+                    )}
+                </div>
             </div>
+            {/* Full width on a phone; under the sentence on a wider card. */}
+            {listed.length > 0 && (
+                <ul className="mt-2 flex flex-col @md:pl-12" aria-label="Calls outside opening hours, newest first">
+                    {listed.map((call) => {
+                        const result = RESULT_WORDS[call.result];
+                        return (
+                            <li key={call.run_id} className="border-t border-line-soft first:border-t-0">
+                                <Link
+                                    href={afterHoursCallsHref(summary, call.run_id)}
+                                    className="group flex items-center gap-3 rounded-md py-2.5 outline-none focus-visible:ring-[3px] focus-visible:ring-ring/40"
+                                >
+                                    <span className="min-w-0 flex-1">
+                                        <span className="flex flex-wrap items-baseline gap-x-2">
+                                            <span className="truncate text-body font-medium text-foreground group-hover:underline">
+                                                {callerWords(call)}
+                                            </span>
+                                            {call.caller_name && call.caller_number && (
+                                                <span className="text-caption tabular-nums text-ink-3">{formatPhone(call.caller_number)}</span>
+                                            )}
+                                        </span>
+                                        <span className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-meta tabular-nums text-ink-3">
+                                            {callDayAndTime(call.created_at, summary.timezone, now)}
+                                            <Chip tone={result.tone} className="text-meta">{result.label}</Chip>
+                                        </span>
+                                    </span>
+                                    <ArrowRight className="size-4 flex-none text-ink-3 group-hover:text-foreground" aria-hidden />
+                                    <span className="sr-only">Open this call on Calls</span>
+                                </Link>
+                            </li>
+                        );
+                    })}
+                </ul>
+            )}
         </div>
     );
 }
@@ -662,6 +812,8 @@ function AgentCard({
     const status = summary.agent_status;
     const agentId = primaryAgentId(summary);
     const credit = summary.credit;
+    // Starting a test call needs agents:write; staff don't get the button.
+    const { can } = useOrgConfig();
     return (
         <Card titleId="home-agent" title="Your agent">
             {/* At a glance: is it working, on which number, when it last
@@ -726,6 +878,7 @@ function AgentCard({
                 </p>
             )}
             {agentId != null &&
+                can("agents:write") &&
                 (onTryAgent ? (
                     <Button variant="soft" className="mt-4 w-full" onClick={onTryAgent}>
                         <Mic aria-hidden />
@@ -763,18 +916,21 @@ function QuickLinks({ summary, onTryAgent }: { summary: DashboardSummaryResponse
         );
     }
     if (agentId != null) {
-        links.push(
-            {
-                title: "Opening hours & what it says",
-                hint: "Change what your agent tells callers",
-                icon: Clock,
-                tone: "bg-amber-dim text-amber",
-                href: agentFactsHref(agentId),
-            },
-            onTryAgent
-                ? { title: "Try your agent", hint: "Talk to it in your browser", icon: Mic, tone: "bg-panel-2 text-ink-2", onClick: onTryAgent }
-                : { title: "Try your agent", hint: "Talk to it in your browser", icon: Mic, tone: "bg-panel-2 text-ink-2", href: agentTalkHref(agentId) },
-        );
+        links.push({
+            title: "Opening hours & what it says",
+            hint: can("agents:facts") ? "Change what your agent tells callers" : "See what your agent tells callers",
+            icon: Clock,
+            tone: "bg-amber-dim text-amber",
+            href: agentFactsHref(agentId),
+        });
+        // Starting a test call needs agents:write; staff don't get the link.
+        if (can("agents:write")) {
+            links.push(
+                onTryAgent
+                    ? { title: "Try your agent", hint: "Talk to it in your browser", icon: Mic, tone: "bg-panel-2 text-ink-2", onClick: onTryAgent }
+                    : { title: "Try your agent", hint: "Talk to it in your browser", icon: Mic, tone: "bg-panel-2 text-ink-2", href: agentTalkHref(agentId) },
+            );
+        }
     }
     if (links.length === 0) return null;
     const className =
@@ -819,6 +975,7 @@ function QuickLinks({ summary, onTryAgent }: { summary: DashboardSummaryResponse
 
 /** A brand-new business: what's set up, and a first call to make. */
 function GetStarted({ summary, onTryAgent }: { summary: DashboardSummaryResponse; onTryAgent?: () => void }) {
+    const { can } = useOrgConfig();
     const status = summary.agent_status;
     const agentId = primaryAgentId(summary);
     const number = status.phone_numbers[0];
@@ -870,7 +1027,7 @@ function GetStarted({ summary, onTryAgent }: { summary: DashboardSummaryResponse
                             </a>
                         </Button>
                     </>
-                ) : agentId != null ? (
+                ) : agentId != null && can("agents:write") ? (
                     <>
                         <p className="text-body font-semibold text-foreground">Try your agent</p>
                         <p className="mt-0.5 text-sm text-ink-2">
@@ -923,8 +1080,13 @@ export interface HomeDashboardProps {
 export function HomeDashboard({ heading, workflowId, onTryAgent }: HomeDashboardProps) {
     useOwnsPageHeading();
     const [range, setRange] = useState<DashboardRange>("today");
-    const { result, reload } = useDashboardSummary(range, workflowId);
+    const { result, reload, refresh, refreshing, updatedAt } = useDashboardSummary(range, workflowId);
     const followUps = useFollowUps("open", workflowId);
+    // Refresh the calls and the follow-ups together.
+    const refreshAll = () => {
+        refresh();
+        followUps.reloadQuietly();
+    };
     const [answering, setAnswering] = useState<FollowUpItem | null>(null);
     // One clock per render, so every relative time agrees.
     const now = new Date();
@@ -932,6 +1094,23 @@ export function HomeDashboard({ heading, workflowId, onTryAgent }: HomeDashboard
     const followUpsHref = "/follow-ups";
     const summary = result.state === "ready" ? result.data : null;
     const timezone = summary?.timezone ?? null;
+
+    // On Home (no agent page around it), "Try your agent" opens the agent's
+    // Test agent panel beside Home instead of leaving for the agent screen,
+    // for members who may start a test call (creating a run needs agents:write).
+    const { can } = useOrgConfig();
+    const [testing, setTesting] = useState(false);
+    const homeAgentId = summary ? primaryAgentId(summary) : null;
+    const homeAgentName = summary?.agents.find((a) => a.id === homeAgentId)?.name ?? null;
+    const tryOnHome = !onTryAgent && homeAgentId != null && can("agents:write");
+    const afterTest = useRef<number | null>(null);
+    useEffect(() => {
+        if (testing || afterTest.current === null) return;
+        const timers = [4_000, 15_000].map((delay) => window.setTimeout(refreshAll, delay));
+        return () => timers.forEach((t) => window.clearTimeout(t));
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [testing]);
+    const tryAgent = !can("agents:write") ? undefined : (onTryAgent ?? (tryOnHome ? () => setTesting(true) : undefined));
 
     const header = (
         <header className="flex flex-col gap-3 @4xl:flex-row @4xl:items-end @4xl:justify-between @4xl:gap-6">
@@ -942,13 +1121,22 @@ export function HomeDashboard({ heading, workflowId, onTryAgent }: HomeDashboard
                 <p className="mt-1 text-body text-ink-3">{rangeSentence(range, now, timezone)}</p>
                 {summary && <TodayLine summary={summary} />}
             </div>
-            <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center @4xl:flex-nowrap">
-                {summary && (
-                    <div>
-                        <StatusPill summary={summary} />
-                    </div>
+            <div className="flex flex-col gap-3 @4xl:items-end">
+                {tryOnHome && (
+                    <Button variant="soft" className="self-start @4xl:self-end" onClick={() => setTesting(true)}>
+                        <Mic aria-hidden />
+                        Try your agent
+                    </Button>
                 )}
-                <RangeSwitch value={range} onChange={setRange} />
+                <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center @4xl:flex-nowrap">
+                    {summary && (
+                        <div>
+                            <StatusPill summary={summary} />
+                        </div>
+                    )}
+                    <RangeSwitch value={range} onChange={setRange} />
+                </div>
+                {summary && <RefreshControl refreshing={refreshing} updatedAt={updatedAt} onRefresh={refreshAll} />}
             </div>
         </header>
     );
@@ -995,8 +1183,8 @@ export function HomeDashboard({ heading, workflowId, onTryAgent }: HomeDashboard
         <NoCallsYet
             range={range}
             onRange={setRange}
-            tryHref={agentId != null ? agentTalkHref(agentId) : null}
-            onTryAgent={onTryAgent}
+            tryHref={agentId != null && can("agents:write") ? agentTalkHref(agentId) : null}
+            onTryAgent={tryAgent}
         />
     );
 
@@ -1007,8 +1195,8 @@ export function HomeDashboard({ heading, workflowId, onTryAgent }: HomeDashboard
 
             {setUp && (
                 <div className="grid grid-cols-1 gap-4 @4xl:grid-cols-[minmax(0,7fr)_minmax(0,5fr)] @4xl:gap-5">
-                    <GetStarted summary={summary} onTryAgent={onTryAgent} />
-                    <AgentCard summary={summary} now={now} onTryAgent={onTryAgent} />
+                    <GetStarted summary={summary} onTryAgent={tryAgent} />
+                    <AgentCard summary={summary} now={now} onTryAgent={tryAgent} />
                 </div>
             )}
 
@@ -1030,13 +1218,14 @@ export function HomeDashboard({ heading, workflowId, onTryAgent }: HomeDashboard
                                     now={now}
                                     followUpsHref={followUpsHref}
                                     onAddAnswer={setAnswering}
+                                    turnedAway={turnedAwayWords(summary.turned_away_today)}
                                 />
                             </div>
                             <div className="order-4 min-w-0 @4xl:order-none">
                                 <RecentCalls summary={summary} now={now} empty={empty} />
                             </div>
                             <div className="order-5 min-w-0 @4xl:order-none">
-                                <AgentCard summary={summary} now={now} onTryAgent={onTryAgent} />
+                                <AgentCard summary={summary} now={now} onTryAgent={tryAgent} />
                             </div>
                         </div>
                         <div className="contents @4xl:flex @4xl:min-w-0 @4xl:flex-col @4xl:gap-5">
@@ -1044,15 +1233,28 @@ export function HomeDashboard({ heading, workflowId, onTryAgent }: HomeDashboard
                                 <CallersWanted summary={summary} empty={empty} />
                             </div>
                             <div className="order-3 min-w-0 @4xl:order-none">
-                                <WhenPeopleCalled summary={summary} empty={empty} />
+                                <WhenPeopleCalled summary={summary} now={now} empty={empty} />
                             </div>
                         </div>
                     </div>
                 </>
             )}
 
-            <QuickLinks summary={summary} onTryAgent={onTryAgent} />
+            <QuickLinks summary={summary} onTryAgent={tryAgent} />
             <AddAnswerDialog item={answering} onClose={() => setAnswering(null)} />
+            {tryOnHome && homeAgentId != null && (
+                <HomeTestSheet
+                    workflowId={homeAgentId}
+                    agentName={homeAgentName}
+                    open={testing}
+                    onOpenChange={(open) => {
+                        setTesting(open);
+                        // A test call shows up once it has been saved and
+                        // read: look again shortly after the panel closes.
+                        if (!open) afterTest.current = Date.now();
+                    }}
+                />
+            )}
         </div>
     );
 }

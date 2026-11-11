@@ -8,9 +8,10 @@ import { LifeBuoy } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { BRAND } from "@/config/brand";
 import { cn } from "@/lib/utils";
 
-export const SUPPORT_EMAIL = "alok.kumar@nextwebspark.com";
+export const SUPPORT_EMAIL = BRAND.supportEmail;
 export const SUPPORT_MAILTO = `mailto:${SUPPORT_EMAIL}`;
 
 type SupportLinkProps = {

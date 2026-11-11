@@ -215,7 +215,14 @@ export function PhoneSetup({ agentId, agentName, onSettled }: PhoneSetupProps) {
     if (!permissionsLoaded || (canRead && data === null && loadError === null)) {
         body = <Skeleton className="h-40 rounded-lg" />;
     } else if (!canRead) {
-        body = <p className="text-sm text-ink-2">Ask a workspace admin to set up a phone number for this agent.</p>;
+        // Staff can't read the phone settings, so this can't say whether a
+        // number is linked (Home does): only who can change it.
+        body = (
+            <p className="text-sm text-ink-2">
+                Only the owner or an admin can set up or change this agent&apos;s phone number. Home shows the number
+                it answers on.
+            </p>
+        );
     } else if (loadError || !data) {
         body = (
             <div className="flex flex-wrap items-center gap-3">

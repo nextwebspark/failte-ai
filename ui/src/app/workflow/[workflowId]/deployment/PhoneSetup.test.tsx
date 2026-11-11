@@ -212,10 +212,11 @@ describe("PhoneSetup", () => {
         expect(await screen.findByText("We couldn't look up numbers just now. Please try again.")).toBeTruthy();
     });
 
-    it("asks people without telephony access to get an admin", () => {
+    it("tells people without telephony access who can set the number up", () => {
         mocks.can.mockReturnValue(false);
         render(<PhoneSetup agentId={7} agentName="Bia Bistro" />);
-        expect(screen.getByText(/Ask a workspace admin/)).toBeTruthy();
+        // It can't read the settings, so it doesn't claim no number is linked.
+        expect(screen.getByText(/Only the owner or an admin can set up or change/)).toBeTruthy();
         expect(mocks.getSetup).not.toHaveBeenCalled();
     });
 });

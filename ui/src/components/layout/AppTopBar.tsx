@@ -217,7 +217,7 @@ export function AppTopBar({
       <div className="ml-auto flex flex-none items-center gap-1 md:gap-2.5">
         {/* On xl the test rail is pinned beside the content panel; below it,
             or while a screen has it closed, it opens from here. */}
-        {agentShell && showTestRail && (
+        {agentShell && showTestRail && can("agents:write") && (
           <Button
             variant="outline"
             size="sm"

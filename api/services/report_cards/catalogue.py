@@ -19,6 +19,7 @@ class Pack(StrEnum):
     CLINIC = "clinic"
     TRADES = "trades"
     VOIP = "voip"
+    RETAIL = "retail"
     # Every other template: the shared cards only.
     STANDARD = "standard"
 
@@ -40,6 +41,7 @@ class Card(StrEnum):
     FOLLOW_UPS = "follow_ups"
     AFTER_HOURS = "after_hours"
     AGENT_PERFORMANCE = "agent_performance"
+    LINES_BUSY = "lines_busy"
     # Restaurant
     BOOKINGS_TAKEN = "bookings_taken"
     COVERS_BOOKED = "covers_booked"
@@ -69,6 +71,12 @@ class Card(StrEnum):
     CALL_SPIKES = "call_spikes"
     REPEAT_CALLERS = "repeat_callers"
     WAITING_FOR_TEAM = "waiting_for_team"
+    # Shop sales and support line
+    ORDERS_DELIVERY = "orders_delivery"
+    PRODUCT_ENQUIRIES = "product_enquiries"
+    RETURNS = "returns"
+    SERVICING_REQUESTS = "servicing_requests"
+    TOP_PRODUCTS = "top_products"
 
 
 @dataclass(frozen=True, slots=True)
@@ -115,6 +123,12 @@ _SHARED_PANELS = (
         email=True,
     ),
     CardSpec(Card.FOLLOW_UPS, "Follow-ups", CardSize.PANEL, email=True),
+    CardSpec(
+        Card.LINES_BUSY,
+        "Callers who couldn't get through",
+        CardSize.PANEL,
+        email=True,
+    ),
     CardSpec(Card.AFTER_HOURS, "Calls while you were closed", CardSize.PANEL),
     CardSpec(Card.AGENT_PERFORMANCE, "How your agent did", CardSize.PANEL),
 )
@@ -245,6 +259,34 @@ PACKS: dict[Pack, PackSpec] = {
             ),
         ),
     ),
+    Pack.RETAIL: PackSpec(
+        Pack.RETAIL,
+        "Shop sales & support",
+        (
+            _CALLS,
+            CardSpec(
+                Card.PRODUCT_ENQUIRIES, "Product enquiries", CardSize.KPI, email=True
+            ),
+            CardSpec(
+                Card.ORDERS_DELIVERY,
+                "Orders and delivery questions",
+                CardSize.KPI,
+                email=True,
+            ),
+            CardSpec(Card.RETURNS, "Returns and faults", CardSize.KPI),
+            CardSpec(Card.SERVICING_REQUESTS, "Servicing requests", CardSize.KPI),
+            *_shared(
+                after_questions=(
+                    CardSpec(
+                        Card.TOP_PRODUCTS,
+                        "Products callers asked about",
+                        CardSize.PANEL,
+                        email=True,
+                    ),
+                )
+            ),
+        ),
+    ),
 }
 
 
@@ -267,6 +309,7 @@ _TEMPLATE_PACKS = {
     "clinic": Pack.CLINIC,
     "trades": Pack.TRADES,
     "telephony": Pack.VOIP,
+    "retail": Pack.RETAIL,
 }
 
 

@@ -12,6 +12,7 @@ import {
     updateBusinessFactsApiV1WorkflowWorkflowIdBusinessFactsPut,
 } from "@/client/sdk.gen";
 import type { BusinessFact, FollowUpItem } from "@/client/types.gen";
+import { AgentLanguageChips } from "@/components/agent/AgentLanguageChips";
 import { AddAnswerDialog } from "@/components/dashboard/AddAnswerDialog";
 import { appendAnswer, callWhen } from "@/components/dashboard/dashboardView";
 import { useFollowUps } from "@/components/dashboard/useDashboardData";
@@ -33,6 +34,7 @@ import { CustomVoice } from "./CustomVoice";
 import { bookingLine, bookingTimesByDay, bookingTitle, fillGreeting, WEEK, WEEK_LONG } from "./knowledge";
 import { forSave, type OpeningHours, openingHoursProblem, sameOpeningHours } from "./openingHours";
 import { OpeningHoursField } from "./OpeningHoursEditor";
+import { SampleOrdersLink } from "./SampleOrdersLink";
 import { TransferOptions } from "./TransferOptions";
 import { type AgentKnowledge, type CalendarInfo, useAgentKnowledge } from "./useAgentKnowledge";
 import { VoiceChips } from "./VoiceChips";
@@ -207,7 +209,9 @@ export default function WhatYourAgentKnowsPage() {
                         What your agent knows
                     </h1>
                     <p className="mt-1.5 text-body text-ink-2">
-                        Change these any time. Your agent uses them on the next call.
+                        {canEdit
+                            ? "Change these any time. Your agent uses them on the next call."
+                            : "What your agent tells callers. The owner or an admin keeps it up to date."}
                     </p>
                 </div>
                 {facts && facts.length > 0 && (
@@ -230,9 +234,7 @@ export default function WhatYourAgentKnowsPage() {
                                 {saving ? "Saving…" : "Save changes"}
                             </Button>
                         </div>
-                    ) : (
-                        <p className="text-sm text-ink-3">Only the owner or an admin can change these.</p>
-                    )
+                    ) : null
                 )}
             </header>
 
@@ -275,7 +277,11 @@ export default function WhatYourAgentKnowsPage() {
                                         />
                                     </FactRow>
                                 ) : (
-                                    <FactRow key={fact.key} fact={fact}>
+                                    <FactRow
+                                        key={fact.key}
+                                        fact={fact}
+                                        labelFor={fact.type === "languages" ? null : undefined}
+                                    >
                                         {field(fact, { rows: 2 })}
                                     </FactRow>
                                 ),
@@ -305,6 +311,7 @@ export default function WhatYourAgentKnowsPage() {
                         <CanDo
                             calendar={knowledge.calendar}
                             setCalendar={knowledge.setCalendar}
+                            chooseCalendar={knowledge.chooseCalendar}
                             transfer={transfer}
                             transferField={
                                 transfer ? (
@@ -327,6 +334,7 @@ export default function WhatYourAgentKnowsPage() {
                     <div className="flex min-w-0 flex-col gap-4">
                         <HowItSounds workflowId={workflowId} knowledge={knowledge} values={values} />
                         <ReadyForCalls workflowId={workflowId} facts={facts} knowledge={knowledge} />
+                        <SampleOrdersLink />
                     </div>
                 </div>
             )}
@@ -517,6 +525,9 @@ function FactField({
         "aria-describedby": invalid ? errorId : undefined,
         placeholder: fact.placeholder ? `e.g. ${fact.placeholder}` : undefined,
     };
+    if (fact.type === "languages") {
+        return <AgentLanguageChips id={id} value={value} onChange={onChange} disabled={disabled} />;
+    }
     return (
         <>
             {fact.type === "textarea" ? (
@@ -607,6 +618,7 @@ function StatusText({ ok, children }: { ok: boolean | null; children: ReactNode 
 function CanDo({
     calendar,
     setCalendar,
+    chooseCalendar,
     transfer,
     transferField,
     transferValue,
@@ -615,6 +627,7 @@ function CanDo({
 }: {
     calendar: CalendarInfo;
     setCalendar: AgentKnowledge["setCalendar"];
+    chooseCalendar?: AgentKnowledge["chooseCalendar"];
     transfer: BusinessFact | undefined;
     transferField: ReactNode;
     transferValue: string;
@@ -624,8 +637,30 @@ function CanDo({
 }) {
     const { can } = useOrgConfig();
     const [switching, setSwitching] = useState(false);
+    const [choosing, setChoosing] = useState(false);
     const books = calendar.state === "ready";
-    if (!books && !transfer) return null;
+    // Connected under Integrations but not on this agent yet: offer it here.
+    const unused = calendar.state === "none" ? calendar.available : [];
+    const mayChoose = Boolean(chooseCalendar) && can("agents:facts");
+    const offer = !books && unused.length > 0 && mayChoose;
+    if (!books && !offer && !transfer) return null;
+
+    const choose = async (toolUuid: string | null) => {
+        if (!chooseCalendar) return;
+        setChoosing(true);
+        try {
+            await chooseCalendar(toolUuid);
+            toast.success(
+                toolUuid
+                    ? "Your agent books with this calendar from the next call."
+                    : "Your agent no longer books on this calendar. It takes callers' details instead.",
+            );
+        } catch (error) {
+            toast.error(error instanceof Error ? error.message : "Couldn't change the calendar. Please try again.");
+        } finally {
+            setChoosing(false);
+        }
+    };
 
     const canSwitch = books && calendar.connectionId !== null && calendar.aiBooking !== null && can("bookings:manage");
     const setBooking = async (enabled: boolean) => {
@@ -651,6 +686,33 @@ function CanDo({
 
     return (
         <Card title="What your agent can do" id="can-do">
+            {offer && (
+                <div className="grid gap-2 border-t border-line-soft py-3 first:border-t-0">
+                    <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3">
+                        <div className="min-w-0">
+                            <p className="text-body font-semibold text-foreground">Take bookings</p>
+                            <p className="mt-0.5 text-caption leading-relaxed text-ink-3">
+                                {unused.length === 1
+                                    ? `${bookingTitle(unused[0].provider)} is connected, but this agent doesn't use it yet. Until it does, your agent takes callers' details for your team.`
+                                    : "Your calendars are connected, but this agent doesn't use one yet. Until it does, your agent takes callers' details for your team."}
+                            </p>
+                        </div>
+                        <StatusText ok={null}>Off</StatusText>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                        {unused.map((choice) => (
+                            <Button
+                                key={choice.toolUuid}
+                                size="sm"
+                                disabled={choosing}
+                                onClick={() => void choose(choice.toolUuid)}
+                            >
+                                Book with {unused.length === 1 ? bookingTitle(choice.provider) : choice.name}
+                            </Button>
+                        ))}
+                    </div>
+                </div>
+            )}
             {books && (
                 <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 border-t border-line-soft py-3 first:border-t-0">
                     <div className="min-w-0">
@@ -719,6 +781,18 @@ function CanDo({
                     ) : (
                         "No Calendly event is chosen yet, so your agent takes callers' details instead. Ask an admin to choose one in Integrations."
                     )}
+                </p>
+            )}
+            {books && mayChoose && (
+                <p className="pb-2 text-caption text-ink-3">
+                    <button
+                        type="button"
+                        disabled={choosing}
+                        onClick={() => void choose(null)}
+                        className="font-medium text-ink-2 underline-offset-2 hover:underline disabled:opacity-50"
+                    >
+                        Stop using this calendar on this agent
+                    </button>
                 </p>
             )}
         </Card>
@@ -809,12 +883,12 @@ function HowItSounds({
                     </div>
                 ) : null}
                 {can("agents:write") && (
-                    <Link
-                        href={`/workflow/${workflowId}/model`}
-                        className="-mt-1 self-start text-caption font-medium text-brand underline-offset-2 hover:underline"
-                    >
-                        {voice.state === "ready" && voice.choices ? "See all voices" : "Change the voice"}
-                    </Link>
+                        <Link
+                            href={`/workflow/${workflowId}/model`}
+                            className="-mt-1 self-start text-caption font-medium text-brand underline-offset-2 hover:underline"
+                        >
+                            {voice.state === "ready" && voice.choices ? "See all voices" : "Change the voice"}
+                        </Link>
                 )}
 
                 <CustomVoice workflowId={workflowId} canRequest={can("agents:write")} />
@@ -830,6 +904,7 @@ function HowItSounds({
                     </div>
                 )}
 
+                {can("agents:write") && (
                 <Button asChild variant="outline" className="h-9 self-start">
                     <Link
                         href={agentTalkHref(workflowId)}
@@ -843,6 +918,7 @@ function HowItSounds({
                         Try your agent
                     </Link>
                 </Button>
+                )}
             </div>
         </Card>
     );

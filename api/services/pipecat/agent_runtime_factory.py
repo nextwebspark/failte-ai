@@ -29,6 +29,7 @@ from api.services.pipecat.pipeline_builder import (
     create_agent_worker,
 )
 from api.services.pipecat.recording_router_processor import RecordingRouterProcessor
+from api.services.pipecat.response_guard import EmptyResponseGuard
 from api.services.pipecat.service_factory import (
     create_llm_service,
     create_tts_service,
@@ -61,6 +62,12 @@ class AgentGenerationCallbacks:
 
     generation_started: Callable[[], Any]
     llm_text_frame: Callable[[str], Any]
+    # The call's LLM context, for EmptyResponseGuard. None: no guard.
+    context: Callable[[], Any] | None = None
+    # Whether the call is in its closing step, for EmptyResponseGuard.
+    in_closing_step: Callable[[], bool] | None = None
+    # Ends the call after a goodbye said without the end-call tool.
+    on_farewell: Callable[[], None] | None = None
 
 
 class AgentRuntimeFactory:
@@ -276,6 +283,16 @@ class AgentRuntimeFactory:
             generation_started_callback=callbacks.generation_started,
             llm_text_frame_callback=callbacks.llm_text_frame,
         )
+        response_guard = (
+            EmptyResponseGuard(
+                context_provider=callbacks.context,
+                rerun=runtime.run_llm,
+                in_closing_step=callbacks.in_closing_step,
+                on_farewell=callbacks.on_farewell,
+            )
+            if callbacks.context is not None
+            else None
+        )
         pipeline = build_agent_generation_pipeline(
             runtime.llm,
             runtime.tts,
@@ -283,6 +300,7 @@ class AgentRuntimeFactory:
             recording_router=runtime.recording_router,
             fast_router=runtime.fast_router,
             ack_gate=runtime.ack_gate,
+            response_guard=response_guard,
         )
         call_tracing_context = getattr(self._call_worker, "_tracing_context", None)
         if call_tracing_context is None:
