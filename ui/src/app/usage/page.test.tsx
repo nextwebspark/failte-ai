@@ -103,8 +103,6 @@ function requests() {
     return mocks.history.mock.calls.map(([options]) => options.query as Record<string, string | number>);
 }
 
-const HIDE_SAMPLE = "lightmove.sampleData.hidden";
-
 describe("Calls list", () => {
     beforeEach(() => {
         vi.clearAllMocks();
@@ -129,7 +127,6 @@ describe("Calls list", () => {
     });
 
     it("has one main title and a download that is always there", async () => {
-        window.localStorage.setItem(HIDE_SAMPLE, "1");
         mocks.history.mockResolvedValue({ data: EMPTY });
         render(<UsagePage />);
         expect(screen.getByRole("heading", { level: 1, name: "Calls" })).toBeTruthy();
@@ -188,6 +185,16 @@ describe("Calls list", () => {
         expect(screen.getByText("Callback requested")).toBeTruthy();
         expect(screen.getByText("1:05")).toBeTruthy();
         expect(screen.getByText("+353 87 123 4567")).toBeTruthy();
+    });
+
+    it("reads each call the way Home does, not by the stored ending code", async () => {
+        const booked = { ...RUN, id: 502, disposition: "end_call", result: "booking_made", gathered_context: { mapped_call_disposition: "end_call" } };
+        const handled = { ...RUN, id: 503, disposition: "end_call", result: "handled", gathered_context: { mapped_call_disposition: "end_call" } };
+        mocks.history.mockResolvedValue({ data: { ...PAGE, runs: [booked, handled] } });
+        render(<UsagePage />);
+        expect(await screen.findByText("Booking made")).toBeTruthy();
+        expect(screen.getByText("Handled by your agent")).toBeTruthy();
+        expect(screen.queryByText("Call finished")).toBeNull();
     });
 
     it("searches names and numbers through the API", async () => {
@@ -335,7 +342,7 @@ describe("One call", () => {
         });
         render(<UsagePage />);
         expect(await screen.findByText(/This call is still going on/)).toBeTruthy();
-        expect(screen.getAllByText("Call in progress").length).toBeGreaterThan(0);
+        expect(screen.getAllByText("On the line now").length).toBeGreaterThan(0);
     });
 
     it("doesn't call an old unfinished call live", async () => {
@@ -412,7 +419,7 @@ describe("The call's summary, questions and search", () => {
     });
 });
 
-describe("Sample mode", () => {
+describe("A workspace with no calls", () => {
     beforeEach(() => {
         vi.clearAllMocks();
         window.localStorage.clear();
@@ -421,53 +428,22 @@ describe("Sample mode", () => {
         mocks.history.mockResolvedValue({ data: EMPTY });
     });
 
-    it("shows made-up calls with a banner until hidden", async () => {
+    it("says there are no calls yet and points to trying the agent, with no made-up calls", async () => {
         render(<UsagePage />);
-        expect(await screen.findByText("This is how Calls looks once calls come in. These calls are made up.")).toBeTruthy();
-        expect(screen.getByText("Declan Murphy")).toBeTruthy();
-        expect(screen.getByText(/Booked a table for 4 tonight at 7:00 pm/)).toBeTruthy();
-        expect(screen.getByRole("button", { name: "All, 11 calls" })).toBeTruthy();
-        expect(screen.getByRole("button", { name: "Needs follow-up, 4 calls" })).toBeTruthy();
-        expect(screen.getByRole("button", { name: /Sample call, no recording: Declan Murphy/ })).toBeTruthy();
-        expect((screen.getByRole("button", { name: "Download list" }) as HTMLButtonElement).disabled).toBe(true);
-        // Nothing about the sample goes to the API.
-        expect(mocks.run).not.toHaveBeenCalled();
-
-        fireEvent.click(screen.getByRole("button", { name: "Hide sample data" }));
         expect(await screen.findByText("No calls yet")).toBeTruthy();
-        expect(window.localStorage.getItem(HIDE_SAMPLE)).toBe("1");
-    });
-
-    it("filters the sample in the browser, what was said included", async () => {
-        mocks.query = "q=gluten";
-        render(<UsagePage />);
-        await screen.findByText("This is how Calls looks once calls come in. These calls are made up.");
-        expect(screen.getByRole("button", { name: "All, 1 call" })).toBeTruthy();
+        expect(screen.getByText(/link a phone number/)).toBeTruthy();
+        expect(screen.getByRole("link", { name: "Try your agent" }).getAttribute("href")).toBe("/workflow");
         expect(screen.queryByText("Declan Murphy")).toBeNull();
-    });
-
-    it("opens a sample call with its transcript, and the real-call buttons off", async () => {
-        mocks.query = "call=-1";
-        window.innerWidth = 390;
-        render(<UsagePage />);
-        const panel = await screen.findByRole("dialog", { name: "Declan Murphy" });
-        expect(panel).toBeTruthy();
-        expect(screen.getByText("Sample call, no recording. Real calls play here.")).toBeTruthy();
-        expect(await screen.findByText(/have you a table for four tonight/)).toBeTruthy();
-        expect(screen.getByText("Party size")).toBeTruthy();
-        for (const name of ["Call back", "Share recording", "Download recording"]) {
-            expect((screen.getByRole("button", { name }) as HTMLButtonElement).disabled).toBe(true);
-        }
-        expect(screen.getByText(/This is a sample call/)).toBeTruthy();
+        expect(screen.queryByText(/sample/i)).toBeNull();
         expect(mocks.run).not.toHaveBeenCalled();
     });
 
-    it("goes away as soon as there is one real call", async () => {
+    it("says nothing matches when there are calls, just not these", async () => {
         mocks.history.mockImplementation(async ({ query }) => ({
             data: query.limit === 1 && !query.filters && !query.start_date ? { ...PAGE, total_count: 1 } : EMPTY,
         }));
         render(<UsagePage />);
         expect(await screen.findByText("No calls match")).toBeTruthy();
-        expect(screen.queryByText(/These calls are made up/)).toBeNull();
+        expect(screen.queryByText("No calls yet")).toBeNull();
     });
 });

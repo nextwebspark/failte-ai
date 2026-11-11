@@ -77,7 +77,9 @@ class IntegrationProvider(BaseModel):
     capabilities: list[str] = Field(
         default_factory=list,
         description="Optional features, e.g. ``sync`` (POST "
-        "/connections/{id}/sync imports the connection's data).",
+        "/connections/{id}/sync imports the connection's data), ``bookings`` "
+        "(its bookings are listed) or ``choices`` (GET "
+        "/connections/{id}/choices lists the values of a setting to pick).",
     )
     sync_item_label: str | None = Field(
         default=None, description="What a sync imports, e.g. ``products``."
@@ -410,6 +412,29 @@ class AiBookingRequest(BaseModel):
         if self.rules:
             changes.update(self.rules.model_dump(exclude_none=True))
         return changes
+
+
+class IntegrationChoice(BaseModel):
+    """One value the owner may pick for a connection setting, read live from
+    the provider (e.g. one of their Calendly event types)."""
+
+    value: str
+    label: str
+    detail: str | None = None
+    warning: str | None = Field(
+        default=None,
+        description="Why picking it would not work well, in plain words.",
+    )
+    config: dict[str, JsonValue] = Field(
+        description="Send this as the connection's config (PATCH) to pick it."
+    )
+
+
+class IntegrationChoiceListResponse(BaseModel):
+    """Values for one setting of a connection (``choices`` capability)."""
+
+    field: str = Field(description="The config field the choices are for.")
+    choices: list[IntegrationChoice]
 
 
 class BookingListResponse(BaseModel):

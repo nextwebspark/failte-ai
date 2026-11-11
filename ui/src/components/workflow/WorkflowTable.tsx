@@ -186,7 +186,7 @@ export function WorkflowTable({ workflows, showArchived, folders }: WorkflowTabl
             <div
                 className={cn(
                     ROW_GRID,
-                    'hidden h-9 border-b border-line-soft bg-panel-2 text-[10.5px] font-semibold uppercase tracking-[0.08em] text-ink-3 md:grid',
+                    'hidden h-9 border-b border-line-soft bg-panel-2 text-meta font-semibold uppercase tracking-[0.08em] text-ink-3 md:grid',
                 )}
                 aria-hidden
             >
@@ -231,7 +231,7 @@ export function WorkflowTable({ workflows, showArchived, folders }: WorkflowTabl
                                 <span
                                     aria-hidden
                                     className={cn(
-                                        'flex size-8 shrink-0 items-center justify-center rounded-full border border-line bg-panel-2 text-[13px] font-semibold text-ink-2',
+                                        'flex size-8 shrink-0 items-center justify-center rounded-full border border-line bg-panel-2 text-caption font-semibold text-ink-2',
                                         showArchived && 'opacity-60',
                                     )}
                                 >
@@ -267,14 +267,14 @@ export function WorkflowTable({ workflows, showArchived, folders }: WorkflowTabl
                             </div>
 
                             <div className="hidden items-center gap-2.5 md:flex">
-                                <span className="min-w-[2.5ch] text-right font-mono text-[13px] font-medium text-ink">
+                                <span className="min-w-[2.5ch] text-right font-mono text-caption font-medium text-ink">
                                     {weeklyRuns(workflow)}
                                 </span>
                                 <Sparkline values={workflow.runs_7d ?? []} />
                             </div>
 
                             <div
-                                className="hidden text-[13px] text-ink-2 md:block"
+                                className="hidden text-caption text-ink-2 md:block"
                                 title={`${workflow.total_runs} calls in total`}
                                 suppressHydrationWarning
                             >

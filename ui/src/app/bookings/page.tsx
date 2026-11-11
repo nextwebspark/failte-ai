@@ -198,17 +198,20 @@ function BookingsScreen() {
 
     return (
         <div className="page-body">
-            <div className="mx-auto flex max-w-4xl flex-col gap-8">
+            {/* One column up to xl; then the days on the left and the calendar
+                settings beside them, so a wide screen isn't two thirds empty. */}
+            <div className="mx-auto flex max-w-[1360px] flex-col gap-8 xl:grid xl:grid-cols-[minmax(0,1fr)_400px] xl:items-start xl:gap-x-8">
+                <div className="flex min-w-0 flex-col gap-8">
                 <section
                     aria-labelledby="bookings-range"
                     className="rounded-xl border border-line bg-gradient-to-br from-brand-dim via-panel to-panel px-5 py-5 sm:px-6"
                 >
                     <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
                         <div className="min-w-0">
-                            <h2 id="bookings-range" className="text-[22px] font-bold tracking-tight">
+                            <h2 id="bookings-range" className="font-display text-[24px] font-semibold tracking-[-0.015em] sm:text-page">
                                 {rangeLabel}
                             </h2>
-                            <p className="mt-1 text-[15px] text-ink-2" aria-live="polite">
+                            <p className="mt-1.5 text-body font-medium text-ink-2" aria-live="polite">
                                 {loading ? "Checking your calendar…" : rangeSummary(sums)}
                             </p>
                         </div>
@@ -224,7 +227,7 @@ function BookingsScreen() {
                                     aria-pressed={range === option.value}
                                     onClick={() => setRange(option.value)}
                                     className={cn(
-                                        "min-h-10 whitespace-nowrap rounded-md px-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/40 motion-reduce:transition-none md:min-h-8",
+                                        "min-h-10 whitespace-nowrap rounded-md px-1.5 text-caption font-medium sm:px-3 sm:text-sm transition-colors focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/40 motion-reduce:transition-none md:min-h-8",
                                         range === option.value
                                             ? "bg-brand text-primary-foreground"
                                             : "text-ink-2 hover:bg-brand-dim hover:text-brand",
@@ -236,7 +239,7 @@ function BookingsScreen() {
                         </div>
                     </div>
                     <div className="mt-4 flex flex-col gap-3 border-t border-line-soft pt-3 sm:flex-row sm:items-center sm:justify-between">
-                        <p className="text-[13px] text-ink-3">
+                        <p className="text-sm text-ink-3">
                             Bookings your agent took on the phone, read live from your calendar. Ones your team adds
                             straight into the calendar aren&apos;t listed here.
                         </p>
@@ -265,8 +268,9 @@ function BookingsScreen() {
                         <BookingDays days={days} calendarNames={names} />
                     )}
                 </section>
+                </div>
 
-                <section aria-labelledby="calendar-settings" className="flex flex-col gap-3">
+                <section aria-labelledby="calendar-settings" className="flex min-w-0 flex-col gap-3">
                     <SectionHeading id="calendar-settings">
                         {calendars.length === 1 ? "Your calendar" : "Your calendars"}
                     </SectionHeading>
@@ -306,7 +310,8 @@ function emptyTitle(range: RangeKey): string {
 function BookingsSkeleton() {
     return (
         <div className="page-body" aria-busy="true" aria-label="Loading bookings">
-            <div className="mx-auto flex max-w-4xl flex-col gap-8">
+            <div className="mx-auto flex max-w-[1360px] flex-col gap-8 xl:grid xl:grid-cols-[minmax(0,1fr)_400px] xl:items-start xl:gap-x-8">
+                <div className="flex flex-col gap-8">
                 <Skeleton className="h-[148px] w-full rounded-xl" />
                 {[0, 1].map((day) => (
                     <div key={day} className="flex flex-col gap-2">
@@ -315,6 +320,8 @@ function BookingsSkeleton() {
                         <Skeleton className="h-[68px] w-full rounded-lg" />
                     </div>
                 ))}
+                </div>
+                <Skeleton className="h-[220px] w-full rounded-lg" />
             </div>
         </div>
     );
@@ -336,8 +343,8 @@ function NoCalendar({ canConnect }: { canConnect: boolean }) {
                 ) : null
             }
         >
-            Link your Google Calendar and your agent can offer callers real free times and book them while
-            they&apos;re still on the line. Every booking then shows up here, day by day.
+            Link your Google Calendar or Calendly and your agent can offer callers real free times and book them
+            while they&apos;re still on the line. Every booking then shows up here, day by day.
             {!canConnect && <span className="mt-2 block">Ask an admin on your team to connect it.</span>}
         </EmptyState>
     );
@@ -380,6 +387,8 @@ function CalendarRow({
     const switchId = `booking-on-${calendar.connection_id}`;
     const changesId = `changes-on-${calendar.connection_id}`;
     const changesOn = calendar.ai_changes_enabled ?? false;
+    // Calendly keeps its own hours and rules, and has no way to move bookings.
+    const calendly = calendar.provider === "calendly";
     return (
         <Panel accent={calendar.ok ? (calendar.ai_booking_enabled ? "brand" : "amber") : "danger"}>
             <div className="flex flex-wrap items-center justify-between gap-3">
@@ -410,6 +419,18 @@ function CalendarRow({
                     )}
                 </div>
             </div>
+            {calendly && (
+                <div className="mt-3 border-t border-line-soft pt-3 text-caption text-ink-3">
+                    <p>
+                        Free times come from your Calendly: change your working hours, notice and limits there.
+                    </p>
+                    <p className="mt-1">
+                        Your agent can&apos;t move or cancel Calendly bookings. Callers use the links in their
+                        Calendly email, or you change them in Calendly.
+                    </p>
+                </div>
+            )}
+            {!calendly && (
             <div className="mt-3 flex flex-wrap items-start gap-2 border-t border-line-soft pt-3">
                 {canManage ? (
                     <Switch
@@ -426,18 +447,20 @@ function CalendarRow({
                     <Label htmlFor={canManage ? changesId : undefined} className="text-sm">
                         Let the agent cancel or move bookings
                     </Label>
-                    <p className="text-[12.5px] text-ink-3">
+                    <p className="text-caption text-ink-3">
                         Only after the caller gives the phone number the booking was made under, plus their name or
                         the day of the booking. If anything doesn&apos;t match, or this is off, the caller is passed to
                         your team or a message is taken.
                     </p>
                 </div>
             </div>
+            )}
+            {!calendly && (
             <div className="mt-3 border-t border-line-soft pt-3">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                     <div className="min-w-0">
                         <span className="text-sm font-medium">Booking rules</span>
-                        <p className="text-[12.5px] text-ink-3">{summarize(rules)}</p>
+                        <p className="text-caption text-ink-3">{summarize(rules)}</p>
                     </div>
                     {canManage && (
                         <Button size="sm" variant="outline" className="h-10 sm:h-8" onClick={() => setEditingRules((v) => !v)}>
@@ -458,6 +481,7 @@ function CalendarRow({
                     </div>
                 )}
             </div>
+            )}
             {!calendar.ai_booking_enabled && (
                 <p className="mt-2 text-sm text-ink-2">
                     Your agent won&apos;t book on this calendar. Callers who want a booking are passed to your team,

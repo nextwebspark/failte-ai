@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({
   pathname: "/overview",
   logout: vi.fn(),
   setTheme: vi.fn(),
+  openHelp: vi.fn(),
 }));
 
 vi.mock("next/navigation", () => ({
@@ -28,6 +29,7 @@ vi.mock("@/lib/auth", () => ({
   useAuth: () => ({ user: { displayName: "Maria Keane" }, logout: mocks.logout }),
 }));
 vi.mock("../workspaceAgents", () => ({ useWorkspaceAgents: () => [{ id: 14, name: "Bia" }] }));
+vi.mock("@/components/help/HelpPanel", () => ({ useHelpPanel: () => ({ openHelp: mocks.openHelp }) }));
 vi.mock("next-themes", () => ({ useTheme: () => ({ resolvedTheme: "light", setTheme: mocks.setTheme }) }));
 
 describe("MobileTabBar", () => {
@@ -59,9 +61,10 @@ describe("MobileTabBar", () => {
     const more = screen.getByRole("button", { name: "More" });
     fireEvent.click(more);
     const sheet = await screen.findByRole("dialog");
-    for (const name of ["Bookings", "Reports", "Phone number", "Settings", "Help"]) {
+    for (const name of ["Bookings", "Reports", "Phone number", "Settings"]) {
       expect(within(sheet).getByRole("link", { name: new RegExp(name) })).toBeTruthy();
     }
+    expect(within(sheet).getByRole("button", { name: /Help/ })).toBeTruthy();
     expect(within(sheet).getByText("Trattoria Bella")).toBeTruthy();
     expect(within(sheet).getByText("Maria Keane · Owner")).toBeTruthy();
     const advanced = within(sheet).getByRole("button", { name: /Advanced setup/ });
@@ -70,6 +73,14 @@ describe("MobileTabBar", () => {
     expect(within(sheet).getByRole("link", { name: "Voice agents" })).toBeTruthy();
 
     fireEvent.keyDown(sheet, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  });
+
+  it("opens the Help panel from the sheet", async () => {
+    render(<MobileTabBar />);
+    fireEvent.click(screen.getByRole("button", { name: "More" }));
+    fireEvent.click(await screen.findByRole("button", { name: /Help/ }));
+    expect(mocks.openHelp).toHaveBeenCalledTimes(1);
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
   });
 

@@ -969,7 +969,7 @@ function TemplateVariablesSection({
             title="Variables"
             description={
                 <>
-                    Values prompts can use as <code className="font-mono text-[11.5px] text-ink-2">{"{{name}}"}</code>.
+                    Values prompts can use as <code className="font-mono text-meta text-ink-2">{"{{name}}"}</code>.
                     {campaignsEnabled ? "Campaigns and the API" : "The API"} can override them per call.
                 </>
             }
@@ -977,7 +977,7 @@ function TemplateVariablesSection({
             <div>
                 <div
                     aria-hidden
-                    className={`${columns} bg-panel-2 py-2 text-[10.5px] font-semibold uppercase tracking-[0.08em] text-ink-3`}
+                    className={`${columns} bg-panel-2 py-2 text-meta font-semibold uppercase tracking-[0.08em] text-ink-3`}
                 >
                     <span>Name</span>
                     <span>Default value</span>
@@ -985,7 +985,7 @@ function TemplateVariablesSection({
                 </div>
                 {entries.map(([key, value]) => (
                     <div key={key} className={`${columns} border-t border-line-soft py-2`}>
-                        <span className="truncate font-mono text-[12.5px] text-foreground" title={key}>
+                        <span className="truncate font-mono text-caption text-foreground" title={key}>
                             {key}
                         </span>
                         <Input
@@ -1011,7 +1011,7 @@ function TemplateVariablesSection({
                         placeholder="new_variable"
                         value={newKey}
                         onChange={(e) => setNewKey(e.target.value)}
-                        className="h-8 font-mono text-[12.5px]"
+                        className="h-8 font-mono text-caption"
                     />
                     <Input
                         aria-label="New variable value"
@@ -1077,7 +1077,7 @@ function DictionarySection({
                     value={dictionaryValue}
                     onChange={(e) => setDictionaryValue(e.target.value)}
                     rows={4}
-                    className="resize-y font-mono text-[13px]"
+                    className="resize-y font-mono text-caption"
                 />
             </SettingBlock>
         </SettingsSection>
@@ -1361,7 +1361,7 @@ function AdvancedSettings({ context }: { context: AgentSectionContext }) {
             <div className="page-body @container">
                 <header className="mb-5 flex flex-col gap-1">
                     <h2 className="text-xl font-bold tracking-[-0.01em] text-foreground">Advanced settings</h2>
-                    <p className="text-[13.5px] text-ink-2">
+                    <p className="text-sm text-ink-2">
                         Behaviour, variables, dictionary and diagnostics for this agent. Changes apply once you publish.
                     </p>
                 </header>
@@ -1374,7 +1374,7 @@ function AdvancedSettings({ context }: { context: AgentSectionContext }) {
                                     href={`#${item.id}`}
                                     aria-current={activeSection === item.id ? "true" : undefined}
                                     className={cn(
-                                        "flex items-center gap-2 rounded-md px-2.5 py-1.5 text-[13px] transition-colors hover:text-foreground",
+                                        "flex items-center gap-2 rounded-md px-2.5 py-1.5 text-caption transition-colors hover:text-foreground",
                                         activeSection === item.id
                                             ? "bg-panel-2 font-semibold text-foreground"
                                             : "font-medium text-ink-2",
@@ -1421,7 +1421,7 @@ function AdvancedSettings({ context }: { context: AgentSectionContext }) {
                             description={
                                 <>
                                     Shared by every agent in the workspace. Type{" "}
-                                    <code className="font-mono text-[11.5px] text-ink-2">@</code> in a prompt to insert one.
+                                    <code className="font-mono text-meta text-ink-2">@</code> in a prompt to insert one.
                                 </>
                             }
                             action={

@@ -70,6 +70,8 @@ async def ask_reviewer(
     user: str,
     schema: dict[str, Any],
     model: str = REVIEW_MODEL,
+    temperature: float = REVIEW_TEMPERATURE,
+    max_output_tokens: int = REVIEW_MAX_OUTPUT_TOKENS,
 ) -> ReviewAnswer:
     """One JSON answer from the model. Raises on any failure (no settings,
     timeout, API error, empty answer); the caller decides what that means."""
@@ -79,8 +81,8 @@ async def ask_reviewer(
     client = _client(settings)
     config = types.GenerateContentConfig(
         system_instruction=system,
-        temperature=REVIEW_TEMPERATURE,
-        max_output_tokens=REVIEW_MAX_OUTPUT_TOKENS,
+        temperature=temperature,
+        max_output_tokens=max_output_tokens,
         response_mime_type="application/json",
         response_schema=schema,
         automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True),

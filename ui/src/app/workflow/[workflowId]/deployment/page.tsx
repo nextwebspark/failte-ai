@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 
 import { AgentSectionShell } from "../components/AgentSectionShell";
 import { EmbedDialog } from "../components/EmbedDialog";
-import { AgentPhoneNumbers } from "./AgentPhoneNumbers";
+import { PhoneSetup } from "./PhoneSetup";
 
 /**
  * The sections render once the agent has loaded, after the browser has
@@ -46,7 +46,7 @@ export default function AgentDeploymentPage() {
                 saveWorkflowConfigurations,
             }) => (
                 <div className="page-body max-w-4xl space-y-6">
-                    <AgentPhoneNumbers
+                    <PhoneSetup
                         agentId={workflowId}
                         agentName={workflowName}
                         onSettled={markPhoneSettled}
@@ -62,7 +62,7 @@ export default function AgentDeploymentPage() {
                                 <AppWindow className="size-4 text-ink-3" aria-hidden />
                                 Website
                             </h2>
-                            <p className="mt-1 text-[13px] text-ink-2">
+                            <p className="mt-1 text-caption text-ink-2">
                                 A call button on your website that connects visitors to {workflowName}. Publish
                                 the agent after any change so callers get the new version.
                             </p>

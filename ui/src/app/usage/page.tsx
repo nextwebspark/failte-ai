@@ -1,6 +1,7 @@
 "use client";
 
-import { Download, EyeOff, FlaskConical, Globe, PhoneCall, PhoneOff, RefreshCw, Search, ShieldCheck } from 'lucide-react';
+import { Download, Globe, PhoneCall, PhoneOff, RefreshCw, Search, ShieldCheck } from 'lucide-react';
+import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { type ComponentProps, useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import TimezoneSelect, { type ITimezoneOption } from 'react-timezone-select';
@@ -15,7 +16,7 @@ import { EmptyState } from '@/components/page-states/EmptyState';
 import { CallerDataRequestDialog } from '@/components/privacy/CallerDataRequestDialog';
 import { Button } from '@/components/ui/button';
 import { PageHeader } from '@/components/ui/page-header';
-import { useOrgConfig } from '@/context/OrgConfigContext';
+import { Skeleton } from '@/components/ui/skeleton';
 import { useUserConfig } from '@/context/UserConfigContext';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { useDispositionCodes } from '@/hooks/useDispositionCodes';
@@ -25,7 +26,6 @@ import { useAuth } from '@/lib/auth';
 import { getLocalTimezone } from '@/lib/dateTime';
 import { getUsageFilterAttributes, withDispositionCodeOptions } from '@/lib/filterAttributes';
 import { decodeFiltersFromURL, encodeFiltersToURL } from '@/lib/filters';
-import { useSampleMode } from '@/lib/sampleData';
 import { cn } from '@/lib/utils';
 import type { ActiveFilter, FilterAttribute, NumberFilterOption } from '@/types/filters';
 
@@ -36,6 +36,7 @@ import { CallsPager } from './CallsPager';
 import { CallsTable, CallsTableSkeleton } from './CallsTable';
 import {
     type ApiFilter,
+    type CallRow,
     CALLS_TABS,
     type CallsQuery,
     callsQueryFromParams,
@@ -50,7 +51,6 @@ import {
     tabUsesDates,
     whenPhrase,
 } from './callsView';
-import { type CallRow, filterSampleRuns, sampleOutcomeCodes, sampleRuns, sampleTabCounts } from './sampleRuns';
 
 /**
  * The expert filters behind "More filters": everything the API can filter
@@ -133,11 +133,10 @@ export default function UsagePage() {
     const router = useRouter();
     const searchParams = useSearchParams();
     const { organizationPricing, can } = useUserConfig();
-    const { orgContext } = useOrgConfig();
     const auth = useAuth();
     const isPhone = useIsMobile();
     // A computer: the call opens in a column beside the list.
-    const isWide = useMinWidth(1440);
+    const isWide = useMinWidth(1280);
     // Narrower than this (phones, tablets), the list is cards, not a table.
     const tableFits = useMinWidth(1100);
     const listId = useId();
@@ -148,8 +147,7 @@ export default function UsagePage() {
     const paramsKey = searchParams.toString();
     const query = useMemo(() => callsQueryFromParams(new URLSearchParams(paramsKey)), [paramsKey]);
     const callParam = Number.parseInt(searchParams.get('call') ?? '', 10);
-    // Sample calls have negative ids; real ones are positive.
-    const openCallId = Number.isFinite(callParam) && callParam !== 0 ? callParam : null;
+    const openCallId = Number.isFinite(callParam) && callParam > 0 ? callParam : null;
     const autoplay = searchParams.get('play') === '1';
 
     const [agentFilterOptions, setAgentFilterOptions] = useState<NumberFilterOption[] | null>(null);
@@ -258,43 +256,13 @@ export default function UsagePage() {
         };
     }, [auth.isAuthenticated, query, expertKey, reloadKey]);
 
-    // Sample mode: no real calls at all yet, and the owner hasn't hidden the
-    // sample. The made-up calls fill the list; the first real call ends it.
-    // Kept between loads, so the sample doesn't blink out while a filter reloads.
-    const [hasRealCalls, setHasRealCalls] = useState<boolean | null>(null);
-    useEffect(() => {
-        if (list.state === 'ready') setHasRealCalls(list.anyCalls);
-    }, [list]);
-    const { showSample, hide: hideSample } = useSampleMode(hasRealCalls);
-    const businessName = orgContext?.organization_name?.trim() || undefined;
-    const allSamples = useMemo(
-        () => (showSample ? sampleRuns(businessName, new Date()) : []),
-        [showSample, businessName]
-    );
-    const sampleView = useMemo(() => {
-        if (!showSample) return null;
-        const now = new Date();
-        const matching = filterSampleRuns(allSamples, query, query.tab, now);
-        return {
-            total: matching.length,
-            runs: matching.slice((query.page - 1) * PAGE_SIZE, query.page * PAGE_SIZE),
-            counts: sampleTabCounts(allSamples, query, now),
-        };
-    }, [showSample, allSamples, query]);
-
-    const runs: CallRow[] = useMemo(
-        () => sampleView?.runs ?? (list.state === 'ready' ? list.runs : []),
-        [sampleView, list]
-    );
-    const shownCounts = sampleView?.counts ?? counts;
-    const outcomeCodes = useMemo(
-        () => (showSample ? sampleOutcomeCodes(allSamples) : dispositionCodes),
-        [showSample, allSamples, dispositionCodes]
-    );
+    const runs: CallRow[] = useMemo(() => (list.state === 'ready' ? list.runs : []), [list]);
+    const shownCounts = counts;
+    const outcomeCodes = dispositionCodes;
 
     // A linked call that isn't on this page: look it up by its ID.
     useEffect(() => {
-        if (!auth.isAuthenticated || !openCallId || openCallId < 0 || list.state !== 'ready') return;
+        if (!auth.isAuthenticated || !openCallId || list.state !== 'ready') return;
         if (runs.some(run => run.id === openCallId) || linkedRun?.id === openCallId) return;
         let cancelled = false;
         getUsageHistoryApiV1OrganizationsUsageRunsGet({
@@ -316,12 +284,17 @@ export default function UsagePage() {
         };
     }, [auth.isAuthenticated, openCallId, list.state, runs, linkedRun?.id]);
 
-    // On a computer the first call shows beside the list until another is chosen.
+    // On a computer the newest call shows beside the list until another is
+    // chosen. It isn't put in the URL and doesn't take focus: nothing was picked.
     const openRun = openCallId
         ? runs.find(run => run.id === openCallId) ?? (linkedRun?.id === openCallId ? linkedRun : null)
         : isWide && !previewDismissed
-            ? runs.find(run => run.recording_url) ?? runs[0] ?? null
+            ? runs[0] ?? null
             : null;
+    // While the list loads the layout already holds the call's column, so
+    // nothing jumps when the newest call arrives.
+    const panelLoading = isWide && !openRun && list.state === 'loading' && (!previewDismissed || Boolean(openCallId));
+    const sideBySide = isWide && (Boolean(openRun) || panelLoading);
     const panelLayout = isWide ? 'column' : 'overlay';
     const overlayOpen = Boolean(openRun) && panelLayout === 'overlay';
 
@@ -509,10 +482,10 @@ export default function UsagePage() {
     };
 
     const narrowed = isNarrowed(query, appliedExpert.length);
-    const fullPageHref = openRun && !sampleView
+    const fullPageHref = openRun
         ? runDetailHref(openRun.workflow_id, openRun.id, hrefWith(query, openRun.id))
         : '';
-    const listTotal = sampleView ? sampleView.total : list.state === 'ready' ? list.total : 0;
+    const listTotal = list.state === 'ready' ? list.total : 0;
     const rowProps = {
         runs,
         timezone: effectiveTimezone,
@@ -525,8 +498,8 @@ export default function UsagePage() {
     };
 
     return (
-        <div className="page-body">
-            <div className={cn('mx-auto flex flex-col gap-6', isWide && openRun ? 'max-w-[1400px]' : 'max-w-6xl')}>
+        <div className={cn('page-body', sideBySide && 'max-w-[1720px]')}>
+            <div className={cn('flex flex-col gap-6', !sideBySide && 'mx-auto max-w-6xl')}>
                 <div inert={overlayOpen} className="flex flex-col">
                     <PageHeader
                         className="mb-0"
@@ -537,8 +510,7 @@ export default function UsagePage() {
                                 variant="outline"
                                 className="h-10 bg-panel sm:h-9"
                                 onClick={handleDownload}
-                                disabled={isDownloading || Boolean(sampleView)}
-                                aria-describedby={sampleView ? 'calls-sample-note' : undefined}
+                                disabled={isDownloading}
                             >
                                 <Download aria-hidden />
                                 {isDownloading ? 'Preparing…' : 'Download list'}
@@ -547,33 +519,10 @@ export default function UsagePage() {
                     />
                 </div>
 
-                {sampleView && (
-                    <div
-                        role="note"
-                        aria-label="Sample data"
-                        inert={overlayOpen}
-                        className="-mt-2 flex flex-col gap-3 rounded-xl border border-sky/40 bg-sky-dim px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
-                    >
-                        <div className="flex items-start gap-3">
-                            <FlaskConical className="mt-0.5 size-5 flex-none text-ink-2" aria-hidden />
-                            <p id="calls-sample-note" className="text-[14px] text-foreground">
-                                <span className="mr-2 inline-flex rounded-full border border-line bg-panel px-2 py-0.5 text-[12px] font-semibold">
-                                    Sample data
-                                </span>
-                                This is how Calls looks once calls come in. These calls are made up.
-                            </p>
-                        </div>
-                        <Button variant="outline" className="h-10 flex-none bg-panel sm:h-9" onClick={hideSample}>
-                            <EyeOff aria-hidden />
-                            Hide sample data
-                        </Button>
-                    </div>
-                )}
-
                 <div
                     className={cn(
                         'grid items-start gap-4',
-                        isWide && openRun && 'grid-cols-[minmax(0,1fr)_380px]'
+                        sideBySide && 'grid-cols-[minmax(0,1fr)_minmax(420px,min(42%,640px))]'
                     )}
                 >
                     <div inert={overlayOpen} className="flex min-w-0 flex-col gap-4">
@@ -611,12 +560,12 @@ export default function UsagePage() {
                             )}
 
                             <div id={listId} aria-busy={list.state === 'loading'} className="border-t border-line-soft">
-                                {list.state === 'loading' && !sampleView ? (
+                                {list.state === 'loading' ? (
                                     <>
                                         <span className="sr-only" role="status">Loading calls</span>
-                                        {tableFits ? <CallsTableSkeleton /> : <CallCardsSkeleton />}
+                                        {tableFits && !isWide ? <CallsTableSkeleton /> : <CallCardsSkeleton />}
                                     </>
-                                ) : list.state === 'error' && !sampleView ? (
+                                ) : list.state === 'error' ? (
                                     <EmptyState
                                         tone="amber"
                                         icon={PhoneOff}
@@ -634,10 +583,20 @@ export default function UsagePage() {
                                         Something went wrong on our side. Please try again in a moment.
                                     </EmptyState>
                                 ) : runs.length === 0 ? (
-                                    list.state === 'ready' && !list.anyCalls && !sampleView ? (
-                                        <EmptyState icon={PhoneCall} as="h2" title="No calls yet" className="rounded-none border-0">
+                                    list.state === 'ready' && !list.anyCalls ? (
+                                        <EmptyState
+                                            icon={PhoneCall}
+                                            as="h2"
+                                            title="No calls yet"
+                                            className="rounded-none border-0"
+                                            action={
+                                                <Button asChild variant="soft" className="h-10 sm:h-9">
+                                                    <Link href="/workflow">Try your agent</Link>
+                                                </Button>
+                                            }
+                                        >
                                             When your agent answers a call, it shows up here with the recording and what was said.
-                                            Try ringing your agent&apos;s number, or test it from your agent&apos;s page.
+                                            Try your agent in your browser, or link a phone number so callers reach it.
                                         </EmptyState>
                                     ) : (
                                         <EmptyState
@@ -660,14 +619,14 @@ export default function UsagePage() {
                                                     : `No calls ${tabUsesDates(query.tab) ? whenPhrase(query) : 'in the last 30 days'}${query.outcome || query.who || appliedExpert.length ? ' with these filters' : ''}.`}
                                         </EmptyState>
                                     )
-                                ) : !tableFits ? (
+                                ) : !tableFits || sideBySide ? (
                                     <CallCards {...rowProps} />
                                 ) : (
                                     <CallsTable {...rowProps} />
                                 )}
                             </div>
 
-                            {(sampleView || list.state === 'ready') && listTotal > 0 && (
+                            {list.state === 'ready' && listTotal > 0 && (
                                 <CallsPager
                                     page={query.page}
                                     pageSize={PAGE_SIZE}
@@ -726,6 +685,15 @@ export default function UsagePage() {
                         )}
                     </div>
 
+                    {panelLoading && (
+                        <div aria-hidden className="flex flex-col gap-4 rounded-xl border border-line bg-panel p-6">
+                            <Skeleton className="h-6 w-40 rounded-full" />
+                            <Skeleton className="h-7 w-2/3" />
+                            <Skeleton className="h-14 w-full rounded-xl" />
+                            <Skeleton className="h-4 w-full" />
+                            <Skeleton className="h-4 w-5/6" />
+                        </div>
+                    )}
                     {openRun && (
                         <>
                             {overlayOpen && (

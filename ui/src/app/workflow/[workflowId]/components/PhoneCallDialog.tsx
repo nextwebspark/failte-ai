@@ -384,7 +384,7 @@ export const PhoneCallDialog = ({
                                 <h3 className="text-sm font-medium">
                                     Use a telephony provider
                                 </h3>
-                                <span className="rounded-full bg-ok-dim px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-ok">
+                                <span className="rounded-full bg-ok-dim px-2 py-0.5 text-meta font-medium uppercase tracking-wide text-ok">
                                     Recommended
                                 </span>
                             </div>

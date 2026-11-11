@@ -31,6 +31,7 @@ from api.schemas.integrations import (
     CreateProviderAppRequest,
     InstallIntegrationRequest,
     IntegrationCatalogResponse,
+    IntegrationChoiceListResponse,
     IntegrationConnectionListResponse,
     IntegrationConnectionResponse,
     IntegrationSyncStatus,
@@ -212,6 +213,19 @@ async def test_connection(
 ) -> IntegrationTestResponse:
     """Check the connection against the provider and record its status."""
     return await integrations.test(_actor(membership), connection_id)
+
+
+@router.get("/connections/{connection_id}/choices")
+async def list_connection_choices(
+    connection_id: uuid.UUID,
+    membership: Writer,
+    integrations: Integrations,
+) -> IntegrationChoiceListResponse:
+    """The values to pick for one of the connection's settings, read live
+    from the provider (providers with the ``choices`` capability, e.g. the
+    Calendly event callers book). Pick one by sending its ``config`` to
+    ``PATCH /connections/{id}``. 409 when the provider cannot be read."""
+    return await integrations.list_choices(_actor(membership), connection_id)
 
 
 @router.post("/connections/{connection_id}/sync", status_code=status.HTTP_202_ACCEPTED)

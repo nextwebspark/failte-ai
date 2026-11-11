@@ -74,7 +74,7 @@ type SidebarLinkProps = {
 };
 
 const GROUP_LABEL_CLASS =
-  "notranslate h-auto px-2.5 pb-1 pt-3.5 text-[11px] font-semibold uppercase tracking-[0.06em] text-ink-3";
+  "notranslate h-auto px-2.5 pb-1 pt-3.5 text-meta font-semibold uppercase tracking-[0.06em] text-ink-3";
 
 /** "4 open" for screen readers; the badge itself only shows the number. */
 function badgeLabel(title: string, count: number): string {
@@ -168,7 +168,7 @@ export function AppSidebar({ docked = true }: { docked?: boolean }) {
         asChild
         tooltip={tooltip}
         className={cn(
-          "h-auto gap-2.5 rounded-lg px-2.5 py-2 text-[13.5px] font-medium text-ink-2",
+          "h-auto gap-2.5 rounded-lg px-2.5 py-2 text-sm font-medium text-ink-2",
           // 44px rows for fingers in the phone menu.
           isMobile && "min-h-11 py-2.5 text-[14.5px]",
           "transition-colors hover:bg-panel-2 hover:text-foreground",
@@ -193,7 +193,7 @@ export function AppSidebar({ docked = true }: { docked?: boolean }) {
           {count > 0 && (
             <span
               className={cn(
-                "grid min-w-5 place-items-center rounded-full bg-amber px-1.5 text-[11px] font-bold leading-[18px] text-white",
+                "grid min-w-5 place-items-center rounded-full bg-amber px-1.5 text-meta font-bold leading-[18px] text-white",
                 isCollapsed && "absolute -right-1 -top-1 min-w-4 px-1 text-[10px] leading-4"
               )}
             >
@@ -245,7 +245,7 @@ export function AppSidebar({ docked = true }: { docked?: boolean }) {
                 <SidebarMenuButton
                   tooltip={{ children: <p>{section.label}</p> }}
                   className={cn(
-                    "h-auto gap-2.5 rounded-lg px-2.5 py-2 text-[13.5px] font-medium text-ink-3",
+                    "h-auto gap-2.5 rounded-lg px-2.5 py-2 text-sm font-medium text-ink-3",
                     isMobile && "min-h-11 py-2.5 text-[14.5px]",
                     "transition-colors hover:bg-panel-2 hover:text-foreground",
                     isCollapsed && "justify-center"
@@ -303,7 +303,7 @@ export function AppSidebar({ docked = true }: { docked?: boolean }) {
               asChild
               tooltip={{ children: <p>{back.label}</p> }}
               className={cn(
-                "h-auto gap-2.5 rounded-lg px-2.5 py-2 text-[13px] font-medium text-ink-2",
+                "h-auto gap-2.5 rounded-lg px-2.5 py-2 text-caption font-medium text-ink-2",
                 isMobile && "min-h-11",
                 "transition-colors hover:bg-panel-2 hover:text-foreground"
               )}
@@ -323,14 +323,14 @@ export function AppSidebar({ docked = true }: { docked?: boolean }) {
         <>
           <div className="mx-3 mt-2.5 h-px bg-line-soft" />
           <div className="px-4 pb-1 pt-2.5">
-            <p className="truncate text-[13.5px] font-semibold text-foreground" title={agentShell.agent?.name}>
+            <p className="truncate text-sm font-semibold text-foreground" title={agentShell.agent?.name}>
               {agentShell.agent?.name ?? "…"}
             </p>
             {agentShell.agent?.versionStatus && (
               <StatusPill
                 tone={statusTone(agentShell.agent.versionStatus)}
                 dot
-                className="mt-1.5 px-2 py-0.5 text-[10px]"
+                className="mt-1.5 px-2 py-0.5 text-meta"
               >
                 {AGENT_STATUS_LABEL[agentShell.agent.versionStatus] ?? agentShell.agent.versionStatus}
               </StatusPill>
@@ -407,7 +407,7 @@ export function AppSidebar({ docked = true }: { docked?: boolean }) {
             >
               {initialsOf(workspaceName, "W")}
             </span>
-            <p className={cn("min-w-0 flex-1 truncate text-[13px] font-semibold text-foreground", isCollapsed && "sr-only")}>
+            <p className={cn("min-w-0 flex-1 truncate text-caption font-semibold text-foreground", isCollapsed && "sr-only")}>
               {workspaceName}
             </p>
           </div>
@@ -430,16 +430,16 @@ export function AppSidebar({ docked = true }: { docked?: boolean }) {
             <span
               aria-hidden
               title={isCollapsed ? person : undefined}
-              className="grid size-7 shrink-0 place-items-center rounded-full bg-panel-2 text-[11px] font-bold text-ink-2"
+              className="grid size-7 shrink-0 place-items-center rounded-full bg-panel-2 text-meta font-bold text-ink-2"
             >
               {initialsOf(person)}
             </span>
           )}
           <div className={cn("min-w-0 flex-1 leading-tight", isCollapsed && "sr-only")}>
-            <p className="truncate text-[12.5px] text-foreground" title={person}>
+            <p className="truncate text-caption text-foreground" title={person}>
               {person || "Signed in"}
             </p>
-            {role && <p className="truncate text-[11.5px] text-ink-3">{ROLE_LABELS[role]}</p>}
+            {role && <p className="truncate text-meta text-ink-3">{ROLE_LABELS[role]}</p>}
           </div>
           <ThemeToggle className="size-8 shrink-0 text-ink-2 hover:bg-panel-2 hover:text-foreground" />
         </div>

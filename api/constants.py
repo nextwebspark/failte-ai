@@ -192,6 +192,19 @@ if PLATFORM_MODELS_ENABLED and BILLING_PROVIDER == "mps":
     raise ValueError(
         "PLATFORM_MODELS_ENABLED requires BILLING_PROVIDER stripe or none, not mps"
     )
+# LightMove-provided phone numbers: bought on LightMove's own Twilio account and
+# attached to a customer's agent, so a small business never needs a phone
+# provider account of its own. Off until both the account SID and auth token are
+# set. Irish numbers need regulatory documents on Twilio; when the account has
+# an approved regulatory bundle and address for Ireland, set their SIDs so a
+# purchase can pass them.
+PLATFORM_TWILIO_ACCOUNT_SID = (os.getenv("PLATFORM_TWILIO_ACCOUNT_SID") or "").strip()
+PLATFORM_TWILIO_AUTH_TOKEN = (os.getenv("PLATFORM_TWILIO_AUTH_TOKEN") or "").strip()
+PLATFORM_TWILIO_BUNDLE_SID = (os.getenv("PLATFORM_TWILIO_BUNDLE_SID") or "").strip()
+PLATFORM_TWILIO_ADDRESS_SID = (os.getenv("PLATFORM_TWILIO_ADDRESS_SID") or "").strip()
+PLATFORM_NUMBERS_COUNTRY = (
+    os.getenv("PLATFORM_NUMBERS_COUNTRY") or ""
+).strip().upper() or "IE"
 STRIPE_SECRET_KEY = os.getenv("STRIPE_SECRET_KEY") or None
 STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET") or None
 # Let Stripe Tax compute VAT at checkout. Needs Stripe Tax set up on the account.

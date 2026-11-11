@@ -1,15 +1,15 @@
 "use client";
 
-import { ArrowUpCircle, Bot, LogOut, Menu, Settings, UserRound, Users } from "lucide-react";
+import { ArrowUpCircle, Bot, CircleHelp, LogOut, Menu, Settings, UserRound, Users } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import React from "react";
 
 import { BrandLogo } from "@/components/BrandLogo";
+import { useHelpPanel } from "@/components/help/HelpPanel";
 import { LocalOrgSwitcher } from "@/components/layout/LocalOrgSwitcher";
 import { SidebarTeamSwitcher } from "@/components/layout/SidebarTeamSwitcher";
 import { firstSettingsUrl } from "@/components/settings/settingsNav";
-import { SupportLink } from "@/components/SupportLink";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -115,6 +115,7 @@ export function AppTopBar({
 
   const accountLinks = accountMenuLinks(provider, role === null ? null : can);
 
+  const help = useHelpPanel();
   const userInitials = initialsOf(memberName(user));
   const workspaceName = workspaceDisplayName(orgContext?.organization_name);
 
@@ -160,7 +161,7 @@ export function AppTopBar({
       {isBehind && latestRelease && (
         <Tooltip>
           <TooltipTrigger asChild>
-            <span className="hidden items-center gap-1 rounded-md bg-amber-dim px-1.5 py-0.5 font-mono text-[10px] font-medium leading-none text-amber lg:inline-flex">
+            <span className="hidden items-center gap-1 rounded-md bg-amber-dim px-1.5 py-0.5 font-mono text-meta font-medium leading-none text-amber lg:inline-flex">
               <ArrowUpCircle className="h-3 w-3" />
               Update
             </span>
@@ -175,7 +176,7 @@ export function AppTopBar({
         <>
           <span className="hidden sm:inline">{separator}</span>
           <div className="hidden min-w-0 max-w-[200px] sm:block">
-            <SidebarTeamSwitcher triggerClassName="h-7 w-full justify-start gap-1.5 border-0 bg-transparent px-1.5 text-[13px] font-medium text-ink-3 shadow-none hover:text-foreground focus-visible:ring-0" />
+            <SidebarTeamSwitcher triggerClassName="h-7 w-full justify-start gap-1.5 border-0 bg-transparent px-1.5 text-caption font-medium text-ink-3 shadow-none hover:text-foreground focus-visible:ring-0" />
           </div>
         </>
       ) : (
@@ -194,7 +195,7 @@ export function AppTopBar({
           drops to its own line, or away when the screen prints its own. */}
       <TitleTag
         className={cn(
-          "min-w-0 truncate whitespace-nowrap text-sm font-semibold text-foreground md:flex-none md:basis-auto",
+          "min-w-0 truncate whitespace-nowrap text-sm font-semibold text-foreground md:flex-none md:basis-auto md:text-body",
           "max-md:order-[90] max-md:w-full max-md:px-1 max-md:pb-1 max-md:text-[15px]",
           pageOwnsHeading && "max-md:hidden"
         )}
@@ -202,7 +203,7 @@ export function AppTopBar({
         {meta.title}
       </TitleTag>
       {meta.subtitle && !pageOwnsHeading && (
-        <p className="hidden truncate whitespace-nowrap text-xs text-ink-3 xl:block">
+        <p className="hidden truncate whitespace-nowrap text-caption text-ink-3 xl:block">
           {meta.subtitle}
         </p>
       )}
@@ -222,7 +223,7 @@ export function AppTopBar({
             size="sm"
             onClick={agentShell.openTester}
             className={cn(
-              "h-11 gap-1.5 rounded-md border-line bg-transparent px-3 text-xs text-ink-2 hover:bg-panel-2 hover:text-foreground md:h-7 md:px-2.5",
+              "h-11 gap-1.5 rounded-md border-line bg-transparent px-3 text-caption font-medium text-ink-2 hover:bg-panel-2 hover:text-foreground md:h-8 md:px-2.5",
               // Pinned beside the page on xl, unless a screen closed it.
               agentShell.isRailOpen && "xl:hidden"
             )}
@@ -233,18 +234,30 @@ export function AppTopBar({
           </Button>
         )}
 
-        {/* On phones Help is in the More sheet. */}
-        <SupportLink iconOnly tooltipSide="bottom" variant="ghost" className="h-7 w-7 text-ink-3 hover:text-foreground max-md:hidden" />
+        {/* Help: the assistant, guides and contact support (HelpPanel).
+            Icon only on small phones, where the label won't fit. */}
+        {help && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => help.openHelp()}
+            aria-label="Help"
+            className="h-11 gap-1.5 rounded-md border-line bg-transparent px-3 text-caption font-medium text-ink-2 hover:bg-panel-2 hover:text-foreground max-sm:w-11 max-sm:px-0 md:h-8 md:px-2.5"
+          >
+            <CircleHelp className="h-4 w-4" aria-hidden />
+            <span className="max-sm:hidden">Help</span>
+          </Button>
+        )}
 
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            {/* A 40px tap target on phones around the same 26px badge. */}
+            {/* A 44px tap target on phones around the same 34px badge. */}
             <button
               type="button"
               aria-label="Account menu"
-              className="group grid size-11 shrink-0 cursor-pointer place-items-center rounded-full outline-none md:size-[26px]"
+              className="group grid size-11 shrink-0 cursor-pointer place-items-center rounded-full outline-none md:size-[34px]"
             >
-              <span className="grid size-[26px] place-items-center rounded-full border border-line bg-brand-dim font-mono text-[10px] font-semibold text-brand group-focus-visible:ring-[3px] group-focus-visible:ring-ring/60 group-focus-visible:ring-offset-1 group-focus-visible:ring-offset-background">
+              <span className="grid size-[34px] place-items-center rounded-full border border-line bg-brand-dim font-mono text-meta font-semibold text-brand transition-shadow group-hover:border-brand/40 group-focus-visible:ring-[3px] group-focus-visible:ring-ring group-focus-visible:ring-offset-2 group-focus-visible:ring-offset-background group-data-[state=open]:ring-2 group-data-[state=open]:ring-ring/50">
                 {userInitials}
               </span>
             </button>

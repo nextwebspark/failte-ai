@@ -14,7 +14,13 @@ from loguru import logger
 
 from api.db import db_client
 from api.db.retention_client import is_purged_run
-from api.enums import WORKFLOW_RUN_MODES_BY_CHANNEL, CallType, WorkflowRunChannel
+from api.enums import (
+    WORKFLOW_RUN_MODES_BY_CHANNEL,
+    CallType,
+    OrganizationConfigurationKey,
+    WorkflowRunChannel,
+    WorkflowRunMode,
+)
 from api.services.call_notifications.outcome import MissedReason, missed_reason
 from api.services.call_review.categories import reason_set, template_for_workflow
 from api.services.call_review.llm import ask_reviewer
@@ -33,6 +39,9 @@ from api.services.call_review.review import (
 
 _PHONE_MODES = frozenset(
     WORKFLOW_RUN_MODES_BY_CHANNEL[WorkflowRunChannel.TELEPHONY.value]
+)
+_BROWSER_CALL_MODES = frozenset(
+    {WorkflowRunMode.WEBRTC.value, WorkflowRunMode.SMALLWEBRTC.value}
 )
 
 
@@ -68,7 +77,18 @@ async def _review_call(workflow_run_id: int, *, redo: bool) -> ReviewOutcome:
     )
     if run is None or organization_id is None or run.workflow is None:
         return ReviewOutcome.NOT_FOUND
-    if run.mode not in _PHONE_MODES or run.call_type != CallType.INBOUND.value:
+    if run.call_type != CallType.INBOUND.value or (
+        run.mode not in _PHONE_MODES
+        # A demo workspace's browser test calls are reviewed like phone
+        # calls, so a call made during a demo gets its summary too.
+        and not (
+            run.mode in _BROWSER_CALL_MODES
+            and await db_client.get_configuration(
+                organization_id, OrganizationConfigurationKey.DEMO_ACCOUNT.value
+            )
+            is not None
+        )
+    ):
         return ReviewOutcome.NOT_A_PHONE_CALL
     if not run.is_completed:
         return ReviewOutcome.NOT_FINISHED

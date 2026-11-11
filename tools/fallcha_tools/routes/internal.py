@@ -32,8 +32,11 @@ from fallcha_tools.core.models import AuthMode, ConnectionStatus
 from fallcha_tools.core.provider import (
     BookingListFailed,
     BookingListProvider,
+    ConfigChoicesFailed,
+    ConfigChoicesProvider,
     ConnectionTestResult,
     Provider,
+    SecretCheckingProvider,
     SyncableProvider,
     credential_family,
     provider_capabilities,
@@ -46,6 +49,8 @@ from fallcha_tools.schemas import (
     CatalogOAuth,
     CatalogProvider,
     CatalogResponse,
+    ChoiceListOut,
+    ChoiceOut,
     ConnectionList,
     ConnectionOut,
     ConnectionTestOut,
@@ -248,6 +253,12 @@ async def create_connection(
         raise InvalidRequestError("secret: Field required")
     provider.validate_secret(body.auth_mode, secret)
     config = _validated_config(provider, body.config)
+    if body.reuse_secret_from is None and isinstance(provider, SecretCheckingProvider):
+        # E.g. a pasted API token: refuse it now rather than at the first call.
+        checked_label = await provider.check_new_secret(
+            services.http, body.auth_mode, secret
+        )
+        account_label = account_label or checked_label
     info = await repo.create_connection(
         org_id=caller.org_id,
         provider=provider.id,
@@ -355,6 +366,40 @@ async def list_bookings(
         raise ConflictError(str(exc)) from None
     return BookingListOut(
         bookings=[BookingOut.model_validate(b.model_dump()) for b in found]
+    )
+
+
+@router.get("/connections/{connection_id}/choices")
+async def list_choices(
+    connection_id: uuid.UUID,
+    caller: InternalCallerDep,
+    services: ServicesDep,
+    repo: ConnectionRepoDep,
+) -> ChoiceListOut:
+    """The values an admin may pick for the provider's chosen config field,
+    read live (providers with the ``choices`` capability, e.g. Calendly's
+    event types). 409 when the provider has none or cannot be read."""
+    current = await repo.get_connection(caller.org_id, connection_id)
+    provider = services.registry.get(current.provider)
+    if not isinstance(provider, ConfigChoicesProvider):
+        raise ConflictError(f"{provider.title} has nothing to choose from")
+    ctx = await services.contexts.load(caller.org_id, connection_id, provider.id)
+    try:
+        found = await provider.config_choices(ctx)
+    except ConfigChoicesFailed as exc:
+        raise ConflictError(str(exc)) from None
+    return ChoiceListOut(
+        field=found.field,
+        choices=[
+            ChoiceOut(
+                value=c.value,
+                label=c.label,
+                detail=c.detail,
+                warning=c.warning,
+                config=dict(c.config),
+            )
+            for c in found.choices
+        ],
     )
 
 

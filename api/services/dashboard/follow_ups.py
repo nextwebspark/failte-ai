@@ -54,6 +54,8 @@ REVIEW_KINDS = frozenset({FollowUpKind.UNANSWERED_QUESTION, FollowUpKind.TIME_WA
 class FollowUpStatus(StrEnum):
     OPEN = "open"
     DONE = "done"
+    # Both: the to-do list first, then what was done.
+    ALL = "all"
 
 
 @dataclass(frozen=True, slots=True)
@@ -156,9 +158,73 @@ def follow_ups(calls: Iterable[CallView]) -> list[FollowUp]:
     return [*items.values(), *reviewed]
 
 
+@dataclass(frozen=True, slots=True)
+class FollowUpFilter:
+    """What the Follow-ups controls narrow the list to. Every field is
+    optional; an empty filter keeps everything."""
+
+    # The call came in at or after ``start`` and before ``end``.
+    start: datetime | None = None
+    end: datetime | None = None
+    kind: FollowUpKind | None = None
+    # The search box, and the calls the database search found for it
+    # (name, number, summary, what was said). None: no search.
+    text: str | None = None
+    found: frozenset[int] | None = None
+
+
+def _digits(text: str) -> str:
+    digits = "".join(ch for ch in text if ch.isdigit())
+    return digits[2:] if digits.startswith("00") else digits.lstrip("0")
+
+
+def text_matches(item: FollowUp, text: str) -> bool:
+    """The search box over what the follow-up itself shows: the caller's
+    name, why they rang, the number they asked to be rung on, and the
+    questions the agent couldn't answer. (Name, number, summary and what was
+    said on the call are searched in the database: ``FollowUpFilter.found``.)"""
+    needle = text.strip().casefold()
+    if not needle:
+        return True
+    call = item.call
+    words = [call.caller_name, call.call_reason]
+    if item.kind == FollowUpKind.UNANSWERED_QUESTION:
+        words.extend(unanswered_questions(call))
+    if any(needle in w.casefold() for w in words if w):
+        return True
+    digits = _digits(text)
+    return bool(digits) and any(
+        digits in (number_key(n) or "")
+        for n in (call.caller_number, call.callback_number)
+    )
+
+
+def matches(item: FollowUp, f: FollowUpFilter, *, kind: bool = True) -> bool:
+    """Whether ``item`` passes the filter (``kind=False`` ignores its kind,
+    for the kind chips' own counts)."""
+    at = item.call.created_at
+    if f.start is not None and at < f.start:
+        return False
+    if f.end is not None and at >= f.end:
+        return False
+    if kind and f.kind is not None and item.kind != f.kind:
+        return False
+    if f.text and f.text.strip():
+        found = f.found or frozenset()
+        if item.call.run_id not in found and not text_matches(item, f.text):
+            return False
+    return True
+
+
 def ordered(items: Sequence[FollowUp], status: FollowUpStatus) -> list[FollowUp]:
     """Open items grouped by caller, the caller waiting longest first, each
-    caller's items oldest first. Done items newest done first."""
+    caller's items oldest first. Done items newest done first. All: the open
+    items, then the done ones, each in that order."""
+    if status == FollowUpStatus.ALL:
+        return [
+            *ordered(items, FollowUpStatus.OPEN),
+            *ordered(items, FollowUpStatus.DONE),
+        ]
     if status == FollowUpStatus.DONE:
         done = [i for i in items if i.done]
         return sorted(

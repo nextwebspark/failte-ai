@@ -25,6 +25,7 @@ from api.services.auth.depends import (
 )
 from api.services.auth.permissions import Permission
 from api.services.call_concurrency import call_concurrency
+from api.services.dashboard.calls import CallResult
 from api.services.mps_service_key_client import mps_service_key_client
 from api.services.privacy.call_erasure import (
     OrganizationNumberError,
@@ -192,6 +193,10 @@ class WorkflowRunUsageResponse(BaseModel):
     charge_eur: Optional[float] = None
     is_completed: bool = Field(
         default=True, description="False while the call is still going on."
+    )
+    result: Optional[CallResult] = Field(
+        default=None,
+        description="How the call went, by the rule Home and Follow-ups use.",
     )
     summary: Optional[str] = Field(
         default=None,

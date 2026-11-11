@@ -33,6 +33,16 @@ class Reason:
 
 
 @dataclass(frozen=True, slots=True)
+class RequestTag:
+    """A kind of special request a caller made for their booking."""
+
+    key: str
+    label: str
+    # What belongs here, for the reviewer.
+    hint: str
+
+
+@dataclass(frozen=True, slots=True)
 class ReasonSet:
     # The starter template category (``StarterTemplate.category``).
     template: str
@@ -42,10 +52,17 @@ class ReasonSet:
     # The donut's "bookings taken" chip, worded for the business; None when
     # this kind of agent doesn't book on a calendar.
     bookings_label: str | None
+    # The special requests the reviewer tags, in a fixed order; empty when
+    # this kind of business has none worth counting.
+    request_tags: tuple[RequestTag, ...] = ()
 
     @property
     def keys(self) -> tuple[str, ...]:
         return tuple(r.key for r in self.reasons)
+
+    @property
+    def request_tag_keys(self) -> tuple[str, ...]:
+        return tuple(t.key for t in self.request_tags)
 
     def label(self, key: str) -> str:
         for reason in self.reasons:
@@ -55,6 +72,36 @@ class ReasonSet:
 
 
 _OTHER = Reason(OTHER, "Other", "anything else, wrong numbers, sales calls")
+
+# What guests ask for when they book a table.
+RESTAURANT_REQUEST_TAGS = (
+    RequestTag(
+        "allergies_diets",
+        "Allergies & diets",
+        "an allergy, coeliac, dairy-free, vegetarian, vegan or another diet",
+    ),
+    RequestTag(
+        "celebration",
+        "Birthday or celebration",
+        "a birthday, anniversary, christening, party or another occasion",
+    ),
+    RequestTag(
+        "kids",
+        "High chair or kids",
+        "a high chair, a children's menu, room for a buggy",
+    ),
+    RequestTag(
+        "accessibility",
+        "Accessibility",
+        "wheelchair or step-free access, mobility, hearing or sight needs",
+    ),
+    RequestTag(
+        "seating",
+        "Seating preference",
+        "a window, the terrace, outside, a booth or a quiet table",
+    ),
+    RequestTag("other", "Other request", "any other request about the booking"),
+)
 
 RESTAURANT = ReasonSet(
     template="restaurant",
@@ -75,6 +122,7 @@ RESTAURANT = ReasonSet(
         _OTHER,
     ),
     bookings_label="bookings taken",
+    request_tags=RESTAURANT_REQUEST_TAGS,
 )
 
 CLINIC = ReasonSet(

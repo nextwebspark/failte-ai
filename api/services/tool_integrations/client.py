@@ -28,6 +28,7 @@ from api.schemas.integrations import (
     CreateProviderAppRequest,
     IntegrationBooking,
     IntegrationCatalogResponse,
+    IntegrationChoiceListResponse,
     IntegrationConnection,
     IntegrationSyncStatus,
     ProviderAppListResponse,
@@ -222,6 +223,19 @@ class ToolsServiceClient:
             timeout=TEST_TIMEOUT,
         )
         return self._parse(response, _BookingList).bookings
+
+    async def list_choices(
+        self, caller: Caller, connection_id: uuid.UUID
+    ) -> IntegrationChoiceListResponse:
+        """Values to pick for one setting (e.g. Calendly event types). Reads
+        the provider, so it gets the connection-test timeout."""
+        response = await self._request(
+            "GET",
+            f"/internal/connections/{connection_id}/choices",
+            caller,
+            timeout=TEST_TIMEOUT,
+        )
+        return self._parse(response, IntegrationChoiceListResponse)
 
     async def test_connection(
         self, caller: Caller, connection_id: uuid.UUID

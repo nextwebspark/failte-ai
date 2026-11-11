@@ -1,10 +1,24 @@
 import { type ClassValue, clsx } from "clsx"
-import { twMerge } from "tailwind-merge"
+import { extendTailwindMerge } from "tailwind-merge"
 
 import { getAuthUserApiV1UserAuthUserGet } from "@/client/sdk.gen";
 import { getWorkflowCountApiV1WorkflowCountGet } from "@/client/sdk.gen";
 import { impersonateApiV1SuperuserImpersonatePost } from "@/client/sdk.gen";
 import { detailFromError } from "@/lib/apiError";
+
+/**
+ * The type ladder in globals.css (text-meta, text-caption, text-body,
+ * text-title, text-page, text-kpi) are font sizes. Without telling
+ * tailwind-merge, it reads them as text colours and drops one when a colour
+ * such as text-ink-3 sits beside it.
+ */
+const twMerge = extendTailwindMerge({
+  extend: {
+    theme: {
+      text: ["meta", "caption", "body", "title", "page", "kpi"],
+    },
+  },
+})
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))

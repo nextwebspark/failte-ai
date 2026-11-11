@@ -28,6 +28,7 @@ from api.enums import (
 from api.errors.failure import ErrorSource, classify_exception, log_failure
 from api.schemas.ai_model_configuration import OrganizationAIModelConfigurationV2
 from api.schemas.appointment_hours import CalendarHoursStatus
+from api.schemas.opening_hours import OpeningHours
 from api.schemas.privacy import DeleteWorkflowRunDataResponse
 from api.schemas.tool import TransferCallConfig, TransferCallToolDefinition
 from api.schemas.workflow import WorkflowRunResponseSchema
@@ -101,7 +102,9 @@ from api.services.workflow.appointment_hours import (
     update_calendar_booking_hours,
 )
 from api.services.workflow.business_facts import (
+    TRANSFER_NUMBER_KEY,
     BusinessFactsError,
+    checked_transfer_number,
     checked_updates,
     fact_fields,
 )
@@ -117,6 +120,11 @@ from api.services.workflow.greeting_preview import (
     greeting_preview_text,
     is_preview_voice,
 )
+from api.services.workflow.opening_hours import TEXT_KEY as OPENING_HOURS_TEXT_KEY
+from api.services.workflow.opening_hours import (
+    opening_hours_updates,
+    stored_opening_hours,
+)
 from api.services.workflow.run_creation import prepare_workflow_run_inputs
 from api.services.workflow.run_usage_response import (
     format_public_cost_info,
@@ -128,6 +136,7 @@ from api.services.workflow.template_setup import (
     TemplateSetupError,
     attach_integration_tools,
     attach_tool_placeholder,
+    check_integration_tools,
     fill_template,
     parse_setup_fields,
     uses_tool_placeholder,
@@ -152,6 +161,12 @@ from api.utils.artifacts import artifact_url
 from api.utils.recording_artifacts import (
     get_recording_storage_key,
     has_recording_track,
+)
+from api.utils.transfer_number import (
+    CALLER_NUMBER_PROVIDERS,
+    SHOW_CALLER_NUMBER_KEY,
+    SHOW_CALLER_NUMBER_OFF,
+    check_transfer_number,
 )
 
 router = APIRouter(prefix="/workflow")
@@ -1663,6 +1678,15 @@ async def duplicate_workflow_template(
             request.values,
             rendered=appointment_hours_answers(fields, request),
         )
+        if facts.get(TRANSFER_NUMBER_KEY):
+            # Stored as E.164 ("087 123 4567" -> +353871234567). A new agent
+            # has no inbound number yet, so there is none to refuse.
+            facts = {
+                **facts,
+                TRANSFER_NUMBER_KEY: checked_transfer_number(
+                    facts[TRANSFER_NUMBER_KEY], []
+                ),
+            }
         if request.appointment_hours is not None:
             # So the agent works dates out in the business's own timezone.
             facts = {**facts, "timezone": request.appointment_hours.timezone}
@@ -1671,15 +1695,13 @@ async def duplicate_workflow_template(
             # Which starter it came from: the call review words what callers
             # wanted for this kind of business (api/services/call_review).
             facts = {**facts, TEMPLATE_CATEGORY_FACT: category}
-    except TemplateSetupError as e:
+    except (TemplateSetupError, BusinessFactsError) as e:
         raise HTTPException(status_code=422, detail=str(e))
 
-    unknown = sorted(set(request.integration_tools) - set(template.integrations or []))
-    if unknown:
-        raise HTTPException(
-            status_code=422,
-            detail=f"This template doesn't use: {', '.join(unknown)}",
-        )
+    try:
+        check_integration_tools(template.integrations, request.integration_tools)
+    except TemplateSetupError as e:
+        raise HTTPException(status_code=422, detail=str(e))
     if request.integration_tools:
         tool_uuids = set(request.integration_tools.values())
         tools = await db_client.get_tools_by_uuids(list(tool_uuids), organization_id)
@@ -2172,10 +2194,25 @@ class BusinessFact(BaseModel):
 
 class BusinessFactsResponse(BaseModel):
     facts: list[BusinessFact]
+    # The opening hours as times, when the owner has set them; the
+    # ``opening_hours`` fact is then the sentence generated from them.
+    opening_hours_schedule: OpeningHours | None = None
 
 
 class UpdateBusinessFactsRequest(BaseModel):
-    facts: dict[str, str | None]
+    facts: dict[str, str | None] = {}
+    # Sent to set the opening hours as times; null removes the times and
+    # keeps the sentence they generated. Left out: the times are unchanged.
+    opening_hours_schedule: OpeningHours | None = None
+
+
+def _facts_response(workflow, fields) -> BusinessFactsResponse:
+    return BusinessFactsResponse(
+        facts=[BusinessFact(**field.__dict__) for field in fields],
+        opening_hours_schedule=stored_opening_hours(
+            workflow.template_context_variables
+        ),
+    )
 
 
 async def _agent_facts(workflow_id: int, organization_id: int):
@@ -2198,10 +2235,8 @@ async def get_business_facts(
 ) -> BusinessFactsResponse:
     """What the agent knows about the business: the facts its prompts read
     at call time (opening hours, address, FAQ…), with their current values."""
-    _, fields = await _agent_facts(workflow_id, user.selected_organization_id)
-    return BusinessFactsResponse(
-        facts=[BusinessFact(**field.__dict__) for field in fields]
-    )
+    workflow, fields = await _agent_facts(workflow_id, user.selected_organization_id)
+    return _facts_response(workflow, fields)
 
 
 @router.put(
@@ -2216,18 +2251,147 @@ async def update_business_facts(
     """Update the agent's business facts. They apply from the next call,
     without publishing any unfinished changes to the agent itself."""
     organization_id = user.selected_organization_id
-    _, fields = await _agent_facts(workflow_id, organization_id)
+    workflow, fields = await _agent_facts(workflow_id, organization_id)
     try:
-        updates = checked_updates(fields, request.facts)
+        updates = opening_hours_updates(
+            workflow.template_context_variables,
+            checked_updates(fields, request.facts),
+            has_hours_fact=any(f.key == OPENING_HOURS_TEXT_KEY for f in fields),
+            hours_sent="opening_hours_schedule" in request.model_fields_set,
+            hours=request.opening_hours_schedule,
+        )
+        if updates.get(TRANSFER_NUMBER_KEY):
+            own_numbers = [
+                address
+                for address, _ in await db_client.list_inbound_numbers_for_workflow(
+                    workflow_id, organization_id
+                )
+            ]
+            updates[TRANSFER_NUMBER_KEY] = checked_transfer_number(
+                updates[TRANSFER_NUMBER_KEY], own_numbers
+            )
     except BusinessFactsError as e:
         raise HTTPException(status_code=422, detail=str(e)) from None
     saved = await db_client.update_business_facts(workflow_id, organization_id, updates)
     if saved is None:
         raise HTTPException(status_code=404, detail="Agent not found")
-    _, fields = await _agent_facts(workflow_id, organization_id)
-    return BusinessFactsResponse(
-        facts=[BusinessFact(**field.__dict__) for field in fields]
+    workflow, fields = await _agent_facts(workflow_id, organization_id)
+    return _facts_response(workflow, fields)
+
+
+class TransferNumberCheckRequest(BaseModel):
+    number: str = Field(max_length=80)
+    # The agent being edited, so its own numbers are refused; none in the
+    # Create agent wizard (the agent has no number yet).
+    workflow_id: int | None = None
+
+
+class TransferNumberCheckResponse(BaseModel):
+    ok: bool
+    # What is saved and dialled: E.164, or a SIP destination as typed.
+    value: str
+    display: str
+    kind: str
+    error: str | None = None
+    is_sip: bool = False
+    is_demo: bool = False
+
+
+@router.post(
+    "/transfer-number/check",
+    dependencies=requires(Permission.AGENTS_READ),
+)
+async def check_transfer_number_route(
+    request: TransferNumberCheckRequest, user: UserModel = Depends(get_user)
+) -> TransferNumberCheckResponse:
+    """Check a "Pass calls to your team" number as the owner types it: how
+    it will be saved ("+353 87 123 4567"), what kind of number it is, or why
+    it can't be used. Saving runs the same check."""
+    own_numbers: list[str] = []
+    if request.workflow_id is not None:
+        own_numbers = [
+            address
+            for address, _ in await db_client.list_inbound_numbers_for_workflow(
+                request.workflow_id, user.selected_organization_id
+            )
+        ]
+    check = check_transfer_number(request.number, own_numbers=own_numbers)
+    return TransferNumberCheckResponse(**check.__dict__)
+
+
+class TransferSettings(BaseModel):
+    show_caller_number: bool
+    # What the staff phone shows when a call is passed to it:
+    # "caller" (the caller's number, where the provider allows it),
+    # "agent" (the agent's number), or "unknown" (no phone number yet).
+    staff_phone_shows: str
+    providers: list[str]
+
+
+class UpdateTransferSettingsRequest(BaseModel):
+    show_caller_number: bool
+
+
+async def _transfer_settings(workflow_id: int, organization_id: int):
+    workflow = await db_client.get_workflow(
+        workflow_id, organization_id=organization_id
     )
+    if workflow is None:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    facts = workflow.template_context_variables or {}
+    show = facts.get(SHOW_CALLER_NUMBER_KEY) != SHOW_CALLER_NUMBER_OFF
+    numbers = await db_client.list_inbound_numbers_for_workflow(
+        workflow_id, organization_id
+    )
+    providers = sorted({provider for _, provider in numbers})
+    if not providers:
+        shows = "unknown"
+    elif show and all(p in CALLER_NUMBER_PROVIDERS for p in providers):
+        shows = "caller"
+    else:
+        shows = "agent"
+    return TransferSettings(
+        show_caller_number=show, staff_phone_shows=shows, providers=providers
+    )
+
+
+@router.get(
+    "/{workflow_id}/transfer-settings",
+    dependencies=requires(Permission.AGENTS_READ),
+)
+async def get_transfer_settings(
+    workflow_id: int, user: UserModel = Depends(get_user)
+) -> TransferSettings:
+    """How "Pass calls to your team" behaves: whether the staff phone is
+    asked to show the caller's number, and what it will actually show given
+    the providers of the agent's phone numbers."""
+    return await _transfer_settings(workflow_id, user.selected_organization_id)
+
+
+@router.put(
+    "/{workflow_id}/transfer-settings",
+    dependencies=requires(Permission.AGENTS_FACTS),
+)
+async def update_transfer_settings(
+    workflow_id: int,
+    request: UpdateTransferSettingsRequest,
+    user: UserModel = Depends(get_user),
+) -> TransferSettings:
+    """Turn "Show the caller's number when we pass a call to you" on or off.
+    Applies from the next call."""
+    organization_id = user.selected_organization_id
+    saved = await db_client.update_business_facts(
+        workflow_id,
+        organization_id,
+        {
+            SHOW_CALLER_NUMBER_KEY: None
+            if request.show_caller_number
+            else SHOW_CALLER_NUMBER_OFF
+        },
+    )
+    if saved is None:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    return await _transfer_settings(workflow_id, organization_id)
 
 
 # Fresh greeting previews (cache misses) one workspace may generate a day.

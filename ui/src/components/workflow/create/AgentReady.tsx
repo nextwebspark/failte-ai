@@ -53,7 +53,7 @@ export function AgentReady({ agentId, items, onTalk }: AgentReadyProps) {
                             )}
                         </span>
                         <span className="flex-1 text-[14px] text-ink">{item.text}</span>
-                        {item.note && <span className="text-right text-[12.5px] text-ink-3">{item.note}</span>}
+                        {item.note && <span className="text-right text-caption text-ink-3">{item.note}</span>}
                     </li>
                 ))}
             </ul>
@@ -62,7 +62,7 @@ export function AgentReady({ agentId, items, onTalk }: AgentReadyProps) {
                     <Mic size={18} aria-hidden />
                     Talk to your agent
                 </Button>
-                <div className="flex items-center gap-5 text-[13.5px]">
+                <div className="flex items-center gap-5 text-sm">
                     <Link href={`/workflow/${agentId}/deployment#phone`} className="font-semibold text-brand hover:underline">
                         Give it a phone number
                     </Link>

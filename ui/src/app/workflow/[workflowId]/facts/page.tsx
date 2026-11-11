@@ -29,7 +29,11 @@ import { detailFromError } from "@/lib/apiError";
 import { cn } from "@/lib/utils";
 
 import { SectionError, SectionMessage } from "../components/SectionStates";
-import { bookingTimesByDay, fillGreeting, WEEK, WEEK_LONG } from "./knowledge";
+import { CustomVoice } from "./CustomVoice";
+import { bookingLine, bookingTimesByDay, bookingTitle, fillGreeting, WEEK, WEEK_LONG } from "./knowledge";
+import { forSave, type OpeningHours, openingHoursProblem, sameOpeningHours } from "./openingHours";
+import { OpeningHoursField } from "./OpeningHoursEditor";
+import { TransferOptions } from "./TransferOptions";
 import { type AgentKnowledge, type CalendarInfo, useAgentKnowledge } from "./useAgentKnowledge";
 import { VoiceChips } from "./VoiceChips";
 
@@ -39,6 +43,7 @@ const SAVE_FAILED = "Couldn't save. Please try again.";
 /** Facts with a place of their own on this page; any others join "Your business". */
 const FAQ_KEY = "extra_info";
 const TRANSFER_KEY = "transfer_number";
+const HOURS_KEY = "opening_hours";
 const BUSINESS_ORDER = ["business_name", "business_description", "address", "opening_hours", "website"];
 
 /** Owner wording for a fact's row, where it differs from the template's question. */
@@ -67,6 +72,9 @@ export default function WhatYourAgentKnowsPage() {
 
     const [facts, setFacts] = useState<BusinessFact[] | null>(null);
     const [values, setValues] = useState<Record<string, string>>({});
+    // The opening hours as times: saved, and as being edited (null: none).
+    const [savedHours, setSavedHours] = useState<OpeningHours | null>(null);
+    const [hours, setHours] = useState<OpeningHours | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [saving, setSaving] = useState(false);
     // Set synchronously so a double click can't send two saves.
@@ -88,6 +96,8 @@ export default function WhatYourAgentKnowsPage() {
             }
             setFacts(res.data.facts);
             setValues(Object.fromEntries(res.data.facts.map((f) => [f.key, f.value])));
+            setSavedHours(res.data.opening_hours_schedule ?? null);
+            setHours(res.data.opening_hours_schedule ?? null);
         } catch {
             setError(LOAD_FAILED);
         }
@@ -97,16 +107,28 @@ export default function WhatYourAgentKnowsPage() {
         void load();
     }, [load]);
 
-    const changed = (facts ?? []).filter((f) => (values[f.key] ?? "") !== f.value);
+    const hoursChanged = !sameOpeningHours(hours, savedHours);
+    // With times set, the hours sentence is generated from them, not typed.
+    const changed = (facts ?? []).filter(
+        (f) => (values[f.key] ?? "") !== f.value && !(f.key === HOURS_KEY && hours !== null),
+    );
+    const changeCount = changed.length + (hoursChanged ? 1 : 0);
     const missing = new Set(
-        (facts ?? []).filter((f) => f.required && !(values[f.key] ?? "").trim()).map((f) => f.key),
+        (facts ?? [])
+            .filter((f) => f.required && !(values[f.key] ?? "").trim() && !(f.key === HOURS_KEY && hours !== null))
+            .map((f) => f.key),
     );
 
     const save = async () => {
-        if (savingRef.current || changed.length === 0) return;
+        if (savingRef.current || changeCount === 0) return;
         setTriedSave(true);
         if (missing.size > 0) {
             toast.error("Fill in the required answers before saving.");
+            return;
+        }
+        const hoursProblem = hours ? openingHoursProblem(hours) : null;
+        if (hoursProblem) {
+            toast.error(hoursProblem);
             return;
         }
         savingRef.current = true;
@@ -114,7 +136,10 @@ export default function WhatYourAgentKnowsPage() {
         try {
             const res = await updateBusinessFactsApiV1WorkflowWorkflowIdBusinessFactsPut({
                 path: { workflow_id: workflowId },
-                body: { facts: Object.fromEntries(changed.map((f) => [f.key, values[f.key] ?? ""])) },
+                body: {
+                    facts: Object.fromEntries(changed.map((f) => [f.key, values[f.key] ?? ""])),
+                    ...(hoursChanged ? { opening_hours_schedule: hours ? forSave(hours) : null } : {}),
+                },
             });
             if (res.error || !res.data) {
                 toast.error(detailFromError(res.error, SAVE_FAILED));
@@ -122,6 +147,10 @@ export default function WhatYourAgentKnowsPage() {
             }
             setFacts(res.data.facts);
             setValues(Object.fromEntries(res.data.facts.map((f) => [f.key, f.value])));
+            if (hoursChanged) {
+                setSavedHours(res.data.opening_hours_schedule ?? null);
+                setHours(res.data.opening_hours_schedule ?? null);
+            }
             setTriedSave(false);
             toast.success("Saved. Your agent uses these from its next call.");
         } catch {
@@ -135,6 +164,7 @@ export default function WhatYourAgentKnowsPage() {
     const discard = () => {
         if (!facts) return;
         setValues(Object.fromEntries(facts.map((f) => [f.key, f.value])));
+        setHours(savedHours);
         setTriedSave(false);
     };
 
@@ -173,30 +203,30 @@ export default function WhatYourAgentKnowsPage() {
         <div className="page-body @container">
             <header className="mb-5 flex flex-wrap items-start justify-between gap-x-6 gap-y-3">
                 <div className="min-w-0 max-w-2xl">
-                    <h1 className="font-display text-[24px] font-semibold leading-tight tracking-[-0.02em] text-foreground">
+                    <h1 className="font-display text-[26px] font-semibold leading-tight tracking-[-0.015em] sm:text-page text-foreground">
                         What your agent knows
                     </h1>
-                    <p className="mt-1.5 text-[14.5px] text-ink-2">
+                    <p className="mt-1.5 text-body text-ink-2">
                         Change these any time. Your agent uses them on the next call.
                     </p>
                 </div>
                 {facts && facts.length > 0 && (
                     canEdit ? (
                         <div className="flex flex-wrap items-center gap-2.5">
-                            {changed.length > 0 && !saving && (
-                                <span className="text-[12.5px] text-ink-3" role="status">
-                                    {changed.length === 1 ? "1 unsaved change" : `${changed.length} unsaved changes`}
+                            {changeCount > 0 && !saving && (
+                                <span className="text-caption text-ink-3" role="status">
+                                    {changeCount === 1 ? "1 unsaved change" : `${changeCount} unsaved changes`}
                                 </span>
                             )}
                             <Button
                                 variant="outline"
                                 className="h-9"
-                                disabled={saving || changed.length === 0}
+                                disabled={saving || changeCount === 0}
                                 onClick={discard}
                             >
                                 Discard
                             </Button>
-                            <Button className="h-9" onClick={() => void save()} disabled={saving || changed.length === 0}>
+                            <Button className="h-9" onClick={() => void save()} disabled={saving || changeCount === 0}>
                                 {saving ? "Saving…" : "Save changes"}
                             </Button>
                         </div>
@@ -230,24 +260,36 @@ export default function WhatYourAgentKnowsPage() {
                     itself.
                 </SectionMessage>
             ) : (
-                <div className="grid items-start gap-4 @4xl:grid-cols-[minmax(0,1fr)_340px]">
+                <div className="grid items-start gap-5 @4xl:grid-cols-[minmax(0,1fr)_340px] @7xl:grid-cols-[minmax(0,1fr)_400px]">
                     <div className="flex min-w-0 flex-col gap-4">
                         <Card title="Your business" id="your-business">
-                            {businessFacts.map((fact) => (
-                                <FactRow key={fact.key} fact={fact}>
-                                    {field(fact, { rows: 2 })}
-                                </FactRow>
-                            ))}
+                            {businessFacts.map((fact) =>
+                                fact.key === HOURS_KEY ? (
+                                    <FactRow key={fact.key} fact={fact} labelFor={hours ? null : undefined}>
+                                        <OpeningHoursField
+                                            hours={hours}
+                                            onChange={setHours}
+                                            textField={field(fact, { rows: 2 })}
+                                            savedText={fact.value}
+                                            disabled={!canEdit || saving}
+                                        />
+                                    </FactRow>
+                                ) : (
+                                    <FactRow key={fact.key} fact={fact}>
+                                        {field(fact, { rows: 2 })}
+                                    </FactRow>
+                                ),
+                            )}
                             <BookingTimesRow calendar={knowledge.calendar} />
                         </Card>
 
                         {faq && (
                             <Card title="Answers to common questions" id="common-questions">
                                 <div className="flex flex-col gap-1.5 py-3">
-                                    <Label htmlFor={`fact-${faq.key}`} className="text-[13.5px] font-semibold">
+                                    <Label htmlFor={`fact-${faq.key}`} className="text-body font-semibold">
                                         Anything else callers often ask?
                                     </Label>
-                                    <p className="text-[12.5px] text-ink-3">
+                                    <p className="text-caption text-ink-3">
                                         {faq.help ?? "Parking, prices, payment options, languages you speak."} Write
                                         each answer in plain words; your agent reads them out as needed.
                                     </p>
@@ -264,8 +306,21 @@ export default function WhatYourAgentKnowsPage() {
                             calendar={knowledge.calendar}
                             setCalendar={knowledge.setCalendar}
                             transfer={transfer}
-                            transferField={transfer ? field(transfer) : null}
+                            transferField={
+                                transfer ? (
+                                    <>
+                                        {field(transfer)}
+                                        <TransferOptions
+                                            workflowId={workflowId}
+                                            value={values[transfer.key] ?? ""}
+                                            disabled={!canEdit || saving}
+                                        />
+                                    </>
+                                ) : null
+                            }
                             transferValue={transfer ? (values[transfer.key] ?? "").trim() : ""}
+                            hours={hours}
+                            onHoursChange={canEdit && !saving ? setHours : undefined}
                         />
                     </div>
 
@@ -297,13 +352,13 @@ function UnansweredQuestions({ workflowId, onAdd }: { workflowId: number; onAdd?
                     className="flex flex-col gap-2 rounded-[10px] border border-sky/50 bg-sky-dim px-3.5 py-2.5 @md/card:flex-row @md/card:items-center"
                 >
                     <div className="min-w-0 flex-1">
-                        <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[13.5px] font-semibold text-foreground">
+                        <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm font-semibold text-foreground">
                             {item.questions.join(" ")}
-                            <span className="rounded-full bg-panel px-2 py-px text-[11.5px] font-semibold text-sky">
+                            <span className="rounded-full bg-panel px-2 py-px text-meta font-semibold text-sky">
                                 Asked {callWhen(item.created_at, null)}
                             </span>
                         </p>
-                        <p className="mt-0.5 text-[12.5px] text-sky">No answer yet. Add one so your agent can help next time.</p>
+                        <p className="mt-0.5 text-caption text-sky">No answer yet. Add one so your agent can help next time.</p>
                     </div>
                     {onAdd && (
                         <Button type="button" size="sm" variant="outline" className="self-start @md/card:self-auto" onClick={() => onAdd(item)}>
@@ -387,10 +442,10 @@ function Card({
     return (
         <section
             aria-labelledby={`${id}-title`}
-            className={cn("@container/card rounded-xl border border-line bg-panel px-5 pb-3 pt-4", className)}
+            className={cn("@container/card rounded-[14px] border border-line bg-panel px-5 pb-3 pt-5", className)}
         >
             <div className="mb-1 flex items-center justify-between gap-3">
-                <h2 id={`${id}-title`} className="font-display text-[15.5px] font-semibold text-foreground">
+                <h2 id={`${id}-title`} className="font-display text-title font-semibold text-foreground">
                     {title}
                 </h2>
                 {action}
@@ -403,27 +458,28 @@ function Card({
 /** Label on the left, field on the right (stacked when the card is narrow). */
 function Row({ label, help, htmlFor, children }: { label: ReactNode; help?: ReactNode; htmlFor?: string; children: ReactNode }) {
     return (
-        <div className="grid gap-1.5 border-t border-line-soft py-3 first:border-t-0 @xl/card:grid-cols-[190px_minmax(0,1fr)] @xl/card:items-center @xl/card:gap-4">
+        <div className="grid gap-1.5 border-t border-line-soft py-3 first:border-t-0 @xl/card:grid-cols-[210px_minmax(0,1fr)] @xl/card:items-center @xl/card:gap-4">
             <div className="min-w-0">
                 {htmlFor ? (
-                    <Label htmlFor={htmlFor} className="text-[13.5px] font-semibold">
+                    <Label htmlFor={htmlFor} className="text-body font-semibold">
                         {label}
                     </Label>
                 ) : (
-                    <p className="text-[13.5px] font-semibold text-foreground">{label}</p>
+                    <p className="text-body font-semibold text-foreground">{label}</p>
                 )}
-                {help && <p className="mt-0.5 text-[12px] text-ink-3">{help}</p>}
+                {help && <p className="mt-0.5 text-caption text-ink-3">{help}</p>}
             </div>
             <div className="min-w-0">{children}</div>
         </div>
     );
 }
 
-function FactRow({ fact, children }: { fact: BusinessFact; children: ReactNode }) {
+/** *labelFor* null: the answer isn't one field (the label names a group). */
+function FactRow({ fact, labelFor, children }: { fact: BusinessFact; labelFor?: null; children: ReactNode }) {
     const copy = ROW_COPY[fact.key] ?? {};
     return (
         <Row
-            htmlFor={`fact-${fact.key}`}
+            htmlFor={labelFor === null ? undefined : `fact-${fact.key}`}
             label={copy.label ?? fact.label}
             help={[copy.help ?? fact.help, fact.required ? null : "Optional"].filter(Boolean).join(" · ") || undefined}
         >
@@ -467,19 +523,19 @@ function FactField({
                 <Textarea
                     {...common}
                     rows={rows}
-                    className={cn("min-h-0 text-[13.5px]", className)}
+                    className={cn("min-h-0 text-sm", className)}
                     onChange={(e) => onChange(e.target.value)}
                 />
             ) : (
                 <Input
                     {...common}
                     type={fact.type === "phone" ? "tel" : fact.type === "url" ? "url" : "text"}
-                    className={cn("h-9 text-[13.5px]", className)}
+                    className={cn("h-9 text-sm", className)}
                     onChange={(e) => onChange(e.target.value)}
                 />
             )}
             {invalid && (
-                <p id={errorId} className="mt-1 text-[12.5px] text-danger">
+                <p id={errorId} className="mt-1 text-caption text-danger">
                     Your agent needs this answer. Please fill it in.
                 </p>
             )}
@@ -516,7 +572,7 @@ function BookingTimesRow({ calendar }: { calendar: CalendarInfo }) {
                             windows.length === 0 && "bg-panel-2 text-ink-3",
                         )}
                     >
-                        <abbr title={WEEK_LONG[day]} className="block text-[12.5px] font-semibold no-underline">
+                        <abbr title={WEEK_LONG[day]} className="block text-caption font-semibold no-underline">
                             {WEEK[day]}
                         </abbr>
                         {windows.length === 0 ? "No bookings" : windows.map((w) => <span key={w} className="block">{w}</span>)}
@@ -544,9 +600,9 @@ function StatusText({ ok, children }: { ok: boolean | null; children: ReactNode 
 }
 
 /**
- * Only what the agent can really do: book on Google Calendar when it has
- * one, and put callers through when its template can. Nothing that isn't
- * built (texts, emails to the kitchen) is offered.
+ * Only what the agent can really do: book on its calendar (Google Calendar
+ * or Calendly) when it has one, and put callers through when its template
+ * can. Nothing that isn't built (texts, emails to the kitchen) is offered.
  */
 function CanDo({
     calendar,
@@ -554,12 +610,17 @@ function CanDo({
     transfer,
     transferField,
     transferValue,
+    hours,
+    onHoursChange,
 }: {
     calendar: CalendarInfo;
     setCalendar: AgentKnowledge["setCalendar"];
     transfer: BusinessFact | undefined;
     transferField: ReactNode;
     transferValue: string;
+    /** The opening hours as times, for "Only during opening hours". */
+    hours: OpeningHours | null;
+    onHoursChange?: (hours: OpeningHours) => void;
 }) {
     const { can } = useOrgConfig();
     const [switching, setSwitching] = useState(false);
@@ -593,11 +654,12 @@ function CanDo({
             {books && (
                 <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 border-t border-line-soft py-3 first:border-t-0">
                     <div className="min-w-0">
-                        <p id="can-book" className="text-[13.5px] font-semibold text-foreground">
+                        <p id="can-book" className="text-body font-semibold text-foreground">
                             Take bookings
                         </p>
-                        <p className="mt-0.5 text-[12.5px] leading-relaxed text-ink-3">
-                            Checks free times in your Google Calendar and books them.{" "}
+                        <p className="mt-0.5 text-caption leading-relaxed text-ink-3">
+                            {bookingLine(calendar.provider)}{" "}
+                            {calendar.eventName && <>Callers book &ldquo;{calendar.eventName}&rdquo;. </>}
                             {calendar.connected !== null && (
                                 <StatusText ok={calendar.connected}>
                                     {calendar.connected ? "Connected" : "Not connected"}
@@ -622,10 +684,10 @@ function CanDo({
                 <div className="grid gap-2 border-t border-line-soft py-3 first:border-t-0">
                     <div className="flex flex-wrap items-start justify-between gap-2">
                         <div className="min-w-0">
-                            <Label htmlFor={`fact-${transfer.key}`} className="text-[13.5px] font-semibold">
+                            <Label htmlFor={`fact-${transfer.key}`} className="text-body font-semibold">
                                 Pass calls to your team
                             </Label>
-                            <p className="mt-0.5 text-[12.5px] leading-relaxed text-ink-3">
+                            <p className="mt-0.5 text-caption leading-relaxed text-ink-3">
                                 {transferValue
                                     ? `Puts callers through to ${transferValue} when they ask for a person.`
                                     : "Add your mobile or front desk number. Without one, your agent takes a message instead."}
@@ -634,17 +696,71 @@ function CanDo({
                         <StatusText ok={transferValue ? true : null}>{transferValue ? "On" : "Off"}</StatusText>
                     </div>
                     <div className="max-w-sm">{transferField}</div>
+                    <OnlyWhenOpen hours={hours} onChange={onHoursChange} />
                 </div>
             )}
             {books && calendar.connected === false && can("integrations:read") && (
-                <p className="pb-2 text-[12.5px] text-ink-2">
+                <p className="pb-2 text-caption text-ink-2">
                     <Link href="/integrations" className="font-medium text-brand underline-offset-2 hover:underline">
-                        Reconnect Google Calendar
+                        Reconnect {bookingTitle(calendar.provider)}
                     </Link>{" "}
                     so your agent can see free times.
                 </p>
             )}
+            {books && calendar.connected !== false && calendar.needsEvent && (
+                <p className="pb-2 text-caption text-ink-2">
+                    {can("integrations:write") ? (
+                        <>
+                            <Link href="/integrations" className="font-medium text-brand underline-offset-2 hover:underline">
+                                Choose which Calendly event callers book
+                            </Link>
+                            . Until then your agent takes their details instead.
+                        </>
+                    ) : (
+                        "No Calendly event is chosen yet, so your agent takes callers' details instead. Ask an admin to choose one in Integrations."
+                    )}
+                </p>
+            )}
         </Card>
+    );
+}
+
+/**
+ * "Only during opening hours" (the transfer mock): on by default once the
+ * hours are set as times; without times there is nothing to check against.
+ */
+function OnlyWhenOpen({ hours, onChange }: { hours: OpeningHours | null; onChange?: (hours: OpeningHours) => void }) {
+    if (!hours) {
+        return (
+            <p className="text-caption text-ink-3">
+                Set your opening hours as times (under Your business) to pass calls only while you&apos;re open.
+            </p>
+        );
+    }
+    const on = hours.transfer_only_when_open ?? true;
+    return (
+        <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 pt-1">
+            <div className="min-w-0">
+                <p id="only-when-open" className="text-body font-semibold text-foreground">
+                    Only during opening hours
+                </p>
+                <p className="mt-0.5 text-caption leading-relaxed text-ink-3">
+                    {on
+                        ? "Outside your hours, your agent doesn't ring anyone. It takes a message, which appears in Follow-ups."
+                        : "Your agent tries to put callers through at any hour."}
+                </p>
+            </div>
+            {onChange ? (
+                <Switch
+                    aria-labelledby="only-when-open"
+                    checked={on}
+                    onCheckedChange={(checked) => onChange({ ...hours, transfer_only_when_open: checked })}
+                    className="h-[22px] w-[38px] [&_[data-slot=switch-thumb]]:size-4 [&_[data-slot=switch-thumb]]:data-[state=checked]:translate-x-[17px] [&_[data-slot=switch-thumb]]:data-[state=unchecked]:translate-x-[2px]"
+                />
+            ) : (
+                <StatusText ok={on}>{on ? "On" : "Off"}</StatusText>
+            )}
+        </div>
     );
 }
 
@@ -676,11 +792,11 @@ function HowItSounds({
                             readsGreeting={greeting.state !== "ready" || greeting.greeting?.kind === "text"}
                             onSwitch={can("agents:write") ? knowledge.switchVoice : undefined}
                         />
-                        {voice.language && <span className="-mt-1 text-[12.5px] text-ink-3">Speaks {voice.language}</span>}
+                        {voice.language && <span className="-mt-1 text-caption text-ink-3">Speaks {voice.language}</span>}
                     </>
                 ) : voice.state === "ready" && voice.voice ? (
                     <div className="flex flex-wrap items-center gap-2">
-                        <span className="inline-flex items-center gap-2 rounded-full border border-brand bg-brand-dim py-1.5 pl-1.5 pr-3 text-[13px] font-semibold text-brand">
+                        <span className="inline-flex items-center gap-2 rounded-full border border-brand bg-brand-dim py-1.5 pl-1.5 pr-3 text-caption font-semibold text-brand">
                             <span aria-hidden className="grid size-[22px] place-items-center rounded-full bg-panel">
                                 <Mic className="size-3" />
                             </span>
@@ -689,23 +805,25 @@ function HowItSounds({
                                 {[voice.voice.name, voice.voice.gender].filter(Boolean).join(" · ")}
                             </span>
                         </span>
-                        {voice.language && <span className="text-[12.5px] text-ink-3">Speaks {voice.language}</span>}
+                        {voice.language && <span className="text-caption text-ink-3">Speaks {voice.language}</span>}
                     </div>
                 ) : null}
                 {can("agents:write") && (
                     <Link
                         href={`/workflow/${workflowId}/model`}
-                        className="-mt-1 self-start text-[13px] font-medium text-brand underline-offset-2 hover:underline"
+                        className="-mt-1 self-start text-caption font-medium text-brand underline-offset-2 hover:underline"
                     >
                         {voice.state === "ready" && voice.choices ? "See all voices" : "Change the voice"}
                     </Link>
                 )}
 
+                <CustomVoice workflowId={workflowId} canRequest={can("agents:write")} />
+
                 {greeting.state === "ready" && greeting.greeting && (
                     <div>
-                        <p className="mb-1.5 text-[12.5px] text-ink-3">First thing callers hear</p>
+                        <p className="mb-1.5 text-caption text-ink-3">First thing callers hear</p>
                         <div className="rounded-[22px] bg-[#0b1220] p-4 text-white dark:bg-black/60 dark:ring-1 dark:ring-line">
-                            <p className="rounded-xl bg-white/10 px-3 py-2 text-[13px] leading-relaxed">
+                            <p className="rounded-xl bg-white/10 px-3 py-2 text-caption leading-relaxed">
                                 {greeting.greeting.kind === "text" ? greetingText : "Plays your recorded greeting."}
                             </p>
                         </div>
@@ -750,9 +868,11 @@ function ReadyForCalls({
     ];
     if (calendar.state === "ready" && calendar.connected !== null) {
         items.push(
-            calendar.connected
-                ? { ok: true, text: "Calendar connected" }
-                : { ok: false, text: "Calendar not connected" },
+            !calendar.connected
+                ? { ok: false, text: "Calendar not connected" }
+                : calendar.needsEvent
+                  ? { ok: false, text: "Choose your Calendly event" }
+                  : { ok: true, text: "Calendar connected" },
         );
     }
     if (phone.state === "ready") {
@@ -767,7 +887,7 @@ function ReadyForCalls({
         <Card title="Ready to take calls" id="ready" className="pb-4">
             <ul className="flex flex-col gap-2.5 pt-2">
                 {items.map((item) => (
-                    <li key={item.text} className="flex items-center gap-2.5 text-[13px] text-foreground">
+                    <li key={item.text} className="flex items-center gap-2.5 text-caption text-foreground">
                         <span
                             className={cn(
                                 "grid size-5 shrink-0 place-items-center rounded-full text-white",
@@ -787,7 +907,7 @@ function ReadyForCalls({
                 {phone.state === "loading" && <Skeleton className="h-5 w-48" />}
             </ul>
             {can("agents:write") && (
-                <p className="mt-3.5 text-[12.5px] leading-relaxed text-ink-3">
+                <p className="mt-3.5 text-caption leading-relaxed text-ink-3">
                     Need to change how calls flow step by step?{" "}
                     <Link
                         href={`/workflow/${workflowId}`}

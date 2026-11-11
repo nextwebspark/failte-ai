@@ -6,6 +6,7 @@ import React, { ReactNode, useEffect, useRef, useState } from "react";
 
 import { NoAccess } from "@/components/auth/NoAccess";
 import { LowBalanceBanner } from "@/components/billing/LowBalanceBanner";
+import { HelpPanelProvider } from "@/components/help/HelpPanel";
 import { NoOrganizationNotice } from "@/components/privacy/NoOrganizationNotice";
 import {
   PendingDeletionBanner,
@@ -206,6 +207,7 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
         ) : (
           <PageActionsSlotProvider slot={actionsSlot}>
             <WorkspaceAgentsProvider>
+            <HelpPanelProvider>
             <PageHeadingProvider>
               <div className="app-surface flex h-svh w-full flex-col overflow-hidden">
                 <a
@@ -252,6 +254,7 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
                 {showTabBar && <MobileTabBar />}
               </div>
             </PageHeadingProvider>
+            </HelpPanelProvider>
             </WorkspaceAgentsProvider>
           </PageActionsSlotProvider>
         )}

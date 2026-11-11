@@ -1,6 +1,16 @@
 "use client";
 
-import { ArrowUpRight, CloudDownload, Loader2, PlugZap, RefreshCw, Settings2, Trash2, Wrench } from "lucide-react";
+import {
+    ArrowUpRight,
+    CalendarCheck,
+    CloudDownload,
+    Loader2,
+    PlugZap,
+    RefreshCw,
+    Settings2,
+    Trash2,
+    Wrench,
+} from "lucide-react";
 import Link from "next/link";
 
 import type { IntegrationConnectionResponse, IntegrationProvider } from "@/client/types.gen";
@@ -19,8 +29,10 @@ import { Button } from "@/components/ui/button";
 import { Panel } from "@/components/ui/panel";
 import { StatusPill, type StatusTone } from "@/components/ui/status-pill";
 
+import { chosenLabel, hasChoices } from "./choices";
 import {
     authModeLabel,
+    CALENDLY_PROVIDER,
     connectionErrorMessage,
     type ConnectionState,
     connectionState,
@@ -39,7 +51,7 @@ const STATE_PILL: Record<ConnectionState, { tone: StatusTone; label: string }> =
     revoked: { tone: "mute", label: "Removed" },
 };
 
-export type ConnectionAction = "test" | "configure" | "reconnect" | "finish" | "remove" | "sync";
+export type ConnectionAction = "test" | "configure" | "choose" | "reconnect" | "finish" | "remove" | "sync";
 
 export interface ConnectionPermissions {
     /** Test and change settings. */
@@ -69,6 +81,9 @@ export function ConnectionCard({ connection, provider, hasSettings, permissions,
     const canSync = provider?.capabilities?.includes("sync") ?? false;
     const syncing = isSyncing(connection.sync);
     const itemLabel = provider?.sync_item_label ?? "items";
+    const choosable = hasChoices(provider) && state !== "revoked" && state !== "pending";
+    const chosen = choosable ? chosenLabel(provider, connection) : null;
+    const calendly = connection.provider === CALENDLY_PROVIDER;
     const spinner = (action: ConnectionAction) =>
         busy === action ? <Loader2 className="animate-spin" aria-hidden /> : null;
 
@@ -91,7 +106,7 @@ export function ConnectionCard({ connection, provider, hasSettings, permissions,
                         ) : (
                             "No account name"
                         )}
-                        <span className="text-ink-3"> · {authModeLabel(connection.auth_mode)}</span>
+                        <span className="text-ink-3"> · {authModeLabel(connection.auth_mode, connection.provider)}</span>
                     </p>
                 </div>
                 {toolUuid && (
@@ -126,6 +141,20 @@ export function ConnectionCard({ connection, provider, hasSettings, permissions,
                     {syncSummary(connection.sync, itemLabel)}
                 </p>
             )}
+            {choosable &&
+                (chosen ? (
+                    <p className="flex items-center gap-1.5 text-sm text-ink-2">
+                        <CalendarCheck className="size-3.5 shrink-0" aria-hidden />
+                        {calendly ? "Callers book" : "Uses"}{" "}
+                        <span className="font-medium text-foreground">{chosen}</span>
+                    </p>
+                ) : (
+                    <p className="text-sm text-amber">
+                        {calendly
+                            ? "Choose which Calendly event callers book. Until then your agent takes their details instead."
+                            : "Finish choosing its settings before agents use it."}
+                    </p>
+                ))}
             {state === "not_installed" && (
                 <p className="text-sm text-ink-2">The agent tool for this connection wasn&apos;t created yet.</p>
             )}
@@ -163,6 +192,17 @@ export function ConnectionCard({ connection, provider, hasSettings, permissions,
                                 <CloudDownload aria-hidden />
                             )}
                             {syncing ? "Syncing…" : syncButtonLabel(provider?.sync_item_label)}
+                        </Button>
+                    )}
+                    {permissions.canWrite && choosable && (
+                        <Button
+                            size="sm"
+                            variant={chosen ? "soft" : "default"}
+                            onClick={() => onAction("choose")}
+                            disabled={disabled}
+                        >
+                            <CalendarCheck aria-hidden />
+                            {calendly ? (chosen ? "Change event" : "Choose event") : "Choose"}
                         </Button>
                     )}
                     {permissions.canWrite && state !== "pending" && (

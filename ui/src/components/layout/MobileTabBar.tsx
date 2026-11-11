@@ -19,7 +19,7 @@ import { usePathname } from "next/navigation";
 import { useTheme } from "next-themes";
 import React, { useEffect, useRef, useState } from "react";
 
-import { SUPPORT_MAILTO } from "@/components/SupportLink";
+import { useHelpPanel } from "@/components/help/HelpPanel";
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet";
 import { useOrgConfig } from "@/context/OrgConfigContext";
 import { useAuth } from "@/lib/auth";
@@ -59,7 +59,7 @@ function TabLink({ tab, onNavigate }: { tab: Tab; onNavigate: () => void }) {
       onClick={onNavigate}
       aria-current={tab.isActive ? "page" : undefined}
       className={cn(
-        "relative flex min-h-11 min-w-0 flex-col items-center justify-center gap-[3px] rounded-lg text-[11px] font-semibold outline-none",
+        "relative flex min-h-11 min-w-0 flex-col items-center justify-center gap-[3px] rounded-lg text-meta font-semibold outline-none",
         "focus-visible:ring-[3px] focus-visible:ring-inset focus-visible:ring-ring/50",
         tab.isActive ? "text-brand" : "text-ink-3"
       )}
@@ -113,7 +113,7 @@ function SheetRow({
 
 function SheetLabel({ children }: { children: React.ReactNode }) {
   return (
-    <p className="px-1.5 pb-1 pt-2.5 text-[11px] font-semibold uppercase tracking-[0.06em] text-ink-3">{children}</p>
+    <p className="px-1.5 pb-1 pt-2.5 text-meta font-semibold uppercase tracking-[0.06em] text-ink-3">{children}</p>
   );
 }
 
@@ -184,6 +184,7 @@ export function MobileTabBar() {
     navigated.current = true;
     setMoreOpen(false);
   };
+  const help = useHelpPanel();
   const workspaceName = workspaceDisplayName(orgContext?.organization_name);
   const person = memberName(user);
   const isDark = resolvedTheme === "dark";
@@ -213,7 +214,7 @@ export function MobileTabBar() {
             aria-haspopup="dialog"
             aria-expanded={moreOpen}
             className={cn(
-              "relative flex min-h-11 min-w-0 flex-col items-center justify-center gap-[3px] rounded-lg text-[11px] font-semibold outline-none",
+              "relative flex min-h-11 min-w-0 flex-col items-center justify-center gap-[3px] rounded-lg text-meta font-semibold outline-none",
               "focus-visible:ring-[3px] focus-visible:ring-inset focus-visible:ring-ring/50",
               moreActive ? "text-brand" : "text-ink-3"
             )}
@@ -252,7 +253,7 @@ export function MobileTabBar() {
               {initialsOf(workspaceName, "W")}
             </span>
             <div className="min-w-0">
-              <p className="truncate text-[13.5px] font-semibold text-foreground">{workspaceName}</p>
+              <p className="truncate text-sm font-semibold text-foreground">{workspaceName}</p>
               <p className="truncate text-[12px] text-ink-3">
                 {[person, role ? ROLE_LABELS[role] : null].filter(Boolean).join(" · ")}
               </p>
@@ -279,7 +280,7 @@ export function MobileTabBar() {
               >
                 <Wrench className="size-5 shrink-0 text-ink-2" aria-hidden />
                 <span className="min-w-0 flex-1 truncate">Advanced setup</span>
-                <span className="text-[12.5px] font-medium text-ink-3">Best on a computer</span>
+                <span className="text-caption font-medium text-ink-3">Best on a computer</span>
                 <ChevronDown
                   aria-hidden
                   className={cn("size-4 shrink-0 text-ink-3 transition-transform motion-reduce:transition-none", advancedOpen && "rotate-180")}
@@ -296,14 +297,18 @@ export function MobileTabBar() {
           )}
 
           <SheetLabel>Account</SheetLabel>
-          <a
-            href={SUPPORT_MAILTO}
-            className="flex min-h-12 items-center gap-3 rounded-[10px] px-1.5 text-[15px] font-medium text-foreground outline-none hover:bg-panel-2 focus-visible:ring-[3px] focus-visible:ring-ring/50"
+          <button
+            type="button"
+            onClick={() => {
+              close();
+              help?.openHelp();
+            }}
+            className="flex min-h-12 w-full items-center gap-3 rounded-[10px] px-1.5 text-left text-[15px] font-medium text-foreground outline-none hover:bg-panel-2 focus-visible:ring-[3px] focus-visible:ring-ring/50"
           >
             <CircleHelp className="size-5 shrink-0 text-ink-2" aria-hidden />
             Help
-            <span className="ml-auto text-[12.5px] font-medium text-ink-3">Email us</span>
-          </a>
+            <span className="ml-auto text-caption font-medium text-ink-3">Ask, guides, contact us</span>
+          </button>
           <button
             type="button"
             onClick={() => setTheme(isDark ? "light" : "dark")}

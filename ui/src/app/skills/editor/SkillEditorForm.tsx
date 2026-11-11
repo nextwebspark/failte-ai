@@ -46,7 +46,7 @@ interface SkillEditorFormProps {
 
 function Counter({ value, max, id }: { value: number; max: number; id: string }) {
     return (
-        <span id={id} className={cn("font-mono text-[11px]", value > max ? "text-destructive" : "text-ink-3")}>
+        <span id={id} className={cn("font-mono text-meta", value > max ? "text-destructive" : "text-ink-3")}>
             {value}/{max}
         </span>
     );
@@ -239,7 +239,7 @@ export function SkillEditorForm({
                     <span
                         id="skill-body-size"
                         className={cn(
-                            "ml-auto font-mono text-[11px]",
+                            "ml-auto font-mono text-meta",
                             bodyBytes > BODY_MAX_BYTES ? "text-destructive" : "text-ink-3",
                         )}
                     >

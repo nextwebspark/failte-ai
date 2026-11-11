@@ -194,15 +194,54 @@ def attach_tool_placeholder(
     return {**definition, "nodes": nodes}
 
 
-# The tools-service provider id of Google Calendar.
+# The tools-service provider ids of the booking calendars.
 GOOGLE_CALENDAR = "google-calendar"
+CALENDLY = "calendly"
+# Providers that can stand in for a template's integration: a template that
+# books with Google Calendar books with Calendly just as well (same functions:
+# check_appointment_availability, book_appointment).
+INTEGRATION_ALTERNATIVES: dict[str, tuple[str, ...]] = {GOOGLE_CALENDAR: (CALENDLY,)}
+
+
+def allowed_integrations(template_integrations: list[str] | None) -> set[str]:
+    """The providers a template's agent may be given a tool for."""
+    allowed = set(template_integrations or [])
+    for provider in list(allowed):
+        allowed.update(INTEGRATION_ALTERNATIVES.get(provider, ()))
+    return allowed
+
+
+def check_integration_tools(
+    template_integrations: list[str] | None, tools: Mapping[str, str]
+) -> None:
+    """Raise TemplateSetupError for a provider the template can't use, or for
+    a template integration and its alternative given together (an agent
+    books with one calendar)."""
+    unknown = sorted(set(tools) - allowed_integrations(template_integrations))
+    if unknown:
+        raise TemplateSetupError(f"This template doesn't use: {', '.join(unknown)}")
+    for provider, alternatives in INTEGRATION_ALTERNATIVES.items():
+        given = [p for p in (provider, *alternatives) if p in tools]
+        if len(given) > 1:
+            raise TemplateSetupError(
+                f"Pick one calendar to book with, not {' and '.join(given)}."
+            )
+
+
+def _integration_tool(tools: Mapping[str, str], provider: str) -> str | None:
+    """The tool for *provider*, else for one of its alternatives."""
+    for candidate in (provider, *INTEGRATION_ALTERNATIVES.get(provider, ())):
+        if tools.get(candidate):
+            return tools[candidate]
+    return None
 
 
 def attach_integration_tools(
     definition: dict[str, Any], tools: dict[str, str]
 ) -> dict[str, Any]:
     """Swap each node's ``integration:<provider>`` tool placeholder for the
-    organization's tool for that provider, or drop it when there is none.
+    organization's tool for that provider (or an alternative, e.g. Calendly
+    for Google Calendar), or drop it when there is none.
 
     A template marks the steps that may use, say, Google Calendar with
     ``"tool_uuids": ["integration:google-calendar"]``; *tools* maps a provider
@@ -216,7 +255,9 @@ def attach_integration_tools(
             resolved = []
             for uuid in uuids:
                 if isinstance(uuid, str) and uuid.startswith(INTEGRATION_TOOL_PREFIX):
-                    tool = tools.get(uuid.removeprefix(INTEGRATION_TOOL_PREFIX))
+                    tool = _integration_tool(
+                        tools, uuid.removeprefix(INTEGRATION_TOOL_PREFIX)
+                    )
                     if tool and tool not in resolved:
                         resolved.append(tool)
                 elif uuid not in resolved:

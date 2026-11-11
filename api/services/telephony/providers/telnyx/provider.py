@@ -7,6 +7,7 @@ inline WebSocket media streaming.
 import base64
 import binascii
 import json
+import re
 import time
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
@@ -770,6 +771,30 @@ class TelnyxProvider(TelephonyProvider):
 
     # ======== CALL TRANSFER METHODS ========
 
+    def transfer_caller_number_params(
+        self, inbound_webhook: Dict[str, Any]
+    ) -> Optional[Dict[str, Any]]:
+        """Show the original caller's number on the transfer leg.
+
+        Telnyx's Dial treats ``from`` as verified, and so usable as caller ID,
+        when ``diversion`` names an active inbound call to us from that same
+        number: ours is still up while the staff phone rings.
+        https://developers.telnyx.com/api-reference/call-commands/dial
+        """
+        data = inbound_webhook.get("data", inbound_webhook)
+        payload = data.get("payload", {}) if isinstance(data, dict) else {}
+        caller = payload.get("from") if isinstance(payload, dict) else None
+        called = payload.get("to") if isinstance(payload, dict) else None
+        e164 = re.compile(r"\+[1-9]\d{6,14}")
+        if not (
+            isinstance(caller, str)
+            and isinstance(called, str)
+            and e164.fullmatch(caller)
+            and e164.fullmatch(called)
+        ):
+            return None
+        return {"from": caller, "diversion": called}
+
     async def transfer_call(
         self,
         destination: str,
@@ -804,6 +829,7 @@ class TelnyxProvider(TelephonyProvider):
             "webhook_url_method": "POST",
         }
         payload.update(kwargs)
+        from_number = payload["from"]
 
         endpoint = f"{self.TELNYX_API_BASE}/calls"
 

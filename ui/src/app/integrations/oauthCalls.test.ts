@@ -22,6 +22,12 @@ describe("isTrustedAuthorizationUrl", () => {
         expect(isTrustedAuthorizationUrl(url)).toBe(false);
     });
 
+    it("accepts Calendly's sign-in page and nothing like it", () => {
+        expect(isTrustedAuthorizationUrl("https://auth.calendly.com/oauth/authorize?state=x")).toBe(true);
+        expect(isTrustedAuthorizationUrl("https://auth.calendly.com.evil.example/oauth/authorize")).toBe(false);
+        expect(isTrustedAuthorizationUrl("https://calendly.com/oauth/authorize")).toBe(false);
+    });
+
     it("accepts a provider-declared host", () => {
         expect(isTrustedAuthorizationUrl("https://login.example.com/auth", ["login.example.com"])).toBe(true);
     });

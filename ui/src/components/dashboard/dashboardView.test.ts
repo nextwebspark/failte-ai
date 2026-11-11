@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { FollowUpItem } from "@/client/types.gen";
 
 import {
+    afterHoursWords,
     appendAnswer,
     busiestHour,
     callBackNumber,
@@ -14,11 +15,13 @@ import {
     followUpDetail,
     followUpKey,
     followUpTitle,
+    hourSpan,
     hourWindow,
     lastCallWords,
     notAnsweringWords,
     rangeSentence,
     telHref,
+    todayLine,
     waitWords,
 } from "./dashboardView";
 
@@ -174,5 +177,44 @@ describe("call-review follow-ups", () => {
         expect(appendAnswer("Parking: Henry Street.\n", "Dogs?", "On the terrace.")).toBe(
             "Parking: Henry Street.\nQ: Dogs? A: On the terrace.",
         );
+    });
+});
+
+describe("afterHoursWords", () => {
+    it("counts calls outside opening hours and names agents left out", () => {
+        expect(afterHoursWords({ calls: 3, agents_without_hours: [] })).toEqual({
+            count: "3 calls came in outside opening hours",
+            note: null,
+        });
+        expect(afterHoursWords({ calls: 1, agents_without_hours: [{ id: 2, name: "Front desk" }] })).toEqual({
+            count: "1 call came in outside opening hours",
+            note: "Not counted: Front desk, with no opening hours set as times.",
+        });
+        expect(afterHoursWords({ calls: null, agents_without_hours: [{ id: 2, name: "Front desk" }] }).count).toBeNull();
+        expect(afterHoursWords({ calls: null, agents_without_hours: [] })).toEqual({ count: null, note: null });
+    });
+});
+
+describe("todayLine and hourSpan", () => {
+    it("puts the range's headline counts in one line, real counts only", () => {
+        const tiles = { calls: 6, handled: 4, passed_to_team: 0, callbacks_requested: 1, bookings_taken: 3 };
+        expect(todayLine(tiles, "bookings taken")).toEqual([
+            { value: 6, words: "calls" },
+            { value: 4, words: "handled by your agent" },
+            { value: 3, words: "bookings taken" },
+            { value: 1, words: "asked for a call back" },
+        ]);
+        // No bookings wording for the business: no bookings phrase, even with a count.
+        expect(todayLine(tiles, null).map((p) => p.words)).not.toContain("bookings taken");
+        expect(todayLine({ ...tiles, calls: 1, handled: 1, callbacks_requested: 0, bookings_taken: 0 }, "bookings taken")).toEqual([
+            { value: 1, words: "call" },
+            { value: 1, words: "handled by your agent" },
+        ]);
+        expect(todayLine({ ...tiles, calls: 0 }, "bookings taken")).toEqual([]);
+    });
+
+    it("names an hour as a span", () => {
+        expect(hourSpan(9)).toBe("09:00–10:00");
+        expect(hourSpan(23)).toBe("23:00–00:00");
     });
 });

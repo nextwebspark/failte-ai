@@ -144,6 +144,9 @@ function fieldKind(node: SchemaObject, root: SchemaObject): { kind: FieldKind; o
 }
 
 /** The form fields for a provider's config schema, in schema order. */
+/** Marks a config field picked from the provider's live list ("value" or "label"). */
+export const CHOICE_MARK = "x-fallcha-choice";
+
 export function fieldsFromSchema(schema: unknown): SchemaField[] {
     if (!isObject(schema)) return [];
     const root = schema;
@@ -156,6 +159,8 @@ export function fieldsFromSchema(schema: unknown): SchemaField[] {
     const fields: SchemaField[] = [];
     for (const [key, raw] of Object.entries(top.properties)) {
         if (!isObject(raw)) continue;
+        // Picked from a live list (see choices.ts), never typed.
+        if (CHOICE_MARK in raw) continue;
         const { node, nullable } = unwrapNullable(resolveRef(raw, root), root);
         const kind = fieldKind(node, root);
         if (!kind) continue;

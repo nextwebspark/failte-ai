@@ -64,7 +64,7 @@ export function AgentsEmptyState({ fill = true }: { fill?: boolean }) {
                             <Icon className="size-4 text-ink-3" aria-hidden />
                         </span>
                         <span className="text-[14px] font-semibold text-ink">{title}</span>
-                        <span className="text-[13px] leading-relaxed text-ink-2">{body}</span>
+                        <span className="text-caption leading-relaxed text-ink-2">{body}</span>
                     </li>
                 ))}
             </ol>

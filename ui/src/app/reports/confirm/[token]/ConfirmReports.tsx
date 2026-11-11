@@ -60,7 +60,7 @@ export function ConfirmReports({ token }: { token: string }) {
       <Button className="w-full" disabled={busy} onClick={() => void confirm()}>
         {busy ? "Confirming…" : "Yes, send me reports"}
       </Button>
-      <p className="text-[13px] text-ink-3">Not expecting this? Close this page and nothing will be sent.</p>
+      <p className="text-caption text-ink-3">Not expecting this? Close this page and nothing will be sent.</p>
     </ReportLinkCard>
   );
 }

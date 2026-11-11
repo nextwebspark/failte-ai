@@ -20,7 +20,7 @@ export function activateConnection(connectionId: string, browserNonce?: string) 
 }
 
 /** Hosts the browser may be sent to for sign-in. */
-export const TRUSTED_AUTHORIZE_HOSTS: readonly string[] = ["accounts.google.com"];
+export const TRUSTED_AUTHORIZE_HOSTS: readonly string[] = ["accounts.google.com", "auth.calendly.com"];
 
 /** True for an https URL on a trusted sign-in host. */
 export function isTrustedAuthorizationUrl(

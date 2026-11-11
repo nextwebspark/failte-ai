@@ -97,9 +97,17 @@ describe("urlWithoutReturnParams", () => {
 
 describe("oauthFailureMessage", () => {
     it("has specific copy for every callback reason code", () => {
-        const messages = CALLBACK_REASONS.map(oauthFailureMessage);
+        const messages = CALLBACK_REASONS.map((reason) => oauthFailureMessage(reason));
         for (const message of messages) expect(message).not.toBe(GENERIC);
         expect(new Set(messages).size).toBe(CALLBACK_REASONS.length);
+    });
+
+    it("names Calendly, not Google, for a Calendly sign-in", () => {
+        expect(oauthFailureMessage("access_denied", "calendly")).toBe(
+            "You cancelled the sign-in, or Calendly refused access. Nothing was connected.",
+        );
+        expect(oauthFailureMessage("access_denied")).toContain("Google refused access");
+        expect(oauthFailureMessage("expired_state", "calendly")).not.toContain("Google");
     });
 
     it("never reflects the code itself", () => {

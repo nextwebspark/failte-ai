@@ -191,7 +191,7 @@ export function TemplateGallery({
                                         aria-pressed={category === value}
                                         onClick={() => applyFilters(direction, value)}
                                         className={cn(
-                                            'h-8 rounded-full border px-3.5 text-[13px] transition-colors focus-visible:outline-2 focus-visible:outline-ring',
+                                            'h-8 rounded-full border px-3.5 text-caption transition-colors focus-visible:outline-2 focus-visible:outline-ring',
                                             category === value
                                                 ? 'border-brand bg-brand-dim font-semibold text-brand'
                                                 : 'border-line bg-card font-medium text-ink-2 hover:text-ink',
@@ -215,7 +215,7 @@ export function TemplateGallery({
                                         aria-pressed={direction === value}
                                         onClick={() => applyFilters(value, category)}
                                         className={cn(
-                                            'h-8 rounded-full border px-3.5 text-[13px] transition-colors focus-visible:outline-2 focus-visible:outline-ring',
+                                            'h-8 rounded-full border px-3.5 text-caption transition-colors focus-visible:outline-2 focus-visible:outline-ring',
                                             direction === value
                                                 ? 'border-brand bg-brand-dim font-semibold text-brand'
                                                 : 'border-line bg-card font-medium text-ink-2 hover:text-ink',
@@ -253,7 +253,7 @@ export function TemplateGallery({
                                             <TemplateIcon name={template.icon} size={18} />
                                         </span>
                                         {template.featured && (
-                                            <span className="text-[11px] font-semibold uppercase tracking-[0.04em] text-brand">
+                                            <span className="text-meta font-semibold uppercase tracking-[0.04em] text-brand">
                                                 Most popular
                                             </span>
                                         )}
@@ -262,13 +262,13 @@ export function TemplateGallery({
                                         <span className="text-[14.5px] font-semibold text-ink">
                                             {template.template_name}
                                         </span>
-                                        <span className="line-clamp-2 text-[12.5px] leading-[1.45] text-ink-2">
+                                        <span className="line-clamp-2 text-caption leading-[1.45] text-ink-2">
                                             {template.template_description}
                                         </span>
                                     </span>
                                     <span
                                         className={cn(
-                                            'mt-auto text-[11.5px] text-ink-3',
+                                            'mt-auto text-meta text-ink-3',
                                             template.sample_audio_url && 'pr-20',
                                         )}
                                     >
@@ -295,7 +295,7 @@ export function TemplateGallery({
                     })}
                 </ul>
                 {shown.length === 0 && (
-                    <p className="rounded-lg border border-dashed border-line bg-panel-2 px-4 py-8 text-center text-[13.5px] text-ink-2">
+                    <p className="rounded-lg border border-dashed border-line bg-panel-2 px-4 py-8 text-center text-sm text-ink-2">
                         No agents match these filters. Try All industries or another call type.
                     </p>
                 )}
@@ -316,15 +316,15 @@ export function TemplateGallery({
                                     <h3 className="font-display text-[20px] leading-tight tracking-[-0.02em] text-ink">
                                         {selected.template_name}
                                     </h3>
-                                    <p className="text-[13.5px] leading-[1.5] text-ink-2">
+                                    <p className="text-sm leading-[1.5] text-ink-2">
                                         {selected.template_description}
                                     </p>
                                 </div>
                             </div>
 
-                            <dl className="grid grid-cols-2 gap-3 rounded-lg border border-line bg-card p-3.5 text-[13px]">
+                            <dl className="grid grid-cols-2 gap-3 rounded-lg border border-line bg-card p-3.5 text-caption">
                                 <div className="flex flex-col gap-0.5">
-                                    <dt className="text-[11px] font-medium uppercase tracking-[0.06em] text-ink-3">
+                                    <dt className="text-meta font-medium uppercase tracking-[0.06em] text-ink-3">
                                         Type
                                     </dt>
                                     <dd className="font-semibold text-ink">
@@ -332,7 +332,7 @@ export function TemplateGallery({
                                     </dd>
                                 </div>
                                 <div className="flex flex-col gap-0.5">
-                                    <dt className="text-[11px] font-medium uppercase tracking-[0.06em] text-ink-3">
+                                    <dt className="text-meta font-medium uppercase tracking-[0.06em] text-ink-3">
                                         Industry
                                     </dt>
                                     <dd className="font-semibold text-ink">
@@ -344,7 +344,7 @@ export function TemplateGallery({
                                     </dd>
                                 </div>
                                 <div className="col-span-2 flex flex-col gap-0.5 border-t border-line-soft pt-3">
-                                    <dt className="text-[11px] font-medium uppercase tracking-[0.06em] text-ink-3">
+                                    <dt className="text-meta font-medium uppercase tracking-[0.06em] text-ink-3">
                                         Setup
                                     </dt>
                                     <dd className="font-semibold text-ink">{templateMeta(selected)}</dd>
@@ -353,12 +353,12 @@ export function TemplateGallery({
 
                             {highlights.length > 0 && (
                                 <div className="flex flex-col gap-2.5">
-                                    <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-3">
+                                    <span className="text-meta font-semibold uppercase tracking-[0.08em] text-ink-3">
                                         What it does
                                     </span>
                                     <ul className="flex flex-col gap-2">
                                         {highlights.map((item) => (
-                                            <li key={item} className="flex items-start gap-2 text-[13.5px] text-ink">
+                                            <li key={item} className="flex items-start gap-2 text-sm text-ink">
                                                 <Check
                                                     size={15}
                                                     className="mt-0.5 shrink-0 text-brand"
@@ -374,16 +374,16 @@ export function TemplateGallery({
 
                             {flowSteps.length > 0 && (
                                 <div className="flex flex-col gap-2.5">
-                                    <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-3">
+                                    <span className="text-meta font-semibold uppercase tracking-[0.08em] text-ink-3">
                                         Call flow
                                     </span>
                                     <ol className="flex flex-col gap-2">
                                         {flowSteps.map((step, index) => (
                                             <li
                                                 key={`${index}-${step}`}
-                                                className="flex items-center gap-2.5 text-[13.5px] text-ink"
+                                                className="flex items-center gap-2.5 text-sm text-ink"
                                             >
-                                                <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-card font-mono text-[11px] font-semibold text-ink-2 ring-1 ring-line">
+                                                <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-card font-mono text-meta font-semibold text-ink-2 ring-1 ring-line">
                                                     {index + 1}
                                                 </span>
                                                 <span className="leading-[1.4] first-letter:uppercase">{step}</span>
@@ -395,7 +395,7 @@ export function TemplateGallery({
 
                             {(selected.integrations?.length ?? 0) > 0 && (
                                 <div className="flex flex-col gap-2">
-                                    <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-3">
+                                    <span className="text-meta font-semibold uppercase tracking-[0.08em] text-ink-3">
                                         Optional connects
                                     </span>
                                     <div className="flex flex-wrap gap-1.5">
@@ -414,7 +414,7 @@ export function TemplateGallery({
 
                             {greeting && (
                                 <div className="flex flex-col gap-2">
-                                    <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-3">
+                                    <span className="text-meta font-semibold uppercase tracking-[0.08em] text-ink-3">
                                         How it will sound
                                     </span>
                                     <p className="rounded-[14px_14px_14px_4px] border border-line bg-card px-4 py-3.5 text-[14px] leading-[1.5] text-ink shadow-sm">
@@ -443,7 +443,7 @@ export function TemplateGallery({
                             <Phone size={22} strokeWidth={1.8} aria-hidden />
                         </span>
                         <p className="text-[15px] font-semibold text-ink">Pick a ready-made agent</p>
-                        <p className="max-w-[240px] text-[13.5px] leading-[1.45] text-ink-2">
+                        <p className="max-w-[240px] text-sm leading-[1.45] text-ink-2">
                             Select a card to preview what it says, how the call flows, and what you&apos;ll set up.
                         </p>
                     </div>

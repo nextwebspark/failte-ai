@@ -81,7 +81,7 @@ export function AgentSetupChecklist({ agent, tested, connected, onHide }: AgentS
                     <h2 id="agent-setup-title" className="text-[15px] font-semibold text-ink">
                         Get your agent ready for calls
                     </h2>
-                    <p className="mt-0.5 text-[12.5px] text-ink-3">
+                    <p className="mt-0.5 text-caption text-ink-3">
                         {doneCount} of {steps.length} done
                     </p>
                 </div>
@@ -109,7 +109,7 @@ export function AgentSetupChecklist({ agent, tested, connected, onHide }: AgentS
                         <div className="flex min-w-0 flex-1 items-start gap-3">
                             <span
                                 className={cn(
-                                    'mt-px flex size-6 shrink-0 items-center justify-center rounded-full font-mono text-[11px] font-semibold',
+                                    'mt-px flex size-6 shrink-0 items-center justify-center rounded-full font-mono text-meta font-semibold',
                                     step.done
                                         ? 'bg-ok-dim text-ok'
                                         : index === current
@@ -123,7 +123,7 @@ export function AgentSetupChecklist({ agent, tested, connected, onHide }: AgentS
                                 <p className={cn('text-[14px] font-medium', step.done ? 'text-ink-2' : 'text-ink')}>
                                     {step.title}
                                 </p>
-                                <p className="mt-0.5 text-[13px] text-ink-3">{step.body}</p>
+                                <p className="mt-0.5 text-caption text-ink-3">{step.body}</p>
                             </div>
                         </div>
                         {!step.done && step.actions && (

@@ -68,7 +68,7 @@ export default function PlatformAdminOrganizationsPage() {
                                         <Link className="font-medium hover:underline" href={`/superadmin/organizations/${org.id}`}>
                                             {org.name || "Unnamed"}
                                         </Link>
-                                        <span className="ml-1.5 font-mono text-[11px] text-ink-3">#{org.id}</span>
+                                        <span className="ml-1.5 font-mono text-meta text-ink-3">#{org.id}</span>
                                     </TableCell>
                                     <TableCell>
                                         <OrganizationStatus status={org.status} />
@@ -79,14 +79,14 @@ export default function PlatformAdminOrganizationsPage() {
                                     <TableCell className="text-right tabular-nums">
                                         {formatEur(org.effective_price_per_minute_eur, 2)}
                                         {org.price_per_minute_override_eur !== null ? (
-                                            <span className="ml-1 text-[11px] text-ink-3">custom</span>
+                                            <span className="ml-1 text-meta text-ink-3">custom</span>
                                         ) : null}
                                     </TableCell>
                                     <TableCell className="text-right tabular-nums">{formatEur(org.credit_limit_eur)}</TableCell>
                                     <TableCell className="text-right tabular-nums">
                                         {org.effective_concurrency_limit}
                                         {org.concurrency_limit === null ? (
-                                            <span className="ml-1 text-[11px] text-ink-3">default</span>
+                                            <span className="ml-1 text-meta text-ink-3">default</span>
                                         ) : null}
                                     </TableCell>
                                     <TableCell className="whitespace-nowrap text-xs">{formatWhen(org.created_at)}</TableCell>

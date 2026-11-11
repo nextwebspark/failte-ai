@@ -11,6 +11,7 @@ import re
 from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+from typing import Protocol
 
 from fallcha_tools.providers.google_calendar.settings import CalendarConfig
 
@@ -45,7 +46,17 @@ def _midnight(moment: datetime) -> datetime:
     return moment.replace(hour=0, minute=0, second=0, microsecond=0)
 
 
-def bookable_window(now: datetime, config: CalendarConfig) -> Window:
+class BookingHorizon(Protocol):
+    """How far ahead bookings may be made (shared with other booking
+    providers, e.g. Calendly)."""
+
+    @property
+    def min_lead_hours(self) -> int: ...
+    @property
+    def horizon_days(self) -> int: ...
+
+
+def bookable_window(now: datetime, config: BookingHorizon) -> Window:
     """[earliest bookable moment, horizon) for ``now`` (local time)."""
     return (
         now + timedelta(hours=config.min_lead_hours),
@@ -54,7 +65,7 @@ def bookable_window(now: datetime, config: CalendarConfig) -> Window:
 
 
 def resolve_window(
-    relative_day: str | None, now: datetime, config: CalendarConfig
+    relative_day: str | None, now: datetime, config: BookingHorizon
 ) -> Window:
     """Turn a spoken date phrase into a [start, end) search window.
 

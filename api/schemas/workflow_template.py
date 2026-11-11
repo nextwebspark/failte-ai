@@ -104,7 +104,8 @@ class DuplicateTemplateRequest(BaseModel):
     # Answers to the template's setup_fields, keyed by field key.
     values: dict[str, str] = Field(default_factory=dict)
     # The tool to attach for each of the template's integrations, keyed by
-    # provider, e.g. {"google-calendar": "<tool uuid>"}.
+    # provider, e.g. {"google-calendar": "<tool uuid>"}. A template that
+    # books with Google Calendar also takes {"calendly": "<tool uuid>"}.
     integration_tools: dict[str, str] = Field(default_factory=dict)
     appointment_hours: AppointmentHours | None = Field(
         default=None,
