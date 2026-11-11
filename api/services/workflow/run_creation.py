@@ -1,6 +1,8 @@
 from dataclasses import dataclass
 from typing import Any
 
+from api.services.workflow.initial_context import merge_external_initial_context
+
 
 @dataclass(frozen=True)
 class WorkflowRunInputs:
@@ -90,7 +92,9 @@ async def prepare_workflow_run_inputs(
     return WorkflowRunInputs(
         definition_id=getattr(target_definition, "id", None),
         initial_context={
-            **default_context,
+            # Editor-set variables are prompt values: they can never supply
+            # run-owned keys such as provider or call_id.
+            **merge_external_initial_context({}, default_context),
             **(initial_context or {}),
         },
         use_draft=use_draft,

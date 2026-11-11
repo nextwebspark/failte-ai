@@ -31,9 +31,12 @@ CardHeader.displayName = "CardHeader"
 
 const CardTitle = React.forwardRef<
     HTMLParagraphElement,
-    React.HTMLAttributes<HTMLHeadingElement>
->(({ className, ...props }, ref) => (
-    <h3
+    React.HTMLAttributes<HTMLHeadingElement> & {
+        /** Heading level, so the card keeps its place in the outline. Defaults to h3. */
+        as?: "h2" | "h3" | "h4"
+    }
+>(({ className, as: Tag = "h3", ...props }, ref) => (
+    <Tag
         ref={ref}
         className={cn(
             "text-base font-bold leading-none tracking-tight",

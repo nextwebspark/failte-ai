@@ -502,6 +502,7 @@ export default function RunsPage() {
                                                                 onSelect={setSelectedRowId}
                                                             />
                                                             <Button
+                                                                aria-label={`Open logs for run #${run.id}`}
                                                                 variant="outline"
                                                                 size="icon"
                                                                 onClick={() => {
@@ -526,7 +527,7 @@ export default function RunsPage() {
                                                             >
                                                                 <Image
                                                                     src="/axiom_icon.svg"
-                                                                    alt="Traces"
+                                                                    alt=""
                                                                     width={16}
                                                                     height={16}
                                                                     className="h-4 w-4"
@@ -534,6 +535,7 @@ export default function RunsPage() {
                                                             </Button>
 
                                                             <Button
+                                                                aria-label={`Open traces for run #${run.id}`}
                                                                 variant="outline"
                                                                 size="icon"
                                                                 onClick={() => {
@@ -552,7 +554,7 @@ export default function RunsPage() {
                                                             >
                                                                 <Image
                                                                     src="/langfuse_icon.svg"
-                                                                    alt="Langfuse Traces"
+                                                                    alt=""
                                                                     width={16}
                                                                     height={16}
                                                                     className="h-4 w-4"
@@ -562,6 +564,7 @@ export default function RunsPage() {
                                                             {/* Quick links open the regular app after impersonating the
                                                                 owner of the workflow run. */}
                                                             <Button
+                                                                aria-label={`Open the agent as its owner (run #${run.id})`}
                                                                 variant="outline"
                                                                 size="icon"
                                                                 title="Open workflow as user"
@@ -577,6 +580,7 @@ export default function RunsPage() {
                                                             </Button>
 
                                                             <Button
+                                                                aria-label={`Open run #${run.id} as its owner`}
                                                                 variant="outline"
                                                                 size="icon"
                                                                 title="Open run details as user"

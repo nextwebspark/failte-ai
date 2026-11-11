@@ -1,6 +1,6 @@
 'use client';
 
-import { FileText, Pencil, RefreshCw, Search, Trash2 } from 'lucide-react';
+import { FileText, Pencil, RefreshCw, Search, Trash2, TriangleAlert, Upload } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
 
@@ -11,6 +11,7 @@ import {
 import type { DocumentResponseSchema } from '@/client/types.gen';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { EmptyState } from '@/components/ui/empty-state';
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useAppConfig } from '@/context/AppConfigContext';
@@ -22,9 +23,11 @@ import DocumentEditor, { isEditableDocument } from './DocumentEditor';
 
 interface DocumentListProps {
   refreshTrigger: number;
+  /** Offered from the empty state when uploads are available. */
+  onUploadClick?: () => void;
 }
 
-export default function DocumentList({ refreshTrigger }: DocumentListProps) {
+export default function DocumentList({ refreshTrigger, onUploadClick }: DocumentListProps) {
   const organizationTimezone = useOrganizationTimezone();
   const [documents, setDocuments] = useState<DocumentResponseSchema[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -54,7 +57,8 @@ export default function DocumentList({ refreshTrigger }: DocumentListProps) {
 
       setDocuments(response.data.documents);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to fetch documents');
+      // The details go to the log; the owner gets a plain sentence.
+      setError("Your documents couldn't be loaded.");
       logger.error('Error fetching documents:', err);
     } finally {
       setIsLoading(false);
@@ -173,9 +177,18 @@ export default function DocumentList({ refreshTrigger }: DocumentListProps) {
 
   if (error) {
     return (
-      <div className="p-4 bg-destructive/10 border border-destructive/20 rounded-lg text-destructive">
-        {error}
-      </div>
+      <EmptyState
+        tone="danger"
+        icon={TriangleAlert}
+        title={error}
+        description="Check your connection, then try again."
+        action={
+          <Button variant="outline" onClick={() => void fetchDocuments()}>
+            <RefreshCw aria-hidden />
+            Try again
+          </Button>
+        }
+      />
     );
   }
 
@@ -186,13 +199,15 @@ export default function DocumentList({ refreshTrigger }: DocumentListProps) {
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
-            placeholder="Search documents..."
+            aria-label="Search documents"
+            placeholder="Search documents…"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="pl-10"
           />
         </div>
         <Button
+          aria-label="Reload documents"
           variant="outline"
           size="icon"
           onClick={fetchDocuments}
@@ -204,14 +219,32 @@ export default function DocumentList({ refreshTrigger }: DocumentListProps) {
 
       {/* Document List */}
       {filteredDocuments.length === 0 ? (
-        <div className="text-center py-12">
-          <FileText className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
-          <p className="text-muted-foreground">
-            {searchQuery
-              ? 'No documents match your search'
-              : 'No documents uploaded yet'}
-          </p>
-        </div>
+        searchQuery ? (
+          <EmptyState
+            icon={Search}
+            title="No documents match your search"
+            description="Try a different word, or clear the search to see every document."
+            action={
+              <Button variant="outline" onClick={() => setSearchQuery('')}>
+                Clear search
+              </Button>
+            }
+          />
+        ) : (
+          <EmptyState
+            icon={FileText}
+            title="No documents yet"
+            description="Upload your menu, price list or FAQs and your agents can use them to answer callers."
+            action={
+              onUploadClick && (
+                <Button onClick={onUploadClick}>
+                  <Upload aria-hidden />
+                  Upload a document
+                </Button>
+              )
+            }
+          />
+        )
       ) : (
         <div className="space-y-3">
           {filteredDocuments.map((doc) => (

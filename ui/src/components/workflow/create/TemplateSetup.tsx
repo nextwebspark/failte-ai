@@ -9,9 +9,12 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Textarea } from '@/components/ui/textarea';
-import { previewParts, templateGreeting } from '@/lib/agentTemplates';
+import { chosenToggles, previewParts, templateGreeting, withToggle } from '@/lib/agentTemplates';
+import { isAppointmentHoursField } from '@/lib/appointmentHours';
 import { cn } from '@/lib/utils';
 
+import { AppointmentHoursInput } from './AppointmentHoursInput';
+import type { AppointmentHours } from './useAppointmentHours';
 import type { ConnectStatus, IntegrationConnect } from './useIntegrationConnect';
 
 const INPUT_TYPE: Record<string, string> = { url: 'url', email: 'email', phone: 'tel', text: 'text' };
@@ -24,6 +27,61 @@ function GoogleMark() {
             <path fill="#FBBC05" d="M6.2 13.6a6 6 0 0 1 0-3.8V7.1H2.7a10 10 0 0 0 0 9.2z" />
             <path fill="#EA4335" d="M12 6c1.5 0 2.9.5 4 1.5l3-3A10 10 0 0 0 2.7 7.1l3.5 2.7C7 7.8 9.3 6 12 6z" />
         </svg>
+    );
+}
+
+/** A toggles question: switches the owner taps on or off, no typing. */
+function SetupToggles({
+    field,
+    value,
+    onChange,
+}: {
+    field: TemplateSetupField;
+    value: string;
+    onChange: (value: string) => void;
+}) {
+    const labelId = `setup-${field.key}-label`;
+    const hintId = `setup-${field.key}-hint`;
+    const chosen = chosenToggles(value);
+    return (
+        <div className="flex flex-col gap-1.5">
+            <span id={labelId} className="text-[13px] font-semibold text-ink">
+                {field.label}
+            </span>
+            <div
+                role="group"
+                aria-labelledby={labelId}
+                aria-describedby={field.help ? hintId : undefined}
+                className="flex flex-wrap gap-2"
+            >
+                {(field.options ?? []).map((option) => {
+                    const on = chosen.has(option.value);
+                    return (
+                        <button
+                            key={option.value}
+                            type="button"
+                            aria-pressed={on}
+                            onClick={() => onChange(withToggle(field, value, option.value, !on))}
+                            className={cn(
+                                'inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[13px] transition-colors',
+                                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky',
+                                on
+                                    ? 'border-brand bg-brand/10 font-medium text-ink'
+                                    : 'border-line bg-transparent text-ink-2 hover:bg-panel-2',
+                            )}
+                        >
+                            {on && <Check size={14} strokeWidth={2.4} aria-hidden />}
+                            {option.label}
+                        </button>
+                    );
+                })}
+            </div>
+            {field.help && (
+                <p id={hintId} className="text-[12.5px] text-ink-3">
+                    {field.help}
+                </p>
+            )}
+        </div>
     );
 }
 
@@ -183,9 +241,14 @@ interface TemplateSetupProps {
     calendar: IntegrationConnect | null;
     useCalendar: boolean;
     onUseCalendarChange: (value: boolean) => void;
+    /** The appointment hours the calendar books in, when it asks for them. */
+    hours: AppointmentHours;
 }
 
-/** The template's questions, its calendar, and how the greeting will sound. */
+/**
+ * The template's questions, its calendar (with the appointment hours it books
+ * in), and how the greeting will sound.
+ */
 export function TemplateSetup({
     template,
     answers,
@@ -194,6 +257,7 @@ export function TemplateSetup({
     calendar,
     useCalendar,
     onUseCalendarChange,
+    hours,
 }: TemplateSetupProps) {
     const fields = template.setup_fields ?? [];
     const greeting = templateGreeting(template);
@@ -201,23 +265,41 @@ export function TemplateSetup({
     return (
         <div className="flex min-h-0 flex-1 flex-col md:flex-row">
             <div className="flex min-w-0 flex-1 flex-col gap-4 px-6 py-5">
-                {fields.map((field) => (
-                    <SetupInput
-                        key={field.key}
-                        field={field}
-                        value={answers[field.key] ?? ''}
-                        error={errors[field.key]}
-                        onChange={(value) => onAnswer(field.key, value)}
-                    />
-                ))}
+                {fields.filter((field) => !isAppointmentHoursField(field)).map((field) =>
+                    field.type === 'toggles' ? (
+                        <SetupToggles
+                            key={field.key}
+                            field={field}
+                            value={answers[field.key] ?? ''}
+                            onChange={(value) => onAnswer(field.key, value)}
+                        />
+                    ) : (
+                        <SetupInput
+                            key={field.key}
+                            field={field}
+                            value={answers[field.key] ?? ''}
+                            error={errors[field.key]}
+                            onChange={(value) => onAnswer(field.key, value)}
+                        />
+                    ),
+                )}
                 {calendar && (
                     <CalendarCard calendar={calendar} useCalendar={useCalendar} onUseCalendarChange={onUseCalendarChange} />
+                )}
+                {hours.field && (
+                    <AppointmentHoursInput
+                        field={hours.field}
+                        value={hours.hours}
+                        onChange={hours.edit}
+                        target={hours.target}
+                        periods={hours.periods}
+                    />
                 )}
             </div>
             {greeting && (
                 <aside
                     aria-label="Preview"
-                    className="hidden w-[280px] shrink-0 flex-col gap-3 border-l border-line-soft bg-panel-2 p-5 md:flex"
+                    className="flex w-full shrink-0 flex-col gap-3 border-t border-line-soft bg-panel-2 p-5 md:w-[280px] md:border-t-0 md:border-l"
                 >
                     <span className="text-[10.5px] font-semibold uppercase tracking-[0.08em] text-ink-3">
                         How it will sound

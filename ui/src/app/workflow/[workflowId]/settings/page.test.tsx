@@ -82,6 +82,17 @@ describe("Advanced settings", () => {
         expect(screen.getByRole("link", { name: /General.*Unsaved changes/ })).toBeTruthy();
     });
 
+    it("hides the Skills switch while Skills is switched off, and keeps the saved value", async () => {
+        renderPage();
+        expect(screen.queryByLabelText("Skills")).toBeNull();
+
+        fireEvent.change(screen.getByLabelText("Agent name"), { target: { value: "Reception" } });
+        fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+
+        await waitFor(() => expect(mocks.saveConfigurations).toHaveBeenCalledTimes(1));
+        expect(mocks.saveConfigurations.mock.calls[0][0].skills_enabled).toBe(CONFIGURATIONS.skills_enabled);
+    });
+
     it("saves a rename and a voicemail change together, so neither undoes the other", async () => {
         renderPage();
         fireEvent.change(screen.getByLabelText("Agent name"), { target: { value: "Reception" } });

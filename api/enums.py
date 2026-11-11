@@ -182,6 +182,9 @@ class OrganizationConfigurationKey(Enum):
     PLATFORM_MODEL_POLICY = (
         "PLATFORM_MODEL_POLICY"  # Superuser-set platform model access and region
     )
+    CALL_NOTIFICATIONS = "CALL_NOTIFICATIONS"  # Who is emailed or texted after calls
+    EMAIL_REPORTS = "EMAIL_REPORTS"  # Daily/weekly/monthly call reports by email
+    EMAIL_REPORTS_SENT = "EMAIL_REPORTS_SENT"  # Last period each report went out for
 
 
 class UserConfigurationKey(Enum):
@@ -275,8 +278,13 @@ class OrgRole(StrEnum):
 
     ADMIN = "admin"
     DEVELOPER = "developer"
-    # Business-owner / client persona; read-only on configuration.
+    # The business owner (shown as "Owner"): reads everything, runs
+    # bookings and decides which staff may too; no agent or telephony
+    # configuration.
     VIEWER = "viewer"
+    # The business's team: view-only. The owner or an admin may let one
+    # manage bookings (organization_users.can_manage_bookings).
+    STAFF = "staff"
 
 
 class InvitationStatus(StrEnum):

@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import {
   leaveCurrentOrganizationApiV1OrganizationsLeavePost,
   removeMemberApiV1OrganizationsMembersUserIdDelete,
+  updateBookingsAccessApiV1OrganizationsMembersUserIdBookingsAccessPut,
   updateMemberRoleApiV1OrganizationsMembersUserIdPatch,
 } from "@/client/sdk.gen";
 import type { MemberResponse } from "@/client/types.gen";
@@ -24,10 +25,11 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useOrganizationTimezone } from "@/hooks/useOrganizationTimezone";
 import { detailFromError } from "@/lib/apiError";
-import type { OrgRole } from "@/lib/auth/roles";
+import { type OrgRole, ROLE_LABELS } from "@/lib/auth/roles";
 import { formatDate } from "@/lib/dateTime";
 
 import { RoleBadge } from "./RoleBadge";
@@ -70,10 +72,13 @@ function ConfirmButton({
 export function MembersCard({
   members,
   canManage,
+  canGrantBookings = false,
   onChanged,
 }: {
   members: MemberResponse[];
   canManage: boolean;
+  /** The owner and admins may let a staff member manage bookings. */
+  canGrantBookings?: boolean;
   onChanged: () => void;
 }) {
   const timezone = useOrganizationTimezone();
@@ -81,21 +86,48 @@ export function MembersCard({
 
   const changeRole = async (member: MemberResponse, role: OrgRole) => {
     setBusyUserId(member.user_id);
-    const res = await updateMemberRoleApiV1OrganizationsMembersUserIdPatch({
-      path: { user_id: member.user_id },
-      body: { role },
-    });
-    setBusyUserId(null);
+    let res: Awaited<ReturnType<typeof updateMemberRoleApiV1OrganizationsMembersUserIdPatch>>;
+    try {
+      res = await updateMemberRoleApiV1OrganizationsMembersUserIdPatch({
+        path: { user_id: member.user_id },
+        body: { role },
+      });
+    } catch {
+      toast.error("Couldn't change the role. Check your connection and try again.");
+      return;
+    } finally {
+      setBusyUserId(null);
+    }
     if (res.error) {
       toast.error(detailFromError(res.error, "Could not change the role"));
       return;
     }
-    toast.success(`${displayName(member)} is now ${role === "viewer" ? "a client" : `a ${role}`}`);
+    const label = ROLE_LABELS[role];
+    toast.success(`${displayName(member)} is now ${/^[AEIOU]/.test(label) ? "an" : "a"} ${label.toLowerCase()}`);
     if (member.is_current_user) {
       // Our own permissions changed; reload so the whole app picks them up.
       window.location.reload();
       return;
     }
+    onChanged();
+  };
+
+  const setBookingsAccess = async (member: MemberResponse, allowed: boolean) => {
+    setBusyUserId(member.user_id);
+    const res = await updateBookingsAccessApiV1OrganizationsMembersUserIdBookingsAccessPut({
+      path: { user_id: member.user_id },
+      body: { can_manage_bookings: allowed },
+    });
+    setBusyUserId(null);
+    if (res.error) {
+      toast.error(detailFromError(res.error, "Could not change booking access"));
+      return;
+    }
+    toast.success(
+      allowed
+        ? `${displayName(member)} can now switch AI booking on and off`
+        : `${displayName(member)} can now only view bookings`,
+    );
     onChanged();
   };
 
@@ -160,12 +192,26 @@ export function MembersCard({
                 <TableCell>
                   {canManage ? (
                     <RoleSelect
+                      aria-label={`Role for ${displayName(member)}`}
                       value={member.role}
                       onChange={(role) => void changeRole(member, role)}
                       disabled={busyUserId === member.user_id}
                     />
                   ) : (
                     <RoleBadge role={member.role} />
+                  )}
+                  {member.role === "staff" && (canGrantBookings || member.can_manage_bookings) && (
+                    <div className="mt-2 flex items-center gap-2">
+                      <Switch
+                        id={`bookings-${member.user_id}`}
+                        checked={member.can_manage_bookings ?? false}
+                        disabled={!canGrantBookings || busyUserId === member.user_id}
+                        onCheckedChange={(allowed) => void setBookingsAccess(member, allowed)}
+                      />
+                      <label htmlFor={`bookings-${member.user_id}`} className="text-xs text-muted-foreground">
+                        Can manage bookings
+                      </label>
+                    </div>
                   )}
                 </TableCell>
                 <TableCell className="hidden text-sm text-muted-foreground md:table-cell">

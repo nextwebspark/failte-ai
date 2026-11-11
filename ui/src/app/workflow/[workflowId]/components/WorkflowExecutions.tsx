@@ -1,11 +1,14 @@
 "use client";
 
+import { Mic } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { getWorkflowRunsApiV1WorkflowWorkflowIdRunsGet } from "@/client/sdk.gen";
 import { WorkflowRunResponseSchema } from "@/client/types.gen";
+import { Button } from "@/components/ui/button";
 import { WorkflowRunsTable } from "@/components/workflow-runs";
+import { useAgentShell } from "@/context/AgentShellContext";
 import { useDispositionCodes } from "@/hooks/useDispositionCodes";
 import { useAuth } from '@/lib/auth';
 import { withDispositionCodeOptions } from "@/lib/filterAttributes";
@@ -178,6 +181,10 @@ export function WorkflowExecutions({ workflowId, searchParams }: WorkflowExecuti
         fetchWorkflowRuns(currentPage, appliedFilters, sortBy, sortOrder);
     }, [fetchWorkflowRuns, currentPage, appliedFilters, sortBy, sortOrder]);
 
+    const { openTester } = useAgentShell();
+    // Filters only help once there is something to filter.
+    const showFilters = !loading && (totalCount > 0 || appliedFilters.length > 0);
+
     // Where a run should return to: this list, exactly as it stands now.
     const listQuery = searchParams.toString();
     const returnTo = `/workflow/${workflowId}/runs${listQuery ? `?${listQuery}` : ''}`;
@@ -207,6 +214,17 @@ export function WorkflowExecutions({ workflowId, searchParams }: WorkflowExecuti
                 onReload={handleReload}
                 // "Renewals outbound / Runs" is already in the app header.
                 title=""
+                showFilters={showFilters}
+                emptyMessage={appliedFilters.length > 0 ? "No calls match these filters" : "No calls yet"}
+                emptyHint={appliedFilters.length > 0
+                    ? "Try clearing a filter to see more."
+                    : "When your agent answers or makes a call, it shows up here. Test calls count too."}
+                emptyAction={appliedFilters.length > 0 ? undefined : (
+                    <Button onClick={openTester} className="min-h-10">
+                        <Mic className="size-4" aria-hidden />
+                        Talk to your agent
+                    </Button>
+                )}
             />
         </div>
     );

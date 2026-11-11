@@ -35,6 +35,7 @@ from fallcha_tools.providers.google_calendar.errors import (
     GoogleApiError,
     NotConfiguredError,
 )
+from fallcha_tools.providers.google_calendar.matching import PHONE_KEY_PROPERTY
 from fallcha_tools.providers.google_calendar.service import (
     BOOKING_MARKER,
     CalendarService,
@@ -231,6 +232,7 @@ async def test_book_inserts_event_with_prefix_timezone_and_marker(
     )
     assert result.booked is True
     assert result.event_id == expected_id
+    assert result.starts_at == "2026-10-12T10:00:00+01:00"
     assert (
         result.say == "That is booked in for Monday the twelfth at ten in the morning."
     )
@@ -244,8 +246,41 @@ async def test_book_inserts_event_with_prefix_timezone_and_marker(
         ),
         "start": {"dateTime": "2026-10-12T10:00:00+01:00", "timeZone": "Europe/Dublin"},
         "end": {"dateTime": "2026-10-12T10:30:00+01:00", "timeZone": "Europe/Dublin"},
-        "extendedProperties": {"private": {BOOKING_MARKER: str(connection_id)}},
+        "extendedProperties": {
+            "private": {
+                BOOKING_MARKER: str(connection_id),
+                PHONE_KEY_PROPERTY: "71234567",
+            }
+        },
     }
+
+
+async def test_book_tags_only_whole_phone_numbers(
+    service: CalendarService, google: FakeGoogle
+) -> None:
+    # Too short to look up later, so there is nothing to tag.
+    await service.book("2026-10-12T10:00:00+01:00", "Jane", "087 12", None)
+    private = json_body(google.insert.calls.last.request)["extendedProperties"]
+    assert PHONE_KEY_PROPERTY not in private["private"]
+
+
+async def test_caller_words_cannot_add_description_lines(
+    service: CalendarService, google: FakeGoogle
+) -> None:
+    # A later lookup reads the Caller and Phone lines back.
+    await service.book(
+        "2026-10-12T10:00:00+01:00",
+        "Jane\nPhone: 086 765 4321",
+        "087 123 4567\r\nCaller: Mary",
+        "ring\nme",
+    )
+    event = json_body(google.insert.calls.last.request)
+    assert event["description"].splitlines()[1:] == [
+        "Caller: Jane Phone: 086 765 4321",
+        "Phone: 087 123 4567 Caller: Mary",
+        "Reason: ring me",
+    ]
+    assert event["summary"] == "Acme call — Jane Phone: 086 765 4321"
 
 
 @pytest.mark.parametrize(
@@ -314,6 +349,7 @@ async def test_cancel_own_booking_once(
     assert cancelled.say == (
         "Your appointment for Monday the twelfth at ten in the morning is cancelled."
     )
+    assert cancelled.starts_at == "2026-10-12T10:00:00+01:00"
     assert google.delete_event.calls.last.request.url.params["sendUpdates"] == "none"
 
     again = await service.cancel(booked.event_id)

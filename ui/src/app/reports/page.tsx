@@ -1,8 +1,10 @@
 'use client';
 
 import { addDays, format, subDays } from 'date-fns';
-import { Calendar, ChevronLeft, ChevronRight, Download } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { Calendar, ChevronLeft, ChevronRight, Download, FileWarning, Mail, PhoneCall, RefreshCw } from 'lucide-react';
+import Link from 'next/link';
+import { useEffect, useRef, useState } from 'react';
+import { toast } from 'sonner';
 
 import {
   getDailyReportApiV1OrganizationsReportsDailyGet,
@@ -11,17 +13,21 @@ import {
   getWorkflowOptionsApiV1OrganizationsReportsWorkflowsGet
 } from '@/client/sdk.gen';
 import type { WorkflowRunDetail } from '@/client/types.gen';
+import { EmptyState } from '@/components/page-states/EmptyState';
 import { Button } from '@/components/ui/button';
 import { Calendar as CalendarPicker } from '@/components/ui/calendar';
-import { Card } from '@/components/ui/card';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useAuth } from '@/lib/auth';
+import { getLocalTimezone } from '@/lib/dateTime';
 
 import { DispositionChart } from './components/DispositionChart';
 import { DurationChart } from './components/DurationChart';
 import { MetricsCards } from './components/MetricsCards';
+import { CSV_HEADERS, csvCell } from './csv';
+
+const LOAD_FAILED = "We couldn't load this report";
 
 interface WorkflowOption {
   id: number;
@@ -57,7 +63,14 @@ export default function ReportsPage() {
   const [report, setReport] = useState<DailyReport | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [timezone, setTimezone] = useState('America/New_York');
+  // The browser's zone until the workspace's own is known; the report waits for it.
+  const [timezone, setTimezone] = useState(() => getLocalTimezone());
+  const [timezoneReady, setTimezoneReady] = useState(false);
+  // Bumped by "Try again" to fetch the same report again.
+  const [attempt, setAttempt] = useState(0);
+  const [downloading, setDownloading] = useState(false);
+  // Guards against a double click before the disabled state renders.
+  const downloadingRef = useRef(false);
   const auth = useAuth();
 
   // Fetch workflows on mount
@@ -89,6 +102,8 @@ export default function ReportsPage() {
         }
       } catch (err) {
         console.error('Failed to fetch organization preferences:', err);
+      } finally {
+        setTimezoneReady(true);
       }
     };
     fetchPreferences();
@@ -97,7 +112,7 @@ export default function ReportsPage() {
   // Fetch report data when date or workflow changes
   useEffect(() => {
     const fetchReport = async () => {
-      if (!auth.isAuthenticated) return;
+      if (!auth.isAuthenticated || !timezoneReady) return;
 
       setLoading(true);
       setError(null);
@@ -116,17 +131,21 @@ export default function ReportsPage() {
 
         if (response.data) {
           setReport(response.data as DailyReport);
+        } else {
+          setReport(null);
+          setError(LOAD_FAILED);
         }
       } catch (err) {
         console.error('Failed to fetch report:', err);
-        setError('Failed to load report data');
+        setReport(null);
+        setError(LOAD_FAILED);
       } finally {
         setLoading(false);
       }
     };
 
     fetchReport();
-  }, [selectedDate, selectedWorkflow, timezone, auth.isAuthenticated]);
+  }, [selectedDate, selectedWorkflow, timezone, timezoneReady, auth.isAuthenticated, attempt]);
 
   const handlePreviousDay = () => {
     setSelectedDate(subDays(selectedDate, 1));
@@ -137,8 +156,10 @@ export default function ReportsPage() {
   };
 
   const handleDownloadCSV = async () => {
-    if (!auth.isAuthenticated) return;
+    if (!auth.isAuthenticated || downloadingRef.current) return;
 
+    downloadingRef.current = true;
+    setDownloading(true);
     try {
       const dateStr = format(selectedDate, 'yyyy-MM-dd');
       const workflowId = selectedWorkflow === 'all' ? undefined : parseInt(selectedWorkflow);
@@ -152,9 +173,11 @@ export default function ReportsPage() {
         },
       });
 
+      if (response.error) {
+        toast.error("Couldn't download the calls. Please try again.");
+        return;
+      }
       if (response.data && response.data.length > 0) {
-        // Prepare CSV content
-        const headers = ['Phone Number', 'Disposition', 'Duration (seconds)', 'Workflow Run URL'];
         const rows = response.data.map((run: WorkflowRunDetail) => {
           const url = `${window.location.origin}/workflow/${run.workflow_id}/run/${run.run_id}`;
           return [
@@ -167,8 +190,8 @@ export default function ReportsPage() {
 
         // Create CSV content
         const csvContent = [
-          headers.join(','),
-          ...rows.map((row: string[]) => row.map((cell: string) => `"${cell}"`).join(','))
+          CSV_HEADERS.map(csvCell).join(','),
+          ...rows.map((row: string[]) => row.map(csvCell).join(','))
         ].join('\n');
 
         // Create blob and download
@@ -177,154 +200,194 @@ export default function ReportsPage() {
         const url = URL.createObjectURL(blob);
 
         const workflowName = selectedWorkflow === 'all'
-          ? 'all_workflows'
-          : workflows.find(w => w.id.toString() === selectedWorkflow)?.name?.replace(/\s+/g, '_') || 'workflow';
+          ? 'all_agents'
+          : workflows.find(w => w.id.toString() === selectedWorkflow)?.name?.replace(/\s+/g, '_') || 'agent';
 
         link.setAttribute('href', url);
-        link.setAttribute('download', `workflow_runs_${dateStr}_${workflowName}.csv`);
+        link.setAttribute('download', `calls_${dateStr}_${workflowName}.csv`);
         link.style.visibility = 'hidden';
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+        toast.success('Your calls are downloading.');
       } else {
-        alert('No data available for download');
+        toast.info('There are no calls to download for this day.');
       }
     } catch (err) {
       console.error('Failed to download CSV:', err);
-      alert('Failed to download CSV data');
+      toast.error("Couldn't download the calls. Please try again.");
+    } finally {
+      downloadingRef.current = false;
+      setDownloading(false);
     }
   };
 
   const isToday = format(selectedDate, 'yyyy-MM-dd') === format(new Date(), 'yyyy-MM-dd');
 
+  const dayLong = format(selectedDate, 'EEEE d MMMM yyyy');
+  const agentName = selectedWorkflow === 'all'
+    ? null
+    : workflows.find((w) => w.id.toString() === selectedWorkflow)?.name ?? null;
+  const hasCalls = Boolean(report && report.metrics.total_runs > 0);
+
   return (
-    <div className="page-body space-y-6">
-      {/* The screen name lives in the app header (AppTopBar); this row is the
-          filter bar the canvas puts at the top of the content panel. */}
-      <div className="flex flex-col sm:flex-row justify-end items-start sm:items-center gap-4">
-        {/* Date Navigation & Workflow Selector */}
-        <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center">
-          {/* Workflow Selector */}
-          <Select value={selectedWorkflow} onValueChange={setSelectedWorkflow}>
-            <SelectTrigger className="w-[200px]">
-              <SelectValue placeholder="Select agent" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All agents</SelectItem>
-              {workflows.map((workflow) => (
-                <SelectItem key={workflow.id} value={workflow.id.toString()}>
-                  {workflow.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-
-          {/* Date Navigation */}
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="icon"
-              onClick={handlePreviousDay}
-            >
-              <ChevronLeft className="h-4 w-4" />
-            </Button>
-
-            <Popover>
-              <PopoverTrigger asChild>
-                <Button variant="outline" className="w-[200px]">
-                  <Calendar className="mr-2 h-4 w-4" />
-                  {format(selectedDate, 'MMM dd, yyyy')}
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-auto p-0">
-                <CalendarPicker
-                  mode="single"
-                  selected={selectedDate}
-                  onSelect={(date) => date && setSelectedDate(date)}
-                  disabled={(date) => date > new Date()}
-                />
-              </PopoverContent>
-            </Popover>
-
-            <Button
-              variant="outline"
-              size="icon"
-              onClick={handleNextDay}
-              disabled={isToday}
-            >
-              <ChevronRight className="h-4 w-4" />
-            </Button>
-          </div>
-        </div>
-      </div>
-
-      {/* Timezone Display and Download Button */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
-        <div className="text-sm text-muted-foreground">
-          Showing data for {timezone} timezone
-          {selectedWorkflow !== 'all' && (
-            <span> • Filtered by: {workflows.find(w => w.id.toString() === selectedWorkflow)?.name}</span>
-          )}
-        </div>
-
-        {/* Download CSV Button */}
-        {!loading && report && report.metrics.total_runs > 0 && (
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleDownloadCSV}
-            className="flex items-center gap-2"
-          >
-            <Download className="h-4 w-4" />
-            Download CSV
-          </Button>
-        )}
-      </div>
-
-      {/* Loading State */}
-      {loading && (
-        <div className="space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <Skeleton className="h-[120px]" />
-            <Skeleton className="h-[120px]" />
-          </div>
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <Skeleton className="h-[300px]" />
-            <Skeleton className="h-[300px]" />
-          </div>
-        </div>
-      )}
-
-      {/* Error State */}
-      {error && !loading && (
-        <Card className="p-6">
-          <p className="text-center text-danger">{error}</p>
-        </Card>
-      )}
-
-      {/* Report Content */}
-      {report && !loading && !error && (
-        <>
-          {/* Metrics Cards */}
-          <MetricsCards metrics={report.metrics} isToday={isToday} />
-
-          {/* Charts */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <DispositionChart data={report.disposition_distribution} />
-            <DurationChart data={report.call_duration_distribution} />
-          </div>
-
-          {/* No Data Message */}
-          {report.metrics.total_runs === 0 && (
-            <Card className="p-6">
-              <p className="text-center text-muted-foreground">
-                No calls on {format(selectedDate, 'MMMM dd, yyyy')}
-                {selectedWorkflow !== 'all' && ' for the selected agent'}
+    <div className="page-body">
+      <div className="mx-auto flex max-w-6xl flex-col gap-6">
+        {/* What this page is, and the two choices: which day, which agent. */}
+        <section
+          aria-labelledby="report-day"
+          className="rounded-xl border border-line bg-gradient-to-br from-brand-dim via-panel to-panel px-5 py-5 sm:px-6"
+        >
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <div className="min-w-0">
+              <h2 id="report-day" className="text-[22px] font-bold tracking-tight">
+                {isToday ? `Today, ${format(selectedDate, 'EEE d MMM')}` : format(selectedDate, 'EEEE d MMMM')}
+              </h2>
+              <p className="mt-1 max-w-xl text-[15px] text-ink-2">
+                A one-page summary of a day: how many calls came in, how they ended and how long they lasted.
+                You can download the day&apos;s calls as a spreadsheet.
               </p>
-            </Card>
-          )}
-        </>
-      )}
+              <Link
+                href="/settings/reports"
+                className="mt-2 inline-flex items-center gap-1.5 text-[13.5px] font-medium text-brand underline-offset-2 hover:underline"
+              >
+                <Mail className="size-3.5" aria-hidden />
+                Get these by email
+              </Link>
+            </div>
+
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+              <Select value={selectedWorkflow} onValueChange={setSelectedWorkflow}>
+                <SelectTrigger className="w-full bg-panel data-[size=default]:h-10 sm:w-[200px]" aria-label="Agent">
+                  <SelectValue placeholder="All agents" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All agents</SelectItem>
+                  {workflows.map((workflow) => (
+                    <SelectItem key={workflow.id} value={workflow.id.toString()}>
+                      {workflow.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className="size-10 flex-none bg-panel"
+                  onClick={handlePreviousDay}
+                  aria-label="Previous day"
+                >
+                  <ChevronLeft aria-hidden />
+                </Button>
+
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      className="h-10 flex-1 bg-panel sm:w-[180px] sm:flex-none"
+                      aria-label={`Pick a day, showing ${dayLong}`}
+                    >
+                      <Calendar aria-hidden />
+                      {format(selectedDate, 'EEE d MMM yyyy')}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0">
+                    <CalendarPicker
+                      mode="single"
+                      selected={selectedDate}
+                      onSelect={(date) => date && setSelectedDate(date)}
+                      disabled={(date) => date > new Date()}
+                    />
+                  </PopoverContent>
+                </Popover>
+
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className="size-10 flex-none bg-panel"
+                  onClick={handleNextDay}
+                  disabled={isToday}
+                  aria-label="Next day"
+                >
+                  <ChevronRight aria-hidden />
+                </Button>
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-4 flex flex-col gap-3 border-t border-line-soft pt-3 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-[13px] text-ink-3">
+              Times in {timezone.replace(/_/g, ' ')} time
+              {agentName && <> · {agentName} only</>}
+            </p>
+            {!loading && hasCalls && (
+              <Button
+                variant="outline"
+                className="h-10 bg-panel sm:h-8"
+                onClick={handleDownloadCSV}
+                disabled={downloading}
+              >
+                <Download aria-hidden />
+                {downloading ? 'Preparing…' : 'Download calls (CSV)'}
+              </Button>
+            )}
+          </div>
+        </section>
+
+        {loading ? (
+          <div className="flex flex-col gap-6" aria-busy="true" aria-label="Loading the report">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <Skeleton className="h-[104px] rounded-lg" />
+              <Skeleton className="h-[104px] rounded-lg" />
+            </div>
+            <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+              <Skeleton className="h-[360px] rounded-lg" />
+              <Skeleton className="h-[360px] rounded-lg" />
+            </div>
+          </div>
+        ) : error ? (
+          <EmptyState
+            tone="amber"
+            icon={FileWarning}
+            role="alert"
+            title={error}
+            action={
+              <Button className="h-10 sm:h-9" onClick={() => setAttempt((n) => n + 1)}>
+                <RefreshCw aria-hidden />
+                Try again
+              </Button>
+            }
+          >
+            Something went wrong on our side. Please try again in a moment.
+          </EmptyState>
+        ) : report && hasCalls ? (
+          <>
+            <MetricsCards metrics={report.metrics} isToday={isToday} />
+            <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+              <DispositionChart data={report.disposition_distribution} />
+              <DurationChart data={report.call_duration_distribution} />
+            </div>
+          </>
+        ) : report ? (
+          <EmptyState
+            icon={PhoneCall}
+            title={`No calls on ${format(selectedDate, 'EEEE d MMMM')}${agentName ? ` for ${agentName}` : ''}`}
+            action={
+              <Button variant="outline" className="h-10 sm:h-9" onClick={handlePreviousDay}>
+                <ChevronLeft aria-hidden />
+                See the day before
+              </Button>
+            }
+          >
+            {isToday
+              ? 'Calls your agent takes today will show up here as they happen.'
+              : 'Pick another day with the arrows or the calendar above.'}
+          </EmptyState>
+        ) : null}
+      </div>
     </div>
   );
 }

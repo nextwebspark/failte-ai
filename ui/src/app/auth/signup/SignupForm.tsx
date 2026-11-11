@@ -67,7 +67,7 @@ export function SignupForm({
         return;
       }
 
-      await startLocalSession({ token: res.data.token, user: res.data.user });
+      await startLocalSession({ token: res.data.token, user: res.data.user }, undefined, "new");
     } catch {
       toast.error("An error occurred. Please try again.");
     } finally {

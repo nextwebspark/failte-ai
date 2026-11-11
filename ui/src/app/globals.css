@@ -471,6 +471,15 @@
   top: var(--app-topbar-h);
 }
 
+/* Phones: toasts rise above the fixed tab bar (MobileTabBar) instead of
+   covering it. */
+@media (max-width: 767px) {
+  body:has([data-mobile-tab-bar]) [data-sonner-toaster][data-y-position="bottom"] {
+    --offset-bottom: calc(76px + env(safe-area-inset-bottom)) !important;
+    --mobile-offset-bottom: calc(76px + env(safe-area-inset-bottom)) !important;
+  }
+}
+
 /* Cards are flat everywhere (v3 audit): panel surface, 1px hairline, 12px
    radius, no texture and no shadow. Elevation is reserved for things that
    float above the page — menus, popovers, dialogs, the canvas toolbar. The

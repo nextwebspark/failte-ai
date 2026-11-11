@@ -12,6 +12,13 @@ ENVIRONMENT = os.getenv("ENVIRONMENT", Environment.LOCAL.value)
 BRAND_NAME: Final = "LightMove.ai"
 BRAND_DOMAIN: Final = "lightmove.ai"
 BRAND_APP_URL: Final = f"https://app.{BRAND_DOMAIN}"
+# Public docs live on the website (lightmove-website, Starlight at /docs), not on
+# a docs.* subdomain. Provider and node docs links are built from this.
+# DOCS_BASE_URL overrides it, e.g. http://localhost:4321/docs to read the local
+# website's docs before they are released.
+BRAND_DOCS_URL: Final = (
+    os.getenv("DOCS_BASE_URL") or f"https://{BRAND_DOMAIN}/docs"
+).rstrip("/")
 # Absolute path to the project root directory (i.e. the directory containing
 # the top-level api/ package). Having a single canonical location helps
 # when constructing file-system paths elsewhere in the codebase.
@@ -378,6 +385,10 @@ DEFAULT_WEBHOOK_DELIVERY_CONFIG = {
     "max_delay_seconds": int(os.getenv("WEBHOOK_DELIVERY_MAX_DELAY_SECONDS", 600)),
     "timeout_seconds": int(os.getenv("WEBHOOK_DELIVERY_TIMEOUT_SECONDS", 30)),
 }
+
+# Call summary emails one organization may send per UTC day, a backstop against
+# a misconfigured agent (or abuse) mailing a recipient without end.
+CALL_SUMMARY_DAILY_LIMIT = int(os.getenv("CALL_SUMMARY_DAILY_LIMIT", "200"))
 
 # Text chats have no transport disconnect event, so a periodic worker closes
 # sessions that have stopped changing. Workflows can override this default.

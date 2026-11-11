@@ -2,8 +2,11 @@ from api.db.account_client import AccountClient
 from api.db.agent_trigger_client import AgentTriggerClient
 from api.db.api_key_client import APIKeyClient
 from api.db.billing_client import BillingClient
+from api.db.call_notification_client import CallNotificationClient
 from api.db.campaign_client import CampaignClient
+from api.db.dashboard_client import DashboardClient
 from api.db.data_export_client import DataExportClient
+from api.db.email_report_client import EmailReportClient
 from api.db.embed_token_client import EmbedTokenClient
 from api.db.folder_client import FolderClient
 from api.db.integration_client import IntegrationClient
@@ -14,7 +17,9 @@ from api.db.org_erasure_client import OrgErasureClient
 from api.db.organization_client import OrganizationClient
 from api.db.organization_configuration_client import OrganizationConfigurationClient
 from api.db.organization_usage_client import OrganizationUsageClient
+from api.db.platform_admin_client import PlatformAdminClient
 from api.db.privacy_client import PrivacyClient
+from api.db.recording_share_client import RecordingShareClient
 from api.db.reports_client import ReportsClient
 from api.db.retention_client import RetentionClient
 from api.db.skill_client import SkillClient
@@ -48,15 +53,19 @@ class DBClient(
     WorkflowTemplateClient,
     CampaignClient,
     ReportsClient,
+    DashboardClient,
     RetentionClient,
     OrgErasureClient,
     DataExportClient,
     PrivacyClient,
+    RecordingShareClient,
     APIKeyClient,
     EmbedTokenClient,
     AgentTriggerClient,
     WebhookCredentialClient,
     WebhookDeliveryClient,
+    CallNotificationClient,
+    EmailReportClient,
     ToolClient,
     KnowledgeBaseClient,
     WorkflowRecordingClient,
@@ -65,6 +74,7 @@ class DBClient(
     TelephonyTrunkClient,
     FolderClient,
     SkillClient,
+    PlatformAdminClient,
 ):
     """
     Unified database client that combines all specialized database operations.
@@ -84,6 +94,7 @@ class DBClient(
     - WorkflowTemplateClient: handles workflow template operations
     - CampaignClient: handles campaign operations
     - ReportsClient: handles reports and analytics operations
+    - DashboardClient: reads calls and phone numbers for Home and Follow-ups
     - RetentionClient: finds and scrubs data past its retention period
     - OrgErasureClient: schedules, cancels and carries out organisation deletion
     - DataExportClient: reads account and organisation data for exports
@@ -97,6 +108,8 @@ class DBClient(
     - KnowledgeBaseClient: handles knowledge base document and vector search operations
     - FolderClient: handles folder operations for grouping workflows (agents)
     - SkillClient: handles the agent skill library and workspace skills
+    - PlatformAdminClient: cross-organisation reads, feature switches and the
+      audit log for the platform admin area
     """
 
     pass

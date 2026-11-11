@@ -8,6 +8,7 @@ import aiohttp
 from fastapi import HTTPException
 from loguru import logger
 
+from api.constants import BRAND_DOCS_URL
 from api.services.telephony.registry import (
     ProviderSpec,
     ProviderUIField,
@@ -716,7 +717,7 @@ async def _preprocess_credentials_on_save(
 
 _UI_METADATA = ProviderUIMetadata(
     display_name="Cloudonix",
-    docs_url="https://docs.lightmove.ai/integrations/telephony/cloudonix",
+    docs_url=f"{BRAND_DOCS_URL}/integrations/telephony/cloudonix",
     fields=[
         ProviderUIField(
             name="bearer_token",

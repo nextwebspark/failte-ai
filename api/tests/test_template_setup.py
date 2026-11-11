@@ -1,5 +1,8 @@
+import json
+import re
 from datetime import datetime, timezone
 from types import SimpleNamespace
+from typing import get_args
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -10,8 +13,12 @@ from api.routes.workflow import router
 from api.schemas.workflow_template import TemplateSetupField
 from api.services.auth.depends import get_user
 from api.services.workflow.agent_builder import validate_workflow_definition
-from api.services.workflow.starter_templates import STARTER_TEMPLATES
+from api.services.workflow.starter_templates import (
+    STARTER_TEMPLATES,
+    TemplateCategory,
+)
 from api.services.workflow.template_setup import (
+    INTEGRATION_TOOL_PREFIX,
     TemplateSetupError,
     attach_integration_tools,
     fill_template_values,
@@ -76,6 +83,27 @@ def test_rejects_bad_answers(values, message):
         fill_template_values(DEFINITION, FIELDS, values)
 
 
+def test_rendered_answers_are_used_as_given_but_still_plain_text():
+    filled = fill_template_values(
+        DEFINITION,
+        FIELDS,
+        {"business_name": "Bloom", "address": "typed by the user"},
+        rendered={"address": "{{secret}} Main St\n"},
+    )
+
+    # Over the typed answer, untrimmed, and unable to open a placeholder.
+    assert filled["nodes"][0]["data"]["prompt"].startswith(
+        "Address: {secret} Main St\n."
+    )
+
+
+def test_rendered_answers_are_length_checked():
+    with pytest.raises(TemplateSetupError, match="Notes is too long"):
+        fill_template_values(
+            DEFINITION, FIELDS, {"business_name": "A"}, rendered={"notes": "too long"}
+        )
+
+
 def test_attach_integration_tools_swaps_or_drops_placeholders():
     definition = {
         "nodes": [
@@ -96,7 +124,11 @@ def test_starter_templates_fill_into_valid_agents():
     for starter in STARTER_TEMPLATES:
         keys = {field.key for field in starter.setup_fields}
         assert len(keys) == len(starter.setup_fields), starter.name
-        values = {field.key: f"Sample {field.key}" for field in starter.setup_fields}
+        values = {
+            field.key: f"Sample {field.key}"
+            for field in starter.setup_fields
+            if field.type != "toggles"
+        }
 
         filled = fill_template_values(starter.definition, starter.setup_fields, values)
 
@@ -109,7 +141,37 @@ def test_starter_templates_fill_into_valid_agents():
             assert "integration:" not in text, starter.name
             for key in keys:
                 assert "{{" + key not in text, (starter.name, key)
-        assert set(starter.row()) >= {"template_json", "setup_fields", "integrations"}
+        assert set(starter.row()) >= {
+            "template_json",
+            "setup_fields",
+            "integrations",
+            "category",
+        }
+
+
+def test_every_starter_question_is_used_by_its_agent():
+    # A question the agent never uses is wasted effort and data we don't need.
+    for starter in STARTER_TEMPLATES:
+        text = json.dumps(starter.definition)
+        for field in starter.setup_fields:
+            assert re.search(r"\{\{\s*" + re.escape(field.key) + r"\b", text), (
+                starter.name,
+                field.key,
+            )
+
+
+def test_starter_catalogue_is_consistent():
+    names = [starter.name for starter in STARTER_TEMPLATES]
+    # The sync upserts by name, so a duplicate would overwrite another starter.
+    assert len(names) == len(set(names))
+    assert [s.name for s in STARTER_TEMPLATES if s.featured] == ["AI Receptionist"]
+    categories = set(get_args(TemplateCategory))
+    for starter in STARTER_TEMPLATES:
+        assert starter.category in categories, starter.name
+        assert starter.row()["category"] == starter.category
+        # Templates that offer a calendar must carry the placeholder tool.
+        has_placeholder = INTEGRATION_TOOL_PREFIX in str(starter.definition)
+        assert has_placeholder == bool(starter.integrations), starter.name
 
 
 def _client() -> TestClient:
@@ -144,6 +206,7 @@ def _template():
         icon="phone",
         featured=True,
         sample_audio_url=None,
+        category="clinic",
         integrations=["google-calendar"],
         created_at=datetime(2026, 10, 1, tzinfo=timezone.utc),
     )
@@ -284,3 +347,198 @@ def test_templates_list_includes_setup_fields():
     assert template["integrations"] == ["google-calendar"]
     assert template["featured"] is True
     assert template["call_type"] == "inbound"
+    assert template["category"] == "clinic"
+
+
+def _captured(starter_name: str) -> list[str]:
+    starter = next(s for s in STARTER_TEMPLATES if s.name == starter_name)
+    for node in starter.definition["nodes"]:
+        variables = node["data"].get("extraction_variables")
+        if variables:
+            return [v["name"] for v in variables]
+    return []
+
+
+def test_booking_templates_record_the_booking_details():
+    assert _captured("Restaurant bookings") == [
+        "caller_name",
+        "callback_number",
+        "call_reason",
+        "booking_outcome",
+        "booking_date",
+        "booking_time",
+        "party_size",
+        "special_requests",
+    ]
+    assert {"appointment_type", "patient_status"} <= set(
+        _captured("Clinic receptionist")
+    )
+    assert {"service", "stylist"} <= set(_captured("Salon receptionist"))
+    assert "property" in _captured("Estate viewing booker")
+    assert {"job_address", "urgency"} <= set(_captured("Trades after-hours"))
+
+
+def test_booking_templates_ask_check_read_back_and_hand_off():
+    for starter in STARTER_TEMPLATES:
+        if "booking_outcome" not in _captured(starter.name):
+            continue
+        text = json.dumps(starter.definition)
+        if starter.name == "Appointment reminder":
+            continue  # moves an existing booking; it does not take new ones
+        assert "Check availability" in text, starter.name
+        assert "read it all back in one sentence" in text, starter.name
+        assert "handoff" in text and "transfer them to the team" in text, starter.name
+        assert "unless the calendar confirmed it" in text, starter.name
+    restaurant = json.dumps(
+        next(s for s in STARTER_TEMPLATES if s.name == "Restaurant bookings").definition
+    )
+    assert "{{booking_questions}}" in restaurant
+    assert "a mobile number" in restaurant
+
+
+def test_generated_agents_keep_the_five_field_limit():
+    from api.services.workflow.agent_builder import (
+        MAX_CAPTURED_FIELDS,
+        AgentSpec,
+        CapturedFieldSpec,
+        StageSpec,
+        assemble_workflow_definition,
+    )
+
+    spec = AgentSpec(
+        name="Test agent",
+        persona="You are a test agent.",
+        greeting="Hello.",
+        opening=StageSpec(name="Talk", prompt="Talk to them.", done_when="Done."),
+        stages=[StageSpec(name="Wrap up", prompt="Wrap up.", done_when="Done.")],
+        closing_prompt="Say goodbye.",
+        end_call_when="They hang up.",
+        captured_fields=[
+            CapturedFieldSpec(name=f"field_{i}", description=f"Field {i}.")
+            for i in range(8)
+        ],
+    )
+
+    def count(definition: dict) -> int:
+        for node in definition["nodes"]:
+            variables = node["data"].get("extraction_variables")
+            if variables:
+                return len(variables)
+        return 0
+
+    assert count(assemble_workflow_definition(spec, "INBOUND")) == MAX_CAPTURED_FIELDS
+    assert (
+        count(assemble_workflow_definition(spec, "INBOUND", max_captured_fields=8)) == 8
+    )
+
+
+def _restaurant():
+    return next(s for s in STARTER_TEMPLATES if s.name == "Restaurant bookings")
+
+
+def _ask_line(definition: dict) -> str:
+    prompt = next(
+        n["data"]["prompt"] for n in definition["nodes"] if n["id"] == "start"
+    )
+    return next(line for line in prompt.splitlines() if line.startswith("1. Ask"))
+
+
+def _business_answers(starter) -> dict[str, str]:
+    return {f.key: "Sample" for f in starter.setup_fields if f.type != "toggles"}
+
+
+def test_booking_toggles_default_to_the_usual_questions():
+    starter = _restaurant()
+    filled = fill_template_values(
+        starter.definition, starter.setup_fields, _business_answers(starter)
+    )
+    assert _ask_line(filled).endswith(
+        "Also ask how many people and about any allergies or dietary needs."
+    )
+
+
+def test_booking_toggles_follow_the_owners_choice():
+    starter = _restaurant()
+    answers = {
+        **_business_answers(starter),
+        "booking_questions": "high_chair,party_size,occasion",
+    }
+    line = _ask_line(
+        fill_template_values(starter.definition, starter.setup_fields, answers)
+    )
+    # Option order, not click order.
+    assert line.endswith(
+        "Also ask how many people, whether it is for a special occasion and "
+        "whether they need a high chair."
+    )
+
+
+def test_all_toggles_off_asks_only_the_essentials():
+    starter = _restaurant()
+    answers = {**_business_answers(starter), "booking_questions": ""}
+    line = _ask_line(
+        fill_template_values(starter.definition, starter.setup_fields, answers)
+    )
+    assert "Also ask" not in line
+    assert "the day, the time, the name for the booking and a mobile number" in line
+
+
+def test_unknown_toggle_is_rejected():
+    starter = _restaurant()
+    answers = {**_business_answers(starter), "booking_questions": "party_size,wine"}
+    with pytest.raises(TemplateSetupError, match="unknown choice wine"):
+        fill_template_values(starter.definition, starter.setup_fields, answers)
+
+
+@pytest.mark.parametrize(
+    ("field", "message"),
+    [
+        ({"key": "q", "label": "Q", "type": "toggles"}, "needs options"),
+        (
+            {
+                "key": "q",
+                "label": "Q",
+                "type": "text",
+                "options": [{"value": "a", "label": "A", "prompt": "a"}],
+            },
+            "only a toggles question has options",
+        ),
+        (
+            {
+                "key": "q",
+                "label": "Q",
+                "type": "toggles",
+                "sentence": "Ask these.",
+                "options": [{"value": "a", "label": "A", "prompt": "a"}],
+            },
+            "must contain {items}",
+        ),
+    ],
+)
+def test_toggle_questions_are_validated(field, message):
+    with pytest.raises(ValueError, match=message):
+        TemplateSetupField.model_validate(field)
+
+
+def test_every_booking_starter_offers_toggles():
+    for starter in STARTER_TEMPLATES:
+        uses = "{{booking_questions}}" in json.dumps(starter.definition)
+        offers = any(f.key == "booking_questions" for f in starter.setup_fields)
+        assert uses == offers, starter.name
+
+
+def test_agents_check_the_caller_before_changing_a_booking():
+    # Earlier bookings are found with find_appointments: the booked name is
+    # always asked, the number comes from caller ID or the caller (the owner
+    # must allow changes). Without a match, nothing changes.
+    for starter in STARTER_TEMPLATES:
+        text = json.dumps(starter.definition)
+        assert "find_booking" not in text and "move_appointment" not in text
+        if "{{booking_questions}}" in text:
+            assert "find_appointments" in text, starter.name
+            assert "reschedule_appointment" in text, starter.name
+            assert "full name the booking was made under" in text, starter.name
+            assert "Never guess a booking" in text, starter.name
+            assert "Never say a booking is moved or cancelled" in text, starter.name
+        assert "update the booking" not in text, starter.name
+        assert "reschedule via calendar tools" not in text, starter.name

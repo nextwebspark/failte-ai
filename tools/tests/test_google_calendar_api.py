@@ -16,6 +16,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from fallcha_tools.config import Settings
+from fallcha_tools.core.mcp import CONTACT_PHONE_HEADER
 from fallcha_tools.core.provider import ProviderRegistry
 from fallcha_tools.providers import build_registry
 from fallcha_tools.providers.google_calendar import (
@@ -44,6 +45,8 @@ TOOLS = {
     "check_appointment_availability",
     "book_appointment",
     "cancel_appointment",
+    "find_appointments",
+    "reschedule_appointment",
 }
 
 
@@ -264,6 +267,80 @@ async def test_connection_test_checks_calendar(
     assert f"shared with {SA_EMAIL}" in failed["message"]
 
 
+async def test_internal_bookings_lists_the_agents_bookings(
+    client: httpx.AsyncClient, google: FakeGoogle
+) -> None:
+    created = await create_connection(client, config=calendar_config())
+    connection_id = created.json()["id"]
+    google.events["booked1"] = {
+        "id": "booked1",
+        "status": "confirmed",
+        "summary": "Table for 4 — Mary Byrne",
+        "description": "\n".join(
+            [
+                "Booked by the LightMove.ai voice agent.",
+                "Caller: Mary Byrne",
+                "Phone: 0871234567",
+                "Party size: 4",
+                "Reason: Birthday",
+            ]
+        ),
+        "created": "2026-10-01T09:00:00Z",
+        "start": {"dateTime": "2026-10-15T19:00:00+01:00"},
+        "end": {"dateTime": "2026-10-15T20:30:00+01:00"},
+        "extendedProperties": {
+            "private": {
+                "fallcha_connection_id": connection_id,
+                "fallcha_party_size": "4",
+            }
+        },
+    }
+    url = f"/internal/connections/{connection_id}/bookings"
+    week = {"start": "2026-10-12T00:00:00+01:00", "end": "2026-10-19T00:00:00+01:00"}
+
+    response = await client.get(url, headers=internal_headers(), params=week)
+
+    assert response.status_code == 200, response.text
+    [booking] = response.json()["bookings"]
+    assert booking["event_id"] == "booked1"
+    assert booking["caller_name"] == "Mary Byrne"
+    assert booking["party_size"] == 4
+    assert booking["status"] == "confirmed"
+
+    # Another workspace cannot read them.
+    other = await client.get(url, headers=internal_headers(org_id=2), params=week)
+    assert other.status_code == 404
+    # Ranges must carry a zone and stay within 62 days.
+    naive = {"start": "2026-10-12T00:00:00", "end": "2026-10-19T00:00:00"}
+    assert (
+        await client.get(url, headers=internal_headers(), params=naive)
+    ).status_code == 422
+    long = {"start": "2026-10-01T00:00:00Z", "end": "2026-12-31T00:00:00Z"}
+    assert (
+        await client.get(url, headers=internal_headers(), params=long)
+    ).status_code == 422
+
+
+async def test_internal_bookings_needs_the_capability(
+    client: httpx.AsyncClient,
+) -> None:
+    echo_id = await create_echo_connection(client)
+    response = await client.get(
+        f"/internal/connections/{echo_id}/bookings",
+        headers=internal_headers(),
+        params={"start": "2026-10-12T00:00:00Z", "end": "2026-10-13T00:00:00Z"},
+    )
+    assert response.status_code == 409
+
+
+async def test_catalog_marks_calendar_as_listing_bookings(
+    client: httpx.AsyncClient,
+) -> None:
+    response = await client.get("/internal/catalog", headers=internal_headers())
+    providers = {p["id"]: p for p in response.json()["providers"]}
+    assert providers[PROVIDER]["capabilities"] == ["bookings"]
+
+
 # --- MCP ------------------------------------------------------------------
 
 
@@ -313,6 +390,102 @@ async def test_mcp_lists_and_calls_tools(
         assert SA_EMAIL not in str(caught.value)
 
 
+async def test_mcp_finds_moves_and_cancels_a_booking_from_an_earlier_call(
+    app: FastAPI, client: httpx.AsyncClient, google: FakeGoogle
+) -> None:
+    # The owner let the agent change earlier bookings (off by default).
+    key = await connected_key(client, ai_changes_enabled=True)
+    url = f"http://tools/mcp/{PROVIDER}"
+
+    async with mcp_client(app, url, key) as mcp:
+        booked = await mcp.call_tool(
+            "book_appointment",
+            {
+                "slot_id": "2026-10-13T09:00:00+01:00",
+                "caller_name": "Ann Byrne",
+                "caller_phone": "0871234567",
+            },
+        )
+    event_id = booked.structured_content["event_id"]
+
+    # The caller rings back; the API names the number the call comes from.
+    calling = {CONTACT_PHONE_HEADER: "+353 87 123 4567"}
+    async with mcp_client(app, url, key, headers=calling) as mcp:
+        tools = {tool.name: tool for tool in await mcp.list_tools()}
+        find = tools["find_appointments"]
+        assert "required" not in find.input_schema
+        assert find.annotations is not None and find.annotations.read_only_hint
+        move = tools["reschedule_appointment"]
+        assert move.input_schema["required"] == ["event_id", "slot_id"]
+        assert move.annotations is not None and move.annotations.destructive_hint
+
+        # Caller ID alone is never enough: the name is always asked for.
+        with pytest.raises(ToolError, match="the name is needed"):
+            await mcp.call_tool("find_appointments", {})
+        found = await mcp.call_tool("find_appointments", {"caller_name": "Ann Byrne"})
+        assert found.structured_content is not None
+        assert found.structured_content.pop("handoff", None) is None
+        assert found.structured_content == {
+            "appointments": [
+                {
+                    "event_id": event_id,
+                    "start": "2026-10-13T09:00:00+01:00",
+                    "say": "Tuesday the thirteenth at nine in the morning",
+                }
+            ],
+            "say": (
+                "I have you booked in for Tuesday the thirteenth at nine in the "
+                "morning."
+            ),
+        }
+        moved = await mcp.call_tool(
+            "reschedule_appointment",
+            {"event_id": event_id, "slot_id": "2026-10-14T10:00:00+01:00"},
+        )
+        assert moved.structured_content["outcome"] == "moved"
+        assert moved.structured_content["starts_at"] == "2026-10-14T10:00:00+01:00"
+        new_id = moved.structured_content["event_id"]
+        assert google.events[event_id]["status"] == "cancelled"
+
+        cancelled = await mcp.call_tool("cancel_appointment", {"event_id": new_id})
+        assert cancelled.structured_content["cancelled"] is True
+
+        with pytest.raises(ToolError, match="at least 7 digits"):
+            await mcp.call_tool(
+                "find_appointments", {"caller_phone": "087", "caller_name": "Ann"}
+            )
+
+    # No number from the API (hidden caller id), or one that cannot be a phone
+    # number: the tool asks for one.
+    for headers in (None, {CONTACT_PHONE_HEADER: "0" * 51}):
+        async with mcp_client(app, url, key, headers=headers) as mcp:
+            with pytest.raises(ToolError, match="ask for the phone number"):
+                await mcp.call_tool("find_appointments", {"caller_name": "Ann"})
+
+
+async def test_mcp_changes_stay_with_the_team_while_the_switch_is_off(
+    app: FastAPI, client: httpx.AsyncClient, google: FakeGoogle
+) -> None:
+    key = await connected_key(client)  # ai_changes_enabled defaults to off
+    url = f"http://tools/mcp/{PROVIDER}"
+    calling = {CONTACT_PHONE_HEADER: "+353 87 123 4567"}
+
+    async with mcp_client(app, url, key, headers=calling) as mcp:
+        found = await mcp.call_tool("find_appointments", {"caller_name": "Ann Byrne"})
+        moved = await mcp.call_tool(
+            "reschedule_appointment",
+            {"event_id": "abc", "slot_id": "2026-10-14T10:00:00+01:00"},
+        )
+
+    assert found.structured_content is not None
+    assert found.structured_content["handoff"] == "changes_off"
+    assert found.structured_content["appointments"] == []
+    assert moved.structured_content is not None
+    assert moved.structured_content["outcome"] == "handed_off"
+    assert moved.structured_content["handoff"] == "changes_off"
+    assert not google.list_events.called and not google.get_event.called
+
+
 async def test_mcp_rejects_foreign_keys(
     client: httpx.AsyncClient, engine: AsyncEngine
 ) -> None:
@@ -360,6 +533,7 @@ async def test_rest_compat_with_bearer_and_x_api_key(
         "booked": True,
         "event_id": event_id,
         "say": "That is booked in for Tuesday the thirteenth at nine in the morning.",
+        "starts_at": "2026-10-13T09:00:00+01:00",
     }
 
     cancel = await client.post(

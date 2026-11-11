@@ -57,11 +57,14 @@ REDIS_SETTINGS = RedisSettings(
     ssl_check_hostname=False if use_ssl else None,
 )
 
+from api.services.failure_alerts import send_failure_alert
 from api.tasks.billing_sweep import sweep_uncharged_workflow_runs
+from api.tasks.call_review import review_finished_call
 from api.tasks.campaign_tasks import (
     process_campaign_batch,
     sync_campaign_source,
 )
+from api.tasks.email_reports import send_due_email_reports
 from api.tasks.knowledge_base_processing import process_knowledge_base_document
 from api.tasks.org_erasure import erase_deleted_organizations_daily
 from api.tasks.retention_purge import purge_expired_data_daily
@@ -79,6 +82,11 @@ async def _on_startup(ctx: dict) -> None:
     from api.services.credential_encryption import verify_credential_encryption
 
     await verify_credential_encryption()
+    # Alert people about critical failures logged in the worker too.
+    from api.errors.failure import add_failure_listener
+    from api.services.failure_alerts import on_failure
+
+    add_failure_listener(on_failure)
 
 
 class WorkerSettings:
@@ -91,6 +99,8 @@ class WorkerSettings:
         process_knowledge_base_document,
         deliver_webhook,
         complete_inactive_text_chat_session,
+        send_failure_alert,
+        review_finished_call,
     ]
     cron_jobs = [
         # Safety net for webhook deliveries whose ARQ job was lost (worker
@@ -126,6 +136,14 @@ class WorkerSettings:
             minute=17,
             second=0,
             timeout=3 * 60 * 60,
+        ),
+        # Daily, weekly and monthly call reports by email. Each report is
+        # claimed under a row lock before it goes, so this never double-sends.
+        cron(
+            send_due_email_reports,
+            minute={1, 16, 31, 46},
+            second=0,
+            timeout=10 * 60,
         ),
         # GDPR erasure: organisations whose 30-day deletion grace period has
         # ended lose every stored object and row except billing records.

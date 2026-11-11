@@ -190,6 +190,20 @@ class WorkflowRunUsageResponse(BaseModel):
     charge_usd: Optional[float] = None
     # Amount charged to the prepaid credit balance, when billed through Stripe
     charge_eur: Optional[float] = None
+    is_completed: bool = Field(
+        default=True, description="False while the call is still going on."
+    )
+    summary: Optional[str] = Field(
+        default=None,
+        description="The post-call review's short summary; empty on calls without one.",
+    )
+    reason_label: Optional[str] = Field(
+        default=None, description="What the caller wanted, in plain words."
+    )
+    unanswered_questions: List[str] = Field(
+        default_factory=list,
+        description="Questions the agent couldn't answer on this call.",
+    )
 
 
 class UsageHistoryResponse(BaseModel):
@@ -482,11 +496,35 @@ Supported `attribute` / `type` / `value` combinations:
 | `duration`      | `numberRange` | `{ "min": 60, "max": 300 }`                  | call duration (seconds), inclusive bounds            |
 | `callDirection` | `radio`       | `{ "status": "inbound" }`                    | `inbound` or `outbound`; any other value matches all |
 | `callChannel`   | `radio`       | `{ "status": "telephony" }`                  | `telephony`, `web`, or `chat` — the group of run modes for that channel |
+| `callerSearch`  | `text`        | `{ "value": "Murphy" }`                      | the caller's captured name or number, the call's summary, or what was said |
+| `needsFollowUp` | `runIds`      | `{}`                                         | calls with an open follow-up, as on Follow-ups (last 30 days; ignores any value sent) |
 
 Unknown attributes and unsupported `type` values are silently ignored.
 
 Date filtering on this endpoint is done via the dedicated `start_date` / `end_date` query params, not via a `dateRange` filter object.
 """
+
+
+async def resolve_follow_up_filter(
+    organization_id: int, filters: Optional[list]
+) -> Optional[list]:
+    """Turn a ``needsFollowUp`` filter into the open follow-ups' run ids, read
+    from the Follow-ups service itself so the tab and Follow-ups agree. Any
+    ids the request carried are replaced."""
+    if not isinstance(filters, list) or not any(
+        isinstance(f, dict) and f.get("attribute") == "needsFollowUp" for f in filters
+    ):
+        return filters
+    # Imported here: the dashboard service pulls in the billing stack.
+    from api.services.dashboard.service import open_follow_up_run_ids
+
+    ids = await open_follow_up_run_ids(organization_id=organization_id)
+    return [
+        {"attribute": "needsFollowUp", "type": "runIds", "value": {"ids": ids}}
+        if isinstance(f, dict) and f.get("attribute") == "needsFollowUp"
+        else f
+        for f in filters
+    ]
 
 
 @router.get(
@@ -544,6 +582,10 @@ async def get_usage_history(
             parsed_filters = json.loads(filters)
         except json.JSONDecodeError:
             raise HTTPException(status_code=400, detail="Invalid filters format")
+
+    parsed_filters = await resolve_follow_up_filter(
+        user.selected_organization_id, parsed_filters
+    )
 
     try:
         offset = (page - 1) * limit
@@ -628,6 +670,10 @@ async def download_usage_runs_report(
             parsed_filters = json.loads(filters)
         except json.JSONDecodeError:
             raise HTTPException(status_code=400, detail="Invalid filters format")
+
+    parsed_filters = await resolve_follow_up_filter(
+        user.selected_organization_id, parsed_filters
+    )
 
     output, filename = await generate_usage_runs_report_csv(
         user.selected_organization_id,

@@ -376,6 +376,7 @@ class WorkflowRunClient(BaseDBClient):
         state: str | None = None,
         annotations: dict | None = None,
         extra: dict | None = None,
+        call_type: CallType | None = None,
     ) -> WorkflowRunModel:
         async with self.async_session() as session:
             # Use SELECT FOR UPDATE to lock the row during the update
@@ -434,6 +435,10 @@ class WorkflowRunClient(BaseDBClient):
                 run.is_completed = is_completed
             if state:
                 run.state = state
+            if call_type is not None:
+                # For transports that learn the direction only once the call
+                # has started (Cloudonix agent stream).
+                run.call_type = call_type.value
             try:
                 await session.commit()
             except Exception as e:

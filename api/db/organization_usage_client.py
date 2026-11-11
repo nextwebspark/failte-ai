@@ -36,8 +36,39 @@ USAGE_ALLOWED_FILTERS = frozenset(
         "campaignId",
         "callDirection",
         "callChannel",
+        "callerSearch",
+        "handledBy",
+        "bookingOutcome",
+        "needsFollowUp",
     }
 )
+
+# Where the post-call AI review is stored on a run (written after the call).
+CALL_REVIEW_ANNOTATION = "call_review"
+
+
+def call_review_fields(annotations: Optional[dict]) -> dict:
+    """The parts of a run's stored post-call review the Calls list shows:
+    the summary, what the caller wanted, and questions the agent couldn't
+    answer. Older calls have no review: every field is then empty."""
+    review = (annotations or {}).get(CALL_REVIEW_ANNOTATION)
+    if not isinstance(review, dict):
+        review = {}
+
+    def _text(key: str) -> Optional[str]:
+        value = review.get(key)
+        return (value.strip() or None) if isinstance(value, str) else None
+
+    questions = review.get("unanswered_questions")
+    return {
+        "summary": _text("summary"),
+        "reason_label": _text("reason_label"),
+        "unanswered_questions": [
+            q.strip() for q in questions if isinstance(q, str) and q.strip()
+        ]
+        if isinstance(questions, list)
+        else [],
+    }
 
 
 class OrganizationUsageClient(BaseDBClient):
@@ -224,11 +255,13 @@ class OrganizationUsageClient(BaseDBClient):
                 # DEPRECATED: phone_number — use caller_number/called_number.
                 # Inbound runs only have caller_number/called_number; the
                 # caller_number is the customer. Outbound runs use the
-                # phone_number key written by the dispatchers.
+                # phone_number key written by the dispatchers, else the
+                # called_number (Cloudonix agent-stream outbound runs have no
+                # phone_number).
                 if run.call_type == "inbound":
                     phone_number = caller_number
                 else:
-                    phone_number = ic.get("phone_number")
+                    phone_number = ic.get("phone_number") or called_number
 
                 # Extract disposition from gathered_context
                 disposition = None
@@ -257,6 +290,8 @@ class OrganizationUsageClient(BaseDBClient):
                     "disposition": disposition,
                     "initial_context": run.initial_context,
                     "gathered_context": run.gathered_context,
+                    "is_completed": bool(run.is_completed),
+                    **call_review_fields(run.annotations),
                 }
 
                 # Add USD cost if available in cost_info

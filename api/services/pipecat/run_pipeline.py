@@ -89,6 +89,7 @@ from api.services.pipecat.worker_runner import (
 from api.services.pipecat.ws_sender_registry import get_ws_sender
 from api.services.skills.runtime import load_call_skill_set
 from api.services.telephony import registry as telephony_registry
+from api.services.tool_integrations.call_context import telephony_contact_phone
 from api.services.workflow.answer_classification_service import (
     AnswerClassificationService,
 )
@@ -411,6 +412,11 @@ async def _run_pipeline_telephony_impl(
         raise HTTPException(status_code=404, detail="Workflow run not found")
     if workflow_run.workflow_id != workflow_id:
         raise HTTPException(status_code=400, detail="workflow_run_workflow_mismatch")
+    # Snapshot before any template, external or pre-call fetch context is
+    # merged: only the telephony code that created the run wrote these keys.
+    contact_phone = telephony_contact_phone(
+        workflow_run.call_type, workflow_run.initial_context
+    )
 
     telephony_configuration_id = None
     if workflow_run.initial_context:
@@ -458,6 +464,7 @@ async def _run_pipeline_telephony_impl(
             resolved_user_config=user_config,
             organization_id=organization_id,
             provider_call_id=call_id,
+            contact_phone=contact_phone,
         )
     except Exception as e:
         # Closest layer to the failure and the only one with the traceback, so
@@ -630,6 +637,7 @@ async def _run_pipeline_impl(
     resolved_user_config=None,
     organization_id: int | None = None,
     provider_call_id: str | None = None,
+    contact_phone: str | None = None,
 ) -> None:
     """
     Run the pipeline with the given transport and configuration
@@ -642,6 +650,8 @@ async def _run_pipeline_impl(
         workflow_run: Pre-fetched workflow run row. Fetched here if None.
         resolved_user_config: Organization model configuration with workflow
             model_overrides already applied. Fetched and resolved here if None.
+        contact_phone: The other party's number on a telephony call, for the
+            tools service (see call_context.telephony_contact_phone).
     """
     workflow_scope = (
         {"organization_id": organization_id}
@@ -955,6 +965,7 @@ async def _run_pipeline_impl(
         call_dispositions=call_dispositions,
         skill_set=skill_set,
         call_disclosure=resolve_call_disclosure(run_configs),
+        contact_phone=contact_phone,
     )
 
     # Create pipeline components

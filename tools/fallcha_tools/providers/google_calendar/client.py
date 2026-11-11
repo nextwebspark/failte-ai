@@ -36,6 +36,7 @@ __all__ = [
     "CALENDAR_READONLY_SCOPE",
     "CALENDAR_SCOPE",
     "DEFAULT_TIMEOUT",
+    "EVENT_LIST_FIELDS",
     "SIGN_IN_TOO_SLOW",
     "Budget",
     "Busy",
@@ -50,6 +51,14 @@ class Resource(StrEnum):
 
 
 Busy = tuple[datetime, datetime]
+# events.list pages; a busy restaurant fortnight is a few hundred events.
+EVENTS_PAGE_SIZE = 250
+MAX_EVENT_PAGES = 8
+
+# Only what a booking lookup reads (partial response keeps pages small).
+EVENT_LIST_FIELDS = (
+    "items(id,status,summary,description,start,extendedProperties),nextPageToken"
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -92,6 +101,49 @@ class GoogleClient(GoogleHttp):
         except (KeyError, TypeError, ValueError):
             raise GoogleApiError("Google returned unreadable free/busy data") from None
 
+    async def list_events(
+        self,
+        calendar_id: str,
+        start: datetime,
+        end: datetime,
+        *,
+        show_deleted: bool = False,
+        private_property: str | None = None,
+        budget: Budget | None = None,
+    ) -> list[dict[str, Any]]:
+        """Events overlapping [start, end), recurring ones expanded, oldest
+        first. ``private_property`` ("key=value") keeps only events carrying
+        that private extended property. Stops after ``MAX_EVENT_PAGES`` pages
+        and raises, rather than counting capacity from a partial list."""
+        url = f"{CALENDAR_API}/calendars/{path_segment(calendar_id)}/events"
+        params: dict[str, str] = {
+            "timeMin": start.isoformat(),
+            "timeMax": end.isoformat(),
+            "singleEvents": "true",
+            "orderBy": "startTime",
+            "maxResults": str(EVENTS_PAGE_SIZE),
+            "showDeleted": "true" if show_deleted else "false",
+        }
+        if private_property:
+            params["privateExtendedProperty"] = private_property
+        events: list[dict[str, Any]] = []
+        for _ in range(MAX_EVENT_PAGES):
+            body = await self._json(
+                "GET",
+                url,
+                (CALENDAR_SCOPE,),
+                Resource.CALENDAR,
+                params=params,
+                budget=budget,
+            )
+            items = body.get("items") or []
+            events.extend(item for item in items if isinstance(item, dict))
+            token = body.get("nextPageToken")
+            if not isinstance(token, str) or not token:
+                return events
+            params["pageToken"] = token
+        raise GoogleApiError("The calendar has too many events in that range to read")
+
     async def insert_event(
         self,
         calendar_id: str,
@@ -106,7 +158,7 @@ class GoogleClient(GoogleHttp):
         """
         response = await self._send(
             "POST",
-            f"{CALENDAR_API}/calendars/{path_segment(calendar_id)}/events",
+            self._events_url(calendar_id),
             (CALENDAR_SCOPE,),
             json=dict(event),
             budget=budget,
@@ -164,6 +216,62 @@ class GoogleClient(GoogleHttp):
             raise self._error(response, Resource.EVENT)
         return True
 
+    async def list_tagged_events(
+        self,
+        calendar_id: str,
+        *,
+        private_properties: Mapping[str, str],
+        time_min: datetime,
+        time_max: datetime,
+        page_size: int,
+        max_pages: int = 1,
+        budget: Budget | None = None,
+    ) -> list[dict[str, Any]]:
+        """For caller lookups: single (not cancelled) events carrying every
+        ``private_properties``
+        entry (Google ANDs them) that end after ``time_min`` and start
+        before ``time_max``, soonest first.
+
+        Reads at most ``max_pages`` pages of ``page_size`` events; with a
+        ``budget``, a further page is only requested while it allows one, so a
+        slow calendar yields the soonest events rather than a timeout.
+        """
+        params: dict[str, str | list[str]] = {
+            "privateExtendedProperty": [
+                f"{name}={value}" for name, value in private_properties.items()
+            ],
+            "timeMin": time_min.isoformat(),
+            "timeMax": time_max.isoformat(),
+            "singleEvents": "true",
+            "orderBy": "startTime",
+            "maxResults": str(page_size),
+            "fields": EVENT_LIST_FIELDS,
+        }
+        url = self._events_url(calendar_id)
+        events: list[dict[str, Any]] = []
+        for page in range(max_pages):
+            if page and budget is not None and not budget.allows_request():
+                break
+            body = await self._json(
+                "GET",
+                url,
+                (CALENDAR_SCOPE,),
+                Resource.CALENDAR,
+                params=params,
+                budget=budget,
+            )
+            # A partial response omits ``items`` when there are none.
+            items = body.get("items", [])
+            if not isinstance(items, list):
+                raise GoogleApiError("Google returned an unreadable event list")
+            events.extend(item for item in items if isinstance(item, dict))
+            token = body.get("nextPageToken")
+            if not isinstance(token, str) or not token:
+                return events
+            params = {**params, "pageToken": token}
+        logger.info("google events.list stopped after {} event(s)", len(events))
+        return events
+
     async def calendar_summary(self, calendar_id: str) -> str:
         body = await self._json(
             "GET",
@@ -173,9 +281,11 @@ class GoogleClient(GoogleHttp):
         )
         return str(body.get("summary") or calendar_id)
 
+    def _events_url(self, calendar_id: str) -> str:
+        return f"{CALENDAR_API}/calendars/{path_segment(calendar_id)}/events"
+
     def _event_url(self, calendar_id: str, event_id: str) -> str:
-        calendar = path_segment(calendar_id)
-        return f"{CALENDAR_API}/calendars/{calendar}/events/{path_segment(event_id)}"
+        return f"{self._events_url(calendar_id)}/{path_segment(event_id)}"
 
     def _shared_resource(self, resource: str) -> bool:
         # An event is not shared on its own: "not found" just means gone.

@@ -28,6 +28,7 @@ async def test_engine_opens_and_closes_mcp_sessions(monkeypatch):
         tool = _mcp_tool(base_url)
 
         engine = PipecatEngine.__new__(PipecatEngine)
+        engine._contact_phone = None
         engine._active_agent = stub_agent_runtime()
         engine._retired_agents = []
         node = MagicMock()
@@ -61,6 +62,7 @@ async def test_engine_opens_and_closes_mcp_sessions(monkeypatch):
 @pytest.mark.asyncio
 async def test_open_mcp_sessions_swallows_db_error(monkeypatch):
     engine = PipecatEngine.__new__(PipecatEngine)
+    engine._contact_phone = None
     engine._active_agent = stub_agent_runtime()
     engine._retired_agents = []
     node = MagicMock()
@@ -90,6 +92,7 @@ async def test_open_mcp_sessions_skips_tool_when_credential_fetch_fails(monkeypa
     tool.definition["config"]["credential_uuid"] = "cred-1234"
 
     engine = PipecatEngine.__new__(PipecatEngine)
+    engine._contact_phone = None
     engine._active_agent = stub_agent_runtime()
     engine._retired_agents = []
     node = MagicMock()
@@ -112,3 +115,72 @@ async def test_open_mcp_sessions_skips_tool_when_credential_fetch_fails(monkeypa
     # Must NOT raise, and must skip the tool (no futile unauthenticated start)
     await engine._open_mcp_sessions()
     assert engine.active_agent.mcp_sessions == {}
+
+
+def _engine_with(tool, context: dict, contact_phone: str | None) -> PipecatEngine:
+    engine = PipecatEngine.__new__(PipecatEngine)
+    engine._call_context_vars = context
+    engine._contact_phone = contact_phone
+    engine._active_agent = stub_agent_runtime()
+    engine._retired_agents = []
+    node = MagicMock()
+    node.tool_uuids = [tool.tool_uuid]
+    workflow = MagicMock()
+    workflow.nodes = {"n1": node}
+    engine.active_agent.workflow = workflow
+    engine.active_agent.mcp_sessions = {}
+    engine._get_organization_id = AsyncMock(return_value=42)
+    return engine
+
+
+CALLER = "+353871234567"
+# What an editor's template variables, a public API call or a pre-call fetch
+# response could put in the call context.
+FORGED_CONTEXT = {
+    "provider": "twilio",
+    "direction": "inbound",
+    "caller_number": "+353861111111",
+}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("tools_service", "contact_phone", "available"),
+    [
+        (True, CALLER, True),
+        # Not the tools service: the number never leaves the API.
+        (False, CALLER, False),
+        # A web run or hidden number: forged context variables send nothing.
+        (True, None, False),
+    ],
+)
+async def test_only_the_tools_service_learns_the_snapshotted_number(
+    monkeypatch, tools_service, contact_phone, available
+):
+    from api import constants
+    from api.db import db_client
+    from api.services.tool_integrations.call_context import CONTACT_PHONE_HEADER
+
+    async with running_mcp_server(
+        required_headers={CONTACT_PHONE_HEADER: CALLER}
+    ) as base_url:
+        origin = base_url.removesuffix("/mcp")
+        monkeypatch.setattr(
+            constants,
+            "TOOLS_SERVICE_URL",
+            origin if tools_service else "http://fallcha-tools:8000",
+        )
+        tool = _mcp_tool(base_url)
+        monkeypatch.setattr(
+            db_client, "get_tools_by_uuids", AsyncMock(return_value=[tool])
+        )
+        engine = _engine_with(tool, dict(FORGED_CONTEXT), contact_phone)
+
+        await engine._open_mcp_sessions()
+        try:
+            session = engine.active_agent.mcp_sessions[tool.tool_uuid]
+            # The mock server refuses requests without the caller's header,
+            # so the forged caller_number was never sent either.
+            assert session.available is available
+        finally:
+            await engine.close_mcp_sessions()

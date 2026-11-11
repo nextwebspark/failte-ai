@@ -20,7 +20,7 @@ describe("getKindForSpec", () => {
 
     it("marks the end, global instructions and unknown steps", () => {
         expect(getKindForSpec(spec, "end", data())).toEqual({ label: "End", tone: "danger" });
-        expect(getKindForSpec(spec, "global", data())).toEqual({ label: "Global", tone: "amber" });
+        expect(getKindForSpec(spec, "global", data())).toEqual({ label: "Always applies", tone: "amber" });
         expect(getKindForSpec(undefined, "agent", data())).toEqual({ label: "Step", tone: "mute" });
     });
 });

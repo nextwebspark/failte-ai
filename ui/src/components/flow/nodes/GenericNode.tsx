@@ -16,6 +16,7 @@ import { FlowNodeData } from "@/components/flow/types";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAppConfig } from "@/context/AppConfigContext";
+import { useFeatureEnabled } from "@/hooks/useFeatureFlags";
 import { copyTextToClipboard } from "@/lib/clipboard";
 import { publicDocsHref } from "@/lib/externalDocs";
 import { cn } from "@/lib/utils";
@@ -161,7 +162,7 @@ export function getKindForSpec(
         case "end":
             return { label: "End", tone: "danger" };
         case "global":
-            return { label: "Global", tone: "amber" };
+            return { label: "Always applies", tone: "amber" };
         case "trigger":
             return { label: "API trigger", tone: "mute" };
         case "webhook":
@@ -191,6 +192,7 @@ function CanvasPreview({
     onStaleDocuments: (uuids: string[]) => void;
 }) {
     const { config: appConfig } = useAppConfig();
+    const skillsEnabled = useFeatureEnabled("skills");
     const platformModels = Boolean(appConfig?.platformModelsEnabled);
     if (spec.name === "trigger") {
         const endpoint = buildTriggerEndpoints(
@@ -205,6 +207,7 @@ function CanvasPreview({
                         {endpoint || "Generating..."}
                     </code>
                     <Button
+                        aria-label={triggerCopied ? "Copied" : "Copy trigger address"}
                         variant="ghost"
                         size="icon"
                         className="h-6 w-6 shrink-0"
@@ -285,7 +288,8 @@ function CanvasPreview({
     // Default: prompt preview, then one row of chips for what the step uses.
     const hasToolRefs = spec.properties.some((p) => p.type === "tool_refs");
     const hasDocRefs = spec.properties.some((p) => p.type === "document_refs");
-    const hasSkillRefs = spec.properties.some((p) => p.type === "skill_refs");
+    const hasSkillRefs =
+        skillsEnabled && spec.properties.some((p) => p.type === "skill_refs");
     const showTools = hasToolRefs && (data.tool_uuids?.length ?? 0) > 0;
     const showDocuments = hasDocRefs && (data.document_uuids?.length ?? 0) > 0;
     const showSkills =
@@ -321,7 +325,7 @@ function CanvasPreview({
                         />
                     )}
                     {extracted > 0 && (
-                        <NodeChip>{extracted === 1 ? "extracts 1 field" : `extracts ${extracted} fields`}</NodeChip>
+                        <NodeChip>{extracted === 1 ? "Saves 1 detail" : `Saves ${extracted} details`}</NodeChip>
                     )}
                 </div>
             )}
@@ -637,6 +641,12 @@ export const GenericNode = memo(({ data, selected, id, type }: GenericNodeProps)
     // "Edit Webhook" wording — display_name is "Webhook" so it works out.
     const dialogTitle = spec ? `Edit ${spec.display_name}` : "Edit Node";
     const fallbackTitle = spec?.display_name ?? "Node";
+    // The global step keeps its default name ("Global Node") in the saved
+    // graph; owners see what it means instead. A name they typed is shown as is.
+    const displayTitle =
+        styleVariant === "global" && (!data.name || data.name === "Global Node")
+            ? "Instructions for the whole call"
+            : data.name || fallbackTitle;
 
     return (
         <>
@@ -647,7 +657,7 @@ export const GenericNode = memo(({ data, selected, id, type }: GenericNodeProps)
                 selected_through_edge={data.selected_through_edge}
                 hovered_through_edge={data.hovered_through_edge}
                 runtimeActive={data.runtime_active}
-                title={data.name || fallbackTitle}
+                title={displayTitle}
                 icon={<Icon />}
                 tone={kind.tone}
                 kindLabel={kind.label}
@@ -676,6 +686,7 @@ export const GenericNode = memo(({ data, selected, id, type }: GenericNodeProps)
                     {/* Start nodes can't be deleted (workflow always needs one). */}
                     {type !== "startCall" && (
                         <Button
+                            aria-label="Delete node"
                             onClick={handleDeleteNode}
                             variant="outline"
                             size="icon"

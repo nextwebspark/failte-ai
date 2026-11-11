@@ -291,7 +291,7 @@ describe("OrganizationPreferencesSection show modes", () => {
 
     const input = await screen.findByLabelText("Call data retention (days)");
     expect(screen.queryByLabelText("Test phone number")).toBeNull();
-    expect(screen.queryByLabelText("External PBX integrations")).toBeNull();
+    expect(screen.queryByLabelText("Your own phone system (PBX)")).toBeNull();
 
     fireEvent.change(input, { target: { value: "120" } });
     fireEvent.click(screen.getByRole("button", { name: "Save" }));

@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import Any
 
 import httpx
@@ -14,6 +15,7 @@ from pydantic import BaseModel, JsonValue, ValidationError
 from fallcha_tools.core.crypto import derive_key
 from fallcha_tools.core.models import AuthMode
 from fallcha_tools.core.provider import (
+    BookingListFailed,
     ConnectionContext,
     ConnectionContextFactory,
     ConnectionTestResult,
@@ -29,9 +31,11 @@ from fallcha_tools.providers.google_calendar.client import (
 )
 from fallcha_tools.providers.google_calendar.errors import (
     CalendarToolError,
+    GoogleApiError,
     NotConfiguredError,
 )
 from fallcha_tools.providers.google_calendar.rest import build_rest_router
+from fallcha_tools.providers.google_calendar.schemas import Booking
 from fallcha_tools.providers.google_calendar.service import (
     DEFAULT_DEADLINE_SECONDS,
     CalendarService,
@@ -83,7 +87,7 @@ def booking_id_key_from(internal_secret: str) -> bytes:
 
 @dataclass(frozen=True)
 class GoogleCalendarProvider:
-    """Check availability, book and cancel appointments.
+    """Check availability, book, find, move and cancel appointments.
 
     ``booking_id_key`` keys the HMAC behind booking event ids; it must be the
     same on every replica (see :func:`booking_id_key_from`).
@@ -107,8 +111,8 @@ class GoogleCalendarProvider:
     @property
     def description(self) -> str:
         return (
-            "Offer free appointment slots, and book and cancel appointments, "
-            "on a Google Calendar."
+            "Offer free appointment slots, and book, find, move and cancel "
+            "appointments, on a Google Calendar."
         )
 
     @property
@@ -162,6 +166,23 @@ class GoogleCalendarProvider:
             ok=True, message=message, account_label=service.client.account_hint
         )
 
+    async def list_bookings(
+        self, ctx: ConnectionContext, start: datetime, end: datetime
+    ) -> Sequence[Booking]:
+        try:
+            service = self.service_for(ctx)
+            return await service.list_bookings(start, end)
+        except GoogleApiError as exc:
+            hint = service.client.account_hint
+            if exc.access_problem and hint:
+                # Admin-facing: name the account the calendar must be shared with.
+                raise BookingListFailed(
+                    f"{exc.access_problem}; make sure it is shared with {hint}"
+                ) from None
+            raise BookingListFailed(str(exc)) from None
+        except CalendarToolError as exc:
+            raise BookingListFailed(str(exc)) from None
+
     def service_for(self, ctx: ConnectionContext) -> CalendarService:
         try:
             config = CalendarConfig.model_validate(dict(ctx.config))
@@ -176,6 +197,7 @@ class GoogleCalendarProvider:
             clock=self.clock,
             booking_id_key=self.booking_id_key,
             deadline_seconds=self.deadline_seconds,
+            contact_phone=ctx.contact_phone,
         )
 
     def _client(self, ctx: ConnectionContext) -> GoogleClient:

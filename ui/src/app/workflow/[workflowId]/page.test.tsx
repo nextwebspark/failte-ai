@@ -1,6 +1,6 @@
-import { act, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import WorkflowDetailPage from './page';
 
@@ -9,11 +9,15 @@ const mocks = vi.hoisted(() => ({
     auth: { user: { id: '1' }, loading: false, redirectToLogin: vi.fn() },
     workflow: vi.fn(),
     versions: vi.fn(),
+    replace: vi.fn(),
+    openTester: vi.fn(),
 }));
 
 vi.mock('next/navigation', () => ({
     useParams: () => ({ workflowId: '12' }),
     useSearchParams: () => new URLSearchParams(mocks.query),
+    usePathname: () => '/workflow/12',
+    useRouter: () => ({ replace: mocks.replace }),
 }));
 vi.mock('@/lib/auth', () => ({ useAuth: () => mocks.auth }));
 vi.mock('@/lib/logger', () => ({ default: { error: vi.fn() } }));
@@ -23,6 +27,7 @@ vi.mock('@/client/sdk.gen', () => ({
     getWorkflowVersionsApiV1WorkflowWorkflowIdVersionsGet: mocks.versions,
 }));
 vi.mock('../WorkflowLayout', () => ({ default: ({ children }: { children: ReactNode }) => children }));
+vi.mock('@/context/AgentShellContext', () => ({ useAgentShell: () => ({ openTester: mocks.openTester }) }));
 vi.mock('./RenderWorkflow', () => ({
     default: (props: Record<string, unknown>) => <pre data-testid="workflow">{JSON.stringify(props)}</pre>,
 }));
@@ -128,5 +133,102 @@ describe('workflow version links', () => {
         await screen.findByTestId('workflow');
         await act(async () => { resolveOld({ data: [version(3)] }); });
         expect(editorProps().initialSelectedVersion.id).toBe(101);
+    });
+});
+
+describe('arriving from the Create agent wizard', () => {
+    it('opens the tester once and drops the onboarding flag from the URL', async () => {
+        mocks.query = 'onboarding=web_call';
+        render(<WorkflowDetailPage />);
+        await screen.findByTestId('workflow');
+
+        expect(editorProps().openTesterOnLoad).toBe(true);
+        // A refresh or Back must not open the tester again.
+        expect(mocks.replace).toHaveBeenCalledWith('/workflow/12', { scroll: false });
+    });
+
+    it('keeps the other query parameters when it drops the flag', async () => {
+        mocks.query = 'version=3&onboarding=web_call';
+        render(<WorkflowDetailPage />);
+        await screen.findByTestId('workflow');
+
+        expect(mocks.replace).toHaveBeenCalledWith('/workflow/12?version=3', { scroll: false });
+    });
+
+    it('leaves the URL and the tester alone otherwise', async () => {
+        mocks.query = '';
+        render(<WorkflowDetailPage />);
+        await screen.findByTestId('workflow');
+
+        expect(editorProps().openTesterOnLoad).toBe(false);
+        expect(mocks.replace).not.toHaveBeenCalled();
+    });
+});
+
+function setScreenWidth(small: boolean) {
+    Object.defineProperty(window, 'matchMedia', {
+        configurable: true,
+        writable: true,
+        value: (query: string) => ({
+            matches: small,
+            media: query,
+            addEventListener: vi.fn(),
+            removeEventListener: vi.fn(),
+        }),
+    });
+}
+
+describe('on a phone', () => {
+    afterEach(() => {
+        // jsdom has no matchMedia of its own; put it back to "missing".
+        delete (window as { matchMedia?: unknown }).matchMedia;
+    });
+
+    it('shows a friendly note instead of the diagram, with a way through', async () => {
+        mocks.query = '';
+        setScreenWidth(true);
+        render(<WorkflowDetailPage />);
+
+        expect(await screen.findByRole('heading', { name: /easier on a bigger screen/i })).toBeTruthy();
+        expect(screen.queryByTestId('workflow')).toBeNull();
+        expect(screen.getByRole('link', { name: /go to what your agent knows/i }).getAttribute('href')).toBe('/workflow/12/facts');
+
+        fireEvent.click(screen.getByRole('button', { name: /talk to your agent/i }));
+        expect(mocks.openTester).toHaveBeenCalled();
+
+        fireEvent.click(screen.getByRole('button', { name: /show the diagram anyway/i }));
+        expect(await screen.findByTestId('workflow')).toBeTruthy();
+    });
+
+    it('opens the diagram straight away on a bigger screen', async () => {
+        mocks.query = '';
+        setScreenWidth(false);
+        render(<WorkflowDetailPage />);
+        expect(await screen.findByTestId('workflow')).toBeTruthy();
+        expect(screen.queryByRole('heading', { name: /easier on a bigger screen/i })).toBeNull();
+    });
+});
+
+describe('when the agent cannot load', () => {
+    it('says so in plain words and offers Try again', async () => {
+        mocks.query = '';
+        mocks.workflow.mockResolvedValueOnce({ error: { detail: 'Internal Server Error: boom' }, response: { status: 500 } });
+        render(<WorkflowDetailPage />);
+
+        const alert = await screen.findByRole('alert');
+        expect(alert.textContent).toContain("We couldn't load this agent");
+        expect(alert.textContent).not.toContain('boom');
+
+        fireEvent.click(screen.getByRole('button', { name: /try again/i }));
+        expect(await screen.findByTestId('workflow')).toBeTruthy();
+    });
+
+    it('explains a missing agent without a pointless retry', async () => {
+        mocks.query = '';
+        mocks.workflow.mockResolvedValueOnce({ error: { detail: 'Not found' }, response: { status: 404 } });
+        render(<WorkflowDetailPage />);
+
+        expect((await screen.findByRole('alert')).textContent).toContain("We couldn't find this agent");
+        expect(screen.queryByRole('button', { name: /try again/i })).toBeNull();
     });
 });

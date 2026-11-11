@@ -1,6 +1,6 @@
 "use client";
 
-import { AudioLines, Check, Pause, Pencil, Play, RefreshCw, Search, Trash2, X } from "lucide-react";
+import { AudioLines, Check, Pause, Pencil, Play, RefreshCw, Search, Trash2, TriangleAlert, Upload, X } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 
@@ -11,6 +11,7 @@ import {
 } from "@/client/sdk.gen";
 import type { RecordingResponseSchema } from "@/client/types.gen";
 import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/empty-state";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAudioPlayback } from "@/hooks/useAudioPlayback";
@@ -18,7 +19,14 @@ import { useOrganizationTimezone } from "@/hooks/useOrganizationTimezone";
 import { formatDateTime } from "@/lib/dateTime";
 import logger from "@/lib/logger";
 
-export default function RecordingsList({ refreshKey }: { refreshKey?: number }) {
+export default function RecordingsList({
+    refreshKey,
+    onUploadClick,
+}: {
+    refreshKey?: number;
+    /** Offered from the empty state. */
+    onUploadClick?: () => void;
+}) {
     const organizationTimezone = useOrganizationTimezone();
     const [recordings, setRecordings] = useState<RecordingResponseSchema[]>([]);
     const [isLoading, setIsLoading] = useState(true);
@@ -47,7 +55,8 @@ export default function RecordingsList({ refreshKey }: { refreshKey?: number }) 
 
             setRecordings(response.data.recordings);
         } catch (err) {
-            setError(err instanceof Error ? err.message : "Failed to fetch recordings");
+            // The details go to the log; the owner gets a plain sentence.
+            setError("Your recordings couldn't be loaded.");
             logger.error("Error fetching recordings:", err);
         } finally {
             setIsLoading(false);
@@ -162,9 +171,18 @@ export default function RecordingsList({ refreshKey }: { refreshKey?: number }) 
 
     if (error) {
         return (
-            <div className="p-4 bg-destructive/10 border border-destructive/20 rounded-lg text-destructive">
-                {error}
-            </div>
+            <EmptyState
+                tone="danger"
+                icon={TriangleAlert}
+                title={error}
+                description="Check your connection, then try again."
+                action={
+                    <Button variant="outline" onClick={() => void fetchRecordings()}>
+                        <RefreshCw aria-hidden />
+                        Try again
+                    </Button>
+                }
+            />
         );
     }
 
@@ -175,13 +193,15 @@ export default function RecordingsList({ refreshKey }: { refreshKey?: number }) 
                 <div className="relative flex-1">
                     <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                     <Input
-                        placeholder="Search by filename, transcript, or ID..."
+                        aria-label="Search recordings"
+                        placeholder="Search by name, words spoken or ID…"
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
                         className="pl-10"
                     />
                 </div>
                 <Button
+                    aria-label="Reload recordings"
                     variant="outline"
                     size="icon"
                     onClick={() => { stopPlayback(); fetchRecordings(); }}
@@ -199,14 +219,32 @@ export default function RecordingsList({ refreshKey }: { refreshKey?: number }) 
 
             {/* Recordings List */}
             {filteredRecordings.length === 0 ? (
-                <div className="text-center py-12">
-                    <AudioLines className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
-                    <p className="text-muted-foreground">
-                        {searchQuery
-                            ? "No recordings match your search"
-                            : "No recordings yet"}
-                    </p>
-                </div>
+                searchQuery ? (
+                    <EmptyState
+                        icon={Search}
+                        title="No recordings match your search"
+                        description="Try a different word, or clear the search to see every recording."
+                        action={
+                            <Button variant="outline" onClick={() => setSearchQuery("")}>
+                                Clear search
+                            </Button>
+                        }
+                    />
+                ) : (
+                    <EmptyState
+                        icon={AudioLines}
+                        title="No recordings yet"
+                        description="Upload a greeting or message in your own voice, and your agents can play it on calls."
+                        action={
+                            onUploadClick && (
+                                <Button onClick={onUploadClick}>
+                                    <Upload aria-hidden />
+                                    Upload a recording
+                                </Button>
+                            )
+                        }
+                    />
+                )
             ) : (
                 <div className="space-y-3">
                     {filteredRecordings.map((rec) => {

@@ -1,6 +1,6 @@
-import { Phone,PhoneForwarded } from 'lucide-react';
+import { type LucideIcon, Phone, PhoneForwarded } from 'lucide-react';
 
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Panel } from '@/components/ui/panel';
 
 interface MetricsCardsProps {
   metrics: {
@@ -11,34 +11,38 @@ interface MetricsCardsProps {
   isToday: boolean;
 }
 
+function Metric({ icon: Icon, label, value, hint }: { icon: LucideIcon; label: string; value: number; hint: string }) {
+  return (
+    <Panel className="bg-panel">
+      <div className="flex items-start gap-3.5">
+        <span className="grid size-10 flex-none place-items-center rounded-lg bg-brand-dim text-brand" aria-hidden>
+          <Icon className="size-5" />
+        </span>
+        <div className="min-w-0">
+          <h3 className="text-sm font-medium text-ink-2">{label}</h3>
+          <p className="mt-0.5 text-[26px] font-bold leading-tight tabular-nums">{value.toLocaleString('en-IE')}</p>
+          <p className="text-[13px] text-ink-3">{hint}</p>
+        </div>
+      </div>
+    </Panel>
+  );
+}
+
 export function MetricsCards({ metrics, isToday }: MetricsCardsProps) {
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-          <CardTitle className="text-sm font-medium">Calls</CardTitle>
-          <Phone className="h-4 w-4 text-muted-foreground" />
-        </CardHeader>
-        <CardContent>
-          <div className="text-2xl font-bold">{metrics.total_runs.toLocaleString()}</div>
-          <p className="text-xs text-muted-foreground">
-            {isToday ? 'All calls so far today' : 'All calls on this day'}
-          </p>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-          <CardTitle className="text-sm font-medium">Passed to your team</CardTitle>
-          <PhoneForwarded className="h-4 w-4 text-muted-foreground" />
-        </CardHeader>
-        <CardContent>
-          <div className="text-2xl font-bold">{metrics.xfer_count.toLocaleString()}</div>
-          <p className="text-xs text-muted-foreground">
-            Calls your agent transferred to a person
-          </p>
-        </CardContent>
-      </Card>
+    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+      <Metric
+        icon={Phone}
+        label="Calls"
+        value={metrics.total_runs}
+        hint={isToday ? 'All calls so far today' : 'All calls on this day'}
+      />
+      <Metric
+        icon={PhoneForwarded}
+        label="Passed to your team"
+        value={metrics.xfer_count}
+        hint="Calls your agent transferred to a person"
+      />
     </div>
   );
 }

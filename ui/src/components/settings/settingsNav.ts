@@ -1,7 +1,9 @@
 import {
+  Bell,
   CircleDollarSign,
   Key,
   type LucideIcon,
+  Mail,
   Plug,
   Settings,
   ShieldCheck,
@@ -50,6 +52,20 @@ export const SETTINGS_SECTIONS: SettingsNavSection[] = [
         icon: Users,
         description: "Who can use this workspace, their roles and pending invitations.",
         requires: "members:read",
+      },
+      {
+        title: "Notifications",
+        url: "/settings/notifications",
+        icon: Bell,
+        description: "Who gets an email after calls, and texting callers their booking.",
+        requires: "notifications:manage",
+      },
+      {
+        title: "Reports by email",
+        url: "/settings/reports",
+        icon: Mail,
+        description: "A daily, weekly or monthly summary of your calls, sent to your inbox.",
+        requires: "reports:read",
       },
       {
         title: "Billing",

@@ -6,6 +6,7 @@ import {
   agentIdFromPath,
   agentSectionFor,
   isAgentRoute,
+  isWorkspaceAgentScreen,
 } from "../agentNav";
 
 describe("agentIdFromPath", () => {
@@ -27,6 +28,23 @@ describe("agentIdFromPath", () => {
 describe("agentSectionFor", () => {
   it("treats the bare agent route as the conversation", () => {
     expect(agentSectionFor("/workflow/12")?.title).toBe("Conversation");
+  });
+
+  it("puts the dashboard and what the agent knows first, the builder under Advanced setup", () => {
+    expect(AGENT_NAV_SECTIONS[0].items.map((item) => item.title)).toEqual([
+      "Dashboard",
+      "What your agent knows",
+      "Calls",
+    ]);
+    expect(AGENT_NAV_SECTIONS[1].label).toBe("Advanced setup");
+    expect(AGENT_NAV_SECTIONS[1].items.map((item) => item.title)).toEqual([
+      "Conversation",
+      "Model and voice",
+      "Advanced settings",
+      "Deployment",
+    ]);
+    expect(agentSectionFor("/workflow/12/home")?.title).toBe("Dashboard");
+    expect(agentSectionFor("/workflow/12/facts")?.title).toBe("What your agent knows");
   });
 
   it("resolves each declared section", () => {
@@ -56,5 +74,17 @@ describe("agentHref", () => {
       section.items.map((item) => item.segment),
     );
     expect(new Set(segments).size).toBe(segments.length);
+  });
+});
+
+describe("isWorkspaceAgentScreen", () => {
+  it("keeps the main menu on the agent screens the main menu links to", () => {
+    expect(isWorkspaceAgentScreen("/workflow/14/facts")).toBe(true);
+    expect(isWorkspaceAgentScreen("/workflow/14/deployment")).toBe(true);
+    expect(isWorkspaceAgentScreen("/workflow/14")).toBe(false);
+    expect(isWorkspaceAgentScreen("/workflow/14/settings")).toBe(false);
+    expect(isWorkspaceAgentScreen("/workflow/14/home")).toBe(false);
+    expect(isWorkspaceAgentScreen("/workflow/14/facts", "facts")).toBe(true);
+    expect(isWorkspaceAgentScreen("/workflow/14/facts", "deployment")).toBe(false);
   });
 });

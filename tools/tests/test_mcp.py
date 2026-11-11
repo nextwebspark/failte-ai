@@ -24,7 +24,9 @@ INITIALIZE = {
 MCP_HEADERS = {"Accept": "application/json, text/event-stream"}
 
 
-def mcp_client(app: FastAPI, url: str, key: str) -> Client[Any]:
+def mcp_client(
+    app: FastAPI, url: str, key: str, headers: dict[str, str] | None = None
+) -> Client[Any]:
     def factory(
         headers: dict[str, str] | None = None,
         timeout: httpx2.Timeout | None = None,
@@ -42,7 +44,11 @@ def mcp_client(app: FastAPI, url: str, key: str) -> Client[Any]:
             follow_redirects=False,
         )
 
-    return Client(StreamableHttpTransport(url, auth=key, httpx_client_factory=factory))
+    return Client(
+        StreamableHttpTransport(
+            url, auth=key, headers=headers, httpx_client_factory=factory
+        )
+    )
 
 
 async def initialize(client: httpx.AsyncClient, path: str, key: str) -> int:

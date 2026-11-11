@@ -5,13 +5,13 @@ import { cn } from "@/lib/utils"
 
 /**
  * The canvas status pill (`pill()` in app-doc/claude-design/Failte AI v2.dc.html):
- * uppercase mono on a dim wash of its accent.
+ * uppercase small caps (the nav labels' sans, not mono) on a dim wash of its accent.
  *
  * Six tones cover every status the app shows, so screens pick a tone instead of
  * inventing a colour. Prefer this over a per-screen status→colour map.
  */
 const statusPillVariants = cva(
-    "inline-flex items-center whitespace-nowrap rounded-sm px-2.5 py-[3px] font-mono text-[10.5px] font-semibold uppercase tracking-[0.04em]",
+    "inline-flex items-center whitespace-nowrap rounded-sm px-2.5 py-[3px] text-[10.5px] font-semibold uppercase tracking-[0.06em]",
     {
         variants: {
             tone: {

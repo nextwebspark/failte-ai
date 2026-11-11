@@ -75,6 +75,7 @@ from api.services.pipecat.realtime.static_greeting import (
 )
 from api.services.workflow import pipecat_engine_callbacks as engine_callbacks
 from api.services.workflow.answer_handling import ANSWER_TERMINAL_REASONS, handle_answer
+from api.services.workflow.call_date import todays_date_line
 from api.services.workflow.disposition_extraction import (
     CALL_DISPOSITION_CONTEXT_KEY,
     DispositionExtractionService,
@@ -175,6 +176,7 @@ class PipecatEngine:
         call_dispositions: Sequence[CallDispositionOption] | None = None,
         skill_set: SkillSet | None = None,
         call_disclosure: CallDisclosureConfiguration | None = None,
+        contact_phone: str | None = None,
     ):
         self._call_worker = task
         self._is_realtime = is_realtime
@@ -215,6 +217,10 @@ class PipecatEngine:
         self._transfer_coordinator = None
         self.context = context
         self._call_context_vars = call_context_vars
+        # The other party's number, fixed by the telephony entry point before
+        # any context merge (call_context.telephony_contact_phone); never
+        # derived from call_context_vars, which editors and webhooks shape.
+        self._contact_phone = contact_phone
         self._workflow_run_id = workflow_run_id
         self._node_transition_callback = node_transition_callback
         self._run_transition_variable_extraction_in_background = (
@@ -644,7 +650,14 @@ class PipecatEngine:
         # before creating the background task.
         parent_context = self._get_otel_context()
 
-        extraction_prompt = self._format_prompt(node.extraction_prompt)
+        extraction_prompt = "\n\n".join(
+            p
+            for p in (
+                todays_date_line(self._call_context_vars),
+                self._format_prompt(node.extraction_prompt),
+            )
+            if p
+        )
         node_variables = [
             variable
             for variable in node.extraction_variables
@@ -861,6 +874,7 @@ class PipecatEngine:
             workflow=agent.workflow,
             format_prompt=self._format_prompt,
             has_recordings=self._has_recordings,
+            todays_date=todays_date_line(self._call_context_vars),
         )
         functions = await compose_functions_for_node(
             node=node, custom_tool_manager=manager
@@ -2472,6 +2486,9 @@ class PipecatEngine:
     async def _open_mcp_sessions(self, agent: AgentRuntime | None = None) -> None:
         """Connect every MCP-category tool referenced by any workflow node.
         Failures degrade (session marked unavailable); never raises."""
+        from api.services.tool_integrations.call_context import (
+            tools_service_headers,
+        )
         from api.services.workflow.tools.mcp_tool import (
             McpDefinitionError,
             validate_mcp_definition,
@@ -2526,6 +2543,9 @@ class PipecatEngine:
                     tools_filter=cfg["tools_filter"],
                     timeout_secs=cfg["timeout_secs"],
                     sse_read_timeout_secs=cfg["sse_read_timeout_secs"],
+                    extra_headers=tools_service_headers(
+                        cfg["url"], self._contact_phone
+                    ),
                 )
                 agent.mcp_sessions[tool.tool_uuid] = session
                 await session.start_managed()

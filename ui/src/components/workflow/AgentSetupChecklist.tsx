@@ -6,6 +6,7 @@ import type { ReactNode } from 'react';
 
 import type { WorkflowListResponse } from '@/client/types.gen';
 import { Button } from '@/components/ui/button';
+import { agentTalkHref } from "@/components/workflow/agentLinks";
 import { cn } from '@/lib/utils';
 
 interface Step {
@@ -40,7 +41,7 @@ export function AgentSetupChecklist({ agent, tested, connected, onHide }: AgentS
             done: tested,
             actions: (
                 <Button asChild size="sm">
-                    <Link href={`/workflow/${agent.id}`}>
+                    <Link href={agentTalkHref(agent.id)}>
                         <PhoneCall />
                         Talk to your agent
                     </Link>

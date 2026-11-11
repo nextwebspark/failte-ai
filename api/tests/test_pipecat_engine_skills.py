@@ -158,6 +158,13 @@ def _workflow(
     )
 
 
+@pytest.fixture(autouse=True)
+def no_date_line(monkeypatch):
+    """These tests compare whole prompts; the date line that opens every
+    agent's instructions is tested in test_call_date."""
+    monkeypatch.setattr(pipecat_engine_module, "todays_date_line", lambda *_: "")
+
+
 @pytest.fixture
 def patched_db(monkeypatch):
     monkeypatch.setattr(

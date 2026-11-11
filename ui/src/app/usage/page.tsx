@@ -1,206 +1,401 @@
 "use client";
 
-import { ArrowDown, ArrowUp, ArrowUpDown, ChevronLeft, ChevronRight, Download, Globe } from 'lucide-react';
+import { Download, EyeOff, FlaskConical, Globe, PhoneCall, PhoneOff, RefreshCw, Search, ShieldCheck } from 'lucide-react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { useCallback, useEffect, useId, useMemo, useState } from 'react';
+import { type ComponentProps, useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import TimezoneSelect, { type ITimezoneOption } from 'react-timezone-select';
 import { toast } from 'sonner';
 
 import { downloadUsageRunsReportApiV1OrganizationsUsageRunsReportGet, getDailyUsageBreakdownApiV1OrganizationsUsageDailyBreakdownGet, getPreferencesApiV1OrganizationsPreferencesGet, getUsageHistoryApiV1OrganizationsUsageRunsGet, getWorkflowsSummaryApiV1WorkflowSummaryGet, savePreferencesApiV1OrganizationsPreferencesPut } from '@/client/sdk.gen';
-import type { DailyUsageBreakdownResponse, OrganizationPreferences, UsageHistoryResponse, WorkflowRunUsageResponse, WorkflowSummaryResponse } from '@/client/types.gen';
-import { CallTypeCell } from '@/components/CallTypeCell';
+import type { DailyUsageBreakdownResponse, OrganizationPreferences, WorkflowRunUsageResponse, WorkflowSummaryResponse } from '@/client/types.gen';
 import { DailyUsageTable } from '@/components/DailyUsageTable';
 import { FilterBuilder } from '@/components/filters/FilterBuilder';
 import { runDetailHref } from '@/components/layout/shellContext';
-import { MediaPreviewButton, MediaPreviewDialog } from '@/components/MediaPreviewDialog';
+import { EmptyState } from '@/components/page-states/EmptyState';
 import { CallerDataRequestDialog } from '@/components/privacy/CallerDataRequestDialog';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import {
-    Table,
-    TableBody,
-    TableCell,
-    TableHead,
-    TableHeader,
-    TableRow,
-} from '@/components/ui/table';
-import { useAppConfig } from '@/context/AppConfigContext';
+import { PageHeader } from '@/components/ui/page-header';
+import { useOrgConfig } from '@/context/OrgConfigContext';
 import { useUserConfig } from '@/context/UserConfigContext';
+import { useIsMobile } from '@/hooks/use-mobile';
 import { useDispositionCodes } from '@/hooks/useDispositionCodes';
+import { useFeatureEnabled } from '@/hooks/useFeatureFlags';
 import { detailFromError } from '@/lib/apiError';
 import { useAuth } from '@/lib/auth';
-import { formatDateTime, getLocalTimezone } from '@/lib/dateTime';
-import { usageFilterAttributes, withDispositionCodeOptions } from '@/lib/filterAttributes';
+import { getLocalTimezone } from '@/lib/dateTime';
+import { getUsageFilterAttributes, withDispositionCodeOptions } from '@/lib/filterAttributes';
 import { decodeFiltersFromURL, encodeFiltersToURL } from '@/lib/filters';
-import type { ActiveFilter, DateRangeValue, FilterAttribute, NumberFilterOption } from '@/types/filters';
+import { useSampleMode } from '@/lib/sampleData';
+import { cn } from '@/lib/utils';
+import type { ActiveFilter, FilterAttribute, NumberFilterOption } from '@/types/filters';
 
-const buildUsageFilterAttributes = (
+import { CallCards, CallCardsSkeleton } from './CallCards';
+import { CallPanel } from './CallPanel';
+import { CallsFilterBar, CallsTabs } from './CallsFilters';
+import { CallsPager } from './CallsPager';
+import { CallsTable, CallsTableSkeleton } from './CallsTable';
+import {
+    type ApiFilter,
+    CALLS_TABS,
+    type CallsQuery,
+    callsQueryFromParams,
+    callsQueryToParams,
+    type CallsTab,
+    chipFilters,
+    dateRangeFor,
+    DEFAULT_QUERY,
+    isNarrowed,
+    PAGE_SIZE,
+    tabFilter,
+    tabUsesDates,
+    whenPhrase,
+} from './callsView';
+import { type CallRow, filterSampleRuns, sampleOutcomeCodes, sampleRuns, sampleTabCounts } from './sampleRuns';
+
+/**
+ * The expert filters behind "More filters": everything the API can filter
+ * on, minus the dates (the date chip owns those), in plain words.
+ */
+const buildExpertAttributes = (
     agentOptions: NumberFilterOption[] | null,
     isLoadingAgentOptions: boolean,
-    dispositionCodes: string[]
+    dispositionCodes: string[],
+    campaignsEnabled: boolean,
 ): FilterAttribute[] => {
-    return withDispositionCodeOptions(usageFilterAttributes, dispositionCodes).map(attribute => {
-        if (attribute.id !== 'workflowId') {
-            return attribute;
-        }
-
-        return {
-            ...attribute,
-            label: 'Agent',
-            type: 'numberSelect',
-            config: {
-                ...attribute.config,
-                placeholder: 'Select an agent',
-                numberSelectLabel: 'Agent',
-                ...(agentOptions || isLoadingAgentOptions
-                    ? {
-                        numberSelectOptions: agentOptions ?? [],
-                        numberSelectOptionsLoading: isLoadingAgentOptions,
-                    }
-                    : {}),
-            },
-        } satisfies FilterAttribute;
-    });
+    return withDispositionCodeOptions(getUsageFilterAttributes(campaignsEnabled), dispositionCodes)
+        .filter(attribute => attribute.id !== 'dateRange')
+        .map(attribute => {
+            if (attribute.id === 'runId') {
+                return { ...attribute, label: 'Call ID', config: { ...attribute.config, placeholder: 'Enter a call ID' } };
+            }
+            if (attribute.id !== 'workflowId') {
+                return attribute;
+            }
+            return {
+                ...attribute,
+                label: 'Agent',
+                type: 'numberSelect',
+                config: {
+                    ...attribute.config,
+                    placeholder: 'Select an agent',
+                    numberSelectLabel: 'Agent',
+                    ...(agentOptions || isLoadingAgentOptions
+                        ? {
+                            numberSelectOptions: agentOptions ?? [],
+                            numberSelectOptionsLoading: isLoadingAgentOptions,
+                        }
+                        : {}),
+                },
+            } satisfies FilterAttribute;
+        });
 };
+
+/** The expert filters as the API takes them. */
+function expertApiFilters(filters: ActiveFilter[]): ApiFilter[] {
+    return filters.map(filter => ({
+        attribute: filter.attribute.id,
+        type: filter.attribute.type === 'numberSelect' ? 'number' : filter.attribute.type,
+        value: filter.value,
+    }));
+}
+
+/**
+ * start_date / end_date / filters for one request. "Needs follow-up" keeps
+ * Follow-ups' own window, so the date chip doesn't apply there.
+ */
+function requestQuery(query: CallsQuery, extra: ApiFilter[], now: Date, tab: CallsTab = query.tab) {
+    const range = tabUsesDates(tab) ? dateRangeFor(query, now) : null;
+    return {
+        ...(range && { start_date: range.from.toISOString(), end_date: range.to.toISOString() }),
+        ...(extra.length > 0 && { filters: JSON.stringify(extra) }),
+    };
+}
+
+/** Whether the window is at least `px` wide. */
+function useMinWidth(px: number): boolean {
+    const [wide, setWide] = useState(false);
+    useEffect(() => {
+        const query = window.matchMedia(`(min-width: ${px}px)`);
+        const update = () => setWide(query.matches);
+        update();
+        query.addEventListener('change', update);
+        return () => query.removeEventListener('change', update);
+    }, [px]);
+    return wide;
+}
+
+type ListState =
+    | { state: 'loading' }
+    | { state: 'error' }
+    | { state: 'ready'; runs: WorkflowRunUsageResponse[]; total: number; anyCalls: boolean };
 
 export default function UsagePage() {
     const router = useRouter();
     const searchParams = useSearchParams();
     const { organizationPricing, can } = useUserConfig();
+    const { orgContext } = useOrgConfig();
     const auth = useAuth();
-    const { config: appConfig } = useAppConfig();
-    // Under Stripe billing each run carries the EUR charged to the credit balance.
-    const showEurCharge = appConfig?.billingProvider === 'stripe';
+    const isPhone = useIsMobile();
+    // A computer: the call opens in a column beside the list.
+    const isWide = useMinWidth(1440);
+    // Narrower than this (phones, tablets), the list is cards, not a table.
+    const tableFits = useMinWidth(1100);
+    const listId = useId();
 
-    // Usage history state
-    const [usageHistory, setUsageHistory] = useState<UsageHistoryResponse | null>(null);
-    const [isLoadingHistory, setIsLoadingHistory] = useState(false);
-    const [currentPage, setCurrentPage] = useState(() => {
-        const pageParam = searchParams.get('page');
-        return pageParam ? parseInt(pageParam, 10) : 1;
-    });
-    const [isExecutingFilters, setIsExecutingFilters] = useState(false);
-    // Sort state (initialized from URL). Sorting is server-side because the
-    // listing is paginated — sorting the current page client-side would only
-    // reorder the 50 rows in hand.
-    const [sortBy, setSortBy] = useState<string | null>(() => {
-        return searchParams.get('sort_by') || null;
-    });
-    const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>(() => {
-        return searchParams.get('sort_order') === 'asc' ? 'asc' : 'desc';
-    });
-    const [isDownloadingReport, setIsDownloadingReport] = useState(false);
+    // The URL is the source of truth: tabs, search, chips, page, expert
+    // filters and the open call all live there, so Back, Forward and a
+    // shared link show the same list.
+    const paramsKey = searchParams.toString();
+    const query = useMemo(() => callsQueryFromParams(new URLSearchParams(paramsKey)), [paramsKey]);
+    const callParam = Number.parseInt(searchParams.get('call') ?? '', 10);
+    // Sample calls have negative ids; real ones are positive.
+    const openCallId = Number.isFinite(callParam) && callParam !== 0 ? callParam : null;
+    const autoplay = searchParams.get('play') === '1';
+
     const [agentFilterOptions, setAgentFilterOptions] = useState<NumberFilterOption[] | null>(null);
     const [isLoadingAgentFilterOptions, setIsLoadingAgentFilterOptions] = useState(false);
     const { codes: dispositionCodes } = useDispositionCodes();
-    const availableUsageFilterAttributes = useMemo(
-        () => buildUsageFilterAttributes(agentFilterOptions, isLoadingAgentFilterOptions, dispositionCodes),
-        [agentFilterOptions, isLoadingAgentFilterOptions, dispositionCodes]
+    const campaignsEnabled = useFeatureEnabled('campaigns');
+    const expertAttributes = useMemo(
+        () => buildExpertAttributes(agentFilterOptions, isLoadingAgentFilterOptions, dispositionCodes, campaignsEnabled),
+        [agentFilterOptions, isLoadingAgentFilterOptions, dispositionCodes, campaignsEnabled]
     );
+    const filtersParam = searchParams.get('filters');
+    const appliedExpert = useMemo(
+        () => decodeFiltersFromURL(new URLSearchParams(filtersParam ? { filters: filtersParam } : {}), expertAttributes),
+        [filtersParam, expertAttributes]
+    );
+    // In-progress edits in the FilterBuilder; committed with its Apply button.
+    const [draftExpert, setDraftExpert] = useState<ActiveFilter[]>(appliedExpert);
+    useEffect(() => setDraftExpert(appliedExpert), [appliedExpert]);
+    const [expertOpen, setExpertOpen] = useState(() => appliedExpert.length > 0);
 
-    // Daily usage breakdown state (only for paid orgs)
+    const [list, setList] = useState<ListState>({ state: 'loading' });
+    const [counts, setCounts] = useState<Partial<Record<CallsTab, number>>>({});
+    const [reloadKey, setReloadKey] = useState(0);
+    const [isDownloading, setIsDownloading] = useState(false);
+    // A call opened from a deep link that isn't on this page of the list.
+    const [linkedRun, setLinkedRun] = useState<WorkflowRunUsageResponse | null>(null);
+    // Set when a row is opened from this list, so closing the call goes Back.
+    const openedHere = useRef(false);
+    // Closing the call on a computer also stops the first call showing by itself.
+    const [previewDismissed, setPreviewDismissed] = useState(false);
+
+    // Daily usage breakdown (only for organisations on per-second pricing)
     const [dailyUsage, setDailyUsage] = useState<DailyUsageBreakdownResponse | null>(null);
     const [isLoadingDaily, setIsLoadingDaily] = useState(false);
 
-    // Initialize filters from URL. `activeFilters` tracks the in-progress
-    // edits in the FilterBuilder; `appliedFilters` is what's actually been
-    // committed via Apply (and what drives fetching + the download button).
-    const [activeFilters, setActiveFilters] = useState<ActiveFilter[]>(() => {
-        return decodeFiltersFromURL(searchParams, availableUsageFilterAttributes);
-    });
-    const [appliedFilters, setAppliedFilters] = useState<ActiveFilter[]>(() => {
-        return decodeFiltersFromURL(searchParams, availableUsageFilterAttributes);
-    });
-
-    // Media preview dialog
-    const mediaPreview = MediaPreviewDialog();
-
-    // Timezone state - initialize with empty string to avoid hydration mismatch
+    // Time zone for call times
     const localTimezone = getLocalTimezone();
     const [selectedTimezone, setSelectedTimezone] = useState<ITimezoneOption | string>('');
     const [savingTimezone, setSavingTimezone] = useState(false);
     const [preferences, setPreferences] = useState<OrganizationPreferences>({});
     const [preferencesLoading, setPreferencesLoading] = useState(true);
     const timezoneSelectId = useId(); // Stable ID for react-select to prevent hydration mismatch
+    const timezoneValue = typeof selectedTimezone === 'string' ? selectedTimezone : selectedTimezone.value;
+    const effectiveTimezone = timezoneValue || localTimezone;
 
-    // Translate the FilterBuilder state into the query-param shape the
-    // backend expects. Shared between the listing fetch and the CSV export
-    // so they stay in lockstep.
-    const buildUsageQueryParams = (filters?: ActiveFilter[]) => {
-        let filterParam: string | undefined;
-        let startDate = '';
-        let endDate = '';
+    const expertKey = JSON.stringify(expertApiFilters(appliedExpert));
 
-        if (filters && filters.length > 0) {
-            const dateRangeFilter = filters.find(f => f.attribute.id === 'dateRange');
-            if (dateRangeFilter && dateRangeFilter.value) {
-                const dateValue = dateRangeFilter.value as DateRangeValue;
-                if (dateValue.from) startDate = dateValue.from.toISOString();
-                if (dateValue.to) endDate = dateValue.to.toISOString();
-            }
-
-            const otherFilters = filters.filter(f => f.attribute.id !== 'dateRange');
-            if (otherFilters.length > 0) {
-                const filterData = otherFilters.map(filter => ({
-                    attribute: filter.attribute.id,
-                    type: filter.attribute.type === 'numberSelect' ? 'number' : filter.attribute.type,
-                    value: filter.value,
-                }));
-                filterParam = JSON.stringify(filterData);
-            }
-        }
-
-        return {
-            ...(startDate && { start_date: startDate }),
-            ...(endDate && { end_date: endDate }),
-            ...(filterParam && { filters: filterParam }),
-        };
-    };
-
-    // Fetch usage history
-    const fetchUsageHistory = useCallback(async (
-        page: number,
-        filters?: ActiveFilter[],
-        sortByParam?: string | null,
-        sortOrderParam?: 'asc' | 'desc'
-    ) => {
+    // The list, the tab totals, and (when the list is empty) whether there are any calls at all.
+    useEffect(() => {
         if (!auth.isAuthenticated) return;
-        setIsLoadingHistory(true);
-        try {
-            const response = await getUsageHistoryApiV1OrganizationsUsageRunsGet({
-                query: {
-                    page,
-                    limit: 50,
-                    ...buildUsageQueryParams(filters),
-                    ...(sortByParam && { sort_by: sortByParam }),
-                    ...(sortOrderParam && { sort_order: sortOrderParam }),
-                },
-            });
+        let cancelled = false;
+        const now = new Date();
+        const expert = JSON.parse(expertKey) as ApiFilter[];
+        const shared = [...chipFilters(query), ...expert];
+        const withTab = (tab: CallsTab) => {
+            const filter = tabFilter(tab);
+            return filter ? [filter, ...shared] : shared;
+        };
+        setList({ state: 'loading' });
+        setCounts({});
 
-            if (response.data) {
-                setUsageHistory(response.data);
+        const load = async () => {
+            try {
+                const response = await getUsageHistoryApiV1OrganizationsUsageRunsGet({
+                    query: { page: query.page, limit: PAGE_SIZE, ...requestQuery(query, withTab(query.tab), now) },
+                });
+                if (cancelled) return;
+                if (!response.data) {
+                    setList({ state: 'error' });
+                    return;
+                }
+                const { runs, total_count: total } = response.data;
+                let anyCalls = total > 0;
+                if (!anyCalls) {
+                    const everything = await getUsageHistoryApiV1OrganizationsUsageRunsGet({ query: { page: 1, limit: 1 } });
+                    anyCalls = (everything.data?.total_count ?? 1) > 0;
+                }
+                if (cancelled) return;
+                setList({ state: 'ready', runs, total, anyCalls });
+                setCounts(current => ({ ...current, [query.tab]: total }));
+            } catch (error) {
+                console.error('Failed to fetch calls:', error);
+                if (!cancelled) setList({ state: 'error' });
             }
-        } catch (error) {
-            console.error('Failed to fetch usage history:', error);
-        } finally {
-            setIsLoadingHistory(false);
-        }
-    }, [auth.isAuthenticated]);
+        };
 
-    // Fetch daily usage breakdown
+        // Each tab's total is a one-row request with the same filters.
+        const loadCounts = () => {
+            CALLS_TABS.filter(({ value }) => value !== query.tab).forEach(({ value }) => {
+                getUsageHistoryApiV1OrganizationsUsageRunsGet({
+                    query: { page: 1, limit: 1, ...requestQuery(query, withTab(value), now, value) },
+                })
+                    .then(response => {
+                        if (!cancelled && response.data) {
+                            setCounts(current => ({ ...current, [value]: response.data!.total_count }));
+                        }
+                    })
+                    .catch(() => undefined);
+            });
+        };
+
+        void load();
+        loadCounts();
+        return () => {
+            cancelled = true;
+        };
+    }, [auth.isAuthenticated, query, expertKey, reloadKey]);
+
+    // Sample mode: no real calls at all yet, and the owner hasn't hidden the
+    // sample. The made-up calls fill the list; the first real call ends it.
+    // Kept between loads, so the sample doesn't blink out while a filter reloads.
+    const [hasRealCalls, setHasRealCalls] = useState<boolean | null>(null);
+    useEffect(() => {
+        if (list.state === 'ready') setHasRealCalls(list.anyCalls);
+    }, [list]);
+    const { showSample, hide: hideSample } = useSampleMode(hasRealCalls);
+    const businessName = orgContext?.organization_name?.trim() || undefined;
+    const allSamples = useMemo(
+        () => (showSample ? sampleRuns(businessName, new Date()) : []),
+        [showSample, businessName]
+    );
+    const sampleView = useMemo(() => {
+        if (!showSample) return null;
+        const now = new Date();
+        const matching = filterSampleRuns(allSamples, query, query.tab, now);
+        return {
+            total: matching.length,
+            runs: matching.slice((query.page - 1) * PAGE_SIZE, query.page * PAGE_SIZE),
+            counts: sampleTabCounts(allSamples, query, now),
+        };
+    }, [showSample, allSamples, query]);
+
+    const runs: CallRow[] = useMemo(
+        () => sampleView?.runs ?? (list.state === 'ready' ? list.runs : []),
+        [sampleView, list]
+    );
+    const shownCounts = sampleView?.counts ?? counts;
+    const outcomeCodes = useMemo(
+        () => (showSample ? sampleOutcomeCodes(allSamples) : dispositionCodes),
+        [showSample, allSamples, dispositionCodes]
+    );
+
+    // A linked call that isn't on this page: look it up by its ID.
+    useEffect(() => {
+        if (!auth.isAuthenticated || !openCallId || openCallId < 0 || list.state !== 'ready') return;
+        if (runs.some(run => run.id === openCallId) || linkedRun?.id === openCallId) return;
+        let cancelled = false;
+        getUsageHistoryApiV1OrganizationsUsageRunsGet({
+            query: {
+                page: 1,
+                limit: 1,
+                filters: JSON.stringify([{ attribute: 'runId', type: 'number', value: { value: openCallId } }]),
+            },
+        })
+            .then(response => {
+                if (cancelled) return;
+                const found = response.data?.runs[0] ?? null;
+                setLinkedRun(found);
+                if (!found) toast.error("We couldn't find that call.");
+            })
+            .catch(() => undefined);
+        return () => {
+            cancelled = true;
+        };
+    }, [auth.isAuthenticated, openCallId, list.state, runs, linkedRun?.id]);
+
+    // On a computer the first call shows beside the list until another is chosen.
+    const openRun = openCallId
+        ? runs.find(run => run.id === openCallId) ?? (linkedRun?.id === openCallId ? linkedRun : null)
+        : isWide && !previewDismissed
+            ? runs.find(run => run.recording_url) ?? runs[0] ?? null
+            : null;
+    const panelLayout = isWide ? 'column' : 'overlay';
+    const overlayOpen = Boolean(openRun) && panelLayout === 'overlay';
+
+    // Keep the page behind the full-screen call still.
+    useEffect(() => {
+        if (!overlayOpen) return;
+        const previous = document.body.style.overflow;
+        document.body.style.overflow = 'hidden';
+        return () => {
+            document.body.style.overflow = previous;
+        };
+    }, [overlayOpen]);
+
+    const hrefWith = useCallback(
+        (next: CallsQuery, call?: number | null) => {
+            const params = callsQueryToParams(next, { filters: filtersParam, call });
+            const qs = params.toString();
+            return `/usage${qs ? `?${qs}` : ''}`;
+        },
+        [filtersParam]
+    );
+
+    /** Change the controls: back to page 1, and the open call closes. */
+    const navigate = useCallback(
+        (change: Partial<CallsQuery>, options: { replace?: boolean } = {}) => {
+            const next = { ...query, page: 1, ...change };
+            const href = hrefWith(next);
+            if (options.replace) router.replace(href, { scroll: false });
+            else router.push(href, { scroll: false });
+        },
+        [query, hrefWith, router]
+    );
+
+    const callHref = useCallback((run: CallRow) => hrefWith(query, run.id), [hrefWith, query]);
+
+    const playRun = useCallback(
+        (run: WorkflowRunUsageResponse) => {
+            openedHere.current = true;
+            router.push(`${hrefWith(query, run.id)}&play=1`, { scroll: false });
+        },
+        [hrefWith, query, router]
+    );
+
+    const closeCall = useCallback(() => {
+        setPreviewDismissed(true);
+        if (!openCallId) return;
+        if (openedHere.current) {
+            openedHere.current = false;
+            router.back();
+        } else {
+            router.replace(hrefWith(query), { scroll: false });
+        }
+    }, [openCallId, router, hrefWith, query]);
+
+    const applyExpert = useCallback(
+        (filters: ActiveFilter[]) => {
+            const encoded = filters.length > 0 ? new URLSearchParams(encodeFiltersToURL(filters)).get('filters') : null;
+            const params = callsQueryToParams({ ...query, page: 1 }, { filters: encoded });
+            router.push(`/usage${params.toString() ? `?${params}` : ''}`, { scroll: false });
+        },
+        [query, router]
+    );
+
+    const clearAll = useCallback(() => {
+        setDraftExpert([]);
+        router.push(`/usage?${callsQueryToParams({ ...DEFAULT_QUERY, when: 'all' })}`, { scroll: false });
+    }, [router]);
+
     const fetchDailyUsage = useCallback(async () => {
         if (!auth.isAuthenticated || !organizationPricing?.price_per_second_usd) return;
-
         setIsLoadingDaily(true);
         try {
-            const response = await getDailyUsageBreakdownApiV1OrganizationsUsageDailyBreakdownGet({
-                query: { days: 7 },
-            });
-
-            if (response.data) {
-                setDailyUsage(response.data);
-            }
+            const response = await getDailyUsageBreakdownApiV1OrganizationsUsageDailyBreakdownGet({ query: { days: 7 } });
+            if (response.data) setDailyUsage(response.data);
         } catch (error) {
             console.error('Failed to fetch daily usage:', error);
         } finally {
@@ -210,18 +405,12 @@ export default function UsagePage() {
 
     const fetchAgentFilterOptions = useCallback(async () => {
         if (!auth.isAuthenticated) return;
-
         setIsLoadingAgentFilterOptions(true);
         try {
-            const response = await getWorkflowsSummaryApiV1WorkflowSummaryGet({
-                query: {
-                    status: 'active',
-                },
-            });
+            const response = await getWorkflowsSummaryApiV1WorkflowSummaryGet({ query: { status: 'active' } });
             if (response.error) {
                 throw new Error(detailFromError(response.error, 'Failed to load agents'));
             }
-
             const options = [...(response.data ?? [])]
                 .sort((a: WorkflowSummaryResponse, b: WorkflowSummaryResponse) => (
                     a.name.localeCompare(b.name) || a.id - b.id
@@ -241,7 +430,6 @@ export default function UsagePage() {
 
     const fetchPreferences = useCallback(async () => {
         if (!auth.isAuthenticated) return;
-
         setPreferencesLoading(true);
         try {
             const response = await getPreferencesApiV1OrganizationsPreferencesGet();
@@ -256,49 +444,58 @@ export default function UsagePage() {
         }
     }, [auth.isAuthenticated, localTimezone]);
 
-    // Download a CSV of all runs matching the current filters.
-    const handleDownloadReport = async () => {
+    useEffect(() => {
+        fetchPreferences();
+    }, [fetchPreferences]);
+
+    useEffect(() => {
+        fetchAgentFilterOptions();
+    }, [fetchAgentFilterOptions]);
+
+    useEffect(() => {
+        if (auth.isAuthenticated && organizationPricing?.price_per_second_usd) {
+            fetchDailyUsage();
+        }
+    }, [auth.isAuthenticated, organizationPricing, fetchDailyUsage]);
+
+    // A spreadsheet of every call the list is showing (all pages).
+    const handleDownload = async () => {
         if (!auth.isAuthenticated) return;
-        setIsDownloadingReport(true);
+        setIsDownloading(true);
         try {
+            const filter = tabFilter(query.tab);
+            const filters = [...(filter ? [filter] : []), ...chipFilters(query), ...expertApiFilters(appliedExpert)];
             const response = await downloadUsageRunsReportApiV1OrganizationsUsageRunsReportGet({
-                query: buildUsageQueryParams(appliedFilters),
+                query: requestQuery(query, filters, new Date()),
                 parseAs: 'blob',
             });
-
             if (response.data) {
-                const blob = response.data as Blob;
-                const url = window.URL.createObjectURL(blob);
+                const url = window.URL.createObjectURL(response.data as Blob);
                 const a = document.createElement('a');
                 a.href = url;
-                a.download = 'usage_runs_report.csv';
+                a.download = 'calls.csv';
                 document.body.appendChild(a);
                 a.click();
                 a.remove();
                 window.URL.revokeObjectURL(url);
             } else {
-                toast.error('Failed to download report');
+                toast.error("We couldn't make the list. Please try again.");
             }
         } catch (error) {
-            console.error('Failed to download usage report:', error);
-            toast.error('Failed to download report');
+            console.error('Failed to download calls:', error);
+            toast.error("We couldn't make the list. Please try again.");
         } finally {
-            setIsDownloadingReport(false);
+            setIsDownloading(false);
         }
     };
 
-    // Handle timezone change
     const handleTimezoneChange = async (timezone: ITimezoneOption | string) => {
         setSelectedTimezone(timezone);
         setSavingTimezone(true);
         const previousTimezone = preferences.timezone || localTimezone;
         try {
             const tzValue = typeof timezone === 'string' ? timezone : timezone.value;
-            const response = await savePreferencesApiV1OrganizationsPreferencesPut({
-                body: {
-                    timezone: tzValue,
-                },
-            });
+            const response = await savePreferencesApiV1OrganizationsPreferencesPut({ body: { timezone: tzValue } });
             if (response.error) {
                 throw new Error('Failed to save timezone');
             }
@@ -311,429 +508,291 @@ export default function UsagePage() {
         }
     };
 
-    // Update timezone when organization preferences load.
-    useEffect(() => {
-        fetchPreferences();
-    }, [fetchPreferences]);
-
-    useEffect(() => {
-        fetchAgentFilterOptions();
-    }, [fetchAgentFilterOptions]);
-
-    useEffect(() => {
-        setActiveFilters(currentFilters => {
-            let changed = false;
-            const nextFilters = currentFilters.map(filter => {
-                const updatedAttribute = availableUsageFilterAttributes.find(
-                    attribute => attribute.id === filter.attribute.id
-                );
-
-                if (!updatedAttribute || updatedAttribute === filter.attribute) {
-                    return filter;
-                }
-
-                changed = true;
-                return {
-                    ...filter,
-                    attribute: updatedAttribute,
-                };
-            });
-
-            return changed ? nextFilters : currentFilters;
-        });
-    }, [availableUsageFilterAttributes]);
-
-    // Initial load - fetch when auth becomes available
-    useEffect(() => {
-        if (auth.isAuthenticated) {
-            fetchUsageHistory(currentPage, appliedFilters, sortBy, sortOrder);
-        }
-    }, [auth.isAuthenticated, currentPage, appliedFilters, sortBy, sortOrder, fetchUsageHistory]);
-
-    // Fetch daily usage when organizationPricing becomes available
-    useEffect(() => {
-        if (auth.isAuthenticated && organizationPricing?.price_per_second_usd) {
-            fetchDailyUsage();
-        }
-    }, [auth.isAuthenticated, organizationPricing, fetchDailyUsage]);
-
-    // Update URL with query parameters
-    const updateUrlParams = useCallback((params: {
-        page?: number;
-        filters?: ActiveFilter[];
-        sortBy?: string | null;
-        sortOrder?: 'asc' | 'desc';
-    }) => {
-        const newParams = new URLSearchParams();
-
-        if (params.page !== undefined) {
-            newParams.set('page', params.page.toString());
-        }
-
-        if (params.sortBy) {
-            newParams.set('sort_by', params.sortBy);
-            newParams.set('sort_order', params.sortOrder || 'desc');
-        }
-
-        // Add filters to URL if present
-        if (params.filters && params.filters.length > 0) {
-            const filterString = encodeFiltersToURL(params.filters);
-            if (filterString) {
-                const filterParams = new URLSearchParams(filterString);
-                filterParams.forEach((value, key) => newParams.set(key, value));
-            }
-        }
-
-        router.push(`/usage?${newParams.toString()}`);
-    }, [router]);
-
-    const handleApplyFilters = useCallback(async () => {
-        setIsExecutingFilters(true);
-        setCurrentPage(1); // Reset to first page when applying filters
-        setAppliedFilters(activeFilters);
-        updateUrlParams({ page: 1, filters: activeFilters, sortBy, sortOrder });
-        await fetchUsageHistory(1, activeFilters, sortBy, sortOrder);
-        setIsExecutingFilters(false);
-    }, [activeFilters, fetchUsageHistory, updateUrlParams, sortBy, sortOrder]);
-
-    const handleFiltersChange = useCallback((filters: ActiveFilter[]) => {
-        setActiveFilters(filters);
-    }, []);
-
-    const handleClearFilters = useCallback(async () => {
-        setIsExecutingFilters(true);
-        setCurrentPage(1);
-        setActiveFilters([]);
-        setAppliedFilters([]);
-        updateUrlParams({ page: 1, filters: [], sortBy, sortOrder }); // Clear filters from URL
-        await fetchUsageHistory(1, [], sortBy, sortOrder); // Fetch all runs without filters
-        setIsExecutingFilters(false);
-    }, [fetchUsageHistory, updateUrlParams, sortBy, sortOrder]);
-
-    // Handle page change
-    const handlePageChange = (newPage: number) => {
-        setCurrentPage(newPage);
-        updateUrlParams({ page: newPage, filters: appliedFilters, sortBy, sortOrder });
-        fetchUsageHistory(newPage, appliedFilters, sortBy, sortOrder);
-    };
-
-    // Toggle sort direction on repeat clicks, otherwise start descending.
-    // The fetch effect above picks up the new state; page resets to 1 because
-    // the ordering of every page changes.
-    const handleSort = useCallback((field: string) => {
-        const newSortOrder = sortBy === field && sortOrder === 'desc' ? 'asc' : 'desc';
-        setSortBy(field);
-        setSortOrder(newSortOrder);
-        setCurrentPage(1);
-        updateUrlParams({ page: 1, filters: appliedFilters, sortBy: field, sortOrder: newSortOrder });
-    }, [sortBy, sortOrder, appliedFilters, updateUrlParams]);
-
-    // Handle row click to navigate to workflow run. The run keeps this screen's
-    // shell and links back to this exact list — see shellContext.
-    const handleRowClick = (run: WorkflowRunUsageResponse) => {
-        const query = searchParams.toString();
-        router.push(runDetailHref(run.workflow_id, run.id, `/usage${query ? `?${query}` : ''}`));
-    };
-
-    const timezoneValue = typeof selectedTimezone === 'string' ? selectedTimezone : selectedTimezone.value;
-    const effectiveTimezone = timezoneValue || localTimezone;
-
-    // Format duration for display
-    const formatDuration = (seconds: number) => {
-        const minutes = Math.floor(seconds / 60);
-        const remainingSeconds = seconds % 60;
-        if (minutes === 0) return `${remainingSeconds}s`;
-        if (remainingSeconds === 0) return `${minutes}m`;
-        return `${minutes}m ${remainingSeconds}s`;
+    const narrowed = isNarrowed(query, appliedExpert.length);
+    const fullPageHref = openRun && !sampleView
+        ? runDetailHref(openRun.workflow_id, openRun.id, hrefWith(query, openRun.id))
+        : '';
+    const listTotal = sampleView ? sampleView.total : list.state === 'ready' ? list.total : 0;
+    const rowProps = {
+        runs,
+        timezone: effectiveTimezone,
+        selectedId: openRun?.id ?? null,
+        hrefFor: callHref,
+        onPlay: playRun,
+        onOpen: () => {
+            openedHere.current = true;
+        },
     };
 
     return (
-        <div className="page-body space-y-6">
-            <div>
-                {/* The screen name lives in the app header (AppTopBar); the row
-                    below is the timezone control that used to sit beside it. */}
-                <div className="flex flex-wrap justify-end items-start gap-3">
-                        {/* Callers' access and erasure requests (GDPR) are admin-only. */}
-                        {can('org:manage') && <CallerDataRequestDialog />}
-                        <div className="flex items-center gap-2">
-                            <Globe className="h-4 w-4 text-muted-foreground" />
-                            <div className="w-[300px]">
-                                <TimezoneSelect
-                                    instanceId={timezoneSelectId}
-                                    value={selectedTimezone}
-                                    onChange={handleTimezoneChange}
-                                    isDisabled={savingTimezone || preferencesLoading}
-                                    placeholder={preferencesLoading ? "Loading..." : "Select timezone"}
-                                    styles={{
-                                        control: (base, state) => ({
-                                            ...base,
-                                            minHeight: '36px',
-                                            fontSize: '14px',
-                                            backgroundColor: 'var(--background)',
-                                            borderColor: state.isFocused ? 'var(--ring)' : 'var(--border)',
-                                            boxShadow: state.isFocused ? '0 0 0 2px color-mix(in srgb, var(--ring) 20%, transparent)' : 'none',
-                                            '&:hover': {
-                                                borderColor: 'var(--border)',
-                                            },
-                                        }),
-                                        menu: (base) => ({
-                                            ...base,
-                                            zIndex: 9999,
-                                            backgroundColor: 'var(--popover)',
-                                            border: '1px solid var(--border)',
-                                            boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)',
-                                        }),
-                                        menuList: (base) => ({
-                                            ...base,
-                                            backgroundColor: 'var(--popover)',
-                                            padding: 0,
-                                        }),
-                                        option: (base, state) => ({
-                                            ...base,
-                                            backgroundColor: state.isSelected
-                                                ? 'var(--accent)'
-                                                : state.isFocused
-                                                ? 'var(--accent)'
-                                                : 'var(--popover)',
-                                            color: 'var(--foreground)',
-                                            cursor: 'pointer',
-                                            '&:active': {
-                                                backgroundColor: 'var(--accent)',
-                                            },
-                                        }),
-                                        singleValue: (base) => ({
-                                            ...base,
-                                            color: 'var(--foreground)',
-                                        }),
-                                        input: (base) => ({
-                                            ...base,
-                                            color: 'var(--foreground)',
-                                        }),
-                                        placeholder: (base) => ({
-                                            ...base,
-                                            color: 'var(--muted-foreground)',
-                                        }),
-                                        indicatorSeparator: (base) => ({
-                                            ...base,
-                                            backgroundColor: 'var(--border)',
-                                        }),
-                                        dropdownIndicator: (base) => ({
-                                            ...base,
-                                            color: 'var(--muted-foreground)',
-                                            '&:hover': {
-                                                color: 'var(--foreground)',
-                                            },
-                                        }),
-                                    }}
-                                />
-                            </div>
-                        </div>
-                    </div>
+        <div className="page-body">
+            <div className={cn('mx-auto flex flex-col gap-6', isWide && openRun ? 'max-w-[1400px]' : 'max-w-6xl')}>
+                <div inert={overlayOpen} className="flex flex-col">
+                    <PageHeader
+                        className="mb-0"
+                        title="Calls"
+                        description="Every call your agent answered, with the recording and what was said."
+                        action={
+                            <Button
+                                variant="outline"
+                                className="h-10 bg-panel sm:h-9"
+                                onClick={handleDownload}
+                                disabled={isDownloading || Boolean(sampleView)}
+                                aria-describedby={sampleView ? 'calls-sample-note' : undefined}
+                            >
+                                <Download aria-hidden />
+                                {isDownloading ? 'Preparing…' : 'Download list'}
+                            </Button>
+                        }
+                    />
                 </div>
 
-                {/* Daily Usage Table - Only for paid organizations */}
-                {organizationPricing?.price_per_second_usd && (
-                    <div className="mb-6">
-                        <DailyUsageTable
-                            data={dailyUsage}
-                            isLoading={isLoadingDaily}
-                        />
+                {sampleView && (
+                    <div
+                        role="note"
+                        aria-label="Sample data"
+                        inert={overlayOpen}
+                        className="-mt-2 flex flex-col gap-3 rounded-xl border border-sky/40 bg-sky-dim px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
+                    >
+                        <div className="flex items-start gap-3">
+                            <FlaskConical className="mt-0.5 size-5 flex-none text-ink-2" aria-hidden />
+                            <p id="calls-sample-note" className="text-[14px] text-foreground">
+                                <span className="mr-2 inline-flex rounded-full border border-line bg-panel px-2 py-0.5 text-[12px] font-semibold">
+                                    Sample data
+                                </span>
+                                This is how Calls looks once calls come in. These calls are made up.
+                            </p>
+                        </div>
+                        <Button variant="outline" className="h-10 flex-none bg-panel sm:h-9" onClick={hideSample}>
+                            <EyeOff aria-hidden />
+                            Hide sample data
+                        </Button>
                     </div>
                 )}
 
-                {/* Filter Builder */}
-                <div className="mb-6 space-y-3">
-                    <FilterBuilder
-                        availableAttributes={availableUsageFilterAttributes}
-                        activeFilters={activeFilters}
-                        onFiltersChange={handleFiltersChange}
-                        onApplyFilters={handleApplyFilters}
-                        onClearFilters={handleClearFilters}
-                        isExecuting={isExecutingFilters}
-                    />
-                    {appliedFilters.length > 0 && (
-                        <div className="flex justify-end">
-                            <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={handleDownloadReport}
-                                disabled={isDownloadingReport}
-                            >
-                                <Download className="h-4 w-4 mr-2" />
-                                {isDownloadingReport ? 'Preparing...' : 'Download Filtered Results'}
-                            </Button>
-                        </div>
+                <div
+                    className={cn(
+                        'grid items-start gap-4',
+                        isWide && openRun && 'grid-cols-[minmax(0,1fr)_380px]'
                     )}
-                </div>
+                >
+                    <div inert={overlayOpen} className="flex min-w-0 flex-col gap-4">
+                        <section aria-label="Calls" className="overflow-hidden rounded-xl border border-line bg-panel">
+                            <div className="border-b border-line-soft pt-1">
+                                <CallsTabs
+                                    tab={query.tab}
+                                    counts={shownCounts}
+                                    listId={listId}
+                                    onChange={tab => navigate({ tab })}
+                                />
+                            </div>
+                            <CallsFilterBar
+                                query={query}
+                                outcomeCodes={outcomeCodes}
+                                expertCount={appliedExpert.length}
+                                expertOpen={expertOpen}
+                                onChange={navigate}
+                                onToggleExpert={() => setExpertOpen(open => !open)}
+                            />
 
-                {/* Usage History */}
-                <Card>
-                    <CardHeader>
-                        <div className="flex justify-between items-start">
-                            <div className="space-y-1.5">
-                                <CardTitle>All calls</CardTitle>
-                                <CardDescription>
-                                    Every call across your agents, with how long it lasted and how it ended
-                                </CardDescription>
+                            {expertOpen && (
+                                <div id="calls-more-filters" className="border-t border-line-soft bg-panel-2/60 px-4 py-4">
+                                    <FilterBuilder
+                                        availableAttributes={expertAttributes}
+                                        activeFilters={draftExpert}
+                                        onFiltersChange={setDraftExpert}
+                                        onApplyFilters={() => applyExpert(draftExpert)}
+                                        onClearFilters={() => {
+                                            setDraftExpert([]);
+                                            applyExpert([]);
+                                        }}
+                                    />
+                                </div>
+                            )}
+
+                            <div id={listId} aria-busy={list.state === 'loading'} className="border-t border-line-soft">
+                                {list.state === 'loading' && !sampleView ? (
+                                    <>
+                                        <span className="sr-only" role="status">Loading calls</span>
+                                        {tableFits ? <CallsTableSkeleton /> : <CallCardsSkeleton />}
+                                    </>
+                                ) : list.state === 'error' && !sampleView ? (
+                                    <EmptyState
+                                        tone="amber"
+                                        icon={PhoneOff}
+                                        as="h2"
+                                        role="alert"
+                                        title="We couldn't load your calls"
+                                        className="rounded-none border-0"
+                                        action={
+                                            <Button className="h-10 sm:h-9" onClick={() => setReloadKey(key => key + 1)}>
+                                                <RefreshCw aria-hidden />
+                                                Try again
+                                            </Button>
+                                        }
+                                    >
+                                        Something went wrong on our side. Please try again in a moment.
+                                    </EmptyState>
+                                ) : runs.length === 0 ? (
+                                    list.state === 'ready' && !list.anyCalls && !sampleView ? (
+                                        <EmptyState icon={PhoneCall} as="h2" title="No calls yet" className="rounded-none border-0">
+                                            When your agent answers a call, it shows up here with the recording and what was said.
+                                            Try ringing your agent&apos;s number, or test it from your agent&apos;s page.
+                                        </EmptyState>
+                                    ) : (
+                                        <EmptyState
+                                            icon={Search}
+                                            as="h2"
+                                            title="No calls match"
+                                            className="rounded-none border-0"
+                                            action={
+                                                narrowed ? (
+                                                    <Button variant="outline" className="h-10 sm:h-9" onClick={clearAll}>
+                                                        Clear filters
+                                                    </Button>
+                                                ) : undefined
+                                            }
+                                        >
+                                            {query.tab === 'follow_up' && !query.q.trim() && !query.outcome && !query.who && !appliedExpert.length
+                                                ? 'Nothing needs a follow-up. All caught up.'
+                                                : query.q.trim()
+                                                    ? `Nothing for “${query.q.trim()}” ${tabUsesDates(query.tab) ? whenPhrase(query) : 'in the last 30 days'}.`
+                                                    : `No calls ${tabUsesDates(query.tab) ? whenPhrase(query) : 'in the last 30 days'}${query.outcome || query.who || appliedExpert.length ? ' with these filters' : ''}.`}
+                                        </EmptyState>
+                                    )
+                                ) : !tableFits ? (
+                                    <CallCards {...rowProps} />
+                                ) : (
+                                    <CallsTable {...rowProps} />
+                                )}
                             </div>
-                        </div>
-                    </CardHeader>
-                    <CardContent>
-                        {isLoadingHistory ? (
-                            <div className="animate-pulse space-y-3">
-                                {[...Array(5)].map((_, i) => (
-                                    <div key={i} className="h-12 bg-muted rounded"></div>
-                                ))}
-                            </div>
-                        ) : usageHistory && usageHistory.runs.length > 0 ? (
-                            <>
-                                <div className="bg-card border rounded-lg overflow-hidden shadow-sm">
-                                    <Table>
-                                        <TableHeader>
-                                            <TableRow className="bg-muted/50">
-                                                <TableHead className="font-semibold">Call</TableHead>
-                                                <TableHead className="font-semibold">Agent name</TableHead>
-                                                <TableHead className="font-semibold">Call type</TableHead>
-                                                <TableHead className="font-semibold">Phone Number</TableHead>
-                                                <TableHead className="font-semibold">Outcome</TableHead>
-                                                <TableHead className="font-semibold">Date</TableHead>
-                                                <TableHead
-                                                    className="font-semibold text-right cursor-pointer hover:bg-muted/50 select-none"
-                                                    onClick={() => handleSort('duration')}
-                                                >
-                                                    <div className="flex items-center justify-end gap-1">
-                                                        Duration
-                                                        {sortBy === 'duration' ? (
-                                                            sortOrder === 'asc' ? <ArrowUp className="h-4 w-4" /> : <ArrowDown className="h-4 w-4" />
-                                                        ) : (
-                                                            <ArrowUpDown className="h-4 w-4 text-muted-foreground" />
-                                                        )}
-                                                    </div>
-                                                </TableHead>
-                                                {organizationPricing?.price_per_second_usd && (
-                                                    <TableHead className="font-semibold text-right">Cost (USD)</TableHead>
-                                                )}
-                                                {showEurCharge && (
-                                                    <TableHead className="font-semibold text-right">Cost (EUR)</TableHead>
-                                                )}
-                                                <TableHead className="font-semibold">Actions</TableHead>
-                                            </TableRow>
-                                        </TableHeader>
-                                        <TableBody>
-                                            {usageHistory.runs.map((run) => (
-                                                <TableRow
-                                                    key={run.id}
-                                                >
-                                                    <TableCell
-                                                        className="font-mono text-sm cursor-pointer hover:underline"
-                                                        onClick={() => handleRowClick(run)}
-                                                    >
-                                                        #{run.id}
-                                                    </TableCell>
-                                                    <TableCell>{run.workflow_name || 'Unknown'}</TableCell>
-                                                    <TableCell>
-                                                        <CallTypeCell mode={run.mode} callType={run.call_type} />
-                                                    </TableCell>
-                                                    <TableCell className="text-sm">
-                                                        {(run.call_type === 'inbound'
-                                                            ? run.caller_number
-                                                            : run.called_number) || '-'}
-                                                    </TableCell>
-                                                    <TableCell>
-                                                        {run.disposition ? (
-                                                            <Badge variant="default">
-                                                                {run.disposition}
-                                                            </Badge>
-                                                        ) : (
-                                                            <span className="text-sm text-muted-foreground">-</span>
-                                                        )}
-                                                    </TableCell>
-                                                    <TableCell>{formatDateTime(run.created_at, effectiveTimezone)}</TableCell>
-                                                    <TableCell className="text-right">
-                                                        {formatDuration(run.call_duration_seconds)}
-                                                    </TableCell>
-                                                    {organizationPricing?.price_per_second_usd && (
-                                                        <TableCell className="text-right font-medium">
-                                                            {run.charge_usd !== undefined && run.charge_usd !== null
-                                                                ? `$${run.charge_usd.toFixed(2)}`
-                                                                : '-'
-                                                            }
-                                                        </TableCell>
-                                                    )}
-                                                    {showEurCharge && (
-                                                        <TableCell className="text-right font-medium">
-                                                            {run.charge_eur !== undefined && run.charge_eur !== null
-                                                                ? new Intl.NumberFormat('en-IE', { style: 'currency', currency: 'EUR', maximumFractionDigits: 4 }).format(run.charge_eur)
-                                                                : '-'
-                                                            }
-                                                        </TableCell>
-                                                    )}
-                                                    <TableCell>
-                                                        <MediaPreviewButton
-                                                            recordingUrl={run.recording_url}
-                                                            transcriptUrl={run.transcript_url}
-                                                            runId={run.id}
-                                                            onOpenPreview={mediaPreview.openPreview}
-                                                        />
-                                                    </TableCell>
-                                                </TableRow>
-                                            ))}
-                                        </TableBody>
-                                    </Table>
+
+                            {(sampleView || list.state === 'ready') && listTotal > 0 && (
+                                <CallsPager
+                                    page={query.page}
+                                    pageSize={PAGE_SIZE}
+                                    total={listTotal}
+                                    onPage={page => router.push(hrefWith({ ...query, page }), { scroll: false })}
+                                />
+                            )}
+                        </section>
+
+                        {expertOpen && (
+                            <section
+                                aria-label="More options"
+                                className="flex flex-col gap-5 rounded-xl border border-line bg-panel px-5 py-5 sm:px-6"
+                            >
+                                <div className="flex flex-col gap-2">
+                                    <h2 className="text-[14.5px] font-semibold">
+                                        <label htmlFor={`${timezoneSelectId}-input`} className="inline-flex items-center gap-1.5">
+                                            <Globe className="size-4 text-ink-3" aria-hidden />
+                                            Time zone for call times
+                                        </label>
+                                    </h2>
+                                    <div className="w-full max-w-sm">
+                                        <TimezoneSelect
+                                            instanceId={timezoneSelectId}
+                                            inputId={`${timezoneSelectId}-input`}
+                                            value={selectedTimezone}
+                                            onChange={handleTimezoneChange}
+                                            isDisabled={savingTimezone || preferencesLoading}
+                                            placeholder={preferencesLoading ? 'Loading…' : 'Choose a time zone'}
+                                            styles={TIMEZONE_STYLES}
+                                        />
+                                    </div>
                                 </div>
 
-                                {/* Summary */}
-                                {appliedFilters.length > 0 && (
-                                    <div className="mt-4 p-3 bg-muted rounded-md">
-                                        <p className="text-sm text-muted-foreground">
-                                            Total for filtered period: <span className="font-semibold text-foreground">
-                                                {usageHistory.total_dograh_tokens.toLocaleString()} Credits
-                                            </span>
-                                            {' • '}
-                                            <span className="font-semibold text-foreground">
-                                                {formatDuration(usageHistory.total_duration_seconds)}
-                                            </span>
-                                        </p>
-                                    </div>
-                                )}
-
-                                {/* Pagination */}
-                                {usageHistory.total_pages > 1 && (
-                                    <div className="flex items-center justify-between mt-6">
-                                        <p className="text-sm text-muted-foreground">
-                                            Page {usageHistory.page} of {usageHistory.total_pages} ({usageHistory.total_count} total runs)
-                                        </p>
-                                        <div className="flex gap-2">
-                                            <Button
-                                                variant="outline"
-                                                size="sm"
-                                                onClick={() => handlePageChange(currentPage - 1)}
-                                                disabled={currentPage === 1}
-                                            >
-                                                <ChevronLeft className="h-4 w-4" />
-                                                Previous
-                                            </Button>
-                                            <Button
-                                                variant="outline"
-                                                size="sm"
-                                                onClick={() => handlePageChange(currentPage + 1)}
-                                                disabled={currentPage === usageHistory.total_pages}
-                                            >
-                                                Next
-                                                <ChevronRight className="h-4 w-4" />
-                                            </Button>
+                                {/* Callers' access and erasure requests (GDPR) are admin-only. */}
+                                {can('org:manage') && (
+                                    <div className="flex flex-col gap-2 border-t border-line-soft pt-5 sm:flex-row sm:items-center sm:justify-between">
+                                        <div className="flex items-start gap-3">
+                                            <ShieldCheck className="mt-0.5 size-5 flex-none text-ink-3" aria-hidden />
+                                            <div>
+                                                <h2 className="text-[14.5px] font-semibold">A caller wants their data</h2>
+                                                <p className="text-[13px] text-ink-3">
+                                                    If someone asks for a copy of their calls, or for them to be deleted, start here.
+                                                </p>
+                                            </div>
                                         </div>
+                                        <CallerDataRequestDialog />
                                     </div>
                                 )}
-                            </>
-                        ) : (
-                            <p className="text-center py-8 text-muted-foreground">No runs found</p>
+                            </section>
                         )}
-                    </CardContent>
-                </Card>
 
-                {/* Media Preview Dialog */}
-                {mediaPreview.dialog}
+                        {/* Daily usage and cost: only for organisations on per-second pricing. */}
+                        {organizationPricing?.price_per_second_usd && (
+                            <DailyUsageTable data={dailyUsage} isLoading={isLoadingDaily} />
+                        )}
+                    </div>
+
+                    {openRun && (
+                        <>
+                            {overlayOpen && (
+                                <div className="fixed inset-0 z-40 hidden bg-black/30 md:block" aria-hidden onClick={closeCall} />
+                            )}
+                            <CallPanel
+                                key={openRun.id}
+                                run={openRun}
+                                timezone={effectiveTimezone}
+                                autoplay={autoplay && openRun.id === openCallId}
+                                focusOnOpen={openRun.id === openCallId}
+                                layout={panelLayout}
+                                isPhone={isPhone}
+                                fullPageHref={fullPageHref}
+                                highlight={query.q}
+                                onClose={closeCall}
+                            />
+                        </>
+                    )}
+                </div>
+            </div>
         </div>
     );
 }
+
+type TimezoneStyles = NonNullable<ComponentProps<typeof TimezoneSelect>['styles']>;
+
+const TIMEZONE_STYLES: TimezoneStyles = {
+    control: (base, state) => ({
+        ...base,
+        minHeight: '40px',
+        fontSize: '14px',
+        backgroundColor: 'var(--background)',
+        borderColor: state.isFocused ? 'var(--ring)' : 'var(--border)',
+        boxShadow: state.isFocused ? '0 0 0 2px color-mix(in srgb, var(--ring) 20%, transparent)' : 'none',
+        '&:hover': {
+            borderColor: 'var(--border)',
+        },
+    }),
+    menu: (base) => ({
+        ...base,
+        zIndex: 9999,
+        backgroundColor: 'var(--popover)',
+        border: '1px solid var(--border)',
+        boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)',
+    }),
+    menuList: (base) => ({
+        ...base,
+        backgroundColor: 'var(--popover)',
+        padding: 0,
+    }),
+    option: (base, state) => ({
+        ...base,
+        backgroundColor: state.isSelected || state.isFocused ? 'var(--accent)' : 'var(--popover)',
+        color: 'var(--foreground)',
+        cursor: 'pointer',
+        '&:active': {
+            backgroundColor: 'var(--accent)',
+        },
+    }),
+    singleValue: (base) => ({ ...base, color: 'var(--foreground)' }),
+    input: (base) => ({ ...base, color: 'var(--foreground)' }),
+    placeholder: (base) => ({ ...base, color: 'var(--muted-foreground)' }),
+    indicatorSeparator: (base) => ({ ...base, backgroundColor: 'var(--border)' }),
+    dropdownIndicator: (base) => ({
+        ...base,
+        color: 'var(--muted-foreground)',
+        '&:hover': { color: 'var(--foreground)' },
+    }),
+};

@@ -1,80 +1,14 @@
 "use client";
 
-import Link from 'next/link';
-
-import { SupportLink } from '@/components/SupportLink';
-import { Button } from '@/components/ui/button';
-import { Panel, PanelDescription, PanelTitle } from '@/components/ui/panel';
-import { SectionHeading, SectionHint } from '@/components/ui/section-heading';
-import { BRAND } from "@/config/brand";
-import { useAppConfig } from "@/context/AppConfigContext";
+import { HomeDashboard } from '@/components/dashboard/HomeDashboard';
 import { useAuth } from '@/lib/auth';
+import { greetingFor } from '@/lib/greeting';
 
+/**
+ * Home: where every member lands. How the phone agent did today, what needs
+ * the owner, and when people called, all counted from stored calls.
+ */
 export default function OverviewPage() {
-    const { user, provider } = useAuth();
-    const isOSSMode = provider !== 'stack';
-    const platformModels = Boolean(useAppConfig().config?.platformModelsEnabled);
-
-    return (
-        <div className="page-body">
-            <div className="max-w-4xl animate-fade-up">
-                {/* Welcome */}
-                <div className="mb-8">
-                    <h1 className="text-2xl font-bold tracking-tight">
-                        {isOSSMode ? (
-                            `Welcome to ${BRAND.name}`
-                        ) : (
-                            `Welcome${user?.displayName ? `, ${user.displayName.split(' ')[0]}` : ''}!`
-                        )}
-                    </h1>
-                    <p className="mt-1.5 font-mono text-[12.5px] text-ink-3">
-                        Get started with building voice AI agents
-                    </p>
-                </div>
-
-                {/* Quick actions — the canvas "Get started" panels */}
-                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                    <Panel accent="sky">
-                        <PanelTitle as="h2">Create and Manage your Voice Agents</PanelTitle>
-                        <PanelDescription>
-                            Build powerful AI Voice Agents with our visual editor
-                        </PanelDescription>
-                        <Button asChild size="sm" className="mt-4">
-                            <Link href="/workflow">
-                                Go to Agents
-                            </Link>
-                        </Button>
-                    </Panel>
-
-                    <Panel>
-                        <PanelTitle as="h2">{platformModels ? "Models & voice" : "Configure Services"}</PanelTitle>
-                        <PanelDescription>
-                            {platformModels
-                                ? "Choose how your agents talk, their voice and language"
-                                : "Set up your AI services like LLM, TTS, and STT providers"}
-                        </PanelDescription>
-                        <Button asChild size="sm" variant="soft" className="mt-4">
-                            <Link href="/model-configurations">
-                                {platformModels ? "Open Models & voice" : "Configure Models"}
-                            </Link>
-                        </Button>
-                    </Panel>
-                </div>
-
-                {/* Resources */}
-                <SectionHeading className="mt-8" action={<SectionHint>Get help from the team</SectionHint>}>
-                    Resources
-                </SectionHeading>
-                <Panel>
-                    <div className="flex flex-wrap gap-4">
-                        {/* Upstream had a Documentation button and a "Report an Issue"
-                            button here, both pointing at dograh-hq. We publish neither a
-                            docs site nor a public tracker, so the card offers the one
-                            thing we can honour: a reply from a human. */}
-                        <SupportLink label="Email support" variant="outline" />
-                    </div>
-                </Panel>
-            </div>
-        </div>
-    );
+    const { user } = useAuth();
+    return <HomeDashboard heading={greetingFor(user)} />;
 }

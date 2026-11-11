@@ -13,7 +13,7 @@ from fastapi import HTTPException
 from loguru import logger
 
 from api.db import db_client
-from api.enums import TelephonyCallStatus, WorkflowRunMode
+from api.enums import CallType, TelephonyCallStatus, WorkflowRunMode
 from api.services.telephony import ws_auth
 from api.services.telephony.base import (
     CallInitiationResult,
@@ -693,16 +693,23 @@ class CloudonixProvider(TelephonyProvider):
 
             start_context = start.get("context")
             custom_parameters = start.get("customParameters")
+            # The run was created as inbound before this start message; an API
+            # originated call is outbound, and the column must say so (it
+            # decides whose number the call's tools see).
+            call_type = (
+                CallType.OUTBOUND
+                if start_context == "outbound-api"
+                else CallType.INBOUND
+            )
             builtin_context = {
                 "caller_number": start.get("from"),
                 "called_number": start.get("to"),
-                "direction": (
-                    "outbound" if start_context == "outbound-api" else "inbound"
-                ),
+                "direction": call_type.value,
                 "cloudonix_context": start_context,
             }
             await db_client.update_workflow_run(
                 run_id=workflow_run_id,
+                call_type=call_type,
                 initial_context={
                     # Flatten customParameters, but never let them overwrite a
                     # built-in key even when the built-in's value is None.
@@ -728,7 +735,8 @@ class CloudonixProvider(TelephonyProvider):
                     "cloudonix_stream_sid": stream_sid,
                 },
                 logs={
-                    "inbound_webhook": {
+                    # Only inbound_webhook is read back (SIP headers, tuner).
+                    f"{call_type.value}_webhook": {
                         "domain": domain_id,
                         "session": call_session,
                         "callSid": call_sid,
@@ -743,8 +751,9 @@ class CloudonixProvider(TelephonyProvider):
             )
 
             logger.info(
-                f"Cloudonix agent-stream connected for workflow_run "
-                f"{workflow_run_id} stream_sid={stream_sid} call_sid={call_sid} "
+                f"Cloudonix agent-stream ({call_type.value}) connected for "
+                f"workflow_run {workflow_run_id} stream_sid={stream_sid} "
+                f"call_sid={call_sid} "
                 f"session={call_session} "
                 f"telephony_configuration_id={config.id}"
             )
@@ -1330,11 +1339,10 @@ class CloudonixProvider(TelephonyProvider):
         """
         from fastapi import Response
 
-        from api.errors.telephony_errors import TELEPHONY_ERROR_MESSAGES, TelephonyError
+        from api.errors.telephony_errors import caller_message
 
-        message = TELEPHONY_ERROR_MESSAGES.get(
-            error_type, TELEPHONY_ERROR_MESSAGES[TelephonyError.GENERAL_AUTH_FAILED]
-        )
+        # Spoken to the caller: never the configuration details.
+        message = caller_message(error_type)
 
         twiml_content = f"""<?xml version="1.0" encoding="UTF-8"?>
 <Response>

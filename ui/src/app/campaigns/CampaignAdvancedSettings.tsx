@@ -308,6 +308,7 @@ export default function CampaignAdvancedSettings({
                                     />
                                     {timeSlots.length > 1 && (
                                         <Button
+                                            aria-label={`Remove time slot ${index + 1}`}
                                             type="button"
                                             variant="ghost"
                                             size="icon"

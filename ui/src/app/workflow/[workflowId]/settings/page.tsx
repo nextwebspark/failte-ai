@@ -25,6 +25,7 @@ import { useAppConfig } from "@/context/AppConfigContext";
 import { useOrgConfig } from "@/context/OrgConfigContext";
 import { useUnsavedChanges, useUnsavedChangesContext } from "@/context/UnsavedChangesContext";
 import { useAudioPlayback } from "@/hooks/useAudioPlayback";
+import { useFeatureEnabled } from "@/hooks/useFeatureFlags";
 import { copyTextToClipboard } from "@/lib/clipboard";
 import logger from "@/lib/logger";
 import { cn } from "@/lib/utils";
@@ -239,6 +240,7 @@ function GeneralSection({
     workflowId: number;
 }) {
     const { externalPbxIntegrationsEnabled } = useOrgConfig();
+    const skillsAreaOn = useFeatureEnabled("skills");
     const [name, setName] = useState(workflowName);
     const [ambientNoiseConfig, setAmbientNoiseConfig] = useState<AmbientNoiseConfiguration>(
         workflowConfigurations.ambient_noise_configuration,
@@ -737,14 +739,17 @@ function GeneralSection({
                         onCheckedChange={setContextCompactionEnabled}
                     />
                 </SettingRow>
-                <SettingRow
-                    compact
-                    label="Skills"
-                    htmlFor="skills-enabled"
-                    hint="Adds a short skills list and two tools to each step. Turn off for latency-critical agents."
-                >
-                    <Switch id="skills-enabled" checked={skillsEnabled} onCheckedChange={setSkillsEnabled} />
-                </SettingRow>
+                {/* Hidden with the Skills area; the saved value is kept as it is. */}
+                {skillsAreaOn && (
+                    <SettingRow
+                        compact
+                        label="Skills"
+                        htmlFor="skills-enabled"
+                        hint="Adds a short skills list and two tools to each step. Turn off for latency-critical agents."
+                    >
+                        <Switch id="skills-enabled" checked={skillsEnabled} onCheckedChange={setSkillsEnabled} />
+                    </SettingRow>
+                )}
                 <SettingRow
                     compact
                     label="Speech caching"
@@ -914,6 +919,7 @@ function TemplateVariablesSection({
     templateContextVariables: Record<string, string>;
     onSave: (variables: Record<string, string>) => Promise<void>;
 }) {
+    const campaignsEnabled = useFeatureEnabled("campaigns");
     const [contextVars, setContextVars] = useState<Record<string, string>>(templateContextVariables);
     const [newKey, setNewKey] = useState("");
     const [newValue, setNewValue] = useState("");
@@ -964,7 +970,7 @@ function TemplateVariablesSection({
             description={
                 <>
                     Values prompts can use as <code className="font-mono text-[11.5px] text-ink-2">{"{{name}}"}</code>.
-                    Campaigns and the API can override them per call.
+                    {campaignsEnabled ? "Campaigns and the API" : "The API"} can override them per call.
                 </>
             }
         >
@@ -1354,7 +1360,7 @@ function AdvancedSettings({ context }: { context: AgentSectionContext }) {
         >
             <div className="page-body @container">
                 <header className="mb-5 flex flex-col gap-1">
-                    <h1 className="text-xl font-bold tracking-[-0.01em] text-foreground">Advanced settings</h1>
+                    <h2 className="text-xl font-bold tracking-[-0.01em] text-foreground">Advanced settings</h2>
                     <p className="text-[13.5px] text-ink-2">
                         Behaviour, variables, dictionary and diagnostics for this agent. Changes apply once you publish.
                     </p>

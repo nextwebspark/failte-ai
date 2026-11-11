@@ -162,3 +162,80 @@ def low_balance_message(
         text=text,
         html=_layout(heading, body, "Add credit", billing_url),
     )
+
+
+def call_notice_message(
+    *,
+    to: str,
+    subject: str,
+    heading: str,
+    summary: str,
+    details: list[tuple[str, str]],
+    note: str | None,
+    call_url: str,
+) -> EmailMessage:
+    """A short after-call email to the business: one line on what happened,
+    the details as label/value rows, and a link to the call."""
+    detail_lines = "".join(f"{label}: {value}\n" for label, value in details)
+    text = f"{summary}\n\n{detail_lines}"
+    if note:
+        text += f"\n{note}\n"
+    text += f"\nSee the call: {call_url}\n"
+    rows = "".join(
+        f'<tr><td style="padding:4px 12px 4px 0;color:#666;white-space:nowrap;'
+        f'vertical-align:top">{escape(label)}</td>'
+        f'<td style="padding:4px 0">{escape(value)}</td></tr>'
+        for label, value in details
+    )
+    body = f"<p>{escape(summary)}</p>"
+    if rows:
+        body += f'<table role="presentation" style="font-size:14px">{rows}</table>'
+    if note:
+        body += f'<p style="font-size:13px;color:#666">{escape(note)}</p>'
+    return EmailMessage(
+        to=to,
+        subject=subject,
+        text=text,
+        html=_layout(heading, body, "See the call", call_url),
+    )
+
+
+def failure_alert_message(
+    *,
+    to: str,
+    for_operator: bool,
+    organization_name: str | None,
+    source: str,
+    code: str,
+    provider: str | None,
+    detail: str,
+    app_url: str,
+) -> EmailMessage:
+    """A critical failure, for a workspace's admins and owners (something
+    they can fix) or for the platform's operators (something we must fix)."""
+    workspace = organization_name or "your workspace"
+    if for_operator:
+        subject = f"[{PRODUCT_NAME} alert] {code}"
+        heading = "A platform failure needs a look"
+        lines = [
+            f"Failure: {code} ({source}{', ' + provider if provider else ''})",
+            f"Workspace: {organization_name or 'none'}",
+            f"Detail: {detail}",
+            "Repeats of this alert are held back for a few hours.",
+        ]
+    else:
+        subject = f"Action needed for {workspace} on {PRODUCT_NAME}"
+        heading = "Something needs your attention"
+        lines = [
+            f"{workspace} had a problem that may stop calls from being answered.",
+            detail,
+            "If you're not sure how to fix it, reply to this email and we'll help.",
+        ]
+    text = "\n\n".join(lines) + f"\n\nOpen {PRODUCT_NAME}: {app_url}\n"
+    body = "".join(f"<p>{escape(line)}</p>" for line in lines)
+    return EmailMessage(
+        to=to,
+        subject=subject,
+        text=text,
+        html=_layout(heading, body, f"Open {PRODUCT_NAME}", app_url),
+    )

@@ -103,14 +103,93 @@ connection is labelled with the key's `client_email`.
 
 | MCP tool | REST (`POST /v1/google-calendar/...`) |
 |---|---|
-| `check_appointment_availability(relative_day?, part_of_day?)` | `/availability` |
-| `book_appointment(slot_id, caller_name, caller_phone, reason?)` | `/book` |
+| `check_appointment_availability(relative_day?, part_of_day?, party_size?)` | `/availability` |
+| `book_appointment(slot_id, caller_name, caller_phone, reason?, party_size?)` | `/book` |
 | `cancel_appointment(event_id)` (only events this connection booked) | `/cancel` |
+| `find_appointments(caller_phone?, caller_name?)` (needs `ai_changes_enabled`) | none (MCP only) |
+| `reschedule_appointment(event_id, slot_id)` (needs `ai_changes_enabled`) | none (MCP only) |
+
+**Finding a caller's bookings.** `find_appointments` returns at most three of
+the caller's upcoming bookings made by this connection (event id, start in
+the calendar's time zone, a phrase to speak), soonest first; the agent then
+cancels or moves one by its event id. A booking matches only when **both**
+the phone number it was made with and the name it was booked under match;
+the name is always required:
+
+- The number is the one the call comes from, which the Fallcha API sends as
+  the `X-Fallcha-Contact-Phone` header on the call's MCP requests (only to
+  this service, taken from the telephony call record, never from the agent
+  or from context variables), unless the caller says another number. When
+  the call's own number is hidden or unknown, the caller must say one.
+  Caller ID can be spoofed, so it only saves asking for the number: on its
+  own it reveals and changes nothing.
+- Every word of the name must be a booked word, or booked words run
+  together (`Marykate` for `Mary-Kate`, `MacCarthy` for `Mac Carthy`); case,
+  accents, apostrophes, bracketed notes (`(new patient)`), leading titles
+  (`Dr`, `Mrs`) and trailing suffixes (`Jr`, `PhD`) are ignored. When the booked name has two or more
+  names, one of the words given must identify: not the first name, a
+  particle (`de`, `van`, `mac`, ...) or a suffix. `Smith` matches
+  `John Smith Jr` and `Souza` matches `Maria de Souza`; `Maria`, `de` or
+  `Jr` alone do not. Callers who say their family name first (`Wang Wei`)
+  must give the full name; `Wei` alone still matches `Wang Wei`. A booking
+  whose only name besides a suffix is a first name (`John Jr`) matches on
+  that name, and a short surname that is also a particle (`Le`, `Do`, `La`,
+  `Da`) needs the full name. A miss gives the same answer whether or not the
+  number has bookings.
+
+Numbers are first compared by their last 8 digits (`087 123 4567`,
+`+353 87 123 4567` and `00353871234567` are the same); bookings carry that
+key as a private extended property, so Google filters on it. Different
+numbers can share a key (Dublin `01 412 3456`, Cork `021 412 3456`), so when
+both numbers parse they must also be equal in E.164. Numbers said without a
+country code use the config's `phone_region` (ISO 3166, e.g. `IE`), else the
+country of `timezone`: looked up in `zone.tab` first; a name it does not
+list (`Asia/Calcutta`, `US/Eastern`) is followed through `tzdata.zi`'s
+links, and its target counts only if `zone1970.tab` gives it exactly one
+country. Many legacy names link across countries (`Iceland` to
+Africa/Abidjan, `Atlantic/Jan_Mayen` to Europe/Berlin), and rule zones
+(`CET`, `EET`, `EST5EDT`, ...) name no country, so those need
+`phone_region`. The `tzdata` package's database is read, else the
+system's. With no region (e.g. `UTC`, which logs a warning once), or a
+number that does not parse, the key alone decides. Bookings
+made before the key existed are matched on their description's `Phone:`
+line (the connection's soonest 500 upcoming bookings are read for them;
+drop that scan once they are all past). A caller's name, phone and reason
+are written to the description on one line each, so their words cannot add
+a line.
+
+**Moving a booking.** `reschedule_appointment` books the new slot for the
+same caller (name, phone, reason and any lines staff added to the
+description, read from the old booking) first, and cancels the old booking
+only once the new one is booked, so a failure never leaves the caller with
+no appointment. Its result is `{outcome, event_id, starts_at, slots, say,
+handoff}`;
+`outcome` is `moved` (`event_id` and `starts_at` are the new booking's id
+and ISO start in the calendar's zone), `unchanged` (the same time),
+`slot_taken` (old booking kept, alternatives in `slots`), `not_found` (not
+an upcoming booking of this connection), `details_edited` (staff removed
+its caller details; the team moves it) or `old_not_cancelled` (new time
+booked, `event_id` and `starts_at` set, old one still there: the agent says
+the team will remove it) or `handed_off` (nothing changed, `handoff` says
+why: `changes_off`, or the booking rules refused the new time with
+`booking_off`, `party_too_large`, `party_too_small` or `fully_booked`). The
+moved booking keeps its party size, so capacity rules apply to it. A
+Google error while booking changes nothing that a retry of the same call
+would not finish: the booking id is deterministic, so the retry finds its
+own new booking, and a retry after the move finished reports `moved` again.
+On a diary calendar (free/busy decides), the new slot must be free of the
+old booking too, so a slot overlapping it is `slot_taken` (availability
+never offers one anyway: freeBusy merges events, so the old one cannot be
+told apart from others there). On a counting calendar (see [Booking
+rules](#booking-rules)) the old booking is left out of the count for the new
+time and of the race check, so a table can move half an hour later.
 
 REST bodies and responses match the shim's, so an existing `http_api` tool only
 needs a new URL and a connection key in place of the old `X-API-Key`. Errors
 are 400 (bad argument), 409 (not configured) or 502 (Google failure). Each
-Google request times out after 4 s, and each tool call after 5 s.
+Google request times out after 4 s. Each tool call has a 5 s budget, except
+`reschedule_appointment`, whose three steps (read the old booking, book,
+cancel) have 5 s each.
 
 Bookings use a deterministic event id (an HMAC of connection, slot and caller,
 keyed by a subkey derived from `TOOLS_INTERNAL_SECRET`), so retrying
@@ -118,6 +197,71 @@ a booking whose reply was lost never creates a duplicate. Only slots between
 the lead time and the horizon can be booked. Caller-facing errors never name
 the service account; the connection test does, so admins know whom to share
 the calendar with.
+
+### Booking rules
+
+The defaults keep a one-person diary: one booking at a time, decided by
+Google's free/busy, so any Busy event blocks its time. Settings that let
+several bookings share a time (restaurant tables, chairs, rooms) switch to
+counting the calendar's events instead.
+
+| Config | Default | |
+|---|---|---|
+| `ai_booking_enabled` | `true` | Off: no times are offered and nothing is booked; the tools answer with `handoff: "booking_off"` |
+| `service_periods` | none | When bookings may start, e.g. `[{"days": [3,4,5], "first_start": "17:00", "last_start": "21:00"}]`; several per day for lunch and dinner. When set, `booking_days`/`open_hour`/`close_hour` are ignored (one precedence rule; the API's Create agent wizard and the Bookings page both write `service_periods`) |
+| `booking_minutes` | `slot_minutes` | How long one booking holds a table or slot (a 90-minute dinner); `slot_minutes` stays the gap between start times |
+| `max_bookings_at_once` | 1 | Bookings held at the same moment: the tables released for phone bookings (5 of 20, the rest kept for walk-ins). Capped at 500 |
+| `max_guests_at_once` | none | Covers seated at the same moment |
+| `max_guests_per_start` | none | Covers arriving at one start time (kitchen pacing) |
+| `ask_party_size` | `false` | Require a party size; implied by any guest limit or `max_party_size` |
+| `min_party_size` / `max_party_size` | 1 / none | Outside these, the tools answer `handoff: "party_too_small"` / `"party_too_large"` |
+| `party_summary` | `Table for {n}` | Event title start when a party size is given: "Table for 4 — Mary Byrne" |
+
+**Counting** (any of `max_bookings_at_once` > 1 or a guest limit): the
+calendar's events around the time are read (`events.list`) and sorted:
+
+- this connection's bookings count with their stored party size
+  (`fallcha_party_size`);
+- another timed event whose title names a party size ("Table for 4",
+  "Party of 6", "Murphy 3 pax", "8 guests") counts as a booking of that many
+  people, so staff can add phone or walk-in bookings by hand;
+- any other Busy event (a staff meeting, "Private party") closes its time;
+- events shown as Free are ignored, except an all-day event whose title
+  says "closed", which closes the day (Google makes all-day events Free by
+  default).
+
+A booking fits when, at the busiest moment of its stay (plus
+`buffer_minutes` reset time), the bookings and covers stay within the limits.
+A table freed at 18:30 can be sold again at 18:30.
+
+**The last table.** Bookings for one connection are serialised within a
+process. Across replicas, each booking re-reads the calendar after its
+insert. If bookings created earlier (by Google's `created`, then id) already
+fill the time, it deletes itself and offers other times, so two calls can
+never both keep the last table. If the re-read fails, the booking is kept
+and a warning is logged.
+
+**Hand-offs.** `check_appointment_availability` and `book_appointment` return
+`handoff` (`booking_off`, `party_too_large`, `party_too_small`,
+`fully_booked`) with a `say` line instead of booking. The agent should then
+transfer the caller if it can, or take their details for the team.
+`needs_party_size: true` means ask how many people and check again.
+
+**Changing an earlier booking.** The owner's switch `ai_changes_enabled`
+(off by default) gates `find_appointments` and `reschedule_appointment` (see
+[Finding a caller's bookings](#google-calendar-google-calendar)). Off, both
+answer `handoff: "changes_off"` without reading or changing the calendar,
+and `cancel_appointment` still cancels a booking made on this call but
+answers `changes_off` for an older one. The tools service keeps no call
+state, so "this call" means Google created the event at most 30 minutes ago
+(the longest call is 20); a booking with no readable `created` counts as
+older. Event ids are unguessable HMACs, so with the switch off an agent only
+ever holds the id of a booking it made on this call.
+
+**Listing.** `GET /internal/connections/{id}/bookings?start=&end=` (ISO
+times with an offset, at most 62 days) returns the bookings this connection
+made, including cancelled ones, read from the calendar. Providers that can
+do this have the `bookings` capability in the catalog.
 
 **Cutover from the shim:** `cancel_appointment` only cancels events this
 connection booked (they carry a private marker). Events booked by the old

@@ -93,15 +93,15 @@ it.each(['archived', 'published'])('opens a linked %s version read-only before h
     expect(mocks.save).not.toHaveBeenCalled();
     expect(mocks.versions).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: 'History' }));
-    await screen.findByRole('button', { name: /^v20/ });
-    expect(screen.getByTestId('version-label').textContent).toContain('v3');
+    await screen.findByRole('button', { name: /^Version 20/ });
+    expect(screen.getByTestId('version-label').textContent).toContain('Version 3');
     expect(screen.getByTestId('canvas').getAttribute('data-editable')).toBe('false');
 });
 
 it('updates shareable URLs from history and clears only the version when returning to the draft', async () => {
     render(<RenderWorkflow workflowId={12} initialWorkflowName="Agent" user={{ id: '1' }} initialSelectedVersion={version(3, 'archived')} />);
     fireEvent.click(screen.getByRole('button', { name: 'History' }));
-    fireEvent.click(await screen.findByRole('button', { name: /^v20/ }));
+    fireEvent.click(await screen.findByRole('button', { name: /^Version 20/ }));
     expect(mocks.push).toHaveBeenCalledWith('/workflow/12?version=20&source=campaign', { scroll: false });
     fireEvent.click(screen.getByRole('button', { name: 'Back to draft' }));
     await waitFor(() => expect(mocks.push).toHaveBeenCalledWith('/workflow/12?source=campaign', { scroll: false }));
@@ -120,7 +120,7 @@ it.each(['current', 'historical'])('selects the editable published version from 
     />);
 
     fireEvent.click(screen.getByRole('button', { name: 'History' }));
-    fireEvent.click(await screen.findByRole('button', { name: /^v20/ }));
+    fireEvent.click(await screen.findByRole('button', { name: /^Version 20/ }));
 
     expect(mocks.push).toHaveBeenCalledWith('/workflow/12?source=campaign', { scroll: false });
 });

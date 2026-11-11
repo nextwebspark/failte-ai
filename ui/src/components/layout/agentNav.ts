@@ -1,9 +1,11 @@
 import {
+  Bot,
+  LayoutDashboard,
   type LucideIcon,
   MessageSquare,
+  Phone,
   Settings2,
   SlidersHorizontal,
-  TrendingUp,
   Zap,
 } from "lucide-react";
 
@@ -14,8 +16,8 @@ import {
  * The canvas swaps the whole nav panel when you open an agent: a "back to the
  * workspace" row and the agent's identity sit on top, then grouped sections
  * that only ever change the CENTRE panel — the header, the nav and the test
- * rail stay put. These are the same groups the canvas uses (Configure /
- * Connect / Analyse), narrowed to the sections this app actually has.
+ * rail stay put. An owner's screens come first (Dashboard, What your agent
+ * knows, Calls); the builder screens sit under "Advanced setup".
  */
 
 /** `/workflow/123`, `/workflow/123/settings`, … — every agent-level screen. */
@@ -29,6 +31,18 @@ export function agentIdFromPath(pathname: string): number | null {
 
 export function isAgentRoute(pathname: string): boolean {
   return AGENT_ROUTE.test(pathname);
+}
+
+/**
+ * Agent screens the main menu links to directly ("What your agent knows",
+ * "Phone number"). They keep the main menu, as in the design: the builder
+ * menu belongs to the Advanced setup screens only.
+ */
+const WORKSPACE_AGENT_SCREEN = /^\/workflow\/\d+\/(facts|deployment)\/?$/;
+
+export function isWorkspaceAgentScreen(pathname: string, screen?: "facts" | "deployment"): boolean {
+  const match = WORKSPACE_AGENT_SCREEN.exec(pathname);
+  return Boolean(match) && (!screen || match![1] === screen);
 }
 
 export type AgentNavItem = {
@@ -49,19 +63,43 @@ export type AgentNavSection = {
 
 export const AGENT_NAV_SECTIONS: AgentNavSection[] = [
   {
-    label: "CONFIGURE",
+    items: [
+      {
+        title: "Dashboard",
+        segment: "/home",
+        icon: LayoutDashboard,
+        subtitle: "How this agent is doing",
+      },
+      {
+        title: "What your agent knows",
+        segment: "/facts",
+        icon: Bot,
+        subtitle: "Opening hours, address and answers your agent gives",
+      },
+      {
+        title: "Calls",
+        segment: "/runs",
+        icon: Phone,
+        subtitle: "Every call this agent has taken",
+        // A single call's detail page lives at /run/<id> — same section.
+        altSegments: ["/run"],
+      },
+    ],
+  },
+  {
+    label: "Advanced setup",
     items: [
       {
         title: "Conversation",
         segment: "",
         icon: MessageSquare,
-        subtitle: "The call flow this agent follows",
+        subtitle: "The steps a call follows",
       },
       {
         title: "Model and voice",
         segment: "/model",
         icon: SlidersHorizontal,
-        subtitle: "Per-agent LLM, speech and transcription overrides",
+        subtitle: "The voice and language this agent uses",
       },
       {
         title: "Advanced settings",
@@ -69,29 +107,11 @@ export const AGENT_NAV_SECTIONS: AgentNavSection[] = [
         icon: Settings2,
         subtitle: "Behaviour, variables, dictionary and diagnostics",
       },
-    ],
-  },
-  {
-    label: "CONNECT",
-    items: [
       {
         title: "Deployment",
         segment: "/deployment",
         icon: Zap,
         subtitle: "Put this agent on a phone number or your website",
-      },
-    ],
-  },
-  {
-    label: "ANALYSE",
-    items: [
-      {
-        title: "Calls",
-        segment: "/runs",
-        icon: TrendingUp,
-        subtitle: "Every call this agent has taken",
-        // A single run's detail page lives at /run/<id> — same section.
-        altSegments: ["/run"],
       },
     ],
   },

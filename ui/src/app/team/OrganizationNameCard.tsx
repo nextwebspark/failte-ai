@@ -10,11 +10,17 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useOrgConfig } from "@/context/OrgConfigContext";
 import { detailFromError } from "@/lib/apiError";
+import { workspaceDisplayName } from "@/lib/workspaceName";
 
 export function OrganizationNameCard() {
   const { orgContext, refreshConfig } = useOrgConfig();
-  const current = orgContext?.organization_name ?? "";
-  const [name, setName] = useState(current);
+  // Prefilled with the name shown in the header, "My workspace" included.
+  const current = orgContext ? workspaceDisplayName(orgContext.organization_name) : "";
+  // The workspace's details arrive after the first render; until the owner
+  // types, the box follows the saved name so it never shows up empty.
+  const [draft, setDraft] = useState<string | null>(null);
+  const name = draft ?? current;
+  const setName = (value: string) => setDraft(value);
   const [saving, setSaving] = useState(false);
 
   const save = async (e: React.FormEvent) => {
@@ -30,6 +36,7 @@ export function OrganizationNameCard() {
     }
     toast.success("Workspace renamed");
     await refreshConfig();
+    setDraft(null);
   };
 
   return (
@@ -47,7 +54,7 @@ export function OrganizationNameCard() {
               id="settings-workspace-name"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="Acme Voice"
+              placeholder="e.g. Murphy's Bistro"
               maxLength={100}
               required
             />

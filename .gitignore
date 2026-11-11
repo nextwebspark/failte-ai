@@ -7,6 +7,8 @@ __pycache__
 !.env.example
 !.env.test.example
 !*.env.example
+# Undotted copies such as api/env hold real secrets too.
+/api/env
 
 # Conductor personal/per-machine overrides (settings.toml IS committed)
 .conductor/settings.local.toml

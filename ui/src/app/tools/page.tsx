@@ -1,6 +1,7 @@
 "use client";
 
-import { Plus, RotateCcw, Search, Trash2 } from "lucide-react";
+import { Plus, RotateCcw, Search, Trash2, Wrench } from "lucide-react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 
@@ -16,13 +17,7 @@ import { CredentialSelector } from "@/components/http";
 import { PageActions } from "@/components/layout/PageActionsSlot";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-    Card,
-    CardContent,
-    CardDescription,
-    CardHeader,
-    CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import {
     Dialog,
     DialogContent,
@@ -31,8 +26,11 @@ import {
     DialogHeader,
     DialogTitle,
 } from "@/components/ui/dialog";
+import { EmptyState } from "@/components/ui/empty-state";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { PageHeader } from "@/components/ui/page-header";
+import { PageSkeleton } from "@/components/ui/page-skeleton";
 import {
     Select,
     SelectContent,
@@ -43,6 +41,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { detailFromError } from "@/lib/apiError";
 import { useAuth } from "@/lib/auth";
+import { ROW_LINK } from "@/lib/rowLink";
 
 import {
     createMcpDefinition,
@@ -108,9 +107,11 @@ export default function ToolsPage() {
 
             if (response.data) {
                 setTools(response.data);
+            } else {
+                setError("Couldn't load your tools. Please try again.");
             }
         } catch (err) {
-            setError("Failed to fetch tools");
+            setError("Couldn't load your tools. Please try again.");
             console.error("Error fetching tools:", err);
         } finally {
             setIsLoading(false);
@@ -262,7 +263,7 @@ export default function ToolsPage() {
             setError(null);
             const accessToken = await getAccessToken();
 
-            await deleteToolApiV1ToolsToolUuidDelete({
+            const result = await deleteToolApiV1ToolsToolUuidDelete({
                 path: {
                     tool_uuid: toolUuid,
                 },
@@ -270,10 +271,14 @@ export default function ToolsPage() {
                     Authorization: `Bearer ${accessToken}`,
                 },
             });
+            if (result.error) {
+                setError(detailFromError(result.error, "Couldn't archive the tool. Please try again."));
+                return;
+            }
 
             fetchTools();
         } catch (err) {
-            setError("Failed to archive tool");
+            setError("Couldn't archive the tool. Please try again.");
             console.error("Error archiving tool:", err);
         }
     };
@@ -285,7 +290,7 @@ export default function ToolsPage() {
             setError(null);
             const accessToken = await getAccessToken();
 
-            await unarchiveToolApiV1ToolsToolUuidUnarchivePost({
+            const result = await unarchiveToolApiV1ToolsToolUuidUnarchivePost({
                 path: {
                     tool_uuid: toolUuid,
                 },
@@ -293,10 +298,14 @@ export default function ToolsPage() {
                     Authorization: `Bearer ${accessToken}`,
                 },
             });
+            if (result.error) {
+                setError(detailFromError(result.error, "Couldn't restore the tool. Please try again."));
+                return;
+            }
 
             fetchTools();
         } catch (err) {
-            setError("Failed to unarchive tool");
+            setError("Couldn't restore the tool. Please try again.");
             console.error("Error unarchiving tool:", err);
         }
     };
@@ -343,21 +352,17 @@ export default function ToolsPage() {
     };
 
     if (loading || !user) {
-        return (
-            <div className="min-h-full flex items-center justify-center">
-                <div className="space-y-4">
-                    <Skeleton className="h-12 w-64" />
-                    <Skeleton className="h-64 w-96" />
-                </div>
-            </div>
-        );
+        return <PageSkeleton variant="list" />;
     }
 
     return (
         <div className="page-body">
             <div className="max-w-6xl">
-                {/* Screen name, strapline and primary action are rendered by the
-                    app header (AppTopBar) — see PageActions. */}
+                <PageHeader
+                    title="Tools"
+                    description="Things your agents can do during a call, like checking a booking system or passing the caller to a person."
+                />
+                {/* The primary action sits in the app header — see PageActions. */}
                 <PageActions>
                     <Button size="toolbar" onClick={() => setIsCreateDialogOpen(true)}>
                         <Plus className="w-4 h-4" />
@@ -366,24 +371,25 @@ export default function ToolsPage() {
                 </PageActions>
 
                     {error && (
-                        <div className="mb-4 p-4 bg-destructive/10 border border-destructive/20 rounded-lg text-destructive">
-                            {error}
+                        <div
+                            role="alert"
+                            className="mb-4 flex flex-wrap items-center justify-between gap-3 p-4 bg-destructive/10 border border-destructive/20 rounded-lg text-destructive"
+                        >
+                            <span>{error}</span>
+                            <Button size="sm" variant="outline" onClick={() => void fetchTools()}>
+                                Try again
+                            </Button>
                         </div>
                     )}
 
                     <Card className="mb-6">
-                        <CardHeader>
-                            <CardTitle>Your Tools</CardTitle>
-                            <CardDescription>
-                                Create and manage tools for your organization
-                            </CardDescription>
-                        </CardHeader>
-                        <CardContent>
+                        <CardContent className="p-4 sm:p-6">
                             {/* Search */}
                             <div className="relative mb-4">
                                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                                 <Input
-                                    placeholder="Search tools..."
+                                    aria-label="Search tools"
+                                    placeholder="Search tools…"
                                     value={searchQuery}
                                     onChange={(e) => setSearchQuery(e.target.value)}
                                     className="pl-10"
@@ -406,19 +412,31 @@ export default function ToolsPage() {
                                     ))}
                                 </div>
                             ) : activeTools.length === 0 && archivedTools.length === 0 ? (
-                                <div className="text-center py-12">
-                                    {renderToolIcon("http_api", "w-12 h-12 text-muted-foreground mx-auto mb-4")}
-                                    <p className="text-muted-foreground mb-4">
-                                        {searchQuery
-                                            ? "No tools match your search"
-                                            : "No tools found"}
-                                    </p>
-                                    {!searchQuery && (
-                                        <Button onClick={() => setIsCreateDialogOpen(true)}>
-                                            Create Your First Tool
-                                        </Button>
-                                    )}
-                                </div>
+                                // A failed load says so above; don't also claim there are none.
+                                error && tools.length === 0 ? null : searchQuery ? (
+                                    <EmptyState
+                                        icon={Search}
+                                        title="No tools match your search"
+                                        description="Try a different word, or clear the search to see every tool."
+                                        action={
+                                            <Button variant="outline" onClick={() => setSearchQuery("")}>
+                                                Clear search
+                                            </Button>
+                                        }
+                                    />
+                                ) : (
+                                    <EmptyState
+                                        icon={Wrench}
+                                        title="No tools yet"
+                                        description="Add a tool so your agent can do more on a call, like transferring the caller or checking your booking system."
+                                        action={
+                                            <Button onClick={() => setIsCreateDialogOpen(true)}>
+                                                <Plus aria-hidden />
+                                                Create your first tool
+                                            </Button>
+                                        }
+                                    />
+                                )
                             ) : (
                                 <>
                                     {/* Active Tools */}
@@ -427,26 +445,18 @@ export default function ToolsPage() {
                                             {activeTools.map((tool) => (
                                                 <div
                                                     key={tool.tool_uuid}
-                                                    className="flex items-center justify-between p-4 border rounded-lg hover:bg-muted/50 cursor-pointer transition-colors"
-                                                    onClick={() =>
-                                                        router.push(`/tools/${tool.tool_uuid}`)
-                                                    }
+                                                    // The name is a real link stretched over the card.
+                                                    className="relative flex items-center justify-between gap-3 p-4 border rounded-lg hover:bg-muted/50 focus-within:bg-muted/50 transition-colors"
                                                 >
-                                                    <div className="flex items-center gap-4">
-                                                        <div
-                                                            className="w-10 h-10 shrink-0 rounded-lg flex items-center justify-center"
-                                                            style={{
-                                                                backgroundColor:
-                                                                    tool.icon_color || getCategoryConfig(tool.category as ToolCategory)?.iconColor || "#3B82F6",
-                                                            }}
-                                                        >
-                                                            {renderToolIcon(tool.category)}
+                                                    <div className="flex min-w-0 items-center gap-4">
+                                                        <div className="grid size-10 shrink-0 place-items-center rounded-lg bg-brand-dim text-brand" aria-hidden>
+                                                            {renderToolIcon(tool.category, "size-5 text-brand")}
                                                         </div>
-                                                        <div>
-                                                            <div className="flex items-center gap-2">
-                                                                <span className="font-medium">
+                                                        <div className="min-w-0">
+                                                            <div className="flex flex-wrap items-center gap-2">
+                                                                <Link href={`/tools/${tool.tool_uuid}`} className={`font-medium ${ROW_LINK}`}>
                                                                     {tool.name}
-                                                                </span>
+                                                                </Link>
                                                                 {getCategoryBadge(tool.category)}
                                                             </div>
                                                             {tool.description && (
@@ -462,54 +472,50 @@ export default function ToolsPage() {
                                                         onClick={(e) =>
                                                             handleDeleteTool(tool.tool_uuid, e)
                                                         }
-                                                        className="text-destructive hover:text-destructive/90"
+                                                        className="relative z-10 text-destructive hover:text-destructive/90"
+                                                        aria-label={`Archive ${tool.name}`}
+                                                        title="Archive tool"
                                                     >
-                                                        <Trash2 className="w-4 h-4" />
+                                                        <Trash2 className="w-4 h-4" aria-hidden />
                                                     </Button>
                                                 </div>
                                             ))}
                                         </div>
                                     ) : !searchQuery ? (
-                                        <div className="text-center py-8">
-                                            <p className="text-muted-foreground mb-4">
-                                                No active tools
-                                            </p>
-                                            <Button onClick={() => setIsCreateDialogOpen(true)}>
-                                                Create Your First Tool
-                                            </Button>
-                                        </div>
+                                        <EmptyState
+                                            icon={Wrench}
+                                            title="No tools in use"
+                                            description="Every tool here is archived. Restore one below, or create a new one."
+                                            action={
+                                                <Button onClick={() => setIsCreateDialogOpen(true)}>
+                                                    <Plus aria-hidden />
+                                                    Create a tool
+                                                </Button>
+                                            }
+                                        />
                                     ) : null}
 
                                     {/* Archived Tools */}
                                     {archivedTools.length > 0 && (
                                         <div className="mt-8">
-                                            <h3 className="text-lg font-semibold text-muted-foreground mb-4">
-                                                Archived Tools
-                                            </h3>
+                                            <h2 className="mb-3 text-[15px] font-semibold text-ink-2">
+                                                Archived tools
+                                            </h2>
                                             <div className="space-y-4">
                                                 {archivedTools.map((tool) => (
                                                     <div
                                                         key={tool.tool_uuid}
-                                                        className="flex items-center justify-between p-4 border rounded-lg hover:bg-muted/50 cursor-pointer transition-colors opacity-60"
-                                                        onClick={() =>
-                                                            router.push(`/tools/${tool.tool_uuid}`)
-                                                        }
+                                                        className="relative flex items-center justify-between gap-3 p-4 border rounded-lg hover:bg-muted/50 focus-within:bg-muted/50 transition-colors opacity-60"
                                                     >
-                                                        <div className="flex items-center gap-4">
-                                                            <div
-                                                                className="w-10 h-10 shrink-0 rounded-lg flex items-center justify-center"
-                                                                style={{
-                                                                    backgroundColor:
-                                                                        tool.icon_color || getCategoryConfig(tool.category as ToolCategory)?.iconColor || "#3B82F6",
-                                                                }}
-                                                            >
-                                                                {renderToolIcon(tool.category)}
-                                                            </div>
-                                                            <div>
-                                                                <div className="flex items-center gap-2">
-                                                                    <span className="font-medium">
+                                                        <div className="flex min-w-0 items-center gap-4">
+                                                            <div className="grid size-10 shrink-0 place-items-center rounded-lg bg-brand-dim text-brand" aria-hidden>
+                                                            {renderToolIcon(tool.category, "size-5 text-brand")}
+                                                        </div>
+                                                            <div className="min-w-0">
+                                                                <div className="flex flex-wrap items-center gap-2">
+                                                                    <Link href={`/tools/${tool.tool_uuid}`} className={`font-medium ${ROW_LINK}`}>
                                                                         {tool.name}
-                                                                    </span>
+                                                                    </Link>
                                                                     {getCategoryBadge(tool.category)}
                                                                     {getStatusBadge(tool.status)}
                                                                 </div>
@@ -526,10 +532,11 @@ export default function ToolsPage() {
                                                             onClick={(e) =>
                                                                 handleUnarchiveTool(tool.tool_uuid, e)
                                                             }
-                                                            className="text-primary hover:text-primary/90"
+                                                            className="relative z-10 text-primary hover:text-primary/90"
                                                             title="Restore tool"
+                                                            aria-label={`Restore ${tool.name}`}
                                                         >
-                                                            <RotateCcw className="w-4 h-4" />
+                                                            <RotateCcw className="w-4 h-4" aria-hidden />
                                                         </Button>
                                                     </div>
                                                 ))}

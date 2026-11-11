@@ -6,3 +6,5 @@ class FunctionNames:
     PROCESS_KNOWLEDGE_BASE_DOCUMENT = "process_knowledge_base_document"
     DELIVER_WEBHOOK = "deliver_webhook"
     COMPLETE_INACTIVE_TEXT_CHAT_SESSION = "complete_inactive_text_chat_session"
+    SEND_FAILURE_ALERT = "send_failure_alert"
+    REVIEW_FINISHED_CALL = "review_finished_call"

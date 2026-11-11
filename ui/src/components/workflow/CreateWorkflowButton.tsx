@@ -1,58 +1,50 @@
 'use client';
 
 import { PlusIcon } from 'lucide-react';
-import { usePathname, useRouter, useSearchParams } from 'next/navigation';
-import { type ComponentProps, useEffect, useState } from 'react';
+import Link from 'next/link';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { type ComponentProps, useEffect } from 'react';
 
-import { Button } from "@/components/ui/button";
-import { CreateAgentDialog, type CreateMode } from '@/components/workflow/CreateAgentDialog';
+import { Button } from '@/components/ui/button';
+import type { CreateMode } from '@/components/workflow/CreateAgentWizard';
+import { useOrgConfig } from '@/context/OrgConfigContext';
 
 const CREATE_PARAM = 'create';
 const MODES: CreateMode[] = ['template', 'describe', 'blank'];
+export const CREATE_AGENT_HREF = '/workflow/create';
 
 interface CreateWorkflowButtonProps {
     /**
-     * Open the dialog when the URL carries `?create=<mode>` (where the old
-     * /workflow/create page now redirects). Only one button on a page should
-     * set this.
+     * When the URL carries `?create=<mode>` (old redirects / bookmarks), send
+     * the user to the full-page wizard. Only one button on a page should set this.
      */
     openFromUrl?: boolean;
     /** `toolbar` in the app header's actions; the default size elsewhere. */
-    size?: ComponentProps<typeof Button>["size"];
+    size?: ComponentProps<typeof Button>['size'];
 }
 
+/** "Create agent", for roles that can change agents; nothing for the rest. */
 export function CreateWorkflowButton({ openFromUrl = false, size }: CreateWorkflowButtonProps) {
     const router = useRouter();
-    const pathname = usePathname();
     const searchParams = useSearchParams();
-    const [open, setOpen] = useState(false);
-    const [initialMode, setInitialMode] = useState<CreateMode>('template');
+    const { can } = useOrgConfig();
+    const canCreate = can('agents:write');
 
-    const requested = openFromUrl ? searchParams.get(CREATE_PARAM) : null;
+    const requested = openFromUrl && canCreate ? searchParams.get(CREATE_PARAM) : null;
     useEffect(() => {
         if (requested === null) return;
-        setInitialMode(MODES.includes(requested as CreateMode) ? (requested as CreateMode) : 'template');
-        setOpen(true);
-        // Drop the param so a refresh or Back doesn't reopen the dialog.
-        const params = new URLSearchParams(searchParams.toString());
-        params.delete(CREATE_PARAM);
-        const query = params.toString();
-        router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
-    }, [requested, pathname, router, searchParams]);
+        const mode = MODES.includes(requested as CreateMode) ? (requested as CreateMode) : 'template';
+        router.replace(`${CREATE_AGENT_HREF}?mode=${mode}`);
+    }, [requested, router]);
+
+    if (!canCreate) return null;
 
     return (
-        <>
-            <Button
-                size={size}
-                onClick={() => {
-                    setInitialMode('template');
-                    setOpen(true);
-                }}
-            >
-                <PlusIcon className="w-4 h-4" />
+        <Button asChild size={size}>
+            <Link href={CREATE_AGENT_HREF}>
+                <PlusIcon className="w-4 h-4" aria-hidden />
                 Create agent
-            </Button>
-            <CreateAgentDialog open={open} onOpenChange={setOpen} initialMode={initialMode} />
-        </>
+            </Link>
+        </Button>
     );
 }

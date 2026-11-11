@@ -5,7 +5,7 @@ import uuid
 from datetime import datetime, timedelta
 from typing import Annotated, List, Literal, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from fastapi.responses import StreamingResponse
 from httpx import HTTPStatusError, RequestError
 from loguru import logger
@@ -21,11 +21,15 @@ from api.enums import (
     CallType,
     PostHogEvent,
     StorageBackend,
+    ToolCategory,
     WorkflowRunMode,
     WorkflowStatus,
 )
+from api.errors.failure import ErrorSource, classify_exception, log_failure
 from api.schemas.ai_model_configuration import OrganizationAIModelConfigurationV2
+from api.schemas.appointment_hours import CalendarHoursStatus
 from api.schemas.privacy import DeleteWorkflowRunDataResponse
+from api.schemas.tool import TransferCallConfig, TransferCallToolDefinition
 from api.schemas.workflow import WorkflowRunResponseSchema
 from api.schemas.workflow_configurations import WorkflowConfigurationDefaults
 from api.schemas.workflow_template import (
@@ -33,8 +37,14 @@ from api.schemas.workflow_template import (
     WorkflowTemplateResponse,
 )
 from api.sdk_expose import sdk_expose
-from api.services.auth.depends import get_user, requires
+from api.services.auth.depends import (
+    OrgMembership,
+    get_org_membership,
+    get_user,
+    requires,
+)
 from api.services.auth.permissions import Permission
+from api.services.call_review.categories import TEMPLATE_CATEGORY_FACT
 from api.services.configuration.ai_model_configuration import (
     WORKFLOW_MODEL_CONFIGURATION_V2_OVERRIDE_KEY,
     CustomerKeysNotAllowedError,
@@ -78,12 +88,22 @@ from api.services.privacy.call_erasure import (
 from api.services.rate_limit import RateLimiter, get_rate_limiter
 from api.services.reports import generate_workflow_report_csv
 from api.services.storage import storage_fs
+from api.services.tool_integrations import Actor
 from api.services.workflow.agent_builder import (
     AgentBuilderError,
     AgentBuilderRequest,
     AgentSpecGenerator,
     build_agent_workflow,
     default_agent_spec_generator,
+)
+from api.services.workflow.appointment_hours import (
+    appointment_hours_answers,
+    update_calendar_booking_hours,
+)
+from api.services.workflow.business_facts import (
+    BusinessFactsError,
+    checked_updates,
+    fact_fields,
 )
 from api.services.workflow.configuration_policy import (
     ExternalPBXConfigurationDisabledError,
@@ -93,16 +113,24 @@ from api.services.workflow.configuration_policy import (
 from api.services.workflow.dto import ReactFlowDTO, sanitize_workflow_definition
 from api.services.workflow.duplicate import duplicate_workflow
 from api.services.workflow.errors import ItemKind, WorkflowError
+from api.services.workflow.greeting_preview import (
+    greeting_preview_text,
+    is_preview_voice,
+)
 from api.services.workflow.run_creation import prepare_workflow_run_inputs
 from api.services.workflow.run_usage_response import (
     format_public_cost_info,
     format_public_usage_info,
 )
 from api.services.workflow.template_setup import (
+    BUILTIN_TRANSFER_TOOL,
+    TRANSFER_DESTINATION,
     TemplateSetupError,
     attach_integration_tools,
-    fill_template_values,
+    attach_tool_placeholder,
+    fill_template,
     parse_setup_fields,
+    uses_tool_placeholder,
 )
 from api.services.workflow.tool_name_validation import (
     validate_workflow_tool_name_collisions,
@@ -329,6 +357,17 @@ class WorkflowResponse(BaseModel):
     version_number: int | None = None
     version_status: str | None = None
     workflow_uuid: str | None = None
+
+
+class TemplateWorkflowResponse(WorkflowResponse):
+    """An agent created from a template."""
+
+    calendar_hours: CalendarHoursStatus | None = Field(
+        default=None,
+        description="Whether the appointment hours were saved as the attached "
+        "Google Calendar connection's booking hours; null when there was "
+        "nothing to save.",
+    )
 
 
 class WorkflowListResponse(BaseModel):
@@ -1575,6 +1614,7 @@ async def get_workflow_templates() -> List[WorkflowTemplateResponse]:
             "icon": template.icon,
             "featured": bool(template.featured),
             "sample_audio_url": template.sample_audio_url,
+            "category": template.category,
             "integrations": template.integrations or [],
             "created_at": template.created_at,
         }
@@ -1587,18 +1627,23 @@ async def get_workflow_templates() -> List[WorkflowTemplateResponse]:
     dependencies=requires(Permission.AGENTS_WRITE),
 )
 async def duplicate_workflow_template(
-    request: DuplicateTemplateRequest, user: UserModel = Depends(get_user)
-) -> WorkflowResponse:
+    request: DuplicateTemplateRequest,
+    membership: OrgMembership = Depends(get_org_membership),
+) -> TemplateWorkflowResponse:
     """
     Duplicate a workflow template to create a new workflow for the user.
 
     Args:
         request: The duplicate template request
-        user: The authenticated user
+        membership: The user and their role in the selected organization,
+            which decides whether the appointment hours may also change the
+            attached calendar's booking hours
 
     Returns:
-        The newly created workflow
+        The newly created workflow, and what happened to those booking hours
     """
+    user = membership.user
+    organization_id = membership.organization_id
     template_client = WorkflowTemplateClient()
     template = await template_client.get_workflow_template(request.template_id)
 
@@ -1609,11 +1654,23 @@ async def duplicate_workflow_template(
         )
 
     try:
-        filled = fill_template_values(
+        fields = parse_setup_fields(template.setup_fields)
+        # Business facts stay on the agent (editable later); the rest is
+        # written into the prompts, the appointment hours as a line.
+        filled, facts = fill_template(
             template.template_json,
-            parse_setup_fields(template.setup_fields),
+            fields,
             request.values,
+            rendered=appointment_hours_answers(fields, request),
         )
+        if request.appointment_hours is not None:
+            # So the agent works dates out in the business's own timezone.
+            facts = {**facts, "timezone": request.appointment_hours.timezone}
+        category = getattr(template, "category", None)
+        if category:
+            # Which starter it came from: the call review words what callers
+            # wanted for this kind of business (api/services/call_review).
+            facts = {**facts, TEMPLATE_CATEGORY_FACT: category}
     except TemplateSetupError as e:
         raise HTTPException(status_code=422, detail=str(e))
 
@@ -1625,12 +1682,32 @@ async def duplicate_workflow_template(
         )
     if request.integration_tools:
         tool_uuids = set(request.integration_tools.values())
-        tools = await db_client.get_tools_by_uuids(
-            list(tool_uuids), user.selected_organization_id
-        )
+        tools = await db_client.get_tools_by_uuids(list(tool_uuids), organization_id)
         if {tool.tool_uuid for tool in tools} != tool_uuids:
             raise HTTPException(status_code=404, detail="Connected tool not found")
     filled = attach_integration_tools(filled, request.integration_tools)
+    if uses_tool_placeholder(filled, BUILTIN_TRANSFER_TOOL):
+        # One "put through to a person" tool per agent, sending calls to the
+        # agent's transfer_number fact (empty: the transfer fails and the
+        # agent takes a message, as its instructions say).
+        transfer_tool = await db_client.create_tool(
+            organization_id=organization_id,
+            user_id=user.id,
+            name=f"Put through to the team ({request.workflow_name})"[:255],
+            definition=TransferCallToolDefinition(
+                type="transfer_call",
+                config=TransferCallConfig(
+                    destination=TRANSFER_DESTINATION,
+                    messageType="custom",
+                    customMessage="One moment, I'm putting you through.",
+                ),
+            ).model_dump(),
+            category=ToolCategory.TRANSFER_CALL.value,
+            description="Puts the caller through to the number on Business facts.",
+        )
+        filled = attach_tool_placeholder(
+            filled, BUILTIN_TRANSFER_TOOL, transfer_tool.tool_uuid
+        )
 
     # Create a new workflow from the template
     # Regenerate trigger UUIDs to avoid conflicts with existing triggers
@@ -1649,15 +1726,23 @@ async def duplicate_workflow_template(
         request.workflow_name,
         workflow_def,
         user.id,
-        user.selected_organization_id,
+        organization_id,
+        template_context_variables=facts,
     )
 
     if trigger_paths:
         await db_client.sync_triggers_for_workflow(
             workflow_id=workflow.id,
-            organization_id=user.selected_organization_id,
+            organization_id=organization_id,
             trigger_paths=trigger_paths,
         )
+
+    # After creating the agent: failing to save the hours must not lose it.
+    calendar_hours = await update_calendar_booking_hours(
+        request,
+        Actor(organization_id=organization_id, user=user),
+        may_change_settings=membership.can(Permission.INTEGRATIONS_WRITE),
+    )
 
     return {
         "id": workflow.id,
@@ -1673,6 +1758,7 @@ async def duplicate_workflow_template(
         "workflow_configurations": mask_workflow_configurations(
             workflow.workflow_configurations, drop_secrets=secrets_hidden_for(user)
         ),
+        "calendar_hours": calendar_hours,
     }
 
 
@@ -2070,4 +2156,165 @@ async def get_ambient_noise_upload_url(
         upload_url=upload_url,
         storage_key=storage_key,
         storage_backend=StorageBackend.get_current_backend().value,
+    )
+
+
+class BusinessFact(BaseModel):
+    key: str
+    label: str
+    type: str
+    help: str | None = None
+    placeholder: str | None = None
+    required: bool
+    max_length: int
+    value: str
+
+
+class BusinessFactsResponse(BaseModel):
+    facts: list[BusinessFact]
+
+
+class UpdateBusinessFactsRequest(BaseModel):
+    facts: dict[str, str | None]
+
+
+async def _agent_facts(workflow_id: int, organization_id: int):
+    workflow = await db_client.get_workflow(
+        workflow_id, organization_id=organization_id
+    )
+    if workflow is None:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    released = workflow.released_definition
+    definition = released.workflow_json if released else workflow.workflow_definition
+    return workflow, fact_fields(definition, workflow.template_context_variables)
+
+
+@router.get(
+    "/{workflow_id}/business-facts",
+    dependencies=requires(Permission.AGENTS_READ),
+)
+async def get_business_facts(
+    workflow_id: int, user: UserModel = Depends(get_user)
+) -> BusinessFactsResponse:
+    """What the agent knows about the business: the facts its prompts read
+    at call time (opening hours, address, FAQ…), with their current values."""
+    _, fields = await _agent_facts(workflow_id, user.selected_organization_id)
+    return BusinessFactsResponse(
+        facts=[BusinessFact(**field.__dict__) for field in fields]
+    )
+
+
+@router.put(
+    "/{workflow_id}/business-facts",
+    dependencies=requires(Permission.AGENTS_FACTS),
+)
+async def update_business_facts(
+    workflow_id: int,
+    request: UpdateBusinessFactsRequest,
+    user: UserModel = Depends(get_user),
+) -> BusinessFactsResponse:
+    """Update the agent's business facts. They apply from the next call,
+    without publishing any unfinished changes to the agent itself."""
+    organization_id = user.selected_organization_id
+    _, fields = await _agent_facts(workflow_id, organization_id)
+    try:
+        updates = checked_updates(fields, request.facts)
+    except BusinessFactsError as e:
+        raise HTTPException(status_code=422, detail=str(e)) from None
+    saved = await db_client.update_business_facts(workflow_id, organization_id, updates)
+    if saved is None:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    _, fields = await _agent_facts(workflow_id, organization_id)
+    return BusinessFactsResponse(
+        facts=[BusinessFact(**field.__dict__) for field in fields]
+    )
+
+
+# Fresh greeting previews (cache misses) one workspace may generate a day.
+# Each is one short Google synthesis; replaying a cached one is free.
+VOICE_PREVIEWS_PER_DAY = 40
+
+
+@router.get(
+    "/{workflow_id}/voice-preview",
+    response_class=Response,
+    responses={
+        200: {
+            "content": {
+                "audio/mpeg": {"schema": {"type": "string", "format": "binary"}}
+            }
+        }
+    },
+    dependencies=requires(Permission.AGENTS_READ),
+)
+async def preview_agent_voice(
+    workflow_id: int,
+    voice_id: Annotated[str, Query(max_length=64)],
+    user: UserModel = Depends(get_user),
+    limiter: RateLimiter = Depends(get_rate_limiter),
+) -> Response:
+    """The agent's greeting read in one of the platform voices.
+
+    The words are the greeting the page shows (the draft's, if there is
+    one), with the business facts filled in; the browser can't choose them. A spoken greeting that is missing, or a recorded one, falls back to
+    a fixed sample sentence (``X-Preview-Text: sample``). Each greeting and
+    voice pair is synthesised once and then served from disk.
+    """
+    # Imported here: the user routes pull in the voice catalogue stack.
+    from api.routes.user import _google_tts_credentials
+    from api.saas.voice_catalog import google_voices
+
+    if not is_preview_voice(voice_id):
+        raise HTTPException(status_code=400, detail="invalid voice id")
+    organization_id = user.selected_organization_id
+    workflow = await db_client.get_workflow(
+        workflow_id, organization_id=organization_id
+    )
+    if workflow is None:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    # The version the page shows (the draft, if there is one), so the voice
+    # reads the greeting printed under it.
+    shown = await db_client.get_draft_version(workflow_id) or (
+        workflow.released_definition
+    )
+    definition = shown.workflow_json if shown else workflow.workflow_definition
+    greeting = greeting_preview_text(definition, workflow.template_context_variables)
+    text = greeting or google_voices.PREVIEW_TEXT
+
+    audio = await google_voices.cached_preview(voice_id, text)
+    if audio is None:
+        if not await limiter.allow(
+            f"voice-preview:{organization_id}",
+            limit=VOICE_PREVIEWS_PER_DAY,
+            window=timedelta(days=1),
+        ):
+            raise HTTPException(
+                status_code=429,
+                detail="That's a lot of voice samples for one day. Try again tomorrow.",
+            )
+        try:
+            audio = await google_voices.preview_audio(
+                voice_id,
+                text=text,
+                credentials_json=await _google_tts_credentials(user),
+            )
+        except Exception as e:
+            log_failure(
+                classify_exception(
+                    e, source=ErrorSource.TTS, provider="google", error_owner="user"
+                ),
+                organization_id=organization_id,
+                operation="agent_voice_preview",
+            )
+            logger.exception("Failed to synthesise an agent voice preview")
+            raise HTTPException(status_code=502, detail="Preview unavailable") from e
+
+    return Response(
+        content=audio,
+        media_type="audio/mpeg",
+        headers={
+            # The greeting can change; the browser keeps it only briefly.
+            "Cache-Control": "private, max-age=300",
+            "X-Preview-Text": "greeting" if greeting else "sample",
+        },
     )

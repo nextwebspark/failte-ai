@@ -19,8 +19,8 @@ type AddNodePanelProps = {
 // specs in the API, but are displayed in their own sections in this panel.
 const SECTIONS: Array<{ title: string; matches: (spec: NodeSpec) => boolean }> = [
     { title: 'Triggers', matches: (spec) => spec.category === 'trigger' },
-    { title: 'Agent Nodes', matches: (spec) => spec.category === 'call_node' },
-    { title: 'Global Nodes', matches: (spec) => spec.category === 'global_node' },
+    { title: 'Conversation steps', matches: (spec) => spec.category === 'call_node' },
+    { title: 'Always applies', matches: (spec) => spec.category === 'global_node' },
     { title: 'Webhook', matches: (spec) => spec.name === 'webhook' },
     { title: 'QA', matches: (spec) => spec.name === 'qa' },
     {
@@ -132,7 +132,7 @@ export default function AddNodePanel({ isOpen, onNodeSelect, onClose, nodes }: A
             <div className="p-4 h-full overflow-y-auto">
                 <div className="flex justify-between items-center mb-6">
                     <h2 className="text-lg font-semibold">Add node</h2>
-                    <Button variant="ghost" size="icon" onClick={onClose}>
+                    <Button variant="ghost" size="icon" onClick={onClose} aria-label="Close">
                         <X className="w-5 h-5" />
                     </Button>
                 </div>

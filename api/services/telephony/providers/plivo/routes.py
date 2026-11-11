@@ -124,7 +124,7 @@ async def handle_plivo_xml_webhook(
             f"[run {workflow_run_id}] Invalid Plivo signature on answer webhook"
         )
         return provider.generate_error_response(
-            "invalid_signature", "Invalid webhook signature."
+            "invalid_signature", "Please try again later."
         )
 
     call_id = callback_data.get("CallUUID") or callback_data.get("RequestUUID")

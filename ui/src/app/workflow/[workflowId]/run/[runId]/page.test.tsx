@@ -11,11 +11,13 @@ const mocks = vi.hoisted(() => ({
     canManageOrg: false,
     toolResults: [] as unknown[],
     events: [] as RealtimeFeedbackEvent[],
+    extra: {} as Record<string, unknown>,
+    query: '',
 }));
 
 vi.mock('next/navigation', () => ({
     useParams: () => ({ workflowId: '12', runId: '34' }),
-    useSearchParams: () => new URLSearchParams(),
+    useSearchParams: () => new URLSearchParams(mocks.query),
     useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
 }));
 vi.mock('@/lib/auth', () => ({ useAuth: () => mocks.auth }));
@@ -49,6 +51,7 @@ vi.mock('@/client/sdk.gen', () => ({
             bot_recording_url: '/bot.wav',
             gathered_context: { tool_results: mocks.toolResults },
             logs: { realtime_feedback_events: mocks.events },
+            ...mocks.extra,
         },
     }),
 }));
@@ -57,6 +60,14 @@ beforeEach(() => {
     mocks.canManageOrg = false;
     mocks.toolResults = [];
     mocks.events = [];
+    mocks.extra = {};
+    mocks.query = '';
+    vi.stubGlobal('matchMedia', (query: string) => ({
+        matches: false,
+        media: query,
+        addEventListener() {},
+        removeEventListener() {},
+    }));
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ arrayBuffer: async () => new ArrayBuffer(0) }));
     vi.spyOn(HTMLMediaElement.prototype, 'play').mockImplementation(function (this: HTMLMediaElement) {
         // Native playback restarts an ended track, which would desynchronize shorter recordings.
@@ -92,13 +103,42 @@ it('shows the recorded timeout for call 2796 instead of leaving the tool running
 
 it('offers to delete the call data only to organization admins', async () => {
     render(<WorkflowRunPage />);
-    await screen.findByText('Call 34');
+    await screen.findByText('Call #34');
     expect(screen.queryByRole('button', { name: 'Delete call data' })).toBeNull();
     cleanup();
 
     mocks.canManageOrg = true;
     render(<WorkflowRunPage />);
     expect(await screen.findByRole('button', { name: 'Delete call data' })).toBeTruthy();
+});
+
+it('leads with who called, how it ended and how long, in plain words', async () => {
+    mocks.extra = {
+        initial_context: { caller_number: '+353871234567' },
+        gathered_context: { mapped_call_disposition: 'callback_requested', tool_results: [] },
+        cost_info: { call_duration_seconds: 184 },
+    };
+    render(<WorkflowRunPage />);
+    const title = await screen.findByRole('heading', { level: 2, name: 'Call from +353871234567' });
+    expect(title).toBeTruthy();
+    // The screen's h1 is the app header's; the call itself is not a second h1.
+    expect(screen.queryByRole('heading', { level: 1 })).toBeNull();
+    expect(screen.getByText('Callback requested')).toBeTruthy();
+    expect(screen.getByText('Length').nextElementSibling?.textContent).toBe('3m 4s');
+});
+
+it('folds the technical details away when opened from the Calls list', async () => {
+    mocks.query = 'from=%2Fusage';
+    render(<WorkflowRunPage />);
+    await screen.findByText('Call #34');
+    const details = screen.getByText('Technical details').closest('details') as HTMLDetailsElement;
+    expect(details.open).toBe(false);
+    cleanup();
+
+    mocks.query = '';
+    render(<WorkflowRunPage />);
+    await screen.findByText('Call #34');
+    expect((screen.getByText('Technical details').closest('details') as HTMLDetailsElement).open).toBe(true);
 });
 
 afterEach(() => {

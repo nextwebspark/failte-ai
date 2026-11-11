@@ -1,8 +1,8 @@
 "use client";
 
 import { AlertTriangle, RefreshCw } from "lucide-react";
-import { usePathname } from "next/navigation";
-import React, { ReactNode, useState } from "react";
+import { usePathname, useRouter } from "next/navigation";
+import React, { ReactNode, useEffect, useRef, useState } from "react";
 
 import { NoAccess } from "@/components/auth/NoAccess";
 import { LowBalanceBanner } from "@/components/billing/LowBalanceBanner";
@@ -12,17 +12,25 @@ import {
   PendingDeletionNotice,
 } from "@/components/privacy/PendingDeletionBanner";
 import { Button } from "@/components/ui/button";
+import { PageSkeleton } from "@/components/ui/page-skeleton";
 import { SidebarProvider } from "@/components/ui/sidebar";
+import { featureForRoute } from "@/config/features";
 import { AgentShellProvider } from "@/context/AgentShellContext";
 import { useAppConfig } from "@/context/AppConfigContext";
 import { useOrgConfig } from "@/context/OrgConfigContext";
+import { useFeatureFlags, useFeatureFlagsLoaded } from "@/hooks/useFeatureFlags";
+import { cn } from "@/lib/utils";
 
 import { AgentTestRail } from "./AgentTestRail";
 import { AppSidebar } from "./AppSidebar";
 import { AppTopBar } from "./AppTopBar";
+import { hidesTabBar, MobileTabBar } from "./MobileTabBar";
 import { getRequiredPermission } from "./navConfig";
 import { PageActionsSlotProvider } from "./PageActionsSlot";
+import { PageHeadingProvider } from "./pageHeading";
 import { useShellChrome } from "./shellContext";
+import { WelcomeToast } from "./WelcomeToast";
+import { WorkspaceAgentsProvider } from "./workspaceAgents";
 
 function BackendStatusBanner() {
   const { config, loading, refresh } = useAppConfig();
@@ -64,6 +72,38 @@ function BackendStatusBanner() {
   );
 }
 
+/** The content panel's id: the skip link's target. */
+export const MAIN_CONTENT_ID = "main-content";
+
+/**
+ * After moving to another screen: start the content panel (the scroll
+ * container) at the top, and — if focus was left on the link just used, in
+ * the nav or the header — move it to the content, so keyboard and screen
+ * reader users land on the new screen rather than back at the top of the nav
+ * (or on the phone tab bar).
+ * The first load and changes to the query string (filters, tabs) are left
+ * alone.
+ */
+function useRouteChangeFocus(pathname: string, main: React.RefObject<HTMLElement | null>) {
+  const previous = useRef(pathname);
+  useEffect(() => {
+    if (previous.current === pathname) return;
+    previous.current = pathname;
+    const panel = main.current;
+    if (!panel) return;
+    panel.scrollTop = 0;
+    const active = document.activeElement;
+    const focusLeftBehind =
+      !active ||
+      active === document.body ||
+      Boolean(active.closest("[data-sidebar], header, [data-slot='sidebar'], [data-mobile-tab-bar]")) ||
+      !active.isConnected;
+    if (focusLeftBehind && !panel.contains(active)) {
+      panel.focus({ preventScroll: true });
+    }
+  }, [pathname, main]);
+}
+
 interface AppLayoutProps {
   children: ReactNode;
 }
@@ -85,19 +125,43 @@ interface AppLayoutProps {
  */
 const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
   const pathname = usePathname();
+  const router = useRouter();
   const [actionsSlot, setActionsSlot] = useState<HTMLDivElement | null>(null);
+  const mainRef = useRef<HTMLElement | null>(null);
+  useRouteChangeFocus(pathname, mainRef);
 
-  // Hide the shell for root (/), /handler routes (Stack Auth), /auth routes
-  // and invitation landing pages.
+  // A page of a product area switched off for this organisation goes to
+  // Overview. Middleware already redirects areas that are off for everyone;
+  // this applies the organisation's own switch once it has been read.
+  const featureFlags = useFeatureFlags();
+  const featureFlagsLoaded = useFeatureFlagsLoaded();
+  const routeFeature = featureForRoute(pathname);
+  const awaitingFeature = routeFeature !== null && !featureFlagsLoaded;
+  const featureSwitchedOff = routeFeature !== null && featureFlagsLoaded && !featureFlags[routeFeature];
+  useEffect(() => {
+    if (featureSwitchedOff) {
+      router.replace("/overview");
+    }
+  }, [featureSwitchedOff, router]);
+
+  // Hide the shell for root (/), /handler routes (Stack Auth), /auth routes,
+  // invitation landing pages, the report email links (confirm/unsubscribe)
+  // and shared recordings (/listen, no sign-in).
   const shouldShowShell =
     pathname !== "/" &&
     !pathname.startsWith("/handler") &&
     !pathname.startsWith("/auth") &&
-    !pathname.startsWith("/invite");
+    !pathname.startsWith("/invite") &&
+    !pathname.startsWith("/reports/confirm/") &&
+    !pathname.startsWith("/reports/unsubscribe/") &&
+    !pathname.startsWith("/listen/");
 
   // A run's detail screen is a read-only record, and a run opened from a
   // workspace list stays in the workspace — neither gets the live test rail.
   const { showTestRail } = useShellChrome();
+  // Phones get the tab bar instead of the sidebar, except on the full-screen
+  // conversation diagram.
+  const showTabBar = !hidesTabBar(pathname);
 
   // The API enforces roles; this just replaces a screen full of 403s with an
   // explanation. A restricted screen waits for the role so it doesn't mount
@@ -141,28 +205,54 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
           </div>
         ) : (
           <PageActionsSlotProvider slot={actionsSlot}>
-            <div className="app-surface flex h-svh w-full flex-col overflow-hidden">
-              <AppTopBar actionsSlotRef={setActionsSlot} />
+            <WorkspaceAgentsProvider>
+            <PageHeadingProvider>
+              <div className="app-surface flex h-svh w-full flex-col overflow-hidden">
+                <a
+                  href={`#${MAIN_CONTENT_ID}`}
+                  className="sr-only rounded-md bg-panel px-3 py-2 text-sm font-medium text-foreground shadow-panel focus:not-sr-only focus:fixed focus:left-3 focus:top-2 focus:z-[60] focus:outline-none focus:ring-[3px] focus:ring-ring/50"
+                >
+                  Skip to main content
+                </a>
+                <AppTopBar actionsSlotRef={setActionsSlot} />
+                <WelcomeToast />
 
-              <div className="flex min-h-0 flex-1 gap-3.5 px-3.5 pb-3.5 md:pl-0">
-                <AppSidebar />
-                <main className="app-content-panel min-w-0 flex-1 overflow-y-auto rounded-xl border border-line bg-panel">
-                  <BackendStatusBanner />
-                  <PendingDeletionBanner />
-                  <LowBalanceBanner />
-                  {noOrganization && organizationUnavailable ? (
-                    <NoOrganizationNotice reason={organizationUnavailable} />
-                  ) : awaitingRole ? null : blocked ? (
-                    <NoAccess role={role} />
-                  ) : closedForDeletion ? (
-                    <PendingDeletionNotice />
-                  ) : (
-                    children
+                {/* On phones the content stops above the fixed tab bar. */}
+                <div
+                  className={cn(
+                    "flex min-h-0 flex-1 gap-3.5 px-3.5 pb-3.5 md:pl-0",
+                    showTabBar && "max-md:pb-[calc(64px+env(safe-area-inset-bottom)+0.875rem)]",
                   )}
-                </main>
-                {showTestRail && <AgentTestRail />}
+                >
+                  <AppSidebar />
+                  <main
+                    ref={mainRef}
+                    id={MAIN_CONTENT_ID}
+                    tabIndex={-1}
+                    className="app-content-panel relative min-w-0 flex-1 overflow-y-auto rounded-xl border border-line bg-panel outline-none [scrollbar-gutter:stable]"
+                  >
+                    <BackendStatusBanner />
+                    <PendingDeletionBanner />
+                    <LowBalanceBanner />
+                    {noOrganization && organizationUnavailable ? (
+                      <NoOrganizationNotice reason={organizationUnavailable} />
+                    ) : awaitingRole || awaitingFeature || featureSwitchedOff ? (
+                      // Hold the screen's shape while the role loads, not a blank panel.
+                      <PageSkeleton variant="list" />
+                    ) : blocked ? (
+                      <NoAccess role={role} />
+                    ) : closedForDeletion ? (
+                      <PendingDeletionNotice />
+                    ) : (
+                      children
+                    )}
+                  </main>
+                  {showTestRail && <AgentTestRail />}
+                </div>
+                {showTabBar && <MobileTabBar />}
               </div>
-            </div>
+            </PageHeadingProvider>
+            </WorkspaceAgentsProvider>
           </PageActionsSlotProvider>
         )}
       </AgentShellProvider>

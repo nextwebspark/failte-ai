@@ -48,9 +48,18 @@ HOUR_WORDS = {
     15: "three",
     16: "four",
     17: "five",
+    18: "six",
+    19: "seven",
+    20: "eight",
+    21: "nine",
+    22: "ten",
+    23: "eleven",
 }
+EVENING_HOUR = 17
 MINUTE_WORDS = {15: "fifteen", 30: "thirty", 45: "forty five"}
 NOTHING_FREE = "I have nothing free in that window."
+# The same whether or not the number has bookings: a miss reveals nothing.
+NO_BOOKINGS = "I could not find any upcoming appointments for those details."
 
 
 def say_time(slot: datetime) -> str:
@@ -60,7 +69,12 @@ def say_time(slot: datetime) -> str:
         clock = hour_word
     else:
         clock = f"{hour_word} {MINUTE_WORDS.get(slot.minute, f'{slot.minute:02d}')}"
-    part = "in the morning" if slot.hour < 12 else "in the afternoon"
+    if slot.hour < 12:
+        part = "in the morning"
+    elif slot.hour < EVENING_HOUR:
+        part = "in the afternoon"
+    else:
+        part = "in the evening"
     day = ORDINALS.get(slot.day, str(slot.day))
     return f"{slot.strftime('%A')} the {day} at {clock} {part}"
 
@@ -72,3 +86,13 @@ def join_spoken(slots: Sequence[datetime]) -> str:
     if len(phrases) == 1:
         return f"I have {phrases[0]}."
     return f"I have {', '.join(phrases[:-1])}, or {phrases[-1]}."
+
+
+def say_bookings(starts: Sequence[datetime]) -> str:
+    """A caller's upcoming appointments, soonest first."""
+    phrases = [say_time(start) for start in starts]
+    if not phrases:
+        return NO_BOOKINGS
+    if len(phrases) == 1:
+        return f"I have you booked in for {phrases[0]}."
+    return f"I have you booked in for {', '.join(phrases[:-1])}, and {phrases[-1]}."

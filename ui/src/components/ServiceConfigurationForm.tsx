@@ -715,6 +715,7 @@ export function ServiceConfigurationForm({
                                 />
                                 {apiKeys[service].length > 1 && (
                                     <Button
+                                        aria-label={`Remove API key ${index + 1}`}
                                         type="button"
                                         variant="ghost"
                                         size="icon"

@@ -310,7 +310,7 @@ export const WorkflowEditorHeader = ({
                     type="button"
                     onClick={onHistoryClick}
                     aria-label={activeVersionLabel ? `Version history, ${activeVersionLabel}` : "Version history"}
-                    className="flex h-7 flex-none items-center gap-1.5 whitespace-nowrap rounded-sm border border-line bg-panel px-2.5 font-mono text-[11.5px] text-ink-2 transition-colors hover:bg-panel-2 hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring"
+                    className="flex h-8 flex-none items-center gap-1.5 whitespace-nowrap rounded-md border border-line bg-panel px-2.5 text-[12.5px] font-medium text-ink-2 transition-colors hover:bg-panel-2 hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring"
                 >
                     <History className="h-3 w-3" aria-hidden />
                     {activeVersionLabel ?? "History"}

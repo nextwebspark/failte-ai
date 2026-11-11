@@ -339,21 +339,21 @@ export default function APIKeysPage() {
 
                     <Card className="mb-6">
                         <CardHeader>
-                            <div className="flex justify-between items-center">
+                            <div className="flex flex-wrap items-start justify-between gap-3">
                                 <div>
                                     <CardTitle>API Keys</CardTitle>
                                     <CardDescription>
                                         Create and manage API keys for your organization
                                     </CardDescription>
                                 </div>
-                                <div className="flex gap-2">
+                                <div className="flex flex-wrap gap-2">
                                     <Button
                                         variant="outline"
                                         size="sm"
                                         onClick={() => setShowArchived(!showArchived)}
                                     >
                                         {showArchived ? <Eye className="w-4 h-4 mr-2" /> : <EyeOff className="w-4 h-4 mr-2" />}
-                                        {showArchived ? 'Hide' : 'Show'} Archived
+                                        {showArchived ? 'Hide' : 'Show'} archived
                                     </Button>
                                     <Button
                                         onClick={() => setIsCreateDialogOpen(true)}
@@ -395,8 +395,8 @@ export default function APIKeysPage() {
                                                 key.archived_at ? 'bg-muted opacity-60' : 'bg-card'
                                             }`}
                                         >
-                                            <div className="flex-1">
-                                                <div className="flex items-center gap-2 mb-1">
+                                            <div className="min-w-0 flex-1">
+                                                <div className="flex flex-wrap items-center gap-2 mb-1">
                                                     <span className="font-medium">{key.name}</span>
                                                     {key.archived_at ? (
                                                         <Badge variant="secondary">Archived</Badge>
@@ -406,7 +406,7 @@ export default function APIKeysPage() {
                                                         <Badge variant="destructive">Inactive</Badge>
                                                     )}
                                                 </div>
-                                                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                                                <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
                                                     <span className="font-mono bg-muted px-2 py-1 rounded">{key.key_prefix}...</span>
                                                     <span className="text-xs text-muted-foreground/70">
                                                         (Full key hidden for security)
@@ -451,7 +451,7 @@ export default function APIKeysPage() {
                     {showServiceKeys && (
                         <Card className="mb-6">
                             <CardHeader>
-                                <div className="flex justify-between items-center">
+                                <div className="flex flex-wrap items-start justify-between gap-3">
                                     <div>
                                         {/* These keys authenticate against the upstream Dograh
                                             hosted service, not ours — labelled neutrally rather
@@ -462,7 +462,7 @@ export default function APIKeysPage() {
                                             Manage service keys for accessing managed AI services (LLM, TTS, STT)
                                         </CardDescription>
                                     </div>
-                                    <div className="flex gap-2">
+                                    <div className="flex flex-wrap gap-2">
                                         {showServiceKeyArchiveControls && (
                                             <Button
                                                 variant="outline"
@@ -470,7 +470,7 @@ export default function APIKeysPage() {
                                                 onClick={() => setShowServiceArchived(!showServiceArchived)}
                                             >
                                                 {showServiceArchived ? <Eye className="w-4 h-4 mr-2" /> : <EyeOff className="w-4 h-4 mr-2" />}
-                                                {showServiceArchived ? 'Hide' : 'Show'} Archived
+                                                {showServiceArchived ? 'Hide' : 'Show'} archived
                                             </Button>
                                         )}
                                         {canCreateServiceKey ? (

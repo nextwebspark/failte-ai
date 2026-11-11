@@ -14,7 +14,8 @@ export interface AuthContextType {
   loading: boolean;
   getAccessToken: () => Promise<string>;
   redirectToLogin: () => void;
-  logout: () => Promise<void>;
+  /** Ends the session. `reason` is shown on the sign-in page (e.g. "session-ended"). */
+  logout: (options?: { reason?: 'session-ended' }) => Promise<void>;
   provider: string;
   // Stack-specific (optional)
   getSelectedTeam?: () => unknown;

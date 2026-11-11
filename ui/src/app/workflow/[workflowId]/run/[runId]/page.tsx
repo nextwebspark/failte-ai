@@ -4,6 +4,7 @@ import {
     ArrowLeft,
     Bot,
     Check,
+    ChevronDown,
     Clock,
     Copy,
     Download,
@@ -13,7 +14,6 @@ import {
     Pause,
     Play,
     UserRound,
-    Video,
 } from 'lucide-react';
 import Link from 'next/link';
 import { useParams, useSearchParams } from 'next/navigation';
@@ -21,6 +21,7 @@ import posthog from 'posthog-js';
 import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 
+import { formatCallTime, outcomeLabel } from '@/app/usage/callsView';
 import {
     getWorkflowApiV1WorkflowFetchWorkflowIdGet,
     getWorkflowRunApiV1WorkflowWorkflowIdRunsRunIdGet,
@@ -34,15 +35,16 @@ import { DeleteCallDataButton } from '@/components/privacy/DeleteCallDataButton'
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
+import { agentFactsHref, agentHomeHref } from "@/components/workflow/agentLinks";
 import { ConversationRailFrame, RealtimeFeedback, WorkflowRunLogs } from '@/components/workflow/conversation';
 import { conversationItemsFromRealtimeFeedbackEvents } from '@/components/workflow/conversation/adapters/fromRealtimeFeedback';
 import { PostHogEvent } from '@/constants/posthog-events';
 import { WORKFLOW_RUN_MODES } from '@/constants/workflowRunModes';
 import { useOrgConfig } from '@/context/OrgConfigContext';
+import { useIsMobile } from '@/hooks/use-mobile';
 import { useOrganizationTimezone } from '@/hooks/useOrganizationTimezone';
 import { useAuth } from '@/lib/auth';
 import { copyTextToClipboard } from '@/lib/clipboard';
-import { formatDateTime } from '@/lib/dateTime';
 import { downloadFile, getSignedUrl } from '@/lib/files';
 import { cn } from '@/lib/utils';
 
@@ -70,11 +72,17 @@ const WAVEFORM_BAR_COUNT = 96;
 type SplitTrackPlaybackMode = 'both' | 'user' | 'bot';
 
 function formatDuration(seconds?: number | null) {
-    if (seconds == null || Number.isNaN(seconds)) return 'N/A';
+    if (seconds == null || Number.isNaN(seconds)) return 'Not known';
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
     if (mins === 0) return `${secs}s`;
     return `${mins}m ${secs}s`;
+}
+
+/** A plain string from a run's context, or null. */
+function contextString(context: Record<string, unknown> | null | undefined, key: string): string | null {
+    const value = context?.[key];
+    return typeof value === 'string' && value.trim() ? value : null;
 }
 
 function getTranscriptMetrics(logs: WorkflowRunLogs | null, gatheredContext: Record<string, string | number | boolean | object> | null) {
@@ -555,7 +563,7 @@ function RunMetricsSection({
     return (
         <Card className="border-border">
             <CardHeader className="pb-3">
-                <CardTitle className="text-lg">Call metrics</CardTitle>
+                <CardTitle className="text-lg">Conversation metrics</CardTitle>
             </CardHeader>
             <CardContent className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
                 <MetricCard label="Duration" value={formatDuration(costInfo?.call_duration_seconds)} />
@@ -624,6 +632,8 @@ export default function WorkflowRunPage() {
     const searchParams = useSearchParams();
     const agentLinkRef = useRef<HTMLAnchorElement | null>(null);
     const { can } = useOrgConfig();
+    // The agent-editor tip would cover the call on a phone.
+    const isMobile = useIsMobile();
     // Bumped after the call's data is deleted, to show the run as it is now.
     const [reloadKey, setReloadKey] = useState(0);
 
@@ -733,150 +743,137 @@ export default function WorkflowRunPage() {
         );
     }
     else if (showRunDetailsView) {
+        const callerNumber = contextString(workflowRun?.initial_context, 'caller_number')
+            ?? contextString(workflowRun?.initial_context, 'called_number');
+        const outcome = contextString(workflowRun?.gathered_context, 'mapped_call_disposition');
         returnValue = (
-            <div className="flex min-h-0 w-full flex-col gap-6 p-6 xl:h-full xl:flex-row">
-                <div className="min-w-0 flex-1 space-y-6 xl:overflow-y-auto">
+            // Summary, then the conversation, then the technical detail: in
+            // that order on a phone; on wide screens the conversation sits beside.
+            <div className="grid min-h-0 w-full gap-6 p-4 sm:p-6 xl:h-full xl:grid-cols-[minmax(0,1fr)_minmax(360px,34%)] xl:grid-rows-[auto_minmax(0,1fr)]">
+                <div className="min-w-0 space-y-4 xl:col-start-1 xl:row-start-1">
                     <Link
                         href={backHref}
-                        className="inline-flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground"
+                        className="inline-flex min-h-10 items-center gap-1.5 rounded-md text-sm text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/40 sm:min-h-0"
                     >
-                        <ArrowLeft className="h-4 w-4" />
+                        <ArrowLeft className="h-4 w-4" aria-hidden />
                         {backLabel}
                     </Link>
 
-                    {/* One compact run bar: what this run is, when it ran, and
-                        what you can do with it. The agent's name and editor
-                        link live in the shell (nav + header) whenever the user
-                        is inside the agent, so they only appear here when the
-                        run was opened from a workspace list. */}
-                    <div className="flex flex-col gap-3 rounded-2xl border border-border bg-card p-4 shadow-sm sm:p-5">
+                    {/* What an owner wants first: who called, when, how it
+                        ended, how long, and the recording. */}
+                    <section
+                        aria-labelledby="call-title"
+                        className="rounded-xl border border-line bg-gradient-to-br from-brand-dim via-panel to-panel p-5 sm:p-6"
+                    >
                         <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
                             <span
                                 className={cn(
                                     'inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold',
-                                    isTextChatRun
-                                        ? 'bg-sky-dim text-sky'
-                                        : 'bg-ok-dim text-ok'
+                                    isTextChatRun ? 'bg-sky-dim text-sky' : 'bg-ok-dim text-ok'
                                 )}
                             >
-                                {isTextChatRun ? <FileText className="h-3.5 w-3.5" /> : <Check className="h-3.5 w-3.5" />}
-                                {isTextChatRun ? 'Text chat' : 'Completed'}
+                                {isTextChatRun ? <FileText className="h-3.5 w-3.5" aria-hidden /> : <Check className="h-3.5 w-3.5" aria-hidden />}
+                                {isTextChatRun ? 'Text chat' : 'Call finished'}
                             </span>
-                            <h1 className="text-lg font-semibold text-foreground">Call {runId}</h1>
-                            {workflowRun?.created_at && (
-                                <span className="flex items-center gap-1.5 text-sm text-muted-foreground">
-                                    <Clock className="h-4 w-4" />
-                                    {formatDateTime(workflowRun.created_at, organizationTimezone)}
-                                </span>
-                            )}
                             {cameFromWorkspace && workflowName && (
                                 <Link
                                     ref={agentLinkRef}
-                                    href={`/workflow/${workflowId}`}
-                                    className="inline-flex min-w-0 items-center gap-1.5 rounded-md border border-border px-2 py-1 text-sm text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"
+                                    href={agentHomeHref(Number(workflowId))}
+                                    className="inline-flex min-h-10 min-w-0 items-center gap-1.5 rounded-md border border-line bg-panel px-2 py-1 text-sm text-ink-2 transition-colors sm:min-h-0 hover:border-brand/50 hover:text-brand focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/40"
                                 >
-                                    <Bot className="h-3.5 w-3.5 shrink-0" />
+                                    <Bot className="h-3.5 w-3.5 shrink-0" aria-hidden />
                                     <span className="truncate">{workflowName}</span>
                                 </Link>
                             )}
+                        </div>
+                        <h2 id="call-title" className="mt-3 font-bold tracking-tight">
+                            {callerNumber ? (
+                                <>
+                                    <span className="block text-sm font-medium text-ink-3">Call from</span>{' '}
+                                    <span className="block font-mono text-xl sm:text-[22px]">{callerNumber}</span>
+                                </>
+                            ) : (
+                                <span className="text-[22px]">{`Call #${runId}`}</span>
+                            )}
+                        </h2>
+                        {workflowRun?.created_at && (
+                            <p className="mt-1 flex items-center gap-1.5 text-sm text-ink-2">
+                                <Clock className="h-4 w-4 text-ink-3" aria-hidden />
+                                {formatCallTime(workflowRun.created_at, organizationTimezone)}
+                            </p>
+                        )}
 
-                            <div className="ml-auto flex flex-wrap items-center gap-2">
-                                {!isTextChatRun && (
-                                    <>
+                        <dl className="mt-4 grid grid-cols-2 gap-3 sm:max-w-md">
+                            <div className="rounded-lg border border-line bg-panel px-3 py-2.5">
+                                <dt className="text-xs text-ink-3">How it ended</dt>
+                                <dd className="mt-0.5 font-semibold">{outcome ? outcomeLabel(outcome) : 'Not recorded'}</dd>
+                            </div>
+                            <div className="rounded-lg border border-line bg-panel px-3 py-2.5">
+                                <dt className="text-xs text-ink-3">Length</dt>
+                                <dd className="mt-0.5 font-mono font-semibold tabular-nums">
+                                    {formatDuration(workflowRun?.cost_info?.call_duration_seconds)}
+                                </dd>
+                            </div>
+                        </dl>
+
+                        {!isTextChatRun && (
+                            <div className="mt-4 flex flex-wrap items-center gap-2 [&_button]:h-10 sm:[&_button]:h-9">
+                                {workflowRun?.recording_url || workflowRun?.transcript_url ? (
+                                    <span className="inline-flex items-center gap-2 text-sm text-ink-2 [&>button]:w-10 sm:[&>button]:w-9">
                                         <MediaPreviewButton
                                             recordingUrl={workflowRun?.recording_url}
                                             transcriptUrl={workflowRun?.transcript_url}
                                             runId={Number(params.runId)}
                                             onOpenPreview={openPreview}
                                         />
-                                        <Button
-                                            onClick={() => downloadFile(workflowRun?.transcript_url ?? null)}
-                                            disabled={!workflowRun?.transcript_url || !auth.isAuthenticated}
-                                            size="sm"
-                                            variant="outline"
-                                            className="gap-2"
-                                        >
-                                            <Download className="h-4 w-4" />
-                                            Transcript
-                                        </Button>
-                                        <Button
-                                            onClick={() => downloadFile(workflowRun?.recording_url ?? null)}
-                                            disabled={!workflowRun?.recording_url || !auth.isAuthenticated}
-                                            size="sm"
-                                            variant="outline"
-                                            className="gap-2"
-                                        >
-                                            <Video className="h-4 w-4" />
-                                            Recording
-                                        </Button>
-                                    </>
-                                )}
-                                {workflowRun?.gathered_context?.trace_url && (
-                                    <Button asChild size="sm" variant="outline" className="gap-2">
-                                        <a
-                                            href={String(workflowRun.gathered_context.trace_url)}
-                                            target="_blank"
-                                            rel="noopener noreferrer"
-                                        >
-                                            <ExternalLink className="h-4 w-4" />
-                                            Trace
-                                        </a>
-                                    </Button>
+                                        <span aria-hidden>Listen</span>
+                                    </span>
+                                ) : null}
+                                <Button
+                                    onClick={() => downloadFile(workflowRun?.recording_url ?? null)}
+                                    disabled={!workflowRun?.recording_url || !auth.isAuthenticated}
+                                    size="sm"
+                                    variant="outline"
+                                    className="gap-2 bg-panel"
+                                >
+                                    <Download className="h-4 w-4" aria-hidden />
+                                    Recording
+                                </Button>
+                                <Button
+                                    onClick={() => downloadFile(workflowRun?.transcript_url ?? null)}
+                                    disabled={!workflowRun?.transcript_url || !auth.isAuthenticated}
+                                    size="sm"
+                                    variant="outline"
+                                    className="gap-2 bg-panel"
+                                >
+                                    <Download className="h-4 w-4" aria-hidden />
+                                    Transcript
+                                </Button>
+                                {can('org:manage') && (
+                                    <div className="sm:ml-auto">
+                                        <DeleteCallDataButton
+                                            workflowId={Number(params.workflowId)}
+                                            runId={Number(params.runId)}
+                                            onDeleted={() => setReloadKey((key) => key + 1)}
+                                        />
+                                    </div>
                                 )}
                             </div>
-                        </div>
-
-                        <div className="flex flex-wrap items-center gap-2">
-                            <CopyDebugIdButton label="Agent ID" value={workflowId} />
-                            <CopyDebugIdButton label="Run ID" value={runId} />
-                            {can('org:manage') && (
-                                <div className="ml-auto">
-                                    <DeleteCallDataButton
-                                        workflowId={Number(params.workflowId)}
-                                        runId={Number(params.runId)}
-                                        onDeleted={() => setReloadKey((key) => key + 1)}
-                                    />
-                                </div>
-                            )}
-                        </div>
-                    </div>
-
-                    <RunMetricsSection
-                        costInfo={workflowRun?.cost_info ?? null}
-                        logs={workflowRun?.logs ?? null}
-                        gatheredContext={workflowRun?.gathered_context ?? null}
-                    />
-
-                    <SkillsLoadedSection gatheredContext={workflowRun?.gathered_context ?? null} />
-
-                    {!isTextChatRun && hasSplitTracks && (
-                        <SplitTracksSection
-                            userRecordingUrl={userSplitRecordingUrl as string}
-                            botRecordingUrl={botSplitRecordingUrl as string}
-                        />
-                    )}
-
-                    <div className="grid gap-6 md:grid-cols-2">
-                        <ContextDisplay
-                            title="Initial Context"
-                            context={workflowRun?.initial_context ?? null}
-                        />
-                        <ContextDisplay
-                            title="Gathered Context"
-                            context={workflowRun?.gathered_context ?? null}
-                        />
-                    </div>
-
-                    {workflowRun?.annotations && Object.keys(workflowRun.annotations).length > 0 && (
-                        <ContextDisplay
-                            title="QA Results"
-                            context={workflowRun.annotations as Record<string, string | number | boolean | object>}
-                        />
-                    )}
+                        )}
+                        {isTextChatRun && can('org:manage') && (
+                            <div className="mt-4">
+                                <DeleteCallDataButton
+                                    workflowId={Number(params.workflowId)}
+                                    runId={Number(params.runId)}
+                                    onDeleted={() => setReloadKey((key) => key + 1)}
+                                />
+                            </div>
+                        )}
+                    </section>
                 </div>
 
-                {/* Beside the details on xl, stacked underneath below it. */}
-                <div className="h-[520px] w-full shrink-0 xl:h-full xl:min-h-0 xl:w-[34%] xl:min-w-[360px] xl:max-w-[520px]">
+                {/* The conversation: beside the details on xl, under the summary below it. */}
+                <div className="h-[520px] w-full min-w-0 xl:col-start-2 xl:row-span-2 xl:row-start-1 xl:h-full xl:min-h-0">
                     <ConversationRailFrame className="h-full">
                         <RealtimeFeedback
                             mode="historical"
@@ -885,6 +882,72 @@ export default function WorkflowRunPage() {
                         />
                     </ConversationRailFrame>
                 </div>
+
+                {/* For whoever builds the agent: open by default when the call
+                    was opened from the agent, folded away from the Calls list. */}
+                <details
+                    className="group min-w-0 self-start rounded-xl border border-line bg-panel xl:col-start-1 xl:row-start-2 xl:max-h-full xl:min-h-0 xl:overflow-y-auto"
+                    open={!cameFromWorkspace}
+                >
+                    <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 rounded-xl px-5 py-3 text-[14.5px] font-semibold outline-none focus-visible:ring-[3px] focus-visible:ring-ring/40 [&::-webkit-details-marker]:hidden">
+                        <span>
+                            Technical details
+                            <span className="ml-2 font-normal text-ink-3">for whoever set up your agent</span>
+                        </span>
+                        <ChevronDown className="size-4 text-ink-3 transition-transform group-open:rotate-180 motion-reduce:transition-none" aria-hidden />
+                    </summary>
+                    <div className="space-y-6 border-t border-line-soft p-4 sm:p-5">
+                        <div className="flex flex-wrap items-center gap-2">
+                            <CopyDebugIdButton label="Agent ID" value={workflowId} />
+                            <CopyDebugIdButton label="Run ID" value={runId} />
+                            {workflowRun?.gathered_context?.trace_url && (
+                                <Button asChild size="sm" variant="outline" className="gap-2">
+                                    <a
+                                        href={String(workflowRun.gathered_context.trace_url)}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                    >
+                                        <ExternalLink className="h-4 w-4" aria-hidden />
+                                        Trace
+                                    </a>
+                                </Button>
+                            )}
+                        </div>
+
+                        <RunMetricsSection
+                            costInfo={workflowRun?.cost_info ?? null}
+                            logs={workflowRun?.logs ?? null}
+                            gatheredContext={workflowRun?.gathered_context ?? null}
+                        />
+
+                        <SkillsLoadedSection gatheredContext={workflowRun?.gathered_context ?? null} />
+
+                        {!isTextChatRun && hasSplitTracks && (
+                            <SplitTracksSection
+                                userRecordingUrl={userSplitRecordingUrl as string}
+                                botRecordingUrl={botSplitRecordingUrl as string}
+                            />
+                        )}
+
+                        <div className="grid gap-6 md:grid-cols-2">
+                            <ContextDisplay
+                                title="Initial Context"
+                                context={workflowRun?.initial_context ?? null}
+                            />
+                            <ContextDisplay
+                                title="Gathered Context"
+                                context={workflowRun?.gathered_context ?? null}
+                            />
+                        </div>
+
+                        {workflowRun?.annotations && Object.keys(workflowRun.annotations).length > 0 && (
+                            <ContextDisplay
+                                title="QA Results"
+                                context={workflowRun.annotations as Record<string, string | number | boolean | object>}
+                            />
+                        )}
+                    </div>
+                </details>
             </div>
         );
     }
@@ -906,8 +969,8 @@ export default function WorkflowRunPage() {
                             </Link>
                         </Button>
                         <Button asChild className="gap-2">
-                            <Link href={`/workflow/${workflowId}`}>
-                                Customize Agent
+                            <Link href={agentFactsHref(Number(workflowId))}>
+                                Change your agent
                             </Link>
                         </Button>
                     </CardFooter>
@@ -923,7 +986,7 @@ export default function WorkflowRunPage() {
 
             {/* Only points at something when the agent link is on screen — in
                 agent context the shell already offers the editor. */}
-            {showRunDetailsView && cameFromWorkspace && workflowName && (
+            {showRunDetailsView && cameFromWorkspace && workflowName && !isMobile && (
                 <OnboardingTooltip
                     tooltipKey="customize_workflow"
                     title='Customize your agent'

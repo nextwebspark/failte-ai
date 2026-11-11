@@ -91,6 +91,7 @@ class WorkflowClient(BaseDBClient):
         workflow_definition: dict,
         user_id: int,
         organization_id: int = None,
+        template_context_variables: dict | None = None,
     ) -> WorkflowModel:
         async with self.async_session() as session:
             try:
@@ -99,6 +100,7 @@ class WorkflowClient(BaseDBClient):
                     workflow_definition=workflow_definition,  # Keep for backwards compatibility
                     user_id=user_id,
                     organization_id=organization_id,
+                    template_context_variables=template_context_variables or {},
                 )
                 session.add(new_workflow)
                 await session.flush()  # Flush to get the workflow ID
@@ -346,6 +348,62 @@ class WorkflowClient(BaseDBClient):
                 raise e
             await session.refresh(draft)
         return draft
+
+    async def update_business_facts(
+        self, workflow_id: int, organization_id: int, facts: dict[str, str | None]
+    ) -> dict | None:
+        """Set an agent's business facts (template context variables) on the
+        agent, its live version and any draft, so the next call uses them
+        without publishing a developer's unfinished draft. An empty value
+        removes the fact (the prompt's fallback applies). None if the agent
+        isn't in the organization."""
+        async with self.async_session() as session:
+            workflow = (
+                await session.execute(
+                    select(WorkflowModel)
+                    .where(
+                        WorkflowModel.id == workflow_id,
+                        WorkflowModel.organization_id == organization_id,
+                    )
+                    .with_for_update()
+                )
+            ).scalar_one_or_none()
+            if workflow is None:
+                return None
+
+            def merged(current: dict | None) -> dict:
+                result = dict(current or {})
+                for key, value in facts.items():
+                    if value:
+                        result[key] = value
+                    else:
+                        result.pop(key, None)
+                return result
+
+            workflow.template_context_variables = merged(
+                workflow.template_context_variables
+            )
+            definitions = (
+                await session.execute(
+                    select(WorkflowDefinitionModel).where(
+                        WorkflowDefinitionModel.workflow_id == workflow_id,
+                        or_(
+                            WorkflowDefinitionModel.id
+                            == workflow.released_definition_id,
+                            WorkflowDefinitionModel.status == "draft",
+                        ),
+                    )
+                )
+            ).scalars()
+            for definition in definitions:
+                definition.template_context_variables = merged(
+                    definition.template_context_variables
+                )
+            # Read before the commit: it expires the row, and reloading an
+            # attribute outside the session's await fails (MissingGreenlet).
+            saved = dict(workflow.template_context_variables)
+            await session.commit()
+            return saved
 
     async def get_draft_version(
         self,

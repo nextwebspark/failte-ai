@@ -48,7 +48,7 @@ describe("settings menu", () => {
 
   it("shows a client only the screens their role can open", () => {
     const titles = visibleSettingsSections(viewerCan).flatMap((s) => s.items.map((i) => i.title));
-    expect(titles).toEqual(["Members", "Billing", "Privacy & compliance", "Your account"]);
+    expect(titles).toEqual(["Members", "Reports by email", "Billing", "Privacy & compliance", "Your account"]);
     expect(firstSettingsUrl(viewerCan)).toBe("/team");
   });
 

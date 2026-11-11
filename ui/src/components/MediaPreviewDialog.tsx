@@ -159,8 +159,10 @@ export function MediaPreviewButton({
             variant="outline"
             size="icon"
             onClick={handleOpen}
+            aria-label={`Play recording or read transcript for call #${runId}`}
+            title="Recording and transcript"
         >
-            <Headphones className="h-4 w-4" />
+            <Headphones className="h-4 w-4" aria-hidden />
         </Button>
     );
 }

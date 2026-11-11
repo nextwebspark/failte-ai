@@ -15,6 +15,7 @@ import { useNodeSpecs } from "@/components/flow/renderer";
 import { FlowEdge, FlowNode, NodeType } from "@/components/flow/types";
 import { useAgentShell } from '@/context/AgentShellContext';
 import { useUnsavedChanges } from '@/context/UnsavedChangesContext';
+import { useFeatureEnabled } from '@/hooks/useFeatureFlags';
 import { detailFromError } from '@/lib/apiError';
 import { WorkflowConfigurations } from '@/types/workflow-configurations';
 
@@ -30,6 +31,7 @@ import { WorkflowVersionDiffDialog } from './components/WorkflowVersionDiffDialo
 import { WorkflowProvider } from "./contexts/WorkflowContext";
 import { useWorkflowState } from "./hooks/useWorkflowState";
 import { layoutNodes } from './utils/layoutNodes';
+import { versionLabel } from './utils/versionLabel';
 
 const edgeTypes = {
     custom: CustomEdge,
@@ -107,8 +109,14 @@ function RenderWorkflow({
     const [skillsError, setSkillsError] = useState(false);
 
     // Workspace skills for the node pickers; refreshed when a node editor
-    // opens, since skills are edited on another page.
+    // opens, since skills are edited on another page. Not fetched while the
+    // Skills area is switched off: the pickers are hidden then.
+    const skillsEnabled = useFeatureEnabled("skills");
     const refreshSkills = useCallback(async () => {
+        if (!skillsEnabled) {
+            setSkills([]);
+            return;
+        }
         try {
             const skillsResponse = await listSkillsApiV1SkillsGet();
             if (skillsResponse.error || !skillsResponse.data) {
@@ -122,7 +130,7 @@ function RenderWorkflow({
             setSkills((current) => current ?? []);
             setSkillsError(true);
         }
-    }, []);
+    }, [skillsEnabled]);
     const [recordings, setRecordings] = useState<RecordingResponseSchema[]>([]);
     const [activeRuntimeNodeId, setActiveRuntimeNodeId] = useState<string | null>(null);
 
@@ -396,14 +404,12 @@ function RenderWorkflow({
             const v = versions.find((ver) => ver.id === activeVersionId)
                 ?? (initialSelectedVersion?.id === activeVersionId ? initialSelectedVersion : undefined);
             if (v) {
-                const statusSuffix = v.status === "draft" ? " (Draft)" : v.status === "published" ? " (Published)" : "";
-                return `v${v.version_number}${statusSuffix}`;
+                return versionLabel(v.version_number, v.status);
             }
         }
         // Otherwise use the immediately-available version info from save responses
         if (currentVersionNumber != null) {
-            const statusSuffix = currentVersionStatus === "draft" ? " (Draft)" : currentVersionStatus === "published" ? " (Published)" : "";
-            return `v${currentVersionNumber}${statusSuffix}`;
+            return versionLabel(currentVersionNumber, currentVersionStatus);
         }
         return undefined;
     }, [activeVersionId, versions, currentVersionNumber, currentVersionStatus, initialSelectedVersion]);
@@ -660,6 +666,7 @@ function RenderWorkflow({
                                 edgesReconnectable={!isViewingHistoricalVersion}
                                 zoomOnDoubleClick={false}
                                 deleteKeyCode={isViewingHistoricalVersion ? null : "Backspace"}
+                                proOptions={{ hideAttribution: true }}
                             >
                                 <Background
                                     variant={BackgroundVariant.Dots}

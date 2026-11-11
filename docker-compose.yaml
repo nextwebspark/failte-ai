@@ -304,6 +304,15 @@ services:
       SMTP_USERNAME: "${SMTP_USERNAME:-}"
       SMTP_PASSWORD: "${SMTP_PASSWORD:-}"
       SMTP_SECURITY: "${SMTP_SECURITY:-starttls}"
+      # Call summary emails an organization may send per UTC day.
+      CALL_SUMMARY_DAILY_LIMIT: "${CALL_SUMMARY_DAILY_LIMIT:-200}"
+
+      # Text messages (booking confirmations to callers). "none" only logs
+      # them; "twilio" sends with the credentials below. See api/.env.example.
+      SMS_PROVIDER: "${SMS_PROVIDER:-none}"
+      TWILIO_SMS_ACCOUNT_SID: "${TWILIO_SMS_ACCOUNT_SID:-}"
+      TWILIO_SMS_AUTH_TOKEN: "${TWILIO_SMS_AUTH_TOKEN:-}"
+      SMS_FROM: "${SMS_FROM:-}"
 
       # Billing. "stripe" turns on prepaid credit through Stripe Checkout; see
       # docs/deployment/stripe-billing.mdx. Empty keeps the mode default.

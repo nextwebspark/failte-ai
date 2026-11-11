@@ -2,7 +2,7 @@
 
 import { ArrowUpCircle, Bot, LogOut, Menu, Settings, UserRound, Users } from "lucide-react";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import React from "react";
 
 import { BrandLogo } from "@/components/BrandLogo";
@@ -27,11 +27,43 @@ import { useOrgConfig } from "@/context/OrgConfigContext";
 import { useLatestReleaseVersion } from "@/hooks/useLatestReleaseVersion";
 import type { LocalUser } from "@/lib/auth";
 import { useAuth } from "@/lib/auth";
-import { ROLE_LABELS } from "@/lib/auth/roles";
+import { type Permission, ROLE_LABELS } from "@/lib/auth/roles";
+import { cn } from "@/lib/utils";
+import { workspaceDisplayName } from "@/lib/workspaceName";
 
 import { agentSectionFor } from "./agentNav";
+import { initialsOf, memberName } from "./memberIdentity";
 import { getPageMeta } from "./navConfig";
+import { usePageHeadingOwned } from "./pageHeading";
 import { useShellChrome } from "./shellContext";
+
+type AccountLink = { href: string; label: string; icon: typeof Settings };
+
+/**
+ * The account menu's links, minus the ones the caller's role can't open.
+ * `can` is null while the role loads: only the always-open links show then.
+ */
+export function accountMenuLinks(
+  provider: string | undefined,
+  can: ((...permissions: Permission[]) => boolean) | null,
+): AccountLink[] {
+  const links: AccountLink[] = [];
+  if (provider === "stack") {
+    links.push({ href: "/handler/account-settings", label: "Account settings", icon: Settings });
+  }
+  links.push({ href: "/account", label: "Your account", icon: UserRound });
+  if (can?.("members:read")) {
+    links.push({ href: "/team", label: "Team", icon: Users });
+  }
+  if (can) {
+    const settings = firstSettingsUrl(can);
+    // With no settings screen to open, Settings would only repeat "Your account".
+    if (settings !== "/account") {
+      links.push({ href: settings, label: "Settings", icon: Settings });
+    }
+  }
+  return links;
+}
 
 /**
  * The canvas's 46px app header (app-doc/claude-design/Failte AI v2.dc.html):
@@ -48,7 +80,6 @@ export function AppTopBar({
   actionsSlotRef: (node: HTMLDivElement | null) => void;
 }) {
   const pathname = usePathname();
-  const router = useRouter();
   const { provider, logout, user } = useAuth();
   const { config } = useAppConfig();
   const { toggleSidebar } = useSidebar();
@@ -70,26 +101,22 @@ export function AppTopBar({
       ? { ...getPageMeta(returnTo), subtitle: runId ? `Run ${runId}` : undefined }
       : getPageMeta(pathname);
   const uiVersion = config?.uiVersion;
+  // A screen that prints its own title owns the h1 (and shows its own
+  // one-line description), so the header's copy becomes a plain breadcrumb.
+  const pageOwnsHeading = usePageHeadingOwned();
+  const TitleTag = pageOwnsHeading ? "p" : "h1";
 
   // Update check is OSS-only — cloud deployments are upgraded for the user.
   const { latest: latestRelease, isBehind } = useLatestReleaseVersion(uiVersion, {
     enabled: config?.deploymentMode === "oss",
   });
 
-  const { role, can } = useOrgConfig();
+  const { role, can, orgContext } = useOrgConfig();
 
-  const displayIdentity =
-    user?.displayName ||
-    (user as { primaryEmail?: string } | undefined)?.primaryEmail ||
-    (user as LocalUser | undefined)?.email ||
-    "";
-  const userInitials =
-    displayIdentity
-      .split(/[\s@]/)
-      .filter(Boolean)
-      .slice(0, 2)
-      .map((s: string) => s[0]?.toUpperCase())
-      .join("") || "U";
+  const accountLinks = accountMenuLinks(provider, role === null ? null : can);
+
+  const userInitials = initialsOf(memberName(user));
+  const workspaceName = workspaceDisplayName(orgContext?.organization_name);
 
   const separator = (
     <span aria-hidden className="select-none text-xs text-ink-3 opacity-40">
@@ -101,30 +128,35 @@ export function AppTopBar({
     // Below md the header wraps: identity stays on the first row and the
     // screen's actions drop below it, wrapping rather than running off-screen.
     <header className="flex min-h-[46px] flex-none flex-wrap items-center gap-2 px-3.5 py-1.5 md:h-[46px] md:flex-nowrap md:py-0">
+      {/* Phones move around with the tab bar; the menu button stays only on
+          an agent's screens, whose own sections the tab bar doesn't list. */}
       <Button
         variant="ghost"
         size="icon"
         onClick={toggleSidebar}
-        aria-label="Toggle navigation"
-        className="h-7 w-7 shrink-0 text-ink-3 hover:text-foreground"
+        aria-label={agentShell ? "Agent menu" : "Toggle navigation"}
+        className={cn(
+          "size-11 shrink-0 text-ink-3 hover:text-foreground md:size-7",
+          !agentShell && "max-md:hidden"
+        )}
       >
         <Menu className="h-4 w-4" />
       </Button>
 
       <Link
         href="/overview"
-        className="notranslate flex shrink-0 items-center gap-1.5 rounded-md py-1 pl-1 pr-1.5"
+        aria-label={`${workspaceName}, Home`}
+        className="notranslate flex min-w-0 shrink-0 items-center gap-2 rounded-md py-1 pl-1 pr-1.5 max-md:max-w-[60%] max-md:shrink"
         translate="no"
       >
-        {/* The kit lockup, mark at its 24px minimum. */}
-        <BrandLogo size={24} />
-      </Link>
-
-      {uiVersion && (
-        <span className="hidden font-mono text-[11px] text-ink-3 lg:inline">
-          v{uiVersion}
+        {/* Phones: the mark and the business's name (mocks/mobile.png).
+            Wider: the kit lockup, mark at its 24px minimum. */}
+        <BrandLogo mark size={28} className="md:hidden" />
+        <span className="truncate font-display text-[17px] font-semibold tracking-tight text-foreground md:hidden">
+          {workspaceName}
         </span>
-      )}
+        <BrandLogo size={24} className="max-md:hidden" />
+      </Link>
       {isBehind && latestRelease && (
         <Tooltip>
           <TooltipTrigger asChild>
@@ -143,7 +175,7 @@ export function AppTopBar({
         <>
           <span className="hidden sm:inline">{separator}</span>
           <div className="hidden min-w-0 max-w-[200px] sm:block">
-            <SidebarTeamSwitcher triggerClassName="h-7 w-full justify-start gap-1.5 border-0 bg-transparent px-1.5 font-mono text-[13px] font-medium text-ink-3 shadow-none hover:text-foreground focus-visible:ring-0" />
+            <SidebarTeamSwitcher triggerClassName="h-7 w-full justify-start gap-1.5 border-0 bg-transparent px-1.5 text-[13px] font-medium text-ink-3 shadow-none hover:text-foreground focus-visible:ring-0" />
           </div>
         </>
       ) : (
@@ -156,11 +188,21 @@ export function AppTopBar({
       )}
 
       <span className="hidden sm:inline">{separator}</span>
-      <h1 className="min-w-0 truncate whitespace-nowrap text-sm font-semibold text-foreground">
+      {/* Narrow, the title takes the room that's left and truncates rather
+          than pushing the help and account buttons onto a second row. */}
+      {/* On phones the business name heads the bar, so the screen's name
+          drops to its own line, or away when the screen prints its own. */}
+      <TitleTag
+        className={cn(
+          "min-w-0 truncate whitespace-nowrap text-sm font-semibold text-foreground md:flex-none md:basis-auto",
+          "max-md:order-[90] max-md:w-full max-md:px-1 max-md:pb-1 max-md:text-[15px]",
+          pageOwnsHeading && "max-md:hidden"
+        )}
+      >
         {meta.title}
-      </h1>
-      {meta.subtitle && (
-        <p className="hidden truncate whitespace-nowrap font-mono text-xs text-ink-3 xl:block">
+      </TitleTag>
+      {meta.subtitle && !pageOwnsHeading && (
+        <p className="hidden truncate whitespace-nowrap text-xs text-ink-3 xl:block">
           {meta.subtitle}
         </p>
       )}
@@ -171,31 +213,40 @@ export function AppTopBar({
         className="order-last flex w-full min-w-0 flex-wrap items-center gap-2 empty:hidden md:order-none md:ml-auto md:w-auto md:flex-nowrap md:justify-end md:empty:flex"
       />
 
-      <div className="ml-auto flex flex-none items-center gap-2.5 md:ml-0">
+      <div className="ml-auto flex flex-none items-center gap-1 md:gap-2.5">
         {/* On xl the test rail is pinned beside the content panel; below it,
-            the same panel opens as a sheet from here. */}
+            or while a screen has it closed, it opens from here. */}
         {agentShell && showTestRail && (
           <Button
             variant="outline"
             size="sm"
             onClick={agentShell.openTester}
-            className="h-7 gap-1.5 rounded-md border-line bg-transparent px-2.5 text-xs text-ink-2 hover:bg-panel-2 hover:text-foreground xl:hidden"
+            className={cn(
+              "h-11 gap-1.5 rounded-md border-line bg-transparent px-3 text-xs text-ink-2 hover:bg-panel-2 hover:text-foreground md:h-7 md:px-2.5",
+              // Pinned beside the page on xl, unless a screen closed it.
+              agentShell.isRailOpen && "xl:hidden"
+            )}
           >
-            <Bot className="h-3.5 w-3.5" />
-            Test agent
+            <Bot className="h-4 w-4 md:h-3.5 md:w-3.5" aria-hidden />
+            {/* Icon only on phones, so the bar stays one row. */}
+            <span className="max-md:sr-only">Test agent</span>
           </Button>
         )}
 
-        <SupportLink iconOnly tooltipSide="bottom" variant="ghost" className="text-ink-3 hover:text-foreground" />
+        {/* On phones Help is in the More sheet. */}
+        <SupportLink iconOnly tooltipSide="bottom" variant="ghost" className="h-7 w-7 text-ink-3 hover:text-foreground max-md:hidden" />
 
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
+            {/* A 40px tap target on phones around the same 26px badge. */}
             <button
               type="button"
               aria-label="Account menu"
-              className="grid h-[26px] w-[26px] shrink-0 cursor-pointer place-items-center rounded-full border border-line bg-brand-dim font-mono text-[10px] font-semibold text-brand"
+              className="group grid size-11 shrink-0 cursor-pointer place-items-center rounded-full outline-none md:size-[26px]"
             >
-              {userInitials}
+              <span className="grid size-[26px] place-items-center rounded-full border border-line bg-brand-dim font-mono text-[10px] font-semibold text-brand group-focus-visible:ring-[3px] group-focus-visible:ring-ring/60 group-focus-visible:ring-offset-1 group-focus-visible:ring-offset-background">
+                {userInitials}
+              </span>
             </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent side="bottom" align="end" className="w-56">
@@ -220,32 +271,16 @@ export function AppTopBar({
               </div>
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
-            {provider === "stack" && (
-              <DropdownMenuItem
-                onClick={() => router.push("/handler/account-settings")}
-                className="cursor-pointer"
-              >
-                <Settings className="mr-2 h-4 w-4" />
-                Account settings
+            {accountLinks.map(({ href, label, icon: Icon }) => (
+              <DropdownMenuItem key={href} asChild className="cursor-pointer">
+                <Link href={href}>
+                  <Icon className="mr-2 h-4 w-4" aria-hidden />
+                  {label}
+                </Link>
               </DropdownMenuItem>
-            )}
-            <DropdownMenuItem onClick={() => router.push("/account")} className="cursor-pointer">
-              <UserRound className="mr-2 h-4 w-4" />
-              Your account
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => router.push("/team")} className="cursor-pointer">
-              <Users className="mr-2 h-4 w-4" />
-              Team
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              onClick={() => router.push(firstSettingsUrl(role === null ? null : can))}
-              className="cursor-pointer"
-            >
-              <Settings className="mr-2 h-4 w-4" />
-              Settings
-            </DropdownMenuItem>
+            ))}
             <DropdownMenuItem onClick={() => logout()} className="cursor-pointer">
-              <LogOut className="mr-2 h-4 w-4" />
+              <LogOut className="mr-2 h-4 w-4" aria-hidden />
               Sign out
             </DropdownMenuItem>
           </DropdownMenuContent>

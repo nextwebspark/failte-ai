@@ -18,8 +18,8 @@ describe("getRedirectUrl (Stack sign-in landing)", () => {
     mocks.count.mockResolvedValue({ data: { total: 2, active: 1 } });
   });
 
-  it("lands an admin with live agents on their calls", async () => {
-    expect(await getRedirectUrl("tok", [{ id: "admin" }])).toBe("/usage");
+  it("lands an admin with live agents on Home", async () => {
+    expect(await getRedirectUrl("tok", [{ id: "admin" }])).toBe("/overview");
   });
 
   it("starts an admin with no live agent on creating one", async () => {
@@ -27,8 +27,8 @@ describe("getRedirectUrl (Stack sign-in landing)", () => {
     expect(await getRedirectUrl("tok", [{ id: "admin" }])).toBe("/workflow/create");
   });
 
-  it("lands a member without admin on their calls", async () => {
-    expect(await getRedirectUrl("tok", [])).toBe("/usage");
+  it("lands a member without admin on Home", async () => {
+    expect(await getRedirectUrl("tok", [])).toBe("/overview");
     expect(mocks.count).not.toHaveBeenCalled();
   });
 

@@ -141,6 +141,7 @@ Outgoing email covers account verification, password reset, team invitations and
 | `SMTP_PASSWORD` | `null` | SMTP password |
 | `SMTP_SECURITY` | `starttls` | `starttls`, `ssl` or `none` |
 | `SMTP_TIMEOUT_SECONDS` | `15` | SMTP connection timeout |
+| `CALL_SUMMARY_DAILY_LIMIT` | `200` | Most after-call emails to the business (Settings, Notifications) one organization sends per UTC day; further ones that day are skipped and logged |
 
 <Tip>
 For local development, `docker-compose-local.yaml` runs Mailpit. Set `EMAIL_PROVIDER=smtp`, `SMTP_HOST=localhost`, `SMTP_PORT=1025` and `SMTP_SECURITY=none`, then read the mail at http://localhost:8025.

@@ -169,7 +169,7 @@ describe("IntegrationsPage", () => {
     it("shows the unconfigured-server state on integration_unavailable", async () => {
         mocks.getCatalog.mockResolvedValue({ error: { detail: "not available", code: "integration_unavailable" } });
         render(<IntegrationsPage />);
-        expect(await screen.findByText("Integrations aren't configured on this server")).toBeTruthy();
+        expect(await screen.findByText("Integrations aren't switched on yet")).toBeTruthy();
         expect(mocks.listConnections).not.toHaveBeenCalled();
     });
 

@@ -1,0 +1,325 @@
+"""Follow-ups: which calls need a person, their order, the done mark and
+this week's summary. Pure functions; no database."""
+
+from datetime import UTC, datetime, timedelta
+
+from api.services.dashboard.calls import CallResult, CallView
+from api.services.dashboard.follow_ups import (
+    FollowUpKind,
+    FollowUpStatus,
+    done_mark,
+    follow_up_row,
+    follow_ups,
+    kind_counts,
+    ordered,
+    week_summary,
+)
+
+NOW = datetime(2026, 11, 6, 15, 0, tzinfo=UTC)
+
+
+def _call(
+    run_id,
+    result,
+    *,
+    hours_ago,
+    caller="+353871111111",
+    mark=None,
+    callback=None,
+    review=None,
+    kind_marks=None,
+):
+    return CallView(
+        run_id=run_id,
+        workflow_id=14,
+        workflow_name="Bia Bistro bookings",
+        created_at=NOW - timedelta(hours=hours_ago),
+        result=result,
+        duration_seconds=60.0,
+        has_recording=True,
+        caller_number=caller,
+        caller_name=None,
+        call_reason=None,
+        callback_number=callback,
+        follow_up_mark=mark,
+        review=review,
+        follow_up_marks=kind_marks,
+    )
+
+
+def _done(hours_ago, who="Maria"):
+    return {"done_at": (NOW - timedelta(hours=hours_ago)).isoformat(), "done_by": who}
+
+
+def _kinds(items):
+    return {i.call.run_id: i.kind for i in items}
+
+
+def test_callbacks_and_unanswered_transfers_need_a_person():
+    items = follow_ups(
+        [
+            _call(1, CallResult.CALLBACK_REQUESTED, hours_ago=3),
+            _call(
+                2, CallResult.TRANSFER_NOT_ANSWERED, hours_ago=2, caller="+353872222222"
+            ),
+            _call(3, CallResult.HANDLED, hours_ago=1),
+            _call(4, CallResult.PASSED_TO_TEAM, hours_ago=1),
+            _call(5, CallResult.HUNG_UP_SILENT, hours_ago=1, caller="+353873333333"),
+        ]
+    )
+    assert _kinds(items) == {
+        1: FollowUpKind.CALLBACK,
+        2: FollowUpKind.TRANSFER_NOT_ANSWERED,
+    }
+
+
+def test_repeat_caller_who_never_reached_anyone():
+    items = follow_ups(
+        [
+            _call(1, CallResult.HUNG_UP_SILENT, hours_ago=5),
+            _call(2, CallResult.NOT_CONNECTED, hours_ago=4),
+            _call(3, CallResult.HUNG_UP_EARLY, hours_ago=3),
+        ]
+    )
+    assert _kinds(items) == {3: FollowUpKind.REPEAT_CALLER}
+    assert items[0].repeat_count == 3
+    assert items[0].first_call_at == NOW - timedelta(hours=5)
+
+
+def test_caller_reached_later_is_not_a_repeat_caller():
+    items = follow_ups(
+        [
+            _call(1, CallResult.HUNG_UP_SILENT, hours_ago=5),
+            _call(2, CallResult.HUNG_UP_SILENT, hours_ago=4),
+            _call(3, CallResult.HANDLED, hours_ago=3),
+            _call(4, CallResult.HUNG_UP_SILENT, hours_ago=2),
+        ]
+    )
+    assert items == []
+
+
+def test_withheld_numbers_are_never_grouped_as_repeat_callers():
+    items = follow_ups(
+        [
+            _call(1, CallResult.HUNG_UP_SILENT, hours_ago=5, caller=None),
+            _call(2, CallResult.HUNG_UP_SILENT, hours_ago=4, caller=None),
+        ]
+    )
+    assert items == []
+
+
+def test_same_number_written_differently_is_one_caller():
+    items = follow_ups(
+        [
+            _call(1, CallResult.HUNG_UP_SILENT, hours_ago=5, caller="+353 87 111 1111"),
+            _call(2, CallResult.HUNG_UP_SILENT, hours_ago=4, caller="+353871111111"),
+        ]
+    )
+    assert _kinds(items) == {2: FollowUpKind.REPEAT_CALLER}
+
+
+def test_unanswered_transfer_on_a_repeat_caller_stays_one_item():
+    items = follow_ups(
+        [
+            _call(1, CallResult.HUNG_UP_SILENT, hours_ago=5),
+            _call(2, CallResult.TRANSFER_NOT_ANSWERED, hours_ago=4),
+        ]
+    )
+    assert _kinds(items) == {2: FollowUpKind.TRANSFER_NOT_ANSWERED}
+    assert items[0].repeat_count == 2
+
+
+def test_open_items_grouped_by_caller_longest_waiting_first():
+    items = follow_ups(
+        [
+            _call(
+                1, CallResult.CALLBACK_REQUESTED, hours_ago=1, caller="+353870000001"
+            ),
+            _call(
+                2, CallResult.CALLBACK_REQUESTED, hours_ago=6, caller="+353870000002"
+            ),
+            _call(
+                3, CallResult.TRANSFER_NOT_ANSWERED, hours_ago=2, caller="+353870000002"
+            ),
+            _call(
+                4, CallResult.CALLBACK_REQUESTED, hours_ago=4, caller="+353870000003"
+            ),
+            _call(
+                5,
+                CallResult.CALLBACK_REQUESTED,
+                hours_ago=8,
+                caller="+353870000004",
+                mark=_done(1),
+            ),
+        ]
+    )
+    open_items = ordered(items, FollowUpStatus.OPEN)
+    # Caller 2 has waited longest (6 h), so both of theirs come first.
+    assert [i.call.run_id for i in open_items] == [2, 3, 4, 1]
+    assert [i.call.run_id for i in ordered(items, FollowUpStatus.DONE)] == [5]
+
+
+def test_done_items_newest_done_first():
+    items = follow_ups(
+        [
+            _call(
+                1,
+                CallResult.CALLBACK_REQUESTED,
+                hours_ago=9,
+                mark=_done(5),
+                caller="+353870000001",
+            ),
+            _call(
+                2,
+                CallResult.CALLBACK_REQUESTED,
+                hours_ago=8,
+                mark=_done(1),
+                caller="+353870000002",
+            ),
+        ]
+    )
+    assert [i.call.run_id for i in ordered(items, FollowUpStatus.DONE)] == [2, 1]
+
+
+def test_done_row_says_who_and_when():
+    item = follow_ups(
+        [_call(1, CallResult.CALLBACK_REQUESTED, hours_ago=3, mark=_done(1))]
+    )[0]
+    row = follow_up_row(item)
+    assert row["done_by"] == "Maria"
+    assert row["done_at"] == NOW - timedelta(hours=1)
+    assert row["kind"] == FollowUpKind.CALLBACK
+
+
+def test_callers_without_a_number_group_by_callback_number():
+    items = follow_ups(
+        [
+            _call(
+                1,
+                CallResult.CALLBACK_REQUESTED,
+                hours_ago=3,
+                caller=None,
+                callback="087 000 0009",
+            ),
+            _call(2, CallResult.CALLBACK_REQUESTED, hours_ago=2, caller=None),
+        ]
+    )
+    keys = {i.call.run_id: i.group_key for i in items}
+    assert keys == {1: "0870000009", 2: "call-2"}
+
+
+def test_week_summary_counts_and_usual_wait():
+    items = follow_ups(
+        [
+            _call(
+                1,
+                CallResult.CALLBACK_REQUESTED,
+                hours_ago=5,
+                mark=_done(4),
+                caller="+353870000001",
+            ),
+            _call(
+                2,
+                CallResult.CALLBACK_REQUESTED,
+                hours_ago=10,
+                mark=_done(7),
+                caller="+353870000002",
+            ),
+            _call(
+                3, CallResult.CALLBACK_REQUESTED, hours_ago=2, caller="+353870000003"
+            ),
+            # Raised last month, done this week: sorted counts it, raised doesn't.
+            _call(
+                4,
+                CallResult.CALLBACK_REQUESTED,
+                hours_ago=24 * 10,
+                mark=_done(30),
+                caller="+353870000004",
+            ),
+        ]
+    )
+    week = week_summary(items, NOW)
+    assert week["raised"] == 3
+    assert week["sorted"] == 3
+    # Waits: 1 h, 3 h, 210 h -> median 3 h.
+    assert week["median_wait_minutes"] == 180
+
+
+def test_week_summary_with_nothing_done():
+    items = follow_ups([_call(1, CallResult.CALLBACK_REQUESTED, hours_ago=2)])
+    assert week_summary(items, NOW) == {
+        "raised": 1,
+        "sorted": 0,
+        "median_wait_minutes": None,
+    }
+
+
+def test_kind_counts_lists_every_kind():
+    items = follow_ups([_call(1, CallResult.CALLBACK_REQUESTED, hours_ago=2)])
+    assert kind_counts(items) == {
+        "callback": 1,
+        "transfer_not_answered": 0,
+        "repeat_caller": 0,
+        "unanswered_question": 0,
+        "time_was_full": 0,
+    }
+
+
+def test_done_mark_names_the_member():
+    mark = done_mark(user_id=7, name=None, email="maria@trattoria.ie", now=NOW)
+    assert mark == {
+        "done_at": NOW.isoformat(),
+        "done_by_user_id": 7,
+        "done_by": "maria",
+    }
+    assert (
+        done_mark(user_id=7, name="Maria Keane", email=None, now=NOW)["done_by"]
+        == "Maria Keane"
+    )
+
+
+def _review(questions=(), full=False, summary="Asked about gluten-free pasta."):
+    return {
+        "summary": summary,
+        "reason": "questions",
+        "reason_label": "Questions",
+        "unanswered_questions": list(questions),
+        "time_was_full": full,
+    }
+
+
+def test_call_review_raises_its_own_follow_ups():
+    items = follow_ups(
+        [
+            _call(1, CallResult.HANDLED, hours_ago=3, review=_review(["Gluten-free?"])),
+            _call(2, CallResult.HANDLED, hours_ago=2, review=_review(full=True)),
+            # A booking made anyway: the full time needs nobody.
+            _call(3, CallResult.BOOKING_MADE, hours_ago=2, review=_review(full=True)),
+            _call(4, CallResult.HANDLED, hours_ago=1, review=_review()),
+        ]
+    )
+    assert sorted((i.call.run_id, i.kind) for i in items) == [
+        (1, FollowUpKind.UNANSWERED_QUESTION),
+        (2, FollowUpKind.TIME_WAS_FULL),
+    ]
+    row = follow_up_row(items[0])
+    assert row["questions"] == ["Gluten-free?"]
+    assert row["summary"] == "Asked about gluten-free pasta."
+
+
+def test_one_call_can_need_a_callback_and_an_answer_each_done_on_its_own():
+    call = _call(
+        1,
+        CallResult.CALLBACK_REQUESTED,
+        hours_ago=2,
+        review=_review(["Gluten-free?"]),
+        kind_marks={"unanswered_question": _done(1)},
+    )
+    items = {i.kind: i for i in follow_ups([call])}
+    assert set(items) == {FollowUpKind.CALLBACK, FollowUpKind.UNANSWERED_QUESTION}
+    assert not items[FollowUpKind.CALLBACK].done
+    assert items[FollowUpKind.UNANSWERED_QUESTION].done
+    assert follow_up_row(items[FollowUpKind.CALLBACK])["questions"] == []
+    assert [i.kind for i in ordered(list(items.values()), FollowUpStatus.OPEN)] == [
+        FollowUpKind.CALLBACK
+    ]

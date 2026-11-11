@@ -12,9 +12,9 @@ export const dynamic = "force-dynamic";
 export default async function LoginPage({
   searchParams,
 }: {
-  searchParams: Promise<{ next?: string }>;
+  searchParams: Promise<{ next?: string; reason?: string }>;
 }) {
-  const [{ signupEnabled, googleAuthEnabled }, { next }] = await Promise.all([
+  const [{ signupEnabled, googleAuthEnabled }, { next, reason }] = await Promise.all([
     getLocalAuthOptions(),
     searchParams,
   ]);
@@ -23,6 +23,7 @@ export default async function LoginPage({
       signupEnabled={signupEnabled}
       googleAuthEnabled={googleAuthEnabled}
       nextPath={isSafeNextPath(next) ? next : null}
+      sessionEnded={reason === "session-ended"}
     />
   );
 }

@@ -109,6 +109,7 @@ export function CredentialSelector({
                     </SelectContent>
                 </Select>
                 <Button
+                    aria-label="Add new credential"
                     variant="outline"
                     size="icon"
                     onClick={() => setIsAddDialogOpen(true)}

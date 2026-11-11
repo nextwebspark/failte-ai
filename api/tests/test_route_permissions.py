@@ -44,6 +44,9 @@ UNSCOPED_ROUTES = {
     ("POST", "/api/v1/invitations/accept"),
     ("POST", "/api/v1/superuser/impersonate"),
     ("GET", "/api/v1/superuser/workflow-runs"),
+    # Feature switches as the caller's organization sees them: every member
+    # needs them to draw the app.
+    ("GET", "/api/v1/features"),
 }
 
 
@@ -56,6 +59,29 @@ PLATFORM_ADMIN_ROUTES = {
     ("DELETE", "/api/v1/skill-library/{library_skill_uuid}"),
     ("POST", "/api/v1/skill-library/{library_skill_uuid}/publish"),
     ("POST", "/api/v1/skill-library/{library_skill_uuid}/deprecate"),
+    # Billing administration (plans, rates, credit limits, adjustments).
+    ("GET", "/api/v1/superuser/billing/organizations/{organization_id}"),
+    ("PATCH", "/api/v1/superuser/billing/organizations/{organization_id}"),
+    ("POST", "/api/v1/superuser/billing/organizations/{organization_id}/adjustments"),
+    ("GET", "/api/v1/superuser/billing/margins"),
+    # The platform admin area.
+    ("GET", "/api/v1/superuser/admin/overview"),
+    ("GET", "/api/v1/superuser/admin/health"),
+    ("GET", "/api/v1/superuser/admin/features"),
+    ("PUT", "/api/v1/superuser/admin/features/{feature}"),
+    (
+        "PUT",
+        "/api/v1/superuser/admin/features/{feature}/organizations/{organization_id}",
+    ),
+    ("GET", "/api/v1/superuser/admin/organizations"),
+    ("GET", "/api/v1/superuser/admin/organizations/{organization_id}"),
+    (
+        "PUT",
+        "/api/v1/superuser/admin/organizations/{organization_id}/concurrency-limit",
+    ),
+    ("GET", "/api/v1/superuser/admin/users"),
+    ("PUT", "/api/v1/superuser/admin/users/{user_id}/platform-admin"),
+    ("GET", "/api/v1/superuser/admin/audit-log"),
 }
 
 
@@ -173,7 +199,11 @@ async def client_as(org):
     ("method", "path", "allowed"),
     [
         # Agents: everyone reads, developers+ write.
-        ("GET", "/api/v1/folder/", {OrgRole.VIEWER, OrgRole.DEVELOPER, OrgRole.ADMIN}),
+        (
+            "GET",
+            "/api/v1/folder/",
+            {OrgRole.STAFF, OrgRole.VIEWER, OrgRole.DEVELOPER, OrgRole.ADMIN},
+        ),
         ("POST", "/api/v1/folder/", {OrgRole.DEVELOPER, OrgRole.ADMIN}),
         # Telephony: hidden from viewers entirely.
         (
@@ -189,18 +219,55 @@ async def client_as(org):
         (
             "GET",
             "/api/v1/organizations/reports/workflows",
-            {OrgRole.VIEWER, OrgRole.DEVELOPER, OrgRole.ADMIN},
+            {OrgRole.STAFF, OrgRole.VIEWER, OrgRole.DEVELOPER, OrgRole.ADMIN},
+        ),
+        # Home and Follow-ups: every member, staff included, and anyone may
+        # mark a follow-up done.
+        (
+            "GET",
+            "/api/v1/dashboard/summary",
+            {OrgRole.STAFF, OrgRole.VIEWER, OrgRole.DEVELOPER, OrgRole.ADMIN},
+        ),
+        (
+            "GET",
+            "/api/v1/follow-ups",
+            {OrgRole.STAFF, OrgRole.VIEWER, OrgRole.DEVELOPER, OrgRole.ADMIN},
+        ),
+        (
+            "POST",
+            "/api/v1/follow-ups/999999/done",
+            {OrgRole.STAFF, OrgRole.VIEWER, OrgRole.DEVELOPER, OrgRole.ADMIN},
         ),
         # Team management: admins only.
         ("GET", "/api/v1/organizations/invitations", {OrgRole.ADMIN}),
         # Skills: everyone reads (incl. the library), developers+ write.
-        ("GET", "/api/v1/skills", {OrgRole.VIEWER, OrgRole.DEVELOPER, OrgRole.ADMIN}),
+        (
+            "GET",
+            "/api/v1/skills",
+            {OrgRole.STAFF, OrgRole.VIEWER, OrgRole.DEVELOPER, OrgRole.ADMIN},
+        ),
         ("POST", "/api/v1/skills", {OrgRole.DEVELOPER, OrgRole.ADMIN}),
         (
             "GET",
             "/api/v1/skill-library",
-            {OrgRole.VIEWER, OrgRole.DEVELOPER, OrgRole.ADMIN},
+            {OrgRole.STAFF, OrgRole.VIEWER, OrgRole.DEVELOPER, OrgRole.ADMIN},
         ),
+        # Bookings: everyone who sees calls reads them; switching AI booking
+        # is for the owner and admins (and staff the owner allows).
+        (
+            "PUT",
+            "/api/v1/integrations/bookings/calendars/00000000-0000-0000-0000-000000000000",
+            {OrgRole.VIEWER, OrgRole.ADMIN},
+        ),
+        # Who on the staff may manage bookings: owner and admins.
+        (
+            "PUT",
+            "/api/v1/organizations/members/999999/bookings-access",
+            {OrgRole.VIEWER, OrgRole.ADMIN},
+        ),
+        # Who hears about calls: owner and admins.
+        ("GET", "/api/v1/organizations/notifications", {OrgRole.VIEWER, OrgRole.ADMIN}),
+        ("PUT", "/api/v1/organizations/notifications", {OrgRole.VIEWER, OrgRole.ADMIN}),
         # Library writes: platform admins only, whatever the org role.
         ("POST", "/api/v1/skill-library", set()),
     ],
@@ -286,10 +353,11 @@ async def test_viewer_cannot_open_test_call_signaling(monkeypatch):
 
     websocket = SimpleNamespace(close=AsyncMock())
     user = SimpleNamespace(id=7, selected_organization_id=3, is_superuser=False)
+    # Membership (role + bookings switch) is read in one query.
     monkeypatch.setattr(
         auth_depends.db_client,
-        "get_member_role",
-        AsyncMock(return_value=OrgRole.VIEWER),
+        "get_member_access",
+        AsyncMock(return_value=(OrgRole.VIEWER, False)),
     )
     get_run = AsyncMock()
     monkeypatch.setattr(webrtc_signaling.db_client, "get_workflow_run", get_run)

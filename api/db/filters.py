@@ -1,9 +1,22 @@
 """Common filter utilities for database queries."""
 
+import re
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from sqlalchemy import Float, Text, and_, cast, func
+from sqlalchemy import (
+    Float,
+    Text,
+    and_,
+    case,
+    cast,
+    false,
+    func,
+    literal,
+    not_,
+    or_,
+    select,
+)
 from sqlalchemy.dialects.postgresql import JSONB
 
 from api.db.models import WorkflowRunModel
@@ -55,7 +68,120 @@ ATTRIBUTE_FIELD_MAPPING = {
     "calledNumber": "initial_context.called_number",
     "callDirection": "call_type",
     "callChannel": "mode",
+    "callerSearch": "caller",
+    "handledBy": "handled_by",
+    "bookingOutcome": "gathered_context.booking_outcome",
+    "needsFollowUp": "follow_up",
 }
+
+# The stored events that hold what was said: the agent's lines and the
+# caller's (final) transcriptions, in ``logs.realtime_feedback_events``.
+SPOKEN_EVENT_TYPES = ("rtf-bot-text", "rtf-user-transcription")
+
+# How the engine records a call that was handed to a person (the same rule
+# as api/services/reports/daily_report.py's is_transferred): call_status
+# "transfer_call" / "call_transferred", or an organization's "XFER" mapping.
+_TRANSFERRED_CALL_STATUSES = ("transfer_call", "call_transferred")
+
+
+def _gathered(key: str):
+    """``gathered_context ->> key`` as text, '' when missing."""
+    return func.coalesce(
+        cast(WorkflowRunModel.gathered_context, JSONB).op("->>")(key), ""
+    )
+
+
+def _initial(key: str):
+    return cast(
+        cast(WorkflowRunModel.initial_context, JSONB).op("->>")(key),
+        Text,
+    )
+
+
+def _passed_to_team():
+    return or_(
+        _gathered("call_status").in_(_TRANSFERRED_CALL_STATUSES),
+        _gathered("mapped_call_disposition") == "XFER",
+    )
+
+
+def search_digits(text: str) -> str:
+    """The digits to look for in a stored number: "087 123 4567" and
+    "+353 87 123 4567" are stored as "+353871234567", so drop the spacing,
+    an international "00" and the leading trunk zero."""
+    digits = re.sub(r"\D", "", text)
+    if digits.startswith("00"):
+        return digits[2:]
+    return digits.lstrip("0")
+
+
+def _escape_like(text: str) -> str:
+    """``text`` for a LIKE pattern: its own %, _ and backslash match literally."""
+    return re.sub(r"([\\%_])", r"\\\1", text)
+
+
+def _said_on_call(pattern: str):
+    """Whether any line of the conversation (agent or caller) matches the
+    ILIKE ``pattern``. Looks only at the spoken text of the stored events,
+    not at event types, tool results or timestamps, so "bot" or "2026" don't
+    match every call.
+
+    Cost: no index covers this; Postgres reads each candidate row's ``logs``
+    and walks its events. The list is always scoped to one organization and,
+    by default, to the last 7 days, which keeps the rows scanned small. With
+    "Any time" on a large workspace it is a scan of that workspace's calls.
+    """
+    events = cast(WorkflowRunModel.logs, JSONB).op("->")("realtime_feedback_events")
+    # jsonb_array_elements fails on a non-array, so anything else reads as [].
+    as_array = case(
+        (func.jsonb_typeof(events) == "array", events),
+        else_=cast(literal("[]"), JSONB),
+    )
+    said = func.jsonb_array_elements(as_array).table_valued("value").alias("said")
+    line = said.c.value
+    return (
+        select(literal(1))
+        .select_from(said)
+        .where(
+            line.op("->>")("type").in_(SPOKEN_EVENT_TYPES),
+            line.op("->")("payload").op("->>")("text").ilike(pattern, escape="\\"),
+        )
+        .exists()
+    )
+
+
+def _summary_matches(pattern: str):
+    """The post-call review's summary (``annotations.call_review.summary``)."""
+    review = cast(WorkflowRunModel.annotations, JSONB).op("->")("call_review")
+    return func.coalesce(review.op("->>")("summary"), "").ilike(pattern, escape="\\")
+
+
+def _caller_search(text: str):
+    """The one search box: the caller's name (as the agent captured it),
+    their number (the number the list shows: the caller's on inbound calls
+    and the number called on outbound ones), the call's summary, or anything
+    said on the call."""
+    pattern = f"%{_escape_like(text)}%"
+    conditions = [
+        _gathered("caller_name").ilike(pattern, escape="\\"),
+        _summary_matches(pattern),
+        _said_on_call(pattern),
+    ]
+    digits = search_digits(text)
+    if digits:
+        conditions.append(
+            and_(
+                WorkflowRunModel.call_type == CallType.INBOUND.value,
+                _initial("caller_number").contains(digits),
+            )
+        )
+        conditions.append(
+            and_(
+                WorkflowRunModel.call_type != CallType.INBOUND.value,
+                _initial("called_number").contains(digits),
+            )
+        )
+    return or_(*conditions)
 
 
 def apply_workflow_run_filters(
@@ -78,6 +204,13 @@ def apply_workflow_run_filters(
     - calledNumber: Filter by initial_context.called_number (text search)
     - callDirection: Filter by call_type (inbound / outbound)
     - callChannel: Filter by mode, grouped into telephony / web / chat
+    - callerSearch: the caller's captured name or number, the call's summary,
+      or what was said on the call (text)
+    - needsFollowUp: the calls with an open follow-up. The route resolves
+      these with the Follow-ups service and passes the run ids in
+      ``value.ids`` (type "runIds"); without resolved ids nothing matches.
+    - handledBy: "agent" or "team" (passed to a person), as a radio value
+    - bookingOutcome: gathered_context.booking_outcome, any of the codes
 
     Args:
         base_query: The base SQLAlchemy query to apply filters to
@@ -221,6 +354,47 @@ def apply_workflow_run_filters(
                             ),
                             Text,
                         ).contains(phone)
+                    )
+
+            elif filter_type == "text" and field == "caller":
+                text = str(value.get("value") or "").strip()
+                if text:
+                    filter_conditions.append(_caller_search(text))
+
+            elif field == "follow_up":
+                # Never trust ids from the request: the route replaces this
+                # filter's value with the Follow-ups service's open items.
+                ids = value.get("ids") if filter_type == "runIds" else None
+                run_ids = (
+                    [i for i in ids if isinstance(i, int) and not isinstance(i, bool)]
+                    if isinstance(ids, list)
+                    else []
+                )
+                filter_conditions.append(
+                    WorkflowRunModel.id.in_(run_ids) if run_ids else false()
+                )
+
+            elif filter_type == "radio" and field == "handled_by":
+                # "agent": the agent dealt with the call itself; "team": it
+                # was passed to a person. Anything else matches all.
+                who = value.get("status")
+                if who == "team":
+                    filter_conditions.append(_passed_to_team())
+                elif who == "agent":
+                    filter_conditions.append(not_(_passed_to_team()))
+
+            elif (
+                filter_type == "multiSelect"
+                and field == "gathered_context.booking_outcome"
+            ):
+                outcomes = [
+                    str(code).strip().lower()
+                    for code in value.get("codes", [])
+                    if str(code).strip()
+                ]
+                if outcomes:
+                    filter_conditions.append(
+                        func.lower(_gathered("booking_outcome")).in_(outcomes)
                     )
 
             elif filter_type == "numberRange":

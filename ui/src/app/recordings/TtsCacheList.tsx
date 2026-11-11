@@ -12,6 +12,7 @@ import {
 } from "@/client/sdk.gen";
 import type { ListTtsCacheApiV1TtsCacheGetData, TtsCacheEntry } from "@/client/types.gen";
 import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/empty-state";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useOrganizationTimezone } from "@/hooks/useOrganizationTimezone";
@@ -191,11 +192,11 @@ export default function TtsCacheList() {
             </p>
             {error ? <div role="alert" className="rounded-lg border border-destructive/20 bg-destructive/10 p-4 text-destructive">{error}</div>
                 : loading ? <Skeleton className="h-40 w-full" />
-                    : entries.length === 0 ? <div className="py-12 text-center text-muted-foreground">
-                        <AudioLines className="mx-auto mb-3 h-10 w-10" />
-                        <p>No cached speech found.</p>
-                        <p className="mt-1 text-sm">Speech appears here after a successful synthesis in an agent with speech caching enabled.</p>
-                    </div>
+                    : entries.length === 0 ? <EmptyState
+                        icon={AudioLines}
+                        title="No saved speech yet"
+                        description="When an agent with speech saving turned on says something, it's kept here so it can be reused."
+                    />
                         : <>
                             <p className="text-sm text-muted-foreground">{total} cached phrase{total === 1 ? "" : "s"} matching your filters</p>
                             <div className="space-y-3">

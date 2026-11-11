@@ -26,6 +26,7 @@ from api.errors.integrations import (
 )
 from api.schemas.integrations import (
     CreateProviderAppRequest,
+    IntegrationBooking,
     IntegrationCatalogResponse,
     IntegrationConnection,
     IntegrationSyncStatus,
@@ -73,6 +74,10 @@ class Caller:
 
 class _ConnectionList(BaseModel):
     connections: list[IntegrationConnection]
+
+
+class _BookingList(BaseModel):
+    bookings: list[IntegrationBooking]
 
 
 class IssuedConnectionKey(BaseModel):
@@ -200,6 +205,24 @@ class ToolsServiceClient:
         )
         return self._parse(response, IntegrationConnection)
 
+    async def list_bookings(
+        self,
+        caller: Caller,
+        connection_id: uuid.UUID,
+        start: datetime,
+        end: datetime,
+    ) -> list[IntegrationBooking]:
+        """Bookings the connection's tools made in [start, end). Reads the
+        calendar at the provider, so it gets the connection-test timeout."""
+        response = await self._request(
+            "GET",
+            f"/internal/connections/{connection_id}/bookings",
+            caller,
+            params={"start": start.isoformat(), "end": end.isoformat()},
+            timeout=TEST_TIMEOUT,
+        )
+        return self._parse(response, _BookingList).bookings
+
     async def test_connection(
         self, caller: Caller, connection_id: uuid.UUID
     ) -> ConnectionTestResult:
@@ -318,6 +341,7 @@ class ToolsServiceClient:
         caller: Caller,
         *,
         json: dict[str, JsonValue] | None = None,
+        params: Mapping[str, str] | None = None,
         timeout: httpx.Timeout | None = None,
     ) -> httpx.Response:
         headers = {
@@ -332,6 +356,7 @@ class ToolsServiceClient:
                 method,
                 f"{self._base_url}{path}",
                 json=json,
+                params=params,
                 headers=headers,
                 timeout=timeout or self._timeout,
             )

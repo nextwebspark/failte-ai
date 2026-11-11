@@ -1,6 +1,6 @@
 # Telephony Provider Implementation
 
-This module implements the telephony provider abstraction for LightMove.ai. For user-facing documentation, see the [Mintlify docs](https://docs.lightmove.ai/integrations/telephony/overview).
+This module implements the telephony provider abstraction for LightMove.ai. For user-facing documentation, see the [telephony docs](https://lightmove.ai/docs/integrations/telephony) on the website.
 
 ## Architecture
 
@@ -49,7 +49,7 @@ telephony/
 
 ## Implementing a New Provider
 
-See the [Custom Provider Guide](https://docs.lightmove.ai/integrations/telephony/custom) in the documentation for detailed implementation instructions.
+See the [Custom Provider Guide](../../../docs/integrations/telephony/custom.mdx) in the in-repo docs for detailed implementation instructions.
 
 Quick checklist:
 1. Create `providers/your_provider.py` implementing `TelephonyProvider`
@@ -170,7 +170,7 @@ await provider.initiate_call(...)
 
 ## Related Documentation
 
-- [User Documentation](https://docs.lightmove.ai/integrations/telephony/overview)
-- [Twilio Integration](https://docs.lightmove.ai/integrations/telephony/twilio)
-- [Custom Providers](https://docs.lightmove.ai/integrations/telephony/custom)
-- [Webhooks Guide](https://docs.lightmove.ai/integrations/telephony/webhooks)
+- [User Documentation](https://lightmove.ai/docs/integrations/telephony)
+- [Twilio Integration](https://lightmove.ai/docs/integrations/telephony/twilio)
+- [Custom Providers](../../../docs/integrations/telephony/custom.mdx) (in-repo, not published)
+- [Webhooks Guide](../../../docs/integrations/telephony/webhooks.mdx) (in-repo, not published)

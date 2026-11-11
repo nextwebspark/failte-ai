@@ -5,6 +5,7 @@ import {
   ChevronRight,
   Copy,
   Pencil,
+  Phone,
   Plus,
   RotateCcw,
   Star,
@@ -40,21 +41,21 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
+import { EmptyState } from "@/components/ui/empty-state";
+import { PageHeader } from "@/components/ui/page-header";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useTelephonyConfigWarnings } from "@/context/TelephonyConfigWarningsContext";
+import { useFeatureEnabled } from "@/hooks/useFeatureFlags";
 import { detailFromError } from "@/lib/apiError";
 import { useAuth } from "@/lib/auth";
 import { copyTextToClipboard } from "@/lib/clipboard";
+import { ROW_LINK, ROW_LINK_CONTAINER } from "@/lib/rowLink";
+import { cn } from "@/lib/utils";
 
 export default function TelephonyConfigurationsPage() {
   const { user, getAccessToken, loading: authLoading } = useAuth();
+  const campaignsEnabled = useFeatureEnabled("campaigns");
   const searchParams = useSearchParams();
   const {
     telnyxMissingWebhookPublicKeyCount,
@@ -63,6 +64,7 @@ export default function TelephonyConfigurationsPage() {
   } = useTelephonyConfigWarnings();
   const [items, setItems] = useState<TelephonyConfigurationListItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadFailed, setLoadFailed] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
   const [editTarget, setEditTarget] = useState<TelephonyConfigurationDetail | null>(
     null,
@@ -74,6 +76,7 @@ export default function TelephonyConfigurationsPage() {
   const fetchItems = useCallback(async () => {
     if (authLoading || !user) return;
     setLoading(true);
+    setLoadFailed(false);
     try {
       const token = await getAccessToken();
       const res = await listTelephonyConfigurationsApiV1OrganizationsTelephonyConfigsGet(
@@ -81,8 +84,9 @@ export default function TelephonyConfigurationsPage() {
       );
       if (res.error) throw new Error(detailFromError(res.error));
       setItems(res.data?.configurations ?? []);
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to load configurations");
+    } catch {
+      // Shown in the page with a "Try again", not as a passing toast.
+      setLoadFailed(true);
     } finally {
       setLoading(false);
     }
@@ -181,18 +185,16 @@ export default function TelephonyConfigurationsPage() {
   return (
     <div className="page-body">
       <div>
-        {/* Screen name, strapline and primary action are rendered by the app
-            header (AppTopBar) — see PageActions. */}
+        <PageHeader
+          title="Telephony"
+          description="The phone accounts and numbers your agents answer and call from. Calls going out use one account; calls coming in find the right one by themselves."
+        />
+        {/* The primary action sits in the app header — see PageActions. */}
         <PageActions>
           <Button size="toolbar" onClick={() => setCreateOpen(true)}>
             <Plus className="h-4 w-4" /> Add provider
           </Button>
         </PageActions>
-
-        <p className="mb-6 max-w-3xl text-sm text-ink-2">
-          Connect one or more telephony provider accounts. Each campaign uses one
-          configuration; inbound calls are routed to the right one by account ID.
-        </p>
 
         {telnyxMissingWebhookPublicKeyCount > 0 && (
           <div className="mb-6 rounded-md border border-amber/30 bg-amber-dim p-4 text-amber">
@@ -242,32 +244,48 @@ export default function TelephonyConfigurationsPage() {
             <Skeleton className="h-24 w-full" />
             <Skeleton className="h-24 w-full" />
           </div>
+        ) : loadFailed ? (
+          <Card>
+            <EmptyState
+              tone="danger"
+              icon={AlertTriangle}
+              title="Your phone accounts couldn't be loaded"
+              description="Check your connection, then try again."
+              action={
+                <Button variant="outline" onClick={() => void fetchItems()}>
+                  <RotateCcw aria-hidden />
+                  Try again
+                </Button>
+              }
+            />
+          </Card>
         ) : items.length === 0 ? (
           <Card>
-            <CardHeader>
-              <CardTitle>No telephony configurations yet</CardTitle>
-              <CardDescription>
-                Add one to enable outbound calls and receive inbound calls.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <Button onClick={() => setCreateOpen(true)}>
-                <Plus className="h-4 w-4 mr-2" /> Add configuration
-              </Button>
-            </CardContent>
+            <EmptyState
+              icon={Phone}
+              title="No phone accounts yet"
+              description="Connect a phone provider account so your agents can answer your number and make calls."
+              action={
+                <Button onClick={() => setCreateOpen(true)}>
+                  <Plus aria-hidden /> Add provider
+                </Button>
+              }
+            />
           </Card>
         ) : (
           <div className="grid gap-3">
             {items.map((item) => (
-              <Card key={item.id}>
-                <CardContent className="flex flex-col gap-4 py-4 sm:flex-row sm:items-center">
-                  <Link
-                    href={`/telephony-configurations/${item.id}`}
-                    className="flex flex-1 items-center gap-4 min-w-0"
-                  >
+              <Card key={item.id} className={cn(ROW_LINK_CONTAINER, "transition-colors hover:border-brand/40")}>
+                <CardContent className="flex flex-col gap-4 p-4 sm:flex-row sm:items-center sm:px-6">
+                  <div className="flex flex-1 items-center gap-4 min-w-0">
                     <div className="flex flex-col gap-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className="font-medium truncate">{item.name}</span>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Link
+                          href={`/telephony-configurations/${item.id}`}
+                          className={cn("min-w-0 truncate font-medium", ROW_LINK)}
+                        >
+                          {item.name}
+                        </Link>
                         <Badge variant="secondary">{item.provider}</Badge>
                         {item.is_default_outbound && (
                           <Badge className="gap-1">
@@ -312,15 +330,18 @@ export default function TelephonyConfigurationsPage() {
                             .then(() => toast.success("Configuration ID copied"))
                             .catch(() => toast.error("Failed to copy ID"));
                         }}
-                        title="Click to copy"
-                        className="inline-flex items-center gap-1 self-start rounded font-mono text-xs text-muted-foreground hover:text-foreground"
+                        title="Copy the ID"
+                        aria-label={`Copy configuration ID ${item.id}`}
+                        className="relative z-10 inline-flex min-h-8 items-center gap-1 self-start rounded text-xs text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
                       >
-                        <span className="truncate">Configuration ID: {item.id}</span>
-                        <Copy className="h-3 w-3 shrink-0" />
+                        <span className="truncate">
+                          Configuration ID: <span className="font-mono">{item.id}</span>
+                        </span>
+                        <Copy className="h-3 w-3 shrink-0" aria-hidden />
                       </button>
                     </div>
-                  </Link>
-                  <div className="flex w-full flex-wrap items-center justify-end gap-1 sm:w-auto sm:flex-nowrap">
+                  </div>
+                  <div className="relative z-10 flex w-full flex-wrap items-center justify-end gap-1 sm:w-auto sm:flex-nowrap">
                     {item.inactive && (
                       <Button
                         variant="outline"
@@ -397,9 +418,9 @@ export default function TelephonyConfigurationsPage() {
           <AlertDialogHeader>
             <AlertDialogTitle>Delete configuration?</AlertDialogTitle>
             <AlertDialogDescription>
-              {deleteTarget?.name} and all of its phone numbers will be removed. Any
-              campaigns that reference this configuration will block the deletion until
-              they are reassigned.
+              {deleteTarget?.name} and all of its phone numbers will be removed.
+              {campaignsEnabled &&
+                " Any campaigns that reference this configuration will block the deletion until they are reassigned."}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

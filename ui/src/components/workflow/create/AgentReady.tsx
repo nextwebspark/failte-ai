@@ -4,7 +4,7 @@ import { Check, Mic, Minus } from 'lucide-react';
 import Link from 'next/link';
 
 import { Button } from '@/components/ui/button';
-import { DialogDescription, DialogTitle } from '@/components/ui/dialog';
+import { agentHomeHref } from "@/components/workflow/agentLinks";
 import { cn } from '@/lib/utils';
 
 export interface ReadyItem {
@@ -27,12 +27,12 @@ export function AgentReady({ agentId, items, onTalk }: AgentReadyProps) {
                 <span className="flex size-14 items-center justify-center rounded-full bg-brand-dim text-brand">
                     <Check size={26} strokeWidth={2.2} aria-hidden />
                 </span>
-                <DialogTitle className="font-display text-[22px] tracking-[-0.02em] text-ink">
+                <h1 className="font-display text-[22px] tracking-[-0.02em] text-ink">
                     Your agent is ready
-                </DialogTitle>
-                <DialogDescription className="max-w-[420px] text-[14px] leading-[1.5] text-ink-2">
+                </h1>
+                <p className="max-w-[420px] text-[14px] leading-[1.5] text-ink-2">
                     Talk to it now, in your browser. Nobody else hears it until you give it a phone number.
-                </DialogDescription>
+                </p>
             </div>
             <ul className="mx-8 flex flex-col rounded-lg border border-line py-1">
                 {items.map((item, index) => (
@@ -69,8 +69,8 @@ export function AgentReady({ agentId, items, onTalk }: AgentReadyProps) {
                     <span aria-hidden className="text-line">
                         |
                     </span>
-                    <Link href={`/workflow/${agentId}`} className="text-ink-3 hover:text-ink hover:underline">
-                        Open the editor
+                    <Link href={agentHomeHref(agentId)} className="text-ink-3 hover:text-ink hover:underline">
+                        See your agent
                     </Link>
                 </div>
             </div>

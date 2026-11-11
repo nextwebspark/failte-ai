@@ -7,6 +7,7 @@ import { type ComponentProps, useCallback, useState } from 'react';
 import { createWorkflowApiV1WorkflowCreateDefinitionPost } from '@/client/sdk.gen';
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { agentHomeHref } from '@/components/workflow/agentLinks';
 import { useAuth } from '@/lib/auth';
 import logger from '@/lib/logger';
 import { getRandomId } from '@/lib/utils';
@@ -54,7 +55,7 @@ export function UploadWorkflowButton({
             });
 
             if (response.data?.id) {
-                router.push(`/workflow/${response.data.id}`);
+                router.push(agentHomeHref(response.data.id));
                 setIsOpen(false);
             }
         } catch (err) {
