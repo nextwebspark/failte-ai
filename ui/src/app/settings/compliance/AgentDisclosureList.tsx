@@ -94,7 +94,7 @@ export function AgentDisclosureList() {
 
   return (
     <div>
-      <p className="px-[18px] pt-3.5 text-[13px] text-ink-2">
+      <p className="px-[18px] pt-3.5 text-caption text-ink-2">
         {off === 0
           ? `All ${state.agents.length} active agent${state.agents.length === 1 ? "" : "s"} play the notice.`
           : `${off} of ${state.agents.length} active agents do not play the notice. Turn it back on unless callers are told another way.`}
@@ -103,7 +103,7 @@ export function AgentDisclosureList() {
         {state.agents.map((agent) => (
           <li key={agent.id} className="flex items-center gap-3 px-[18px] py-3">
             <div className="min-w-0 flex-1">
-              <p className="truncate text-[13px] font-semibold text-foreground">{agent.name}</p>
+              <p className="truncate text-caption font-semibold text-foreground">{agent.name}</p>
               <p className="text-xs text-ink-3">
                 {agent.enabled
                   ? agent.type === "audio"
@@ -118,7 +118,7 @@ export function AgentDisclosureList() {
             <Link
               href={`/workflow/${agent.id}/settings#call`}
               aria-label={`Edit notice for ${agent.name}`}
-              className="shrink-0 text-[13px] font-medium text-brand hover:underline"
+              className="shrink-0 text-caption font-medium text-brand hover:underline"
             >
               Edit
             </Link>

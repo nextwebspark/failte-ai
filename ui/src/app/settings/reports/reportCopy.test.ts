@@ -17,9 +17,10 @@ group("reportCopy", () => {
 
   it("says what each report covers and when it arrives", () => {
     expect(describe("daily", "17:30")).toEqual({
-      covers: "Today's calls, from midnight to 5:30 pm.",
+      covers: "The last 24 hours of calls, 5:30 pm to 5:30 pm.",
       arrives: "Every day at 5:30 pm.",
     });
+    expect(describe("daily", "00:00").covers).toBe("Yesterday's calls, the whole day.");
     expect(describe("weekly", "18:00").arrives).toBe("Mondays at 8 am.");
     expect(describe("monthly", "18:00").arrives).toBe("On the 1st at 8 am.");
   });

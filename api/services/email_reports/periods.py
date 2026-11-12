@@ -5,8 +5,10 @@ workspace's zone, turned into an aware datetime by ``zoneinfo``, so a day that
 has 23 or 25 hours (the clocks going forward or back) is still midnight to
 midnight.
 
-* Daily: the local day from midnight up to the send time (18:00 by default),
-  sent at that time, compared with the same hours a week before.
+* Daily: the 24 hours up to the send time (18:00 by default): from the send
+  time the day before to the send time today, so each daily picks up where
+  the last one stopped and an evening call is never left out. Sent at that
+  time, compared with the same hours a week before.
 * Weekly: Monday to Sunday, sent on the Monday after at 08:00, compared with
   the week before.
 * Monthly: the calendar month, sent on the 1st of the next month at 08:00,
@@ -18,6 +20,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta
 from enum import StrEnum
+from typing import Literal
 from zoneinfo import ZoneInfo
 
 
@@ -26,6 +29,12 @@ class Frequency(StrEnum):
     WEEKLY = "weekly"
     MONTHLY = "monthly"
 
+
+# A report asked for from the Reports screen ("Email me this report"): the
+# span on screen, sent once, never scheduled. Not a Frequency, so nothing that
+# loops over the scheduled reports ever meets it.
+ON_DEMAND: Literal["on_demand"] = "on_demand"
+ReportKind = Frequency | Literal["on_demand"]
 
 DEFAULT_DAILY_SEND_TIME = time(18, 0)
 # Weekly and monthly reports arrive at the start of the working day.
@@ -42,7 +51,7 @@ GRACE: dict[Frequency, timedelta] = {
 
 @dataclass(frozen=True, slots=True)
 class Period:
-    frequency: Frequency
+    frequency: ReportKind
     # Stable id of the span: "2026-11-06", "2026-W45" (ISO week), "2026-10".
     key: str
     start: datetime
@@ -70,7 +79,9 @@ def _add_months(day: date, months: int) -> date:
 
 
 def daily_period(day: date, tz: ZoneInfo, send_time: time) -> Period:
-    start = _at(day, time.min, tz)
+    """The daily report sent on ``day``: from the send time the day before
+    up to the send time on ``day``."""
+    start = _at(day - timedelta(days=1), send_time, tz)
     end = _at(day, send_time, tz)
     week_before = day - timedelta(days=7)
     return Period(
@@ -78,7 +89,7 @@ def daily_period(day: date, tz: ZoneInfo, send_time: time) -> Period:
         key=day.isoformat(),
         start=start,
         end=end,
-        previous_start=_at(week_before, time.min, tz),
+        previous_start=_at(week_before - timedelta(days=1), send_time, tz),
         previous_end=_at(week_before, send_time, tz),
         send_at=end,
     )
@@ -185,3 +196,34 @@ def parse_clock(value: str) -> time:
     if len(hour) != 2 or len(minute) != 2:
         raise ValueError("Use HH:MM")
     return time(int(hour), int(minute))
+
+
+def is_hourly(period: Period) -> bool:
+    """Whether the report's chart goes by hour (a daily, or a one-day span
+    asked for on demand) rather than by day."""
+    if period.frequency == Frequency.DAILY:
+        return True
+    return period.frequency == ON_DEMAND and period.end - period.start <= timedelta(
+        hours=25
+    )
+
+
+def on_demand_period(
+    start: datetime,
+    end: datetime,
+    previous_start: datetime,
+    previous_end: datetime,
+    now: datetime,
+) -> Period:
+    """The span shown on the Reports screen, as an emailed report."""
+    return Period(
+        frequency=ON_DEMAND,
+        key=f"{start.date().isoformat()}..{end.date().isoformat()}",
+        start=start,
+        end=end,
+        previous_start=previous_start,
+        previous_end=previous_end,
+        send_at=now,
+        # A span cut off at now (it includes today) is still running.
+        complete=end < now,
+    )

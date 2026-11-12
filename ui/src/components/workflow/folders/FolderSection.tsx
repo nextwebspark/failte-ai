@@ -199,7 +199,7 @@ export function FolderSection({
                                 folders={isArchived ? undefined : allFolders}
                             />
                         ) : (
-                            <div className="rounded-lg border border-dashed border-line bg-panel-2 p-6 text-center font-mono text-[12.5px] text-ink-3">
+                            <div className="rounded-lg border border-dashed border-line bg-panel-2 p-6 text-center font-mono text-caption text-ink-3">
                                 {isArchived
                                     ? 'No archived agents.'
                                     : isFolder

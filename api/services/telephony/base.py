@@ -499,6 +499,27 @@ class TelephonyProvider(ABC):
         """
         raise NotImplementedError
 
+    def lines_busy_support(self) -> frozenset[str]:
+        """What this provider can do for a caller who rang while every line
+        was busy (``api.services.calls.lines_busy``: ``SAY``, ``FORWARD``,
+        ``VOICEMAIL``). Empty, the default: the caller hears the busy line
+        from ``generate_validation_error_response`` and the call is still
+        recorded."""
+        return frozenset()
+
+    async def lines_busy_response(
+        self,
+        *,
+        plan: Any,
+        workflow_run_id: int,
+        normalized_data: "NormalizedInboundData",
+        backend_endpoint: str,
+    ) -> Any:
+        """Carry out *plan* (a ``LinesBusyPlan``) on the inbound call: the
+        webhook response, as ``start_inbound_stream`` returns one. Only
+        called when ``lines_busy_support`` is not empty."""
+        raise NotImplementedError
+
     @staticmethod
     @abstractmethod
     def generate_error_response(error_type: str, message: str) -> tuple:
@@ -546,6 +567,17 @@ class TelephonyProvider(ABC):
             ValueError: If provider configuration is invalid
         """
         pass
+
+    def transfer_caller_number_params(
+        self, inbound_webhook: Dict[str, Any]
+    ) -> Optional[Dict[str, Any]]:
+        """Extra ``transfer_call`` parameters that make the transfer leg show
+        the original caller's number on the staff phone, built from the
+        inbound call's webhook; None when this provider can't (the default:
+        the staff phone shows the business's number). Providers that can
+        override this; the transfer tool falls back to the business's number
+        if the provider rejects the request."""
+        return None
 
     def supports_transfer_introduction(self) -> bool:
         """Whether both legs can play introduction audio before being bridged."""

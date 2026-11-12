@@ -435,6 +435,73 @@ Requests and responses match the original service (a miss omits
 - Not ported: `/health` with a product count (the connection's sync status
   carries it).
 
+## Calendly (`calendly`)
+
+Checks free times for one Calendly event type and books callers into it, with
+Calendly API v2. Auth modes `api_key` (a personal access token the owner
+pastes: `{"token": "..."}`) and `oauth2` (the workspace's own Calendly OAuth
+app, registered at developer.calendly.com; there is no platform client).
+Scopes: `users:read`, `event_types:read`, `availability:read`,
+`scheduled_events:write`; a personal access token needs the same ones ticked
+when it is created.
+
+- **Token check on save.** `POST /internal/connections` calls
+  `GET /users/me` with a pasted token before storing it (the optional
+  `SecretCheckingProvider` hook): a refused token is a 422 with plain words
+  and nothing is saved. The account's email labels the connection.
+- **Choosing the event.** The connection starts with no event type. The
+  `choices` capability lists the account's active event types
+  (`GET /event_types?user=...&active=true`) at
+  `GET /internal/connections/{id}/choices`; each choice carries the config
+  patch that picks it (`event_type`, `event_type_name`) and a `warning` when
+  the agent could not book it (a location the caller must type, or a
+  required question it cannot answer). Until one is picked, the tools hand
+  off with `not_set_up`.
+- **Event type URIs** must be `https://api.calendly.com/event_types/<id>`:
+  the token is only ever sent to Calendly's API host.
+
+| Config | Default | |
+|---|---|---|
+| `event_type` / `event_type_name` | none | The event callers book (picked, not typed) |
+| `timezone` | the Calendly account's | Zone times are said in, and the invitee's zone |
+| `ai_booking_enabled` | `true` | Off: no times, nothing booked, `handoff: "booking_off"` |
+| `horizon_days` | 14 | How far ahead free times are looked for (1-60) |
+| `max_slots_returned` | 3 | Times offered at once (1-10) |
+| `phone_region` | country of `timezone` | For numbers said without a country code |
+
+| MCP tool | |
+|---|---|
+| `check_appointment_availability(relative_day?, part_of_day?)` | `GET /event_type_available_times`, in requests of at most 7 days (Calendly's documented limit is 31; 7 also works with older limits), starting a minute from now. Calendly's own rules (hours, notice, buffers, daily limits, connected calendars) decide what is free |
+| `book_appointment(slot_id, caller_name, caller_email, caller_phone?, reason?)` | `POST /invitees` (Calendly's Scheduling API): a real booking; Calendly emails the caller |
+
+The tool names match Google Calendar's, so templates and call records treat
+both the same. Honest limits, all answered with a `handoff` rather than a
+pretend booking:
+
+- Calendly's help centre (updated 4 Nov 2026) says the Scheduling API is on
+  every plan, including Free; it used to need a paid plan. If Calendly still
+  refuses `POST /invitees` with a 403 asking to upgrade, the tool answers
+  `plan_required`. Free times work either way.
+- Calendly needs the caller's **email** to book (`needs_email: true` when it
+  refuses one).
+- A phone-call event (`outbound_call`) uses the number the caller gave, else
+  the call's own number; with neither, the tool asks for one. Locations the
+  caller must type (`ask_invitee`) and required questions other than a phone
+  number or a free-text note cannot be answered: `cannot_book`.
+- If Calendly does not answer the booking request, the tool answers
+  `unconfirmed` and must not be retried (the booking may exist).
+- There is no Calendly API to move a booking, and this provider cancels
+  none: callers use the links in Calendly's email.
+
+**Listing.** Bookings carry `tracking.utm_source = "lightmove-ai"` and the
+connection id in `utm_content`. `GET /internal/connections/{id}/bookings`
+reads the account's scheduled events of the chosen type in the range (up to
+200) and each one's invitees, keeping those with this connection's tracking.
+
+Calendly's OAuth token revocation needs the client's credentials, which org
+erasure does not send, so erasure deletes the grant here only; the owner can
+also remove the app in Calendly.
+
 ## Auth families and reuse
 
 Providers declare an `auth_family` (`google-calendar` and `google-sheets`

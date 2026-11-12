@@ -4,21 +4,44 @@ phone numbers that answer them, and the follow-up mark stored on a call."""
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import String, and_, func, select
+from sqlalchemy import String, and_, exists, func, or_, select
 from sqlalchemy.orm import selectinload
 
 from api.db.base_client import BaseDBClient
+from api.db.filters import caller_search
 from api.db.models import (
+    OrganizationConfigurationModel,
     TelephonyConfigurationModel,
     TelephonyPhoneNumberModel,
     WorkflowModel,
     WorkflowRunModel,
 )
-from api.enums import WORKFLOW_RUN_MODES_BY_CHANNEL, CallType, WorkflowRunChannel
+from api.enums import (
+    WORKFLOW_RUN_MODES_BY_CHANNEL,
+    CallType,
+    OrganizationConfigurationKey,
+    WorkflowRunChannel,
+    WorkflowRunMode,
+)
 
 _TELEPHONY_MODES = tuple(
     WORKFLOW_RUN_MODES_BY_CHANNEL[WorkflowRunChannel.TELEPHONY.value]
 )
+
+# Browser test calls ("Try your agent"). They count as phone calls only in a
+# demo workspace, so a test call made during a demo lands on Home and
+# Follow-ups like a real one; everywhere else they stay out.
+_BROWSER_CALL_MODES = (WorkflowRunMode.WEBRTC.value, WorkflowRunMode.SMALLWEBRTC.value)
+
+
+def is_demo_organization_clause(organization_id: int):
+    """True in SQL when the organization is a seeded demo workspace."""
+    return exists().where(
+        OrganizationConfigurationModel.organization_id == organization_id,
+        OrganizationConfigurationModel.key
+        == OrganizationConfigurationKey.DEMO_ACCOUNT.value,
+    )
+
 
 # The key under a run's ``annotations`` that holds its follow-up mark.
 FOLLOW_UP_ANNOTATION = "follow_up"
@@ -31,7 +54,13 @@ CALL_REVIEW_ANNOTATION = "call_review"
 def _inbound_phone_call(organization_id: int, workflow_id: int | None):
     conditions = [
         WorkflowModel.organization_id == organization_id,
-        WorkflowRunModel.mode.in_(_TELEPHONY_MODES),
+        or_(
+            WorkflowRunModel.mode.in_(_TELEPHONY_MODES),
+            and_(
+                WorkflowRunModel.mode.in_(_BROWSER_CALL_MODES),
+                is_demo_organization_clause(organization_id),
+            ),
+        ),
         WorkflowRunModel.call_type == CallType.INBOUND.value,
     ]
     if workflow_id is not None:
@@ -40,6 +69,34 @@ def _inbound_phone_call(organization_id: int, workflow_id: int | None):
 
 
 class DashboardClient(BaseDBClient):
+    async def get_calendar_tool_calls(
+        self,
+        organization_id: int,
+        start_utc: datetime | None,
+        end_utc: datetime | None,
+    ) -> list[tuple[int, dict[str, Any]]]:
+        """``(run id, gathered_context)`` of the workspace's calls on which a
+        calendar tool (book, move or cancel an appointment) ran, created in
+        ``[start_utc, end_utc]`` (either end open). Which of them made a
+        booking is for ``classify_call`` to say."""
+        async with self.async_session() as session:
+            query = (
+                select(WorkflowRunModel.id, WorkflowRunModel.gathered_context)
+                .join(WorkflowModel, WorkflowRunModel.workflow_id == WorkflowModel.id)
+                .where(
+                    WorkflowModel.organization_id == organization_id,
+                    func.cast(WorkflowRunModel.gathered_context, String).like(
+                        "%_appointment%"
+                    ),
+                )
+            )
+            if start_utc is not None:
+                query = query.where(WorkflowRunModel.created_at >= start_utc)
+            if end_utc is not None:
+                query = query.where(WorkflowRunModel.created_at <= end_utc)
+            rows = (await session.execute(query)).all()
+            return [(row.id, row.gathered_context or {}) for row in rows]
+
     async def get_inbound_calls_for_dashboard(
         self,
         organization_id: int,
@@ -116,6 +173,19 @@ class DashboardClient(BaseDBClient):
             )
             return {row.id: row.logs or {} for row in result.all()}
 
+    async def search_calls(self, run_ids: list[int], text: str) -> set[int]:
+        """Which of ``run_ids`` the Calls search box would find for ``text``:
+        the caller's name or number, the summary, or anything said."""
+        if not run_ids or not text.strip():
+            return set()
+        async with self.async_session() as session:
+            result = await session.execute(
+                select(WorkflowRunModel.id).where(
+                    WorkflowRunModel.id.in_(run_ids), caller_search(text.strip())
+                )
+            )
+            return {row.id for row in result.all()}
+
     async def count_inbound_calls(
         self,
         organization_id: int,
@@ -149,8 +219,9 @@ class DashboardClient(BaseDBClient):
             )
 
     async def get_dashboard_agents(self, organization_id: int) -> list[dict[str, Any]]:
-        """The organization's agents: id, name, status and the timezone
-        saved with their opening hours."""
+        """The organization's agents: id, name, status, the timezone saved
+        with their opening hours, and those hours as times (the stored
+        ``opening_hours_schedule`` fact, unparsed; None when not set)."""
         async with self.async_session() as session:
             result = await session.execute(
                 select(
@@ -174,6 +245,11 @@ class DashboardClient(BaseDBClient):
                         "name": row.name,
                         "status": row.status,
                         "timezone": timezone if isinstance(timezone, str) else None,
+                        "opening_hours_schedule": variables.get(
+                            "opening_hours_schedule"
+                        )
+                        if isinstance(variables, dict)
+                        else None,
                     }
                 )
             return agents

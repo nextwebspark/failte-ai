@@ -11,6 +11,7 @@ import {
   listPhoneNumbersApiV1OrganizationsTelephonyConfigsConfigIdPhoneNumbersGet,
   listTelephonyConfigurationsApiV1OrganizationsTelephonyConfigsGet,
   listToolsApiV1ToolsGet,
+  setAgentCalendarApiV1WorkflowWorkflowIdCalendarPut,
   updateWorkflowApiV1WorkflowWorkflowIdPut,
 } from "@/client/sdk.gen";
 import type { PlatformModelCatalog, WorkflowConfigurationDefaults } from "@/client/types.gen";
@@ -19,7 +20,14 @@ import { detailFromError } from "@/lib/apiError";
 import { useAuth } from "@/lib/auth";
 import { summarizePlatformConfiguration, type VoiceSummary } from "@/lib/platformModelSummary";
 
-import { attachedToolUuids, type Greeting, isCalendarTool, startGreeting } from "./knowledge";
+import {
+  attachedToolUuids,
+  type BookingProvider,
+  calendarProvider,
+  CALENDLY_PROVIDER,
+  type Greeting,
+  startGreeting,
+} from "./knowledge";
 import { type VoiceChoices, voiceChoices, withVoice } from "./voiceOptions";
 
 /**
@@ -38,17 +46,26 @@ export type VoiceInfo = Loadable<{
   choices?: VoiceChoices | null;
 }>;
 
-/** "none": the agent doesn't book. */
+/** A booking calendar connected to the workspace (under Integrations). */
+export type CalendarChoice = { toolUuid: string; provider: BookingProvider; name: string };
+
+/** "none": the agent doesn't book; *available* are the workspace's calendars it could book with. */
 export type CalendarInfo =
   | Loadable<{
-      /** Google Calendar answers. Null when this member can't tell. */
+      /** Which calendar the agent books with. */
+      provider: BookingProvider;
+      /** The calendar answers. Null when this member can't tell. */
       connected: boolean | null;
+      /** Calendly: the event callers book; null when unknown or none. */
+      eventName: string | null;
+      /** Calendly with no event chosen yet: the agent takes details instead. */
+      needsEvent: boolean;
       /** The owner's switch on the calendar. Null when this member can't tell. */
       aiBooking: boolean | null;
       connectionId: string | null;
       rules: unknown;
     }>
-  | { state: "none" };
+  | { state: "none"; available: CalendarChoice[] };
 
 export type PhoneInfo = Loadable<{ numbers: string[] }>;
 
@@ -58,6 +75,8 @@ export type AgentKnowledge = {
   calendar: CalendarInfo;
   phone: PhoneInfo;
   setCalendar: (update: (current: CalendarInfo) => CalendarInfo) => void;
+  /** Book with this connected calendar (null: with none); throws the reason it couldn't. */
+  chooseCalendar?: (toolUuid: string | null) => Promise<void>;
   /** Give this agent *voice* (a `VoiceOption.value`); throws the reason it couldn't. */
   switchVoice?: (voice: string) => Promise<void>;
 };
@@ -191,7 +210,24 @@ export function useAgentKnowledge(workflowId: number): AgentKnowledge {
     [workflowId],
   );
 
-  return { greeting, voice, calendar, phone, setCalendar: setCalendarState, switchVoice };
+  // Attach a connected calendar to the agent (or take it off), then read
+  // the agent again so the card shows what calls will now use.
+  const chooseCalendar = useCallback(
+    async (toolUuid: string | null) => {
+      const res = await setAgentCalendarApiV1WorkflowWorkflowIdCalendarPut({
+        path: { workflow_id: workflowId },
+        body: { tool_uuid: toolUuid },
+      });
+      if (res.error || !res.data) {
+        throw new Error(detailFromError(res.error, "Couldn't change the calendar. Please try again."));
+      }
+      const agent = await getWorkflowApiV1WorkflowFetchWorkflowIdGet({ path: { workflow_id: workflowId } });
+      if (agent.data) setCalendarState(await loadCalendar(agent.data.workflow_definition, may));
+    },
+    [workflowId, may],
+  );
+
+  return { greeting, voice, calendar, phone, setCalendar: setCalendarState, switchVoice, chooseCalendar };
 }
 
 function voiceInfo(configuration: unknown, catalog: PlatformModelCatalog): VoiceInfo {
@@ -225,7 +261,7 @@ async function loadVoice(
 }
 
 /**
- * Whether the agent books with Google Calendar, and how that calendar is.
+ * Whether the agent books with a calendar (Google Calendar or Calendly), and how it is.
  * The calendar's switch and booking rules come from the bookings list (every
  * member who sees calls may read it); which connection is this agent's needs
  * the integrations list, so without it a single calendar is assumed only
@@ -236,16 +272,23 @@ async function loadCalendar(
   may: (permission: "integrations:read" | "calls:read" | "agents:read") => boolean,
 ): Promise<CalendarInfo> {
   const attached = attachedToolUuids(definition);
-  if (attached.size === 0) return { state: "none" };
   let calendarTool: string | null = null;
+  let provider: BookingProvider | null = null;
+  let available: CalendarChoice[] = [];
   try {
     const tools = await listToolsApiV1ToolsGet({ query: { status: "active" } });
     if (!tools.data) return { state: "hidden" };
-    calendarTool = tools.data.find((tool) => attached.has(tool.tool_uuid) && isCalendarTool(tool))?.tool_uuid ?? null;
+    available = tools.data.flatMap((t) => {
+      const kind = calendarProvider(t);
+      return kind ? [{ toolUuid: t.tool_uuid, provider: kind, name: t.name }] : [];
+    });
+    const tool = available.find((c) => attached.has(c.toolUuid));
+    calendarTool = tool?.toolUuid ?? null;
+    provider = tool?.provider ?? null;
   } catch {
     return { state: "hidden" };
   }
-  if (!calendarTool) return { state: "none" };
+  if (!calendarTool || !provider) return { state: "none", available };
 
   let connection: { id: string; status: string; config?: Record<string, unknown> } | null = null;
   if (may("integrations:read")) {
@@ -271,15 +314,21 @@ async function loadCalendar(
       // Shown without the switch and the hours.
     }
   }
-  const google = calendars.filter((c) => c.provider.includes("google"));
+  const sameKind = calendars.filter((c) => c.provider === provider);
   const calendar = connection
     ? calendars.find((c) => c.connection_id === connection?.id) ?? null
-    : google.length === 1
-      ? google[0]
+    : sameKind.length === 1
+      ? sameKind[0]
       : null;
+  const config = connection?.config ?? {};
+  const eventName = typeof config.event_type_name === "string" && config.event_type_name ? config.event_type_name : null;
 
   return {
     state: "ready",
+    provider,
+    eventName,
+    // Only known with the integrations list (the bookings list has no event).
+    needsEvent: provider === CALENDLY_PROVIDER && connection !== null && !config.event_type,
     connected: calendar ? calendar.ok !== false : connection ? connection.status === "active" : null,
     aiBooking: calendar
       ? calendar.ai_booking_enabled

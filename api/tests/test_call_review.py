@@ -19,11 +19,13 @@ from api.services.call_review.categories import (
 from api.services.call_review.review import (
     MAX_QUESTIONS,
     MAX_TRANSCRIPT_CHARS,
+    REQUEST_TAGS_KEY,
     SILENT_SUMMARY,
     ReviewParseError,
     has_caller_speech,
     parse_review,
     purged_review,
+    request_tags,
     response_schema,
     silent_review,
     stored_review,
@@ -242,6 +244,8 @@ def test_good_answer_becomes_the_stored_review():
         "reason_label": "Reservations",
         "unanswered_questions": [],
         "time_was_full": False,
+        "emergency": False,
+        "request_tags": [],
         "model": "m",
         "created_at": NOW.isoformat(),
     }
@@ -361,3 +365,231 @@ def test_retention_purge_keeps_only_the_reason_of_a_review():
     )
     apply_purged_shape(plain, NOW.isoformat())
     assert plain.annotations == {}
+
+
+# --- special-request tags -------------------------------------------------------
+
+
+def test_only_restaurants_have_request_tags():
+    assert [t.label for t in RESTAURANT.request_tags] == [
+        "Allergies & diets",
+        "Birthday or celebration",
+        "High chair or kids",
+        "Accessibility",
+        "Seating preference",
+        "Other request",
+    ]
+    assert CLINIC.request_tags == () and GENERAL.request_tags == ()
+
+
+def test_schema_asks_for_tags_only_where_there_are_some_and_never_requires_them():
+    schema = response_schema(RESTAURANT)
+    assert schema["properties"]["request_tags"]["items"]["enum"] == list(
+        RESTAURANT.request_tag_keys
+    )
+    assert "request_tags" not in schema["required"]
+    assert "request_tags" not in response_schema(CLINIC)["properties"]
+
+
+def test_prompt_lists_the_tags_for_restaurants_only():
+    assert "request_tags" in system_prompt(RESTAURANT)
+    assert "Allergies & diets" in system_prompt(RESTAURANT)
+    assert "request_tags" not in system_prompt(CLINIC)
+
+
+def test_tags_are_cleaned_into_the_sets_own_order():
+    review = parse_review(
+        _answer(request_tags=["seating", "x", "Allergies_Diets", "seating", 4]),
+        RESTAURANT,
+        model="m",
+        now=NOW,
+    )
+    assert review["request_tags"] == ["allergies_diets", "seating"]
+
+
+@pytest.mark.parametrize("value", [None, "seating", {"a": 1}])
+def test_missing_or_malformed_tags_mean_none(value):
+    data = json.loads(_answer())
+    if value is not None:
+        data["request_tags"] = value
+    review = parse_review(json.dumps(data), RESTAURANT, model="m", now=NOW)
+    assert review["request_tags"] == []
+
+
+def test_other_businesses_store_no_tags():
+    review = parse_review(
+        _answer(reason="appointments", request_tags=["seating"]),
+        CLINIC,
+        model="m",
+        now=NOW,
+    )
+    assert REQUEST_TAGS_KEY not in review
+    assert REQUEST_TAGS_KEY not in silent_review(CLINIC, now=NOW)
+    assert silent_review(RESTAURANT, now=NOW)[REQUEST_TAGS_KEY] == []
+
+
+def test_old_reviews_read_as_not_tagged():
+    old = {"version": 1, "reason": "reservations", "summary": "Booked."}
+    assert request_tags(old) is None
+    assert request_tags(None) is None
+    assert request_tags({**old, "request_tags": ["kids"]}) == ["kids"]
+
+
+def test_purge_drops_the_tags():
+    review = parse_review(
+        _answer(request_tags=["allergies_diets"]), RESTAURANT, model="m", now=NOW
+    )
+    assert REQUEST_TAGS_KEY not in purged_review(review)
+
+
+def test_demo_seed_tags_match_what_was_said():
+    """Each seeded restaurant booking is tagged with what the caller asked
+    for on the call, and only that."""
+    import random
+
+    from api.scripts import demo_businesses as demo
+
+    rng = random.Random(7)
+    seen: set[str] = set()
+    for _ in range(300):
+        ctx = demo.Ctx(
+            rng=rng,
+            caller=demo.RESTAURANT.callers[0],
+            started=datetime(2026, 11, 6, 12, 0),
+            business=demo.RESTAURANT,
+            greeting="Hello.",
+        )
+        plan = rng.choice([demo._r_book, demo._r_group])(ctx)
+        said = " ".join(step.text for step in plan.steps if step.kind == "caller")
+        tags = set(plan.request_tags)
+        seen |= tags
+        assert tags <= set(RESTAURANT.request_tag_keys)
+        assert ("allergies_diets" in tags) == any(
+            w in said for w in ("coeliac", "nut allergy", "dairy-free")
+        )
+        assert ("kids" in tags) == ("high chair" in said)
+        assert ("accessibility" in tags) == ("wheelchair" in said)
+        assert ("seating" in tags) == ("terrace" in said or "window" in said)
+        assert ("celebration" in tags) == any(
+            w in said
+            for w in ("birthday", "anniversary", "christening", "Christmas party")
+        )
+    assert seen == {
+        "allergies_diets",
+        "celebration",
+        "kids",
+        "accessibility",
+        "seating",
+    }
+
+
+# --- caller language and emergencies -------------------------------------------
+
+
+def test_schema_asks_for_language_and_emergency_but_never_requires_them():
+    schema = response_schema(CLINIC)
+    assert schema["properties"]["caller_language"] == {"type": "string"}
+    assert schema["properties"]["emergency"] == {"type": "boolean"}
+    assert "caller_language" not in schema["required"]
+    assert "emergency" not in schema["required"]
+
+
+def test_prompt_counts_an_irish_greeting_as_english():
+    prompt = system_prompt(CLINIC)
+    assert "caller_language" in prompt and "Dia duit" in prompt
+    assert "112" in prompt and "gas" in prompt
+
+
+@pytest.mark.parametrize(
+    ("fact", "language", "other"),
+    [
+        (None, "pl", True),
+        ("English, Polish", "pl", False),
+        ("English, Polish", "PT-br", True),
+        (None, "en", False),
+        ("English", "en-IE", False),
+    ],
+)
+def test_caller_in_another_language_is_flagged_against_the_agents_languages(
+    fact, language, other
+):
+    review = parse_review(
+        _answer(caller_language=language),
+        RESTAURANT,
+        model="m",
+        now=NOW,
+        agent_languages=fact,
+    )
+    assert review["caller_language"] == language.lower().split("-")[0]
+    assert review["other_language"] is other
+
+
+@pytest.mark.parametrize("value", [None, "", "Polish", 7, "p", "english language"])
+def test_unknown_language_is_left_out(value):
+    review = parse_review(
+        _answer(caller_language=value), RESTAURANT, model="m", now=NOW
+    )
+    assert "caller_language" not in review and "other_language" not in review
+
+
+def test_answer_without_the_new_keys_still_parses():
+    review = parse_review(_answer(), CLINIC, model="m", now=NOW)
+    assert "caller_language" not in review
+    assert review["emergency"] is False
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"), [(True, True), ("true", False), (None, False)]
+)
+def test_emergency_only_when_true(value, expected):
+    review = parse_review(_answer(emergency=value), CLINIC, model="m", now=NOW)
+    assert review["emergency"] is expected
+
+
+def test_purge_drops_language_and_emergency():
+    review = parse_review(
+        _answer(caller_language="pl", emergency=True), CLINIC, model="m", now=NOW
+    )
+    kept = purged_review(review)
+    assert not {"caller_language", "other_language", "emergency"} & set(kept)
+
+
+def test_old_reviews_read_as_language_and_emergency_unknown():
+    from api.services.call_review.review import (
+        caller_language,
+        spoke_other_language,
+        was_emergency,
+    )
+
+    old = {"summary": "Asked about parking.", "reason": "questions"}
+    assert caller_language(old) is None
+    assert spoke_other_language(old) is False
+    assert was_emergency(old) is False
+
+
+def test_demo_seed_has_calls_in_another_language_and_an_emergency():
+    import random
+
+    from api.scripts import demo_businesses as demo
+    from api.scripts.seed_demo_accounts import _follow_up_kinds
+
+    def plan(business, scenario):
+        ctx = demo.Ctx(
+            rng=random.Random(1),
+            caller=business.callers[0],
+            started=datetime(2026, 11, 6, 12, 0),
+            business=business,
+            greeting="Hello.",
+        )
+        return scenario(ctx)
+
+    polish = plan(demo.RESTAURANT, demo.RESTAURANT.pinned[2])
+    assert polish.caller_language == "pl"
+    assert "other_language" in _follow_up_kinds(polish)
+    assert "agent_languages" not in demo.RESTAURANT.facts  # English only
+    pinned = {s.__name__ for s in demo.DENTAL.pinned.values()}
+    assert pinned == {"_d_portuguese", "_d_emergency"}
+    emergency = plan(demo.DENTAL, demo._d_emergency)
+    assert emergency.emergency and "emergency" in _follow_up_kinds(emergency)
+    said = " ".join(step.text for step in emergency.steps if step.kind == "agent")
+    assert "112 or 999" in said

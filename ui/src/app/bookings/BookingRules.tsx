@@ -158,7 +158,7 @@ export function BookingRulesEditor({
     return (
         <div className="flex flex-col gap-5">
             <div className="flex flex-col gap-2">
-                <span className="text-[13px] font-semibold">Start from</span>
+                <span className="text-caption font-semibold">Start from</span>
                 <div className="grid gap-2 sm:grid-cols-2">
                     {PRESETS.map((preset) => {
                         const helpId = `${idPrefix}-preset-${preset.id}-help`;
@@ -184,7 +184,7 @@ export function BookingRulesEditor({
             </div>
 
             <div className="flex flex-col gap-2">
-                <span className="text-[13px] font-semibold">When bookings can start</span>
+                <span className="text-caption font-semibold">When bookings can start</span>
                 {periods.length === 0 && (
                     <p className="text-sm text-ink-3">Weekdays, 9am to 5pm (the default).</p>
                 )}

@@ -99,7 +99,7 @@ export function SharedRecording({ token }: { token: string }) {
     const business = info.business_name || "A business";
     return (
         <Shell>
-            <p className="text-[12.5px] font-semibold uppercase tracking-[0.08em] text-ink-3">Call recording</p>
+            <p className="text-caption font-semibold uppercase tracking-[0.08em] text-ink-3">Call recording</p>
             <h1 className="mt-1 text-2xl font-bold tracking-[-0.01em] text-foreground">A call to {business}</h1>
             <p className="mt-1 text-[14.5px] text-ink-2">
                 {info.called_at ? formatCallTime(info.called_at, zone) : null}
@@ -115,12 +115,12 @@ export function SharedRecording({ token }: { token: string }) {
                 />
             </div>
             {info.expires_at && (
-                <p className="mt-4 flex items-center gap-1.5 text-[13.5px] text-ink-3">
+                <p className="mt-4 flex items-center gap-1.5 text-sm text-ink-3">
                     <Clock className="size-4 flex-none" aria-hidden />
                     This link expires on {formatCallTime(info.expires_at, zone)}.
                 </p>
             )}
-            <p className="mt-6 border-t border-line-soft pt-4 text-[12.5px] text-ink-3">
+            <p className="mt-6 border-t border-line-soft pt-4 text-caption text-ink-3">
                 Shared by {business}. Please don&apos;t pass this link on.
             </p>
         </Shell>

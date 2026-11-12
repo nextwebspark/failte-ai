@@ -31,6 +31,7 @@ from api.schemas.integrations import (
     CreateProviderAppRequest,
     InstallIntegrationRequest,
     IntegrationCatalogResponse,
+    IntegrationChoiceListResponse,
     IntegrationConnectionListResponse,
     IntegrationConnectionResponse,
     IntegrationSyncStatus,
@@ -131,7 +132,26 @@ async def list_bookings(
         raise IntegrationInvalidRequestError(
             "Give a range of up to 62 days, with start before end"
         )
-    return await integrations.list_bookings(_actor(membership), start, end)
+    listed = await integrations.list_bookings(_actor(membership), start, end)
+    if not listed.bookings:
+        return listed
+    # What the calendar didn't keep (a phone number, the party size), from the
+    # calls that made the bookings. Bookings are made at most a few months
+    # ahead, so the calls are recent.
+    from datetime import UTC
+
+    from api.db import db_client
+    from api.services.tool_integrations.booking_details import (
+        details_by_event,
+        fill_in,
+    )
+
+    calls = await db_client.get_calendar_tool_calls(
+        membership.organization_id, datetime.now(UTC) - timedelta(days=180), None
+    )
+    return listed.model_copy(
+        update={"bookings": fill_in(listed.bookings, details_by_event(calls))}
+    )
 
 
 @router.put("/bookings/calendars/{connection_id}")
@@ -212,6 +232,19 @@ async def test_connection(
 ) -> IntegrationTestResponse:
     """Check the connection against the provider and record its status."""
     return await integrations.test(_actor(membership), connection_id)
+
+
+@router.get("/connections/{connection_id}/choices")
+async def list_connection_choices(
+    connection_id: uuid.UUID,
+    membership: Writer,
+    integrations: Integrations,
+) -> IntegrationChoiceListResponse:
+    """The values to pick for one of the connection's settings, read live
+    from the provider (providers with the ``choices`` capability, e.g. the
+    Calendly event callers book). Pick one by sending its ``config`` to
+    ``PATCH /connections/{id}``. 409 when the provider cannot be read."""
+    return await integrations.list_choices(_actor(membership), connection_id)
 
 
 @router.post("/connections/{connection_id}/sync", status_code=status.HTTP_202_ACCEPTED)

@@ -61,6 +61,9 @@ true (checked in this order, from the stored run):
    call then ended without a message.
 
 A call ending in `transfer_call` (a person answered) is never missed.
+A transfer the tool skipped because the business was closed (reason
+`closed`, see business-facts.md) is not an unanswered transfer: with a
+message it is a message taken, without one an ordinary call.
 
 ### Moves and cancellations
 

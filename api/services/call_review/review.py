@@ -9,7 +9,25 @@ Stored at ``workflow_runs.annotations["call_review"]``::
      "reason": "reservations", "reason_label": "Reservations",
      "unanswered_questions": ["Do you have gluten-free pasta?"],
      "time_was_full": false,
+     "request_tags": ["allergies_diets"],
      "model": "gemini-3.1-flash-lite", "created_at": "2026-11-06T13:41:00+00:00"}
+
+``request_tags`` is written only for kinds of business with a list of
+special requests (``ReasonSet.request_tags``; restaurants today). Reviews
+written before it existed have no such key: readers treat that as "not
+tagged", never as "no requests".
+
+Later reviews may also carry:
+
+* ``caller_language``: the ISO 639-1 code of the language the caller mainly
+  spoke ("pl"), when the reviewer could tell;
+* ``other_language``: true when that language isn't one the agent speaks
+  (its ``agent_languages`` fact; English only when unset);
+* ``emergency``: true when the caller described an emergency and was sent to
+  112/999 (or reported a gas leak).
+
+Reviews written before these existed have none of them: readers treat a
+missing key as "not known", never as "English" or "no emergency".
 """
 
 from __future__ import annotations
@@ -21,13 +39,17 @@ from datetime import datetime
 from typing import Any
 
 from api.services.call_review.categories import OTHER, ReasonSet
+from api.services.workflow.agent_languages import speaks
 
 CALL_REVIEW_KEY = "call_review"
 REVIEW_VERSION = 1
 
 # What a review keeps after the call's content is deleted (retention purge or
 # erasure): the reason and the flags, which hold nothing the caller said.
-# The summary and the caller's questions go with the transcript.
+# The summary and the caller's questions go with the transcript, and so do
+# the request tags (an allergy is about the caller's health), the emergency
+# flag (about someone's health) and the caller's language (it can stand in
+# for where someone is from).
 KEPT_AFTER_PURGE = frozenset(
     {"version", "reason", "reason_label", "time_was_full", "model", "created_at"}
 )
@@ -45,6 +67,11 @@ MAX_TRANSCRIPT_CHARS = 8000
 MAX_SUMMARY_CHARS = 300
 MAX_QUESTIONS = 3
 MAX_QUESTION_CHARS = 200
+REQUEST_TAGS_KEY = "request_tags"
+CALLER_LANGUAGE_KEY = "caller_language"
+OTHER_LANGUAGE_KEY = "other_language"
+EMERGENCY_KEY = "emergency"
+_LANGUAGE_CODE = re.compile(r"^[a-z]{2,3}$")
 
 # Details the agent writes down that help the reviewer; numbers are left out.
 _DETAIL_KEYS = (
@@ -136,7 +163,28 @@ def system_prompt(reasons: ReasonSet) -> str:
         "assistant could not answer (it did not know, could not say, or would "
         "pass it on), written as the caller's short question. [] if none.\n"
         "- time_was_full: true only if the caller wanted a date or time that "
-        "was full or not available."
+        "was full or not available.\n"
+        "- caller_language: the ISO 639-1 code of the language the caller "
+        'mainly spoke, like "en", "pl" or "pt". English with an accent, '
+        "English mixed with other words, or an Irish greeting such as "
+        '"Dia duit" is "en".\n'
+        "- emergency: true only if the caller described a medical emergency, "
+        "a fire or someone in immediate danger and was told to ring 112 or "
+        "999, or reported a smell of gas or a gas leak."
+        f"{_request_tags_prompt(reasons)}"
+    )
+
+
+def _request_tags_prompt(reasons: ReasonSet) -> str:
+    if not reasons.request_tags:
+        return ""
+    options = "\n".join(
+        f'- "{t.key}": {t.label} ({t.hint})' for t in reasons.request_tags
+    )
+    return (
+        "\n- request_tags: the keys below for each special request the caller "
+        "made for their booking, each key once. [] if they made none:\n"
+        f"{options}"
     )
 
 
@@ -154,16 +202,26 @@ def user_prompt(
 
 def response_schema(reasons: ReasonSet) -> dict[str, Any]:
     """The JSON schema the model must answer in."""
-    return {
+    schema: dict[str, Any] = {
         "type": "object",
         "properties": {
             "summary": {"type": "string"},
             "reason": {"type": "string", "enum": list(reasons.keys)},
             "unanswered_questions": {"type": "array", "items": {"type": "string"}},
             "time_was_full": {"type": "boolean"},
+            # Optional: an answer without them is still a good review.
+            CALLER_LANGUAGE_KEY: {"type": "string"},
+            EMERGENCY_KEY: {"type": "boolean"},
         },
         "required": ["summary", "reason", "unanswered_questions", "time_was_full"],
     }
+    if reasons.request_tags:
+        # Optional: an answer without it is still a good review.
+        schema["properties"][REQUEST_TAGS_KEY] = {
+            "type": "array",
+            "items": {"type": "string", "enum": list(reasons.request_tag_keys)},
+        }
+    return schema
 
 
 class ReviewParseError(ValueError):
@@ -186,10 +244,13 @@ def parse_review(
     *,
     model: str,
     now: datetime,
+    agent_languages: str | None = None,
 ) -> dict[str, Any]:
     """The stored review from the model's JSON answer. An unknown reason
     becomes "other"; anything missing or of the wrong shape is either
-    defaulted (no questions, time not full) or, for the summary, an error."""
+    defaulted (no questions, time not full, no emergency), left out (the
+    caller's language) or, for the summary, an error. ``agent_languages`` is
+    the agent's fact of that name, to flag a caller in another language."""
     try:
         data = json.loads(text or "")
     except (TypeError, ValueError) as exc:
@@ -210,7 +271,7 @@ def parse_review(
             cleaned = _cut(_one_line(question), MAX_QUESTION_CHARS)
             if cleaned not in questions:
                 questions.append(cleaned)
-    return {
+    review = {
         "version": REVIEW_VERSION,
         "summary": _cut(_one_line(summary), MAX_SUMMARY_CHARS),
         "reason": reason,
@@ -220,11 +281,64 @@ def parse_review(
         "model": model,
         "created_at": now.isoformat(),
     }
+    language = clean_language(data.get(CALLER_LANGUAGE_KEY))
+    if language is not None:
+        review[CALLER_LANGUAGE_KEY] = language
+        review[OTHER_LANGUAGE_KEY] = not speaks(agent_languages, language)
+    review[EMERGENCY_KEY] = data.get(EMERGENCY_KEY) is True
+    if reasons.request_tags:
+        review[REQUEST_TAGS_KEY] = clean_request_tags(
+            data.get(REQUEST_TAGS_KEY), reasons
+        )
+    return review
+
+
+def clean_language(value: Any) -> str | None:
+    """An ISO 639 code from the model ("pl", "PL", "pl-PL"), or None."""
+    if not isinstance(value, str):
+        return None
+    code = value.strip().lower().replace("_", "-").split("-")[0]
+    return code if _LANGUAGE_CODE.match(code) else None
+
+
+def caller_language(review: Mapping[str, Any] | None) -> str | None:
+    """The caller's language on a stored review; None when not known."""
+    return clean_language((review or {}).get(CALLER_LANGUAGE_KEY))
+
+
+def spoke_other_language(review: Mapping[str, Any] | None) -> bool:
+    """The caller spoke a language the agent doesn't (False when unknown)."""
+    return (review or {}).get(OTHER_LANGUAGE_KEY) is True
+
+
+def was_emergency(review: Mapping[str, Any] | None) -> bool:
+    """The call was an emergency (False when unknown)."""
+    return (review or {}).get(EMERGENCY_KEY) is True
+
+
+def clean_request_tags(value: Any, reasons: ReasonSet) -> list[str]:
+    """The known tags in *value*, each once, in the set's own order; unknown
+    or malformed entries are dropped."""
+    given = (
+        {v.strip().lower() for v in value if isinstance(v, str)}
+        if isinstance(value, list)
+        else set()
+    )
+    return [key for key in reasons.request_tag_keys if key in given]
+
+
+def request_tags(review: Mapping[str, Any] | None) -> list[str] | None:
+    """The tags on a stored review; None when it was never tagged (written
+    before tags existed, or for a business without them)."""
+    value = (review or {}).get(REQUEST_TAGS_KEY)
+    if not isinstance(value, list):
+        return None
+    return [v for v in value if isinstance(v, str)]
 
 
 def silent_review(reasons: ReasonSet, *, now: datetime) -> dict[str, Any]:
     """The review of a call where the caller never spoke; no model needed."""
-    return {
+    review: dict[str, Any] = {
         "version": REVIEW_VERSION,
         "summary": SILENT_SUMMARY,
         "reason": OTHER,
@@ -234,6 +348,9 @@ def silent_review(reasons: ReasonSet, *, now: datetime) -> dict[str, Any]:
         "model": NO_MODEL,
         "created_at": now.isoformat(),
     }
+    if reasons.request_tags:
+        review[REQUEST_TAGS_KEY] = []
+    return review
 
 
 def stored_review(annotations: Mapping[str, Any] | None) -> Mapping[str, Any] | None:

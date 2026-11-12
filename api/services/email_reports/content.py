@@ -9,15 +9,23 @@ from __future__ import annotations
 
 from collections import Counter
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo
 
+from loguru import logger
+
 from api.services.dashboard.calls import CallResult, CallView, call_view
 from api.services.dashboard.follow_ups import FollowUpStatus
-from api.services.dashboard.summary import call_change, calls_by_hour, tiles
-from api.services.email_reports.periods import Frequency, Period
+from api.services.dashboard.summary import (
+    after_hours,
+    call_change,
+    calls_by_hour,
+    tiles,
+)
+from api.services.email_reports.cards import EmailBlock, email_blocks
+from api.services.email_reports.periods import Period, is_hourly
 
 TOP_FOLLOW_UPS = 5
 TOP_REASONS = 6
@@ -60,6 +68,13 @@ class Report:
     # Why the agent isn't answering (the dashboard's reason), else None.
     not_answering: str | None
     credit: Mapping[str, Any] | None = None
+    # Calls that arrived outside opening hours (the dashboard's count); None
+    # when no agent in the report has its opening hours set as times.
+    after_hours: int | None = None
+    # The report cards the owner ticked for the email, in their order (see
+    # ``email_reports.cards``). None: the fixed layout (calls, follow-ups,
+    # what callers wanted, when they called).
+    blocks: tuple[EmailBlock, ...] | None = None
 
 
 def callers_wanted(rows: Sequence[Mapping[str, Any]]) -> list[Bar]:
@@ -111,13 +126,12 @@ def build_report(
     open_follow_ups: int,
     agent_status: Mapping[str, Any] | None,
     credit: Mapping[str, Any] | None,
+    agents: Sequence[Mapping[str, Any]] = (),
 ) -> Report:
+    """*agents* are the report's agents (all, or the one it is about), for
+    the after-hours count."""
     counted = tiles(calls)
-    when = (
-        hour_bars(calls, tz)
-        if period.frequency == Frequency.DAILY
-        else day_bars(calls, period, tz)
-    )
+    when = hour_bars(calls, tz) if is_hourly(period) else day_bars(calls, period, tz)
     reason = None
     if agent_status is not None and not agent_status.get("answering", True):
         raw = agent_status.get("reason")
@@ -149,6 +163,7 @@ def build_report(
         when=when,
         not_answering=reason,
         credit=credit,
+        after_hours=after_hours(calls, agents)["calls"],
     )
 
 
@@ -208,7 +223,7 @@ async def load_report(
         ),
         None,
     )
-    return build_report(
+    report = build_report(
         business_name=business_name,
         agent_name=agent_name,
         period=period,
@@ -220,4 +235,52 @@ async def load_report(
         open_follow_ups=follow_up["open_count"],
         agent_status=status,
         credit=credit,
+        agents=[a for a in agents if workflow_id is None or a["id"] == workflow_id],
     )
+    return replace(
+        report,
+        blocks=await _card_blocks(
+            organization_id, workflow_id, period, tz, agents, now
+        ),
+    )
+
+
+async def _card_blocks(
+    organization_id: int,
+    workflow_id: int | None,
+    period: Period,
+    tz: ZoneInfo,
+    agents: Sequence[Mapping[str, Any]],
+    now: datetime,
+) -> tuple[EmailBlock, ...] | None:
+    """The cards the owner ticked for the email (the pack's defaults until
+    they choose), counted like the Reports page. If that fails the email
+    still goes, in the fixed layout."""
+    from api.services.report_cards.service import Bounds, report_cards_for
+
+    try:
+        built = await report_cards_for(
+            organization_id=organization_id,
+            workflow_id=workflow_id,
+            bounds=Bounds(
+                period.start, period.end, period.previous_start, period.previous_end
+            ),
+            tz=tz,
+            agents=agents,
+            now=now,
+            wanted=lambda choices: [c.key for c in choices if c.email],
+        )
+        return tuple(
+            email_blocks(
+                pack=built["pack"],
+                order=built["order"],
+                cards=built["cards"],
+                frequency=period.frequency,
+                tz=tz,
+            )
+        )
+    except Exception:  # noqa: BLE001 - the fixed email is better than none
+        logger.exception(
+            f"[email-reports] report cards for organization {organization_id} failed"
+        )
+        return None

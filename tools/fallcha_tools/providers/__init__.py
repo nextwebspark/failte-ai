@@ -5,6 +5,7 @@ from __future__ import annotations
 from fallcha_tools.config import Settings
 from fallcha_tools.core.platform_apps import PlatformClient
 from fallcha_tools.core.provider import ProviderRegistry
+from fallcha_tools.providers.calendly import CalendlyProvider
 from fallcha_tools.providers.google_calendar import (
     GoogleCalendarProvider,
     booking_id_key_from,
@@ -22,6 +23,7 @@ def build_registry(settings: Settings) -> ProviderRegistry:
             GoogleCalendarProvider(booking_id_key=booking_id_key_from(secret)),
             GoogleSheetsProvider(),
             WebsiteCatalogueProvider(),
+            CalendlyProvider(),
         ]
     )
 

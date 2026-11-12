@@ -20,6 +20,8 @@ const SLOTS: Colour[] = [
     { stroke: "stroke-[#eb6834] dark:stroke-[#d95926]", swatch: "bg-[#eb6834] dark:bg-[#d95926]" },
     { stroke: "stroke-[#1baf7a] dark:stroke-[#199e70]", swatch: "bg-[#1baf7a] dark:bg-[#199e70]" },
     { stroke: "stroke-[#eda100] dark:stroke-[#c98500]", swatch: "bg-[#eda100] dark:bg-[#c98500]" },
+    // A fifth reason (a shop's "Technical advice"); no other set has five.
+    { stroke: "stroke-[#8a5cd1] dark:stroke-[#9b72e0]", swatch: "bg-[#8a5cd1] dark:bg-[#9b72e0]" },
 ];
 const OTHER: Colour = { stroke: "stroke-[#9aa1ad] dark:stroke-[#6b7280]", swatch: "bg-[#9aa1ad] dark:bg-[#6b7280]" };
 const NOT_REVIEWED: Colour = {
@@ -41,6 +43,11 @@ const KEY_SLOT: Record<string, number> = {
     walk_ins: 3,
     selling: 3,
     speak_to_someone: 3,
+    product_stock: 0,
+    orders_delivery: 1,
+    returns_faults: 2,
+    servicing: 3,
+    technical_advice: 4,
 };
 
 /** The colour classes for each reason, by key (unknown keys take a free slot). */
@@ -67,8 +74,8 @@ export function reasonColours(reasons: Pick<DashboardReason, "key">[]): Record<s
     return colours;
 }
 
-const SIZE = 132;
-const STROKE = 20;
+const SIZE = 176;
+const STROKE = 24;
 const RADIUS = (SIZE - STROKE) / 2;
 const CIRCUMFERENCE = 2 * Math.PI * RADIUS;
 // The surface gap between segments, along the ring.
@@ -96,7 +103,7 @@ export function CallersWantedChart({ reasons, caption }: { reasons: DashboardRea
     const single = reasons.length === 1;
 
     return (
-        <figure className="m-0 flex flex-col items-center gap-4 @sm:flex-row @sm:items-center @sm:gap-5">
+        <figure className="m-0 flex flex-col items-center gap-5 @md:flex-row @md:items-center @md:gap-6">
             <div className="relative flex-none" style={{ width: SIZE, height: SIZE }} onMouseLeave={() => setActive(null)}>
                 <svg width={SIZE} height={SIZE} viewBox={`0 0 ${SIZE} ${SIZE}`} aria-hidden className="-rotate-90">
                     {segments.map(({ reason, start, length }) => {
@@ -123,23 +130,22 @@ export function CallersWantedChart({ reasons, caption }: { reasons: DashboardRea
                 </svg>
                 <div className="pointer-events-none absolute inset-0 grid place-items-center text-center" >
                     {shown ? (
-                        <div className="max-w-[92px]">
-                            <div className="font-display text-[24px] font-semibold leading-none tabular-nums text-foreground">
+                        <div className="max-w-[112px]">
+                            <div className="font-display text-[30px] font-semibold leading-none tabular-nums text-foreground">
                                 {shown.count}
                             </div>
-                            <div className="mt-1 text-[11px] leading-tight text-ink-2">
-                                {shown.label} · {shown.percent}%
-                            </div>
+                            <div className="mt-1 line-clamp-2 text-caption leading-tight text-ink-2">{shown.label}</div>
+                            <div className="text-caption font-semibold tabular-nums text-ink-2">{shown.percent}%</div>
                         </div>
                     ) : (
                         <div>
-                            <div className="font-display text-[30px] font-semibold leading-none tabular-nums text-foreground">{total}</div>
-                            <div className="mt-1 text-[12px] text-ink-3">{total === 1 ? "call" : "calls"}</div>
+                            <div className="font-display text-[40px] font-semibold leading-none tracking-[-0.02em] tabular-nums text-foreground">{total}</div>
+                            <div className="mt-1.5 text-caption text-ink-3">{total === 1 ? "call" : "calls"}</div>
                         </div>
                     )}
                 </div>
             </div>
-            <ul className="flex w-full min-w-0 flex-col gap-0.5" aria-label={caption}>
+            <ul className="flex w-full min-w-0 flex-col gap-1" aria-label={caption}>
                 {reasons.map((reason) => (
                     <li
                         key={reason.key}
@@ -150,16 +156,23 @@ export function CallersWantedChart({ reasons, caption }: { reasons: DashboardRea
                         onFocus={() => setActive(reason.key)}
                         onBlur={() => setActive(null)}
                         className={cn(
-                            "grid grid-cols-[10px_minmax(0,1fr)_auto_3.25rem] items-center gap-x-2.5 rounded-md px-1.5 py-1.5 text-[13px] outline-none focus-visible:ring-[3px] focus-visible:ring-ring/40",
+                            "grid grid-cols-[12px_minmax(0,1fr)_auto_3.5rem] items-center gap-x-3 gap-y-1.5 rounded-lg px-2 py-2 text-body outline-none focus-visible:ring-[3px] focus-visible:ring-ring/40",
                             active === reason.key && "bg-panel-2",
                         )}
                     >
-                        <span className={cn("size-2.5 rounded-[3px]", colours[reason.key].swatch)} />
+                        <span className={cn("size-3 rounded-[4px]", colours[reason.key].swatch)} />
                         <span className={cn("min-w-0 leading-snug", reason.key === "not_reviewed" ? "text-ink-3" : "text-foreground")}>
                             {reason.label}
                         </span>
                         <span className="text-right font-semibold tabular-nums text-foreground">{reason.count}</span>
-                        <span className="text-right tabular-nums text-ink-3">{reason.percent}%</span>
+                        <span className="text-right text-sm tabular-nums text-ink-2">{reason.percent}%</span>
+                        {/* Each reason's share as a thin bar, in its ring colour. */}
+                        <span className="col-start-2 col-end-5 h-1 overflow-hidden rounded-full bg-line-soft" aria-hidden>
+                            <span
+                                className={cn("block h-full rounded-full", colours[reason.key].swatch)}
+                                style={{ width: `${Math.max(2, reason.percent)}%` }}
+                            />
+                        </span>
                     </li>
                 ))}
             </ul>

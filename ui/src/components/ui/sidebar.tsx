@@ -27,7 +27,7 @@ import { cn } from "@/lib/utils"
 
 const SIDEBAR_COOKIE_NAME = "sidebar_state"
 const SIDEBAR_COOKIE_MAX_AGE = 60 * 60 * 24 * 7
-const SIDEBAR_WIDTH = "14.5rem" // 232px; the docked shell's 14px left gutter leaves a 218px panel — the canvas nav width
+const SIDEBAR_WIDTH = "15.5rem" // 248px; the docked shell's 14px left gutter leaves a 234px panel (the canvas's 218px, widened with the 14px nav type so "What your agent knows" fits)
 const SIDEBAR_WIDTH_MOBILE = "18rem"
 const SIDEBAR_WIDTH_ICON = "3rem"
 const SIDEBAR_KEYBOARD_SHORTCUT = "b"

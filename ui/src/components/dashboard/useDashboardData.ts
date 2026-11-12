@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import {
@@ -14,6 +14,7 @@ import type {
     DashboardRange,
     DashboardSummaryResponse,
     FollowUpItem,
+    FollowUpKind,
     FollowUpListResponse,
     FollowUpStatus,
 } from "@/client/types.gen";
@@ -46,50 +47,117 @@ function useOnFollowUpsChanged(reload: () => void) {
     }, [reload]);
 }
 
-/** Home's numbers for the range, from the dashboard endpoint. */
+/** How often Home checks for new calls while it is open and in view. */
+export const HOME_REFRESH_MS = 30_000;
+
+/**
+ * Home's numbers for the range, from the dashboard endpoint. Kept fresh while
+ * the page is open: every 30 seconds while in view, and when the tab comes
+ * back. A refresh keeps the numbers on screen (no skeleton) and, if it fails,
+ * keeps the last ones rather than showing an error.
+ */
 export function useDashboardSummary(range: DashboardRange, workflowId?: number) {
     const [result, setResult] = useState<Loadable<DashboardSummaryResponse>>({ state: "loading" });
+    const [updatedAt, setUpdatedAt] = useState<Date | null>(null);
+    const [refreshing, setRefreshing] = useState(false);
     const ready = useAuthReady();
-
-    const load = useCallback(async () => {
-        if (!ready) return;
-        setResult({ state: "loading" });
-        try {
-            const res = await getDashboardSummaryApiV1DashboardSummaryGet({
-                query: { range, workflow_id: workflowId ?? null },
-            });
-            setResult(res.data && !res.error ? { state: "ready", data: res.data } : { state: "error" });
-        } catch {
-            setResult({ state: "error" });
-        }
-    }, [range, workflowId, ready]);
-
-    useEffect(() => {
-        void load();
-    }, [load]);
-
-    return { result, reload: load };
-}
-
-/** The follow-up list (to do or done), refreshed when one changes. */
-export function useFollowUps(status: FollowUpStatus, workflowId?: number) {
-    const [result, setResult] = useState<Loadable<FollowUpListResponse>>({ state: "loading" });
-    const ready = useAuthReady();
+    // Only the newest request may set the numbers.
+    const latest = useRef(0);
 
     const load = useCallback(
         async (quiet = false) => {
             if (!ready) return;
-            if (!quiet) setResult({ state: "loading" });
+            const request = ++latest.current;
+            if (quiet) setRefreshing(true);
+            else setResult({ state: "loading" });
             try {
-                const res = await listFollowUpsApiV1FollowUpsGet({
-                    query: { status, workflow_id: workflowId ?? null },
+                const res = await getDashboardSummaryApiV1DashboardSummaryGet({
+                    query: { range, workflow_id: workflowId ?? null },
                 });
-                setResult(res.data && !res.error ? { state: "ready", data: res.data } : { state: "error" });
+                if (request !== latest.current) return;
+                if (res.data && !res.error) {
+                    setResult({ state: "ready", data: res.data });
+                    setUpdatedAt(new Date());
+                } else if (!quiet) {
+                    setResult({ state: "error" });
+                }
             } catch {
-                setResult({ state: "error" });
+                if (request === latest.current && !quiet) setResult({ state: "error" });
+            } finally {
+                if (request === latest.current) setRefreshing(false);
             }
         },
-        [status, workflowId, ready],
+        [range, workflowId, ready],
+    );
+
+    useEffect(() => {
+        void load();
+        const refresh = () => {
+            if (document.visibilityState === "visible") void load(true);
+        };
+        const timer = window.setInterval(refresh, HOME_REFRESH_MS);
+        document.addEventListener("visibilitychange", refresh);
+        return () => {
+            window.clearInterval(timer);
+            document.removeEventListener("visibilitychange", refresh);
+        };
+    }, [load]);
+
+    const refresh = useCallback(() => void load(true), [load]);
+    return { result, reload: () => load(), refresh, refreshing, updatedAt };
+}
+
+/** What the Follow-ups page narrows the list to; the API counts under the same. */
+export interface FollowUpFilters {
+    range?: DashboardRange | null;
+    /** Days picked by hand, "yyyy-mm-dd" in the business's zone. */
+    start_date?: string | null;
+    end_date?: string | null;
+    kind?: FollowUpKind | null;
+    q?: string | null;
+}
+
+/** The follow-up list (to do, done or all), refreshed when one changes. */
+export function useFollowUps(status: FollowUpStatus, workflowId?: number, filters?: FollowUpFilters) {
+    const [result, setResult] = useState<Loadable<FollowUpListResponse>>({ state: "loading" });
+    const ready = useAuthReady();
+    const filterKey = JSON.stringify(filters ?? {});
+    // Only the newest request may set the list (a quick typist sends several).
+    const latest = useRef(0);
+    const [updating, setUpdating] = useState(false);
+
+    const load = useCallback(
+        async (quiet = false) => {
+            if (!ready) return;
+            const request = ++latest.current;
+            // A list already showing stays (marked as updating) while the
+            // new one loads, so changing a filter doesn't blank the page.
+            if (!quiet) setResult((current) => (current.state === "ready" ? current : { state: "loading" }));
+            setUpdating(true);
+            try {
+                const narrow = JSON.parse(filterKey) as FollowUpFilters;
+                const res = await listFollowUpsApiV1FollowUpsGet({
+                    query: {
+                        status,
+                        workflow_id: workflowId ?? null,
+                        ...(narrow.range && { range: narrow.range }),
+                        ...(narrow.start_date && { start_date: narrow.start_date }),
+                        ...(narrow.end_date && { end_date: narrow.end_date }),
+                        ...(narrow.kind && { kind: narrow.kind }),
+                        ...(narrow.q?.trim() && { q: narrow.q.trim() }),
+                    },
+                });
+                if (request !== latest.current) return;
+                setUpdating(false);
+                setResult(res.data && !res.error ? { state: "ready", data: res.data } : { state: "error" });
+            } catch {
+                if (request === latest.current) {
+                    setUpdating(false);
+                    setResult({ state: "error" });
+                }
+            }
+        },
+        [status, workflowId, filterKey, ready],
     );
 
     useEffect(() => {
@@ -99,7 +167,7 @@ export function useFollowUps(status: FollowUpStatus, workflowId?: number) {
     const reloadQuietly = useCallback(() => void load(true), [load]);
     useOnFollowUpsChanged(reloadQuietly);
 
-    return { result, reload: () => void load(), reloadQuietly };
+    return { result, updating, reload: () => void load(), reloadQuietly };
 }
 
 /**

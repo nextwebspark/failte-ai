@@ -7,7 +7,9 @@ from pathlib import Path
 API_ROOT = Path(__file__).resolve().parents[1]
 NON_RUNTIME_TOP_LEVEL = {"alembic", "db", "tests"}
 NON_RUNTIME_FILES = {Path("conftest.py")}
-INTERNAL_TOOLING_PREFIXES = {("services", "admin_utils")}
+# Operator tooling run by hand, never by the app: admin utilities and the
+# one-off scripts in api/scripts (e.g. the local demo seed).
+INTERNAL_TOOLING_PREFIXES = {("services", "admin_utils"), ("scripts",)}
 DATABASE_IMPORT_ROOTS = {"asyncpg", "psycopg", "psycopg2", "sqlalchemy"}
 DIRECT_DATABASE_CALLS = {"async_session", "execute_raw_query"}
 SQL_LITERAL = re.compile(

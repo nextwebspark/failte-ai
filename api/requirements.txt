@@ -26,6 +26,9 @@ bcrypt==5.0.0
 # already present transitively, declared because we import it directly.
 cryptography>=42
 email-validator==2.3.0
+# Reading the owner's transfer number ("087 123 4567" -> +353871234567) and
+# checking it can be called (api/utils/transfer_number.py).
+phonenumbers==9.0.43
 # Bundle the full IANA tz database (incl. deprecated "backward" aliases like
 # Asia/Calcutta) so ZoneInfo resolves timezones the trimmed system tzdata omits.
 tzdata==2026.4

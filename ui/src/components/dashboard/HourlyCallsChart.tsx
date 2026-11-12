@@ -15,17 +15,29 @@ function niceMax(value: number): number {
     return Math.ceil(value / step) * step;
 }
 
-const CHART_HEIGHT = 150;
+const CHART_HEIGHT = 196;
 
 /**
  * Calls per hour of the day: one series, thin brand bars with rounded tops on
- * the baseline, a recessive grid, a tooltip on hover or focus, and a label on
- * the busiest hour only when it clearly stands out. A table carries the same
- * numbers for screen readers.
+ * the baseline, a recessive grid, a tooltip on hover or focus, and the busiest
+ * hour (only when it clearly stands out) in full brand with a label, the rest
+ * a step lighter. Axis text is 12px ink; on a narrow card the hour labels go
+ * every six hours instead of three. A table carries the same numbers for
+ * screen readers. The business's open hours, when given, are a faint
+ * neutral band behind the bars (explained by the legend under the chart).
  */
-export function HourlyCallsChart({ hours, caption }: { hours: number[]; caption: string }) {
+export function HourlyCallsChart({
+    hours,
+    caption,
+    openRanges = [],
+}: {
+    hours: number[];
+    caption: string;
+    /** Open times to shade, in minutes after local midnight. */
+    openRanges?: { start: number; end: number }[];
+}) {
     const [active, setActive] = useState<number | null>(null);
-    const { start, end } = hourWindow(hours);
+    const { start, end } = hourWindow(hours, openRanges);
     const shown = Array.from({ length: end - start + 1 }, (_, i) => start + i);
     const top = niceMax(Math.max(0, ...hours));
     const peak = busiestHour(hours);
@@ -33,7 +45,7 @@ export function HourlyCallsChart({ hours, caption }: { hours: number[]; caption:
 
     return (
         <figure className="m-0">
-            <div className="relative pl-7" style={{ height: CHART_HEIGHT + 22 }}>
+            <div className="relative pl-8" style={{ height: CHART_HEIGHT + 26 }}>
                 {/* Grid and y-axis labels */}
                 <div className="absolute inset-x-0 top-0" style={{ height: CHART_HEIGHT }} aria-hidden>
                     {ticks.map((tick) => (
@@ -42,7 +54,7 @@ export function HourlyCallsChart({ hours, caption }: { hours: number[]; caption:
                             className="absolute inset-x-0 flex items-center"
                             style={{ top: `${(1 - tick / top) * 100}%` }}
                         >
-                            <span className="w-6 -translate-y-1/2 pr-1.5 text-right text-[10.5px] tabular-nums text-ink-3">
+                            <span className="w-7 -translate-y-1/2 pr-2 text-right text-meta tabular-nums text-ink-3">
                                 {Number.isInteger(tick) ? tick : ""}
                             </span>
                             <span className={cn("h-px flex-1 -translate-y-1/2", tick === 0 ? "bg-line" : "bg-line-soft")} />
@@ -50,8 +62,27 @@ export function HourlyCallsChart({ hours, caption }: { hours: number[]; caption:
                     ))}
                 </div>
 
-                {/* Bars */}
-                <div className="relative flex items-end gap-[2px]" style={{ height: CHART_HEIGHT }} onMouseLeave={() => setActive(null)}>
+                {/* Bars, over the open-hours band */}
+                <div className="relative flex items-end gap-[3px]" style={{ height: CHART_HEIGHT }} onMouseLeave={() => setActive(null)}>
+                    {openRanges.map((range) => {
+                        const from = Math.max(0, range.start / 60 - start);
+                        const to = Math.min(shown.length, range.end / 60 - start);
+                        if (to <= from) return null;
+                        // Each hour's slot is (width + gap) / hours wide; the
+                        // band's edges sit in the gaps between bars.
+                        const unit = `(100% + 3px) / ${shown.length}`;
+                        return (
+                            <span
+                                key={`${range.start}-${range.end}`}
+                                className="pointer-events-none absolute inset-y-0 rounded-[4px] bg-ink-3/[0.08]"
+                                style={{
+                                    left: `max(0px, calc(${from} * ${unit} - 1.5px))`,
+                                    width: `min(100%, calc(${to - from} * ${unit}))`,
+                                }}
+                                aria-hidden
+                            />
+                        );
+                    })}
                     {shown.map((hour, index) => {
                         // Keep the tooltip inside the card near either edge.
                         const tipSide =
@@ -72,8 +103,11 @@ export function HourlyCallsChart({ hours, caption }: { hours: number[]; caption:
                             >
                                 {peak === hour && (
                                     <span
-                                        className="pointer-events-none absolute whitespace-nowrap text-[10.5px] font-medium text-ink-2"
-                                        style={{ bottom: height + 4 }}
+                                        className={cn(
+                                            "pointer-events-none absolute whitespace-nowrap text-meta font-semibold text-foreground",
+                                            isActive && "invisible",
+                                        )}
+                                        style={{ bottom: height + 5 }}
                                         aria-hidden
                                     >
                                         Busiest
@@ -81,8 +115,8 @@ export function HourlyCallsChart({ hours, caption }: { hours: number[]; caption:
                                 )}
                                 <span
                                     className={cn(
-                                        "block w-full max-w-[14px] rounded-t-[4px] transition-colors",
-                                        isActive ? "bg-brand" : "bg-brand/70",
+                                        "block w-full max-w-[18px] rounded-t-[4px] transition-colors motion-reduce:transition-none",
+                                        isActive || peak === hour ? "bg-brand" : "bg-brand/55",
                                     )}
                                     style={{ height }}
                                     aria-hidden
@@ -91,7 +125,7 @@ export function HourlyCallsChart({ hours, caption }: { hours: number[]; caption:
                                     <span
                                         role="tooltip"
                                         className={cn(
-                                            "pointer-events-none absolute z-10 whitespace-nowrap rounded-md border border-line bg-popover px-2 py-1 text-[11.5px] font-medium tabular-nums text-foreground shadow-md",
+                                            "pointer-events-none absolute z-10 whitespace-nowrap rounded-lg border border-line bg-popover px-2.5 py-1.5 text-caption font-medium tabular-nums text-foreground shadow-md",
                                             tipSide,
                                         )}
                                         style={{ bottom: height + 8 }}
@@ -104,11 +138,20 @@ export function HourlyCallsChart({ hours, caption }: { hours: number[]; caption:
                     })}
                 </div>
 
-                {/* X-axis labels every third hour */}
-                <div className="mt-1.5 flex gap-[2px]" aria-hidden>
+                {/* X-axis labels every third hour (every sixth on a narrow card) */}
+                <div className="mt-2 flex gap-[3px]" aria-hidden>
                     {shown.map((hour) => (
-                        <span key={hour} className="relative min-w-0 flex-1 text-center text-[10.5px] tabular-nums text-ink-3">
-                            {hour % 3 === 0 ? <span className="absolute left-1/2 -translate-x-1/2">{hourLabel(hour)}</span> : null}
+                        <span key={hour} className="relative min-w-0 flex-1 text-center text-meta tabular-nums text-ink-3">
+                            {hour % 3 === 0 ? (
+                                <span
+                                    className={cn(
+                                        "absolute left-1/2 -translate-x-1/2",
+                                        hour % 6 !== 0 && "hidden @md:inline",
+                                    )}
+                                >
+                                    {hourLabel(hour)}
+                                </span>
+                            ) : null}
                         </span>
                     ))}
                 </div>

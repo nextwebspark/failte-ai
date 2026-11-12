@@ -17,10 +17,12 @@ export const BRAND = {
   tagline: "Build, test and deploy voice AI agents",
   domain,
   appUrl: `https://app.${domain}`,
-  /** Public docs are on the website (Starlight at /docs), not a docs.* subdomain. */
-  docsUrl: `https://${domain}/docs`,
+  /** Public docs live on their own subdomain, e.g. docs.lightmove.ai/integrations/telephony/twilio. */
+  docsUrl: `https://docs.${domain}`,
   privacyUrl: `https://${domain}/privacy`,
   termsUrl: `https://${domain}/terms`,
+  /** The website's contact form (add ?reason=support to preselect the topic). */
+  contactUrl: `https://${domain}/contact`,
   salesEmail: `sales@${domain}`,
   supportEmail: `support@${domain}`,
   /** The other legal pages, linked from Settings > Privacy & compliance. */

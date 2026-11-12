@@ -54,6 +54,8 @@ export type AgentNavItem = {
   subtitle: string;
   /** Extra sub-paths that belong to this section (detail routes). */
   altSegments?: string[];
+  /** Only for people who may change the agent (navConfig guards the route too). */
+  editorsOnly?: boolean;
 };
 
 export type AgentNavSection = {
@@ -100,12 +102,14 @@ export const AGENT_NAV_SECTIONS: AgentNavSection[] = [
         segment: "/model",
         icon: SlidersHorizontal,
         subtitle: "The voice and language this agent uses",
+        editorsOnly: true,
       },
       {
         title: "Advanced settings",
         segment: "/settings",
         icon: Settings2,
         subtitle: "Behaviour, variables, dictionary and diagnostics",
+        editorsOnly: true,
       },
       {
         title: "Deployment",

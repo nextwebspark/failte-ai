@@ -140,6 +140,11 @@ from api.services.telephony.inbound_routing import (
     assert_no_inbound_routing_conflict,
     canonical_address,
 )
+from api.services.telephony.platform_numbers import (
+    PLATFORM_NUMBER_METADATA_KEY,
+    is_managed_configuration,
+    is_platform_number,
+)
 from api.services.telephony.registry import ProviderConnectivity, TrunkDesiredState
 from api.services.worker_sync.manager import get_worker_sync_manager
 from api.services.worker_sync.protocol import WorkerSyncEventType
@@ -151,6 +156,17 @@ from api.utils.common import get_backend_endpoints
 from api.utils.telephony_address import normalize_telephony_address
 
 router = APIRouter(prefix="/organizations", tags=["organizations"])
+
+# LightMove-provided numbers live on LightMove's own provider account, so
+# removing them here would leave the number rented with nothing pointing at it.
+_LIGHTMOVE_MANAGED_DETAIL = (
+    "This phone line is provided by LightMove, so it can't be edited or removed "
+    "here. Contact us to change or release it."
+)
+_LIGHTMOVE_NUMBER_DETAIL = (
+    "This number is provided by LightMove, so it can't be deleted here. Contact "
+    "us to release it, or connect it to a different agent instead."
+)
 
 
 def _sensitive_fields(provider_name: str) -> List[str]:
@@ -1117,6 +1133,10 @@ async def update_telephony_configuration(
         raise HTTPException(status_code=404, detail="Telephony configuration not found")
 
     credentials = None
+    if request.config is not None and is_managed_configuration(
+        getattr(existing, "credentials", None)
+    ):
+        raise HTTPException(status_code=409, detail=_LIGHTMOVE_MANAGED_DETAIL)
     if request.config is not None:
         if request.config.provider != existing.provider:
             raise HTTPException(
@@ -1218,6 +1238,12 @@ async def delete_telephony_configuration(
 ):
     if not user.selected_organization_id:
         raise HTTPException(status_code=400, detail="No organization selected")
+
+    existing = await db_client.get_telephony_configuration_for_org(
+        config_id, user.selected_organization_id, active_only=False
+    )
+    if existing and is_managed_configuration(getattr(existing, "credentials", None)):
+        raise HTTPException(status_code=409, detail=_LIGHTMOVE_MANAGED_DETAIL)
 
     try:
         deleted = await db_client.delete_telephony_configuration(
@@ -1690,6 +1716,19 @@ async def update_phone_number(
     if request.telephony_trunk_id is not None:
         await _ensure_trunk_belongs_to_config(request.telephony_trunk_id, config_id)
 
+    extra_metadata = request.extra_metadata
+    if extra_metadata is not None and is_platform_number(
+        getattr(existing, "extra_metadata", None)
+    ):
+        # The record that LightMove owns this number is not the customer's to
+        # edit: it is how the number gets released and billed.
+        extra_metadata = {
+            **extra_metadata,
+            PLATFORM_NUMBER_METADATA_KEY: existing.extra_metadata[
+                PLATFORM_NUMBER_METADATA_KEY
+            ],
+        }
+
     row = await db_client.update_phone_number(
         phone_number_id=phone_number_id,
         telephony_configuration_id=config_id,
@@ -1698,7 +1737,7 @@ async def update_phone_number(
         telephony_trunk_id=request.telephony_trunk_id,
         is_active=request.is_active,
         country_code=request.country_code,
-        extra_metadata=request.extra_metadata,
+        extra_metadata=extra_metadata,
         clear_inbound_workflow=request.clear_inbound_workflow,
         clear_trunk=request.clear_trunk,
     )
@@ -1754,6 +1793,8 @@ async def delete_phone_number(
     existing = await db_client.get_phone_number_for_config(phone_number_id, config_id)
     if not existing:
         raise HTTPException(status_code=404, detail="Phone number not found")
+    if is_platform_number(getattr(existing, "extra_metadata", None)):
+        raise HTTPException(status_code=409, detail=_LIGHTMOVE_NUMBER_DETAIL)
 
     provider_sync = await _sync_inbound_for_phone_number(
         config_id,
@@ -1938,6 +1979,32 @@ class LastCampaignSettingsResponse(BaseModel):
     rate_limit_per_second: int = 1
     schedule_config: Optional[ScheduleConfigResponse] = None
     circuit_breaker: Optional[CircuitBreakerConfigResponse] = None
+
+
+class CallLimitResponse(BaseModel):
+    # How many calls the business's agents can take at the same time. Set
+    # by LightMove (``CONCURRENT_CALL_LIMIT``, else the default); read only.
+    calls_at_once: int
+
+
+@router.get(
+    "/call-limit",
+    response_model=CallLimitResponse,
+    dependencies=requires(Permission.CALLS_READ),
+)
+async def get_call_limit(user: UserModel = Depends(get_user)) -> CallLimitResponse:
+    """How many calls the business can take at once ("Calls at once" in
+    Settings). Callers beyond it are forwarded, asked for a voicemail or
+    told the lines are busy, as the owner chose."""
+    from api.services.call_concurrency import call_concurrency
+
+    if not user.selected_organization_id:
+        raise HTTPException(status_code=400, detail="No organization selected")
+    return CallLimitResponse(
+        calls_at_once=await call_concurrency.get_org_concurrent_limit(
+            user.selected_organization_id
+        )
+    )
 
 
 class CampaignDefaultsResponse(BaseModel):

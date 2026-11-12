@@ -49,7 +49,7 @@ export function MessageBubble({
                     {!final ? (
                         <div
                             className={cn(
-                                "mt-1 text-[10px] italic",
+                                "mt-1 text-meta italic",
                                 isUser ? "text-primary-foreground/70" : "text-live-text not-italic font-medium",
                             )}
                         >

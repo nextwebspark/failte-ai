@@ -22,11 +22,22 @@ from api.services.call_notifications.outcome import (
     transfer_failed,
 )
 from api.services.call_review.review import stored_review
+from api.services.calls.lines_busy import (
+    LinesBusyAction,
+    forward_answered,
+    is_lines_busy,
+    lines_busy_outcome,
+    planned_action,
+    voicemail_seconds,
+)
 from api.services.reports.daily_report import is_transferred
 
 # A call the engine has not marked finished is "in progress" only this long;
 # after that it is read like any other call (the process may have died).
 IN_PROGRESS_FOR = timedelta(hours=1)
+# A turned-away call taking a voicemail (or just told the lines are busy) is
+# over in a couple of minutes; one being forwarded may last as long as any.
+LINES_BUSY_IN_PROGRESS_FOR = timedelta(minutes=10)
 
 CALLBACK_DISPOSITION = "callback_requested"
 
@@ -58,6 +69,10 @@ class CallResult(StrEnum):
     NOT_CONNECTED = "not_connected"
     # The call broke on our side part-way through.
     CALL_DROPPED = "call_dropped"
+    # Every line was busy (the business's calls-at-once limit): the caller
+    # never reached the agent, and nobody on the team answered a forward.
+    # They may have left a voicemail.
+    LINES_BUSY = "lines_busy"
     # Spoke with the agent, no person needed.
     HANDLED = "handled"
 
@@ -72,6 +87,7 @@ UNREACHED_RESULTS = frozenset(
         CallResult.HUNG_UP_EARLY,
         CallResult.NOT_CONNECTED,
         CallResult.CALL_DROPPED,
+        CallResult.LINES_BUSY,
     }
 )
 
@@ -103,6 +119,10 @@ class CallView:
     review: Mapping[str, Any] | None = None
     # Marks per call-review follow-up kind (``annotations.follow_up_kinds``).
     follow_up_marks: Mapping[str, Mapping[str, Any]] | None = None
+    # A call turned away because every line was busy: what came of it
+    # (``calls.lines_busy.LinesBusyOutcome``) and the voicemail's length.
+    lines_busy: str | None = None
+    voicemail_seconds: int | None = None
 
 
 def _text(value: Any) -> str | None:
@@ -144,6 +164,8 @@ def call_result(
     now: datetime,
 ) -> CallResult:
     gathered = gathered_context or {}
+    if is_lines_busy(gathered):
+        return _lines_busy_result(gathered, is_completed, created_at, now)
     if not is_completed and now - _aware(created_at) < IN_PROGRESS_FOR:
         return CallResult.IN_PROGRESS
     if is_transferred(gathered):
@@ -161,6 +183,22 @@ def call_result(
     if reason is not None:
         return _MISSED_RESULT[reason]
     return CallResult.HANDLED
+
+
+def _lines_busy_result(
+    gathered: Mapping[str, Any], is_completed: bool, created_at: datetime, now: datetime
+) -> CallResult:
+    """A turned-away call: put through to someone on the team, or not."""
+    if forward_answered(gathered):
+        return CallResult.PASSED_TO_TEAM
+    still_on = (
+        IN_PROGRESS_FOR
+        if planned_action(gathered) == LinesBusyAction.FORWARD
+        else LINES_BUSY_IN_PROGRESS_FOR
+    )
+    if not is_completed and now - _aware(created_at) < still_on:
+        return CallResult.IN_PROGRESS
+    return CallResult.LINES_BUSY
 
 
 def wants_callback(gathered: Mapping[str, Any]) -> bool:
@@ -203,6 +241,8 @@ def call_view(
         else None,
         review=stored_review(annotations),
         follow_up_marks=_kind_marks(annotations.get(FOLLOW_UP_KINDS_ANNOTATION)),
+        lines_busy=(outcome := lines_busy_outcome(gathered)) and outcome.value,
+        voicemail_seconds=voicemail_seconds(gathered),
     )
 
 

@@ -100,12 +100,13 @@ describe("BookingsPage", () => {
         mocks.update.mockResolvedValue({ data: {} });
     });
 
-    it("lists bookings by day with the party size, or Not asked", async () => {
+    it("lists bookings by day with the party size when there is one", async () => {
         render(<BookingsPage />);
 
         expect(await screen.findByText("Mary Byrne")).toBeTruthy();
         expect(screen.getByText("4 guests")).toBeTruthy();
-        expect(screen.getByText("Not asked")).toBeTruthy();
+        // No party size (a shop or clinic booking): no party row at all.
+        expect(screen.queryByText("Not asked")).toBeNull();
         expect(screen.getByText(/^Today ·/)).toBeTruthy();
         expect(screen.getByText(/^Tomorrow ·/)).toBeTruthy();
         expect(screen.getByRole("link", { name: /087 123 4567/ }).getAttribute("href")).toBe("tel:0871234567");
@@ -128,6 +129,31 @@ describe("BookingsPage", () => {
         const { start, end } = mocks.list.mock.calls[1][0].query;
         expect(start).toMatch(/T00:00:00([+-]\d{2}:\d{2}|Z)$/);
         expect(new Date(end).getTime() - new Date(start).getTime()).toBeGreaterThanOrEqual(6.9 * 86_400_000);
+    });
+
+    it("shows a Calendly calendar without Google-only rules or changes", async () => {
+        mocks.list.mockResolvedValue({
+            data: listing({
+                calendars: [
+                    {
+                        connection_id: CAL,
+                        provider: "calendly",
+                        title: "Calendly",
+                        account_label: "aoife@example.ie",
+                        ai_booking_enabled: true,
+                        ok: true,
+                    },
+                ],
+            }),
+        });
+        render(<BookingsPage />);
+        expect(await screen.findByText("Mary Byrne")).toBeTruthy();
+        expect(screen.getByText(/Free times come from your Calendly/)).toBeTruthy();
+        expect(screen.getByText(/can't move or cancel Calendly bookings/)).toBeTruthy();
+        expect(screen.queryByRole("button", { name: "Edit booking rules" })).toBeNull();
+        expect(screen.queryByText("Let the agent cancel or move bookings")).toBeNull();
+        // The owner's on/off switch still works for Calendly.
+        expect(screen.getByRole("switch", { name: "Let the agent book" })).toBeTruthy();
     });
 
     it("lets an admin switch AI booking off for a calendar", async () => {
@@ -376,5 +402,13 @@ describe("BookingsPage", () => {
         // Tomorrow's cancelled booking is counted while hidden.
         expect(within(days).getByText("1 booking · 1 cancelled")).toBeTruthy();
         expect(screen.getAllByText(/^Booked by your agent/).length).toBeGreaterThan(0);
+    });
+    it("shows the same bookings on a week grid", async () => {
+        render(<BookingsPage />);
+        expect(await screen.findByText("Mary Byrne")).toBeTruthy();
+        fireEvent.click(screen.getByRole("button", { name: "Week" }));
+        expect(screen.getByRole("button", { name: "Week" }).getAttribute("aria-pressed")).toBe("true");
+        const grid = screen.getAllByRole("group", { name: /^Week of/ })[0];
+        expect(within(grid).getByText(/Mary Byrne · 4 guests/)).toBeTruthy();
     });
 });

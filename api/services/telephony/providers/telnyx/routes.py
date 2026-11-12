@@ -421,3 +421,46 @@ async def _hangup_caller_leg(transfer_context: TransferContext) -> None:
             "api_key": provider.api_key,
         }
     )
+
+
+@router.post("/telnyx/lines-busy/{workflow_run_id}", include_in_schema=False)
+async def handle_telnyx_lines_busy_events(workflow_run_id: int, request: Request):
+    """Events for a caller who rang while every line was busy (both the
+    caller's leg and, on a forward, the team's). Checked like the call
+    events above: capability token first, then Telnyx's signature; only a
+    run stored as a turned-away call is acted on."""
+    from api.services.telephony.lines_busy import get_turned_away_run
+    from api.services.telephony.providers.telnyx.lines_busy import handle_event
+    from api.utils.common import get_backend_endpoints
+
+    set_current_run_id(workflow_run_id)
+    not_found = HTTPException(status_code=404, detail="Workflow run not found")
+    if ws_auth.token_configured() and not ws_auth.verify_events_token(
+        workflow_run_id, request.query_params.get("token")
+    ):
+        raise not_found
+    try:
+        raw_body = (await request.body()).decode("utf-8")
+        event_data = json.loads(raw_body)
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        raise HTTPException(status_code=400, detail="Webhook body is not valid JSON")
+
+    run = await get_turned_away_run(workflow_run_id)
+    workflow = (
+        await db_client.get_workflow_by_id(run.workflow_id) if run is not None else None
+    )
+    if run is None or workflow is None:
+        raise not_found
+    provider = await get_telephony_provider_for_run(run, workflow.organization_id)
+    if not await provider.verify_inbound_signature(
+        "", event_data, dict(request.headers), raw_body
+    ):
+        logger.warning(f"[run {workflow_run_id}] Invalid Telnyx signature (lines busy)")
+        raise not_found
+
+    backend_endpoint, _ = await get_backend_endpoints()
+    done = await handle_event(
+        provider, run, event_data, backend_endpoint=backend_endpoint
+    )
+    logger.info(f"[run {workflow_run_id}] Lines busy (Telnyx): {done}")
+    return {"status": "success"}

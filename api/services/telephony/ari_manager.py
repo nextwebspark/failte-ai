@@ -962,12 +962,26 @@ class ARIConnection:
                     source="ari_inbound",
                     timeout=0,
                 )
-            except CallConcurrencyLimitError:
+            except CallConcurrencyLimitError as limit:
                 logger.warning(
                     f"[ARI org={self.organization_id}] Concurrent call limit "
                     f"reached; hanging up inbound channel {channel_id}"
                 )
                 await self._delete_channel(channel_id)
+                # Every line busy: kept for the owner as "Lines were busy".
+                from api.services.telephony.lines_busy import record_hung_up_call
+
+                await record_hung_up_call(
+                    workflow=workflow,
+                    organization_id=self.organization_id,
+                    provider=WorkflowRunMode.ARI.value,
+                    caller_number=caller_number,
+                    called_number=called_number,
+                    call_id=channel_id,
+                    telephony_configuration_id=self.telephony_configuration_id,
+                    phone_number_id=phone_row.id,
+                    limit=limit.max_concurrent,
+                )
                 return
 
             # 3. Create workflow run

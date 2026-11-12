@@ -40,8 +40,9 @@ export function AddAnswerDialog({
     onClose,
     onSaved,
 }: {
-    /** The follow-up being answered; null closes the dialog. */
-    item: FollowUpItem | null;
+    /** The follow-up being answered (a call, its agent and the questions);
+     * null closes the dialog. */
+    item: Pick<FollowUpItem, "run_id" | "workflow_id" | "questions"> | null;
     onClose: () => void;
     /** After saving: the agent's answers as now stored, and what was added. */
     onSaved?: (answers: string, added: { question: string; answer: string }) => void;
@@ -114,13 +115,13 @@ export function AddAnswerDialog({
                     }}
                 >
                     <div>
-                        <p className="text-[12.5px] font-medium text-ink-3">The caller asked</p>
-                        <p className="mt-1 rounded-lg bg-panel-2 px-3 py-2 text-[13.5px] font-semibold text-foreground">
+                        <p className="text-caption font-medium text-ink-3">The caller asked</p>
+                        <p className="mt-1 rounded-lg bg-panel-2 px-3 py-2 text-sm font-semibold text-foreground">
                             {question}
                         </p>
                     </div>
                     <div className="flex flex-col gap-1.5">
-                        <Label htmlFor={`${id}-answer`} className="text-[13px]">
+                        <Label htmlFor={`${id}-answer`} className="text-caption">
                             Your answer
                         </Label>
                         <Textarea
@@ -130,7 +131,7 @@ export function AddAnswerDialog({
                             rows={3}
                             maxLength={500}
                             placeholder="e.g. Yes, we have gluten-free pasta. Just ask when you order."
-                            className="text-[13.5px]"
+                            className="text-sm"
                             autoFocus
                         />
                     </div>

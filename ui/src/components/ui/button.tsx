@@ -32,7 +32,7 @@ const buttonVariants = cva(
         // Same selector as the base's default icon size, so tailwind-merge drops
         // the base `size-4` and this outranks an icon's own h-4/w-4. A bare
         // `[&_svg]` would lose to the base's `:not([class*='size-'])` rule.
-        toolbar: "h-8 rounded-md gap-1.5 px-3 text-[12.5px] [&_svg:not([class*='size-'])]:size-3.25",
+        toolbar: "h-8 rounded-md gap-1.5 px-3 text-caption [&_svg:not([class*='size-'])]:size-3.25",
         icon: "size-9",
       },
     },

@@ -41,6 +41,20 @@ def toggles_answer(field: TemplateSetupField, raw: str | None) -> str:
     return field.sentence.replace("{items}", _join(prompts)) if prompts else ""
 
 
+def languages_answer(field: TemplateSetupField, raw: str | None) -> str:
+    """A ``languages`` answer as it is stored: names, English first ("English,
+    Polish"), or "" for English only, so the prompt's fallback applies."""
+    from api.services.workflow.agent_languages import (
+        AgentLanguagesError,
+        normalised_agent_languages,
+    )
+
+    try:
+        return normalised_agent_languages(raw) or ""
+    except AgentLanguagesError as exc:
+        raise TemplateSetupError(f"{field.label}: {exc}") from exc
+
+
 def parse_setup_fields(raw: Any) -> list[TemplateSetupField]:
     """Read a template's stored ``setup_fields``; raise on a malformed list."""
     try:
@@ -81,6 +95,8 @@ def fill_template_values(
             continue
         if rendered and field.key in rendered:
             value = rendered[field.key]
+        elif field.type == "languages":
+            value = languages_answer(field, values.get(field.key))
         else:
             value = (values.get(field.key) or "").strip()
         if not value.strip() and field.required:
@@ -131,11 +147,15 @@ def fill_template(
         for f in fields
         if f.stored and f.type != "toggles" and f.key not in (rendered or {})
     ]
-    facts = {
-        f.key: (values.get(f.key) or "").strip()
+    answers = {
+        f.key: (
+            languages_answer(f, values.get(f.key))
+            if f.type == "languages"
+            else (values.get(f.key) or "").strip()
+        )
         for f in stored
-        if (values.get(f.key) or "").strip()
     }
+    facts = {key: value for key, value in answers.items() if value}
     if stored:
         keys = "|".join(re.escape(f.key) for f in stored)
         pattern = re.compile(r"\{\{\s*(" + keys + r")(\s*(?:\|[^}]*)?)\}\}")
@@ -194,15 +214,54 @@ def attach_tool_placeholder(
     return {**definition, "nodes": nodes}
 
 
-# The tools-service provider id of Google Calendar.
+# The tools-service provider ids of the booking calendars.
 GOOGLE_CALENDAR = "google-calendar"
+CALENDLY = "calendly"
+# Providers that can stand in for a template's integration: a template that
+# books with Google Calendar books with Calendly just as well (same functions:
+# check_appointment_availability, book_appointment).
+INTEGRATION_ALTERNATIVES: dict[str, tuple[str, ...]] = {GOOGLE_CALENDAR: (CALENDLY,)}
+
+
+def allowed_integrations(template_integrations: list[str] | None) -> set[str]:
+    """The providers a template's agent may be given a tool for."""
+    allowed = set(template_integrations or [])
+    for provider in list(allowed):
+        allowed.update(INTEGRATION_ALTERNATIVES.get(provider, ()))
+    return allowed
+
+
+def check_integration_tools(
+    template_integrations: list[str] | None, tools: Mapping[str, str]
+) -> None:
+    """Raise TemplateSetupError for a provider the template can't use, or for
+    a template integration and its alternative given together (an agent
+    books with one calendar)."""
+    unknown = sorted(set(tools) - allowed_integrations(template_integrations))
+    if unknown:
+        raise TemplateSetupError(f"This template doesn't use: {', '.join(unknown)}")
+    for provider, alternatives in INTEGRATION_ALTERNATIVES.items():
+        given = [p for p in (provider, *alternatives) if p in tools]
+        if len(given) > 1:
+            raise TemplateSetupError(
+                f"Pick one calendar to book with, not {' and '.join(given)}."
+            )
+
+
+def _integration_tool(tools: Mapping[str, str], provider: str) -> str | None:
+    """The tool for *provider*, else for one of its alternatives."""
+    for candidate in (provider, *INTEGRATION_ALTERNATIVES.get(provider, ())):
+        if tools.get(candidate):
+            return tools[candidate]
+    return None
 
 
 def attach_integration_tools(
     definition: dict[str, Any], tools: dict[str, str]
 ) -> dict[str, Any]:
     """Swap each node's ``integration:<provider>`` tool placeholder for the
-    organization's tool for that provider, or drop it when there is none.
+    organization's tool for that provider (or an alternative, e.g. Calendly
+    for Google Calendar), or drop it when there is none.
 
     A template marks the steps that may use, say, Google Calendar with
     ``"tool_uuids": ["integration:google-calendar"]``; *tools* maps a provider
@@ -216,11 +275,53 @@ def attach_integration_tools(
             resolved = []
             for uuid in uuids:
                 if isinstance(uuid, str) and uuid.startswith(INTEGRATION_TOOL_PREFIX):
-                    tool = tools.get(uuid.removeprefix(INTEGRATION_TOOL_PREFIX))
+                    tool = _integration_tool(
+                        tools, uuid.removeprefix(INTEGRATION_TOOL_PREFIX)
+                    )
                     if tool and tool not in resolved:
                         resolved.append(tool)
                 elif uuid not in resolved:
                     resolved.append(uuid)
             node = {**node, "data": {**data, "tool_uuids": resolved}}
+        nodes.append(node)
+    return {**definition, "nodes": nodes}
+
+
+# The steps that talk to callers: where a template puts its calendar tool.
+CALENDAR_STEP_TYPES = ("startCall", "agentNode")
+
+
+def calendar_tool_provider(category: str | None, definition: Any) -> str | None:
+    """GOOGLE_CALENDAR or CALENDLY when the tool is a booking calendar (an
+    MCP tool served by the tools service at ``/mcp/<provider>``), else None.
+    The same rule as the app's ``calendarProvider``."""
+    if category != "mcp" or not isinstance(definition, Mapping):
+        return None
+    config = definition.get("config")
+    url = config.get("url") if isinstance(config, Mapping) else None
+    if not isinstance(url, str):
+        return None
+    path = url.rstrip("/")
+    for provider in (GOOGLE_CALENDAR, CALENDLY):
+        if path.endswith(f"/mcp/{provider}"):
+            return provider
+    return None
+
+
+def set_calendar_tool(
+    definition: dict[str, Any], tool_uuid: str | None, calendar_tools: set[str]
+) -> dict[str, Any]:
+    """The agent with *tool_uuid* as its one booking calendar: every tool in
+    *calendar_tools* (the workspace's calendar tools) leaves every step, then
+    *tool_uuid* joins the steps that talk to callers. None: no calendar, so
+    the agent takes callers' details instead (as its instructions say)."""
+    nodes = []
+    for node in definition.get("nodes", []):
+        data = node.get("data") or {}
+        uuids = [u for u in (data.get("tool_uuids") or []) if u not in calendar_tools]
+        if tool_uuid and node.get("type") in CALENDAR_STEP_TYPES:
+            uuids.append(tool_uuid)
+        if uuids != (data.get("tool_uuids") or []):
+            node = {**node, "data": {**data, "tool_uuids": uuids}}
         nodes.append(node)
     return {**definition, "nodes": nodes}

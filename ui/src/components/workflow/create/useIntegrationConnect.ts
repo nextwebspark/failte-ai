@@ -152,7 +152,7 @@ export function useIntegrationConnect(provider: string, enabled: boolean): Integ
         const stop = listenForOAuthReturn(async (params) => {
             const result = parseIntegrationReturn(params);
             if (!result || result.kind === 'error') {
-                setError(oauthFailureMessage(result?.reason ?? 'unknown'));
+                setError(oauthFailureMessage(result?.reason ?? 'unknown', provider));
                 setStatus('ready');
                 return;
             }

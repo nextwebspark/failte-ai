@@ -18,6 +18,7 @@ import { toast } from "sonner";
 import {
   deletePhoneNumberApiV1OrganizationsTelephonyConfigsConfigIdPhoneNumbersPhoneNumberIdDelete,
   getTelephonyConfigurationByIdApiV1OrganizationsTelephonyConfigsConfigIdGet,
+  getTelephonyProvidersMetadataApiV1OrganizationsTelephonyProvidersMetadataGet,
   listPhoneNumbersApiV1OrganizationsTelephonyConfigsConfigIdPhoneNumbersGet,
   reactivateTelephonyConfigurationApiV1OrganizationsTelephonyConfigsConfigIdReactivatePost,
   setDefaultCallerIdApiV1OrganizationsTelephonyConfigsConfigIdPhoneNumbersPhoneNumberIdSetDefaultCallerPost,
@@ -71,6 +72,13 @@ import { copyTextToClipboard } from "@/lib/clipboard";
 import { formatDateTime } from "@/lib/dateTime";
 import { resolveWebhookBaseUrl } from "@/lib/webhookUrl";
 
+import {
+  addressTypeLabel,
+  credentialLabel,
+  pointsAtLocalhost,
+  usesInboundWebhook,
+} from "./display";
+
 const INBOUND_WEBHOOK_PATH = "/api/v1/telephony/inbound/run";
 
 export default function TelephonyConfigurationDetailPage() {
@@ -92,6 +100,10 @@ export default function TelephonyConfigurationDetailPage() {
       : "";
   const stasisDialplanLine = `same => n,Stasis(${stasisAppName})`;
   const [phoneNumbers, setPhoneNumbers] = useState<PhoneNumberResponse[]>([]);
+  // The provider form's labels ("ARI Endpoint") and name ("Asterisk ARI"), so
+  // the page doesn't show stored keys like "ari_endpoint".
+  const [fieldLabels, setFieldLabels] = useState<Record<string, string>>({});
+  const [providerName, setProviderName] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [editConfigOpen, setEditConfigOpen] = useState(false);
 
@@ -135,6 +147,14 @@ export default function TelephonyConfigurationDetailPage() {
 
       setConfig(cfgRes.data ?? null);
       setPhoneNumbers(numbersRes.data?.phone_numbers ?? []);
+
+      // Labels only; the page still works if this fails.
+      const metaRes = await getTelephonyProvidersMetadataApiV1OrganizationsTelephonyProvidersMetadataGet({
+        headers: { Authorization: `Bearer ${token}` },
+      }).catch(() => null);
+      const meta = metaRes?.data?.providers?.find((p) => p.provider === cfgRes.data?.provider);
+      setFieldLabels(Object.fromEntries((meta?.fields ?? []).map((f) => [f.name, f.label])));
+      setProviderName(meta?.display_name ?? null);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to load configuration");
     } finally {
@@ -260,7 +280,7 @@ export default function TelephonyConfigurationDetailPage() {
           <div className="space-y-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
               <CardTitle className="truncate">{config.name}</CardTitle>
-              <Badge variant="secondary">{config.provider}</Badge>
+              <Badge variant="secondary">{providerName ?? config.provider}</Badge>
               {config.is_default_outbound && (
                 <Badge className="gap-1">
                   <Star className="h-3 w-3 fill-current" />
@@ -334,13 +354,27 @@ export default function TelephonyConfigurationDetailPage() {
               .filter(([key]) => key !== "stasis_app_name")
               .map(([k, v]) => (
                 <div key={k} className="flex justify-between gap-3">
-                  <dt className="text-muted-foreground">{k}</dt>
+                  <dt className="text-muted-foreground">{credentialLabel(k, fieldLabels)}</dt>
                   <dd className="font-mono text-right truncate max-w-[60%]">
                     {v && typeof v === "object" ? "Configured" : String(v ?? "")}
                   </dd>
                 </div>
               ))}
           </dl>
+          {config.provider === "ari" && pointsAtLocalhost(config.credentials?.ari_endpoint) && (
+            <div className="flex items-start gap-3 rounded-md border border-amber/40 bg-amber-dim p-3 text-sm">
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber" />
+              <div className="space-y-1">
+                <p className="font-medium">{BRAND.name} can&apos;t reach &quot;localhost&quot;</p>
+                <p className="text-muted-foreground">
+                  The ARI endpoint must be an address our server can reach, such as your Asterisk
+                  server&apos;s hostname or IP address. &quot;localhost&quot; points at our own server, so
+                  calls won&apos;t connect. On a local Docker setup, use{" "}
+                  <code>http://host.docker.internal:8088</code>. Choose Edit credentials to change it.
+                </p>
+              </div>
+            </div>
+          )}
           {stasisAppName && (
             <div className="space-y-1 rounded-md border border-dashed p-3">
               <p className="text-sm font-medium">Route calls into this Stasis application</p>
@@ -364,6 +398,7 @@ export default function TelephonyConfigurationDetailPage() {
               </button>
             </div>
           )}
+          {usesInboundWebhook(config.provider) && (
           <div className="space-y-1">
             <p className="text-xs text-muted-foreground">Inbound webhook URL</p>
             <button
@@ -382,6 +417,7 @@ export default function TelephonyConfigurationDetailPage() {
               <Copy className="h-3 w-3 shrink-0" />
             </button>
           </div>
+          )}
         </CardContent>
       </Card>
 
@@ -467,7 +503,7 @@ export default function TelephonyConfigurationDetailPage() {
                       </button>
                     </TableCell>
                     <TableCell>
-                      <Badge variant="outline">{n.address_type}</Badge>
+                      <Badge variant="outline">{addressTypeLabel(n.address_type)}</Badge>
                     </TableCell>
                     <TableCell className="text-muted-foreground">
                       {n.label ?? "-"}
@@ -490,19 +526,10 @@ export default function TelephonyConfigurationDetailPage() {
                       {n.inbound_workflow_id ? (
                         <Link
                           href={agentHomeHref(n.inbound_workflow_id)}
-                          className="inline-flex items-center gap-1 hover:underline hover:text-foreground"
+                          className="block max-w-[260px] truncate hover:underline hover:text-foreground"
+                          title={n.inbound_workflow_name ?? undefined}
                         >
-                          <span>#{n.inbound_workflow_id}</span>
-                          {n.inbound_workflow_name && (
-                            <span
-                              className="truncate max-w-[160px]"
-                              title={n.inbound_workflow_name}
-                            >
-                              {n.inbound_workflow_name.length > 24
-                                ? `${n.inbound_workflow_name.slice(0, 24)}…`
-                                : n.inbound_workflow_name}
-                            </span>
-                          )}
+                          {n.inbound_workflow_name ?? `Agent ${n.inbound_workflow_id}`}
                         </Link>
                       ) : (
                         "-"

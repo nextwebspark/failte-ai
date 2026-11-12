@@ -2,7 +2,10 @@
 
 import {
     AlertTriangle,
+    ArrowDownRight,
     ArrowRight,
+    ArrowUpRight,
+    CalendarRange,
     Check,
     CheckCircle2,
     Clock,
@@ -10,16 +13,18 @@ import {
     Headphones,
     type LucideIcon,
     Mic,
+    Moon,
     Phone,
+    PhoneCall,
     PhoneForwarded,
     PhoneOff,
     Play,
     RefreshCw,
 } from "lucide-react";
 import Link from "next/link";
-import { type ReactNode, useMemo, useState } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 
-import { formatPhone } from "@/app/usage/callsView";
+import { callsQueryToParams, DEFAULT_QUERY, formatPhone } from "@/app/usage/callsView";
 import type {
     DashboardRange,
     DashboardRecentCall,
@@ -32,32 +37,38 @@ import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { agentFactsHref, agentTalkHref } from "@/components/workflow/agentLinks";
 import { useOrgConfig } from "@/context/OrgConfigContext";
-import { useSampleMode } from "@/lib/sampleData";
 import { cn } from "@/lib/utils";
 
 import { AddAnswerDialog } from "./AddAnswerDialog";
 import { CallersWantedChart } from "./CallersWantedChart";
 import {
+    afterHoursWords,
+    busiestHour,
+    callDayAndTime,
     callerWords,
     callLength,
     callsTileLabel,
     callWhen,
     changeWords,
-    type ChipTone,
     euros,
     followUpKey,
+    hourSpan,
     lastCallWords,
+    markKind,
     notAnsweringWords,
+    type OpenHoursLegend,
+    openHoursLegend,
     RANGE_OPTIONS,
     rangeSentence,
     RESULT_WORDS,
     telHref,
+    todayLine,
+    turnedAwayWords,
 } from "./dashboardView";
 import { Chip, FollowUpRow } from "./FollowUpRow";
 import { HomeSkeleton } from "./HomeSkeleton";
+import { HomeTestSheet } from "./HomeTestSheet";
 import { HourlyCallsChart } from "./HourlyCallsChart";
-import { SampleBanner, SampleDataPill } from "./SampleBanner";
-import { SAMPLE_OUTCOME_WORDS, sampleFollowUpItems, sampleOutcomes, sampleSummary } from "./sampleView";
 import { useDashboardSummary, useFollowUpMarking, useFollowUps } from "./useDashboardData";
 
 const ATTENTION_LIMIT = 4;
@@ -81,22 +92,59 @@ function Card({
             aria-labelledby={titleId}
             className={cn("min-w-0 rounded-[14px] border border-line bg-panel shadow-xs", className)}
         >
-            <header className="flex items-center justify-between gap-3 px-[18px] pt-4">
-                <h2 id={titleId} className="flex items-center gap-2 font-display text-[15px] font-semibold text-foreground">
+            <header className="flex items-center justify-between gap-3 px-[18px] pt-[18px] sm:px-5">
+                <h2 id={titleId} className="flex items-center gap-2 font-display text-title font-semibold text-foreground">
                     {title}
                 </h2>
                 {action}
             </header>
-            <div className="@container px-[18px] pb-[18px] pt-3.5">{children}</div>
+            <div className="@container px-[18px] pb-5 pt-4 sm:px-5">{children}</div>
         </section>
     );
 }
 
 function CardLink({ href, children }: { href: string; children: ReactNode }) {
     return (
-        <Link href={href} className="whitespace-nowrap text-[13px] font-semibold text-brand hover:underline">
+        <Link href={href} className="whitespace-nowrap text-sm font-semibold text-brand hover:underline">
             {children}
         </Link>
+    );
+}
+
+/** The quiet note in a card's header slot ("Today", "Calls per hour, today"). */
+function CardHint({ children }: { children: ReactNode }) {
+    return <span className="text-right text-caption text-ink-3">{children}</span>;
+}
+
+/** "Updated 3:42 pm" and a button to look for new calls now. Home also
+ * looks by itself every 30 seconds while it is open. */
+function RefreshControl({
+    refreshing,
+    updatedAt,
+    onRefresh,
+}: {
+    refreshing: boolean;
+    updatedAt: Date | null;
+    onRefresh: () => void;
+}) {
+    return (
+        <div className="flex items-center gap-2 self-start text-caption text-ink-3 @4xl:self-end">
+            {updatedAt && (
+                <span aria-live="polite">
+                    Updated {updatedAt.toLocaleTimeString("en-IE", { hour: "numeric", minute: "2-digit" })}
+                </span>
+            )}
+            <Button
+                variant="ghost"
+                size="sm"
+                className="h-8 gap-1.5 px-2 text-caption"
+                onClick={onRefresh}
+                disabled={refreshing}
+            >
+                <RefreshCw className={cn("size-3.5", refreshing && "animate-spin")} aria-hidden />
+                {refreshing ? "Refreshing…" : "Refresh"}
+            </Button>
+        </div>
     );
 }
 
@@ -114,7 +162,7 @@ function RangeSwitch({ value, onChange }: { value: DashboardRange; onChange: (v:
                     aria-pressed={value === option.value}
                     onClick={() => onChange(option.value)}
                     className={cn(
-                        "flex-1 rounded-[7px] px-3 py-1.5 text-[13px] font-medium outline-none transition-colors focus-visible:ring-[3px] focus-visible:ring-ring/40 sm:flex-none",
+                        "flex-1 rounded-[7px] px-3.5 py-1.5 text-sm font-medium outline-none transition-colors focus-visible:ring-[3px] focus-visible:ring-ring/40 sm:flex-none",
                         value === option.value ? "bg-foreground text-background" : "text-ink-2 hover:text-foreground",
                     )}
                 >
@@ -129,7 +177,7 @@ function StatusPill({ summary }: { summary: DashboardSummaryResponse }) {
     const status = summary.agent_status;
     const number = status.phone_numbers[0];
     return (
-        <span className="inline-flex max-w-full items-center gap-2 rounded-full border border-line bg-panel py-[5px] pl-2.5 pr-3 text-[12.5px] text-ink-2">
+        <span className="inline-flex max-w-full items-center gap-2 rounded-full border border-line bg-panel py-1.5 pl-3 pr-3.5 text-sm text-ink-2">
             <span
                 className={cn(
                     "size-2 flex-none rounded-full",
@@ -145,6 +193,27 @@ function StatusPill({ summary }: { summary: DashboardSummaryResponse }) {
     );
 }
 
+/**
+ * "6 calls · 4 handled by your agent · 3 bookings taken · 1 asked for a call
+ * back": the range's headline counts in one line, straight from the tiles.
+ */
+function TodayLine({ summary }: { summary: DashboardSummaryResponse }) {
+    const parts = todayLine(summary.tiles, summary.wording.bookings_label);
+    if (parts.length === 0) return null;
+    return (
+        <ul className="mt-3 flex flex-wrap gap-2" aria-label="At a glance" data-testid="today-line">
+            {parts.map((part) => (
+                <li
+                    key={part.words}
+                    className="whitespace-nowrap rounded-full border border-line-soft bg-panel-2 px-3 py-1 text-sm text-ink-2"
+                >
+                    <b className="font-semibold tabular-nums text-foreground">{part.value}</b> {part.words}
+                </li>
+            ))}
+        </ul>
+    );
+}
+
 function NotAnsweringBanner({ summary, now }: { summary: DashboardSummaryResponse; now: Date }) {
     const { can } = useOrgConfig();
     const reason = summary.agent_status.reason;
@@ -153,12 +222,12 @@ function NotAnsweringBanner({ summary, now }: { summary: DashboardSummaryRespons
     return (
         <div
             role="alert"
-            className="flex flex-col gap-3 rounded-[14px] border border-danger/40 border-l-[4px] border-l-danger bg-danger-dim px-[18px] py-3.5 sm:flex-row sm:items-center"
+            className="flex flex-col gap-3 rounded-[14px] border border-danger/40 border-l-[4px] border-l-danger bg-danger-dim px-[18px] py-4 sm:flex-row sm:items-center"
         >
             <AlertTriangle className="hidden size-5 flex-none text-danger sm:block" aria-hidden />
             <div className="min-w-0 flex-1">
-                <p className="text-[14px] font-semibold text-foreground">{words.title}</p>
-                <p className="mt-0.5 text-[13px] text-ink-2">
+                <p className="text-body font-semibold text-foreground">{words.title}</p>
+                <p className="mt-0.5 text-sm text-ink-2">
                     {words.detail}
                     {reason !== "no_agent" && <> {lastCallWords(summary.agent_status.last_call_at, now)}.</>}
                 </p>
@@ -168,9 +237,29 @@ function NotAnsweringBanner({ summary, now }: { summary: DashboardSummaryRespons
                     <Link href={words.fix.href}>{words.fix.label}</Link>
                 </Button>
             ) : (
-                <p className="text-[12.5px] text-ink-2">Ask the owner of your account to fix this.</p>
+                <p className="text-caption text-ink-2">Ask the owner of your account to fix this.</p>
             )}
         </div>
+    );
+}
+
+/** "+4 on last Saturday": the change as a small pill, then what it's compared with. */
+function Trend({ change }: { change: NonNullable<ReturnType<typeof changeWords>> }) {
+    if (change.sign === "same") return <span className="text-ink-3">{change.rest}</span>;
+    const Icon = change.sign === "up" ? ArrowUpRight : ArrowDownRight;
+    return (
+        <span className="inline-flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
+            <span
+                className={cn(
+                    "inline-flex items-center gap-0.5 rounded-full px-1.5 py-px text-meta font-semibold tabular-nums",
+                    change.sign === "up" ? "bg-brand-dim text-brand" : "bg-panel-2 text-ink-2",
+                )}
+            >
+                <Icon className="size-3.5" aria-hidden />
+                {change.amount}
+            </span>
+            <span className="text-ink-3">{change.rest.trim()}</span>
+        </span>
     );
 }
 
@@ -188,25 +277,27 @@ interface TileProps {
 
 function Tile({ icon: Icon, tone, label, shortLabel, value, caption, phoneCaption }: TileProps) {
     return (
-        <div className="flex min-w-0 flex-col gap-1.5 rounded-[14px] border border-line bg-panel px-4 py-4 shadow-xs sm:px-[18px]">
-            <div className="flex items-center gap-2 text-[13px] font-medium text-ink-2">
-                <span className={cn("hidden size-7 flex-none place-items-center rounded-lg sm:grid", tone)} aria-hidden>
-                    <Icon className="size-4" />
+        <div className="flex min-w-0 flex-col gap-2 rounded-[14px] border border-line bg-panel px-4 py-4 shadow-xs sm:gap-2.5 sm:px-5 sm:py-[18px]">
+            <div className="flex items-start justify-between gap-2">
+                <span className="min-w-0 pt-0.5 text-sm font-medium leading-snug text-ink-2 sm:text-body">
+                    {shortLabel ? (
+                        <>
+                            <span className="sm:hidden">{shortLabel}</span>
+                            <span className="hidden sm:inline">{label}</span>
+                        </>
+                    ) : (
+                        label
+                    )}
                 </span>
-                {shortLabel ? (
-                    <>
-                        <span className="min-w-0 sm:hidden">{shortLabel}</span>
-                        <span className="hidden min-w-0 sm:inline">{label}</span>
-                    </>
-                ) : (
-                    <span className="min-w-0">{label}</span>
-                )}
+                <span className={cn("grid size-8 flex-none place-items-center rounded-[10px] sm:size-9", tone)} aria-hidden>
+                    <Icon className="size-4 sm:size-[18px]" />
+                </span>
             </div>
-            <div className="font-display text-[28px] font-semibold leading-tight tracking-[-0.02em] tabular-nums text-foreground sm:text-[32px]">
+            <div className="font-display text-[30px] font-semibold leading-none tracking-[-0.02em] tabular-nums text-foreground sm:text-kpi sm:leading-none">
                 {value}
             </div>
-            {phoneCaption && <div className="text-[12.5px] leading-snug text-ink-3 sm:hidden">{phoneCaption}</div>}
-            {caption && <div className="hidden text-[12.5px] leading-snug text-ink-3 sm:block">{caption}</div>}
+            {phoneCaption && <div className="text-caption leading-snug text-ink-2 sm:hidden">{phoneCaption}</div>}
+            {caption && <div className="hidden text-caption leading-snug text-ink-2 sm:block">{caption}</div>}
         </div>
     );
 }
@@ -215,6 +306,20 @@ function Tiles({ summary, now }: { summary: DashboardSummaryResponse; now: Date 
     const t = summary.tiles;
     const change = changeWords(summary.range, summary.calls_change, now, summary.timezone);
     const average = callLength(t.average_call_seconds);
+    // The three tiles after "Calls" plus this line account for every call,
+    // so the numbers on Home always add up to the total.
+    const noConversation = t.no_conversation ?? t.hung_up_silent;
+    const rest = [
+        noConversation > 0 ? `${noConversation} hung up or didn't connect` : null,
+        (t.lines_busy ?? 0) > 0 ? `${t.lines_busy} couldn't get through (lines busy)` : null,
+        t.in_progress > 0 ? `${t.in_progress} in progress` : null,
+    ].filter(Boolean).join(" · ");
+    const callsCaption = (
+        <>
+            {change ? <Trend change={change} /> : average ? `Average call ${average}` : null}
+            {rest && <span className="mt-1 block text-ink-3">{rest}</span>}
+        </>
+    );
     return (
         <div className="grid grid-cols-2 gap-3 @3xl:grid-cols-4 @3xl:gap-4">
             <Tile
@@ -223,21 +328,8 @@ function Tiles({ summary, now }: { summary: DashboardSummaryResponse; now: Date 
                 label={callsTileLabel(summary.range)}
                 shortLabel="Calls"
                 value={t.calls}
-                phoneCaption={change ? <>{change.amount && <span className={cn("font-semibold", change.sign === "up" ? "text-brand" : "text-ink-2")}>{change.amount}</span>}{change.rest}</> : null}
-                caption={
-                    change ? (
-                        <>
-                            {change.amount && (
-                                <span className={cn("font-semibold", change.sign === "up" ? "text-brand" : "text-ink-2")}>
-                                    {change.amount}
-                                </span>
-                            )}
-                            {change.rest}
-                        </>
-                    ) : average ? (
-                        `Average call ${average}`
-                    ) : null
-                }
+                phoneCaption={change ? <Trend change={change} /> : null}
+                caption={callsCaption}
             />
             <Tile
                 icon={Check}
@@ -248,15 +340,23 @@ function Tiles({ summary, now }: { summary: DashboardSummaryResponse; now: Date 
                     <>
                         {t.handled}
                         {t.handled_percent != null && (
-                            <small className="ml-1 text-[15px] font-medium text-ink-3">{t.handled_percent}%</small>
+                            <small className="ml-1.5 text-[17px] font-semibold tracking-normal text-ink-3">{t.handled_percent}%</small>
                         )}
                     </>
                 }
                 caption="Answered start to finish, no staff needed"
             />
             <Tile
-                icon={PhoneForwarded}
+                icon={PhoneCall}
                 tone="bg-amber-dim text-amber"
+                label="Need a call back"
+                shortLabel="Call backs"
+                value={t.callbacks_requested}
+                caption="Your agent took their details; someone needs to ring them"
+            />
+            <Tile
+                icon={PhoneForwarded}
+                tone="bg-sky-dim text-sky"
                 label="Passed to your team"
                 shortLabel="Passed to team"
                 value={t.passed_to_team}
@@ -281,13 +381,6 @@ function Tiles({ summary, now }: { summary: DashboardSummaryResponse; now: Date 
                     )
                 }
             />
-            <Tile
-                icon={PhoneOff}
-                tone="bg-danger-dim text-danger"
-                label="Hung up without speaking"
-                value={t.hung_up_silent}
-                caption="Callers who rang off before saying anything"
-            />
         </div>
     );
 }
@@ -298,41 +391,52 @@ function Attention({
     timezone,
     now,
     followUpsHref,
-    sample,
     onAddAnswer,
+    turnedAway,
 }: {
     items: FollowUpItem[] | null;
     openCount: number | null;
     timezone: string;
     now: Date;
     followUpsHref: string;
-    sample: boolean;
     onAddAnswer: (item: FollowUpItem) => void;
+    /** Callers turned away today because every line was busy. */
+    turnedAway?: string | null;
 }) {
     const { can } = useOrgConfig();
     const { busy, change } = useFollowUpMarking();
     const canMark = can("followups:manage");
+    const busyNote = turnedAway ? (
+        <Link
+            href={`${followUpsHref}?kind=lines_busy`}
+            className="mb-2 flex items-start gap-2.5 rounded-lg bg-amber-dim px-3 py-2 text-sm text-foreground outline-none hover:underline focus-visible:ring-[3px] focus-visible:ring-ring/40"
+        >
+            <PhoneOff className="mt-0.5 size-4 flex-none text-amber" aria-hidden />
+            <span>{turnedAway}</span>
+        </Link>
+    ) : null;
     return (
         <Card
             titleId="home-attention"
             title={
                 <>
                     Needs your attention
-                    {openCount ? <Chip tone="amber">{openCount}</Chip> : null}
+                    {openCount ? <Chip tone="amber" className="text-meta">{openCount}</Chip> : null}
                 </>
             }
             action={<CardLink href={followUpsHref}>All follow-ups</CardLink>}
         >
+            {busyNote}
             {items === null ? (
-                <p className="py-4 text-[13px] text-ink-3">Couldn&apos;t load follow-ups. They&apos;re on the Follow-ups page.</p>
+                <p className="py-4 text-sm text-ink-3">Couldn&apos;t load follow-ups. They&apos;re on the Follow-ups page.</p>
             ) : items.length === 0 ? (
-                <div className="flex items-center gap-3 py-3">
-                    <span className="grid size-9 flex-none place-items-center rounded-full bg-brand-dim text-brand" aria-hidden>
+                <div className="flex items-center gap-3.5 py-2">
+                    <span className="grid size-10 flex-none place-items-center rounded-full bg-brand-dim text-brand" aria-hidden>
                         <CheckCircle2 className="size-5" />
                     </span>
                     <div>
-                        <p className="text-[13.5px] font-semibold text-foreground">All caught up</p>
-                        <p className="text-[12.5px] text-ink-3">No callers are waiting on you.</p>
+                        <p className="text-body font-semibold text-foreground">All caught up</p>
+                        <p className="text-sm text-ink-3">No callers are waiting on you.</p>
                     </div>
                 </div>
             ) : (
@@ -344,11 +448,10 @@ function Attention({
                             timezone={timezone}
                             now={now}
                             returnTo="/overview"
-                            sample={sample}
                             busy={busy === followUpKey(item)}
                             // Done here only for the review kinds (no call to return).
                             onMarkDone={
-                                canMark && (item.kind === "unanswered_question" || item.kind === "time_was_full")
+                                canMark && markKind(item.kind) !== null
                                     ? (i) => void change(i, true)
                                     : undefined
                             }
@@ -361,76 +464,90 @@ function Attention({
     );
 }
 
-/** A recent call's chip: its result, or a sample call's own outcome. */
-type ChipFor = (call: DashboardRecentCall) => { label: string; tone: ChipTone };
-
-function PlayLink({ call, returnTo, sample }: { call: DashboardRecentCall; returnTo: string; sample: boolean }) {
-    if (sample) {
-        return (
-            <span
-                className="grid size-7 place-items-center rounded-full bg-panel-2 text-ink-3"
-                title="Sample call: there's no recording"
-                aria-label="Sample call: there's no recording"
-                role="img"
-            >
-                <Play className="size-3 fill-current" aria-hidden />
-            </span>
-        );
-    }
+function PlayLink({ call, returnTo }: { call: DashboardRecentCall; returnTo: string }) {
     if (!call.has_recording) {
-        return <span className="block size-7" aria-hidden />;
+        return <span className="block size-8" aria-hidden />;
     }
     return (
         <Link
             href={runDetailHref(call.workflow_id, call.run_id, returnTo)}
-            className="grid size-7 place-items-center rounded-full bg-brand-dim text-brand outline-none hover:bg-brand hover:text-white focus-visible:ring-[3px] focus-visible:ring-ring/40"
+            className="grid size-8 place-items-center rounded-full bg-brand-dim text-brand outline-none hover:bg-brand hover:text-white focus-visible:ring-[3px] focus-visible:ring-ring/40"
             aria-label={`Listen to the call from ${callerWords(call)}`}
         >
-            <Play className="size-3 fill-current" aria-hidden />
+            <Play className="size-3.5 fill-current" aria-hidden />
         </Link>
     );
 }
 
-function RecentCalls({
-    summary,
-    now,
-    sample,
-    chipFor,
+/**
+ * What an empty card offers instead of a blank: on Today, the last 7 days;
+ * otherwise a test call to the agent.
+ */
+function NoCallsYet({
+    range,
+    onRange,
+    tryHref,
+    onTryAgent,
 }: {
-    summary: DashboardSummaryResponse;
-    now: Date;
-    sample: boolean;
-    chipFor: ChipFor;
+    range: DashboardRange;
+    onRange: (range: DashboardRange) => void;
+    tryHref: string | null;
+    onTryAgent?: () => void;
 }) {
+    return (
+        <div className="flex flex-col items-start gap-3 rounded-xl border border-dashed border-line px-4 py-4">
+            <p className="text-sm text-ink-2">
+                {range === "today"
+                    ? "No calls yet today. They show up here as they come in."
+                    : `No calls in the last ${range === "7d" ? "7" : "30"} days.`}
+            </p>
+            {range !== "30d" ? (
+                <Button size="sm" variant="outline" onClick={() => onRange(range === "today" ? "7d" : "30d")}>
+                    <CalendarRange aria-hidden />
+                    {range === "today" ? "See the last 7 days" : "See the last 30 days"}
+                </Button>
+            ) : onTryAgent ? (
+                <Button size="sm" variant="outline" onClick={onTryAgent}>
+                    <Mic aria-hidden />
+                    Try your agent
+                </Button>
+            ) : tryHref ? (
+                <Button asChild size="sm" variant="outline">
+                    <Link href={tryHref}>
+                        <Mic aria-hidden />
+                        Try your agent
+                    </Link>
+                </Button>
+            ) : null}
+        </div>
+    );
+}
+
+function RecentCalls({ summary, now, empty }: { summary: DashboardSummaryResponse; now: Date; empty: ReactNode }) {
     const calls = summary.recent_calls;
     const returnTo = "/overview";
-    // A sample call has nothing to open.
-    const CallerLink = ({ call, className, children }: { call: DashboardRecentCall; className: string; children: ReactNode }) =>
-        sample ? (
-            <span className={className}>{children}</span>
-        ) : (
-            <Link href={runDetailHref(call.workflow_id, call.run_id, returnTo)} className={className}>
-                {children}
-            </Link>
-        );
+    const chipFor = (call: DashboardRecentCall) => RESULT_WORDS[call.result];
+    const CallerLink = ({ call, className, children }: { call: DashboardRecentCall; className: string; children: ReactNode }) => (
+        <Link href={runDetailHref(call.workflow_id, call.run_id, returnTo)} className={className}>
+            {children}
+        </Link>
+    );
     return (
         <Card titleId="home-recent" title="Recent calls" action={<CardLink href="/usage">All calls</CardLink>}>
             {calls.length === 0 ? (
-                <p className="py-4 text-[13px] text-ink-3">
-                    No calls {summary.range === "today" ? "yet today" : `in the last ${summary.range === "7d" ? "7" : "30"} days`}.
-                </p>
+                empty
             ) : (
                 <>
                     {/* Phone: a simple list */}
-                    <ul className="flex flex-col @xl:hidden">
+                    <ul className="flex flex-col @3xl:hidden">
                         {calls.map((call) => (
-                            <li key={call.run_id} className="flex items-start gap-3 border-t border-line-soft py-2.5 first:border-t-0">
-                                <PlayLink call={call} returnTo={returnTo} sample={sample} />
+                            <li key={call.run_id} className="flex items-start gap-3 border-t border-line-soft py-3 first:border-t-0">
+                                <PlayLink call={call} returnTo={returnTo} />
                                 <CallerLink call={call} className="min-w-0 flex-1 outline-none focus-visible:underline">
-                                    <span className="block truncate text-[13.5px] font-semibold text-foreground">{callerWords(call)}</span>
-                                    {call.summary && <span className="mt-0.5 block text-[12.5px] leading-snug text-ink-2">{call.summary}</span>}
-                                    <span className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11.5px] tabular-nums text-ink-3">
-                                        <Chip tone={chipFor(call).tone}>{chipFor(call).label}</Chip>
+                                    <span className="block truncate text-body font-semibold text-foreground">{callerWords(call)}</span>
+                                    {call.summary && <span className="mt-0.5 block text-sm leading-snug text-ink-2">{call.summary}</span>}
+                                    <span className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-meta tabular-nums text-ink-3">
+                                        <Chip tone={chipFor(call).tone} className="text-meta">{chipFor(call).label}</Chip>
                                         {callWhen(call.created_at, summary.timezone, now)}
                                     </span>
                                 </CallerLink>
@@ -438,10 +555,10 @@ function RecentCalls({
                         ))}
                     </ul>
                     {/* Computer: the table from the design */}
-                    <table className="hidden w-full text-left text-[13px] @xl:table">
+                    <table className="hidden w-full text-left text-sm @3xl:table">
                         <thead>
-                            <tr className="border-b border-line text-[11px] font-semibold uppercase tracking-[0.06em] text-ink-3">
-                                <th className="w-10 pb-2.5" scope="col">
+                            <tr className="border-b border-line text-meta font-semibold uppercase tracking-[0.06em] text-ink-3">
+                                <th className="w-11 pb-2.5" scope="col">
                                     <span className="sr-only">Listen</span>
                                 </th>
                                 <th className="pb-2.5" scope="col">Caller</th>
@@ -453,28 +570,28 @@ function RecentCalls({
                         <tbody>
                             {calls.map((call) => (
                                 <tr key={call.run_id} className="border-b border-line-soft last:border-b-0">
-                                    <td className="py-2.5 align-top">
-                                        <PlayLink call={call} returnTo={returnTo} sample={sample} />
+                                    <td className="py-3 align-top">
+                                        <PlayLink call={call} returnTo={returnTo} />
                                     </td>
-                                    <td className="w-[28%] py-2.5 pr-3 align-top">
+                                    <td className="w-[26%] py-3 pr-3 align-top">
                                         <CallerLink call={call} className="font-semibold text-foreground hover:underline">
                                             {callerWords(call)}
                                         </CallerLink>
                                         {call.caller_name && call.caller_number && (
-                                            <div className="text-[12px] tabular-nums text-ink-3">{formatPhone(call.caller_number)}</div>
+                                            <div className="mt-0.5 text-caption tabular-nums text-ink-3">{formatPhone(call.caller_number)}</div>
                                         )}
                                     </td>
-                                    <td className="py-2.5 pr-3 align-top text-ink-2">
+                                    <td className="py-3 pr-3 align-top leading-relaxed text-ink-2">
                                         {call.summary ?? (
                                             <span className="text-ink-3">
                                                 {callLength(call.duration_seconds) ? `${callLength(call.duration_seconds)} call` : "—"}
                                             </span>
                                         )}
                                     </td>
-                                    <td className="py-2.5 pr-3 align-top">
-                                        <Chip tone={chipFor(call).tone}>{chipFor(call).label}</Chip>
+                                    <td className="py-3 pr-3 align-top">
+                                        <Chip tone={chipFor(call).tone} className="text-meta">{chipFor(call).label}</Chip>
                                     </td>
-                                    <td className="whitespace-nowrap py-2.5 text-right align-top tabular-nums text-ink-2">
+                                    <td className="whitespace-nowrap py-3 text-right align-top tabular-nums text-ink-2">
                                         {callWhen(call.created_at, summary.timezone, now)}
                                     </td>
                                 </tr>
@@ -487,19 +604,151 @@ function RecentCalls({
     );
 }
 
-function WhenPeopleCalled({ summary }: { summary: DashboardSummaryResponse }) {
+function WhenPeopleCalled({ summary, now, empty }: { summary: DashboardSummaryResponse; now: Date; empty: ReactNode }) {
     const sub =
         summary.range === "today"
             ? "Calls per hour, today"
             : `Calls per hour, last ${summary.range === "7d" ? "7" : "30"} days`;
+    const peak = busiestHour(summary.calls_by_hour);
+    const legend = openHoursLegend(summary.opening_hours, summary.range);
     return (
-        <Card titleId="home-hours" title="When people called" action={<span className="text-[13px] text-ink-3">{sub}</span>}>
+        <Card titleId="home-hours" title="When people called" action={<CardHint>{sub}</CardHint>}>
             {summary.tiles.calls === 0 ? (
-                <p className="py-4 text-[13px] text-ink-3">No calls in this time yet.</p>
+                empty
             ) : (
-                <HourlyCallsChart hours={summary.calls_by_hour} caption={sub} />
+                <>
+                    {peak !== null && (
+                        <p className="mb-6 flex flex-wrap items-baseline gap-x-2 text-sm text-ink-2">
+                            <span className="text-ink-3">Busiest hour</span>
+                            <b className="font-display text-title font-semibold tabular-nums text-foreground">{hourSpan(peak)}</b>
+                            <span className="tabular-nums">
+                                {summary.calls_by_hour[peak]} {summary.calls_by_hour[peak] === 1 ? "call" : "calls"}
+                            </span>
+                        </p>
+                    )}
+                    <HourlyCallsChart
+                        hours={summary.calls_by_hour}
+                        caption={legend ? `${sub}. ${legend.label}.` : sub}
+                        openRanges={legend?.band ? summary.opening_hours?.ranges : undefined}
+                    />
+                    {legend && <OpenHoursKey legend={legend} />}
+                </>
             )}
+            <AfterHours summary={summary} now={now} />
         </Card>
+    );
+}
+
+/** The chart's legend for the open-hours band (or why there is none). */
+function OpenHoursKey({ legend }: { legend: OpenHoursLegend }) {
+    return (
+        <div className="mt-3 text-meta text-ink-3">
+            <p className="flex items-center gap-2">
+                {legend.band && (
+                    <span className="size-3 flex-none rounded-[3px] border border-line bg-ink-3/[0.08]" aria-hidden />
+                )}
+                <span className={cn(legend.band && "text-ink-2")}>{legend.label}</span>
+            </p>
+            {legend.note && <p className={cn("mt-1", legend.band && "pl-5")}>{legend.note}</p>}
+        </div>
+    );
+}
+
+/** The Calls page showing a range's after-hours calls (one of them open, when given). */
+function afterHoursCallsHref(summary: DashboardSummaryResponse, call?: number): string {
+    const filters =
+        summary.workflow_id !== null && summary.workflow_id !== undefined
+            ? JSON.stringify([{ id: "workflowId", value: { value: summary.workflow_id } }])
+            : null;
+    const params = callsQueryToParams(
+        { ...DEFAULT_QUERY, afterHours: true, when: summary.range },
+        { filters, call: call ?? null },
+    );
+    return `/usage?${params}`;
+}
+
+/**
+ * Calls that came in while the business was closed, by each agent's opening
+ * hours set as times, and the newest of them: when, who and what happened,
+ * each opening on Calls. Agents without hours as times are named, not
+ * guessed.
+ */
+function AfterHours({ summary, now }: { summary: DashboardSummaryResponse; now: Date }) {
+    const { can } = useOrgConfig();
+    const afterHours = summary.after_hours;
+    if (!afterHours) return null;
+    const words = afterHoursWords(afterHours);
+    if (!words.count && !words.note) return null;
+    const missing = afterHours.agents_without_hours;
+    const listed = afterHours.recent ?? [];
+    return (
+        <div className="mt-5 rounded-xl border border-line-soft bg-panel-2 px-4 py-3.5">
+            <div className="flex items-start gap-3">
+                <span className="grid size-9 flex-none place-items-center rounded-[10px] bg-sky-dim text-sky" aria-hidden>
+                    <Moon className="size-[18px]" />
+                </span>
+                <div className="min-w-0 flex-1 pt-0.5">
+                    <div className="flex items-baseline justify-between gap-3">
+                        {words.count && <p className="text-body font-semibold tabular-nums text-foreground">{words.count}</p>}
+                        {listed.length > 0 && (
+                            <Link
+                                href={afterHoursCallsHref(summary)}
+                                className="whitespace-nowrap text-sm font-semibold text-brand hover:underline"
+                                aria-label="See all calls outside opening hours on Calls"
+                            >
+                                See all
+                            </Link>
+                        )}
+                    </div>
+                    {words.note && (
+                        <p className={cn("text-caption text-ink-3", words.count && "mt-0.5")}>
+                            {words.note}
+                            {can("agents:facts") && missing.length === 1 && (
+                                <>
+                                    {" "}
+                                    <Link href={agentFactsHref(missing[0].id)} className="font-medium text-brand hover:underline">
+                                        Set the hours
+                                    </Link>
+                                </>
+                            )}
+                        </p>
+                    )}
+                </div>
+            </div>
+            {/* Full width on a phone; under the sentence on a wider card. */}
+            {listed.length > 0 && (
+                <ul className="mt-2 flex flex-col @md:pl-12" aria-label="Calls outside opening hours, newest first">
+                    {listed.map((call) => {
+                        const result = RESULT_WORDS[call.result];
+                        return (
+                            <li key={call.run_id} className="border-t border-line-soft first:border-t-0">
+                                <Link
+                                    href={afterHoursCallsHref(summary, call.run_id)}
+                                    className="group flex items-center gap-3 rounded-md py-2.5 outline-none focus-visible:ring-[3px] focus-visible:ring-ring/40"
+                                >
+                                    <span className="min-w-0 flex-1">
+                                        <span className="flex flex-wrap items-baseline gap-x-2">
+                                            <span className="truncate text-body font-medium text-foreground group-hover:underline">
+                                                {callerWords(call)}
+                                            </span>
+                                            {call.caller_name && call.caller_number && (
+                                                <span className="text-caption tabular-nums text-ink-3">{formatPhone(call.caller_number)}</span>
+                                            )}
+                                        </span>
+                                        <span className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-meta tabular-nums text-ink-3">
+                                            {callDayAndTime(call.created_at, summary.timezone, now)}
+                                            <Chip tone={result.tone} className="text-meta">{result.label}</Chip>
+                                        </span>
+                                    </span>
+                                    <ArrowRight className="size-4 flex-none text-ink-3 group-hover:text-foreground" aria-hidden />
+                                    <span className="sr-only">Open this call on Calls</span>
+                                </Link>
+                            </li>
+                        );
+                    })}
+                </ul>
+            )}
+        </div>
     );
 }
 
@@ -508,33 +757,36 @@ function rangeWords(range: DashboardRange): string {
 }
 
 /** The doc's small figures under the ring: real counts only. */
-function StatChip({ value, label }: { value: ReactNode; label: string }) {
+function StatChip({ value, label, tone }: { value: ReactNode; label: ReactNode; tone?: "amber" }) {
     return (
-        <div className="min-w-0 rounded-[10px] bg-panel-2 px-3.5 py-2.5">
-            <div className="font-display text-[17px] font-semibold tabular-nums text-foreground">{value}</div>
-            <div className="text-[12px] text-ink-3">{label}</div>
+        <div className="min-w-0 rounded-xl bg-panel-2 px-4 py-3">
+            <div
+                className={cn(
+                    "font-display text-[22px] font-semibold leading-tight tabular-nums",
+                    tone === "amber" ? "text-amber" : "text-foreground",
+                )}
+            >
+                {value}
+            </div>
+            <div className="mt-0.5 text-caption text-ink-3">{label}</div>
         </div>
     );
 }
 
-function CallersWanted({ summary }: { summary: DashboardSummaryResponse }) {
+function CallersWanted({ summary, empty }: { summary: DashboardSummaryResponse; empty: ReactNode }) {
     const reasons = summary.callers_wanted;
     const bookings = summary.wording.bookings_label;
     const average = callLength(summary.tiles.average_call_seconds);
     const when = rangeWords(summary.range);
     return (
-        <Card
-            titleId="home-wanted"
-            title="What callers wanted"
-            action={<span className="text-[13px] text-ink-3">{when}</span>}
-        >
+        <Card titleId="home-wanted" title="What callers wanted" action={<CardHint>{when}</CardHint>}>
             {reasons.length === 0 ? (
-                <p className="py-4 text-[13px] text-ink-3">No calls in this time yet.</p>
+                empty
             ) : (
                 <CallersWantedChart reasons={reasons} caption={`What callers wanted, ${when.toLowerCase()}`} />
             )}
             {(bookings || average) && summary.tiles.calls > 0 && (
-                <div className="mt-4 grid grid-cols-2 gap-2.5">
+                <div className="mt-5 grid grid-cols-2 gap-3">
                     {bookings && <StatChip value={summary.tiles.bookings_taken} label={bookings} />}
                     {average && <StatChip value={average} label="average call" />}
                 </div>
@@ -560,48 +812,65 @@ function AgentCard({
     const status = summary.agent_status;
     const agentId = primaryAgentId(summary);
     const credit = summary.credit;
+    // Starting a test call needs agents:write; staff don't get the button.
+    const { can } = useOrgConfig();
     return (
         <Card titleId="home-agent" title="Your agent">
-            <dl className="flex flex-col gap-3 text-[13px]">
-                <div className="flex items-center justify-between gap-3">
-                    <dt className="text-ink-3">Status</dt>
-                    <dd className="flex items-center gap-1.5 font-semibold text-foreground">
-                        <span className={cn("size-2 rounded-full", status.answering ? "bg-brand" : "bg-danger")} aria-hidden />
-                        {status.answering ? "Answering calls" : "Not answering"}
-                    </dd>
-                </div>
-                <div className="flex items-start justify-between gap-3">
-                    <dt className="text-ink-3">{status.phone_numbers.length > 1 ? "Phone numbers" : "Phone number"}</dt>
-                    <dd className="text-right font-semibold tabular-nums text-foreground">
-                        {status.phone_numbers.length ? (
-                            status.phone_numbers.map((n) => <div key={n}>{n}</div>)
-                        ) : (
-                            <span className="font-normal text-ink-3">None linked</span>
-                        )}
-                    </dd>
-                </div>
-                <div className="flex items-center justify-between gap-3">
-                    <dt className="text-ink-3">Last call</dt>
-                    <dd className="text-right text-foreground">
-                        {status.last_call_at ? callWhen(status.last_call_at, summary.timezone, now) : "No calls yet"}
-                    </dd>
-                </div>
-                {credit && (
-                    <div className="flex items-start justify-between gap-3">
-                        <dt className="text-ink-3">Credit left</dt>
-                        <dd className="text-right">
-                            <span className={cn("font-semibold tabular-nums", credit.running_low ? "text-amber" : "text-foreground")}>
-                                {euros(credit.spendable_eur)}
-                            </span>
-                            {credit.minutes_left != null && (
-                                <span className="block text-[12px] text-ink-3">about {credit.minutes_left} minutes of calls</span>
+            {/* At a glance: is it working, on which number, when it last
+                answered and how much credit is left. One row on a wide card. */}
+            <div className={cn("grid gap-3", credit ? "@2xl:grid-cols-3" : "@2xl:grid-cols-2")}>
+                <div
+                    className={cn(
+                        "flex flex-wrap items-center justify-between gap-x-4 gap-y-1 rounded-xl px-4 py-3 @2xl:flex-col @2xl:items-start @2xl:justify-center",
+                        status.answering ? "bg-brand-dim" : "bg-danger-dim",
+                    )}
+                >
+                    <p className="flex items-center gap-2.5 text-body font-semibold text-foreground">
+                        <span className="relative flex size-2.5" aria-hidden>
+                            {status.answering && (
+                                <span className="absolute inset-0 animate-ping rounded-full bg-brand opacity-60 motion-reduce:hidden" />
                             )}
-                        </dd>
+                            <span className={cn("relative size-2.5 rounded-full", status.answering ? "bg-brand" : "bg-danger")} />
+                        </span>
+                        {status.answering ? "Answering calls" : "Not answering"}
+                    </p>
+                    <div className="text-right @2xl:text-left">
+                        <span className="sr-only">{status.phone_numbers.length > 1 ? "Phone numbers: " : "Phone number: "}</span>
+                        {status.phone_numbers.length ? (
+                            status.phone_numbers.map((n) => (
+                                <div key={n} className="font-display text-title font-semibold tabular-nums text-foreground">
+                                    {n}
+                                </div>
+                            ))
+                        ) : (
+                            <span className="text-sm text-ink-2">No number linked</span>
+                        )}
                     </div>
-                )}
-            </dl>
+                </div>
+                <div className={cn("grid gap-3", credit ? "grid-cols-2 @2xl:col-span-2" : "grid-cols-1")}>
+                    <StatChip
+                        value={
+                            <span className="text-[17px]">
+                                {status.last_call_at ? callWhen(status.last_call_at, summary.timezone, now) : "No calls yet"}
+                            </span>
+                        }
+                        label="Last call"
+                    />
+                    {credit && (
+                        <StatChip
+                            value={<span className="text-[17px]">{euros(credit.spendable_eur)}</span>}
+                            tone={credit.running_low ? "amber" : undefined}
+                            label={
+                                credit.minutes_left != null
+                                    ? `Credit left · about ${credit.minutes_left} min of calls`
+                                    : "Credit left"
+                            }
+                        />
+                    )}
+                </div>
+            </div>
             {credit?.running_low && !credit.too_low && (
-                <p className="mt-3 rounded-lg bg-amber-dim px-3 py-2 text-[12.5px] text-ink-2">
+                <p className="mt-3 rounded-lg bg-amber-dim px-3.5 py-2.5 text-sm text-ink-2">
                     Credit is running low. Calls stop when it runs out.{" "}
                     <Link href="/billing" className="font-semibold text-foreground underline">
                         Top up
@@ -609,6 +878,7 @@ function AgentCard({
                 </p>
             )}
             {agentId != null &&
+                can("agents:write") &&
                 (onTryAgent ? (
                     <Button variant="soft" className="mt-4 w-full" onClick={onTryAgent}>
                         <Mic aria-hidden />
@@ -646,35 +916,42 @@ function QuickLinks({ summary, onTryAgent }: { summary: DashboardSummaryResponse
         );
     }
     if (agentId != null) {
-        links.push(
-            {
-                title: "Opening hours & what it says",
-                hint: "Change what your agent tells callers",
-                icon: Clock,
-                tone: "bg-amber-dim text-amber",
-                href: agentFactsHref(agentId),
-            },
-            onTryAgent
-                ? { title: "Try your agent", hint: "Talk to it in your browser", icon: Mic, tone: "bg-panel-2 text-ink-2", onClick: onTryAgent }
-                : { title: "Try your agent", hint: "Talk to it in your browser", icon: Mic, tone: "bg-panel-2 text-ink-2", href: agentTalkHref(agentId) },
-        );
+        links.push({
+            title: "Opening hours & what it says",
+            hint: can("agents:facts") ? "Change what your agent tells callers" : "See what your agent tells callers",
+            icon: Clock,
+            tone: "bg-amber-dim text-amber",
+            href: agentFactsHref(agentId),
+        });
+        // Starting a test call needs agents:write; staff don't get the link.
+        if (can("agents:write")) {
+            links.push(
+                onTryAgent
+                    ? { title: "Try your agent", hint: "Talk to it in your browser", icon: Mic, tone: "bg-panel-2 text-ink-2", onClick: onTryAgent }
+                    : { title: "Try your agent", hint: "Talk to it in your browser", icon: Mic, tone: "bg-panel-2 text-ink-2", href: agentTalkHref(agentId) },
+            );
+        }
     }
     if (links.length === 0) return null;
     const className =
-        "flex h-full min-w-0 items-center gap-3 rounded-xl border border-line bg-panel px-3.5 py-3 text-left shadow-xs outline-none transition-colors hover:border-brand/50 focus-visible:ring-[3px] focus-visible:ring-ring/40";
+        "group flex h-full min-w-0 items-center gap-3.5 rounded-[14px] border border-line bg-panel px-4 py-3.5 text-left shadow-xs outline-none transition-colors hover:border-brand/50 focus-visible:ring-[3px] focus-visible:ring-ring/40";
     return (
         <nav aria-label="Quick links">
-            <ul className="grid grid-cols-1 gap-3 @lg:grid-cols-2 @4xl:grid-cols-4">
+            <ul className="grid grid-cols-1 gap-3 @lg:grid-cols-2 @4xl:grid-cols-4 @4xl:gap-4">
                 {links.map((link) => {
                     const body = (
                         <>
-                            <span className={cn("grid size-[34px] flex-none place-items-center rounded-[9px]", link.tone)} aria-hidden>
-                                <link.icon className="size-[18px]" />
+                            <span className={cn("grid size-10 flex-none place-items-center rounded-[10px]", link.tone)} aria-hidden>
+                                <link.icon className="size-5" />
                             </span>
-                            <span className="min-w-0">
-                                <b className="block text-[13.5px] font-semibold text-foreground">{link.title}</b>
-                                <span className="block text-[12px] text-ink-3">{link.hint}</span>
+                            <span className="min-w-0 flex-1">
+                                <b className="block text-body font-semibold text-foreground">{link.title}</b>
+                                <span className="block text-caption text-ink-3">{link.hint}</span>
                             </span>
+                            <ArrowRight
+                                className="size-4 flex-none text-ink-3 transition-transform group-hover:translate-x-0.5 group-hover:text-brand motion-reduce:transition-none"
+                                aria-hidden
+                            />
                         </>
                     );
                     return (
@@ -697,16 +974,8 @@ function QuickLinks({ summary, onTryAgent }: { summary: DashboardSummaryResponse
 }
 
 /** A brand-new business: what's set up, and a first call to make. */
-function GetStarted({
-    summary,
-    onTryAgent,
-    onShowSample,
-}: {
-    summary: DashboardSummaryResponse;
-    onTryAgent?: () => void;
-    /** Offered when the sample calls are hidden. */
-    onShowSample?: () => void;
-}) {
+function GetStarted({ summary, onTryAgent }: { summary: DashboardSummaryResponse; onTryAgent?: () => void }) {
+    const { can } = useOrgConfig();
     const status = summary.agent_status;
     const agentId = primaryAgentId(summary);
     const number = status.phone_numbers[0];
@@ -721,20 +990,20 @@ function GetStarted({
     ];
     return (
         <Card titleId="home-start" title="Let's get your first call in">
-            <p className="text-[13px] text-ink-2">
+            <p className="text-body text-ink-2">
                 Your numbers appear here after your agent answers its first call. Three steps get you there:
             </p>
-            <ol className="mt-4 flex flex-col gap-2.5">
+            <ol className="mt-4 flex flex-col gap-3">
                 {steps.map((step, i) => (
-                    <li key={step.label} className="flex items-center gap-3 text-[13.5px]">
+                    <li key={step.label} className="flex items-center gap-3 text-body">
                         <span
                             className={cn(
-                                "grid size-6 flex-none place-items-center rounded-full text-[12px] font-semibold",
+                                "grid size-7 flex-none place-items-center rounded-full text-caption font-semibold",
                                 step.done ? "bg-brand text-white" : "border border-line bg-panel-2 text-ink-2",
                             )}
                             aria-hidden
                         >
-                            {step.done ? <Check className="size-3.5" /> : i + 1}
+                            {step.done ? <Check className="size-4" /> : i + 1}
                         </span>
                         <span className={cn(step.done ? "text-ink-3 line-through" : "font-medium text-foreground")}>
                             {step.label}
@@ -743,11 +1012,11 @@ function GetStarted({
                     </li>
                 ))}
             </ol>
-            <div className="mt-5 rounded-xl border border-line bg-panel-2 px-4 py-3.5">
+            <div className="mt-5 rounded-xl border border-line bg-panel-2 px-4 py-4">
                 {number && status.answering ? (
                     <>
-                        <p className="text-[13.5px] font-semibold text-foreground">Ring your number now</p>
-                        <p className="mt-0.5 text-[12.5px] text-ink-2">
+                        <p className="text-body font-semibold text-foreground">Ring your number now</p>
+                        <p className="mt-0.5 text-sm text-ink-2">
                             Call <span className="font-semibold tabular-nums text-foreground">{formatPhone(number)}</span> from your mobile
                             and talk to your agent like a customer would. The call shows up here straight away.
                         </p>
@@ -758,10 +1027,10 @@ function GetStarted({
                             </a>
                         </Button>
                     </>
-                ) : agentId != null ? (
+                ) : agentId != null && can("agents:write") ? (
                     <>
-                        <p className="text-[13.5px] font-semibold text-foreground">Try your agent</p>
-                        <p className="mt-0.5 text-[12.5px] text-ink-2">
+                        <p className="text-body font-semibold text-foreground">Try your agent</p>
+                        <p className="mt-0.5 text-sm text-ink-2">
                             Talk to it in your browser to hear how it answers. Test calls don&apos;t count on this page.
                         </p>
                         {onTryAgent ? (
@@ -780,8 +1049,8 @@ function GetStarted({
                     </>
                 ) : (
                     <>
-                        <p className="text-[13.5px] font-semibold text-foreground">Start with your agent</p>
-                        <p className="mt-0.5 text-[12.5px] text-ink-2">Pick a ready-made agent for your kind of business.</p>
+                        <p className="text-body font-semibold text-foreground">Start with your agent</p>
+                        <p className="mt-0.5 text-sm text-ink-2">Pick a ready-made agent for your kind of business.</p>
                         <Button asChild size="sm" className="mt-3">
                             <Link href="/workflow/create">
                                 Create your agent
@@ -791,45 +1060,7 @@ function GetStarted({
                     </>
                 )}
             </div>
-            {onShowSample && (
-                <p className="mt-3 text-[12.5px] text-ink-3">
-                    Want to see how this page looks with calls?{" "}
-                    <button type="button" onClick={onShowSample} className="font-semibold text-brand hover:underline">
-                        Show sample data
-                    </button>
-                </p>
-            )}
         </Card>
-    );
-}
-
-/** The way to a first real call, for the sample banner. */
-function TryAgentButton({ summary, onTryAgent }: { summary: DashboardSummaryResponse; onTryAgent?: () => void }) {
-    const agentId = primaryAgentId(summary);
-    const number = summary.agent_status.answering ? summary.agent_status.phone_numbers[0] : undefined;
-    if (number) {
-        return (
-            <Button asChild size="sm" className="md:hidden">
-                <a href={telHref(number)}>
-                    <Phone aria-hidden />
-                    Ring your agent now
-                </a>
-            </Button>
-        );
-    }
-    if (agentId == null) return null;
-    return onTryAgent ? (
-        <Button size="sm" onClick={onTryAgent}>
-            <Mic aria-hidden />
-            Try your agent
-        </Button>
-    ) : (
-        <Button asChild size="sm">
-            <Link href={agentTalkHref(agentId)}>
-                <Mic aria-hidden />
-                Try your agent
-            </Link>
-        </Button>
     );
 }
 
@@ -849,46 +1080,63 @@ export interface HomeDashboardProps {
 export function HomeDashboard({ heading, workflowId, onTryAgent }: HomeDashboardProps) {
     useOwnsPageHeading();
     const [range, setRange] = useState<DashboardRange>("today");
-    const { result, reload } = useDashboardSummary(range, workflowId);
+    const { result, reload, refresh, refreshing, updatedAt } = useDashboardSummary(range, workflowId);
     const followUps = useFollowUps("open", workflowId);
+    // Refresh the calls and the follow-ups together.
+    const refreshAll = () => {
+        refresh();
+        followUps.reloadQuietly();
+    };
     const [answering, setAnswering] = useState<FollowUpItem | null>(null);
     // One clock per render, so every relative time agrees.
     const now = new Date();
 
     const followUpsHref = "/follow-ups";
-    const real = result.state === "ready" ? result.data : null;
-    // Until the first real call, the sample day shows (clearly labelled);
-    // it goes by itself once a call comes in.
-    const { showSample, hide, show } = useSampleMode(real ? real.has_calls : null);
-    const business = real?.agents[0]?.name;
-    const summary = useMemo(
-        () => (real && showSample ? sampleSummary(real, undefined, new Date()) : real),
-        [real, showSample],
-    );
-    const outcomes = useMemo(() => sampleOutcomes(), []);
-    const chipFor: ChipFor = (call) => {
-        const outcome = showSample ? outcomes.get(call.run_id) : undefined;
-        return (outcome && SAMPLE_OUTCOME_WORDS[outcome]) || RESULT_WORDS[call.result];
-    };
+    const summary = result.state === "ready" ? result.data : null;
     const timezone = summary?.timezone ?? null;
 
+    // On Home (no agent page around it), "Try your agent" opens the agent's
+    // Test agent panel beside Home instead of leaving for the agent screen,
+    // for members who may start a test call (creating a run needs agents:write).
+    const { can } = useOrgConfig();
+    const [testing, setTesting] = useState(false);
+    const homeAgentId = summary ? primaryAgentId(summary) : null;
+    const homeAgentName = summary?.agents.find((a) => a.id === homeAgentId)?.name ?? null;
+    const tryOnHome = !onTryAgent && homeAgentId != null && can("agents:write");
+    const afterTest = useRef<number | null>(null);
+    useEffect(() => {
+        if (testing || afterTest.current === null) return;
+        const timers = [4_000, 15_000].map((delay) => window.setTimeout(refreshAll, delay));
+        return () => timers.forEach((t) => window.clearTimeout(t));
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [testing]);
+    const tryAgent = !can("agents:write") ? undefined : (onTryAgent ?? (tryOnHome ? () => setTesting(true) : undefined));
+
     const header = (
-        <header className="flex flex-col gap-3 @4xl:flex-row @4xl:items-end @4xl:justify-between @4xl:gap-4">
+        <header className="flex flex-col gap-3 @4xl:flex-row @4xl:items-end @4xl:justify-between @4xl:gap-6">
             <div className="min-w-0">
-                <h1 className="font-display text-[24px] font-semibold tracking-[-0.01em] text-foreground lg:text-[26px]">
+                <h1 className="font-display text-[26px] font-semibold leading-tight tracking-[-0.015em] text-foreground sm:text-page">
                     {heading}
                 </h1>
-                <p className="mt-1 text-[14px] text-ink-3">{rangeSentence(range, now, timezone)}</p>
+                <p className="mt-1 text-body text-ink-3">{rangeSentence(range, now, timezone)}</p>
+                {summary && <TodayLine summary={summary} />}
             </div>
-            <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center @4xl:flex-nowrap">
-                {showSample && <SampleDataPill className="self-start sm:self-auto" />}
-                {summary && (
-                    <div>
-                        <StatusPill summary={summary} />
-                    </div>
+            <div className="flex flex-col gap-3 @4xl:items-end">
+                {tryOnHome && (
+                    <Button variant="soft" className="self-start @4xl:self-end" onClick={() => setTesting(true)}>
+                        <Mic aria-hidden />
+                        Try your agent
+                    </Button>
                 )}
-                {/* The sample is one made-up day: nothing to switch. */}
-                {!showSample && <RangeSwitch value={range} onChange={setRange} />}
+                <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center @4xl:flex-nowrap">
+                    {summary && (
+                        <div>
+                            <StatusPill summary={summary} />
+                        </div>
+                    )}
+                    <RangeSwitch value={range} onChange={setRange} />
+                </div>
+                {summary && <RefreshControl refreshing={refreshing} updatedAt={updatedAt} onRefresh={refreshAll} />}
             </div>
         </header>
     );
@@ -924,48 +1172,44 @@ export function HomeDashboard({ heading, workflowId, onTryAgent }: HomeDashboard
         );
     }
 
-    const brandNew = !summary.agent_status.last_call_at;
-    const sampleItems = showSample ? sampleFollowUpItems(business, now) : null;
     const attentionItems =
-        sampleItems ??
-        (followUps.result.state === "ready" ? followUps.result.data.items : followUps.result.state === "error" ? null : []);
-    const openCount = sampleItems
-        ? sampleItems.length
-        : followUps.result.state === "ready"
-          ? followUps.result.data.open_count
-          : null;
-    // Real calls: the dashboard. No calls: the setup steps, then (unless
-    // hidden) the sample day below its banner.
-    const setUp = brandNew;
+        followUps.result.state === "ready" ? followUps.result.data.items : followUps.result.state === "error" ? null : [];
+    const openCount = followUps.result.state === "ready" ? followUps.result.data.open_count : null;
+    // Calls: the dashboard. No call yet: the setup steps and the agent
+    // instead of empty tiles and charts.
+    const setUp = !summary.agent_status.last_call_at;
+    const agentId = primaryAgentId(summary);
+    const empty = (
+        <NoCallsYet
+            range={range}
+            onRange={setRange}
+            tryHref={agentId != null && can("agents:write") ? agentTalkHref(agentId) : null}
+            onTryAgent={tryAgent}
+        />
+    );
 
     return (
-        <div className="page-body @container flex min-w-0 flex-col gap-5">
+        <div className="page-body @container flex min-w-0 flex-col gap-5 @4xl:gap-6">
             {header}
             <NotAnsweringBanner summary={summary} now={now} />
 
             {setUp && (
-                <div className="grid grid-cols-1 gap-4 @4xl:grid-cols-[minmax(0,7fr)_minmax(0,5fr)]">
-                    <GetStarted summary={summary} onTryAgent={onTryAgent} onShowSample={showSample ? undefined : show} />
-                    <AgentCard summary={summary} now={now} onTryAgent={onTryAgent} />
+                <div className="grid grid-cols-1 gap-4 @4xl:grid-cols-[minmax(0,7fr)_minmax(0,5fr)] @4xl:gap-5">
+                    <GetStarted summary={summary} onTryAgent={tryAgent} />
+                    <AgentCard summary={summary} now={now} onTryAgent={tryAgent} />
                 </div>
             )}
 
-            {showSample && (
-                <SampleBanner
-                    text="This is how Home looks once calls come in. These calls are made up."
-                    onHide={hide}
-                    action={<TryAgentButton summary={summary} onTryAgent={onTryAgent} />}
-                />
-            )}
-
-            {(!setUp || showSample) && (
+            {!setUp && (
                 <>
                     <Tiles summary={summary} now={now} />
-                    {/* Two columns on a computer; on a phone one list in the
-                        design's order: attention, what callers wanted, hours,
-                        recent calls, agent. */}
-                    <div className="flex flex-col gap-4 @4xl:flex-row @4xl:items-start">
-                        <div className="contents @4xl:flex @4xl:w-[58%] @4xl:min-w-0 @4xl:flex-col @4xl:gap-4">
+                    {/* Two columns on a computer, the right one (the charts)
+                        growing with the screen and the agent card under the
+                        calls so the columns end level; on a phone one list in
+                        the design's order: attention, what callers wanted,
+                        hours, recent calls, agent. */}
+                    <div className="flex flex-col gap-4 @4xl:grid @4xl:grid-cols-[minmax(0,1.5fr)_minmax(400px,1fr)] @4xl:items-start @4xl:gap-5">
+                        <div className="contents @4xl:flex @4xl:min-w-0 @4xl:flex-col @4xl:gap-5">
                             <div className="order-1 min-w-0 @4xl:order-none">
                                 <Attention
                                     items={attentionItems}
@@ -973,34 +1217,44 @@ export function HomeDashboard({ heading, workflowId, onTryAgent }: HomeDashboard
                                     timezone={summary.timezone}
                                     now={now}
                                     followUpsHref={followUpsHref}
-                                    sample={showSample}
                                     onAddAnswer={setAnswering}
+                                    turnedAway={turnedAwayWords(summary.turned_away_today)}
                                 />
                             </div>
                             <div className="order-4 min-w-0 @4xl:order-none">
-                                <RecentCalls summary={summary} now={now} sample={showSample} chipFor={chipFor} />
+                                <RecentCalls summary={summary} now={now} empty={empty} />
+                            </div>
+                            <div className="order-5 min-w-0 @4xl:order-none">
+                                <AgentCard summary={summary} now={now} onTryAgent={tryAgent} />
                             </div>
                         </div>
-                        <div className="contents @4xl:flex @4xl:min-w-0 @4xl:flex-1 @4xl:flex-col @4xl:gap-4">
+                        <div className="contents @4xl:flex @4xl:min-w-0 @4xl:flex-col @4xl:gap-5">
                             <div className="order-2 min-w-0 @4xl:order-none">
-                                <CallersWanted summary={summary} />
+                                <CallersWanted summary={summary} empty={empty} />
                             </div>
                             <div className="order-3 min-w-0 @4xl:order-none">
-                                <WhenPeopleCalled summary={summary} />
+                                <WhenPeopleCalled summary={summary} now={now} empty={empty} />
                             </div>
-                            {/* The setup row above already shows the agent. */}
-                            {!setUp && (
-                                <div className="order-5 min-w-0 @4xl:order-none">
-                                    <AgentCard summary={summary} now={now} onTryAgent={onTryAgent} />
-                                </div>
-                            )}
                         </div>
                     </div>
                 </>
             )}
 
-            <QuickLinks summary={summary} onTryAgent={onTryAgent} />
+            <QuickLinks summary={summary} onTryAgent={tryAgent} />
             <AddAnswerDialog item={answering} onClose={() => setAnswering(null)} />
+            {tryOnHome && homeAgentId != null && (
+                <HomeTestSheet
+                    workflowId={homeAgentId}
+                    agentName={homeAgentName}
+                    open={testing}
+                    onOpenChange={(open) => {
+                        setTesting(open);
+                        // A test call shows up once it has been saved and
+                        // read: look again shortly after the panel closes.
+                        if (!open) afterTest.current = Date.now();
+                    }}
+                />
+            )}
         </div>
     );
 }

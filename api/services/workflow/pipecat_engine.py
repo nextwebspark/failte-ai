@@ -73,6 +73,7 @@ from api.services.pipecat.realtime.static_greeting import (
     format_disclosure_for_new_party_prompt,
     format_open_after_disclosure_prompt,
 )
+from api.services.pronunciation import irish as irish_pronunciation
 from api.services.workflow import pipecat_engine_callbacks as engine_callbacks
 from api.services.workflow.answer_handling import ANSWER_TERMINAL_REASONS, handle_answer
 from api.services.workflow.call_date import todays_date_line
@@ -334,6 +335,29 @@ class PipecatEngine:
     def active_agent(self) -> AgentRuntime:
         """The agent currently entitled to speak to the caller."""
         return self._active_agent
+
+    @property
+    def in_closing_step(self) -> bool:
+        """Whether the call has reached an end node (its goodbye)."""
+        node = self._active_agent.current_node if self._active_agent else None
+        return bool(node is not None and node.is_end)
+
+    def end_call_after_farewell(self) -> None:
+        """The agent said goodbye without its end-call tool: end the call as
+        that tool would (gracefully, so the goodbye still plays), instead of
+        leaving the caller's line open. Runs in its own task, as the end
+        node's own hang-up does, so the pipeline that saw the goodbye is free
+        to finish speaking it. Tagged so the call shows how it ended."""
+        if self._call_disposed or self._shutdown_task is not None:
+            return
+        tags = self._gathered_context.setdefault("call_tags", [])
+        if isinstance(tags, list) and "ended_after_farewell" not in tags:
+            tags.append("ended_after_farewell")
+        # Kept so the task isn't garbage-collected before it has run.
+        self._farewell_end_task = asyncio.get_running_loop().create_task(
+            self.end_call_with_reason(EndTaskReason.END_CALL.value),
+            name="end-call-after-farewell",
+        )
 
     @property
     def pending_agent(self) -> Optional[AgentRuntime]:
@@ -881,6 +905,12 @@ class PipecatEngine:
         )
         functions.extend(self.skill_tools.attach(agent, node_skills, functions))
         system_prompt = self.skill_tools.compose_prompt(agent, prompt.text)
+        if self._is_realtime:
+            # A speech-to-speech model has no synthesis step to respell names
+            # in (the pipeline voices get that in create_tts_service), so it
+            # is told how to say them instead.
+            guide = self._pronunciation_guide(system_prompt)
+            system_prompt = f"{system_prompt}\n\n{guide}"
         agent.tools = ToolsSchema(standard_tools=functions)
         agent.system_prompt = system_prompt
         if agent.recording_router is not None:
@@ -889,6 +919,17 @@ class PipecatEngine:
             await agent.llm._update_settings(
                 LLMSettings(system_instruction=system_prompt)
             )
+
+    def _pronunciation_guide(self, system_prompt: str) -> str:
+        """How to say the Irish names this call is likely to hear or use."""
+        texts = [system_prompt]
+        for source in (self._call_context_vars, self._gathered_context):
+            for value in (source or {}).values():
+                if isinstance(value, str):
+                    texts.append(value)
+                elif isinstance(value, dict):
+                    texts.extend(v for v in value.values() if isinstance(v, str))
+        return irish_pronunciation.realtime_guide(texts)
 
     async def _setup_llm_context(self, node: Node) -> None:
         agent = self.active_agent

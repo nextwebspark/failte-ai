@@ -95,8 +95,8 @@ function SummaryCard({
                 </span>
                 <div className="min-w-0 flex-1">
                     <h3 className="text-[14.5px] font-semibold text-foreground">{title}</h3>
-                    <div className="mt-0.5 text-[13px] leading-snug text-ink-2">{children}</div>
-                    <span className="mt-1.5 inline-flex items-center gap-1 text-[13px] font-medium text-brand">
+                    <div className="mt-0.5 text-caption leading-snug text-ink-2">{children}</div>
+                    <span className="mt-1.5 inline-flex items-center gap-1 text-caption font-medium text-brand">
                         {cta}
                         <ArrowRight
                             className="size-3.5 transition-transform group-hover:translate-x-0.5 motion-reduce:transition-none"
@@ -232,7 +232,7 @@ export function AgentHomeSummary({ workflowId }: { workflowId: number }) {
                 <div className="min-w-0">
                     <span
                         className={cn(
-                            "inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[12.5px] font-medium",
+                            "inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-caption font-medium",
                             status.tone === "ok" && "bg-ok-dim text-ok",
                             status.tone === "warn" && "bg-amber-dim text-amber",
                             status.tone === "mute" && "bg-panel-2 text-ink-2",
@@ -264,7 +264,7 @@ export function AgentHomeSummary({ workflowId }: { workflowId: number }) {
                         <Skeleton className="h-[92px] rounded-lg" />
                     ) : numbers.state === "ready" && numbers.numbers.length > 0 ? (
                         <SummaryCard href={`${base}/deployment#phone`} icon={<Phone />} title="Phone number" cta="Manage">
-                            <span className="font-mono text-[13.5px] text-foreground">{numbers.numbers[0]}</span>
+                            <span className="font-mono text-sm text-foreground">{numbers.numbers[0]}</span>
                             {numbers.numbers.length > 1 && (
                                 <span className="text-ink-3"> and {numbers.numbers.length - 1} more</span>
                             )}
@@ -300,7 +300,7 @@ export function AgentHomeSummary({ workflowId }: { workflowId: number }) {
 
             {recent.state === "ready" && recent.runs.length > 0 && (
                 <div className="mt-5">
-                    <h3 className="text-[13px] font-semibold text-ink-2">Recent calls</h3>
+                    <h3 className="text-caption font-semibold text-ink-2">Recent calls</h3>
                     <ul className="mt-2 divide-y divide-line-soft overflow-hidden rounded-lg border border-line bg-panel">
                         {recent.runs.map((run) => {
                             const kind = callKind(run);
@@ -314,10 +314,10 @@ export function AgentHomeSummary({ workflowId }: { workflowId: number }) {
                                         className="flex min-h-12 items-center gap-3 px-4 py-2.5 outline-none transition-colors hover:bg-panel-2 focus-visible:bg-panel-2 focus-visible:ring-[3px] focus-visible:ring-inset focus-visible:ring-ring/40 motion-reduce:transition-none"
                                     >
                                         <kind.Icon className="size-4 shrink-0 text-ink-3" aria-hidden />
-                                        <span className="min-w-0 flex-1 truncate text-[13.5px] text-foreground">
+                                        <span className="min-w-0 flex-1 truncate text-sm text-foreground">
                                             {kind.label}
                                         </span>
-                                        <span className="shrink-0 text-[12.5px] text-ink-3" suppressHydrationWarning>
+                                        <span className="shrink-0 text-caption text-ink-3" suppressHydrationWarning>
                                             {[duration, formatLastCall(run.created_at, timezone)].filter(Boolean).join(" · ")}
                                         </span>
                                         <ArrowRight className="size-3.5 shrink-0 text-ink-3" aria-hidden />

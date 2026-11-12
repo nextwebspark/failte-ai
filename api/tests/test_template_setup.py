@@ -127,7 +127,8 @@ def test_starter_templates_fill_into_valid_agents():
         values = {
             field.key: f"Sample {field.key}"
             for field in starter.setup_fields
-            if field.type != "toggles"
+            # Toggles and languages answer from fixed choices.
+            if field.type not in ("toggles", "languages")
         }
 
         filled = fill_template_values(starter.definition, starter.setup_fields, values)
@@ -444,7 +445,11 @@ def _ask_line(definition: dict) -> str:
 
 
 def _business_answers(starter) -> dict[str, str]:
-    return {f.key: "Sample" for f in starter.setup_fields if f.type != "toggles"}
+    return {
+        f.key: "Sample"
+        for f in starter.setup_fields
+        if f.type not in ("toggles", "languages")
+    }
 
 
 def test_booking_toggles_default_to_the_usual_questions():
@@ -542,3 +547,74 @@ def test_agents_check_the_caller_before_changing_a_booking():
             assert "Never say a booking is moved or cancelled" in text, starter.name
         assert "update the booking" not in text, starter.name
         assert "reschedule via calendar tools" not in text, starter.name
+
+
+def _calendar_definition(*tools_per_node):
+    types = ["startCall", "agentNode", "endCall", "globalNode"]
+    return {
+        "nodes": [
+            {"id": str(i), "type": types[i], "data": {"tool_uuids": list(tools)}}
+            for i, tools in enumerate(tools_per_node)
+        ]
+    }
+
+
+def test_calendar_tool_provider_reads_the_tools_service_url():
+    from api.services.workflow.template_setup import calendar_tool_provider
+
+    def mcp(url):
+        return {"config": {"url": url}}
+
+    assert (
+        calendar_tool_provider("mcp", mcp("http://t:8010/mcp/calendly")) == "calendly"
+    )
+    assert (
+        calendar_tool_provider("mcp", mcp("https://t/mcp/google-calendar/"))
+        == "google-calendar"
+    )
+    assert calendar_tool_provider("mcp", mcp("https://t/mcp/hubspot")) is None
+    assert calendar_tool_provider("http_api", mcp("http://t/mcp/calendly")) is None
+    assert calendar_tool_provider("mcp", None) is None
+
+
+def test_set_calendar_tool_attaches_to_the_steps_that_talk_to_callers():
+    from api.services.workflow.template_setup import set_calendar_tool
+
+    definition = _calendar_definition(["transfer"], ["transfer", "orders"], [], [])
+    result = set_calendar_tool(definition, "cal", {"cal"})
+    tools = [n["data"]["tool_uuids"] for n in result["nodes"]]
+    assert tools == [["transfer", "cal"], ["transfer", "orders", "cal"], [], []]
+    # Again: still one copy.
+    again = set_calendar_tool(result, "cal", {"cal"})
+    assert again == result
+
+
+def test_set_calendar_tool_swaps_or_removes_the_calendar():
+    from api.services.workflow.template_setup import set_calendar_tool
+
+    definition = _calendar_definition(["google", "x"], ["google"], [], [])
+    swapped = set_calendar_tool(definition, "calendly", {"google", "calendly"})
+    assert [n["data"]["tool_uuids"] for n in swapped["nodes"]] == [
+        ["x", "calendly"],
+        ["calendly"],
+        [],
+        [],
+    ]
+    removed = set_calendar_tool(swapped, None, {"google", "calendly"})
+    assert [n["data"]["tool_uuids"] for n in removed["nodes"]] == [["x"], [], [], []]
+
+
+def test_restaurant_opens_openly_and_offers_a_person_before_goodbye():
+    definition = _restaurant().definition
+    start = next(n for n in definition["nodes"] if n["type"] == "startCall")
+    # Not "Would you like to book a table": the caller says what they want.
+    assert start["data"]["greeting"].endswith("How can I help you today?")
+    prompt = start["data"]["prompt"]
+    assert "how many people" in prompt
+    assert "put you through to someone on the team" in prompt
+    # A corrected email is read back again before booking.
+    assert "spell the corrected address back again" in prompt
+    conditions = [e["data"]["condition"] for e in definition["edges"]]
+    assert any("closing offer" in c for c in conditions)
+    # Booking alone doesn't move on to taking a message.
+    assert not any(c.startswith("The booking is done") for c in conditions)

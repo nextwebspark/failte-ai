@@ -11,7 +11,6 @@ import {
     MessageCircleQuestion,
     Phone,
     RefreshCw,
-    Share2,
     X,
 } from "lucide-react";
 import Link from "next/link";
@@ -22,6 +21,7 @@ import {
     getUsageHistoryApiV1OrganizationsUsageRunsGet,
     getWorkflowRunApiV1WorkflowWorkflowIdRunsRunIdGet,
 } from "@/client/sdk.gen";
+import { RESULT_WORDS } from "@/components/dashboard/dashboardView";
 import { SUPPORT_EMAIL } from "@/components/SupportLink";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -33,11 +33,12 @@ import { copyTextToClipboard } from "@/lib/clipboard";
 import { downloadFile, getSignedUrl } from "@/lib/files";
 import { cn } from "@/lib/utils";
 
+import { callResultChip } from "./callOutcome";
 import { callerLines, OutcomeChip } from "./CallsTable";
 import {
     callDetails,
     callNumberOf,
-    callOutcome,
+    type CallRow,
     capturedValues,
     formatCallWhen,
     formatLengthWords,
@@ -46,8 +47,10 @@ import {
     IN_PROGRESS_FOR_MS,
     isDialable,
 } from "./callsView";
-import { type CallRow, isSampleRun } from "./sampleRuns";
 import { ShareRecordingDialog } from "./ShareRecordingDialog";
+
+/** The small capitals over each part of the call. */
+const SECTION_HEADING = "mb-2.5 text-[12px] font-semibold uppercase tracking-[0.08em] text-ink-3";
 
 /** A recording usually lands within a minute or two of the call ending. */
 const RECORDING_GRACE_MS = 15 * 60 * 1000;
@@ -109,11 +112,10 @@ export function CallPanel({ run, timezone, autoplay, focusOnOpen, layout, isPhon
     const [showAll, setShowAll] = useState(false);
 
     const { name, number } = callerLines(run);
-    const outcome = callOutcome(run);
+    const outcome = callResultChip(run);
     const when = formatCallWhen(run.created_at, timezone);
     const rawNumber = callNumberOf(run);
     const isTest = run.mode === "webrtc" || run.mode === "smallwebrtc" || run.mode === "textchat";
-    const sample = isSampleRun(run) ? run.sample ?? null : null;
 
     // Move focus to the call when it opens, so keyboard and screen-reader
     // users land on it (the list stays where it was).
@@ -123,14 +125,6 @@ export function CallPanel({ run, timezone, autoplay, focusOnOpen, layout, isPhon
 
     useEffect(() => {
         let cancelled = false;
-        if (run.id < 0) {
-            // A sample call is all in the browser: nothing to fetch.
-            setRecord({
-                state: "ready",
-                data: { is_completed: true, recording_url: null, transcript_url: null, gathered_context: null, events: [] },
-            });
-            return;
-        }
         setRecord({ state: "loading" });
         getWorkflowRunApiV1WorkflowWorkflowIdRunsRunIdGet({
             path: { workflow_id: run.workflow_id, run_id: run.id },
@@ -166,7 +160,7 @@ export function CallPanel({ run, timezone, autoplay, focusOnOpen, layout, isPhon
     useEffect(() => {
         let cancelled = false;
         setTimesBefore(null);
-        if (run.call_type !== "inbound" || !isDialable(run.caller_number) || isTest || run.id < 0) return;
+        if (run.call_type !== "inbound" || !isDialable(run.caller_number) || isTest) return;
         const before = new Date(new Date(run.created_at).getTime() - 1).toISOString();
         getUsageHistoryApiV1OrganizationsUsageRunsGet({
             query: {
@@ -197,18 +191,14 @@ export function CallPanel({ run, timezone, autoplay, focusOnOpen, layout, isPhon
         return () => window.removeEventListener("keydown", onKey);
     }, [layout, onClose]);
 
-    const gathered = record.state === "ready" && !sample ? record.data.gathered_context : run.gathered_context ?? null;
+    const gathered = record.state === "ready" ? record.data.gathered_context : run.gathered_context ?? null;
     const details = useMemo(() => callDetails(gathered), [gathered]);
     const lines = useMemo(
         () =>
-            sample
-                ? sample.transcript.map(
-                    (turn, index): Line => ({ id: `sample-${index}`, who: turn.role === "agent" ? "Agent" : "Caller", text: turn.text }),
-                )
-                : record.state === "ready"
-                    ? linesFrom(record.data.events, record.data.gathered_context?.tool_results)
-                    : [],
-        [record, sample],
+            record.state === "ready"
+                ? linesFrom(record.data.events, record.data.gathered_context?.tool_results)
+                : [],
+        [record],
     );
     const searchWords = highlight.trim();
     const hits = useMemo(() => {
@@ -230,7 +220,7 @@ export function CallPanel({ run, timezone, autoplay, focusOnOpen, layout, isPhon
         record.state === "ready" &&
         !record.data.is_completed &&
         Date.now() - new Date(run.created_at).getTime() < IN_PROGRESS_FOR_MS;
-    const chip = stillGoing ? { label: "Call in progress", tone: "live" as const } : outcome;
+    const chip = stillGoing ? RESULT_WORDS.in_progress : outcome;
     const headingId = `call-${run.id}-title`;
     const visibleLines = showAll ? lines : lines.slice(0, FIRST_LINES);
 
@@ -247,7 +237,7 @@ export function CallPanel({ run, timezone, autoplay, focusOnOpen, layout, isPhon
             )}
         >
             {/* How it ended, when, and who rang. */}
-            <div className="border-b border-line-soft px-5 pb-4 pt-4">
+            <div className="border-b border-line-soft px-5 pb-5 pt-4 sm:px-6">
                 {layout === "overlay" && isPhone ? (
                     <Button variant="ghost" className="-ml-2 mb-2 h-10 px-2" onClick={onClose}>
                         <ArrowLeft aria-hidden />
@@ -278,11 +268,11 @@ export function CallPanel({ run, timezone, autoplay, focusOnOpen, layout, isPhon
                     id={headingId}
                     ref={headingRef}
                     tabIndex={-1}
-                    className="mt-2 truncate text-xl font-bold tracking-[-0.01em] text-foreground outline-none"
+                    className="mt-2.5 truncate text-[22px] font-bold leading-tight tracking-[-0.01em] text-foreground outline-none"
                 >
                     {name}
                 </h2>
-                <p className="mt-0.5 text-[13.5px] text-ink-3">
+                <p className="mt-1 text-[14px] text-ink-2">
                     {number ? <span className="tabular-nums">{number}</span> : !isTest && <span>Number not known</span>}
                     {timesBefore !== null && timesBefore > 0 && (
                         <span>
@@ -292,7 +282,27 @@ export function CallPanel({ run, timezone, autoplay, focusOnOpen, layout, isPhon
                 </p>
             </div>
 
-            <div className="flex flex-col gap-6 px-5 py-5">
+            <div className="flex flex-col gap-7 px-5 py-6 sm:px-6">
+                {summary && (
+                    <section aria-labelledby={`${headingId}-summary`}>
+                        <h3 id={`${headingId}-summary`} className={SECTION_HEADING}>
+                            Summary
+                        </h3>
+                        <p className="text-[15.5px] leading-relaxed text-foreground">{summary}</p>
+                    </section>
+                )}
+
+                {reasonLabel && (
+                    <section aria-labelledby={`${headingId}-wanted`}>
+                        <h3 id={`${headingId}-wanted`} className={SECTION_HEADING}>
+                            What they wanted
+                        </h3>
+                        <p className="inline-flex rounded-full bg-panel-2 px-3 py-1 text-[14px] font-medium text-foreground">
+                            {reasonLabel}
+                        </p>
+                    </section>
+                )}
+
                 <Recording
                     record={record}
                     stillGoing={stillGoing}
@@ -301,70 +311,28 @@ export function CallPanel({ run, timezone, autoplay, focusOnOpen, layout, isPhon
                     onRetry={() => setReload((n) => n + 1)}
                 />
 
-                {(summary || reasonLabel) && (
-                    <section aria-labelledby={`${headingId}-summary`}>
-                        <h3 id={`${headingId}-summary`} className="mb-2 text-[11.5px] font-semibold uppercase tracking-[0.08em] text-ink-3">
-                            Summary
-                        </h3>
-                        {summary && <p className="text-[14.5px] leading-relaxed text-foreground">{summary}</p>}
-                        {reasonLabel && (
-                            <p className={cn("text-[13.5px] text-ink-2", summary && "mt-2")}>
-                                <span className="text-ink-3">What they wanted:</span> {reasonLabel}
-                            </p>
-                        )}
-                    </section>
-                )}
-
                 {unanswered.length > 0 && (
                     <section aria-labelledby={`${headingId}-unanswered`} className="rounded-xl border border-line bg-panel-2 px-4 py-3">
-                        <h3 id={`${headingId}-unanswered`} className="flex items-center gap-1.5 text-[13.5px] font-semibold text-foreground">
+                        <h3 id={`${headingId}-unanswered`} className="flex items-center gap-1.5 text-[14.5px] font-semibold text-foreground">
                             <MessageCircleQuestion className="size-4 text-ink-2" aria-hidden />
                             Your agent couldn&apos;t answer
                         </h3>
-                        <ul className="mt-1.5 list-disc pl-5 text-[13.5px] text-foreground">
+                        <ul className="mt-1.5 list-disc pl-5 text-[14.5px] text-foreground">
                             {unanswered.map((question, index) => (
                                 <li key={index}>{question}</li>
                             ))}
                         </ul>
-                        {sample ? (
-                            <p className="mt-2 text-[12.5px] text-ink-3">
-                                On a real call, this links to What your agent knows, where you add the answer.
-                            </p>
-                        ) : (
-                            <Link
+                        <Link
                                 href={agentFactsHref(run.workflow_id)}
                                 className="mt-2 inline-flex min-h-10 items-center rounded-sm text-sm font-semibold text-brand outline-none hover:underline focus-visible:ring-[3px] focus-visible:ring-ring/40 sm:min-h-0"
                             >
                                 Add the answer in What your agent knows
                             </Link>
-                        )}
-                    </section>
-                )}
-
-                {details.length > 0 && (
-                    <section aria-labelledby={`${headingId}-details`}>
-                        <h3 id={`${headingId}-details`} className="mb-2.5 text-[11.5px] font-semibold uppercase tracking-[0.08em] text-ink-3">
-                            Details your agent took
-                        </h3>
-                        <dl className="grid grid-cols-2 gap-2">
-                            {details.map((detail) => (
-                                <div
-                                    key={detail.key}
-                                    className={cn(
-                                        "min-w-0 rounded-lg border border-line px-3 py-2.5",
-                                        detail.value.length > 28 && "col-span-2",
-                                    )}
-                                >
-                                    <dt className="text-[12px] text-ink-3">{detail.label}</dt>
-                                    <dd className="mt-0.5 break-words font-semibold text-foreground">{detail.value}</dd>
-                                </div>
-                            ))}
-                        </dl>
                     </section>
                 )}
 
                 <section aria-labelledby={`${headingId}-said`}>
-                    <h3 id={`${headingId}-said`} className="mb-2.5 text-[11.5px] font-semibold uppercase tracking-[0.08em] text-ink-3">
+                    <h3 id={`${headingId}-said`} className={SECTION_HEADING}>
                         What was said
                     </h3>
                     {searchWords && lines.length > 0 && (
@@ -390,13 +358,13 @@ export function CallPanel({ run, timezone, autoplay, focusOnOpen, layout, isPhon
                                     <li
                                         key={line.id}
                                         className={cn(
-                                            "max-w-[88%] rounded-xl px-3 py-2 text-[13.5px] leading-relaxed",
+                                            "max-w-[88%] rounded-xl px-3.5 py-2.5 text-[14.5px] leading-relaxed",
                                             line.who === "Agent"
                                                 ? "self-start bg-panel-2 text-foreground"
                                                 : "self-end bg-sky-dim text-foreground",
                                         )}
                                     >
-                                        <span className="block text-[12px] font-medium text-ink-3">{line.who}</span>
+                                        <span className="block text-[12.5px] font-medium text-ink-3">{line.who}</span>
                                         <Highlighted text={line.text} words={searchWords} />
                                     </li>
                                 ))}
@@ -426,27 +394,28 @@ export function CallPanel({ run, timezone, autoplay, focusOnOpen, layout, isPhon
                     )}
                 </section>
 
-                {sample ? (
-                    <div className="flex flex-col gap-2">
-                        <div className="flex flex-wrap items-center gap-2">
-                            <Button className="h-10 sm:h-9" disabled aria-describedby={`${headingId}-sample-note`}>
-                                <Phone aria-hidden />
-                                Call back
-                            </Button>
-                            <Button variant="outline" className="h-10 sm:h-9" disabled aria-describedby={`${headingId}-sample-note`}>
-                                <Share2 aria-hidden />
-                                Share recording
-                            </Button>
-                            <Button variant="outline" className="h-10 sm:h-9" disabled aria-describedby={`${headingId}-sample-note`}>
-                                <Download aria-hidden />
-                                Download recording
-                            </Button>
-                        </div>
-                        <p id={`${headingId}-sample-note`} className="text-[12.5px] text-ink-3">
-                            This is a sample call, so there&apos;s nobody to ring back and no recording to share or download.
-                        </p>
-                    </div>
-                ) : (
+                {details.length > 0 && (
+                    <section aria-labelledby={`${headingId}-details`}>
+                        <h3 id={`${headingId}-details`} className={SECTION_HEADING}>
+                            Details your agent took
+                        </h3>
+                        <dl className="grid grid-cols-2 gap-2">
+                            {details.map((detail) => (
+                                <div
+                                    key={detail.key}
+                                    className={cn(
+                                        "min-w-0 rounded-lg border border-line px-3 py-2.5",
+                                        detail.value.length > 28 && "col-span-2",
+                                    )}
+                                >
+                                    <dt className="text-[12.5px] text-ink-3">{detail.label}</dt>
+                                    <dd className="mt-0.5 break-words text-[15px] font-semibold text-foreground">{detail.value}</dd>
+                                </div>
+                            ))}
+                        </dl>
+                    </section>
+                )}
+
                 <div className="flex flex-wrap items-center gap-2">
                     {callbackNumber && !isTest && (
                         <CallBack number={callbackNumber} isPhone={isPhone} />
@@ -471,7 +440,6 @@ export function CallPanel({ run, timezone, autoplay, focusOnOpen, layout, isPhon
                         Report a problem
                     </a>
                 </div>
-                )}
 
                 <details className="group rounded-lg border border-line-soft">
                     <summary className="flex min-h-10 cursor-pointer list-none items-center justify-between gap-3 rounded-lg px-3 py-2 text-[13.5px] font-semibold text-ink-2 outline-none focus-visible:ring-[3px] focus-visible:ring-ring/40 [&::-webkit-details-marker]:hidden">
@@ -573,9 +541,6 @@ function Recording({ record, stillGoing, run, autoplay, onRetry }: {
         }
     }, [autoplay, src]);
 
-    if (run.id < 0) {
-        return <Notice>Sample call, no recording. Real calls play here.</Notice>;
-    }
     if (record.state === "loading" || src?.state === "loading") {
         return <Skeleton className="h-14 w-full rounded-xl" aria-label="Loading the recording" />;
     }

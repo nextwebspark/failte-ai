@@ -48,7 +48,7 @@ export default function AccountPage() {
             provider === "stack" ? (
               <Link
                 href="/handler/account-settings"
-                className="text-[13px] font-medium text-brand hover:underline"
+                className="text-caption font-medium text-brand hover:underline"
               >
                 Sign-in and security
               </Link>
@@ -58,23 +58,23 @@ export default function AccountPage() {
           <div className="flex items-center gap-3 px-[18px] py-4">
             <span
               aria-hidden
-              className="grid size-10 shrink-0 place-items-center rounded-full border border-line bg-brand-dim font-mono text-[13px] font-semibold text-brand"
+              className="grid size-10 shrink-0 place-items-center rounded-full border border-line bg-brand-dim font-mono text-caption font-semibold text-brand"
             >
               {initials}
             </span>
             <div className="min-w-0">
               <p className="truncate text-[15px] font-semibold text-foreground">{name || email || "Signed in"}</p>
-              {name && email && <p className="truncate text-[13px] text-ink-2">{email}</p>}
+              {name && email && <p className="truncate text-caption text-ink-2">{email}</p>}
             </div>
           </div>
           <SettingRow label="Email" compact>
-            <span className="text-[13px] text-foreground">{email || "—"}</span>
+            <span className="text-caption text-foreground">{email || "—"}</span>
           </SettingRow>
           <SettingRow label="Workspace" compact>
-            <span className="text-[13px] text-foreground">{workspaceDisplayName(orgContext?.organization_name)}</span>
+            <span className="text-caption text-foreground">{workspaceDisplayName(orgContext?.organization_name)}</span>
           </SettingRow>
           <SettingRow label="Role" hint="Set by an admin on Members." compact>
-            <span className="text-[13px] text-foreground">{role ? ROLE_LABELS[role] : "—"}</span>
+            <span className="text-caption text-foreground">{role ? ROLE_LABELS[role] : "—"}</span>
           </SettingRow>
         </SettingsSection>
 

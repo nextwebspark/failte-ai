@@ -36,7 +36,11 @@ export function describe(frequency: ReportFrequency, dailyTime: string): { cover
   switch (frequency) {
     case "daily":
       return {
-        covers: `Today's calls, from midnight to ${clockLabel(dailyTime)}.`,
+        // The 24 hours since the last daily, so evening calls are never missed.
+        covers:
+          dailyTime === "00:00"
+            ? "Yesterday's calls, the whole day."
+            : `The last 24 hours of calls, ${clockLabel(dailyTime)} to ${clockLabel(dailyTime)}.`,
         arrives: `Every day at ${clockLabel(dailyTime)}.`,
       };
     case "weekly":

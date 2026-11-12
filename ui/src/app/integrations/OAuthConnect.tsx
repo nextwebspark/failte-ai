@@ -16,7 +16,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Switch } from "@/components/ui/switch";
 import { copyTextToClipboard } from "@/lib/clipboard";
 
-import { credentialFamily, integrationErrorMessage, isUnavailableError, scopeLabel } from "./messages";
+import { CALENDLY_PROVIDER, credentialFamily, integrationErrorMessage, isUnavailableError, scopeLabel } from "./messages";
 import { isTrustedAuthorizationUrl, startOAuth } from "./oauthCalls";
 import { clearOAuthPopupMarker } from "./oauthPopup";
 import { rememberPendingOAuth } from "./pendingOAuth";
@@ -98,6 +98,8 @@ export function OAuthConnect({
     }, []);
 
     const redirectUri = provider.oauth?.redirect_uri ?? null;
+    // Calendly apps are made in Calendly's developer portal, not Google Cloud.
+    const calendly = provider.id === CALENDLY_PROVIDER;
     const addingClient = ownClient && selected === NEW_CLIENT;
     const sharedClient = ownClient && !addingClient && ownApps.length > 0 && family !== provider.id;
 
@@ -107,7 +109,8 @@ export function OAuthConnect({
                 <Panel accent="amber" padding="sm">
                     <p className="text-sm">
                         Signing in with an account isn&apos;t set up on this server yet. Ask your administrator to
-                        configure it, or connect with a service account key instead.
+                        configure it, or connect{" "}
+                        {calendly ? "with a personal access token" : "with a service account key"} instead.
                     </p>
                 </Panel>
                 <DialogFooter>
@@ -188,6 +191,35 @@ export function OAuthConnect({
     };
 
     const optional = provider.oauth.optional_scopes;
+    const clientFields = (
+        <>
+            <div className="grid gap-2">
+                <Label htmlFor="oauth-client-id">Client ID</Label>
+                <Input
+                    id="oauth-client-id"
+                    value={clientId}
+                    onChange={(e) => setClientId(e.target.value)}
+                    placeholder={calendly ? undefined : "1234-abc.apps.googleusercontent.com"}
+                    autoComplete="off"
+                    spellCheck={false}
+                    disabled={busy !== null}
+                />
+            </div>
+            <div className="grid gap-2">
+                <Label htmlFor="oauth-client-secret">Client secret</Label>
+                <Input
+                    id="oauth-client-secret"
+                    type="password"
+                    value={clientSecret}
+                    onChange={(e) => setClientSecret(e.target.value)}
+                    autoComplete="new-password"
+                    spellCheck={false}
+                    disabled={busy !== null}
+                />
+                <p className="text-xs text-muted-foreground">Stored encrypted. It is never shown again.</p>
+            </div>
+        </>
+    );
 
     return (
         <form
@@ -224,7 +256,9 @@ export function OAuthConnect({
                 <div className="grid gap-2">
                     <Label htmlFor="oauth-client">OAuth client</Label>
                     <p className="text-xs text-muted-foreground">
-                        Your own OAuth client from Google Cloud. Google shows its name on the sign-in screen.
+                        {calendly
+                            ? "Your own OAuth app from Calendly's developer portal. Calendly shows its name when you allow access."
+                            : "Your own OAuth client from Google Cloud. Google shows its name on the sign-in screen."}
                     </p>
                     <Select value={selected} onValueChange={(v) => {
                             // Radix's hidden native select can report "" while a just-saved
@@ -285,7 +319,7 @@ export function OAuthConnect({
                             </Label>
                         </div>
                     </RadioGroup>
-                    {loginHint && (
+                    {loginHint && !calendly && (
                         <p className="text-xs text-muted-foreground">
                             Google will only ask to allow this integration&apos;s permissions.
                         </p>
@@ -293,7 +327,37 @@ export function OAuthConnect({
                 </div>
             )}
 
-            {addingClient && (
+            {addingClient && calendly && (
+                <Panel padding="sm" className="grid gap-4">
+                    <ol className="list-decimal space-y-1.5 pl-4 text-sm text-ink-2">
+                        <li>
+                            At{" "}
+                            <a
+                                href="https://developer.calendly.com/"
+                                target="_blank"
+                                rel="noreferrer"
+                                className="inline-flex items-center gap-0.5 text-sky underline-offset-2 hover:underline"
+                            >
+                                developer.calendly.com
+                                <ExternalLink className="size-3" aria-hidden />
+                                <span className="sr-only">(opens in a new tab)</span>
+                            </a>
+                            , create an OAuth app of kind <strong>Web</strong> with these permissions:{" "}
+                            {provider.oauth.scopes.map(scopeLabel).join(", ")}.
+                        </li>
+                        <li>
+                            Add this exact address as its <strong>Redirect URI</strong>:{" "}
+                            <code className="break-all font-mono text-xs" aria-label="Redirect URI">
+                                {redirectUri}
+                            </code>
+                        </li>
+                        <li>Paste the app&apos;s client ID and secret here.</li>
+                    </ol>
+                    {clientFields}
+                </Panel>
+            )}
+
+            {addingClient && !calendly && (
                 <Panel padding="sm" className="grid gap-4">
                     <ol className="list-decimal space-y-1.5 pl-4 text-sm text-ink-2">
                         <li>
@@ -333,31 +397,7 @@ export function OAuthConnect({
                         <li>Enable the {provider.title} API in the same project.</li>
                         <li>Paste the client ID and secret here.</li>
                     </ol>
-                    <div className="grid gap-2">
-                        <Label htmlFor="oauth-client-id">Client ID</Label>
-                        <Input
-                            id="oauth-client-id"
-                            value={clientId}
-                            onChange={(e) => setClientId(e.target.value)}
-                            placeholder="1234-abc.apps.googleusercontent.com"
-                            autoComplete="off"
-                            spellCheck={false}
-                            disabled={busy !== null}
-                        />
-                    </div>
-                    <div className="grid gap-2">
-                        <Label htmlFor="oauth-client-secret">Client secret</Label>
-                        <Input
-                            id="oauth-client-secret"
-                            type="password"
-                            value={clientSecret}
-                            onChange={(e) => setClientSecret(e.target.value)}
-                            autoComplete="new-password"
-                            spellCheck={false}
-                            disabled={busy !== null}
-                        />
-                        <p className="text-xs text-muted-foreground">Stored encrypted. It is never shown again.</p>
-                    </div>
+                    {clientFields}
                 </Panel>
             )}
 

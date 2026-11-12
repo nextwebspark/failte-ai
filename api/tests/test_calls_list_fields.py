@@ -1,6 +1,7 @@
 """The Calls list: the stored review's fields on each row, the
 "Needs follow-up" filter resolved from Follow-ups, and the CSV headers."""
 
+import json
 from datetime import UTC, datetime
 from types import SimpleNamespace
 
@@ -49,6 +50,7 @@ def test_older_calls_without_a_review_have_empty_fields(annotations):
 
 def test_needs_follow_up_is_an_allowed_list_filter():
     assert "needsFollowUp" in USAGE_ALLOWED_FILTERS
+    assert "bookingMade" in USAGE_ALLOWED_FILTERS
 
 
 @pytest.mark.asyncio
@@ -159,3 +161,156 @@ def test_csv_uses_plain_headers():
     assert header[0] == "Call ID" and values[0] == "1"
     assert values[header.index("Outcome")] == "booking_made"
     assert "Run ID" not in header and "Call Disposition" not in header
+
+
+def test_calls_list_reads_a_call_the_way_home_does():
+    """A call whose stored ending code is "end_call" ("Call finished") but
+    whose calendar confirmed a booking is "booking_made" on the Calls list,
+    exactly as Home's recent calls read it; an ordinary call is "handled"."""
+    from api.db.organization_usage_client import call_result_of
+    from api.services.dashboard.calls import call_result
+
+    now = datetime(2026, 11, 6, 15, 0, tzinfo=UTC)
+    booked = {
+        "call_tags": ["user_speech"],
+        "call_status": "end_call",
+        "mapped_call_disposition": "end_call",
+        "tool_results": [
+            {
+                "status": "completed",
+                "function_name": "book_appointment",
+                "arguments": {"slot_id": "2026-11-07T19:00:00+00:00"},
+                "result": {
+                    "booked": True,
+                    "event_id": "e1",
+                    "starts_at": "2026-11-07T19:00:00+00:00",
+                },
+            }
+        ],
+    }
+    ordinary = {
+        "call_tags": ["user_speech"],
+        "call_status": "end_call",
+        "mapped_call_disposition": "end_call",
+    }
+    for gathered, expected in ((booked, "booking_made"), (ordinary, "handled")):
+        run = SimpleNamespace(
+            is_completed=True,
+            created_at=datetime(2026, 11, 6, 14, 0, tzinfo=UTC),
+            gathered_context=gathered,
+            usage_info={"call_duration_seconds": 95},
+            logs={},
+        )
+        home = call_result(
+            is_completed=True,
+            created_at=run.created_at,
+            gathered_context=gathered,
+            usage_info=run.usage_info,
+            logs={},
+            now=now,
+        )
+        assert call_result_of(run, now) == home.value == expected
+
+
+def test_after_hours_is_an_allowed_list_filter():
+    assert "afterHours" in USAGE_ALLOWED_FILTERS
+
+
+@pytest.mark.asyncio
+async def test_after_hours_filter_takes_hours_from_the_agents(monkeypatch):
+    from api.routes.organization_usage import resolve_server_filters
+    from api.services.dashboard import service
+
+    async def follow_ups(*, organization_id, workflow_id=None, now=None):
+        raise AssertionError("not needed")
+
+    async def value(organization_id):
+        assert organization_id == 3
+        return {"agents": [{"id": 1, "hours": {}}], "browser_calls": False}
+
+    monkeypatch.setattr(service, "open_follow_up_run_ids", follow_ups)
+    monkeypatch.setattr(service, "after_hours_filter_value", value)
+    resolved = await resolve_server_filters(
+        3,
+        [
+            # Hours sent by the browser are never used.
+            {"attribute": "afterHours", "type": "openingHours", "value": {"x": 1}},
+        ],
+    )
+    assert resolved == [
+        {
+            "attribute": "afterHours",
+            "type": "openingHours",
+            "value": {"agents": [{"id": 1, "hours": {}}], "browser_calls": False},
+        }
+    ]
+
+
+def _tool(name, result, arguments=None):
+    return {
+        "function_name": name,
+        "status": "completed",
+        "arguments": arguments or {},
+        "result": json.dumps(result),
+    }
+
+
+@pytest.mark.asyncio
+async def test_bookings_tab_takes_the_calls_the_calendar_confirmed(monkeypatch):
+    """The Calls "Bookings" tab counts what Home and Reports call "bookings
+    taken": a booking the calendar confirmed. A booking the agent only noted
+    down ("requested") or a refused attempt is not one."""
+    from api.routes import organization_usage
+
+    booked = {
+        "tool_results": [
+            _tool(
+                "book_appointment",
+                {
+                    "booked": True,
+                    "event_id": "e1",
+                    "starts_at": "2026-11-06T12:30:00+00:00",
+                },
+            )
+        ]
+    }
+    refused = {"tool_results": [_tool("book_appointment", {"booked": False})]}
+    noted = {
+        "booking_outcome": "requested",
+        "tool_results": [_tool("check_appointment_availability", {})],
+    }
+    asked = {}
+
+    async def calendar_calls(organization_id, start, end):
+        asked["args"] = (organization_id, start, end)
+        return [(21, booked), (22, refused), (23, noted)]
+
+    monkeypatch.setattr(
+        organization_usage.db_client, "get_calendar_tool_calls", calendar_calls
+    )
+    start = datetime(2026, 11, 4, tzinfo=UTC)
+    end = datetime(2026, 11, 10, 23, 59, tzinfo=UTC)
+    resolved = await organization_usage.resolve_booking_made_filter(
+        3,
+        # Ids sent by the browser are never used.
+        [{"attribute": "bookingMade", "type": "runIds", "value": {"ids": [999]}}],
+        start,
+        end,
+    )
+
+    assert asked["args"] == (3, start, end)
+    assert resolved == [
+        {"attribute": "bookingMade", "type": "runIds", "value": {"ids": [21]}}
+    ]
+
+
+@pytest.mark.asyncio
+async def test_other_filters_skip_the_bookings_lookup(monkeypatch):
+    from api.routes import organization_usage
+
+    async def boom(*_):
+        raise AssertionError("not needed")
+
+    monkeypatch.setattr(organization_usage.db_client, "get_calendar_tool_calls", boom)
+    filters = [{"attribute": "callerSearch", "type": "text", "value": {"value": "x"}}]
+    assert await organization_usage.resolve_booking_made_filter(3, filters) == filters

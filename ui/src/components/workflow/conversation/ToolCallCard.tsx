@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { cn } from "@/lib/utils";
 
+import { toolResultSummary } from "./toolSummary";
 import type { ToolCallStatus } from "./types";
 import { formatConversationValue } from "./utils";
 
@@ -37,6 +38,7 @@ export function ToolCallCard({
     const hasArguments = argumentsValue !== undefined;
     const hasResult = resultValue !== undefined;
     const hasDetails = hasArguments || hasResult;
+    const summary = hasResult ? toolResultSummary(resultValue) : null;
 
     return (
         <div className="flex justify-center">
@@ -63,7 +65,7 @@ export function ToolCallCard({
                                 <Badge
                                     variant="outline"
                                     className={cn(
-                                        "h-5 px-1.5 text-[10px] uppercase tracking-[0.14em]",
+                                        "h-5 px-1.5 text-meta uppercase tracking-[0.14em]",
                                         status === "running"
                                             ? "border-amber/60 text-amber"
                                             : status === "completed"
@@ -74,6 +76,11 @@ export function ToolCallCard({
                                     {STATUS_LABELS[status]}
                                 </Badge>
                             </div>
+                            {summary ? (
+                                <p className="mt-1.5 text-xs font-medium text-foreground" data-testid="tool-result-summary">
+                                    {summary}
+                                </p>
+                            ) : null}
                             {hasDetails ? (
                                 <div className="mt-2">
                                     <CollapsibleTrigger asChild>
@@ -99,7 +106,7 @@ export function ToolCallCard({
                             <div className="space-y-3">
                                 {hasArguments ? (
                                     <div className="space-y-1">
-                                        <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
+                                        <p className="text-meta font-medium uppercase tracking-[0.14em] text-muted-foreground">
                                             Arguments
                                         </p>
                                         <pre className="overflow-x-auto rounded-xl bg-background/70 p-3 text-xs leading-5 text-foreground">
@@ -109,7 +116,7 @@ export function ToolCallCard({
                                 ) : null}
                                 {hasResult ? (
                                     <div className="space-y-1">
-                                        <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
+                                        <p className="text-meta font-medium uppercase tracking-[0.14em] text-muted-foreground">
                                             Result
                                         </p>
                                         <pre className="overflow-x-auto rounded-xl bg-background/70 p-3 text-xs leading-5 text-foreground">

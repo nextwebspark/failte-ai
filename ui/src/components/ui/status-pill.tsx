@@ -11,7 +11,7 @@ import { cn } from "@/lib/utils"
  * inventing a colour. Prefer this over a per-screen status→colour map.
  */
 const statusPillVariants = cva(
-    "inline-flex items-center whitespace-nowrap rounded-sm px-2.5 py-[3px] text-[10.5px] font-semibold uppercase tracking-[0.06em]",
+    "inline-flex items-center whitespace-nowrap rounded-sm px-2.5 py-[3px] text-meta font-semibold uppercase tracking-[0.06em]",
     {
         variants: {
             tone: {

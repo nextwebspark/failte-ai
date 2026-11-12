@@ -310,7 +310,7 @@ export const WorkflowEditorHeader = ({
                     type="button"
                     onClick={onHistoryClick}
                     aria-label={activeVersionLabel ? `Version history, ${activeVersionLabel}` : "Version history"}
-                    className="flex h-8 flex-none items-center gap-1.5 whitespace-nowrap rounded-md border border-line bg-panel px-2.5 text-[12.5px] font-medium text-ink-2 transition-colors hover:bg-panel-2 hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring"
+                    className="flex h-8 flex-none items-center gap-1.5 whitespace-nowrap rounded-md border border-line bg-panel px-2.5 text-caption font-medium text-ink-2 transition-colors hover:bg-panel-2 hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring"
                 >
                     <History className="h-3 w-3" aria-hidden />
                     {activeVersionLabel ?? "History"}
@@ -370,7 +370,7 @@ export const WorkflowEditorHeader = ({
             </div>
 
             {/* Toolbar-size controls (32px, 12.5px), per the design system. */}
-            <div className="ml-auto flex flex-none items-center gap-2 [&_[data-slot=button]]:text-[12.5px] [&_[data-slot=button]_svg]:size-3.5">
+            <div className="ml-auto flex flex-none items-center gap-2 [&_[data-slot=button]]:text-caption [&_[data-slot=button]_svg]:size-3.5">
                 {isViewingHistoricalVersion ? (
                     <Button size="sm" onClick={onBackToDraft}>
                         Back to draft

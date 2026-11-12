@@ -144,6 +144,16 @@ def checked_updates(
         if raw is not None and not isinstance(raw, str):
             raise BusinessFactsError(f"{field.label} must be text.")
         value = (raw or "").strip()
+        if field.type == "languages":
+            from api.services.workflow.agent_languages import (
+                AgentLanguagesError,
+                normalised_agent_languages,
+            )
+
+            try:
+                value = normalised_agent_languages(value) or ""
+            except AgentLanguagesError as exc:
+                raise BusinessFactsError(str(exc)) from None
         if not value and field.required:
             raise BusinessFactsError(f"{field.label} can't be empty.")
         if len(value) > field.max_length:
@@ -154,3 +164,20 @@ def checked_updates(
         value = re.sub(r"\}\}+", "}", re.sub(r"\{\{+", "{", value))
         cleaned[key] = value or None
     return cleaned
+
+
+# "Pass calls to your team": the number the transfer tool dials.
+TRANSFER_NUMBER_KEY = "transfer_number"
+
+
+def checked_transfer_number(value: str | None, own_numbers: list[str]) -> str | None:
+    """The transfer number as it is stored and dialled (E.164, or a SIP
+    destination as typed); None when emptied. Raises BusinessFactsError with
+    the owner-facing reason for a number that can't be called or is one of
+    the agent's own numbers (*own_numbers*)."""
+    from api.utils.transfer_number import check_transfer_number
+
+    check = check_transfer_number(value or "", own_numbers=own_numbers)
+    if not check.ok:
+        raise BusinessFactsError(check.error or "That number can't be used.")
+    return check.value or None

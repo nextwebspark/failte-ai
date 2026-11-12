@@ -47,7 +47,7 @@ function ToolButton({
             </TooltipTrigger>
             <TooltipContent side="top">
                 {label}
-                {shortcut && <span className="ml-1.5 font-mono text-[11px] opacity-70">{shortcut}</span>}
+                {shortcut && <span className="ml-1.5 font-mono text-meta opacity-70">{shortcut}</span>}
             </TooltipContent>
         </Tooltip>
     );

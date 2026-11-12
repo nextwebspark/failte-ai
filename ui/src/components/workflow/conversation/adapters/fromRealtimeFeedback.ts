@@ -19,6 +19,27 @@ function feedbackEventText(event: RealtimeFeedbackEvent) {
 
 // Reasoning delay is the LLM's TTFB. STT and TTS report TTFB too; events
 // without a kind predate that and are LLM measurements.
+/**
+ * A tool that ran but didn't do its job reports it in its result, e.g.
+ * {"status": "transfer_failed"} or {"status": "error"}. Show those as
+ * failed, not completed. The result may arrive as an object or JSON text.
+ */
+export function toolResultFailed(result: unknown): boolean {
+    let value = result;
+    if (typeof value === "string") {
+        const text = value.trim();
+        if (!text.startsWith("{")) return false;
+        try {
+            value = JSON.parse(text);
+        } catch {
+            return false;
+        }
+    }
+    if (!value || typeof value !== "object") return false;
+    const status = (value as { status?: unknown }).status;
+    return typeof status === "string" && (status === "error" || /failed$/i.test(status));
+}
+
 export function isLlmTtfb(kind: TtfbKind | undefined) {
     return (kind ?? "llm") === "llm";
 }
@@ -60,7 +81,10 @@ function liveFeedbackItem(message: RealtimeFeedbackMessage, reasoningDurationMs?
             toolCallId: message.toolCallId,
             arguments: message.arguments,
             result: message.result,
-            status: message.status ?? "completed",
+            status:
+                (message.status ?? "completed") === "completed" && toolResultFailed(message.result)
+                    ? "failed"
+                    : (message.status ?? "completed"),
             reasoningDurationMs,
         };
     }
@@ -301,7 +325,7 @@ export function conversationItemsFromRealtimeFeedbackEvents(
         ) {
             continue;
         }
-        const status: ToolCallStatus = record.status === "completed" && record.result?.status === "error"
+        const status: ToolCallStatus = record.status === "completed" && toolResultFailed(record.result)
             ? "failed"
             : record.status;
         const existingIndex = toolCallIndexById.get(record.tool_call_id);

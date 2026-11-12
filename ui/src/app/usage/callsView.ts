@@ -1,5 +1,6 @@
 import { endOfDay, startOfDay, subDays } from "date-fns";
 
+import type { WorkflowRunUsageResponse } from "@/client/types.gen";
 import type { StatusTone } from "@/components/ui/status-pill";
 
 /*
@@ -63,6 +64,8 @@ export interface CallsQuery {
     /** A stored outcome code, or null for any. */
     outcome: string | null;
     who: HandledBy | null;
+    /** Only inbound calls that came in outside the agent's opening hours (set as times). */
+    afterHours: boolean;
     page: number;
 }
 
@@ -74,6 +77,7 @@ export const DEFAULT_QUERY: CallsQuery = {
     end: null,
     outcome: null,
     who: null,
+    afterHours: false,
     page: 1,
 };
 
@@ -107,6 +111,7 @@ export function callsQueryFromParams(params: URLSearchParams): CallsQuery {
         end: custom ? end : null,
         outcome: params.get("outcome") || null,
         who: who === "agent" || who === "team" ? who : null,
+        afterHours: params.get("hours") === "after",
         page: Number.isFinite(page) && page > 1 ? page : 1,
     };
 }
@@ -129,6 +134,7 @@ export function callsQueryToParams(
     }
     if (query.outcome) params.set("outcome", query.outcome);
     if (query.who) params.set("who", query.who);
+    if (query.afterHours) params.set("hours", "after");
     if (query.page > 1) params.set("page", String(query.page));
     if (extra.filters) params.set("filters", extra.filters);
     if (extra.call !== null && extra.call !== undefined && extra.call !== "") params.set("call", String(extra.call));
@@ -190,6 +196,9 @@ export function whenPhrase(query: Pick<CallsQuery, "when" | "start" | "end">): s
     }
 }
 
+/** A row of the Calls list, as the usage API returns it. */
+export type CallRow = WorkflowRunUsageResponse;
+
 /** One filter object as the usage API takes it (see FILTERS_DESCRIPTION). */
 export interface ApiFilter {
     attribute: string;
@@ -197,14 +206,13 @@ export interface ApiFilter {
     value: unknown;
 }
 
-/** booking_outcome values that make a call a "booking" call. */
-export const BOOKING_OUTCOMES = ["booked", "moved", "requested", "cancelled"];
-
 /** The filter a tab adds, or null for All. */
 export function tabFilter(tab: CallsTab): ApiFilter | null {
     switch (tab) {
         case "bookings":
-            return { attribute: "bookingOutcome", type: "multiSelect", value: { codes: BOOKING_OUTCOMES } };
+            // The calls the calendar confirmed a booking on, as Home and
+            // Reports count "Bookings taken"; the server fills in the calls.
+            return { attribute: "bookingMade", type: "runIds", value: {} };
         case "team":
             return { attribute: "handledBy", type: "radio", value: { status: "team" } };
         case "follow_up":
@@ -215,8 +223,12 @@ export function tabFilter(tab: CallsTab): ApiFilter | null {
     }
 }
 
-/** The search box, outcome chip and "Who handled it" chip as API filters (no tab, no dates). */
-export function chipFilters(query: Pick<CallsQuery, "q" | "outcome" | "who">): ApiFilter[] {
+/**
+ * The search box, outcome chip, "Who handled it" and "Outside opening hours"
+ * chips as API filters (no tab, no dates). The server fills in the agents'
+ * opening hours for the last one, as Home counts them.
+ */
+export function chipFilters(query: Pick<CallsQuery, "q" | "outcome" | "who"> & { afterHours?: boolean }): ApiFilter[] {
     const filters: ApiFilter[] = [];
     const q = query.q.trim();
     if (q) filters.push({ attribute: "callerSearch", type: "text", value: { value: q } });
@@ -224,6 +236,7 @@ export function chipFilters(query: Pick<CallsQuery, "q" | "outcome" | "who">): A
         filters.push({ attribute: "dispositionCode", type: "multiSelect", value: { codes: [query.outcome] } });
     }
     if (query.who) filters.push({ attribute: "handledBy", type: "radio", value: { status: query.who } });
+    if (query.afterHours) filters.push({ attribute: "afterHours", type: "openingHours", value: {} });
     return filters;
 }
 
@@ -234,6 +247,7 @@ export function isNarrowed(query: CallsQuery, expertFilterCount: number): boolea
         Boolean(query.q.trim()) ||
         Boolean(query.outcome) ||
         Boolean(query.who) ||
+        query.afterHours ||
         expertFilterCount > 0
     );
 }
@@ -450,6 +464,12 @@ export function isPassedToTeam(gathered: Context): boolean {
     );
 }
 
+/** A "Lines were busy" call someone on the team picked up when it was forwarded. */
+export function linesBusyAnswered(gathered: Context): boolean {
+    const forward = gathered?.lines_busy_forward;
+    return Boolean(forward && typeof forward === "object" && (forward as Record<string, unknown>).result === "answered");
+}
+
 /** Plain words for the outcome codes the app writes itself. */
 const OUTCOME_WORDS: Record<string, string> = {
     transfer_call: "Passed to your team",
@@ -465,6 +485,7 @@ const OUTCOME_WORDS: Record<string, string> = {
     error: "Didn't connect",
     pipeline_error: "Call dropped",
     unexpected_error: "Call dropped",
+    lines_busy: "Lines were busy",
 };
 
 /**
@@ -491,6 +512,7 @@ const OUTCOME_TONES: Record<string, StatusTone> = {
     "no-answer": "bad",
     pipeline_error: "bad",
     unexpected_error: "bad",
+    lines_busy: "warn",
 };
 
 /** The outcome chip for a call: its stored outcome in plain words. */
@@ -509,6 +531,10 @@ export function callOutcome(
     const gathered = run.gathered_context;
     if (isPassedToTeam(gathered)) return { label: "Passed to your team", tone: "info" };
     const code = run.disposition ?? text(gathered?.mapped_call_disposition);
+    // Every line was busy: Home's rule, put through to the team when someone picked up.
+    if (code === "lines_busy" && linesBusyAnswered(gathered)) {
+        return { label: "Lines were busy · passed to your team", tone: "info" };
+    }
     const tags = gathered?.call_tags;
     // The engine tags a call where the caller spoke; a hang-up without that tag never got going.
     if (code === "user_hangup" && Array.isArray(tags) && !tags.includes("user_speech") && tags.length > 0) {

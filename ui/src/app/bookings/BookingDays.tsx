@@ -34,11 +34,11 @@ export function BookingDays({
                 return (
                     <li key={day.key} aria-labelledby={headingId}>
                         <div className="mb-2 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5 border-b border-line-soft pb-1.5">
-                            <h3 id={headingId} className="flex items-center gap-2 text-[15px] font-semibold">
+                            <h3 id={headingId} className="flex items-center gap-2 font-display text-title font-semibold">
                                 {isToday && <span className="size-2 rounded-full bg-brand" aria-hidden />}
                                 {day.label}
                             </h3>
-                            <span className="text-[13px] text-ink-3">
+                            <span className="text-sm text-ink-3">
                                 {day.confirmed > 0 ? daySummary(day) : null}
                                 {day.hiddenCancelled > 0 &&
                                     `${day.confirmed > 0 ? " · " : ""}${day.hiddenCancelled} cancelled`}
@@ -74,20 +74,20 @@ export function BookingCard({ booking, calendarName }: { booking: CalendarBookin
     return (
         <li
             className={cn(
-                "flex gap-4 rounded-lg border px-4 py-3",
+                "flex gap-4 rounded-xl border px-4 py-3.5 sm:px-5",
                 cancelled ? "border-dashed border-line bg-panel-2" : "border-line bg-panel",
             )}
         >
-            <div className="w-14 flex-none pt-0.5">
+            <div className="w-[76px] flex-none whitespace-nowrap pt-0.5">
                 <div
                     className={cn(
-                        "font-mono text-base font-semibold tabular-nums",
+                        "font-mono text-[17px] font-semibold tabular-nums",
                         cancelled ? "text-ink-3 line-through" : "text-foreground",
                     )}
                 >
                     {startTime(booking)}
                 </div>
-                <div className="text-xs text-ink-3">{untilTime(booking)}</div>
+                <div className="text-caption text-ink-3">{untilTime(booking)}</div>
             </div>
 
             <div className="flex min-w-0 flex-1 flex-col gap-2 sm:flex-row sm:items-center sm:gap-6">
@@ -95,7 +95,7 @@ export function BookingCard({ booking, calendarName }: { booking: CalendarBookin
                     <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
                         <span
                             className={cn(
-                                "font-semibold",
+                                "text-body font-semibold",
                                 cancelled && "text-ink-3 line-through",
                                 !booking.caller_name && "font-normal text-ink-3",
                             )}
@@ -105,25 +105,20 @@ export function BookingCard({ booking, calendarName }: { booking: CalendarBookin
                         <StatusPill tone={cancelled ? "mute" : "ok"}>{cancelled ? "Cancelled" : "Booked"}</StatusPill>
                     </div>
                     {booking.reason && <p className="mt-0.5 text-sm text-ink-2">{booking.reason}</p>}
-                    <p className="mt-0.5 text-xs text-ink-3">
+                    <p className="mt-1 text-caption text-ink-3">
                         Booked by your agent{made ? ` on ${made}` : ""}
                         {calendarName ? ` · ${calendarName}` : ""}
                     </p>
                 </div>
 
                 <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-                    <span
-                        className={cn(
-                            "inline-flex items-center gap-1.5 text-sm sm:w-24",
-                            party === "Not asked" ? "text-ink-3" : "text-foreground",
-                        )}
-                    >
-                        <Users className="size-4 flex-none text-ink-3" aria-hidden />
-                        <span>
-                            {party === "Not asked" ? <span className="sr-only">Party size: </span> : null}
-                            {party}
+                    {/* Only when known: a shop or clinic booking has no party size. */}
+                    {party !== "Not asked" && (
+                        <span className="inline-flex items-center gap-1.5 text-sm text-foreground sm:w-24">
+                            <Users className="size-4 flex-none text-ink-3" aria-hidden />
+                            <span>{party}</span>
                         </span>
-                    </span>
+                    )}
                     {booking.caller_phone ? (
                         <a
                             className="inline-flex min-h-10 items-center gap-1.5 rounded-md border border-line px-3 font-mono text-sm text-foreground transition-colors hover:border-brand/50 hover:bg-brand-dim hover:text-brand focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/40 motion-reduce:transition-none sm:min-h-9"

@@ -29,11 +29,19 @@ from api.services.telephony.transfer_event_protocol import (
     TransferEvent,
     TransferEventType,
 )
+from api.services.workflow.opening_hours import (
+    closed_transfer_result,
+    transfer_closed,
+)
 from api.services.workflow.pipecat_engine_skills import SkillToolManager
 from api.services.workflow.tools.calculator import get_calculator_tools, safe_calculator
 from api.services.workflow.tools.custom_tool import (
     execute_http_tool,
     tool_to_function_schema,
+)
+from api.services.workflow.tools.transfer_guard import (
+    caller_number_params,
+    transfer_guard_result,
 )
 from api.services.workflow.tools.transfer_resolver import (
     TransferResolutionError,
@@ -709,6 +717,16 @@ class CustomToolManager:
                     )
                     return
 
+                # Outside the business's opening hours (when the owner set
+                # them as times and passes calls only while open) nobody is
+                # rung: the agent takes a message instead.
+                if transfer_closed(self._engine._call_context_vars):
+                    logger.info("Transfer skipped: outside opening hours")
+                    await self._handle_transfer_result(
+                        closed_transfer_result(), function_call_params, properties
+                    )
+                    return
+
                 # Get organization ID for resolver/provider configuration
                 organization_id = await self.get_organization_id()
                 if not organization_id:
@@ -779,6 +797,18 @@ class CustomToolManager:
                     }
                     await self._handle_transfer_result(
                         validation_error_result, function_call_params, properties
+                    )
+                    return
+
+                # Never dial a reserved demo number or the number the caller
+                # rang (it would ring this agent again).
+                guard_result = transfer_guard_result(
+                    destination, self._engine._call_context_vars
+                )
+                if guard_result is not None:
+                    logger.info(f"Transfer not dialled reason={guard_result['reason']}")
+                    await self._handle_transfer_result(
+                        guard_result, function_call_params, properties
                     )
                     return
 
@@ -947,17 +977,42 @@ class CustomToolManager:
                         f"resolution_id={resolved_transfer.resolution_id or ''} "
                         f"destination={masked_destination} timeout={timeout_seconds}"
                     )
-                    transfer_result = await provider.transfer_call(
-                        destination=destination,
-                        transfer_id=transfer_id,
-                        conference_name=conference_name,
-                        timeout=timeout_seconds,
-                        **(
-                            {"introduction_audio_url": introduction_audio_url}
-                            if introduction_audio_url
-                            else {}
-                        ),
+                    transfer_kwargs = (
+                        {"introduction_audio_url": introduction_audio_url}
+                        if introduction_audio_url
+                        else {}
                     )
+                    caller_id = caller_number_params(
+                        provider, workflow_run, self._engine._call_context_vars
+                    )
+                    try:
+                        transfer_result = await provider.transfer_call(
+                            destination=destination,
+                            transfer_id=transfer_id,
+                            conference_name=conference_name,
+                            timeout=timeout_seconds,
+                            **transfer_kwargs,
+                            **(caller_id or {}),
+                        )
+                    except Exception as e:
+                        if not caller_id:
+                            raise
+                        # The provider refused the caller's number as caller
+                        # ID: ring the staff phone from the business's number.
+                        logger.warning(
+                            "Transfer with the caller's number refused, retrying "
+                            f"with the business number: {e}"
+                        )
+                        await call_transfer_manager.store_transfer_context(
+                            transfer_context
+                        )
+                        transfer_result = await provider.transfer_call(
+                            destination=destination,
+                            transfer_id=transfer_id,
+                            conference_name=conference_name,
+                            timeout=timeout_seconds,
+                            **transfer_kwargs,
+                        )
                 except Exception as e:
                     logger.error(f"Transfer provider failed: {e}")
                     self._engine.set_mute_pipeline(False)

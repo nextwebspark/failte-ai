@@ -1,6 +1,6 @@
 """Home (the dashboard) and Follow-ups."""
 
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from decimal import Decimal
 from typing import Annotated
 
@@ -22,7 +22,11 @@ from api.services.dashboard.service import (
     follow_up_list,
     open_follow_up_count,
 )
-from api.services.dashboard.summary import DashboardRange, NotAnsweringReason
+from api.services.dashboard.summary import (
+    DashboardRange,
+    NotAnsweringReason,
+    OpeningHoursBand,
+)
 
 router = APIRouter(tags=["dashboard"])
 
@@ -47,11 +51,24 @@ class DashboardTiles(BaseModel):
     transfer_not_answered: int
     # The engine heard no speech from the caller.
     hung_up_silent: int
+    # Silent, hung up at once, never connected or dropped.
+    no_conversation: int = 0
     callbacks_requested: int
     in_progress: int
     average_call_seconds: int | None
     # Bookings the calendar confirmed on the call.
     bookings_taken: int
+    # Every line was busy (the calls-at-once limit) and nobody on the team
+    # took the call.
+    lines_busy: int = 0
+
+
+class DashboardTurnedAway(BaseModel):
+    # Callers today who rang while every line was busy.
+    calls: int
+    # Of those: put through to someone on the team, left a voicemail.
+    forwarded: int
+    voicemails: int
 
 
 class DashboardRecentCall(BaseModel):
@@ -105,6 +122,49 @@ class DashboardAgent(BaseModel):
     active: bool
 
 
+class DashboardAgentRef(BaseModel):
+    id: int
+    name: str
+
+
+class DashboardAfterHoursCall(BaseModel):
+    run_id: int
+    workflow_id: int
+    created_at: datetime
+    caller_number: str | None
+    caller_name: str | None
+    result: CallResult
+
+
+class DashboardAfterHours(BaseModel):
+    # Calls that arrived while the business was closed, by each agent's
+    # opening hours set as times; None when no agent has them.
+    calls: int | None
+    # Agents whose calls aren't counted: no opening hours set as times.
+    agents_without_hours: list[DashboardAgentRef]
+    # The newest of those calls (up to five), newest first.
+    recent: list[DashboardAfterHoursCall] = []
+
+
+class DashboardOpenRange(BaseModel):
+    # Minutes after local midnight (in ``timezone``), end exclusive; 0-1440.
+    start: int
+    end: int
+
+
+class DashboardOpeningHours(BaseModel):
+    # What the calls-per-hour chart can shade (see ``OpeningHoursBand``).
+    kind: OpeningHoursBand
+    # The open times to shade; empty when closed (or none apply).
+    ranges: list[DashboardOpenRange]
+    # Days in the range, and how many of them the business was open at all.
+    days: int
+    days_open: int
+    # The hours in words, e.g. "Monday to Friday 9 am to 5:30 pm, closed
+    # Saturday and Sunday"; None unless one set of hours applies.
+    description: str | None
+
+
 class DashboardSummaryResponse(BaseModel):
     range: DashboardRange
     timezone: str
@@ -118,6 +178,11 @@ class DashboardSummaryResponse(BaseModel):
     calls_change: int | None
     # Calls per local hour of the day, 0-23, summed over the range.
     calls_by_hour: list[int]
+    after_hours: DashboardAfterHours
+    # The open hours behind the calls-per-hour chart.
+    opening_hours: DashboardOpeningHours
+    # Today's callers who couldn't get through because every line was busy.
+    turned_away_today: DashboardTurnedAway
     recent_calls: list[DashboardRecentCall]
     # What callers wanted, from the call reviews, most common first.
     callers_wanted: list[DashboardReason]
@@ -151,6 +216,14 @@ class FollowUpItem(BaseModel):
     summary: str | None
     # The questions the agent couldn't answer (``unanswered_question`` only).
     questions: list[str]
+    # The language the caller spoke, from the call review, when known: an
+    # ISO 639-1 code ("pl") and its English name ("Polish").
+    caller_language: str | None = None
+    caller_language_name: str | None = None
+    # ``lines_busy`` only: what came of the call ("voicemail", "no_message",
+    # "told_busy"), and the voicemail's length when one was left.
+    lines_busy: str | None = None
+    voicemail_seconds: int | None = None
 
 
 class FollowUpWeek(BaseModel):
@@ -161,10 +234,19 @@ class FollowUpWeek(BaseModel):
 
 class FollowUpListResponse(BaseModel):
     status: FollowUpStatus
+    # The calls shown came in at or after ``start`` and before ``end``.
+    start: datetime
+    end: datetime
+    # The zone the days are counted in.
+    timezone: str
     items: list[FollowUpItem]
+    # Per kind, under the tab, dates and search (not the kind picked).
     kind_counts: dict[str, int]
+    # Under the dates, kind and search (not the tab).
     open_count: int
     done_count: int
+    # Every open follow-up, whatever is picked: the menu badge's number.
+    open_total: int
     week: FollowUpWeek
     # Whether any real call ever came in (scoped like the list).
     has_calls: bool
@@ -217,13 +299,44 @@ async def list_follow_ups(
     membership: CallsReader,
     status: Annotated[FollowUpStatus, Query()] = FollowUpStatus.OPEN,
     workflow_id: Annotated[int | None, Query()] = None,
+    range: Annotated[
+        DashboardRange | None,
+        Query(description="Today, 7 days or 30 days (the default: all of them)"),
+    ] = None,
+    start_date: Annotated[
+        date | None,
+        Query(description="First day picked by hand; overrides range"),
+    ] = None,
+    end_date: Annotated[
+        date | None, Query(description="Last day picked by hand (inclusive)")
+    ] = None,
+    kind: Annotated[FollowUpKind | None, Query()] = None,
+    q: Annotated[
+        str | None,
+        Query(
+            max_length=200,
+            description="Search: the caller's name or number, why they rang, "
+            "the summary, or what was said",
+        ),
+    ] = None,
+    timezone: Annotated[
+        str | None,
+        Query(description="IANA zone; defaults to the agent's or workspace's"),
+    ] = None,
 ) -> FollowUpListResponse:
-    """Calls from the last 30 days that need a person."""
+    """Calls from the last 30 days that need a person, narrowed by the
+    page's controls."""
     await _check_workflow(membership.organization_id, workflow_id)
     result = await follow_up_list(
         organization_id=membership.organization_id,
         status=status,
         workflow_id=workflow_id,
+        range_=range,
+        start_date=start_date,
+        end_date=end_date,
+        kind=kind,
+        q=q,
+        timezone=timezone,
     )
     return FollowUpListResponse(**result)
 
@@ -247,7 +360,8 @@ KindQuery = Annotated[
     Query(
         description=(
             "The follow-up's kind. Needed for the call-review kinds "
-            "(unanswered_question, time_was_full), which are done on their own; "
+            "(unanswered_question, time_was_full, other_language, emergency), "
+            "which are done on their own; "
             "the other kinds share one mark per call."
         )
     ),

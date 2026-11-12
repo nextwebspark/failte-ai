@@ -111,13 +111,13 @@ export default function ReportsByEmailPage() {
         <div className="page-body">
             <div className="flex w-full flex-col gap-[18px]">
                 {!editable && (
-                    <p className="rounded-lg border border-line bg-panel-2 px-4 py-3 text-[13px] text-ink-2" role="status">
+                    <p className="rounded-lg border border-line bg-panel-2 px-4 py-3 text-caption text-ink-2" role="status">
                         You can see these settings, preview the email and send yourself a test. Only the
                         workspace owner or an admin can change who gets reports.
                     </p>
                 )}
                 {!data.email_available && (
-                    <p className="rounded-lg bg-amber-dim px-4 py-3 text-[13px] text-amber" role="status">
+                    <p className="rounded-lg bg-amber-dim px-4 py-3 text-caption text-amber" role="status">
                         Email isn&apos;t set up on this server yet, so nothing is sent for now.
                     </p>
                 )}
@@ -189,12 +189,12 @@ function WhichReports({
                                         onCheckedChange={(value) => void onSave({ ...current, [frequency]: value })}
                                     />
                                 </div>
-                                <p id={`${id}-about`} className="text-[12.5px] leading-relaxed text-ink-2">
+                                <p id={`${id}-about`} className="text-caption leading-relaxed text-ink-2">
                                     {covers} <span className="text-ink-3">Arrives: {arrives}</span>
                                 </p>
                                 {frequency === "daily" && (
                                     <div className="flex items-center gap-2">
-                                        <label htmlFor="daily-time" className="text-[12.5px] text-ink-2">
+                                        <label htmlFor="daily-time" className="text-caption text-ink-2">
                                             Send at
                                         </label>
                                         <Input
@@ -212,14 +212,14 @@ function WhichReports({
                                         />
                                     </div>
                                 )}
-                                {last && <p className="text-[11.5px] text-ink-3">Last sent: {last}</p>}
+                                {last && <p className="text-meta text-ink-3">Last sent: {last}</p>}
                             </li>
                         );
                     })}
                 </ul>
                 {agents.length > 1 && (
                     <div className="flex flex-col gap-1.5 @lg:flex-row @lg:items-center @lg:gap-3">
-                        <span id="report-agent-label" className="text-[13px] font-semibold text-foreground">
+                        <span id="report-agent-label" className="text-caption font-semibold text-foreground">
                             Calls to
                         </span>
                         <Select
@@ -329,12 +329,12 @@ function Recipients({
         >
             <SettingBlock>
                 {recipients.length === 0 ? (
-                    <p className="text-[13px] text-ink-2">Nobody yet. Add an address to start getting reports.</p>
+                    <p className="text-caption text-ink-2">Nobody yet. Add an address to start getting reports.</p>
                 ) : (
                     <ul className="flex flex-col divide-y divide-line-soft rounded-lg border border-line" aria-label="Recipients">
                         {recipients.map((recipient) => (
                             <li key={recipient.id} className="flex flex-wrap items-center gap-x-3 gap-y-2 px-3 py-2.5">
-                                <span className="min-w-0 flex-1 break-all text-[13.5px] text-foreground">{recipient.email}</span>
+                                <span className="min-w-0 flex-1 break-all text-sm text-foreground">{recipient.email}</span>
                                 {recipient.status === "active" ? (
                                     <StatusPill tone="ok">Getting reports</StatusPill>
                                 ) : (
@@ -386,7 +386,7 @@ function Recipients({
                             </Button>
                         )}
                         <form className="flex flex-col gap-1.5" onSubmit={addOther} noValidate>
-                            <label htmlFor="report-address" className="text-[13px] font-semibold text-foreground">
+                            <label htmlFor="report-address" className="text-caption font-semibold text-foreground">
                                 Add another email
                             </label>
                             <div className="flex flex-wrap gap-2">
@@ -489,7 +489,7 @@ function PreviewAndTest({ data, ownEmail }: { data: EmailReportSettingsResponse;
                 </div>
                 {loading && <Skeleton className="h-[420px] w-full" />}
                 {failed && (
-                    <p className="text-[13px] text-danger" role="alert">
+                    <p className="text-caption text-danger" role="alert">
                         Couldn&apos;t make the preview. Try again.
                     </p>
                 )}

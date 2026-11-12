@@ -7,6 +7,7 @@ import { useEffect } from "react";
 import { OrganizationPreferencesSection } from "@/components/OrganizationPreferencesSection";
 import { DangerZoneCard } from "@/components/privacy/DangerZoneCard";
 import { YourAccountCard } from "@/components/privacy/YourAccountCard";
+import { CallLimitCard } from "@/components/settings/CallLimitCard";
 import { SettingsSection } from "@/components/settings/SettingsLayout";
 import { firstSettingsUrl } from "@/components/settings/settingsNav";
 import { PageSkeleton } from "@/components/ui/page-skeleton";
@@ -59,6 +60,7 @@ export default function SettingsPage() {
         >
           <OrganizationPreferencesSection show="general" />
         </SettingsSection>
+        <CallLimitCard />
       </div>
     </div>
   );

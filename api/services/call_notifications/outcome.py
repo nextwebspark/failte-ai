@@ -284,10 +284,20 @@ def _stored_function_result(value: Any) -> Mapping[str, Any] | None:
     return literal if isinstance(literal, Mapping) else None
 
 
+# The transfer tool's reason when it rang nobody because the business was
+# closed (``opening_hours.CLOSED_REASON``). Not a transfer nobody answered:
+# the owner chose not to be rung then, and the agent took a message instead.
+# A message or callback number left counts as usual (message taken, a
+# callback follow-up); a caller who left none was still told when the team
+# is around, so it is an ordinary handled call, not a missed one.
+_CLOSED_REASON = "closed"
+
+
 def transfer_failed(logs: Mapping[str, Any] | None) -> bool:
     """A transfer to a person was tried and did not connect (no answer,
     busy, no number set up). Transfer tools are not in ``tool_results``;
-    their results are in the call log."""
+    their results are in the call log. A transfer skipped because the
+    business was closed is not one."""
     for event in (logs or {}).get("realtime_feedback_events") or []:
         if not isinstance(event, Mapping) or event.get("type") != _FUNCTION_CALL_END:
             continue
@@ -295,7 +305,11 @@ def transfer_failed(logs: Mapping[str, Any] | None) -> bool:
         if not isinstance(payload, Mapping):
             continue
         result = _stored_function_result(payload.get("result"))
-        if result is not None and result.get("status") == "transfer_failed":
+        if (
+            result is not None
+            and result.get("status") == "transfer_failed"
+            and result.get("reason") != _CLOSED_REASON
+        ):
             return True
     return False
 

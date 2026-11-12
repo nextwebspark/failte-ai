@@ -200,7 +200,7 @@ const PAGE_META: Record<string, PageMeta> = {
   "/usage": { title: "Calls", subtitle: "Every call your agents answered or made" },
   "/follow-ups": { title: "Follow-ups", subtitle: "Calls that need a person" },
   "/bookings": { title: "Bookings", subtitle: "Tables and appointments your agent booked" },
-  "/reports": { title: "Reports", subtitle: "Daily call outcomes" },
+  "/reports": { title: "Reports", subtitle: "Your business in numbers" },
   // Settings screens print their own title and description (SettingsShell),
   // so the header only names the area.
   "/settings": { title: "Settings" },
@@ -250,7 +250,15 @@ const ROUTE_PERMISSIONS: Record<string, Permission> = {
   "/follow-ups": "calls:read",
 };
 
+/**
+ * An agent's editing screens (Advanced settings, Model and voice): only for
+ * people who may change the agent. Staff still see the agent's dashboard,
+ * facts, phone number and calls.
+ */
+const AGENT_EDIT_SCREEN = /^\/workflow\/\d+\/(settings|model)(\/|$)/;
+
 export function getRequiredPermission(pathname: string): Permission | null {
+  if (AGENT_EDIT_SCREEN.test(pathname)) return "agents:write";
   let match: Permission | null = null;
   let matchedLength = 0;
   for (const [prefix, permission] of Object.entries(ROUTE_PERMISSIONS)) {

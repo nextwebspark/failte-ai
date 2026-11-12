@@ -34,6 +34,7 @@ vi.mock("@/client/sdk.gen", () => ({
     getBusinessFactsApiV1WorkflowWorkflowIdBusinessFactsGet: mocks.get,
     updateBusinessFactsApiV1WorkflowWorkflowIdBusinessFactsPut: mocks.put,
     setAiBookingApiV1IntegrationsBookingsCalendarsConnectionIdPut: mocks.setAiBooking,
+    listSampleOrdersApiV1DemoSampleOrdersGet: () => Promise.resolve({ data: { available: false, orders: [] } }),
 }));
 vi.mock("@/components/layout/pageHeading", () => ({ useOwnsPageHeading: () => {} }));
 vi.mock("./useAgentKnowledge", () => ({ useAgentKnowledge: () => mocks.knowledge }));
@@ -56,7 +57,7 @@ const FACTS = [
 const HIDDEN: AgentKnowledge = {
     greeting: { state: "hidden" },
     voice: { state: "hidden" },
-    calendar: { state: "none" },
+    calendar: { state: "none", available: [] },
     phone: { state: "hidden" },
     setCalendar: vi.fn(),
 };
@@ -127,7 +128,10 @@ describe("What your agent knows", () => {
             ...HIDDEN,
             calendar: {
                 state: "ready",
+                provider: "google-calendar",
                 connected: true,
+                eventName: null,
+                needsEvent: false,
                 aiBooking: true,
                 connectionId: "c1",
                 rules: { service_periods: [{ days: [1, 2], first_start: "17:00", last_start: "21:30" }] },
@@ -150,11 +154,95 @@ describe("What your agent knows", () => {
         );
     });
 
+    it("says the agent books with Calendly, and which event", async () => {
+        mocks.knowledge = {
+            ...HIDDEN,
+            calendar: {
+                state: "ready",
+                provider: "calendly",
+                connected: true,
+                eventName: "Consultation",
+                needsEvent: false,
+                aiBooking: true,
+                connectionId: "c2",
+                rules: {},
+            },
+        };
+        render(<WhatYourAgentKnowsPage />);
+        await screen.findByLabelText("Opening hours");
+        expect(screen.getByText(/Checks free times in your Calendly and books them\./)).toBeTruthy();
+        expect(screen.getByText(/Callers book “Consultation”/)).toBeTruthy();
+        expect(screen.getByText("Connected")).toBeTruthy();
+        expect(screen.getByText("Calendar connected")).toBeTruthy();
+        expect(screen.queryByText(/Google Calendar/)).toBeNull();
+        // Calendly keeps its own hours: no booking times row.
+        expect(screen.queryByRole("list", { name: "Booking times by day" })).toBeNull();
+    });
+
+    it("asks for a Calendly event before the agent can book", async () => {
+        mocks.knowledge = {
+            ...HIDDEN,
+            calendar: {
+                state: "ready",
+                provider: "calendly",
+                connected: true,
+                eventName: null,
+                needsEvent: true,
+                aiBooking: true,
+                connectionId: "c2",
+                rules: {},
+            },
+        };
+        render(<WhatYourAgentKnowsPage />);
+        await screen.findByLabelText("Opening hours");
+        expect(screen.getByText("Choose your Calendly event")).toBeTruthy();
+        expect(screen.queryByText("Calendar connected")).toBeNull();
+    });
+
     it("has no bookings row or switch for an agent that doesn't book", async () => {
         render(<WhatYourAgentKnowsPage />);
         await screen.findByLabelText("Opening hours");
         expect(screen.queryByText("Take bookings")).toBeNull();
         expect(screen.queryByRole("switch")).toBeNull();
+    });
+
+    it("offers a connected calendar the agent doesn't use yet, and attaches it", async () => {
+        const chooseCalendar = vi.fn().mockResolvedValue(undefined);
+        mocks.knowledge = {
+            ...HIDDEN,
+            calendar: { state: "none", available: [{ toolUuid: "cal-1", provider: "calendly", name: "Calendly" }] },
+            chooseCalendar,
+        };
+        render(<WhatYourAgentKnowsPage />);
+        await screen.findByLabelText("Opening hours");
+        expect(screen.getByText("Take bookings")).toBeTruthy();
+        expect(screen.getByText(/Calendly is connected, but this agent doesn't use it yet/)).toBeTruthy();
+        fireEvent.click(screen.getByRole("button", { name: "Book with Calendly" }));
+        await waitFor(() => expect(chooseCalendar).toHaveBeenCalledWith("cal-1"));
+        expect(toast.success).toHaveBeenCalledWith("Your agent books with this calendar from the next call.");
+    });
+
+    it("doesn't offer the calendar to people who can't change the agent", async () => {
+        mocks.can.mockImplementation((p) => p !== "agents:facts");
+        mocks.knowledge = {
+            ...HIDDEN,
+            calendar: { state: "none", available: [{ toolUuid: "cal-1", provider: "calendly", name: "Calendly" }] },
+            chooseCalendar: vi.fn(),
+        };
+        render(<WhatYourAgentKnowsPage />);
+        await screen.findByLabelText("Opening hours");
+        expect(screen.queryByRole("button", { name: "Book with Calendly" })).toBeNull();
+    });
+
+    it("says why attaching the calendar failed", async () => {
+        mocks.knowledge = {
+            ...HIDDEN,
+            calendar: { state: "none", available: [{ toolUuid: "cal-1", provider: "calendly", name: "Calendly" }] },
+            chooseCalendar: vi.fn().mockRejectedValue(new Error("That calendar isn't connected to this workspace.")),
+        };
+        render(<WhatYourAgentKnowsPage />);
+        fireEvent.click(await screen.findByRole("button", { name: "Book with Calendly" }));
+        await waitFor(() => expect(toast.error).toHaveBeenCalledWith("That calendar isn't connected to this workspace."));
     });
 
     it("lists what is ready from real data, and says when no phone number rings the agent", async () => {
@@ -205,7 +293,9 @@ describe("What your agent knows", () => {
         const hours = await screen.findByLabelText("Opening hours");
         expect(hours.hasAttribute("disabled")).toBe(true);
         expect(screen.queryByRole("button", { name: "Save changes" })).toBeNull();
-        expect(screen.getByText("Only the owner or an admin can change these.")).toBeTruthy();
+        expect(screen.getByText("What your agent tells callers. The owner or an admin keeps it up to date.")).toBeTruthy();
+        // Starting a test call needs agents:write.
+        expect(screen.queryByRole("link", { name: /try your agent/i })).toBeNull();
         // The builder link is for people who may edit the agent.
         expect(screen.queryByRole("link", { name: "Open advanced setup" })).toBeNull();
     });
@@ -345,6 +435,113 @@ describe("What your agent knows", () => {
         );
         await waitFor(() =>
             expect(mocks.done).toHaveBeenCalledWith({ path: { run_id: 106 }, query: { kind: "unanswered_question" } }),
+        );
+    });
+
+    describe("opening hours as times", () => {
+        const SCHEDULE = {
+            days: [
+                [],
+                ...Array(6).fill([
+                    { open: "12:00", close: "15:00" },
+                    { open: "17:00", close: "22:00" },
+                ]),
+            ],
+            timezone: "Europe/Dublin",
+            transfer_only_when_open: true,
+            note: null,
+        };
+        const TRANSFER = {
+            key: "transfer_number",
+            label: "Number to put callers through to a person",
+            type: "phone",
+            required: false,
+            max_length: 40,
+            value: "+353871234567",
+        };
+
+        it("keeps free text, offering to set the hours as times without guessing them", async () => {
+            render(<WhatYourAgentKnowsPage />);
+            expect(((await screen.findByLabelText("Opening hours")) as HTMLInputElement).value).toBe("Tue-Sun 12-22");
+            fireEvent.click(screen.getByRole("button", { name: "Set your hours as times" }));
+            // A plain starting week, not a reading of "Tue-Sun 12-22".
+            expect(screen.getByRole("button", { name: "Monday: 9 am–5 pm. Change" })).toBeTruthy();
+            expect(screen.getByRole("button", { name: "Sunday: Closed. Change" })).toBeTruthy();
+            fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+            await waitFor(() => expect(mocks.put).toHaveBeenCalledTimes(1));
+            const body = mocks.put.mock.calls[0][0].body;
+            expect(body.facts).toEqual({});
+            expect(body.opening_hours_schedule.days[0]).toEqual([{ open: "09:00", close: "17:00" }]);
+        });
+
+        it("shows saved times as day chips and edits a day", async () => {
+            mocks.get.mockResolvedValue({ data: { facts: [...FACTS, TRANSFER], opening_hours_schedule: SCHEDULE } });
+            render(<WhatYourAgentKnowsPage />);
+            const monday = await screen.findByRole("button", { name: "Monday: Closed. Change" });
+            expect(screen.getByRole("button", { name: "Tuesday: 12–3 pm and 5–10 pm. Change" })).toBeTruthy();
+            expect(screen.getByText(/Your agent says:/).parentElement?.textContent).toContain(
+                "Tuesday to Sunday 12 to 3 pm and 5 to 10 pm, closed Monday",
+            );
+            fireEvent.click(monday);
+            fireEvent.click(screen.getByRole("switch", { name: "Open on Monday" }));
+            expect(screen.getByRole("button", { name: "Monday: 9 am–5 pm. Change" })).toBeTruthy();
+            fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+            await waitFor(() => expect(mocks.put).toHaveBeenCalledTimes(1));
+            expect(mocks.put.mock.calls[0][0].body.opening_hours_schedule.days[0]).toEqual([{ open: "09:00", close: "17:00" }]);
+        });
+
+        it("passes calls only during opening hours, and can be switched off", async () => {
+            mocks.get.mockResolvedValue({ data: { facts: [...FACTS, TRANSFER], opening_hours_schedule: SCHEDULE } });
+            render(<WhatYourAgentKnowsPage />);
+            const toggle = await screen.findByRole("switch", { name: "Only during opening hours" });
+            expect(toggle.getAttribute("aria-checked")).toBe("true");
+            expect(screen.getByText(/takes a message, which appears in Follow-ups/)).toBeTruthy();
+            fireEvent.click(toggle);
+            fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+            await waitFor(() => expect(mocks.put).toHaveBeenCalledTimes(1));
+            expect(mocks.put.mock.calls[0][0].body.opening_hours_schedule.transfer_only_when_open).toBe(false);
+        });
+
+        it("can go back to writing the hours out", async () => {
+            mocks.get.mockResolvedValue({ data: { facts: FACTS, opening_hours_schedule: SCHEDULE } });
+            render(<WhatYourAgentKnowsPage />);
+            fireEvent.click(await screen.findByRole("button", { name: "Write your hours out instead" }));
+            expect(((await screen.findByLabelText("Opening hours")) as HTMLInputElement).value).toBe("Tue-Sun 12-22");
+            fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+            await waitFor(() =>
+                expect(mocks.put).toHaveBeenCalledWith({
+                    path: { workflow_id: 12 },
+                    body: { facts: {}, opening_hours_schedule: null },
+                }),
+            );
+        });
+    });
+
+    it("switches languages on with English always on, and saves them as names", async () => {
+        const languages = {
+            key: "agent_languages",
+            label: "Languages your agent speaks",
+            type: "languages",
+            required: false,
+            max_length: 300,
+            value: "",
+        };
+        mocks.get.mockResolvedValue({ data: { facts: [...FACTS, languages] } });
+        render(<WhatYourAgentKnowsPage />);
+        const english = await screen.findByRole("button", { name: "English (always on)" });
+        expect(english.getAttribute("aria-pressed")).toBe("true");
+        expect(english.hasAttribute("disabled")).toBe(true);
+        expect(screen.getByText(/read in your agent's own voice/)).toBeTruthy();
+        const polish = screen.getByRole("button", { name: "Polish" });
+        expect(polish.getAttribute("aria-pressed")).toBe("false");
+        fireEvent.click(polish);
+        expect(polish.getAttribute("aria-pressed")).toBe("true");
+        fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+        await waitFor(() =>
+            expect(mocks.put).toHaveBeenCalledWith({
+                path: { workflow_id: 12 },
+                body: { facts: { agent_languages: "English, Polish" } },
+            }),
         );
     });
 });

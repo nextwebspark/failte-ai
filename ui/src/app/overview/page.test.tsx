@@ -19,6 +19,15 @@ vi.mock("@/client/sdk.gen", () => ({
 vi.mock("@/context/OrgConfigContext", () => ({
     useOrgConfig: () => ({ can: (...required: string[]) => required.every((p) => mocks.perms.includes(p)) }),
 }));
+// The agent screen's Test agent panel; stubbed so a test can see it open and close.
+vi.mock("@/app/workflow/[workflowId]/components/WorkflowTesterPanel", () => ({
+    WorkflowTesterPanel: ({ workflowId, onClose }: { workflowId: number; onClose?: () => void }) => (
+        <div data-testid="tester">
+            Test agent {workflowId}
+            <button onClick={onClose}>Close tester panel</button>
+        </div>
+    ),
+}));
 vi.mock("@/lib/auth", () => ({
     useAuth: () => ({ user: { displayName: "Mary Byrne" }, provider: "stack" }),
 }));
@@ -49,6 +58,9 @@ function summary(overrides: Partial<DashboardSummaryResponse> = {}): DashboardSu
         previous_calls: 2,
         calls_change: null,
         calls_by_hour: hours,
+        after_hours: { calls: 2, agents_without_hours: [] },
+        opening_hours: { kind: "none", ranges: [], days: 1, days_open: 0, description: null },
+        turned_away_today: { calls: 0, forwarded: 0, voicemails: 0 },
         recent_calls: [
             {
                 run_id: 501,
@@ -83,10 +95,14 @@ function summary(overrides: Partial<DashboardSummaryResponse> = {}): DashboardSu
 
 const NO_FOLLOW_UPS: FollowUpListResponse = {
     status: "open",
+    start: "2026-10-06T10:00:00Z",
+    end: "2026-11-05T12:00:00Z",
+    timezone: "Europe/Dublin",
     items: [],
     kind_counts: { callback: 0, transfer_not_answered: 0, repeat_caller: 0 },
     open_count: 0,
     done_count: 0,
+    open_total: 0,
     week: { raised: 0, sorted: 0, median_wait_minutes: null },
     has_calls: true,
 };
@@ -109,14 +125,91 @@ describe("Home", () => {
         expect(headings[0].textContent).toMatch(/^Good (morning|afternoon|evening), Mary$/);
     });
 
-    it("shows the four tiles from the API's counts", async () => {
+    it("shows the four tiles from the API's counts, adding up to the total", async () => {
         render(<OverviewPage />);
         expect(await screen.findByText("Handled by your agent")).toBeTruthy();
         expect(screen.getByText("Passed to your team")).toBeTruthy();
-        expect(screen.getByText("Hung up without speaking")).toBeTruthy();
+        expect(screen.getByText("Need a call back")).toBeTruthy();
+        // No separate hang-up tile: those calls are a line under the total, so the tiles add up.
+        expect(screen.queryByText("Hung up without speaking")).toBeNull();
+        expect(screen.getByText("1 hung up or didn't connect")).toBeTruthy();
         expect(screen.getByText("50%")).toBeTruthy();
         expect(screen.getAllByText("1 not answered").length).toBeGreaterThan(0);
         expect(screen.getAllByText(/Answering calls/).length).toBeGreaterThan(0);
+    });
+
+    it("says how many calls came in outside opening hours, and who isn't counted", async () => {
+        mocks.summary.mockResolvedValue({
+            data: summary({ after_hours: { calls: 2, agents_without_hours: [{ id: 15, name: "Front desk" }] } }),
+        });
+        render(<OverviewPage />);
+        expect(await screen.findByText("2 calls came in outside opening hours")).toBeTruthy();
+        expect(screen.getByText(/Not counted: Front desk/)).toBeTruthy();
+    });
+
+    it("shades today's opening hours on the chart and names them", async () => {
+        mocks.summary.mockResolvedValue({
+            data: summary({
+                opening_hours: {
+                    kind: "same",
+                    ranges: [{ start: 540, end: 1050 }],
+                    days: 1,
+                    days_open: 1,
+                    description: "Monday to Friday 9 am to 5:30 pm, closed Saturday and Sunday",
+                },
+            }),
+        });
+        render(<OverviewPage />);
+        expect(await screen.findByText("Open 9 am–5:30 pm")).toBeTruthy();
+    });
+
+    it("says when agents' hours differ instead of shading one of them", async () => {
+        mocks.summary.mockResolvedValue({
+            data: summary({ opening_hours: { kind: "differ", ranges: [], days: 1, days_open: 0, description: null } }),
+        });
+        render(<OverviewPage />);
+        expect(await screen.findByText("Opening hours differ by agent")).toBeTruthy();
+    });
+
+    it("lists who rang after hours, when, what happened, and links to Calls", async () => {
+        mocks.summary.mockResolvedValue({
+            data: summary({
+                after_hours: {
+                    calls: 2,
+                    agents_without_hours: [],
+                    recent: [
+                        {
+                            run_id: 610,
+                            workflow_id: 14,
+                            created_at: "2026-11-05T07:30:00Z",
+                            caller_number: "+353871234567",
+                            caller_name: "Aoife Kelly",
+                            result: "callback_requested",
+                        },
+                        {
+                            run_id: 609,
+                            workflow_id: 14,
+                            created_at: "2026-11-04T22:10:00Z",
+                            caller_number: "+353861112222",
+                            caller_name: null,
+                            result: "handled",
+                        },
+                    ],
+                },
+            }),
+        });
+        render(<OverviewPage />);
+        expect(await screen.findByText("2 calls came in outside opening hours")).toBeTruthy();
+        const list = screen.getByRole("list", { name: /outside opening hours/ });
+        const rows = within(list).getAllByRole("link");
+        expect(rows).toHaveLength(2);
+        expect(rows[0].textContent).toContain("Aoife Kelly");
+        expect(rows[0].textContent).toContain("Callback requested");
+        expect(rows[0].getAttribute("href")).toBe("/usage?when=today&hours=after&call=610");
+        expect(rows[1].textContent).toContain("+353 86 111 2222");
+        expect(screen.getByRole("link", { name: /See all calls outside opening hours/ }).getAttribute("href")).toBe(
+            "/usage?when=today&hours=after",
+        );
     });
 
     it("asks the API again for 7 days", async () => {
@@ -134,11 +227,52 @@ describe("Home", () => {
         const listen = screen.getAllByRole("link", { name: /listen to the call from declan murphy/i });
         expect(listen[0].getAttribute("href")).toBe("/workflow/14/run/501?from=%2Foverview");
         const quick = within(screen.getByRole("navigation", { name: "Quick links" }));
-        expect(quick.getByRole("link", { name: /opening hours/i }).getAttribute("href")).toBe("/workflow/14/facts");
-        expect(quick.getByRole("link", { name: /try your agent/i }).getAttribute("href")).toBe(
-            "/workflow/14/home?onboarding=web_call",
-        );
+        const hours = quick.getByRole("link", { name: /opening hours/i });
+        expect(hours.getAttribute("href")).toBe("/workflow/14/facts");
+        // Staff can't change the facts or start a test call (that needs
+        // agents:write), so they get no "Try your agent" anywhere on Home.
+        expect(hours.textContent).toContain("See what your agent tells callers");
+        expect(screen.queryByRole("link", { name: /try your agent/i })).toBeNull();
+        expect(screen.queryByRole("button", { name: /try your agent/i })).toBeNull();
         expect(screen.getByText("All caught up")).toBeTruthy();
+    });
+
+    it("opens the agent's Test agent panel on Home from the header, without leaving Home", async () => {
+        mocks.perms = [...mocks.perms, "agents:write"];
+        render(<OverviewPage />);
+        await screen.findByText("Recent calls");
+        expect(screen.queryByTestId("tester")).toBeNull();
+        const header = screen.getByRole("heading", { level: 1 }).closest("header") as HTMLElement;
+        fireEvent.click(within(header).getByRole("button", { name: /try your agent/i }));
+        expect((await screen.findByTestId("tester")).textContent).toContain("Test agent 14");
+        // Closing it unmounts the panel, which ends any test call.
+        fireEvent.click(screen.getByRole("button", { name: "Close tester panel" }));
+        await waitFor(() => expect(screen.queryByTestId("tester")).toBeNull());
+    });
+
+    it("opens the same panel from the agent card and the quick link instead of linking away", async () => {
+        mocks.perms = [...mocks.perms, "agents:write"];
+        render(<OverviewPage />);
+        await screen.findByText("Recent calls");
+        const quick = within(screen.getByRole("navigation", { name: "Quick links" }));
+        expect(quick.queryByRole("link", { name: /try your agent/i })).toBeNull();
+        fireEvent.click(quick.getByRole("button", { name: /try your agent/i }));
+        expect(await screen.findByTestId("tester")).toBeTruthy();
+        fireEvent.click(screen.getByRole("button", { name: "Close tester panel" }));
+        await waitFor(() => expect(screen.queryByTestId("tester")).toBeNull());
+
+        const tries = screen.getAllByRole("button", { name: /try your agent/i });
+        // Header, agent card, quick link: all buttons, no links to the agent screen.
+        expect(tries.length).toBe(3);
+        expect(screen.queryAllByRole("link", { name: /try your agent/i })).toEqual([]);
+        fireEvent.click(tries[1]);
+        expect(await screen.findByTestId("tester")).toBeTruthy();
+    });
+
+    it("hides the header button for members who can't start a test call", async () => {
+        render(<OverviewPage />);
+        await screen.findByText("Recent calls");
+        expect(within(screen.getByRole("heading", { level: 1 }).closest("header") as HTMLElement).queryByRole("button", { name: /try your agent/i })).toBeNull();
     });
 
     it("warns when the agent isn't answering, with the fix the member may use", async () => {
@@ -163,34 +297,18 @@ describe("Home", () => {
             agent_status: { answering: true, reason: null, phone_numbers: ["+35315550142"], last_call_at: null },
         });
 
-    it("gives a brand-new business a checklist, then the sample day, clearly labelled", async () => {
+    it("gives a brand-new business the checklist and its agent, with no made-up calls or empty charts", async () => {
         mocks.summary.mockResolvedValue({ data: BRAND_NEW() });
         render(<OverviewPage />);
         expect(await screen.findByText("Ring your number now")).toBeTruthy();
         expect(screen.getByText("Take your first call")).toBeTruthy();
-        const banner = screen.getByRole("region", { name: "Sample data" });
-        expect(banner.textContent).toMatch(/These calls are made up/);
-        // The sample day: 46 calls, the restaurant's reasons, made-up callers.
-        expect(screen.getByText("Handled by your agent")).toBeTruthy();
-        expect(screen.getAllByText("Reservations").length).toBeGreaterThan(0);
-        expect(screen.getAllByText("Declan Murphy").length).toBeGreaterThan(0);
-        // Nothing on a sample call does anything.
-        expect(screen.queryAllByRole("link", { name: /listen to the call/i })).toHaveLength(0);
-        expect(screen.getAllByText("Sample call").length).toBeGreaterThan(0);
-        for (const button of screen.getAllByRole("button", { name: /call back|mark done|add answer/i })) {
-            expect((button as HTMLButtonElement).disabled).toBe(true);
-        }
-        // No range to switch on a made-up day.
-        expect(screen.queryByRole("button", { name: "7 days" })).toBeNull();
-    });
-
-    it("hidden sample data leaves just the checklist", async () => {
-        mocks.summary.mockResolvedValue({ data: BRAND_NEW() });
-        render(<OverviewPage />);
-        fireEvent.click(await screen.findByRole("button", { name: /hide sample data/i }));
-        await waitFor(() => expect(screen.queryByText("Handled by your agent")).toBeNull());
-        expect(screen.getByText("Take your first call")).toBeTruthy();
-        expect(screen.getByRole("button", { name: "Show sample data" })).toBeTruthy();
+        expect(screen.getByText("Your agent")).toBeTruthy();
+        expect(screen.getByText("No calls yet")).toBeTruthy();
+        // No tiles, charts or sample calls until a real call comes in.
+        expect(screen.queryByText("Handled by your agent")).toBeNull();
+        expect(screen.queryByText("When people called")).toBeNull();
+        expect(screen.queryByText("Declan Murphy")).toBeNull();
+        expect(screen.queryByText(/sample/i)).toBeNull();
     });
 
     it("shows what callers wanted, with counts and percents, and the bookings taken", async () => {
@@ -246,5 +364,15 @@ describe("Home", () => {
         expect(await screen.findByText("We couldn't load your calls")).toBeTruthy();
         fireEvent.click(screen.getByRole("button", { name: /try again/i }));
         expect(await screen.findByText("Handled by your agent")).toBeTruthy();
+    });
+    it("looks for new calls on Refresh without blanking the page", async () => {
+        render(<OverviewPage />);
+        await screen.findByText("Recent calls");
+        expect(mocks.summary).toHaveBeenCalledTimes(1);
+        expect(screen.getByText(/^Updated /)).toBeTruthy();
+        fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
+        await waitFor(() => expect(mocks.summary).toHaveBeenCalledTimes(2));
+        // The numbers stay on screen while it looks.
+        expect(screen.getByText("Recent calls")).toBeTruthy();
     });
 });

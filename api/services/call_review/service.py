@@ -14,7 +14,13 @@ from loguru import logger
 
 from api.db import db_client
 from api.db.retention_client import is_purged_run
-from api.enums import WORKFLOW_RUN_MODES_BY_CHANNEL, CallType, WorkflowRunChannel
+from api.enums import (
+    WORKFLOW_RUN_MODES_BY_CHANNEL,
+    CallType,
+    OrganizationConfigurationKey,
+    WorkflowRunChannel,
+    WorkflowRunMode,
+)
 from api.services.call_notifications.outcome import MissedReason, missed_reason
 from api.services.call_review.categories import reason_set, template_for_workflow
 from api.services.call_review.llm import ask_reviewer
@@ -30,9 +36,14 @@ from api.services.call_review.review import (
     transcript_lines,
     user_prompt,
 )
+from api.services.calls.lines_busy import is_lines_busy
+from api.services.workflow.agent_languages import AGENT_LANGUAGES_KEY
 
 _PHONE_MODES = frozenset(
     WORKFLOW_RUN_MODES_BY_CHANNEL[WorkflowRunChannel.TELEPHONY.value]
+)
+_BROWSER_CALL_MODES = frozenset(
+    {WorkflowRunMode.WEBRTC.value, WorkflowRunMode.SMALLWEBRTC.value}
 )
 
 
@@ -47,6 +58,8 @@ class ReviewOutcome(StrEnum):
     NEVER_CONNECTED = "never_connected"
     CONTENT_DELETED = "content_deleted"
     NO_TRANSCRIPT = "no_transcript"
+    # Every line was busy: the agent never took the call.
+    LINES_BUSY = "lines_busy"
     FAILED = "failed"
 
 
@@ -68,7 +81,18 @@ async def _review_call(workflow_run_id: int, *, redo: bool) -> ReviewOutcome:
     )
     if run is None or organization_id is None or run.workflow is None:
         return ReviewOutcome.NOT_FOUND
-    if run.mode not in _PHONE_MODES or run.call_type != CallType.INBOUND.value:
+    if run.call_type != CallType.INBOUND.value or (
+        run.mode not in _PHONE_MODES
+        # A demo workspace's browser test calls are reviewed like phone
+        # calls, so a call made during a demo gets its summary too.
+        and not (
+            run.mode in _BROWSER_CALL_MODES
+            and await db_client.get_configuration(
+                organization_id, OrganizationConfigurationKey.DEMO_ACCOUNT.value
+            )
+            is not None
+        )
+    ):
         return ReviewOutcome.NOT_A_PHONE_CALL
     if not run.is_completed:
         return ReviewOutcome.NOT_FINISHED
@@ -78,6 +102,8 @@ async def _review_call(workflow_run_id: int, *, redo: bool) -> ReviewOutcome:
         return ReviewOutcome.ALREADY_REVIEWED
 
     gathered = run.gathered_context or {}
+    if is_lines_busy(gathered):
+        return ReviewOutcome.LINES_BUSY
     if (
         missed_reason(gathered, run.logs, run.usage_info)
         == MissedReason.NEVER_CONNECTED
@@ -109,7 +135,13 @@ async def _review_call(workflow_run_id: int, *, redo: bool) -> ReviewOutcome:
         schema=response_schema(reasons),
     )
     try:
-        review = parse_review(answer.text, reasons, model=answer.model, now=now)
+        review = parse_review(
+            answer.text,
+            reasons,
+            model=answer.model,
+            now=now,
+            agent_languages=_agent_languages(run.workflow.template_context_variables),
+        )
     except ReviewParseError as exc:
         logger.warning(
             f"Call review for run {workflow_run_id} unusable ({exc}); not stored"
@@ -121,6 +153,11 @@ async def _review_call(workflow_run_id: int, *, redo: bool) -> ReviewOutcome:
         f"{answer.prompt_tokens} prompt + {answer.output_tokens} output tokens"
     )
     return ReviewOutcome.REVIEWED
+
+
+def _agent_languages(facts) -> str | None:
+    value = (facts or {}).get(AGENT_LANGUAGES_KEY) if isinstance(facts, dict) else None
+    return value if isinstance(value, str) else None
 
 
 async def _store(workflow_run_id: int, review: dict) -> None:

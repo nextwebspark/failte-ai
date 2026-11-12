@@ -41,6 +41,7 @@ from api.services.telephony.factory import (
     get_telephony_provider_by_id,
     get_telephony_provider_for_run,
 )
+from api.services.telephony.lines_busy import lines_busy_response
 from api.services.telephony.outbound_readiness import (
     OutboundConfigurationNotFoundError,
     OutboundSetupIncompleteError,
@@ -964,9 +965,18 @@ async def handle_inbound_run(request: Request):
                 source=f"inbound:{provider_class.PROVIDER_NAME}",
                 timeout=0,
             )
-        except CallConcurrencyLimitError:
-            return provider_class.generate_validation_error_response(
-                TelephonyError.CONCURRENT_CALL_LIMIT
+        except CallConcurrencyLimitError as limit:
+            # Every line is busy: forward, take a voicemail or say so, and
+            # keep the call for the owner (no agent slot needed).
+            return await lines_busy_response(
+                provider_class=provider_class,
+                provider_instance=provider_instance,
+                workflow=workflow,
+                organization_id=config.organization_id,
+                normalized_data=normalized_data,
+                telephony_configuration_id=telephony_configuration_id,
+                phone_number_id=phone_row.id,
+                limit=limit.max_concurrent,
             )
 
         workflow_run_id = None
@@ -1137,9 +1147,18 @@ async def handle_inbound_telephony(
                 source=f"inbound_legacy:{workflow_context['provider']}",
                 timeout=0,
             )
-        except CallConcurrencyLimitError:
-            return provider_class.generate_validation_error_response(
-                TelephonyError.CONCURRENT_CALL_LIMIT
+        except CallConcurrencyLimitError as limit:
+            return await lines_busy_response(
+                provider_class=provider_class,
+                provider_instance=provider_instance,
+                workflow=workflow_context["workflow"],
+                organization_id=organization_id,
+                normalized_data=normalized_data,
+                telephony_configuration_id=workflow_context[
+                    "telephony_configuration_id"
+                ],
+                phone_number_id=workflow_context.get("from_phone_number_id"),
+                limit=limit.max_concurrent,
             )
 
         workflow_run_id = None

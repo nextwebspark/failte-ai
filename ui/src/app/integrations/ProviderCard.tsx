@@ -45,7 +45,7 @@ export function ProviderCard({ provider, connectedCount, canConnect, onConnect }
             <CardContent className="space-y-3">
                 {tools.length > 0 && (
                     <div>
-                        <h3 id={functionsId} className="mb-1.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-3">
+                        <h3 id={functionsId} className="mb-1.5 text-meta font-semibold uppercase tracking-[0.08em] text-ink-3">
                             What your agents can do
                         </h3>
                         <ul id={listId} aria-labelledby={functionsId} className="space-y-0.5 text-sm text-ink-2">
@@ -73,7 +73,7 @@ export function ProviderCard({ provider, connectedCount, canConnect, onConnect }
                 )}
                 {modes.length > 0 && (
                     <p className="text-xs text-muted-foreground">
-                        Connect with: {modes.map(authModeLabel).join(" or ")}
+                        Connect with: {modes.map((m) => authModeLabel(m, provider.id)).join(" or ")}
                     </p>
                 )}
             </CardContent>

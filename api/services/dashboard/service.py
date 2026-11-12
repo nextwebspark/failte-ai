@@ -2,36 +2,44 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime, time, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from api.constants import BILLING_PROVIDER
 from api.db import db_client
+from api.enums import OrganizationConfigurationKey
 from api.services.billing import pricing
 from api.services.call_review.categories import reason_set, template_for_workflow
 from api.services.dashboard.calls import CallView, call_view
 from api.services.dashboard.follow_ups import (
     LOOKBACK,
     FollowUp,
+    FollowUpFilter,
+    FollowUpKind,
     FollowUpStatus,
     follow_up_row,
     follow_ups,
     kind_counts,
+    matches,
     ordered,
     week_summary,
 )
 from api.services.dashboard.summary import (
     DashboardRange,
+    after_hours,
     agent_status,
     call_change,
     callers_wanted,
     calls_by_hour,
     credit_summary,
+    opening_hours_band,
     range_bounds,
     recent_calls,
     tiles,
+    turned_away_today,
 )
+from api.services.workflow.opening_hours import parse_opening_hours
 
 DEFAULT_TIMEZONE = "Europe/Dublin"
 
@@ -181,10 +189,15 @@ async def dashboard_summary(
         "previous_calls": previous_calls,
         "calls_change": call_change(len(calls), previous_calls),
         "calls_by_hour": calls_by_hour(calls, tz),
+        "after_hours": after_hours(calls, scoped_agents),
+        "opening_hours": opening_hours_band(
+            calls, scoped_agents, tz, bounds.start, bounds.end
+        ),
+        "turned_away_today": turned_away_today(calls, tz, now),
         "recent_calls": recent_calls(calls),
         "callers_wanted": callers_wanted(calls),
         "wording": await _wording(organization_id, workflow_id, agents),
-        # Whether any real call ever came in (else screens may show samples).
+        # Whether any call ever came in (else screens show their first-call steps).
         "has_calls": last_call_at is not None,
         "agent_status": status,
         "credit": credit if show_credit else None,
@@ -195,6 +208,24 @@ async def dashboard_summary(
     }
 
 
+async def after_hours_filter_value(organization_id: int) -> dict[str, Any]:
+    """What the Calls list's ``afterHours`` filter reads: each agent's
+    opening hours set as times, and whether browser test calls count as
+    phone calls (a demo workspace, as on Home)."""
+    agents = await db_client.get_dashboard_agents(organization_id)
+    demo = await db_client.get_configuration(
+        organization_id, OrganizationConfigurationKey.DEMO_ACCOUNT.value
+    )
+    return {
+        "agents": [
+            {"id": a["id"], "hours": hours.model_dump(mode="json")}
+            for a in agents
+            if (hours := parse_opening_hours(a.get("opening_hours_schedule")))
+        ],
+        "browser_calls": demo is not None,
+    }
+
+
 async def _follow_up_items(
     organization_id: int, workflow_id: int | None, now: datetime
 ) -> list[FollowUp]:
@@ -202,22 +233,80 @@ async def _follow_up_items(
     return follow_ups(calls)
 
 
+def follow_up_window(
+    *,
+    range_: DashboardRange | None,
+    start_date: date | None,
+    end_date: date | None,
+    tz: ZoneInfo,
+    now: datetime,
+) -> tuple[datetime, datetime | None]:
+    """The calls Follow-ups shows, as ``[start, end)``; end None means up to
+    now (every call so far, the one just in included). Never further back
+    than ``LOOKBACK``: older calls don't raise follow-ups. Days picked by hand
+    run from local midnight of the first to local midnight after the last;
+    "Today" and "7 days" match Home; "30 days" (and nothing picked) is the
+    whole window, the one the menu badge counts."""
+    earliest = now - LOOKBACK
+    if start_date is not None:
+        last = (
+            end_date if end_date is not None and end_date >= start_date else start_date
+        )
+        start = datetime.combine(start_date, time.min, tzinfo=tz)
+        end = datetime.combine(last + timedelta(days=1), time.min, tzinfo=tz)
+        return max(start, earliest), None if end > now else max(end, earliest)
+    if range_ in (DashboardRange.TODAY, DashboardRange.LAST_7_DAYS):
+        bounds = range_bounds(range_, tz, now)
+        return max(bounds.start, earliest), None
+    return earliest, None
+
+
 async def follow_up_list(
     *,
     organization_id: int,
     status: FollowUpStatus,
     workflow_id: int | None,
+    range_: DashboardRange | None = None,
+    start_date: date | None = None,
+    end_date: date | None = None,
+    kind: FollowUpKind | None = None,
+    q: str | None = None,
+    timezone: str | None = None,
     now: datetime | None = None,
 ) -> dict[str, Any]:
+    """The Follow-ups list under its controls. The counts follow the same
+    controls: each tab's count (open, done) keeps the dates, kind and search;
+    each kind chip's count keeps the tab, dates and search. ``open_total``
+    is every open follow-up, as the menu badge counts them."""
     now = now or datetime.now(UTC)
+    agents = await db_client.get_dashboard_agents(organization_id)
+    tz = await resolve_timezone(organization_id, timezone, workflow_id, agents)
+    start, end = follow_up_window(
+        range_=range_, start_date=start_date, end_date=end_date, tz=tz, now=now
+    )
     items = await _follow_up_items(organization_id, workflow_id, now)
-    shown = ordered(items, status)
+    text = (q or "").strip() or None
+    found = (
+        frozenset(
+            await db_client.search_calls(sorted({i.call.run_id for i in items}), text)
+        )
+        if text
+        else None
+    )
+    f = FollowUpFilter(start=start, end=end, kind=kind, text=text, found=found)
+    narrowed = [i for i in items if matches(i, f)]
+    shown = ordered(narrowed, status)
+    any_kind = ordered([i for i in items if matches(i, f, kind=False)], status)
     return {
         "status": status,
+        "start": start,
+        "end": end or now,
+        "timezone": tz.key,
         "items": [follow_up_row(item) for item in shown],
-        "kind_counts": kind_counts(shown),
-        "open_count": sum(1 for i in items if not i.done),
-        "done_count": sum(1 for i in items if i.done),
+        "kind_counts": kind_counts(any_kind),
+        "open_count": sum(1 for i in narrowed if not i.done),
+        "done_count": sum(1 for i in narrowed if i.done),
+        "open_total": sum(1 for i in items if not i.done),
         "week": week_summary(items, now),
         "has_calls": await db_client.get_last_inbound_call_at(
             organization_id, workflow_id

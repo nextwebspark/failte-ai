@@ -411,7 +411,7 @@ export const VoiceSelectorModal: React.FC<VoiceSelectorModalProps> = ({
                                                         {voiceTraits(voice)}
                                                     </span>
                                                 )}
-                                                <span className="truncate text-[11px] text-muted-foreground/70">
+                                                <span className="truncate text-meta text-muted-foreground/70">
                                                     ID: {voice.voice_id}
                                                 </span>
                                             </span>

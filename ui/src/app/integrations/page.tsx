@@ -31,6 +31,8 @@ import { BRAND } from "@/config/brand";
 import { useOrgConfig } from "@/context/OrgConfigContext";
 import { errorCodeFromError } from "@/lib/apiError";
 
+import { ChoiceDialog } from "./ChoiceDialog";
+import { needsChoice } from "./choices";
 import { ConfigDialog } from "./ConfigDialog";
 import { ConnectDialog, type ConnectTarget } from "./ConnectDialog";
 import { type ConnectionAction, ConnectionCard } from "./ConnectionCard";
@@ -43,7 +45,7 @@ import {
 } from "./messages";
 import { activateConnection } from "./oauthCalls";
 import { handOffOAuthReturn } from "./oauthPopup";
-import { clearPendingOAuth, takePendingOAuth } from "./pendingOAuth";
+import { clearPendingOAuth, pendingOAuthProviders, takePendingOAuth } from "./pendingOAuth";
 import { ProviderCard } from "./ProviderCard";
 import { fieldsFromSchema, hasRequiredConfig } from "./schemaForm";
 import { useIntegrations } from "./useIntegrations";
@@ -90,6 +92,8 @@ function IntegrationsScreen() {
 
     const [connectTarget, setConnectTarget] = useState<ConnectTarget | null>(null);
     const [configTarget, setConfigTarget] = useState<ConfigTarget | null>(null);
+    /** A connection whose setting is picked from the provider's list (e.g. a Calendly event). */
+    const [choiceTarget, setChoiceTarget] = useState<ConfigTarget | null>(null);
     /** A just-connected connection whose required settings to offer for review. */
     const [pendingReview, setPendingReview] = useState<IntegrationConnectionResponse | null>(null);
     /** The errored connection a reconnect replaced, offered for removal. */
@@ -129,8 +133,10 @@ function IntegrationsScreen() {
         window.history.replaceState(window.history.state, "", urlWithoutReturnParams(window.location.href));
 
         if (result.kind === "error") {
+            // The failure names no provider: the one sign-in in flight does.
+            const pending = pendingOAuthProviders();
             clearPendingOAuth();
-            setReturnError(oauthFailureMessage(result.reason));
+            setReturnError(oauthFailureMessage(result.reason, pending.length === 1 ? pending[0] : null));
             return;
         }
 
@@ -166,7 +172,9 @@ function IntegrationsScreen() {
     useEffect(() => {
         if (!pendingReview) return;
         const provider = providerById.get(pendingReview.provider);
-        if (provider && hasRequiredConfig(provider.config_schema) && canWrite) {
+        if (provider && needsChoice(provider, pendingReview) && canWrite) {
+            setChoiceTarget({ connection: pendingReview, justConnected: true });
+        } else if (provider && hasRequiredConfig(provider.config_schema) && canWrite) {
             setConfigTarget({ connection: pendingReview, justConnected: true });
         }
         setPendingReview(null);
@@ -222,6 +230,10 @@ function IntegrationsScreen() {
             setConfigTarget({ connection, justConnected: false });
             return;
         }
+        if (action === "choose") {
+            setChoiceTarget({ connection, justConnected: false });
+            return;
+        }
         if (action === "reconnect") {
             if (!provider) {
                 toast.error("This integration is no longer available to connect.");
@@ -268,6 +280,11 @@ function IntegrationsScreen() {
         upsertConnection(connection);
         toast.success(`${titleOf(connection.provider)} connected`);
         if (replaces) setReplaceCandidate(replaces.id);
+        // E.g. Calendly: pick the event callers book straight away.
+        const provider = providerById.get(connection.provider);
+        if (provider && needsChoice(provider, connection) && canWrite) {
+            setChoiceTarget({ connection, justConnected: true });
+        }
         // A catalogue is empty until synced: start the first import right away.
         if (providerById.get(connection.provider)?.capabilities?.includes("sync") && !connection.sync) {
             void startSync(connection).catch(() => toast.error(NETWORK_ERROR));
@@ -296,7 +313,7 @@ function IntegrationsScreen() {
         <div className="page-body">
             <PageHeader
                 title="Integrations"
-                description="Connect the apps you already use, like Google Calendar, so your agents can check and book times for callers."
+                description="Connect the apps you already use, like Google Calendar or Calendly, so your agents can check and book times for callers."
             />
             <div className="w-full max-w-5xl space-y-8">
                 {finishing && (
@@ -419,9 +436,16 @@ function IntegrationsScreen() {
                 onOpenChange={(open) => !open && setConfigTarget(null)}
                 onSaved={upsertConnection}
             />
+            <ChoiceDialog
+                connection={choiceTarget?.connection ?? null}
+                provider={choiceTarget ? providerById.get(choiceTarget.connection.provider) : undefined}
+                justConnected={choiceTarget?.justConnected ?? false}
+                onOpenChange={(open) => !open && setChoiceTarget(null)}
+                onSaved={upsertConnection}
+            />
 
             <AlertDialog
-                open={oldConnection !== null && canInstall && !configTarget && !connectTarget}
+                open={oldConnection !== null && canInstall && !configTarget && !choiceTarget && !connectTarget}
                 onOpenChange={(open) => !open && setReplaceCandidate(null)}
             >
                 <AlertDialogContent>
