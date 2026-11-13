@@ -4534,6 +4534,16 @@ export type ElevenlabsTtsConfiguration = {
 };
 
 /**
+ * EmailMeRequest
+ */
+export type EmailMeRequest = {
+    /**
+     * To
+     */
+    to?: string | null;
+};
+
+/**
  * EmailMeResponse
  */
 export type EmailMeResponse = {
@@ -23471,7 +23481,10 @@ export type GetReportCallsApiV1OrganizationsReportsCallsGetResponses = {
 export type GetReportCallsApiV1OrganizationsReportsCallsGetResponse = GetReportCallsApiV1OrganizationsReportsCallsGetResponses[keyof GetReportCallsApiV1OrganizationsReportsCallsGetResponses];
 
 export type EmailMeThisReportApiV1OrganizationsReportsEmailMePostData = {
-    body?: never;
+    /**
+     * Body
+     */
+    body?: EmailMeRequest | null;
     headers?: {
         /**
          * Authorization

@@ -580,12 +580,13 @@ async def send_on_demand(
     previous_end: datetime,
     workflow_id: int | None,
     show_credit: bool,
+    sent_by: str | None = None,
     sender: EmailSender | None = None,
     now: datetime | None = None,
 ) -> str | None:
     """ "Email me this report" on the Reports screen: the span and agent on
-    screen, sent once to the member asking and nobody else. None when sent,
-    else why not."""
+    screen, sent once to the member asking (or, with ``sent_by``, to the
+    address an owner typed) and nobody else. None when sent, else why not."""
     from datetime import timedelta
 
     if not await _within(
@@ -620,7 +621,10 @@ async def send_on_demand(
         report,
         to=to,
         links=member_links(
-            "You asked for this report on the Reports screen. It went only to you."
+            f"{sent_by} sent you this report from LightMove.ai. It went only to "
+            "you, and you aren't on any email list."
+            if sent_by
+            else "You asked for this report on the Reports screen. It went only to you."
         ),
     )
     error = await _deliver(sender or get_email_sender(), message)
