@@ -355,6 +355,22 @@ class NotAnsweringReason(StrEnum):
     NO_AGENT = "no_agent"
 
 
+def live_numbers_by_agent(
+    numbers: Sequence[Mapping[str, Any]],
+) -> dict[int, list[str]]:
+    """Agent id -> the numbers that ring it now: switched on, on a telephony
+    connection that is switched on. A number rings one agent only."""
+    found: dict[int, list[str]] = {}
+    for number in numbers:
+        agent_id = number.get("inbound_workflow_id")
+        if agent_id is None or not number.get("is_active"):
+            continue
+        if number.get("config_inactive"):
+            continue
+        found.setdefault(agent_id, []).append(number["address"])
+    return found
+
+
 def agent_status(
     *,
     agents: Sequence[Mapping[str, Any]],

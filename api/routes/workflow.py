@@ -85,6 +85,7 @@ from api.services.configuration.resolve import (
     enrich_overrides_with_api_keys,
     resolve_effective_config,
 )
+from api.services.dashboard.summary import live_numbers_by_agent
 from api.services.mps_service_key_client import mps_service_key_client
 from api.services.posthog_client import capture_event
 from api.services.privacy.call_erasure import (
@@ -415,6 +416,8 @@ class WorkflowListResponse(BaseModel):
     live_calls: int | None = None
     # How callers reach the agent: a phone number and/or the website widget.
     channels: list[Literal["phone", "web"]] | None = None
+    # The numbers that ring the agent now. Only the list endpoint fills it in.
+    phone_numbers: list[str] | None = None
 
 
 class MoveWorkflowToFolderRequest(BaseModel):
@@ -916,13 +919,15 @@ async def get_workflows(
 
     # Run totals, recent activity and drafts for all workflows, fetched together
     workflow_ids = [workflow.id for workflow in workflows]
-    activity, with_draft, channels = await asyncio.gather(
+    activity, with_draft, channels, numbers = await asyncio.gather(
         db_client.get_workflow_run_activity(workflow_ids),
         db_client.get_workflow_ids_with_draft(workflow_ids),
         db_client.get_workflow_channels(
             workflow_ids, organization_id=user.selected_organization_id
         ),
+        db_client.get_answering_numbers(user.selected_organization_id),
     )
+    ringing = live_numbers_by_agent(numbers)
 
     responses = []
     for workflow in workflows:
@@ -942,6 +947,7 @@ async def get_workflows(
                 talk_seconds_24h=runs.talk_seconds_24h,
                 live_calls=runs.live_calls,
                 channels=sorted(channels[workflow.id]),
+                phone_numbers=ringing.get(workflow.id, []),
             )
         )
     return responses

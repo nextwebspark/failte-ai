@@ -2151,9 +2151,17 @@ export const getReportCallsApiV1OrganizationsReportsCallsGet = <ThrowOnError ext
  * Email Me This Report
  *
  * "Email me this report": the days and agent on the Reports screen, as
- * the emailed report, sent now to the member asking and nobody else.
+ * the emailed report, sent now, once, to the member asking (or the address
+ * an owner or admin typed). Nobody is added to the daily or weekly list.
  */
-export const emailMeThisReportApiV1OrganizationsReportsEmailMePost = <ThrowOnError extends boolean = false>(options?: Options<EmailMeThisReportApiV1OrganizationsReportsEmailMePostData, ThrowOnError>): RequestResult<EmailMeThisReportApiV1OrganizationsReportsEmailMePostResponses, EmailMeThisReportApiV1OrganizationsReportsEmailMePostErrors, ThrowOnError> => (options?.client ?? client).post<EmailMeThisReportApiV1OrganizationsReportsEmailMePostResponses, EmailMeThisReportApiV1OrganizationsReportsEmailMePostErrors, ThrowOnError>({ url: '/api/v1/organizations/reports/email-me', ...options });
+export const emailMeThisReportApiV1OrganizationsReportsEmailMePost = <ThrowOnError extends boolean = false>(options?: Options<EmailMeThisReportApiV1OrganizationsReportsEmailMePostData, ThrowOnError>): RequestResult<EmailMeThisReportApiV1OrganizationsReportsEmailMePostResponses, EmailMeThisReportApiV1OrganizationsReportsEmailMePostErrors, ThrowOnError> => (options?.client ?? client).post<EmailMeThisReportApiV1OrganizationsReportsEmailMePostResponses, EmailMeThisReportApiV1OrganizationsReportsEmailMePostErrors, ThrowOnError>({
+    url: '/api/v1/organizations/reports/email-me',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options?.headers
+    }
+});
 
 /**
  * Reset Report Layout
