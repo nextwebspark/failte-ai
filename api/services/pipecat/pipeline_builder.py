@@ -231,6 +231,7 @@ def build_realtime_pipeline(
     agent_generation_processor,
     pipeline_metrics_aggregator,
     termination_funnel,
+    input_silence_filler=None,
 ):
     """Build a pipeline for realtime (speech-to-speech) LLM services.
 
@@ -239,10 +240,18 @@ def build_realtime_pipeline(
     generation stage to lift out either: the one service consumes the caller's
     audio directly, so a realtime call has no agent worker and its generation
     processor runs here alongside the call's clock.
+
+    Args:
+        input_silence_filler: Optional InputSilenceFiller. When provided,
+            inserts directly after the termination funnel so the realtime
+            service's server-side VAD receives continuous audio and can see
+            the silence that ends the caller's turn, even when the caller's
+            line drops it.
     """
     processors = [
         transport.input(),
         termination_funnel,
+        input_silence_filler,
         user_context_aggregator,
         call_monitor_processor,
         realtime_llm,
@@ -258,7 +267,7 @@ def build_realtime_pipeline(
         ]
     )
 
-    return Pipeline(processors)
+    return Pipeline([p for p in processors if p is not None])
 
 
 def create_pipeline_task(
