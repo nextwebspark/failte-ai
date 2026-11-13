@@ -23,7 +23,7 @@ import {
     RefreshCw,
 } from "lucide-react";
 import Link from "next/link";
-import { type ReactNode, useEffect, useRef, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 
 import { callsQueryToParams, DEFAULT_QUERY, formatPhone } from "@/app/usage/callsView";
 import type {
@@ -76,10 +76,13 @@ import {
     turnedAwayWords,
 } from "./dashboardView";
 import { Chip, FollowUpRow } from "./FollowUpRow";
+import { CardControlsProvider, CardMenu, CardSlot, LayoutToolbar, useCardHidden } from "./HomeCardControls";
+import { arrangeCards, hideCard, type HomeCardId, pinCard, unhideCard, unpinCard } from "./homeLayout";
 import { HomeSkeleton } from "./HomeSkeleton";
 import { HomeTestSheet } from "./HomeTestSheet";
 import { HourlyCallsChart } from "./HourlyCallsChart";
 import { useDashboardSummary, useFollowUpMarking, useFollowUps } from "./useDashboardData";
+import { useHomeLayout } from "./useHomeLayout";
 
 const ATTENTION_LIMIT = 4;
 
@@ -87,26 +90,34 @@ const ATTENTION_LIMIT = 4;
 function Card({
     title,
     titleId,
+    cardId,
     action,
     children,
     className,
 }: {
     title: ReactNode;
     titleId: string;
+    /** Gives the card its Hide / Pin menu (see HomeCardControls). */
+    cardId?: HomeCardId;
     action?: ReactNode;
     children: ReactNode;
     className?: string;
 }) {
+    // Shown only because "Show hidden" is on: dimmed, with Unhide.
+    const hidden = useCardHidden(cardId);
     return (
         <section
             aria-labelledby={titleId}
-            className={cn("min-w-0 rounded-[14px] border border-line bg-panel shadow-xs", className)}
+            className={cn("min-w-0 rounded-[14px] border border-line bg-panel shadow-xs", hidden && "opacity-60", className)}
         >
             <header className="flex items-center justify-between gap-3 px-[18px] pt-[18px] sm:px-5">
                 <h2 id={titleId} className="flex items-center gap-2 font-display text-title font-semibold text-foreground">
                     {title}
                 </h2>
-                {action}
+                <div className="flex items-center gap-1.5">
+                    {action}
+                    {cardId && <CardMenu id={cardId} />}
+                </div>
             </header>
             <div className="@container px-[18px] pb-5 pt-4 sm:px-5">{children}</div>
         </section>
@@ -428,6 +439,7 @@ function Attention({
     return (
         <Card
             titleId="home-attention"
+            cardId="attention"
             title={
                 <>
                     Needs your attention
@@ -543,7 +555,7 @@ function RecentCalls({ summary, now, empty }: { summary: DashboardSummaryRespons
         </Link>
     );
     return (
-        <Card titleId="home-recent" title="Recent calls" action={<CardLink href="/usage">All calls</CardLink>}>
+        <Card titleId="home-recent" cardId="recent-calls" title="Recent calls" action={<CardLink href="/usage">All calls</CardLink>}>
             {calls.length === 0 ? (
                 empty
             ) : (
@@ -622,7 +634,7 @@ function WhenPeopleCalled({ summary, now, empty }: { summary: DashboardSummaryRe
     const peak = busiestHour(summary.calls_by_hour);
     const legend = openHoursLegend(summary.opening_hours, summary.range);
     return (
-        <Card titleId="home-hours" title="When people called" action={<CardHint>{sub}</CardHint>}>
+        <Card titleId="home-hours" cardId="when-called" title="When people called" action={<CardHint>{sub}</CardHint>}>
             {summary.tiles.calls === 0 ? (
                 empty
             ) : (
@@ -789,7 +801,7 @@ function CallersWanted({ summary, empty }: { summary: DashboardSummaryResponse; 
     const average = callLength(summary.tiles.average_call_seconds);
     const when = rangeWords(summary.range);
     return (
-        <Card titleId="home-wanted" title="What callers wanted" action={<CardHint>{when}</CardHint>}>
+        <Card titleId="home-wanted" cardId="callers-wanted" title="What callers wanted" action={<CardHint>{when}</CardHint>}>
             {reasons.length === 0 ? (
                 empty
             ) : (
@@ -862,7 +874,7 @@ function AgentCard({
     // Starting a test call needs agents:write; staff don't get the button.
     const { can } = useOrgConfig();
     return (
-        <Card titleId="home-agent" title="Your agent">
+        <Card titleId="home-agent" cardId="your-agent" title="Your agent">
             {/* At a glance: is it working, on which number, when it last
                 answered and how much credit is left. One row on a wide card. */}
             <div className={cn("grid gap-3", credit ? "@2xl:grid-cols-3" : "@2xl:grid-cols-2")}>
@@ -1036,7 +1048,7 @@ function GetStarted({ summary, onTryAgent }: { summary: DashboardSummaryResponse
         { label: "Take your first call", done: Boolean(status.last_call_at), href: null },
     ];
     return (
-        <Card titleId="home-start" title="Let's get your first call in">
+        <Card titleId="home-start" cardId="get-started" title="Let's get your first call in">
             <p className="text-body text-ink-2">
                 Your numbers appear here after your agent answers its first call. Three steps get you there:
             </p>
@@ -1112,20 +1124,73 @@ function GetStarted({ summary, onTryAgent }: { summary: DashboardSummaryResponse
 }
 
 export interface HomeDashboardProps {
-    /** The page's one h1: the greeting on Home, the agent's name on an agent. */
+    /** The page's one h1: the greeting. */
     heading: string;
-    /** Only this agent's calls. */
+    /** Only this agent's calls (Home's agent filter, `?agent=`). */
     workflowId?: number;
-    /** On an agent's own page: open its test panel in place. */
+    /** With two or more agents: the filter's choices and what picking one does. */
+    agentFilter?: {
+        agents: readonly { id: number; name: string }[];
+        onChange: (agentId: number | null) => void;
+    };
+    /** Open the test panel for the filtered agent once, on arrival. */
+    testOnArrival?: boolean;
+    /** Called once the arrival test panel has been opened (or can't be). */
+    onArrivalTestHandled?: () => void;
+    /** Open a test panel somewhere else instead of Home's own. */
     onTryAgent?: () => void;
+}
+
+/** "All agents ▾": Home for every agent, or for one. */
+function AgentFilter({
+    agents,
+    value,
+    onChange,
+}: {
+    agents: readonly { id: number; name: string }[];
+    value: number | null;
+    onChange: (agentId: number | null) => void;
+}) {
+    const current = agents.find((a) => a.id === value);
+    return (
+        <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+                <Button variant="outline" className="h-[38px] justify-between gap-2 sm:w-auto" aria-label={`Show calls for: ${current?.name ?? "All agents"}`}>
+                    <span className="max-w-[12rem] truncate">{current?.name ?? "All agents"}</span>
+                    <ChevronDown aria-hidden />
+                </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-64">
+                <DropdownMenuItem onSelect={() => onChange(null)}>
+                    <Check aria-hidden className={cn(value === null ? "text-brand" : "invisible")} />
+                    All agents
+                </DropdownMenuItem>
+                {agents.map((agent) => (
+                    <DropdownMenuItem key={agent.id} onSelect={() => onChange(agent.id)}>
+                        <Check aria-hidden className={cn(value === agent.id ? "text-brand" : "invisible")} />
+                        <span className="truncate">{agent.name}</span>
+                    </DropdownMenuItem>
+                ))}
+            </DropdownMenuContent>
+        </DropdownMenu>
+    );
 }
 
 /**
  * Home: how the phone agent did, what needs the owner, and when people
  * called. Every number is counted from stored calls by the dashboard API.
  */
-export function HomeDashboard({ heading, workflowId, onTryAgent }: HomeDashboardProps) {
+export function HomeDashboard({
+    heading,
+    workflowId,
+    agentFilter,
+    testOnArrival,
+    onArrivalTestHandled,
+    onTryAgent,
+}: HomeDashboardProps) {
     useOwnsPageHeading();
+    const homeLayout = useHomeLayout();
+    const [showHidden, setShowHidden] = useState(false);
     const [range, setRange] = useState<DashboardRange>("today");
     const { result, reload, refresh, refreshing, updatedAt } = useDashboardSummary(range, workflowId);
     const followUps = useFollowUps("open", workflowId);
@@ -1167,6 +1232,36 @@ export function HomeDashboard({ heading, workflowId, onTryAgent }: HomeDashboard
     };
     const tryAgent = !can("agents:write") ? undefined : (onTryAgent ?? (tryOnHome ? testPrimary : undefined));
 
+    // "Try your agent" links from elsewhere arrive with the agent picked.
+    const arrivalHandled = useRef(false);
+    useEffect(() => {
+        if (!testOnArrival || arrivalHandled.current || !summary) return;
+        arrivalHandled.current = true;
+        if (tryOnHome && workflowId != null && summary.agents.some((a) => a.id === workflowId)) {
+            setPickedAgentId(workflowId);
+            setTesting(true);
+        }
+        onArrivalTestHandled?.();
+    }, [testOnArrival, summary, tryOnHome, workflowId, onArrivalTestHandled]);
+
+    const controls = useMemo(() => {
+        const { layout, change } = homeLayout;
+        if (!layout) return null;
+        return {
+            layout,
+            hide: (id: HomeCardId) => change(hideCard(layout, id)),
+            unhide: (id: HomeCardId) => change(unhideCard(layout, id)),
+            pin: (id: HomeCardId) => change(pinCard(layout, id)),
+            unpin: (id: HomeCardId) => change(unpinCard(layout, id)),
+        };
+    }, [homeLayout]);
+    const setUpMode = summary ? !summary.agent_status.last_call_at : false;
+    // The cards this Home has, in their usual order.
+    const present: HomeCardId[] = setUpMode
+        ? ["get-started", "your-agent", "quick-links"]
+        : ["tiles", "attention", "recent-calls", "your-agent", "callers-wanted", "when-called", "quick-links"];
+    const arranged = controls ? arrangeCards(controls.layout, present, showHidden) : null;
+
     const header = (
         <header className="flex flex-col gap-3 @4xl:flex-row @4xl:items-end @4xl:justify-between @4xl:gap-6">
             <div className="min-w-0">
@@ -1198,14 +1293,34 @@ export function HomeDashboard({ heading, workflowId, onTryAgent }: HomeDashboard
                             <StatusPill summary={summary} />
                         </div>
                     )}
+                    {agentFilter && agentFilter.agents.length > 1 && (
+                        <AgentFilter agents={agentFilter.agents} value={workflowId ?? null} onChange={agentFilter.onChange} />
+                    )}
                     <RangeSwitch value={range} onChange={setRange} />
                 </div>
-                {summary && <RefreshControl refreshing={refreshing} updatedAt={updatedAt} onRefresh={refreshAll} />}
+                {summary && (
+                    <div className="flex flex-wrap items-center gap-1 self-start @4xl:justify-end @4xl:self-end">
+                        {arranged && (
+                            <LayoutToolbar
+                                hiddenCount={arranged.hiddenCount}
+                                showHidden={showHidden}
+                                onToggleHidden={() => setShowHidden((v) => !v)}
+                                canReset={homeLayout.source === "person"}
+                                onReset={homeLayout.reset}
+                                canSetWorkspaceDefault={homeLayout.canSetWorkspaceDefault}
+                                hasWorkspaceDefault={homeLayout.workspaceDefault !== null}
+                                onSaveWorkspaceDefault={homeLayout.saveWorkspaceDefault}
+                                onClearWorkspaceDefault={homeLayout.clearWorkspaceDefault}
+                            />
+                        )}
+                        <RefreshControl refreshing={refreshing} updatedAt={updatedAt} onRefresh={refreshAll} />
+                    </div>
+                )}
             </div>
         </header>
     );
 
-    if (result.state === "loading") {
+    if (result.state === "loading" || (result.state === "ready" && !arranged)) {
         return (
             <div className="page-body @container flex flex-col gap-5">
                 {header}
@@ -1241,7 +1356,6 @@ export function HomeDashboard({ heading, workflowId, onTryAgent }: HomeDashboard
     const openCount = followUps.result.state === "ready" ? followUps.result.data.open_count : null;
     // Calls: the dashboard. No call yet: the setup steps and the agent
     // instead of empty tiles and charts.
-    const setUp = !summary.agent_status.last_call_at;
     const agentId = primaryAgentId(summary);
     const empty = (
         <NoCallsYet
@@ -1252,59 +1366,116 @@ export function HomeDashboard({ heading, workflowId, onTryAgent }: HomeDashboard
         />
     );
 
+    const cards: Record<HomeCardId, ReactNode> = {
+        "get-started": <GetStarted summary={summary} onTryAgent={tryAgent} />,
+        tiles: (
+            <CardSlot id="tiles">
+                <Tiles summary={summary} now={now} />
+            </CardSlot>
+        ),
+        attention: (
+            <Attention
+                items={attentionItems}
+                openCount={openCount}
+                timezone={summary.timezone}
+                now={now}
+                followUpsHref={followUpsHref}
+                onAddAnswer={setAnswering}
+                turnedAway={turnedAwayWords(summary.turned_away_today)}
+            />
+        ),
+        "recent-calls": <RecentCalls summary={summary} now={now} empty={empty} />,
+        "your-agent": <AgentCard summary={summary} now={now} onTryAgent={tryAgent} />,
+        "callers-wanted": <CallersWanted summary={summary} empty={empty} />,
+        "when-called": <WhenPeopleCalled summary={summary} now={now} empty={empty} />,
+        "quick-links": (
+            <CardSlot id="quick-links">
+                <QuickLinks summary={summary} onTryAgent={tryAgent} />
+            </CardSlot>
+        ),
+    };
+    const pinnedCards = arranged?.pinned ?? [];
+    const rest = new Set<HomeCardId>(arranged?.rest ?? present);
+    const slot = (id: HomeCardId, className?: string) =>
+        rest.has(id) ? (
+            <div key={id} className={cn("min-w-0", className)}>
+                {cards[id]}
+            </div>
+        ) : null;
+    const left = (["attention", "recent-calls", "your-agent"] as const).filter((id) => rest.has(id));
+    const right = (["callers-wanted", "when-called"] as const).filter((id) => rest.has(id));
+    // Phone order: attention, what callers wanted, hours, recent calls, agent.
+    const phoneOrder: Record<string, string> = {
+        attention: "order-1",
+        "callers-wanted": "order-2",
+        "when-called": "order-3",
+        "recent-calls": "order-4",
+        "your-agent": "order-5",
+    };
+
     return (
+        <CardControlsProvider value={controls}>
         <div className="page-body @container flex min-w-0 flex-col gap-5 @4xl:gap-6">
             {header}
             <NotAnsweringBanner summary={summary} now={now} />
 
-            {setUp && (
-                <div className="grid grid-cols-1 gap-4 @4xl:grid-cols-[minmax(0,7fr)_minmax(0,5fr)] @4xl:gap-5">
-                    <GetStarted summary={summary} onTryAgent={tryAgent} />
-                    <AgentCard summary={summary} now={now} onTryAgent={tryAgent} />
+            {/* Pinned cards first, in the order they were pinned. */}
+            {pinnedCards.length > 0 && (
+                <div className="flex flex-col gap-4 @4xl:gap-5" data-testid="home-pinned">
+                    {pinnedCards.map((id) => (
+                        <div key={id} className="min-w-0">
+                            {cards[id]}
+                        </div>
+                    ))}
                 </div>
             )}
 
-            {!setUp && (
+            {setUpMode && (rest.has("get-started") || rest.has("your-agent")) && (
+                <div
+                    className={cn(
+                        "grid grid-cols-1 gap-4 @4xl:gap-5",
+                        rest.has("get-started") && rest.has("your-agent") && "@4xl:grid-cols-[minmax(0,7fr)_minmax(0,5fr)]",
+                    )}
+                >
+                    {slot("get-started")}
+                    {slot("your-agent")}
+                </div>
+            )}
+
+            {!setUpMode && (
                 <>
-                    <Tiles summary={summary} now={now} />
+                    {slot("tiles")}
                     {/* Two columns on a computer, the right one (the charts)
                         growing with the screen and the agent card under the
                         calls so the columns end level; on a phone one list in
                         the design's order: attention, what callers wanted,
-                        hours, recent calls, agent. */}
-                    <div className="flex flex-col gap-4 @4xl:grid @4xl:grid-cols-[minmax(0,1.5fr)_minmax(400px,1fr)] @4xl:items-start @4xl:gap-5">
-                        <div className="contents @4xl:flex @4xl:min-w-0 @4xl:flex-col @4xl:gap-5">
-                            <div className="order-1 min-w-0 @4xl:order-none">
-                                <Attention
-                                    items={attentionItems}
-                                    openCount={openCount}
-                                    timezone={summary.timezone}
-                                    now={now}
-                                    followUpsHref={followUpsHref}
-                                    onAddAnswer={setAnswering}
-                                    turnedAway={turnedAwayWords(summary.turned_away_today)}
-                                />
-                            </div>
-                            <div className="order-4 min-w-0 @4xl:order-none">
-                                <RecentCalls summary={summary} now={now} empty={empty} />
-                            </div>
-                            <div className="order-5 min-w-0 @4xl:order-none">
-                                <AgentCard summary={summary} now={now} onTryAgent={tryAgent} />
-                            </div>
+                        hours, recent calls, agent. A column whose cards are
+                        all hidden or pinned gives its room to the other. */}
+                    {(left.length > 0 || right.length > 0) && (
+                        <div
+                            className={cn(
+                                "flex flex-col gap-4 @4xl:grid @4xl:items-start @4xl:gap-5",
+                                left.length > 0 && right.length > 0
+                                    ? "@4xl:grid-cols-[minmax(0,1.5fr)_minmax(400px,1fr)]"
+                                    : "@4xl:grid-cols-1",
+                            )}
+                        >
+                            {left.length > 0 && (
+                                <div className="contents @4xl:flex @4xl:min-w-0 @4xl:flex-col @4xl:gap-5">
+                                    {left.map((id) => slot(id, cn(phoneOrder[id], "@4xl:order-none")))}
+                                </div>
+                            )}
+                            {right.length > 0 && (
+                                <div className="contents @4xl:flex @4xl:min-w-0 @4xl:flex-col @4xl:gap-5">
+                                    {right.map((id) => slot(id, cn(phoneOrder[id], "@4xl:order-none")))}
+                                </div>
+                            )}
                         </div>
-                        <div className="contents @4xl:flex @4xl:min-w-0 @4xl:flex-col @4xl:gap-5">
-                            <div className="order-2 min-w-0 @4xl:order-none">
-                                <CallersWanted summary={summary} empty={empty} />
-                            </div>
-                            <div className="order-3 min-w-0 @4xl:order-none">
-                                <WhenPeopleCalled summary={summary} now={now} empty={empty} />
-                            </div>
-                        </div>
-                    </div>
+                    )}
                 </>
             )}
 
-            <QuickLinks summary={summary} onTryAgent={tryAgent} />
+            {slot("quick-links")}
             <AddAnswerDialog item={answering} onClose={() => setAnswering(null)} />
             {tryOnHome && homeAgentId != null && (
                 <HomeTestSheet
@@ -1320,5 +1491,6 @@ export function HomeDashboard({ heading, workflowId, onTryAgent }: HomeDashboard
                 />
             )}
         </div>
+        </CardControlsProvider>
     );
 }

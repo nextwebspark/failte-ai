@@ -27,11 +27,13 @@ import { ROLE_LABELS } from "@/lib/auth/roles";
 import { cn } from "@/lib/utils";
 import { workspaceDisplayName } from "@/lib/workspaceName";
 
-import { isAgentRoute } from "./agentNav";
+import { isAgentCallsRoute, isAgentRoute } from "./agentNav";
+import { AgentSwitcher } from "./AgentSwitcher";
 import { initialsOf, memberName } from "./memberIdentity";
 import { FOLLOW_UPS_URL } from "./navConfig";
 import { useShellChrome } from "./shellContext";
-import { type ResolvedNavItem, useWorkspaceNav } from "./useWorkspaceNav";
+import { type ResolvedNavItem, type ResolvedNavSection, useWorkspaceNav } from "./useWorkspaceNav";
+import { useWorkspaceAgents } from "./workspaceAgents";
 
 /**
  * Below md the sidebar gives way to the phone layout from the redesign
@@ -121,28 +123,34 @@ export function MobileTabBar() {
   const pathname = usePathname();
   const { workspaceMode } = useShellChrome();
   const sections = useWorkspaceNav();
-  const { role, orgContext } = useOrgConfig();
+  const { role, orgContext, can } = useOrgConfig();
+  const agents = useWorkspaceAgents();
   const { user, logout } = useAuth();
   const { resolvedTheme, setTheme } = useTheme();
   const [moreOpen, setMoreOpen] = useState(false);
-  const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [openGroup, setOpenGroup] = useState<string | null>(null);
 
   // Any move to another screen closes the sheet (links, Back, Forward).
   useEffect(() => {
     setMoreOpen(false);
   }, [pathname]);
   useEffect(() => {
-    if (!moreOpen) setAdvancedOpen(false);
+    if (!moreOpen) setOpenGroup(null);
   }, [moreOpen]);
 
   const items = sections.flatMap((s) => s.items);
-  const byUrl = (url: string) => items.find((item) => item.url === url && !item.agentRow);
-  const agentFacts = items.find((item) => item.agentRow === "facts");
-  const phone = items.find((item) => item.agentRow === "phone");
-  const settings = items.find((item) => item.settingsHub);
-  const advanced = sections.find((s) => s.collapsible)?.items ?? [];
+  const byUrl = (url: string) => items.find((item) => item.url === url && item.agentSegment === undefined);
+  const section = (id: ResolvedNavSection["id"]) => sections.find((s) => s.id === id);
+  const agentFacts = items.find((item) => item.agentSegment === "/facts");
+  // The Agent and Workspace rows the tab bar doesn't already have.
+  const agentRows = (section("agent")?.items ?? []).filter((item) => item !== agentFacts);
+  const agentAdvanced = section("agent-advanced");
+  const workspaceRows = section("workspace")?.items ?? [];
+  const advancedSection = section("advanced");
+  const groups = [agentAdvanced, advancedSection].filter((s): s is ResolvedNavSection => Boolean(s));
 
-  const onAgentScreen = isAgentRoute(pathname) && !workspaceMode;
+  // An agent's calls belong to the Calls tab.
+  const onAgentScreen = isAgentRoute(pathname) && !workspaceMode && !isAgentCallsRoute(pathname);
   const home = byUrl("/overview");
   const calls = byUrl("/usage");
   const followUps = byUrl(FOLLOW_UPS_URL);
@@ -166,16 +174,20 @@ export function MobileTabBar() {
       title: "Your agent",
       href: agentFacts.href,
       icon: Bot,
-      // Every screen of an agent belongs to this tab, and so does creating one.
-      isActive: onAgentScreen || pathname === agentFacts.href.split("#")[0],
+      // Every screen of an agent belongs to this tab.
+      isActive: onAgentScreen,
     });
+  } else if (agents?.length === 0 && role !== null && can("agents:write")) {
+    tabs.push({ key: "agent", title: "Your agent", href: "/workflow/create", icon: Bot, isActive: pathname === "/workflow/create" });
   }
 
   const moreItems: ResolvedNavItem[] = [byUrl("/bookings"), byUrl("/reports")].filter(
     (item): item is ResolvedNavItem => Boolean(item),
   );
   const tabActive = tabs.some((tab) => tab.isActive);
-  const moreActive = moreOpen || (!tabActive && [...moreItems, phone, settings, ...advanced].some((i) => i?.isActive));
+  const moreActive =
+    moreOpen ||
+    (!tabActive && [...moreItems, ...agentRows, ...workspaceRows, ...groups.flatMap((g) => g.items)].some((i) => i.isActive));
 
   // A row that leads to another screen hands focus to that screen, not back
   // to More (AppLayout's route-change focus does the rest).
@@ -264,35 +276,60 @@ export function MobileTabBar() {
             <SheetRow key={item.url} href={item.href} icon={item.icon} title={item.title} onNavigate={close} isActive={item.isActive} />
           ))}
 
-          {(phone || settings || advanced.length > 0) && <SheetLabel>Your agent</SheetLabel>}
-          {phone && <SheetRow href={phone.href} icon={phone.icon} title={phone.title} onNavigate={close} isActive={phone.isActive} />}
-          {settings && (
-            <SheetRow href={settings.href} icon={settings.icon} title={settings.title} onNavigate={close} isActive={settings.isActive} />
-          )}
-          {advanced.length > 0 && (
+          {section("agent") && (
             <>
+              <SheetLabel>Agent</SheetLabel>
+              <div className="-mx-2 pb-1">
+                <AgentSwitcher collapsed={false} onNavigate={close} />
+              </div>
+              {agentRows.map((item) => (
+                <SheetRow key={item.title} href={item.href} icon={item.icon} title={item.title} onNavigate={close} isActive={item.isActive} />
+              ))}
+            </>
+          )}
+          {groups.map((group) => (
+            <React.Fragment key={group.id}>
+              {group.id === "advanced" && workspaceRows.length > 0 && (
+                <>
+                  <SheetLabel>Workspace</SheetLabel>
+                  {workspaceRows.map((item) => (
+                    <SheetRow key={item.title} href={item.href} icon={item.icon} title={item.title} onNavigate={close} isActive={item.isActive} />
+                  ))}
+                </>
+              )}
               <button
                 type="button"
-                onClick={() => setAdvancedOpen((open) => !open)}
-                aria-expanded={advancedOpen}
-                aria-controls="more-advanced"
+                onClick={() => setOpenGroup((current) => (current === group.id ? null : group.id))}
+                aria-expanded={openGroup === group.id}
+                aria-controls={`more-${group.id}`}
                 className="flex min-h-12 w-full items-center gap-3 rounded-[10px] px-1.5 text-left text-[15px] font-medium text-foreground outline-none hover:bg-panel-2 focus-visible:ring-[3px] focus-visible:ring-ring/50"
               >
                 <Wrench className="size-5 shrink-0 text-ink-2" aria-hidden />
-                <span className="min-w-0 flex-1 truncate">Advanced setup</span>
+                <span className="min-w-0 flex-1 truncate">{group.label}</span>
                 <span className="text-caption font-medium text-ink-3">Best on a computer</span>
                 <ChevronDown
                   aria-hidden
-                  className={cn("size-4 shrink-0 text-ink-3 transition-transform motion-reduce:transition-none", advancedOpen && "rotate-180")}
+                  className={cn(
+                    "size-4 shrink-0 text-ink-3 transition-transform motion-reduce:transition-none",
+                    openGroup === group.id && "rotate-180",
+                  )}
                 />
               </button>
-              {advancedOpen && (
-                <div id="more-advanced" className="ml-4 border-l border-line-soft pl-2">
-                  {advanced.map((item) => (
-                    <SheetRow key={item.url} href={item.href} icon={item.icon} title={item.title} onNavigate={close} isActive={item.isActive} />
+              {openGroup === group.id && (
+                <div id={`more-${group.id}`} className="ml-4 border-l border-line-soft pl-2">
+                  {group.items.map((item) => (
+                    <SheetRow key={item.title} href={item.href} icon={item.icon} title={item.title} onNavigate={close} isActive={item.isActive} />
                   ))}
                 </div>
               )}
+            </React.Fragment>
+          ))}
+          {!advancedSection && workspaceRows.length > 0 && (
+            <>
+              <SheetLabel>Workspace</SheetLabel>
+              {workspaceRows.map((item) => (
+                <SheetRow key={item.title} href={item.href} icon={item.icon} title={item.title} onNavigate={close} isActive={item.isActive} />
+              ))}
             </>
           )}
 

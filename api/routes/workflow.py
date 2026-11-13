@@ -832,6 +832,8 @@ async def create_workflow_from_template(
 class WorkflowSummaryResponse(BaseModel):
     id: int
     name: str
+    # The numbers that ring the agent now; only with ``include_numbers``.
+    phone_numbers: list[str] | None = None
 
 
 @router.get("/count", dependencies=requires(Permission.AGENTS_READ))
@@ -1190,8 +1192,12 @@ async def get_workflows_summary(
         None,
         description="Filter by status (e.g. 'active' or 'archived'). Omit to return all.",
     ),
+    include_numbers: bool = Query(
+        False, description="Also return the phone numbers that ring each agent now."
+    ),
 ) -> List[WorkflowSummaryResponse]:
-    """Get minimal workflow information (id and name only) for all workflows"""
+    """Get minimal workflow information (id and name, and optionally the
+    numbers that ring each one) for all workflows"""
     statuses = _validate_status_filter(status)
     if statuses:
         workflows = []
@@ -1206,8 +1212,19 @@ async def get_workflows_summary(
         workflows = await db_client.get_all_workflows(
             organization_id=user.selected_organization_id, status=None
         )
+    ringing = (
+        live_numbers_by_agent(
+            await db_client.get_answering_numbers(user.selected_organization_id)
+        )
+        if include_numbers
+        else None
+    )
     return [
-        WorkflowSummaryResponse(id=workflow.id, name=workflow.name)
+        WorkflowSummaryResponse(
+            id=workflow.id,
+            name=workflow.name,
+            phone_numbers=ringing.get(workflow.id, []) if ringing is not None else None,
+        )
         for workflow in workflows
     ]
 

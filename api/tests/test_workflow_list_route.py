@@ -226,3 +226,40 @@ def test_workflow_summary_blank_status_token_returns_422_without_db_query():
 
     assert response.status_code == 422
     mock_db.get_all_workflows.assert_not_called()
+
+
+def test_workflow_summary_returns_numbers_only_when_asked():
+    app = _make_test_app()
+    client = TestClient(app)
+    agents = [
+        SimpleNamespace(id=5, name="Front desk"),
+        SimpleNamespace(id=6, name="Orders"),
+    ]
+
+    with patch("api.routes.workflow.db_client") as mock_db:
+        mock_db.get_all_workflows = AsyncMock(return_value=agents)
+        mock_db.get_answering_numbers = AsyncMock(
+            return_value=[
+                {
+                    "address": "+35315557000",
+                    "is_active": True,
+                    "config_inactive": False,
+                    "inbound_workflow_id": 5,
+                }
+            ]
+        )
+
+        plain = client.get("/workflow/summary", params={"status": "active"})
+        mock_db.get_answering_numbers.assert_not_called()
+        with_numbers = client.get(
+            "/workflow/summary", params={"status": "active", "include_numbers": True}
+        )
+
+    assert plain.json() == [
+        {"id": 5, "name": "Front desk", "phone_numbers": None},
+        {"id": 6, "name": "Orders", "phone_numbers": None},
+    ]
+    assert with_numbers.json() == [
+        {"id": 5, "name": "Front desk", "phone_numbers": ["+35315557000"]},
+        {"id": 6, "name": "Orders", "phone_numbers": []},
+    ]

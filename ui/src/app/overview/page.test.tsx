@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { DashboardSummaryResponse, FollowUpListResponse } from "@/client/types.gen";
+import type { DashboardSummaryResponse, FollowUpListResponse, HomeLayoutResponse } from "@/client/types.gen";
 
 import OverviewPage from "./page";
 
@@ -9,12 +9,33 @@ const mocks = vi.hoisted(() => ({
     perms: [] as string[],
     summary: vi.fn(),
     followUps: vi.fn(),
+    layout: vi.fn(),
+    saveLayout: vi.fn(),
+    resetLayout: vi.fn(),
+    saveWorkspaceLayout: vi.fn(),
+    query: "",
+    replace: vi.fn(),
+    agents: null as { id: number; name: string; phone_numbers: string[] }[] | null,
+    select: vi.fn(),
 }));
 
 vi.mock("@/client/sdk.gen", () => ({
     getDashboardSummaryApiV1DashboardSummaryGet: mocks.summary,
     listFollowUpsApiV1FollowUpsGet: mocks.followUps,
     countFollowUpsApiV1FollowUpsCountGet: vi.fn(async () => ({ data: { open: 0 } })),
+    getHomeLayoutApiV1DashboardLayoutGet: mocks.layout,
+    saveHomeLayoutApiV1DashboardLayoutPut: mocks.saveLayout,
+    resetHomeLayoutApiV1DashboardLayoutDelete: mocks.resetLayout,
+    saveWorkspaceHomeLayoutApiV1DashboardLayoutWorkspacePut: mocks.saveWorkspaceLayout,
+    clearWorkspaceHomeLayoutApiV1DashboardLayoutWorkspaceDelete: vi.fn(),
+}));
+vi.mock("next/navigation", () => ({
+    useSearchParams: () => new URLSearchParams(mocks.query),
+    useRouter: () => ({ replace: mocks.replace, push: vi.fn() }),
+    usePathname: () => "/overview",
+}));
+vi.mock("@/components/layout/workspaceAgents", () => ({
+    useSelectedAgent: () => ({ agents: mocks.agents, selected: null, select: mocks.select }),
 }));
 vi.mock("@/context/OrgConfigContext", () => ({
     useOrgConfig: () => ({ can: (...required: string[]) => required.every((p) => mocks.perms.includes(p)) }),
@@ -29,8 +50,30 @@ vi.mock("@/app/workflow/[workflowId]/components/WorkflowTesterPanel", () => ({
     ),
 }));
 vi.mock("@/lib/auth", () => ({
-    useAuth: () => ({ user: { displayName: "Mary Byrne" }, provider: "stack" }),
+    useAuth: () => ({ user: { id: 3, displayName: "Mary Byrne" }, provider: "stack", loading: false }),
 }));
+
+const CARDS = [
+    "get-started",
+    "tiles",
+    "attention",
+    "callers-wanted",
+    "when-called",
+    "recent-calls",
+    "your-agent",
+    "quick-links",
+].map((id) => ({ id, label: id }));
+
+function layoutResponse(overrides: Partial<HomeLayoutResponse> = {}): HomeLayoutResponse {
+    return {
+        layout: { hidden: [], pinned: [] },
+        source: "person",
+        workspace_default: null,
+        can_set_workspace_default: false,
+        cards: CARDS,
+        ...overrides,
+    };
+}
 
 function summary(overrides: Partial<DashboardSummaryResponse> = {}): DashboardSummaryResponse {
     const hours = Array(24).fill(0);
@@ -114,6 +157,17 @@ describe("Home", () => {
         mocks.followUps.mockReset();
         mocks.summary.mockResolvedValue({ data: summary() });
         mocks.followUps.mockResolvedValue({ data: NO_FOLLOW_UPS });
+        // Most tests look at every card: the member's own layout hides none.
+        mocks.layout.mockReset();
+        mocks.layout.mockResolvedValue({ data: layoutResponse() });
+        mocks.saveLayout.mockReset();
+        mocks.saveLayout.mockImplementation(async ({ body }) => ({ data: layoutResponse({ layout: body }) }));
+        mocks.resetLayout.mockReset();
+        mocks.saveWorkspaceLayout.mockReset();
+        mocks.query = "";
+        mocks.replace.mockReset();
+        mocks.agents = null;
+        mocks.select.mockReset();
         window.localStorage.clear();
     });
 
@@ -374,5 +428,124 @@ describe("Home", () => {
         await waitFor(() => expect(mocks.summary).toHaveBeenCalledTimes(2));
         // The numbers stay on screen while it looks.
         expect(screen.getByText("Recent calls")).toBeTruthy();
+    });
+
+    // -- arranging Home ------------------------------------------------------
+
+    it("starts calm: the built-in layout hides the busy cards, all one click away", async () => {
+        mocks.layout.mockResolvedValue({
+            data: layoutResponse({
+                source: "default",
+                layout: { hidden: ["tiles", "callers-wanted", "when-called", "quick-links"], pinned: [] },
+            }),
+        });
+        render(<OverviewPage />);
+        expect(await screen.findByText("Recent calls")).toBeTruthy();
+        expect(screen.getByText("Needs your attention")).toBeTruthy();
+        expect(screen.queryByText("Handled by your agent")).toBeNull();
+        expect(screen.queryByText("What callers wanted")).toBeNull();
+        // Nothing of the member's own to reset yet.
+        expect(screen.queryByRole("button", { name: "Reset layout" })).toBeNull();
+
+        fireEvent.click(screen.getByRole("button", { name: "Show hidden (4)" }));
+        expect(screen.getByText("Handled by your agent")).toBeTruthy();
+        const wanted = screen.getByRole("heading", { name: "What callers wanted" }).closest("section") as HTMLElement;
+        expect(wanted.className).toContain("opacity-60");
+        fireEvent.click(within(wanted).getByRole("button", { name: /unhide/i }));
+        await waitFor(() =>
+            expect(mocks.saveLayout).toHaveBeenCalledWith({
+                body: { hidden: ["tiles", "when-called", "quick-links"], pinned: [] },
+            }),
+        );
+    });
+
+    it("hides a card from its menu and saves it to the member's account", async () => {
+        render(<OverviewPage />);
+        await screen.findByText("Recent calls");
+        fireEvent.pointerDown(screen.getByRole("button", { name: "Card options: Recent calls" }), { button: 0, ctrlKey: false });
+        fireEvent.click(await screen.findByRole("menuitem", { name: "Hide card" }));
+        await waitFor(() => expect(screen.queryByText("Recent calls")).toBeNull());
+        expect(mocks.saveLayout).toHaveBeenCalledWith({ body: { hidden: ["recent-calls"], pinned: [] } });
+        expect(screen.getByRole("button", { name: "Show hidden (1)" })).toBeTruthy();
+    });
+
+    it("puts pinned cards first, in pin order", async () => {
+        mocks.layout.mockResolvedValue({ data: layoutResponse({ layout: { hidden: [], pinned: ["your-agent", "recent-calls"] } }) });
+        render(<OverviewPage />);
+        await screen.findByText("Recent calls");
+        const pinned = screen.getByTestId("home-pinned");
+        const titles = within(pinned).getAllByRole("heading", { level: 2 }).map((h) => h.textContent);
+        expect(titles).toEqual(["Your agent", "Recent calls"]);
+    });
+
+    it("resets the member's layout back to the workspace's", async () => {
+        mocks.layout.mockResolvedValue({ data: layoutResponse({ layout: { hidden: ["tiles"], pinned: [] } }) });
+        mocks.resetLayout.mockResolvedValue({ data: layoutResponse({ source: "workspace" }) });
+        render(<OverviewPage />);
+        await screen.findByText("Recent calls");
+        fireEvent.click(screen.getByRole("button", { name: "Reset layout" }));
+        await waitFor(() => expect(mocks.resetLayout).toHaveBeenCalled());
+        await waitFor(() => expect(screen.queryByRole("button", { name: "Reset layout" })).toBeNull());
+        expect(screen.getByText("Handled by your agent")).toBeTruthy();
+    });
+
+    it("offers the workspace default only to members who may set it", async () => {
+        render(<OverviewPage />);
+        await screen.findByText("Recent calls");
+        expect(screen.queryByRole("button", { name: /workspace default/i })).toBeNull();
+    });
+
+    it("lets a workspace admin make their layout the workspace default", async () => {
+        mocks.layout.mockResolvedValue({
+            data: layoutResponse({ layout: { hidden: ["tiles"], pinned: [] }, can_set_workspace_default: true }),
+        });
+        mocks.saveWorkspaceLayout.mockResolvedValue({ data: layoutResponse({ can_set_workspace_default: true }) });
+        render(<OverviewPage />);
+        await screen.findByText("Recent calls");
+        fireEvent.pointerDown(screen.getByRole("button", { name: /workspace default/i }), { button: 0, ctrlKey: false });
+        fireEvent.click(await screen.findByRole("menuitem", { name: "Use this layout for everyone" }));
+        await waitFor(() =>
+            expect(mocks.saveWorkspaceLayout).toHaveBeenCalledWith({ body: { hidden: ["tiles"], pinned: [] } }),
+        );
+    });
+
+    it("shows every card when the layout can't be read", async () => {
+        mocks.layout.mockResolvedValue({ error: { detail: "boom" } });
+        render(<OverviewPage />);
+        expect(await screen.findByText("Handled by your agent")).toBeTruthy();
+        expect(screen.getByText("What callers wanted")).toBeTruthy();
+    });
+
+    // -- one agent or all -------------------------------------------------------
+
+    it("filters Home to one agent with two or more, and asks the API for that agent", async () => {
+        mocks.agents = [
+            { id: 14, name: "Bia Bistro bookings", phone_numbers: ["+35315550142"] },
+            { id: 15, name: "Takeaway orders", phone_numbers: [] },
+        ];
+        mocks.query = "agent=15";
+        render(<OverviewPage />);
+        await screen.findByText("Recent calls");
+        expect(mocks.summary).toHaveBeenLastCalledWith({ query: { range: "today", workflow_id: 15 } });
+        expect(mocks.select).toHaveBeenCalledWith(15);
+        const filter = screen.getByRole("button", { name: "Show calls for: Takeaway orders" });
+        fireEvent.pointerDown(filter, { button: 0, ctrlKey: false });
+        fireEvent.click(await screen.findByRole("menuitem", { name: "All agents" }));
+        expect(mocks.replace).toHaveBeenCalledWith("/overview", { scroll: false });
+    });
+
+    it("has no agent filter with one agent", async () => {
+        mocks.agents = [{ id: 14, name: "Bia Bistro bookings", phone_numbers: [] }];
+        render(<OverviewPage />);
+        await screen.findByText("Recent calls");
+        expect(screen.queryByRole("button", { name: /show calls for/i })).toBeNull();
+    });
+
+    it("opens the agent's test panel on arrival from a Try your agent link, once", async () => {
+        mocks.perms = [...mocks.perms, "agents:write"];
+        mocks.query = "agent=14&onboarding=web_call";
+        render(<OverviewPage />);
+        expect((await screen.findByTestId("tester")).textContent).toContain("Test agent 14");
+        expect(mocks.replace).toHaveBeenCalledWith("/overview?agent=14", { scroll: false });
     });
 });

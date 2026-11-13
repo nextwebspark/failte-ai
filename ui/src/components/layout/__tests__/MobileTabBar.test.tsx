@@ -28,7 +28,14 @@ vi.mock("@/context/OrgConfigContext", () => ({
 vi.mock("@/lib/auth", () => ({
   useAuth: () => ({ user: { displayName: "Maria Keane" }, logout: mocks.logout }),
 }));
-vi.mock("../workspaceAgents", () => ({ useWorkspaceAgents: () => [{ id: 14, name: "Bia" }] }));
+vi.mock("@/components/dashboard/useDashboardData", () => ({ useOpenFollowUpCount: () => null }));
+vi.mock("../workspaceAgents", () => {
+  const agents = [{ id: 14, name: "Bia", phone_numbers: ["+35315557000"] }];
+  return {
+    useWorkspaceAgents: () => agents,
+    useSelectedAgent: () => ({ agents, selected: agents[0], select: () => {} }),
+  };
+});
 vi.mock("@/components/help/HelpPanel", () => ({ useHelpPanel: () => ({ openHelp: mocks.openHelp }) }));
 vi.mock("next-themes", () => ({ useTheme: () => ({ resolvedTheme: "light", setTheme: mocks.setTheme }) }));
 
@@ -50,10 +57,16 @@ describe("MobileTabBar", () => {
     expect(within(bar).getByRole("link", { name: "Your agent" }).getAttribute("href")).toBe("/workflow/14/facts");
   });
 
-  it("lights Your agent on any of the agent's screens", () => {
+  it("lights Your agent on any of the agent's screens, and Calls on its calls", () => {
+    mocks.pathname = "/workflow/14/deployment";
+    const { unmount } = render(<MobileTabBar />);
+    expect(screen.getByRole("link", { name: "Your agent" }).getAttribute("aria-current")).toBe("page");
+    unmount();
+
     mocks.pathname = "/workflow/14/runs";
     render(<MobileTabBar />);
-    expect(screen.getByRole("link", { name: "Your agent" }).getAttribute("aria-current")).toBe("page");
+    expect(screen.getByRole("link", { name: "Calls" }).getAttribute("aria-current")).toBe("page");
+    expect(screen.getByRole("link", { name: "Your agent" }).getAttribute("aria-current")).toBeNull();
   });
 
   it("opens More as a sheet with everything else, and closes it on Escape", async () => {
@@ -61,16 +74,20 @@ describe("MobileTabBar", () => {
     const more = screen.getByRole("button", { name: "More" });
     fireEvent.click(more);
     const sheet = await screen.findByRole("dialog");
-    for (const name of ["Bookings", "Reports", "Phone number", "Settings"]) {
+    for (const name of ["Bookings", "Reports", "Phone number", "Voice agents", "Team", "Billing", "Settings"]) {
       expect(within(sheet).getByRole("link", { name: new RegExp(name) })).toBeTruthy();
     }
+    // The agent the Agent rows open, and the number that rings it.
+    expect(within(sheet).getByTestId("agent-switcher").textContent).toContain("Bia");
     expect(within(sheet).getByRole("button", { name: /Help/ })).toBeTruthy();
     expect(within(sheet).getByText("Trattoria Bella")).toBeTruthy();
     expect(within(sheet).getByText("Maria Keane · Owner")).toBeTruthy();
     const advanced = within(sheet).getByRole("button", { name: /Advanced setup/ });
     expect(advanced.textContent).toContain("Best on a computer");
     fireEvent.click(advanced);
-    expect(within(sheet).getByRole("link", { name: "Voice agents" })).toBeTruthy();
+    expect(within(sheet).getByRole("link", { name: "Telephony" })).toBeTruthy();
+    fireEvent.click(within(sheet).getByRole("button", { name: /^Advanced(?! setup)/ }));
+    expect(within(sheet).getByRole("link", { name: "Model and voice" }).getAttribute("href")).toBe("/workflow/14/model");
 
     fireEvent.keyDown(sheet, { key: "Escape" });
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());

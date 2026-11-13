@@ -548,7 +548,7 @@ export function primaryAgentId(summary: { agents: DashboardAgent[] }): number | 
 }
 
 /** Which number rings an agent, in a few words. */
-export function agentLineLabel(agent: DashboardAgent): string {
+export function agentLineLabel(agent: { phone_numbers?: string[] | null }): string {
     const numbers = agent.phone_numbers ?? [];
     if (numbers.length === 0) return "No phone number yet";
     const first = formatPhone(numbers[0]);

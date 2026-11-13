@@ -40,4 +40,5 @@ export const AUDIT_ACTION_LABELS: Record<string, string> = {
     "user.platform_admin_granted": "Platform admin granted",
     "user.platform_admin_revoked": "Platform admin revoked",
     "user.impersonation_started": "Impersonation started",
+    "home_layout.platform_set": "Home layout default changed",
 };
