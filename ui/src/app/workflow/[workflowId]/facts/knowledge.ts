@@ -10,12 +10,18 @@ type Definition = { nodes?: Node[] } | null | undefined;
 export const GOOGLE_CALENDAR_PROVIDER = "google-calendar";
 /** The Calendly integration's provider id, in its MCP address. */
 export const CALENDLY_PROVIDER = "calendly";
+/** The Outlook Calendar integration's provider id, in its MCP address. */
+export const OUTLOOK_CALENDAR_PROVIDER = "outlook-calendar";
 
 /** The calendars an agent can book with. */
-export type BookingProvider = typeof GOOGLE_CALENDAR_PROVIDER | typeof CALENDLY_PROVIDER;
+export type BookingProvider =
+  | typeof GOOGLE_CALENDAR_PROVIDER
+  | typeof OUTLOOK_CALENDAR_PROVIDER
+  | typeof CALENDLY_PROVIDER;
 
 const BOOKING_TITLE: Record<BookingProvider, string> = {
   [GOOGLE_CALENDAR_PROVIDER]: "Google Calendar",
+  [OUTLOOK_CALENDAR_PROVIDER]: "Outlook Calendar",
   [CALENDLY_PROVIDER]: "Calendly",
 };
 
@@ -79,11 +85,12 @@ export function calendarProvider(tool: { category?: string; definition?: unknown
   const url = (tool.definition as { config?: { url?: unknown } } | undefined)?.config?.url;
   if (typeof url !== "string") return null;
   if (url.includes(GOOGLE_CALENDAR_PROVIDER)) return GOOGLE_CALENDAR_PROVIDER;
+  if (/\/mcp\/outlook-calendar\/?$/.test(url)) return OUTLOOK_CALENDAR_PROVIDER;
   if (/\/mcp\/calendly\/?$/.test(url)) return CALENDLY_PROVIDER;
   return null;
 }
 
-/** Whether a tool is a booking calendar integration (Google Calendar or Calendly). */
+/** Whether a tool is a booking calendar integration (Google Calendar, Outlook Calendar or Calendly). */
 export function isCalendarTool(tool: { category?: string; definition?: unknown }): boolean {
   return calendarProvider(tool) !== null;
 }

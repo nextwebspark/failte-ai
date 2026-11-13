@@ -180,10 +180,10 @@ export const GUIDES: Guide[] = [
   },
   {
     title: "Calendars",
-    summary: "Connect Google Calendar or Calendly for bookings.",
+    summary: "Connect Google Calendar, Outlook or Calendly for bookings.",
     screen: { kind: "path", href: "/integrations" },
     screenLabel: "Integrations",
-    questions: ["How do I connect Google Calendar?", "How do I connect Calendly?"],
+    questions: ["How do I connect Google Calendar?", "How do I connect Outlook Calendar?", "How do I connect Calendly?"],
   },
   {
     title: "Team and roles",

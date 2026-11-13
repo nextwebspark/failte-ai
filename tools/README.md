@@ -41,6 +41,8 @@ opaque connection key.
 | `TOOLS_PUBLIC_BASE_URL` | Public URL that reaches this service's `/oauth/*` (may include a path prefix, e.g. `https://app.example.com/tools`). OAuth is off (503) until set |
 | `TOOLS_UI_RETURN_URL` | Fixed UI page the OAuth callback redirects back to (e.g. `https://app.example.com/integrations`). OAuth is off (503) until set |
 | `TOOLS_GOOGLE_CLIENT_ID` / `TOOLS_GOOGLE_CLIENT_SECRET` | Optional [platform Google client](#platform-client), offered to every workspace. Both or neither (blank counts as unset) |
+| `TOOLS_MICROSOFT_CLIENT_ID` / `TOOLS_MICROSOFT_CLIENT_SECRET` | Optional platform Microsoft (Entra) client for [Outlook Calendar](#outlook-calendar-outlook-calendar). Both or neither; unset, Outlook Calendar is not served at all |
+| `TOOLS_MICROSOFT_TENANT` | Who may sign in with Microsoft: `common` (default: work, school and personal accounts), `organizations`, `consumers`, or one tenant id or domain |
 | `LOG_LEVEL` | Default `INFO` |
 
 Generate a key with
@@ -272,6 +274,42 @@ the Voiptel agent needs two integrations: Google Calendar (bookings) and
 Google Sheets (orders, `orders_tab` set). With a service account, connect
 Calendar first and let Sheets reuse the same key (see
 [Auth families](#auth-families-and-reuse)).
+
+## Outlook Calendar (`outlook-calendar`)
+
+The same five tools, booking rules and spoken answers as Google Calendar
+(`check_appointment_availability`, `book_appointment`, `find_appointments`,
+`reschedule_appointment`, `cancel_appointment`), on an Outlook / Microsoft 365
+calendar through Microsoft Graph. The booking service is Google Calendar's
+`CalendarService`; `outlook_calendar/graph.py` translates Graph events to and
+from its event model:
+
+- Free/busy comes from `calendarView`: every event not shown as Free (or
+  "Working elsewhere") blocks its time. Capacity bookings count events the
+  same way as on Google.
+- Graph chooses event ids, so a booking's own id (the HMAC Google Calendar
+  uses as its event id) is stored as a single-value extended property, next
+  to the connection marker, phone key and party size. Lookups by booking id
+  and by the caller's phone key are filtered by Graph on those properties; a
+  booking is only created after a lookup finds no event with its id, so a
+  retried booking is not made twice.
+- Times are read and written in UTC and bodies as plain text.
+- Deleting an Outlook event removes it, so cancelled bookings drop off the
+  bookings list instead of showing as cancelled.
+
+Connections are OAuth2 only, with the platform Microsoft client
+(`TOOLS_MICROSOFT_CLIENT_ID` / `_SECRET`, family `microsoft`): the provider
+is only registered when that client is set. Sign-in uses
+`https://login.microsoftonline.com/{TOOLS_MICROSOFT_TENANT}/oauth2/v2.0/`
+with PKCE and the scopes `offline_access Calendars.ReadWrite User.Read`; the
+account's address (`mail`, else `userPrincipalName` from Graph `/me`) labels
+the connection. Refresh tokens are stored and rotated like Google's.
+Microsoft has no refresh-token revocation endpoint: erasing a workspace
+forgets its tokens. The redirect URI is
+`<TOOLS_PUBLIC_BASE_URL>/oauth/outlook-calendar/callback`. Config is Google
+Calendar's (`calendar_id` defaults to `primary`, the account's default
+calendar; another calendar is given by its Graph id). There are no REST
+compatibility routes.
 
 ## Google Sheets (`google-sheets`)
 

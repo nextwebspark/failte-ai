@@ -1,7 +1,7 @@
 """Appointment hours of an agent created from a template.
 
 A template asks for them with an ``appointment_hours`` setup field, answered
-only when the agent books with Google Calendar. The answer
+only when the agent books with Google or Outlook Calendar. The answer
 (``AppointmentHours``) becomes a sentence in the agent's prompt and, when the
 request says so (``apply_to_calendar``), the booking hours of that calendar
 connection, so the agent and the calendar offer the same times.
@@ -32,7 +32,10 @@ from api.schemas.workflow_template import (
     TemplateSetupField,
 )
 from api.services.tool_integrations import Actor, get_integration_service
-from api.services.workflow.template_setup import GOOGLE_CALENDAR, TemplateSetupError
+from api.services.workflow.template_setup import (
+    RULES_CALENDARS,
+    TemplateSetupError,
+)
 
 
 def _join(items: Sequence[str]) -> str:
@@ -102,15 +105,17 @@ def appointment_hours_answers(
     so a placeholder with no hours leaves no blank line.
 
     Raises TemplateSetupError for hours the template doesn't ask for, hours
-    without Google Calendar attached (only bookings use them), or such a
+    without Google or Outlook Calendar attached (only bookings use them), or such a
     field answered as text.
     """
     hours = request.appointment_hours
     keys = [f.key for f in fields if f.type == SetupFieldType.APPOINTMENT_HOURS]
     if hours is not None and not keys:
         raise TemplateSetupError("This template doesn't ask for appointment hours.")
-    if hours is not None and GOOGLE_CALENDAR not in request.integration_tools:
-        raise TemplateSetupError("Appointment hours need Google Calendar attached.")
+    if hours is not None and _rules_tool(request) is None:
+        raise TemplateSetupError(
+            "Appointment hours need Google Calendar or Outlook Calendar attached."
+        )
     if any(request.values.get(key, "").strip() for key in keys):
         raise TemplateSetupError(
             "Send appointment hours as appointment_hours, not as text."
@@ -174,14 +179,24 @@ class CalendarSettings(Protocol):
     ) -> IntegrationConnectionResponse: ...
 
 
+def _rules_tool(request: DuplicateTemplateRequest) -> str | None:
+    """The tool of the calendar that keeps the booking hours (Google or
+    Outlook Calendar), if the request attaches one."""
+    for provider in RULES_CALENDARS:
+        if tool := request.integration_tools.get(provider):
+            return tool
+    return None
+
+
 async def _connection_of_tool(
     settings: CalendarSettings, actor: Actor, tool_uuid: str
 ) -> IntegrationConnectionResponse | None:
-    """The org's Google Calendar connection that *tool_uuid* books with."""
+    """The org's Google or Outlook Calendar connection that *tool_uuid*
+    books with."""
     # Org-scoped by the tools service and the workspace's own tools.
     for connection in await settings.list_connections(actor):
         if (
-            connection.provider == GOOGLE_CALENDAR
+            connection.provider in RULES_CALENDARS
             and tool_uuid in connection.tool_uuids
         ):
             return connection
@@ -206,7 +221,7 @@ async def update_calendar_booking_hours(
     ``PATCH /integrations/connections/{id}`` does).
     """
     hours = request.appointment_hours
-    tool_uuid = request.integration_tools.get(GOOGLE_CALENDAR)
+    tool_uuid = _rules_tool(request)
     if not request.apply_to_calendar or hours is None or not tool_uuid:
         return None
     if not may_change_settings:
@@ -217,7 +232,7 @@ async def update_calendar_booking_hours(
         connection = await _connection_of_tool(settings, actor, tool_uuid)
         if connection is None:
             logger.warning(
-                f"No Google Calendar connection uses tool {tool_uuid} in org "
+                f"No Google or Outlook Calendar connection uses tool {tool_uuid} in org "
                 f"{org}; booking hours not saved"
             )
             return CalendarHoursStatus.FAILED

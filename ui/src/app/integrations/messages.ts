@@ -52,6 +52,10 @@ export function urlWithoutReturnParams(href: string): string {
 
 /** The Calendly integration's provider id. */
 export const CALENDLY_PROVIDER = "calendly";
+/** The Outlook Calendar integration's provider id. */
+export const OUTLOOK_CALENDAR_PROVIDER = "outlook-calendar";
+/** The auth family Outlook Calendar signs in with. */
+export const MICROSOFT_FAMILY = "microsoft";
 
 const OAUTH_FAILURE_MESSAGES: Record<string, (who: string) => string> = {
     access_denied: (who) => `You cancelled the sign-in, or ${who} refused access. Nothing was connected.`,
@@ -70,7 +74,9 @@ const OAUTH_FAILURE_MESSAGES: Record<string, (who: string) => string> = {
 
 /** Who the sign-in was with, for the messages above. */
 function signInWith(provider: string | null | undefined): string {
-    return provider === CALENDLY_PROVIDER ? "Calendly" : "Google";
+    if (provider === CALENDLY_PROVIDER) return "Calendly";
+    if (provider === OUTLOOK_CALENDAR_PROVIDER) return "Microsoft";
+    return "Google";
 }
 
 /** Friendly copy for an OAuth callback failure code. */
@@ -93,19 +99,24 @@ export function connectionState(connection: {
     return "active";
 }
 
-const CONNECTION_ERROR_MESSAGES: Record<string, string> = {
-    grant_revoked: "Access was revoked or expired in the Google account. Reconnect to restore it.",
-    client_rejected: "Google no longer accepts this OAuth client. Check it in Google Cloud, then reconnect.",
-    client_missing: "The OAuth client for this connection was removed. Add it again and reconnect.",
+const CONNECTION_ERROR_MESSAGES: Record<string, (who: string) => string> = {
+    grant_revoked: (who) => `Access was revoked or expired in the ${who} account. Reconnect to restore it.`,
+    client_rejected: (who) =>
+        who === "Microsoft"
+            ? "Microsoft no longer accepts this deployment's sign-in app. Ask your administrator to check it, then reconnect."
+            : `${who} no longer accepts this OAuth client. Check it in Google Cloud, then reconnect.`,
+    client_missing: () => "The OAuth client for this connection was removed. Add it again and reconnect.",
 };
 
 /** Friendly copy for a connection in the error state. */
 export function connectionErrorMessage(connection: {
+    provider?: string | null;
     error_code?: string | null;
     last_error?: string | null;
 }): string {
-    if (connection.error_code && CONNECTION_ERROR_MESSAGES[connection.error_code]) {
-        return CONNECTION_ERROR_MESSAGES[connection.error_code];
+    const message = connection.error_code ? CONNECTION_ERROR_MESSAGES[connection.error_code] : undefined;
+    if (message) {
+        return message(signInWith(connection.provider));
     }
     return connection.last_error?.trim() || "The last check failed. Test the connection or reconnect.";
 }
@@ -147,6 +158,9 @@ const SCOPE_LABELS: Record<string, string> = {
     "event_types:read": "See your Calendly events",
     "availability:read": "See your free times",
     "scheduled_events:write": "Book meetings for callers",
+    "Calendars.ReadWrite": "See free times and book, move and cancel appointments in your Outlook calendar",
+    "User.Read": "See your Microsoft account's email address",
+    offline_access: "Stay connected without signing in again",
 };
 
 /** A readable name for an OAuth scope URL. */

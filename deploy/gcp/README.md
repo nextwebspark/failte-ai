@@ -502,6 +502,55 @@ keeps only about 100 live refresh tokens per Google account per client, and
 every connect re-consents, so one account connecting very many workspaces
 loses its oldest connections (they show as `grant_revoked`).
 
+**Platform Microsoft client (optional): Outlook Calendar.** Outlook Calendar
+is only offered when `tools.env` has `TOOLS_MICROSOFT_CLIENT_ID` /
+`TOOLS_MICROSOFT_CLIENT_SECRET`, which `configure-env.sh` writes when both
+`dograh-microsoft-oauth-client-id` and `dograh-microsoft-oauth-client-secret`
+exist (only one: it stays off and the script says so). To set it up:
+
+1. In the Azure portal (portal.azure.com → **Microsoft Entra ID** → **App
+   registrations** → **New registration**), name it (e.g. LightMove.ai),
+   choose **Accounts in any organizational directory (Any Microsoft Entra ID
+   tenant - Multitenant) and personal Microsoft accounts (e.g. Skype, Xbox)**,
+   and under **Redirect URI** pick **Web** and enter
+   `<TOOLS_PUBLIC_BASE_URL>/oauth/outlook-calendar/callback` (normally
+   `<PUBLIC_BASE_URL>/oauth/outlook-calendar/callback`), exactly.
+2. **Certificates & secrets** → **New client secret**: copy its **Value**
+   (shown once; not the Secret ID). Note when it expires.
+3. **API permissions** → **Add a permission** → **Microsoft Graph** →
+   **Delegated permissions**: `Calendars.ReadWrite`, `User.Read` (usually
+   there already) and `offline_access`. None needs admin consent for a
+   personal or ordinary work account, though a Microsoft 365 organisation
+   may require its admin to approve new apps.
+4. Store the **Application (client) ID** (Overview page) and the secret value:
+
+   ```bash
+   for name in dograh-microsoft-oauth-client-id dograh-microsoft-oauth-client-secret; do
+     echo "Paste $name, then Enter:"; read -rs V
+     printf %s "$V" | gcloud secrets create "$name" --data-file=- --project=dograh-eu
+     gcloud secrets add-iam-policy-binding "$name" --project=dograh-eu \
+       --member=serviceAccount:dograh-app-sa@dograh-eu.iam.gserviceaccount.com \
+       --role=roles/secretmanager.secretAccessor
+   done
+   unset V
+   ```
+
+5. Deploy, or on the VM `sudo ./deploy/gcp/configure-env.sh` then
+   `sudo docker compose up -d fallcha-tools`. The Outlook Calendar card then
+   appears on every workspace's Integrations page.
+
+`TOOLS_MICROSOFT_TENANT` is `common` unless the script runs with
+`DOGRAH_MICROSOFT_TENANT` (e.g. `organizations` for work and school accounts
+only, or one tenant id); `DOGRAH_MICROSOFT=off` leaves Outlook Calendar off.
+Unlike Google's, a secret that is not readable is treated as absent, so
+Outlook Calendar goes off on that run. Client secrets expire (at most two
+years): add a new one in **Certificates & secrets**, `gcloud secrets versions
+add dograh-microsoft-oauth-client-secret --data-file=- --project=dograh-eu`,
+re-run the script and `up -d fallcha-tools`, then delete the old secret in
+Entra. Turning the client off, or changing its client id, leaves existing
+Outlook connections unusable until it is back (they reconnect with the new
+one).
+
 ### Encryption at rest
 
 `CREDENTIALS_ENCRYPTION_KEYS` (comma-separated Fernet keys, the first one

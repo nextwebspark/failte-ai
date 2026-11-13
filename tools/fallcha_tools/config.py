@@ -11,6 +11,9 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # An OAuth client id: printable ASCII, no spaces (as for workspace clients).
 _CLIENT_ID = re.compile(r"[\x21-\x7e]{1,256}")
+# A Microsoft tenant: a name (common, organizations, consumers), a GUID or a
+# domain. It becomes one path segment of the sign-in URLs.
+_TENANT = re.compile(r"[A-Za-z0-9][A-Za-z0-9.-]{0,252}")
 
 
 def normalize_database_url(url: str) -> str:
@@ -55,6 +58,17 @@ class Settings(DatabaseSettings):
     google_client_secret: SecretStr | None = Field(
         default=None, alias="TOOLS_GOOGLE_CLIENT_SECRET"
     )
+    # The platform's Microsoft (Entra) OAuth client, for Outlook Calendar.
+    # Both or neither; unset, Outlook Calendar is not offered at all.
+    microsoft_client_id: str | None = Field(
+        default=None, alias="TOOLS_MICROSOFT_CLIENT_ID"
+    )
+    microsoft_client_secret: SecretStr | None = Field(
+        default=None, alias="TOOLS_MICROSOFT_CLIENT_SECRET"
+    )
+    # Which accounts may sign in: "common" (work, school and personal
+    # Microsoft accounts), "organizations", "consumers" or one tenant's id.
+    microsoft_tenant: str = Field(default="common", alias="TOOLS_MICROSOFT_TENANT")
     log_level: str = Field(default="INFO", alias="LOG_LEVEL")
 
     @field_validator("public_base_url", "ui_return_url")
@@ -84,7 +98,13 @@ class Settings(DatabaseSettings):
             raise ValueError("TOOLS_ENCRYPTION_KEYS must contain at least one key")
         return value
 
-    @field_validator("google_client_id", "google_client_secret", mode="before")
+    @field_validator(
+        "google_client_id",
+        "google_client_secret",
+        "microsoft_client_id",
+        "microsoft_client_secret",
+        mode="before",
+    )
     @classmethod
     def _blank_is_unset(cls, value: object) -> object:
         # Docker Compose passes unset variables as "".
@@ -94,19 +114,38 @@ class Settings(DatabaseSettings):
             return value.strip() or None
         return value
 
-    @field_validator("google_client_id")
+    @field_validator("google_client_id", "microsoft_client_id")
     @classmethod
     def _client_id_shape(cls, value: str | None) -> str | None:
         if value is not None and not _CLIENT_ID.fullmatch(value):
-            raise ValueError("TOOLS_GOOGLE_CLIENT_ID must be printable ASCII")
+            raise ValueError("the OAuth client id must be printable ASCII")
+        return value
+
+    @field_validator("microsoft_tenant", mode="before")
+    @classmethod
+    def _tenant_shape(cls, value: object) -> object:
+        if value is None or (isinstance(value, str) and not value.strip()):
+            return "common"
+        if isinstance(value, str):
+            value = value.strip()
+            if not _TENANT.fullmatch(value):
+                raise ValueError(
+                    "TOOLS_MICROSOFT_TENANT must be common, organizations, "
+                    "consumers, a tenant id or a domain"
+                )
         return value
 
     @model_validator(mode="after")
-    def _google_client_complete(self) -> Settings:
+    def _clients_complete(self) -> Settings:
         if (self.google_client_id is None) != (self.google_client_secret is None):
             raise ValueError(
                 "set both TOOLS_GOOGLE_CLIENT_ID and TOOLS_GOOGLE_CLIENT_SECRET, "
                 "or neither"
+            )
+        if (self.microsoft_client_id is None) != (self.microsoft_client_secret is None):
+            raise ValueError(
+                "set both TOOLS_MICROSOFT_CLIENT_ID and "
+                "TOOLS_MICROSOFT_CLIENT_SECRET, or neither"
             )
         return self
 

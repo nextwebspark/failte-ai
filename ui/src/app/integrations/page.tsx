@@ -313,7 +313,7 @@ function IntegrationsScreen() {
         <div className="page-body">
             <PageHeader
                 title="Integrations"
-                description="Connect the apps you already use, like Google Calendar or Calendly, so your agents can check and book times for callers."
+                description="Connect the apps you already use, like Google Calendar, Outlook or Calendly, so your agents can check and book times for callers."
             />
             <div className="w-full max-w-5xl space-y-8">
                 {finishing && (
@@ -402,7 +402,7 @@ function IntegrationsScreen() {
                             {providers.length === 0 ? (
                                 <p className="text-sm text-muted-foreground">No integrations are available yet.</p>
                             ) : (
-                                <div className="grid items-start gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                                <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
                                     {providers.map((provider: IntegrationProvider) => (
                                         <ProviderCard
                                             key={provider.id}
@@ -498,9 +498,9 @@ function LoadingState() {
                 <Skeleton className="h-5 w-40" />
                 <Skeleton className="h-20 w-full" />
             </div>
-            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-                {[0, 1, 2].map((i) => (
-                    <Skeleton key={i} className="h-56 w-full" />
+            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                {[0, 1, 2, 3].map((i) => (
+                    <Skeleton key={i} className="h-40 w-full" />
                 ))}
             </div>
         </div>

@@ -159,7 +159,15 @@ def own_scopes(spec: OAuthSpec, granted: Sequence[str]) -> tuple[str, ...]:
     (grants the same account made to the same client elsewhere); they are
     neither this connection's to use nor to show."""
     known = {*spec.identity_scopes, *spec.scopes, *spec.optional_scopes}
-    return tuple(scope for scope in granted if scope in known)
+    named = (_without_prefix(scope, spec.scope_prefixes) for scope in granted)
+    return tuple(dict.fromkeys(scope for scope in named if scope in known))
+
+
+def _without_prefix(scope: str, prefixes: Sequence[str]) -> str:
+    for prefix in prefixes:
+        if scope.startswith(prefix):
+            return scope.removeprefix(prefix)
+    return scope
 
 
 # -- token endpoint -----------------------------------------------------------
@@ -297,11 +305,13 @@ async def fetch_account_email(
                 "{} userinfo returned {}", spec.display_name, response.status_code
             )
             return None
-        email = response.json().get("email")
+        body = response.json()
+        values = [body.get(name) for name in spec.userinfo_email_fields]
     except (httpx.HTTPError, ValueError, AttributeError):
         return None
-    if isinstance(email, str) and 3 <= len(email) <= 320 and "@" in email:
-        return email
+    for email in values:
+        if isinstance(email, str) and 3 <= len(email) <= 320 and "@" in email:
+            return email
     return None
 
 
@@ -344,13 +354,13 @@ class OAuthFlow:
     registry: ProviderRegistry
     public_base_url: str
     ui_return_url: str
-    # The platform client offered to every workspace; None offers none.
-    platform_app_id: uuid.UUID | None
+    # The platform clients offered to every workspace (one per auth family).
+    platform_app_ids: frozenset[uuid.UUID]
     clock: Clock = utc_now
 
     def _apps(self, session: AsyncSession) -> ProviderAppRepository:
         return ProviderAppRepository(
-            session, self.box, platform_app_id=self.platform_app_id
+            session, self.box, platform_app_ids=self.platform_app_ids
         )
 
     def _require_configured(self) -> None:
