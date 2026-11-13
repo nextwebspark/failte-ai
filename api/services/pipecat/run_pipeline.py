@@ -1146,8 +1146,24 @@ async def _run_pipeline_impl(
             )
         )
 
+    # Opt-in per workflow: some callers' lines stop sending audio during
+    # silence, which stalls end-of-turn detection (see input_silence_filler).
+    # Realtime needs it too: the provider's server-side VAD otherwise never
+    # sees the silence that ends the caller's turn.
+    input_silence_filler = (
+        InputSilenceFiller() if run_configs.get("input_silence_fill_enabled") else None
+    )
+    if input_silence_filler:
+        logger.info(f"[run {workflow_run_id}] input silence filler enabled")
+
     # Build the pipeline
     if is_realtime:
+        fast_router_config = run_configs.get("fast_router")
+        if isinstance(fast_router_config, dict) and fast_router_config.get("enabled"):
+            logger.warning(
+                f"[run {workflow_run_id}] fast router is enabled but has no "
+                "effect on a realtime workflow"
+            )
         pipeline = build_realtime_pipeline(
             transport,
             llm,
@@ -1163,17 +1179,9 @@ async def _run_pipeline_impl(
             ),
             pipeline_metrics_aggregator,
             termination_funnel,
+            input_silence_filler=input_silence_filler,
         )
     else:
-        # Opt-in per workflow: some callers' lines stop sending audio during
-        # silence, which stalls end-of-turn detection (see input_silence_filler).
-        input_silence_filler = (
-            InputSilenceFiller()
-            if run_configs.get("input_silence_fill_enabled")
-            else None
-        )
-        if input_silence_filler:
-            logger.info(f"[run {workflow_run_id}] input silence filler enabled")
         # Opt-in per workflow: a light model acknowledges the caller while the
         # main LLM works (see fast_router).
         fast_router = ack_gate = None
