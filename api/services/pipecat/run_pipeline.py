@@ -1158,7 +1158,8 @@ async def _run_pipeline_impl(
 
     # Build the pipeline
     if is_realtime:
-        if (run_configs.get("fast_router") or {}).get("enabled"):
+        fast_router_config = run_configs.get("fast_router")
+        if isinstance(fast_router_config, dict) and fast_router_config.get("enabled"):
             logger.warning(
                 f"[run {workflow_run_id}] fast router is enabled but has no "
                 "effect on a realtime workflow"
