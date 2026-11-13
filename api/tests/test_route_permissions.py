@@ -248,8 +248,12 @@ async def client_as(org):
             "/api/v1/dashboard/layout",
             {OrgRole.STAFF, OrgRole.VIEWER, OrgRole.DEVELOPER, OrgRole.ADMIN},
         ),
-        ("PUT", "/api/v1/dashboard/layout/workspace", {OrgRole.ADMIN}),
-        ("DELETE", "/api/v1/dashboard/layout/workspace", {OrgRole.ADMIN}),
+        ("PUT", "/api/v1/dashboard/layout/workspace", {OrgRole.ADMIN, OrgRole.VIEWER}),
+        (
+            "DELETE",
+            "/api/v1/dashboard/layout/workspace",
+            {OrgRole.ADMIN, OrgRole.VIEWER},
+        ),
         (
             "GET",
             "/api/v1/follow-ups",

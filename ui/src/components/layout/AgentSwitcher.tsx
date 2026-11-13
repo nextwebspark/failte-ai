@@ -4,7 +4,7 @@ import { Check, ChevronsUpDown, GitBranch, Plus } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 
-import { agentLineLabel } from "@/components/dashboard/dashboardView";
+import { agentLineLabel, agentLineShort, agentNameParts } from "@/components/dashboard/dashboardView";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -76,11 +76,13 @@ export function AgentSwitcher({ collapsed, onNavigate }: { collapsed: boolean; o
         aria-hidden
         className="grid size-[30px] shrink-0 place-items-center rounded-lg bg-sky-dim text-[12px] font-bold text-sky"
       >
-        {initialsOf(current.name, "A")}
+        {initialsOf(agentNameParts(current.name).title, "A")}
       </span>
-      <span className={cn("min-w-0 flex-1 text-left leading-tight", collapsed && "sr-only")}>
-        <span className="block truncate text-caption font-semibold text-foreground">{current.name}</span>
-        <span className="block truncate text-meta text-ink-3">{agentLineLabel(current)}</span>
+      <span className={cn("min-w-0 flex-1 text-left leading-tight", collapsed && "sr-only")} title={current.name}>
+        <span className="block truncate text-caption font-semibold text-foreground">
+          {agentNameParts(current.name).title}
+        </span>
+        <span className="block truncate text-meta text-ink-3">{agentLineShort(current)}</span>
       </span>
     </>
   );
@@ -130,8 +132,10 @@ export function AgentSwitcher({ collapsed, onNavigate }: { collapsed: boolean; o
               className={cn("mt-0.5 size-4 shrink-0", agent.id === current.id ? "text-brand" : "invisible")}
             />
             <span className="flex min-w-0 flex-col">
-              <span className="truncate font-medium text-foreground">{agent.name}</span>
-              <span className="text-caption text-ink-3">{agentLineLabel(agent)}</span>
+              <span className="font-medium text-foreground">{agentNameParts(agent.name).title}</span>
+              <span className="text-caption text-ink-3">
+                {[agentNameParts(agent.name).kind, agentLineLabel(agent)].filter(Boolean).join(" · ")}
+              </span>
             </span>
             {agent.id === current.id && <span className="sr-only">(selected)</span>}
           </DropdownMenuItem>

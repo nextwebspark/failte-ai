@@ -11,6 +11,15 @@ import { Switch } from "@/components/ui/switch";
 import { type HomeLayoutValue, platformAdminApi } from "@/lib/platformAdminApi";
 
 /**
+ * A quieter Home for a first visit: is the agent answering, who needs a call
+ * back, the latest calls and the agent. The rest stays one click away.
+ */
+const CALM_FIRST_VISIT: HomeLayoutValue = {
+    hidden: ["tiles", "callers-wanted", "when-called", "quick-links"],
+    pinned: [],
+};
+
+/**
  * Platform admin > Home layout: which Home cards a workspace starts with
  * when neither the member nor the workspace has arranged their own. Every
  * card stays one click away on Home ("Show hidden").
@@ -72,7 +81,7 @@ export default function PlatformAdminHomeLayoutPage() {
                     <PanelDescription>
                         {data.layout
                             ? "A platform admin set this layout."
-                            : "The built-in layout applies: a calm first visit (agent status, who needs a call back, recent calls and the agent)."}
+                            : "The built-in layout applies: every card shows."}
                     </PanelDescription>
                 </div>
                 <ul className="divide-y divide-line-soft">
@@ -101,14 +110,9 @@ export default function PlatformAdminHomeLayoutPage() {
                         size="sm"
                         variant="outline"
                         disabled={saving}
-                        onClick={() =>
-                            void save(
-                                { hidden: [], pinned: [] },
-                                "Every card now shows by default",
-                            )
-                        }
+                        onClick={() => void save(CALM_FIRST_VISIT, "Workspaces without their own layout start calm")}
                     >
-                        Show every card
+                        Calm first visit
                     </Button>
                     {data.layout && (
                         <Button size="sm" variant="ghost" disabled={saving} onClick={() => void save(null, "Back to the built-in layout")}>

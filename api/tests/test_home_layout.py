@@ -74,9 +74,9 @@ def test_unreadable_stored_layout_is_ignored():
     assert parse_layout({}, "test") is None
 
 
-def test_built_in_layout_is_calm_but_keeps_the_essentials():
-    shown = {c.id for c in home_layout.HOME_CARDS} - set(BUILT_IN_LAYOUT.hidden)
-    assert {"attention", "recent-calls", "your-agent", "get-started"} <= shown
+def test_built_in_layout_shows_every_card():
+    assert BUILT_IN_LAYOUT.hidden == []
+    assert BUILT_IN_LAYOUT.pinned == []
 
 
 # -- through the API, with real memberships -----------------------------------

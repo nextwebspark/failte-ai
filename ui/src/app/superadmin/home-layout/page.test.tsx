@@ -24,7 +24,7 @@ const CARDS = [
 ];
 
 function response(layout: PlatformHomeLayout["layout"]): PlatformHomeLayout {
-    return { layout, built_in: { hidden: ["tiles"], pinned: [] }, cards: CARDS };
+    return { layout, built_in: { hidden: [], pinned: [] }, cards: CARDS };
 }
 
 describe("Platform admin Home layout", () => {
@@ -38,7 +38,7 @@ describe("Platform admin Home layout", () => {
         mocks.setHomeLayout.mockImplementation(async (layout) => response(layout));
         render(<HomeLayoutPage />);
         const tiles = await screen.findByRole("switch", { name: "Call numbers" });
-        expect(tiles.getAttribute("aria-checked")).toBe("false");
+        expect(tiles.getAttribute("aria-checked")).toBe("true");
         expect(screen.getByRole("switch", { name: "Recent calls" }).getAttribute("aria-checked")).toBe("true");
         expect(screen.getByText(/built-in layout applies/)).toBeTruthy();
         expect(screen.queryByRole("button", { name: "Use the built-in layout" })).toBeNull();
@@ -46,9 +46,22 @@ describe("Platform admin Home layout", () => {
         fireEvent.click(screen.getByRole("switch", { name: "Recent calls" }));
         fireEvent.click(screen.getByRole("button", { name: "Save" }));
         await waitFor(() =>
-            expect(mocks.setHomeLayout).toHaveBeenCalledWith({ hidden: ["tiles", "recent-calls"], pinned: [] }),
+            expect(mocks.setHomeLayout).toHaveBeenCalledWith({ hidden: ["recent-calls"], pinned: [] }),
         );
         expect(await screen.findByText("A platform admin set this layout.")).toBeTruthy();
+    });
+
+    it("offers a calm first visit as a preset", async () => {
+        mocks.homeLayout.mockResolvedValue(response(null));
+        mocks.setHomeLayout.mockImplementation(async (layout) => response(layout));
+        render(<HomeLayoutPage />);
+        fireEvent.click(await screen.findByRole("button", { name: "Calm first visit" }));
+        await waitFor(() =>
+            expect(mocks.setHomeLayout).toHaveBeenCalledWith({
+                hidden: ["tiles", "callers-wanted", "when-called", "quick-links"],
+                pinned: [],
+            }),
+        );
     });
 
     it("goes back to the built-in layout", async () => {

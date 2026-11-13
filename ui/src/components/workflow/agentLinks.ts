@@ -16,3 +16,9 @@ export function agentFactsHref(workflowId: number): string {
 export function agentTalkHref(workflowId: number): string {
     return `${agentHomeHref(workflowId)}&onboarding=web_call`;
 }
+
+/** The Calls page showing only this agent's calls. */
+export function agentCallsHref(workflowId: number): string {
+    const filters = JSON.stringify([{ id: "workflowId", value: { value: workflowId } }]);
+    return `/usage?${new URLSearchParams({ filters })}`;
+}

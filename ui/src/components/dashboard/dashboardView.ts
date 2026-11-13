@@ -548,6 +548,26 @@ export function primaryAgentId(summary: { agents: DashboardAgent[] }): number | 
 }
 
 /** Which number rings an agent, in a few words. */
+/**
+ * An agent's name in two parts: agents made from a starter are named
+ * "<starter> · <business>" ("Restaurant bookings · Linen Quay Kitchen").
+ * The business tells them apart in a narrow menu; the starter says what
+ * kind of agent it is. A name without the separator is all title.
+ */
+export function agentNameParts(name: string): { title: string; kind: string | null } {
+    const at = name.lastIndexOf(" · ");
+    if (at <= 0 || at + 3 >= name.length) return { title: name, kind: null };
+    return { title: name.slice(at + 3).trim(), kind: name.slice(0, at).trim() };
+}
+
+/** Which number rings an agent, in as few words as a narrow menu allows. */
+export function agentLineShort(agent: { phone_numbers?: string[] | null }): string {
+    const numbers = agent.phone_numbers ?? [];
+    if (numbers.length === 0) return "No number yet";
+    const first = formatPhone(numbers[0]);
+    return numbers.length === 1 ? `Answers ${first}` : `Answers ${first} +${numbers.length - 1}`;
+}
+
 export function agentLineLabel(agent: { phone_numbers?: string[] | null }): string {
     const numbers = agent.phone_numbers ?? [];
     if (numbers.length === 0) return "No phone number yet";

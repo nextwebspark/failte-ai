@@ -52,6 +52,7 @@ import { CallersWantedChart } from "./CallersWantedChart";
 import {
     afterHoursWords,
     agentLineLabel,
+    agentNameParts,
     busiestHour,
     callDayAndTime,
     callerWords,
@@ -1156,19 +1157,26 @@ function AgentFilter({
         <DropdownMenu>
             <DropdownMenuTrigger asChild>
                 <Button variant="outline" className="h-[38px] justify-between gap-2 sm:w-auto" aria-label={`Show calls for: ${current?.name ?? "All agents"}`}>
-                    <span className="max-w-[12rem] truncate">{current?.name ?? "All agents"}</span>
+                    <span className="max-w-[12rem] truncate" title={current?.name}>
+                        {current ? agentNameParts(current.name).title : "All agents"}
+                    </span>
                     <ChevronDown aria-hidden />
                 </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-64">
+            <DropdownMenuContent align="end" className="w-72">
                 <DropdownMenuItem onSelect={() => onChange(null)}>
                     <Check aria-hidden className={cn(value === null ? "text-brand" : "invisible")} />
                     All agents
                 </DropdownMenuItem>
                 {agents.map((agent) => (
-                    <DropdownMenuItem key={agent.id} onSelect={() => onChange(agent.id)}>
-                        <Check aria-hidden className={cn(value === agent.id ? "text-brand" : "invisible")} />
-                        <span className="truncate">{agent.name}</span>
+                    <DropdownMenuItem key={agent.id} onSelect={() => onChange(agent.id)} className="items-start">
+                        <Check aria-hidden className={cn("mt-0.5", value === agent.id ? "text-brand" : "invisible")} />
+                        <span className="flex min-w-0 flex-col">
+                            <span>{agentNameParts(agent.name).title}</span>
+                            {agentNameParts(agent.name).kind && (
+                                <span className="text-caption text-ink-3">{agentNameParts(agent.name).kind}</span>
+                            )}
+                        </span>
                     </DropdownMenuItem>
                 ))}
             </DropdownMenuContent>
@@ -1287,7 +1295,7 @@ export function HomeDashboard({
                         Try your agent
                     </Button>
                 )}
-                <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center @4xl:flex-nowrap">
+                <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center @4xl:justify-end">
                     {summary && (
                         <div>
                             <StatusPill summary={summary} />

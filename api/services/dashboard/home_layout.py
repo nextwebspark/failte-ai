@@ -78,13 +78,11 @@ class HomeLayout(BaseModel):
         return seen
 
 
-# A calm first visit: is the agent answering, who needs a call back, the
-# latest calls and the agent itself. The rest is one click away ("Show
-# hidden") for anyone who wants it.
-BUILT_IN_LAYOUT = HomeLayout(
-    hidden=["tiles", "callers-wanted", "when-called", "quick-links"],
-    pinned=[],
-)
+# Every card shows until someone chooses otherwise: existing workspaces see
+# Home as they always have. A platform admin can give workspaces without
+# their own default a calmer first visit (the "Calm first visit" preset on
+# the platform admin's Home layout page).
+BUILT_IN_LAYOUT = HomeLayout(hidden=[], pinned=[])
 
 
 def parse_layout(value: Any, where: str) -> HomeLayout | None:

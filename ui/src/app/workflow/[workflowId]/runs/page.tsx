@@ -1,21 +1,21 @@
 "use client";
 
-import { useParams, useSearchParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
+import { useEffect } from "react";
 
-import { WorkflowExecutions } from "../components/WorkflowExecutions";
+import { agentCallsHref } from "@/components/workflow/agentLinks";
 
 /**
- * "Runs" — the canvas's Analyse section for one agent. The shell supplies the
- * header, the nav and the test rail; this is just the call history.
+ * An agent's calls are the Calls page filtered to that agent: one list of
+ * calls everywhere. Old links (and the call page's "back") land there.
  */
 export default function WorkflowRunsPage() {
-    const { workflowId } = useParams();
-    const searchParams = useSearchParams();
+    const { workflowId } = useParams<{ workflowId: string }>();
+    const router = useRouter();
 
-    return (
-        <WorkflowExecutions
-            workflowId={Number(workflowId)}
-            searchParams={searchParams}
-        />
-    );
+    useEffect(() => {
+        router.replace(agentCallsHref(Number(workflowId)));
+    }, [router, workflowId]);
+
+    return null;
 }

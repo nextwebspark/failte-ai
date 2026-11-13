@@ -5,6 +5,8 @@ import type { FollowUpItem } from "@/client/types.gen";
 import {
     afterHoursWords,
     agentLineLabel,
+    agentLineShort,
+    agentNameParts,
     appendAnswer,
     busiestHour,
     callBackNumber,
@@ -330,5 +332,17 @@ describe("agentLineLabel", () => {
         expect(agentLineLabel(agent([]))).toBe("No phone number yet");
         expect(agentLineLabel(agent(["+353871234567"]))).toBe("Answers +353 87 123 4567");
         expect(agentLineLabel(agent(["7000", "7001"]))).toBe("Answers 7000 and 1 more");
+    });
+});
+
+describe("agentNameParts", () => {
+    it("puts the business first and the starter second", () => {
+        expect(agentNameParts("Restaurant bookings · Linen Quay Kitchen")).toEqual({
+            title: "Linen Quay Kitchen",
+            kind: "Restaurant bookings",
+        });
+        expect(agentNameParts("Takeaway orders")).toEqual({ title: "Takeaway orders", kind: null });
+        expect(agentLineShort({ phone_numbers: [] })).toBe("No number yet");
+        expect(agentLineShort({ phone_numbers: ["7000", "7001"] })).toBe("Answers 7000 +1");
     });
 });

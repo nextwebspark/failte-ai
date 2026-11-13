@@ -39,9 +39,10 @@ CallsReader = Annotated[
 FollowUpsManager = Annotated[
     OrgMembership, Depends(require_permission(Permission.FOLLOWUPS_MANAGE))
 ]
-# The workspace's default Home layout is a workspace setting like the others.
-WorkspaceManager = Annotated[
-    OrgMembership, Depends(require_permission(Permission.ORG_MANAGE))
+# The workspace's default Home layout: set by the business owner or an admin
+# (the people who decide who hears about calls and get the reports).
+HomeLayoutManager = Annotated[
+    OrgMembership, Depends(require_permission(Permission.REPORTS_SCHEDULE))
 ]
 
 
@@ -448,7 +449,7 @@ async def _layout_response(membership: OrgMembership) -> HomeLayoutResponse:
         layout=layout,
         source=source,
         workspace_default=workspace,
-        can_set_workspace_default=membership.can(Permission.ORG_MANAGE),
+        can_set_workspace_default=membership.can(Permission.REPORTS_SCHEDULE),
         cards=list(home_layout.HOME_CARDS),
     )
 
@@ -476,7 +477,7 @@ async def reset_home_layout(membership: CallsReader):
 
 @router.put("/dashboard/layout/workspace", response_model=HomeLayoutResponse)
 async def save_workspace_home_layout(
-    body: home_layout.HomeLayout, membership: WorkspaceManager
+    body: home_layout.HomeLayout, membership: HomeLayoutManager
 ):
     """Set the Home layout every member of the workspace starts with."""
     await home_layout.save_workspace_layout(membership.organization_id, body)
@@ -484,7 +485,7 @@ async def save_workspace_home_layout(
 
 
 @router.delete("/dashboard/layout/workspace", response_model=HomeLayoutResponse)
-async def clear_workspace_home_layout(membership: WorkspaceManager):
+async def clear_workspace_home_layout(membership: HomeLayoutManager):
     """Drop the workspace default: the platform's (or built-in) applies."""
     await home_layout.clear_workspace_layout(membership.organization_id)
     return await _layout_response(membership)
