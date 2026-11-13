@@ -217,10 +217,18 @@ def attach_tool_placeholder(
 # The tools-service provider ids of the booking calendars.
 GOOGLE_CALENDAR = "google-calendar"
 CALENDLY = "calendly"
+OUTLOOK_CALENDAR = "outlook-calendar"
+# The booking calendars an agent can book with, in the order they are offered.
+BOOKING_CALENDARS = (GOOGLE_CALENDAR, OUTLOOK_CALENDAR, CALENDLY)
+# Calendars whose connection keeps LightMove's own booking hours and rules
+# (Calendly keeps its own).
+RULES_CALENDARS = (GOOGLE_CALENDAR, OUTLOOK_CALENDAR)
 # Providers that can stand in for a template's integration: a template that
-# books with Google Calendar books with Calendly just as well (same functions:
-# check_appointment_availability, book_appointment).
-INTEGRATION_ALTERNATIVES: dict[str, tuple[str, ...]] = {GOOGLE_CALENDAR: (CALENDLY,)}
+# books with Google Calendar books with Outlook Calendar or Calendly just as
+# well (same functions: check_appointment_availability, book_appointment).
+INTEGRATION_ALTERNATIVES: dict[str, tuple[str, ...]] = {
+    GOOGLE_CALENDAR: (OUTLOOK_CALENDAR, CALENDLY)
+}
 
 
 def allowed_integrations(template_integrations: list[str] | None) -> set[str]:
@@ -292,7 +300,7 @@ CALENDAR_STEP_TYPES = ("startCall", "agentNode")
 
 
 def calendar_tool_provider(category: str | None, definition: Any) -> str | None:
-    """GOOGLE_CALENDAR or CALENDLY when the tool is a booking calendar (an
+    """One of BOOKING_CALENDARS when the tool is a booking calendar (an
     MCP tool served by the tools service at ``/mcp/<provider>``), else None.
     The same rule as the app's ``calendarProvider``."""
     if category != "mcp" or not isinstance(definition, Mapping):
@@ -302,7 +310,7 @@ def calendar_tool_provider(category: str | None, definition: Any) -> str | None:
     if not isinstance(url, str):
         return None
     path = url.rstrip("/")
-    for provider in (GOOGLE_CALENDAR, CALENDLY):
+    for provider in BOOKING_CALENDARS:
         if path.endswith(f"/mcp/{provider}"):
             return provider
     return None

@@ -28,6 +28,14 @@ describe("isTrustedAuthorizationUrl", () => {
         expect(isTrustedAuthorizationUrl("https://calendly.com/oauth/authorize")).toBe(false);
     });
 
+    it("accepts Microsoft's sign-in page and nothing like it", () => {
+        expect(
+            isTrustedAuthorizationUrl("https://login.microsoftonline.com/common/oauth2/v2.0/authorize?state=x"),
+        ).toBe(true);
+        expect(isTrustedAuthorizationUrl("https://login.microsoftonline.com.evil.example/common")).toBe(false);
+        expect(isTrustedAuthorizationUrl("https://login.live.com/oauth20_authorize.srf")).toBe(false);
+    });
+
     it("accepts a provider-declared host", () => {
         expect(isTrustedAuthorizationUrl("https://login.example.com/auth", ["login.example.com"])).toBe(true);
     });

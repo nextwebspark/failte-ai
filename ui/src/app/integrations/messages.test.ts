@@ -108,6 +108,7 @@ describe("oauthFailureMessage", () => {
         );
         expect(oauthFailureMessage("access_denied")).toContain("Google refused access");
         expect(oauthFailureMessage("expired_state", "calendly")).not.toContain("Google");
+        expect(oauthFailureMessage("access_denied", "outlook-calendar")).toContain("Microsoft refused access");
     });
 
     it("never reflects the code itself", () => {
@@ -131,6 +132,12 @@ describe("connection state and errors", () => {
         expect(revoked).not.toContain("invalid_grant");
         expect(connectionErrorMessage({ error_code: "client_rejected" })).toMatch(/OAuth client/);
         expect(connectionErrorMessage({ error_code: "client_missing" })).toMatch(/removed/);
+        const outlook = connectionErrorMessage({ provider: "outlook-calendar", error_code: "grant_revoked" });
+        expect(outlook).toContain("Microsoft account");
+        expect(outlook).not.toContain("Google");
+        expect(connectionErrorMessage({ provider: "outlook-calendar", error_code: "client_rejected" })).not.toContain(
+            "Google",
+        );
         expect(connectionErrorMessage({ last_error: "Calendar not shared with the service account" })).toBe(
             "Calendar not shared with the service account",
         );

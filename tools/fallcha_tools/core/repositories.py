@@ -560,7 +560,7 @@ class KeyRepository:
 
 class ProviderAppRepository:
     """The OAuth clients a workspace may use: its own, plus the platform
-    client currently configured (``platform_app_id``; None offers none).
+    clients currently configured (``platform_app_ids``; empty offers none).
 
     Platform rows (``org_id`` NULL) are written only by
     :class:`PlatformAppRepository` and can never be deleted here."""
@@ -570,19 +570,20 @@ class ProviderAppRepository:
         session: AsyncSession,
         box: SecretBox,
         *,
-        platform_app_id: uuid.UUID | None,
+        platform_app_ids: frozenset[uuid.UUID],
     ) -> None:
         self._session = session
         self._box = box
-        self._platform_app_id = platform_app_id
+        self._platform_app_ids = platform_app_ids
 
     def _offered(self, org_id: int) -> ColumnElement[bool]:
         """Clients the org may list and start a flow with."""
         own = ProviderApp.org_id == org_id
-        if self._platform_app_id is None:
+        if not self._platform_app_ids:
             return own
         platform = and_(
-            ProviderApp.org_id.is_(None), ProviderApp.id == self._platform_app_id
+            ProviderApp.org_id.is_(None),
+            ProviderApp.id.in_(sorted(self._platform_app_ids)),
         )
         return or_(own, platform)
 

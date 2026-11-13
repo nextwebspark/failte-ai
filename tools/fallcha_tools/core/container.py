@@ -39,8 +39,8 @@ class AppServices:
     contexts: ContextLoader
     oauth: OAuthFlow
     sync: SyncRunner
-    # The platform OAuth client offered to every workspace (None: none).
-    platform_app_id: uuid.UUID | None
+    # The platform OAuth clients offered to every workspace (one per family).
+    platform_app_ids: frozenset[uuid.UUID]
 
 
 def get_services(request: Request) -> AppServices:
@@ -72,7 +72,7 @@ def get_provider_app_repository(
     session: SessionDep, services: ServicesDep
 ) -> ProviderAppRepository:
     return ProviderAppRepository(
-        session, services.box, platform_app_id=services.platform_app_id
+        session, services.box, platform_app_ids=services.platform_app_ids
     )
 
 
