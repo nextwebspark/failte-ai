@@ -37,6 +37,22 @@ def test_workflow_fetch_list_includes_workflow_uuid():
     with patch("api.routes.workflow.db_client") as mock_db:
         mock_db.get_all_workflows_for_listing = AsyncMock(return_value=[workflow])
         mock_db.get_workflow_ids_with_draft = AsyncMock(return_value={workflow.id})
+        mock_db.get_answering_numbers = AsyncMock(
+            return_value=[
+                {
+                    "address": "+35315550100",
+                    "is_active": True,
+                    "config_inactive": False,
+                    "inbound_workflow_id": workflow.id,
+                },
+                {
+                    "address": "+35315550199",
+                    "is_active": False,
+                    "config_inactive": False,
+                    "inbound_workflow_id": workflow.id,
+                },
+            ]
+        )
         mock_db.get_workflow_channels = AsyncMock(
             return_value={workflow.id: {"web", "phone"}}
         )
@@ -70,6 +86,7 @@ def test_workflow_fetch_list_includes_workflow_uuid():
             "talk_seconds_24h": 420,
             "live_calls": 1,
             "channels": ["phone", "web"],
+            "phone_numbers": ["+35315550100"],
         }
     ]
 
@@ -93,6 +110,7 @@ def test_workflow_fetch_list_reports_workflows_without_runs_or_drafts():
             return_value={workflow.id: WorkflowRunActivity(daily_runs=[0] * 7)}
         )
         mock_db.get_workflow_ids_with_draft = AsyncMock(return_value=set())
+        mock_db.get_answering_numbers = AsyncMock(return_value=[])
         mock_db.get_workflow_channels = AsyncMock(return_value={workflow.id: set()})
 
         response = client.get("/workflow/fetch")
@@ -134,6 +152,7 @@ def test_workflow_fetch_valid_single_status_passes_through():
         mock_db.get_all_workflows_for_listing = AsyncMock(return_value=[])
         mock_db.get_workflow_run_activity = AsyncMock(return_value={})
         mock_db.get_workflow_ids_with_draft = AsyncMock(return_value=set())
+        mock_db.get_answering_numbers = AsyncMock(return_value=[])
         mock_db.get_workflow_channels = AsyncMock(return_value={})
 
         response = client.get("/workflow/fetch?status=active")
@@ -152,6 +171,7 @@ def test_workflow_fetch_comma_separated_status_queries_each_value():
         mock_db.get_all_workflows_for_listing = AsyncMock(return_value=[])
         mock_db.get_workflow_run_activity = AsyncMock(return_value={})
         mock_db.get_workflow_ids_with_draft = AsyncMock(return_value=set())
+        mock_db.get_answering_numbers = AsyncMock(return_value=[])
         mock_db.get_workflow_channels = AsyncMock(return_value={})
 
         response = client.get("/workflow/fetch?status=active,archived")

@@ -120,6 +120,8 @@ class DashboardAgent(BaseModel):
     id: int
     name: str
     active: bool
+    # The numbers that ring this agent now (empty: no live number).
+    phone_numbers: list[str] = []
 
 
 class DashboardAgentRef(BaseModel):

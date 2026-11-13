@@ -3490,6 +3490,10 @@ export type DashboardAgent = {
      * Active
      */
     active: boolean;
+    /**
+     * Phone Numbers
+     */
+    phone_numbers?: Array<string>;
 };
 
 /**
@@ -14182,6 +14186,10 @@ export type WorkflowListResponse = {
      * Channels
      */
     channels?: Array<'phone' | 'web'> | null;
+    /**
+     * Phone Numbers
+     */
+    phone_numbers?: Array<string> | null;
 };
 
 /**
