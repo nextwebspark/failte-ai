@@ -1,8 +1,9 @@
 name: Deploy
 
-# Deploys a published release to production (the GCP app VM). Running this
-# workflow is the approval step; it never runs on its own. To roll back, run
-# it with an older version (images are swapped; migrations are not reversed).
+# Deploys a published release to production (the GCP app VM). Run it by hand
+# to deploy or roll back (an older version swaps the images; migrations are
+# not reversed). The Release workflow calls it too, right after it publishes,
+# so a normal release is one run.
 #
 #   1. resolve the version (default: the latest GitHub Release)
 #   2. check the release images exist and both VMs are running
@@ -17,6 +18,12 @@ name: Deploy
 
 on:
   workflow_dispatch:
+    inputs:
+      version:
+        description: Release to deploy, e.g. 0.2.0 (empty = latest release)
+        type: string
+        required: false
+  workflow_call:
     inputs:
       version:
         description: Release to deploy, e.g. 0.2.0 (empty = latest release)

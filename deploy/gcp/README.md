@@ -31,6 +31,7 @@ pre-launch schedule is active. Full breakdown in the plan document.
 | `remote-deploy.sh` | Piped over SSH by the Deploy workflow: runs that release's `deploy.sh` as a systemd unit and streams its log |
 | `certbot-deploy-hook.sh` | certbot renewal hook: copies the renewed certificate into the install's `certs/` and restarts nginx |
 | `verify_gcs.py` | Proves GCS works through the S3 API **before** anything depends on it |
+| `local-phone-test.md`, `phone-test/` | Runbook and helpers for answering the live number from a branch on your laptop, before release |
 | `secrets/` | Per-service env files. Gitignored — never commit |
 
 The sip VM overlay lives with its stack, at
@@ -43,8 +44,8 @@ or copied to the VM by hand.
 
 | Workflow | Run it when | What it does |
 |---|---|---|
-| **Release** (`release.yml`) | main has what you want to ship | Full CI on main's head → next version → Cloud Build images tagged `X.Y.Z` → tag `vX.Y.Z` + GitHub Release with notes |
-| **Deploy** (`deploy.yml`) | you approve a release for production | Checks images and both VMs → Cloud SQL backup (prunes pre-deploy backups older than 30 days) → IAP SSH → that release's `deploy.sh` (re-syncs `.env` from Secret Manager, swaps the images) → public health check |
+| **Release** (`release.yml`) | main has what you want to ship | Checks both VMs are running → full CI on main's head → next version → Cloud Build images tagged `X.Y.Z` → tag `vX.Y.Z` + GitHub Release with notes → **deploys it** (calls Deploy). `deploy: false` stops after the release. |
+| **Deploy** (`deploy.yml`) | you deploy or roll back a published release by hand; Release calls it too | Checks images and both VMs → Cloud SQL backup (prunes pre-deploy backups older than 30 days) → IAP SSH → that release's `deploy.sh` (re-syncs `.env` from Secret Manager, swaps the images) → public health check |
 
 **Versions.** Semver tags `vX.Y.Z`, starting at `v0.1.0`. When you run
 Release you pick the bump: `patch` (fixes), `minor` (features), `major`
@@ -56,9 +57,13 @@ The api reports the release in `/api/v1/health` → `version`.
 
 1. Merge to main only when the PR's `ci-ok` check is green.
 2. Actions → **Release** → Run workflow (branch `main`) → choose the bump.
-   About 55 minutes, mostly the API image build.
-3. Actions → **Deploy** → Run workflow → version (empty = latest release).
-   This click is the production approval.
+   About 55 minutes for the release, mostly the API image build, then the
+   deploy. Starting the run is the production approval. Start both VMs first
+   (the dev-hours schedule stops them at 23:00 Dublin); the run fails in
+   seconds, before building, if either is stopped.
+3. If the deploy job fails after the release was published, fix the cause and
+   run **Deploy** with that version. To release without deploying, run
+   Release with `deploy` unticked, then Deploy later.
 
 **Roll back.** Run Deploy with the older version. It swaps the images back;
 it does **not** reverse database migrations (the api runs `alembic upgrade
