@@ -26,6 +26,8 @@ async def main(action: str, config_id: int, organization_id: int) -> None:
     else:
         raise SystemExit(__doc__)
     config = await db_client.get_telephony_configuration(config_id)
+    if config is None:
+        raise SystemExit(f"No telephony config with id {config_id}")
     print(f"{action}: changed={changed} inactive={config.inactive}")
 
 

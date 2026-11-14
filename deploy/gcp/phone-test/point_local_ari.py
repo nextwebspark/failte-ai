@@ -14,6 +14,8 @@ from api.db import db_client
 
 async def main(config_id: int, endpoint: str | None) -> None:
     config = await db_client.get_telephony_configuration(config_id)
+    if config is None:
+        raise SystemExit(f"No telephony config with id {config_id}")
     credentials = dict(config.credentials)
     print(
         "keys:",

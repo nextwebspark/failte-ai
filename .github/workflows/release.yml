@@ -137,7 +137,7 @@ jobs:
 
   build:
     needs: [ci, version]
-    if: ${{ !cancelled() && !failure() }}
+    if: ${{ !cancelled() && needs.ci.result == 'success' && needs.version.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 80
     permissions:

@@ -64,7 +64,8 @@ where definition::text like '%calendar-shim:8080%'
 ## 2. Local environment
 
 Copy [phone-test/phone-test.env.example](phone-test/phone-test.env.example) to
-`~/dev/backups/phone-test.env`, fill in the MinIO values, `chmod 600` it.
+`~/dev/backups/phone-test.env`, replace the `api/.env` path, fill in the MinIO
+values and `chmod 600` it.
 
 The copy's encrypted columns (telephony credentials, org config) need the live
 encryption key. Append it **without printing it**:
@@ -111,8 +112,8 @@ and run it in the api container (config id and org from
 `select id, organization_id, provider from telephony_configurations`):
 
 ```bash
-gcloud compute scp deploy/gcp/phone-test/park_live_ari.py dograh-app:/tmp/ --zone europe-west1-b --tunnel-through-iap
-gcloud compute ssh dograh-app --zone europe-west1-b --tunnel-through-iap --command \
+gcloud compute scp deploy/gcp/phone-test/park_live_ari.py dograh-app:/tmp/ --project dograh-eu --zone europe-west1-b --tunnel-through-iap
+gcloud compute ssh dograh-app --project dograh-eu --zone europe-west1-b --tunnel-through-iap --command \
   'sudo docker cp /tmp/park_live_ari.py dograh-api-1:/tmp/ && sudo docker exec dograh-api-1 python /tmp/park_live_ari.py park 3 1'
 ```
 
@@ -124,7 +125,7 @@ The edit lives only inside the running container, so a container restart also
 undoes it.
 
 ```bash
-gcloud compute ssh dograh-sip --zone europe-west1-b --tunnel-through-iap --command '
+gcloud compute ssh dograh-sip --project dograh-eu --zone europe-west1-b --tunnel-through-iap --command '
   sudo docker exec asterisk-voiptel sh -c "
     cp /etc/asterisk/websocket_client.conf /etc/asterisk/websocket_client.conf.bak-phonetest &&
     sed -i \"s#^uri = .*#uri = ws://127.0.0.1:18001/api/v1/telephony/ws/ari#\" /etc/asterisk/websocket_client.conf &&
