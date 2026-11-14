@@ -13,6 +13,8 @@ Layers Dograh engine integration quirks onto upstream-pristine
   mixed batches run immediately and interruptions discard queued transitions.
 - **Silent audio while muted.** The shared conversation mixin replaces muted
   caller audio while preserving Gemini's readiness and activity windows.
+- **16 kHz input.** Caller audio is upsampled to Gemini's native 16 kHz before
+  it is sent, whatever the transport rate.
 - **TTSSpeakFrame as greeting trigger.** The engine queues a TTSSpeakFrame
   to kick off the first response after node setup; the service intercepts
   it and runs the initial-context path.
@@ -36,12 +38,19 @@ from api.services.pipecat.realtime.static_greeting import (
     format_opening_line_instruction,
     format_static_greeting_prompt,
 )
+from pipecat.audio.utils import create_stream_resampler
 from pipecat.frames.frames import (
     FunctionCallFromLLM,
+    InputAudioRawFrame,
 )
 from pipecat.processors.aggregators.llm_context import LLMContext
 from pipecat.services.google.gemini_live.llm import GeminiLiveLLMService
 from pipecat.utils.tracing.service_decorators import traced_gemini_live
+
+# Gemini Live's native input rate. Narrowband telephony audio (8 kHz) is
+# upsampled to it, because the server's end-of-turn detection is slow and
+# unreliable on 8 kHz input.
+GEMINI_INPUT_SAMPLE_RATE = 16000
 
 
 class DograhGeminiLiveLLMService(RealtimeConversationMixin, GeminiLiveLLMService):
@@ -86,10 +95,24 @@ class DograhGeminiLiveLLMService(RealtimeConversationMixin, GeminiLiveLLMService
         # presence alone cannot distinguish an initial connection from a
         # reconnect that needs history re-seeding.
         self._reconnecting_after_error: bool = False
+        # The higher SOXR qualities hold audio back and release it in ~95 ms
+        # bursts, leaving most 20 ms frames empty; "QQ" yields every frame.
+        # Telephony legs have irregular gaps between chunks, so keep the
+        # resampler's history rather than clearing it after 0.2 s of quiet.
+        self._input_resampler = create_stream_resampler(
+            quality="QQ", clear_after_secs=None
+        )
 
     # ------------------------------------------------------------------
     # Hooks from upstream GeminiLiveLLMService
     # ------------------------------------------------------------------
+
+    async def _prepare_user_audio(self, frame: InputAudioRawFrame):
+        return await self._prepare_audio_frame(
+            frame,
+            sample_rate=GEMINI_INPUT_SAMPLE_RATE,
+            resampler=self._input_resampler,
+        )
 
     def _should_connect_on_start(self) -> bool:
         # Hold the connection until the engine sets a system_instruction. This
