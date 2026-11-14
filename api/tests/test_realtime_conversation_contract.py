@@ -698,10 +698,13 @@ async def test_gemini_telephony_audio_is_upsampled_to_16khz(monkeypatch):
 
     mime_types = {call.kwargs["audio"].mime_type for call in output.await_args_list}
     assert mime_types == {"audio/pcm;rate=16000"}
-    sent = b"".join(decode(call) for call in output.await_args_list)
-    # One second of audio in is one second out at twice the sample rate. The
-    # resampler holds back a few samples of filter delay.
-    assert 0.9 <= len(sent) / (16000 * 2) <= 1.05
+    # Every 20 ms frame in is a steady 20 ms of audio out, never an empty blob
+    # followed by a burst, so the server sees a continuous stream.
+    chunks = [decode(call) for call in output.await_args_list]
+    assert len(chunks) == 50
+    assert all(len(chunk) >= 600 for chunk in chunks)
+    sent = b"".join(chunks)
+    assert 0.98 <= len(sent) / (16000 * 2) <= 1.0
     assert any(sent)
     assert frame.sample_rate == 8000 and frame.audio == tone
 

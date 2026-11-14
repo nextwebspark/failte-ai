@@ -95,9 +95,13 @@ class DograhGeminiLiveLLMService(RealtimeConversationMixin, GeminiLiveLLMService
         # presence alone cannot distinguish an initial connection from a
         # reconnect that needs history re-seeding.
         self._reconnecting_after_error: bool = False
+        # The higher SOXR qualities hold audio back and release it in ~95 ms
+        # bursts, leaving most 20 ms frames empty; "QQ" yields every frame.
         # Telephony legs have irregular gaps between chunks, so keep the
         # resampler's history rather than clearing it after 0.2 s of quiet.
-        self._input_resampler = create_stream_resampler(clear_after_secs=None)
+        self._input_resampler = create_stream_resampler(
+            quality="QQ", clear_after_secs=None
+        )
 
     # ------------------------------------------------------------------
     # Hooks from upstream GeminiLiveLLMService
