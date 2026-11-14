@@ -682,3 +682,41 @@ async def test_seeding_a_recording_before_any_opening_opens_the_session(
 
     assert service._handled_initial_context
     check()
+
+
+@pytest.mark.asyncio
+async def test_gemini_telephony_audio_is_upsampled_to_16khz(monkeypatch):
+    monkeypatch.setattr(DograhGeminiLiveLLMService, "create_client", lambda self: None)
+    service = DograhGeminiLiveLLMService(api_key="test")
+    send, output, decode, _ = audio_sender(service)
+    # 20 ms of an 8 kHz tone, as an ARI leg delivers it.
+    tone = struct.pack("<160h", *[int(8000 * (i % 8 - 4) / 4) for i in range(160)])
+    frame = InputAudioRawFrame(tone, 8000, 1)
+
+    for _ in range(50):
+        await send(frame)
+
+    mime_types = {call.kwargs["audio"].mime_type for call in output.await_args_list}
+    assert mime_types == {"audio/pcm;rate=16000"}
+    # Every 20 ms frame in is a steady 20 ms of audio out, never an empty blob
+    # followed by a burst, so the server sees a continuous stream.
+    chunks = [decode(call) for call in output.await_args_list]
+    assert len(chunks) == 50
+    assert all(len(chunk) >= 600 for chunk in chunks)
+    sent = b"".join(chunks)
+    assert 0.98 <= len(sent) / (16000 * 2) <= 1.0
+    assert any(sent)
+    assert frame.sample_rate == 8000 and frame.audio == tone
+
+
+@pytest.mark.asyncio
+async def test_gemini_16khz_audio_is_sent_unchanged(monkeypatch):
+    monkeypatch.setattr(DograhGeminiLiveLLMService, "create_client", lambda self: None)
+    service = DograhGeminiLiveLLMService(api_key="test")
+    send, output, decode, _ = audio_sender(service)
+    frame = InputAudioRawFrame(b"\x01\x02" * 320, 16000, 1)
+
+    await send(frame)
+
+    assert decode(output.await_args) == frame.audio
+    assert output.await_args.kwargs["audio"].mime_type == "audio/pcm;rate=16000"
