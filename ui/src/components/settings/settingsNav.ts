@@ -2,6 +2,7 @@ import {
   Bell,
   CircleDollarSign,
   Key,
+  LayoutDashboard,
   type LucideIcon,
   Mail,
   Plug,
@@ -66,6 +67,13 @@ export const SETTINGS_SECTIONS: SettingsNavSection[] = [
         icon: Mail,
         description: "A daily, weekly or monthly summary of your calls, sent to your inbox.",
         requires: "reports:read",
+      },
+      {
+        title: "Home layout",
+        url: "/settings/home-layout",
+        icon: LayoutDashboard,
+        description: "Which cards everyone's Home starts with.",
+        requires: "reports:schedule",
       },
       {
         title: "Billing",

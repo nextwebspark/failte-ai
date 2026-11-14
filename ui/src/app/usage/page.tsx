@@ -10,6 +10,7 @@ import { toast } from 'sonner';
 import { downloadUsageRunsReportApiV1OrganizationsUsageRunsReportGet, getDailyUsageBreakdownApiV1OrganizationsUsageDailyBreakdownGet, getPreferencesApiV1OrganizationsPreferencesGet, getUsageHistoryApiV1OrganizationsUsageRunsGet, getWorkflowsSummaryApiV1WorkflowSummaryGet, savePreferencesApiV1OrganizationsPreferencesPut } from '@/client/sdk.gen';
 import type { DailyUsageBreakdownResponse, OrganizationPreferences, WorkflowRunUsageResponse, WorkflowSummaryResponse } from '@/client/types.gen';
 import { DailyUsageTable } from '@/components/DailyUsageTable';
+import { agentNameParts } from '@/components/dashboard/dashboardView';
 import { FilterBuilder } from '@/components/filters/FilterBuilder';
 import { runDetailHref } from '@/components/layout/shellContext';
 import { EmptyState } from '@/components/page-states/EmptyState';
@@ -166,7 +167,19 @@ export default function UsagePage() {
     // In-progress edits in the FilterBuilder; committed with its Apply button.
     const [draftExpert, setDraftExpert] = useState<ActiveFilter[]>(appliedExpert);
     useEffect(() => setDraftExpert(appliedExpert), [appliedExpert]);
-    const [expertOpen, setExpertOpen] = useState(() => appliedExpert.length > 0);
+    // Closed on arrival: a link's filters show as their count on "More
+    // filters", and an agent filter as its own chip in the row.
+    const [expertOpen, setExpertOpen] = useState(false);
+    const agentFilter = useMemo(() => {
+        const entry = appliedExpert.find((f) => f.attribute.id === 'workflowId');
+        const id = (entry?.value as { value?: number | null } | undefined)?.value;
+        if (!entry || id === null || id === undefined) return null;
+        const option = entry.attribute.config.numberSelectOptions?.find((o) => o.value === id);
+        const name = (option?.label ?? '').replace(/\s*\(#\d+\)\s*$/, '');
+        // The names load with the page; until then the chip says so briefly.
+        const loading = !option && agentFilterOptions === null;
+        return { entry, label: name ? agentNameParts(name).title : loading ? '…' : `Agent #${id}` };
+    }, [appliedExpert, agentFilterOptions]);
 
     const [list, setList] = useState<ListState>({ state: 'loading' });
     const [counts, setCounts] = useState<Partial<Record<CallsTab, number>>>({});
@@ -542,6 +555,14 @@ export default function UsagePage() {
                                 expertOpen={expertOpen}
                                 onChange={navigate}
                                 onToggleExpert={() => setExpertOpen(open => !open)}
+                                agentFilter={
+                                    agentFilter
+                                        ? {
+                                              label: agentFilter.label,
+                                              onClear: () => applyExpert(appliedExpert.filter((f) => f !== agentFilter.entry)),
+                                          }
+                                        : null
+                                }
                             />
 
                             {expertOpen && (

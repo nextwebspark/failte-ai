@@ -1,6 +1,7 @@
 "use client";
 
 import { ChevronDown, Eye, EyeOff, MoreHorizontal, Pin, PinOff, RotateCcw, Users } from "lucide-react";
+import Link from "next/link";
 import { createContext, type ReactNode, useContext } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -175,6 +176,10 @@ export function LayoutToolbar({
                                 <DropdownMenuItem onSelect={onClearWorkspaceDefault}>Clear the workspace default</DropdownMenuItem>
                             </>
                         )}
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem asChild>
+                            <Link href="/settings/home-layout">Choose cards in Settings</Link>
+                        </DropdownMenuItem>
                     </DropdownMenuContent>
                 </DropdownMenu>
             )}
