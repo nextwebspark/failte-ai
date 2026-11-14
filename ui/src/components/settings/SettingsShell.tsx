@@ -5,10 +5,11 @@ import { usePathname } from "next/navigation";
 import { type ReactNode, useEffect, useRef } from "react";
 
 import { useOwnsPageHeading } from "@/components/layout/pageHeading";
+import { ScopeNote } from "@/components/layout/ScopeNote";
 import { useOrgConfig } from "@/context/OrgConfigContext";
 import { cn } from "@/lib/utils";
 
-import { settingsItemFor, visibleSettingsSections } from "./settingsNav";
+import { settingsItemFor, settingsScopeFor, visibleSettingsSections } from "./settingsNav";
 
 /**
  * The frame every settings screen shares: the screen's title and one-line
@@ -24,6 +25,7 @@ export function SettingsShell({ children }: { children: ReactNode }) {
   const { role, can } = useOrgConfig();
   const sections = visibleSettingsSections(role === null ? null : can);
   const current = settingsItemFor(pathname);
+  const scope = settingsScopeFor(pathname);
   // The title below is the page's h1; the app header keeps "Settings" as text.
   useOwnsPageHeading();
 
@@ -46,6 +48,7 @@ export function SettingsShell({ children }: { children: ReactNode }) {
         {current?.description && (
           <p className="text-sm leading-relaxed text-ink-2">{current.description}</p>
         )}
+        {scope && <ScopeNote scope={scope} className="mt-1 self-start" />}
       </header>
 
       <div className="flex flex-col gap-5 @4xl:flex-row @4xl:gap-7">

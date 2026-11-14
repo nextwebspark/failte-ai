@@ -12,6 +12,7 @@ import {
   Users,
 } from "lucide-react";
 
+import type { SettingScope } from "@/components/layout/ScopeNote";
 import type { Permission } from "@/lib/auth/roles";
 
 /**
@@ -33,12 +34,15 @@ export type SettingsNavItem = {
 
 export type SettingsNavSection = {
   label: string;
+  /** Who the section's settings reach, shown under each screen's title. */
+  scope: SettingScope;
   items: SettingsNavItem[];
 };
 
 export const SETTINGS_SECTIONS: SettingsNavSection[] = [
   {
     label: "Workspace",
+    scope: "workspace",
     items: [
       {
         title: "General",
@@ -86,6 +90,7 @@ export const SETTINGS_SECTIONS: SettingsNavSection[] = [
   },
   {
     label: "Compliance",
+    scope: "workspace",
     items: [
       {
         title: "Privacy & compliance",
@@ -99,6 +104,7 @@ export const SETTINGS_SECTIONS: SettingsNavSection[] = [
   },
   {
     label: "Developer",
+    scope: "workspace",
     items: [
       {
         title: "API keys",
@@ -118,6 +124,7 @@ export const SETTINGS_SECTIONS: SettingsNavSection[] = [
   },
   {
     label: "Account",
+    scope: "you",
     items: [
       {
         title: "Your account",
@@ -155,6 +162,13 @@ export function settingsItemFor(pathname: string): SettingsNavItem | null {
     }
   }
   return match;
+}
+
+/** Who the settings on `pathname` reach, or null off the settings screens. */
+export function settingsScopeFor(pathname: string): SettingScope | null {
+  const item = settingsItemFor(pathname);
+  if (!item) return null;
+  return SETTINGS_SECTIONS.find((section) => section.items.includes(item))?.scope ?? null;
 }
 
 export function isSettingsRoute(pathname: string): boolean {

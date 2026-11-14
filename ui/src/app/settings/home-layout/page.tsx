@@ -88,7 +88,7 @@ export default function HomeLayoutSettingsPage() {
                     icon={LayoutDashboard}
                     tone="brand"
                     title="Cards on Home"
-                    description="Which cards everyone's Home starts with. Each person can still hide or pin cards for themselves."
+                    description="Which cards everyone's Home starts with, the same for every agent. Each person can still hide or pin cards for themselves."
                 >
                     {loadFailed ? (
                         <SettingBlock>
