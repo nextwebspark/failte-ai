@@ -3490,6 +3490,10 @@ export type DashboardAgent = {
      * Active
      */
     active: boolean;
+    /**
+     * Phone Numbers
+     */
+    phone_numbers?: Array<string>;
 };
 
 /**
@@ -5847,6 +5851,54 @@ export type HelpTicketsOut = {
      * Tickets
      */
     tickets: Array<TicketSummary>;
+};
+
+/**
+ * HomeCard
+ */
+export type HomeCard = {
+    /**
+     * Id
+     */
+    id: string;
+    /**
+     * Label
+     */
+    label: string;
+};
+
+/**
+ * HomeLayout
+ */
+export type HomeLayout = {
+    /**
+     * Hidden
+     */
+    hidden?: Array<string>;
+    /**
+     * Pinned
+     */
+    pinned?: Array<string>;
+};
+
+/**
+ * HomeLayoutResponse
+ */
+export type HomeLayoutResponse = {
+    layout: HomeLayout;
+    /**
+     * Source
+     */
+    source: 'person' | 'workspace' | 'platform' | 'default';
+    workspace_default: HomeLayout | null;
+    /**
+     * Can Set Workspace Default
+     */
+    can_set_workspace_default: boolean;
+    /**
+     * Cards
+     */
+    cards: Array<HomeCard>;
 };
 
 /**
@@ -14182,6 +14234,10 @@ export type WorkflowListResponse = {
      * Channels
      */
     channels?: Array<'phone' | 'web'> | null;
+    /**
+     * Phone Numbers
+     */
+    phone_numbers?: Array<string> | null;
 };
 
 /**
@@ -14670,6 +14726,10 @@ export type WorkflowSummaryResponse = {
      * Name
      */
     name: string;
+    /**
+     * Phone Numbers
+     */
+    phone_numbers?: Array<string> | null;
 };
 
 /**
@@ -16032,6 +16092,12 @@ export type GetWorkflowsSummaryApiV1WorkflowSummaryGetData = {
          * Filter by status (e.g. 'active' or 'archived'). Omit to return all.
          */
         status?: string | null;
+        /**
+         * Include Numbers
+         *
+         * Also return the phone numbers that ring each agent now.
+         */
+        include_numbers?: boolean;
     };
     url: '/api/v1/workflow/summary';
 };
@@ -23879,6 +23945,201 @@ export type MarkFollowUpDoneApiV1FollowUpsRunIdDonePostResponses = {
 };
 
 export type MarkFollowUpDoneApiV1FollowUpsRunIdDonePostResponse = MarkFollowUpDoneApiV1FollowUpsRunIdDonePostResponses[keyof MarkFollowUpDoneApiV1FollowUpsRunIdDonePostResponses];
+
+export type ResetHomeLayoutApiV1DashboardLayoutDeleteData = {
+    body?: never;
+    headers?: {
+        /**
+         * Authorization
+         */
+        authorization?: string | null;
+        /**
+         * X-Api-Key
+         */
+        'X-API-Key'?: string | null;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/v1/dashboard/layout';
+};
+
+export type ResetHomeLayoutApiV1DashboardLayoutDeleteErrors = {
+    /**
+     * Not found
+     */
+    404: unknown;
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ResetHomeLayoutApiV1DashboardLayoutDeleteError = ResetHomeLayoutApiV1DashboardLayoutDeleteErrors[keyof ResetHomeLayoutApiV1DashboardLayoutDeleteErrors];
+
+export type ResetHomeLayoutApiV1DashboardLayoutDeleteResponses = {
+    /**
+     * Successful Response
+     */
+    200: HomeLayoutResponse;
+};
+
+export type ResetHomeLayoutApiV1DashboardLayoutDeleteResponse = ResetHomeLayoutApiV1DashboardLayoutDeleteResponses[keyof ResetHomeLayoutApiV1DashboardLayoutDeleteResponses];
+
+export type GetHomeLayoutApiV1DashboardLayoutGetData = {
+    body?: never;
+    headers?: {
+        /**
+         * Authorization
+         */
+        authorization?: string | null;
+        /**
+         * X-Api-Key
+         */
+        'X-API-Key'?: string | null;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/v1/dashboard/layout';
+};
+
+export type GetHomeLayoutApiV1DashboardLayoutGetErrors = {
+    /**
+     * Not found
+     */
+    404: unknown;
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type GetHomeLayoutApiV1DashboardLayoutGetError = GetHomeLayoutApiV1DashboardLayoutGetErrors[keyof GetHomeLayoutApiV1DashboardLayoutGetErrors];
+
+export type GetHomeLayoutApiV1DashboardLayoutGetResponses = {
+    /**
+     * Successful Response
+     */
+    200: HomeLayoutResponse;
+};
+
+export type GetHomeLayoutApiV1DashboardLayoutGetResponse = GetHomeLayoutApiV1DashboardLayoutGetResponses[keyof GetHomeLayoutApiV1DashboardLayoutGetResponses];
+
+export type SaveHomeLayoutApiV1DashboardLayoutPutData = {
+    body: HomeLayout;
+    headers?: {
+        /**
+         * Authorization
+         */
+        authorization?: string | null;
+        /**
+         * X-Api-Key
+         */
+        'X-API-Key'?: string | null;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/v1/dashboard/layout';
+};
+
+export type SaveHomeLayoutApiV1DashboardLayoutPutErrors = {
+    /**
+     * Not found
+     */
+    404: unknown;
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type SaveHomeLayoutApiV1DashboardLayoutPutError = SaveHomeLayoutApiV1DashboardLayoutPutErrors[keyof SaveHomeLayoutApiV1DashboardLayoutPutErrors];
+
+export type SaveHomeLayoutApiV1DashboardLayoutPutResponses = {
+    /**
+     * Successful Response
+     */
+    200: HomeLayoutResponse;
+};
+
+export type SaveHomeLayoutApiV1DashboardLayoutPutResponse = SaveHomeLayoutApiV1DashboardLayoutPutResponses[keyof SaveHomeLayoutApiV1DashboardLayoutPutResponses];
+
+export type ClearWorkspaceHomeLayoutApiV1DashboardLayoutWorkspaceDeleteData = {
+    body?: never;
+    headers?: {
+        /**
+         * Authorization
+         */
+        authorization?: string | null;
+        /**
+         * X-Api-Key
+         */
+        'X-API-Key'?: string | null;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/v1/dashboard/layout/workspace';
+};
+
+export type ClearWorkspaceHomeLayoutApiV1DashboardLayoutWorkspaceDeleteErrors = {
+    /**
+     * Not found
+     */
+    404: unknown;
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ClearWorkspaceHomeLayoutApiV1DashboardLayoutWorkspaceDeleteError = ClearWorkspaceHomeLayoutApiV1DashboardLayoutWorkspaceDeleteErrors[keyof ClearWorkspaceHomeLayoutApiV1DashboardLayoutWorkspaceDeleteErrors];
+
+export type ClearWorkspaceHomeLayoutApiV1DashboardLayoutWorkspaceDeleteResponses = {
+    /**
+     * Successful Response
+     */
+    200: HomeLayoutResponse;
+};
+
+export type ClearWorkspaceHomeLayoutApiV1DashboardLayoutWorkspaceDeleteResponse = ClearWorkspaceHomeLayoutApiV1DashboardLayoutWorkspaceDeleteResponses[keyof ClearWorkspaceHomeLayoutApiV1DashboardLayoutWorkspaceDeleteResponses];
+
+export type SaveWorkspaceHomeLayoutApiV1DashboardLayoutWorkspacePutData = {
+    body: HomeLayout;
+    headers?: {
+        /**
+         * Authorization
+         */
+        authorization?: string | null;
+        /**
+         * X-Api-Key
+         */
+        'X-API-Key'?: string | null;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/v1/dashboard/layout/workspace';
+};
+
+export type SaveWorkspaceHomeLayoutApiV1DashboardLayoutWorkspacePutErrors = {
+    /**
+     * Not found
+     */
+    404: unknown;
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type SaveWorkspaceHomeLayoutApiV1DashboardLayoutWorkspacePutError = SaveWorkspaceHomeLayoutApiV1DashboardLayoutWorkspacePutErrors[keyof SaveWorkspaceHomeLayoutApiV1DashboardLayoutWorkspacePutErrors];
+
+export type SaveWorkspaceHomeLayoutApiV1DashboardLayoutWorkspacePutResponses = {
+    /**
+     * Successful Response
+     */
+    200: HomeLayoutResponse;
+};
+
+export type SaveWorkspaceHomeLayoutApiV1DashboardLayoutWorkspacePutResponse = SaveWorkspaceHomeLayoutApiV1DashboardLayoutWorkspacePutResponses[keyof SaveWorkspaceHomeLayoutApiV1DashboardLayoutWorkspacePutResponses];
 
 export type LookupOrderApiV1DemoSampleOrdersLookupPostData = {
     body: LookupRequest;

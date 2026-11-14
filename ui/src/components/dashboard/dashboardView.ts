@@ -5,6 +5,7 @@
 import { formatDuration, formatPhone } from "@/app/usage/callsView";
 import type {
     CallResult,
+    DashboardAgent,
     DashboardRange,
     FollowUpItem,
     FollowUpKind,
@@ -534,4 +535,42 @@ export function openHoursLegend(opening: {
 export function callDayAndTime(value: string, timezone: string | null | undefined, now: Date = new Date()): string {
     const words = callWhen(value, timezone, now);
     return /^\d/.test(words) ? `Today ${words}` : words;
+}
+
+/**
+ * The agent the "Try your agent" and "Opening hours" links open: the one
+ * your phone number rings, else the first switched-on agent, else the first.
+ */
+export function primaryAgentId(summary: { agents: DashboardAgent[] }): number | null {
+    const agents = summary.agents;
+    const answering = agents.find((a) => a.active && (a.phone_numbers?.length ?? 0) > 0);
+    return (answering ?? agents.find((a) => a.active) ?? agents[0])?.id ?? null;
+}
+
+/** Which number rings an agent, in a few words. */
+/**
+ * An agent's name in two parts: agents made from a starter are named
+ * "<starter> · <business>" ("Restaurant bookings · Linen Quay Kitchen").
+ * The business tells them apart in a narrow menu; the starter says what
+ * kind of agent it is. A name without the separator is all title.
+ */
+export function agentNameParts(name: string): { title: string; kind: string | null } {
+    const at = name.lastIndexOf(" · ");
+    if (at <= 0 || at + 3 >= name.length) return { title: name, kind: null };
+    return { title: name.slice(at + 3).trim(), kind: name.slice(0, at).trim() };
+}
+
+/** Which number rings an agent, in as few words as a narrow menu allows. */
+export function agentLineShort(agent: { phone_numbers?: string[] | null }): string {
+    const numbers = agent.phone_numbers ?? [];
+    if (numbers.length === 0) return "No number yet";
+    const first = formatPhone(numbers[0]);
+    return numbers.length === 1 ? `Answers ${first}` : `Answers ${first} +${numbers.length - 1}`;
+}
+
+export function agentLineLabel(agent: { phone_numbers?: string[] | null }): string {
+    const numbers = agent.phone_numbers ?? [];
+    if (numbers.length === 0) return "No phone number yet";
+    const first = formatPhone(numbers[0]);
+    return numbers.length === 1 ? `Answers ${first}` : `Answers ${first} and ${numbers.length - 1} more`;
 }

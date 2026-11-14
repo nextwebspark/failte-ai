@@ -112,6 +112,16 @@ class UserClient(BaseDBClient):
                 raise e
             return result.scalar_one()
 
+    async def delete_user_configuration_value(self, user_id: int, key: str) -> bool:
+        """Remove the value stored for a user under `key`. False if none."""
+        async with self.async_session() as session:
+            row = await self._get_user_configuration_row(session, user_id, key)
+            if row is None:
+                return False
+            await session.delete(row)
+            await session.commit()
+            return True
+
     async def get_user_configurations(
         self, user_id: int
     ) -> EffectiveAIModelConfiguration:

@@ -10,6 +10,10 @@ missing row means "use the default in code" (api.services.platform_admin
 impersonation). It stores ids only, no names or emails, so erasing a user
 or an organisation leaves no personal data behind in it.
 
+``platform_settings`` holds platform-wide values a platform admin sets, one
+JSON value per key (``home_layout``: the Home cards a workspace without its
+own default starts with). A missing row means "use the default in code".
+
 Fork-owned module. ``api.db.models`` imports it at the bottom so the tables
 are part of ``Base.metadata`` wherever the models are loaded.
 """
@@ -67,6 +71,22 @@ class PlatformFeatureFlagModel(Base):
             unique=True,
             postgresql_where=text("organization_id IS NOT NULL"),
         ),
+    )
+
+
+class PlatformSettingModel(Base):
+    __tablename__ = "platform_settings"
+
+    # What the value is, e.g. "home_layout" (api/services/dashboard/home_layout.py).
+    key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    value: Mapped[dict[str, Any]] = mapped_column(JSON)
+    updated_by: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="SET NULL")
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        server_default=func.now(),
     )
 
 

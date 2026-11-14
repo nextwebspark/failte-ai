@@ -8,6 +8,7 @@ import React from "react";
 import { BrandLogo } from "@/components/BrandLogo";
 import { useHelpPanel } from "@/components/help/HelpPanel";
 import { LocalOrgSwitcher } from "@/components/layout/LocalOrgSwitcher";
+import { ScopeNote } from "@/components/layout/ScopeNote";
 import { SidebarTeamSwitcher } from "@/components/layout/SidebarTeamSwitcher";
 import { firstSettingsUrl } from "@/components/settings/settingsNav";
 import { Button } from "@/components/ui/button";
@@ -89,6 +90,9 @@ export function AppTopBar({
   // On an agent route the canvas prints the AGENT as the title and the open
   // section as the strapline — the nav below swaps with it.
   const agentSection = agentShell ? agentSectionFor(pathname) : null;
+  // The agent's own settings screens say they change only this agent (not
+  // its calls, which are records rather than settings).
+  const agentScoped = Boolean(agentShell && agentSection && !agentSection.notInMenu);
   // A run opened from a workspace list keeps that list's breadcrumb; the run
   // itself becomes the strapline.
   const runId = workspaceMode ? pathname.split("/").pop() : null;
@@ -202,6 +206,10 @@ export function AppTopBar({
       >
         {meta.title}
       </TitleTag>
+      {/* A screen that prints its own title shows the note under it instead. */}
+      {agentScoped && !pageOwnsHeading && (
+        <ScopeNote scope="agent" agentName={agentShell?.agent?.name} className="max-md:hidden" />
+      )}
       {meta.subtitle && !pageOwnsHeading && (
         <p className="hidden truncate whitespace-nowrap text-caption text-ink-3 xl:block">
           {meta.subtitle}

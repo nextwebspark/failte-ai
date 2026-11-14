@@ -1,13 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  AGENT_NAV_SECTIONS,
-  agentHref,
-  agentIdFromPath,
-  agentSectionFor,
-  isAgentRoute,
-  isWorkspaceAgentScreen,
-} from "../agentNav";
+import { AGENT_PAGES, agentHref, agentIdFromPath, agentSectionFor, isAgentCallsRoute, isAgentRoute } from "../agentNav";
 
 describe("agentIdFromPath", () => {
   it("reads the id off every agent-level screen", () => {
@@ -30,32 +23,34 @@ describe("agentSectionFor", () => {
     expect(agentSectionFor("/workflow/12")?.title).toBe("Conversation");
   });
 
-  it("puts the dashboard and what the agent knows first, the builder under Advanced setup", () => {
-    expect(AGENT_NAV_SECTIONS[0].items.map((item) => item.title)).toEqual([
-      "Dashboard",
+  it("lists what the agent knows and its number first, the builder screens under Advanced", () => {
+    const menu = AGENT_PAGES.filter((page) => !page.notInMenu);
+    expect(menu.filter((page) => !page.advanced).map((page) => page.title)).toEqual([
       "What your agent knows",
-      "Calls",
+      "Phone number",
     ]);
-    expect(AGENT_NAV_SECTIONS[1].label).toBe("Advanced setup");
-    expect(AGENT_NAV_SECTIONS[1].items.map((item) => item.title)).toEqual([
+    expect(menu.filter((page) => page.advanced).map((page) => page.title)).toEqual([
       "Conversation",
       "Model and voice",
       "Advanced settings",
-      "Deployment",
     ]);
-    expect(agentSectionFor("/workflow/12/home")?.title).toBe("Dashboard");
-    expect(agentSectionFor("/workflow/12/facts")?.title).toBe("What your agent knows");
+    // An agent's calls are the main Calls row's, not a row of their own.
+    expect(AGENT_PAGES.find((page) => page.segment === "/runs")?.notInMenu).toBe(true);
   });
 
   it("resolves each declared section", () => {
+    expect(agentSectionFor("/workflow/12/facts")?.title).toBe("What your agent knows");
     expect(agentSectionFor("/workflow/12/model")?.title).toBe("Model and voice");
     expect(agentSectionFor("/workflow/12/settings")?.title).toBe("Advanced settings");
-    expect(agentSectionFor("/workflow/12/deployment")?.title).toBe("Deployment");
+    expect(agentSectionFor("/workflow/12/deployment")?.title).toBe("Phone number");
     expect(agentSectionFor("/workflow/12/runs")?.title).toBe("Calls");
   });
 
   it("keeps a single call's detail page under Calls", () => {
     expect(agentSectionFor("/workflow/12/run/99")?.title).toBe("Calls");
+    expect(isAgentCallsRoute("/workflow/12/run/99")).toBe(true);
+    expect(isAgentCallsRoute("/workflow/12/runs")).toBe(true);
+    expect(isAgentCallsRoute("/workflow/12/facts")).toBe(false);
   });
 
   it("is null off an agent route", () => {
@@ -67,24 +62,16 @@ describe("agentHref", () => {
   it("builds section links off the agent id", () => {
     expect(agentHref(12, "")).toBe("/workflow/12");
     expect(agentHref(12, "/settings")).toBe("/workflow/12/settings");
+    expect(agentHref(12, "/deployment", "#phone")).toBe("/workflow/12/deployment#phone");
   });
 
-  it("has no duplicate segments across the nav", () => {
-    const segments = AGENT_NAV_SECTIONS.flatMap((section) =>
-      section.items.map((item) => item.segment),
-    );
+  it("has no duplicate segments", () => {
+    const segments = AGENT_PAGES.map((page) => page.segment);
     expect(new Set(segments).size).toBe(segments.length);
   });
-});
 
-describe("isWorkspaceAgentScreen", () => {
-  it("keeps the main menu on the agent screens the main menu links to", () => {
-    expect(isWorkspaceAgentScreen("/workflow/14/facts")).toBe(true);
-    expect(isWorkspaceAgentScreen("/workflow/14/deployment")).toBe(true);
-    expect(isWorkspaceAgentScreen("/workflow/14")).toBe(false);
-    expect(isWorkspaceAgentScreen("/workflow/14/settings")).toBe(false);
-    expect(isWorkspaceAgentScreen("/workflow/14/home")).toBe(false);
-    expect(isWorkspaceAgentScreen("/workflow/14/facts", "facts")).toBe(true);
-    expect(isWorkspaceAgentScreen("/workflow/14/facts", "deployment")).toBe(false);
+  it("keeps the editing screens to people who may change the agent", () => {
+    expect(AGENT_PAGES.find((page) => page.segment === "/model")?.requires).toBe("agents:write");
+    expect(AGENT_PAGES.find((page) => page.segment === "/settings")?.requires).toBe("agents:write");
   });
 });

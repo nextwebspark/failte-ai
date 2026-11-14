@@ -17,6 +17,7 @@ import { AddAnswerDialog } from "@/components/dashboard/AddAnswerDialog";
 import { appendAnswer, callWhen } from "@/components/dashboard/dashboardView";
 import { useFollowUps } from "@/components/dashboard/useDashboardData";
 import { useOwnsPageHeading } from "@/components/layout/pageHeading";
+import { ScopeNote } from "@/components/layout/ScopeNote";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -70,6 +71,7 @@ export default function WhatYourAgentKnowsPage() {
 
     const { can } = useOrgConfig();
     const canEdit = can("agents:facts");
+    const { agent } = useAgentShell();
     const knowledge = useAgentKnowledge(workflowId);
 
     const [facts, setFacts] = useState<BusinessFact[] | null>(null);
@@ -213,6 +215,7 @@ export default function WhatYourAgentKnowsPage() {
                             ? "Change these any time. Your agent uses them on the next call."
                             : "What your agent tells callers. The owner or an admin keeps it up to date."}
                     </p>
+                    <ScopeNote scope="agent" agentName={agent?.name} className="mt-2" />
                 </div>
                 {facts && facts.length > 0 && (
                     canEdit ? (

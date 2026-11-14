@@ -26,7 +26,7 @@ vi.mock("next/navigation", () => ({
     useRouter: () => ({ replace: mocks.replace }),
 }));
 vi.mock("@/context/AgentShellContext", () => ({
-    useAgentShell: () => ({ openTester: mocks.openTester, setRailOpen: mocks.setRailOpen }),
+    useAgentShell: () => ({ openTester: mocks.openTester, setRailOpen: mocks.setRailOpen, agent: { name: "Restaurant bookings · Linen Quay Kitchen" } }),
 }));
 vi.mock("@/client/sdk.gen", () => ({
     listFollowUpsApiV1FollowUpsGet: mocks.followUps,

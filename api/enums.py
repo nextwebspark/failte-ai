@@ -193,6 +193,7 @@ class OrganizationConfigurationKey(Enum):
     )
     DEMO_ACCOUNT = "DEMO_ACCOUNT"  # Marks a seeded demo workspace (api/scripts/seed_demo_accounts.py)
     DEMO_SAMPLE_ORDERS = "DEMO_SAMPLE_ORDERS"  # A demo workspace's made-up shop orders and their lookup key (api/services/demo_orders.py)
+    HOME_LAYOUT = "HOME_LAYOUT"  # The workspace's default Home cards: hidden and pinned (api/services/dashboard/home_layout.py)
 
 
 class UserConfigurationKey(Enum):
@@ -202,6 +203,7 @@ class UserConfigurationKey(Enum):
         "MODEL_CONFIGURATION"  # Legacy per-user v1 AI model configuration
     )
     ONBOARDING = "ONBOARDING"  # Post-signup onboarding state (gate, tooltips, actions)
+    HOME_LAYOUT = "HOME_LAYOUT"  # The Home cards this person hid or pinned (api/services/dashboard/home_layout.py)
 
 
 class WorkflowStatus(Enum):

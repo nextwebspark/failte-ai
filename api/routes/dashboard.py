@@ -10,6 +10,7 @@ from pydantic import BaseModel
 from api.db import db_client
 from api.services.auth.depends import OrgMembership, require_permission
 from api.services.auth.permissions import Permission
+from api.services.dashboard import home_layout
 from api.services.dashboard.calls import CallResult
 from api.services.dashboard.follow_ups import (
     REVIEW_KINDS,
@@ -37,6 +38,11 @@ CallsReader = Annotated[
 ]
 FollowUpsManager = Annotated[
     OrgMembership, Depends(require_permission(Permission.FOLLOWUPS_MANAGE))
+]
+# The workspace's default Home layout: set by the business owner or an admin
+# (the people who decide who hears about calls and get the reports).
+HomeLayoutManager = Annotated[
+    OrgMembership, Depends(require_permission(Permission.REPORTS_SCHEDULE))
 ]
 
 
@@ -120,6 +126,8 @@ class DashboardAgent(BaseModel):
     id: int
     name: str
     active: bool
+    # The numbers that ring this agent now (empty: no live number).
+    phone_numbers: list[str] = []
 
 
 class DashboardAgentRef(BaseModel):
@@ -411,3 +419,73 @@ async def undo_follow_up_done(
     ):
         raise HTTPException(status_code=404, detail="Call not found")
     return FollowUpMarkResponse(run_id=run_id, kind=kind, done_at=None, done_by=None)
+
+
+# ------------------------------------------------------------- Home layout
+
+
+class HomeLayoutResponse(BaseModel):
+    # What this member's Home shows: hidden cards, and pinned cards in order.
+    layout: home_layout.HomeLayout
+    # Where it came from: their own, the workspace's, the platform's or the
+    # built-in one.
+    source: home_layout.LayoutSource
+    workspace_default: home_layout.HomeLayout | None
+    can_set_workspace_default: bool
+    cards: list[home_layout.HomeCard]
+
+
+async def _layout_response(membership: OrgMembership) -> HomeLayoutResponse:
+    person = await home_layout.person_layout(membership.user.id)
+    workspace = await home_layout.workspace_layout(membership.organization_id)
+    # The platform default only matters when neither of the others is saved.
+    platform = (
+        await home_layout.platform_layout()
+        if person is None and workspace is None
+        else None
+    )
+    layout, source = home_layout.resolve_layout(person, workspace, platform)
+    return HomeLayoutResponse(
+        layout=layout,
+        source=source,
+        workspace_default=workspace,
+        can_set_workspace_default=membership.can(Permission.REPORTS_SCHEDULE),
+        cards=list(home_layout.HOME_CARDS),
+    )
+
+
+@router.get("/dashboard/layout", response_model=HomeLayoutResponse)
+async def get_home_layout(membership: CallsReader):
+    """Which Home cards this member sees: their own layout, else the
+    workspace default, else the platform default, else the built-in one."""
+    return await _layout_response(membership)
+
+
+@router.put("/dashboard/layout", response_model=HomeLayoutResponse)
+async def save_home_layout(body: home_layout.HomeLayout, membership: CallsReader):
+    """Save the member's own Home layout, on their account."""
+    await home_layout.save_person_layout(membership.user.id, body)
+    return await _layout_response(membership)
+
+
+@router.delete("/dashboard/layout", response_model=HomeLayoutResponse)
+async def reset_home_layout(membership: CallsReader):
+    """Forget the member's own layout: the workspace's (or platform's) applies."""
+    await home_layout.clear_person_layout(membership.user.id)
+    return await _layout_response(membership)
+
+
+@router.put("/dashboard/layout/workspace", response_model=HomeLayoutResponse)
+async def save_workspace_home_layout(
+    body: home_layout.HomeLayout, membership: HomeLayoutManager
+):
+    """Set the Home layout every member of the workspace starts with."""
+    await home_layout.save_workspace_layout(membership.organization_id, body)
+    return await _layout_response(membership)
+
+
+@router.delete("/dashboard/layout/workspace", response_model=HomeLayoutResponse)
+async def clear_workspace_home_layout(membership: HomeLayoutManager):
+    """Drop the workspace default: the platform's (or built-in) applies."""
+    await home_layout.clear_workspace_layout(membership.organization_id)
+    return await _layout_response(membership)

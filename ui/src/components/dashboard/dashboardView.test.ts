@@ -4,6 +4,9 @@ import type { FollowUpItem } from "@/client/types.gen";
 
 import {
     afterHoursWords,
+    agentLineLabel,
+    agentLineShort,
+    agentNameParts,
     appendAnswer,
     busiestHour,
     callBackNumber,
@@ -27,6 +30,7 @@ import {
     openHoursLegend,
     openRangesWords,
     openRangeWords,
+    primaryAgentId,
     rangeSentence,
     telHref,
     todayLine,
@@ -299,5 +303,46 @@ describe("opening hours on the hourly chart", () => {
         const now = new Date("2026-11-09T15:00:00Z");
         expect(callDayAndTime("2026-11-09T07:30:00Z", "Europe/Dublin", now)).toBe("Today 7:30 am");
         expect(callDayAndTime("2026-11-08T21:05:00Z", "Europe/Dublin", now)).toBe("Yesterday 9:05 pm");
+    });
+});
+
+describe("primaryAgentId", () => {
+    const agent = (id: number, active = true, phone_numbers: string[] = []) => ({
+        id,
+        name: `Agent ${id}`,
+        active,
+        phone_numbers,
+    });
+
+    it("picks the agent a number rings over an older one without", () => {
+        expect(primaryAgentId({ agents: [agent(18), agent(50, true, ["7000"])] })).toBe(50);
+    });
+
+    it("falls back to the first switched-on agent, then the first", () => {
+        expect(primaryAgentId({ agents: [agent(18, false), agent(50)] })).toBe(50);
+        expect(primaryAgentId({ agents: [agent(18, false)] })).toBe(18);
+        expect(primaryAgentId({ agents: [] })).toBeNull();
+    });
+});
+
+describe("agentLineLabel", () => {
+    const agent = (phone_numbers: string[]) => ({ id: 1, name: "A", active: true, phone_numbers });
+
+    it("names the number that rings the agent", () => {
+        expect(agentLineLabel(agent([]))).toBe("No phone number yet");
+        expect(agentLineLabel(agent(["+353871234567"]))).toBe("Answers +353 87 123 4567");
+        expect(agentLineLabel(agent(["7000", "7001"]))).toBe("Answers 7000 and 1 more");
+    });
+});
+
+describe("agentNameParts", () => {
+    it("puts the business first and the starter second", () => {
+        expect(agentNameParts("Restaurant bookings · Linen Quay Kitchen")).toEqual({
+            title: "Linen Quay Kitchen",
+            kind: "Restaurant bookings",
+        });
+        expect(agentNameParts("Takeaway orders")).toEqual({ title: "Takeaway orders", kind: null });
+        expect(agentLineShort({ phone_numbers: [] })).toBe("No number yet");
+        expect(agentLineShort({ phone_numbers: ["7000", "7001"] })).toBe("Answers 7000 +1");
     });
 });

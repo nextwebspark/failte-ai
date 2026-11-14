@@ -30,6 +30,7 @@ from api.db.models import (
 from api.db.platform_admin_models import (
     PlatformAdminAuditLogModel,
     PlatformFeatureFlagModel,
+    PlatformSettingModel,
 )
 from api.enums import (
     OrganizationConfigurationKey,
@@ -49,6 +50,7 @@ from api.services.platform_admin.audit import AuditAction
 _members = organization_users_association
 _Flag = PlatformFeatureFlagModel
 _Audit = PlatformAdminAuditLogModel
+_Setting = PlatformSettingModel
 
 # Runs that are not voice calls (text chat), left out of call counts.
 TEXT_RUN_MODES = (
@@ -385,6 +387,64 @@ class PlatformAdminClient(BaseDBClient):
             feature=feature,
             organization_id=organization_id,
             enabled=enabled,
+            actor_user_id=actor_user_id,
+            action=action,
+            _retry=False,
+        )
+
+    # -- platform settings -----------------------------------------------
+
+    async def get_platform_setting(self, key: str) -> dict[str, Any] | None:
+        """A platform-wide value, or None when none was saved. Read by every
+        member's Home, so it is not limited to platform admin routes."""
+        async with self.async_session() as session:
+            row = await session.get(_Setting, key)
+            return row.value if row is not None else None
+
+    async def set_platform_setting(
+        self,
+        *,
+        key: str,
+        value: dict[str, Any] | None,
+        actor_user_id: int,
+        action: str,
+        _retry: bool = True,
+    ) -> None:
+        """Store a platform-wide value (None removes it, so the default in
+        code applies again) and audit the change. A no-op is not audited."""
+        async with self.async_session() as session:
+            row = await session.get(_Setting, key, with_for_update=True)
+            before = row.value if row is not None else None
+            if before == value:
+                return
+            if value is None:
+                await session.delete(row)
+            elif row is not None:
+                row.value = value
+                row.updated_by = actor_user_id
+                row.updated_at = datetime.now(UTC)
+            else:
+                session.add(_Setting(key=key, value=value, updated_by=actor_user_id))
+            _add_audit(
+                session,
+                AuditEntry(
+                    action=action,
+                    actor_user_id=actor_user_id,
+                    details={"setting": key, "before": before, "after": value},
+                ),
+            )
+            try:
+                await session.commit()
+            except IntegrityError:
+                # A concurrent first save of the same key: apply ours on top.
+                await session.rollback()
+                if not _retry:
+                    raise
+            else:
+                return
+        await self.set_platform_setting(
+            key=key,
+            value=value,
             actor_user_id=actor_user_id,
             action=action,
             _retry=False,

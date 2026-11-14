@@ -18,6 +18,7 @@ from decimal import ROUND_HALF_UP, Decimal
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel
 
 from api import constants
 from api.db import db_client
@@ -56,6 +57,7 @@ from api.schemas.platform_admin import (
 from api.services.auth.platform_admin import require_platform_admin
 from api.services.billing.margins import monthly_margins
 from api.services.billing.pricing import price_per_minute_eur
+from api.services.dashboard import home_layout
 from api.services.platform_admin import features
 from api.services.platform_admin.audit import AuditAction
 from api.services.platform_admin.health import (
@@ -494,6 +496,53 @@ async def set_platform_admin(
     return SetPlatformAdminResponse(
         user_id=user_id, is_platform_admin=body.is_platform_admin, changed=changed
     )
+
+
+# -- Home layout ----------------------------------------------------------------
+
+
+class PlatformHomeLayoutResponse(BaseModel):
+    # What a platform admin saved, or None (the built-in layout applies).
+    layout: home_layout.HomeLayout | None
+    built_in: home_layout.HomeLayout
+    cards: list[home_layout.HomeCard]
+
+
+class SetPlatformHomeLayoutRequest(BaseModel):
+    # None goes back to the built-in layout.
+    layout: home_layout.HomeLayout | None
+
+
+async def _platform_home_layout() -> PlatformHomeLayoutResponse:
+    return PlatformHomeLayoutResponse(
+        layout=await home_layout.platform_layout(),
+        built_in=home_layout.BUILT_IN_LAYOUT,
+        cards=list(home_layout.HOME_CARDS),
+    )
+
+
+@router.get(
+    "/home-layout", response_model=PlatformHomeLayoutResponse, include_in_schema=False
+)
+async def get_platform_home_layout(_admin: PlatformAdmin) -> PlatformHomeLayoutResponse:
+    """The Home cards a workspace without its own default starts with."""
+    return await _platform_home_layout()
+
+
+@router.put(
+    "/home-layout", response_model=PlatformHomeLayoutResponse, include_in_schema=False
+)
+async def set_platform_home_layout(
+    body: SetPlatformHomeLayoutRequest, admin: PlatformAdmin
+) -> PlatformHomeLayoutResponse:
+    """Set (or with ``layout: null`` clear) the platform's default Home
+    layout. Members and workspaces that saved their own keep theirs."""
+    await home_layout.save_platform_layout(
+        body.layout,
+        actor_user_id=admin.id,
+        action=AuditAction.HOME_LAYOUT_PLATFORM_SET,
+    )
+    return await _platform_home_layout()
 
 
 # -- audit log ------------------------------------------------------------------
