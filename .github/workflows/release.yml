@@ -1,15 +1,18 @@
 name: Release
 
-# Cuts a LightMove.ai release from the head of main:
-#   1. ci       — the full CI suite (ci.yml, every suite forced on)
-#   2. version  — next vX.Y.Z from the latest tag and the chosen bump
-#                 (v0.1.0 when no release exists yet)
-#   3. build    — api, ui and fallcha-tools images via Cloud Build, tagged X.Y.Z
-#   4. publish  — tag vX.Y.Z + GitHub Release with generated notes
+# Cuts a LightMove.ai release from the head of main and, by default, deploys it:
+#   1. preflight — both production VMs are running (only when deploying), so a
+#                  stopped VM fails the run in seconds, not after the build
+#   2. ci        — the full CI suite (ci.yml, every suite forced on)
+#   3. version   — next vX.Y.Z from the latest tag and the chosen bump
+#                  (v0.1.0 when no release exists yet)
+#   4. build     — api, ui and fallcha-tools images via Cloud Build, tagged X.Y.Z
+#   5. publish   — tag vX.Y.Z + GitHub Release with generated notes
+#   6. deploy    — deploy.yml with the new version (skipped with deploy: false)
 #
 # The tag is created only after the images exist, so a failed build never
-# burns a version number. Deploying is a separate, deliberate step: run the
-# Deploy workflow with the new version.
+# burns a version number. If the deploy fails, the release stays published:
+# fix the cause, then run the Deploy workflow with that version.
 #
 # Needs repo variables GCP_WIF_PROVIDER and GCP_DEPLOY_SA (deploy/gcp/README.md
 # "Releases and deploys").
@@ -22,6 +25,10 @@ on:
         type: choice
         options: [patch, minor, major]
         default: patch
+      deploy:
+        description: Deploy the release to production once it is published
+        type: boolean
+        default: true
 
 permissions:
   contents: read
@@ -44,8 +51,39 @@ jobs:
           echo "::error::Run Release from main (got ${GITHUB_REF})."
           exit 1
 
-  ci:
+  # Never start VMs from here: the app VM without the SIP VM parks the
+  # telephony config (one-way). The dev-hours schedule stops both at 23:00
+  # Dublin, so a late release fails here rather than after an hour of building.
+  preflight:
     needs: guard
+    if: inputs.deploy
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      ZONE: europe-west1-b
+    steps:
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOY_SA }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - name: Both VMs are running
+        run: |
+          for vm in dograh-app dograh-sip; do
+            status="$(gcloud compute instances describe "$vm" --zone "$ZONE" --project "$GCP_PROJECT" --format 'value(status)')"
+            [[ "$status" == "RUNNING" ]] || { echo "::error::${vm} is ${status}. Start both VMs, then re-run (or run with deploy: false)."; exit 1; }
+          done
+
+  # ci and version wait for preflight so a stopped VM stops the whole run. The
+  # job is skipped, not failed, when the run does not deploy.
+  ci:
+    needs: [guard, preflight]
+    if: ${{ !cancelled() && !failure() }}
     uses: ./.github/workflows/ci.yml
     with:
       run-all: true
@@ -54,7 +92,8 @@ jobs:
       pull-requests: read
 
   version:
-    needs: guard
+    needs: [guard, preflight]
+    if: ${{ !cancelled() && !failure() }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
@@ -98,6 +137,7 @@ jobs:
 
   build:
     needs: [ci, version]
+    if: ${{ !cancelled() && needs.ci.result == 'success' && needs.version.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 80
     permissions:
@@ -160,6 +200,7 @@ jobs:
     env:
       VERSION: ${{ needs.version.outputs.version }}
       PREVIOUS: ${{ needs.version.outputs.previous }}
+      DEPLOY: ${{ inputs.deploy }}
       GH_TOKEN: ${{ github.token }}
     steps:
       - name: Tag and publish the GitHub Release
@@ -170,5 +211,19 @@ jobs:
           {
             echo "Published **v${VERSION}**. Images: \`dograh-api\`, \`dograh-ui\`, \`fallcha-tools\` tagged \`${VERSION}\`."
             echo ""
-            echo "To deploy: Actions → Deploy → Run workflow → version \`${VERSION}\`."
+            if [[ "${DEPLOY}" == "true" ]]; then
+              echo "Deploying to production next (the deploy job)."
+            else
+              echo "Not deployed. To deploy: Actions → Deploy → Run workflow → version \`${VERSION}\`."
+            fi
           } >> "$GITHUB_STEP_SUMMARY"
+
+  deploy:
+    needs: [version, publish]
+    if: inputs.deploy
+    permissions:
+      contents: read
+      id-token: write
+    uses: ./.github/workflows/deploy.yml
+    with:
+      version: ${{ needs.version.outputs.version }}
