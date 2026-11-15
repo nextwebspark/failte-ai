@@ -3,6 +3,16 @@
     python -m api.scripts.seed_demo_accounts            # create, or refresh the calls
     python -m api.scripts.seed_demo_accounts --reset    # delete the demo data, rebuild
     python -m api.scripts.seed_demo_accounts --delete   # delete the demo data only
+    python -m api.scripts.seed_demo_accounts --workspace "LightMove Demo"
+        # every business as an agent of ONE workspace, with one owner and
+        # one staff login (how the live site's demo is set up)
+
+On the live site (``ENVIRONMENT=production``) it runs only with
+``--production --workspace "<name>"``, ``DEMO_ALLOW_PRODUCTION=yes`` and a
+``DEMO_PASSWORD`` of at least 12 characters, and it leaves the daily and
+weekly email reports off (the demo addresses have no mailbox; "Email me" on
+Reports still sends to an address the presenter types). See
+``docs/demo-production.md``.
 
 Each business (``api/scripts/demo_businesses.py``) gets a workspace, an owner
 (admin) and a staff login, an agent made from its starter template exactly as
@@ -18,8 +28,8 @@ Calls made on the day (test calls) are kept; ``--reset`` removes those too.
 
 Only workspaces marked as demo ones are ever changed or deleted: provider id
 ``demo_lightmove_<slug>``, a ``DEMO_ACCOUNT`` configuration row, and every
-member's address at ``@demo.lightmove.ai``. Runs only against a local or
-development environment.
+member's address at ``@demo.lightmove.ai``. Runs against a local or
+development environment, or production with the opt-in above.
 
     DEMO_PASSWORD     the password for all eight logins (a printed local
                       default when unset)
@@ -123,6 +133,11 @@ REVIEW_MODEL = "demo-seed"
 TIMEZONE = ZoneInfo("Europe/Dublin")
 SAMPLE_RATE = 16000
 ALLOWED_ENVIRONMENTS = {"local", "development", "dev", "test"}
+PRODUCTION_ENVIRONMENTS = {"production", "prod"}
+MIN_PRODUCTION_PASSWORD = 12
+# The logins of a one-workspace demo (``--workspace``): invented people.
+WORKSPACE_OWNER_NAME = "Aoife Kelly"
+WORKSPACE_STAFF_NAME = "Conor Walsh"
 
 AGENT_VOICE = "en-US-Chirp3-HD-Charon"  # the platform default agent voice
 FEMALE_VOICES = (
@@ -158,12 +173,44 @@ def _iso(moment: datetime) -> str:
     return moment.astimezone(UTC).isoformat(timespec="milliseconds")
 
 
-def email_for(business: Business, role: str) -> str:
-    return f"{business.slug}.{role}@{DEMO_DOMAIN}"
+@dataclass(frozen=True)
+class Workspace:
+    """Where seeded businesses live: one workspace per business (the
+    default), or every business as an agent of one workspace."""
+
+    slug: str
+    name: str
+    owner_name: str
+    staff_name: str
+
+    @property
+    def provider_id(self) -> str:
+        return f"{DEMO_PROVIDER_PREFIX}{self.slug}"
+
+    def email(self, role: str) -> str:
+        return f"{self.slug}.{role}@{DEMO_DOMAIN}"
 
 
-def provider_id_for(business: Business) -> str:
-    return f"{DEMO_PROVIDER_PREFIX}{business.slug}"
+def workspace_for(business: Business) -> Workspace:
+    return Workspace(
+        slug=business.slug,
+        name=business.name,
+        owner_name=business.owner_name,
+        staff_name=business.staff_name,
+    )
+
+
+def shared_workspace(name: str) -> Workspace:
+    """``--workspace "LightMove Demo"``: slug ``lightmove-demo``."""
+    slug = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")
+    if not slug:
+        raise SystemExit(f"--workspace {name!r}: the name needs letters or digits")
+    return Workspace(
+        slug=slug,
+        name=name.strip(),
+        owner_name=WORKSPACE_OWNER_NAME,
+        staff_name=WORKSPACE_STAFF_NAME,
+    )
 
 
 # --- the demo guard ------------------------------------------------------------
@@ -231,12 +278,12 @@ async def ensure_user(email: str, name: str, password: str) -> UserModel:
     return user
 
 
-async def ensure_org(business: Business, owner: UserModel, staff: UserModel) -> int:
-    """The business's workspace, made the way signup makes one (owner as
-    admin, then bootstrapped), with the staff member added as staff."""
+async def ensure_org(workspace: Workspace, owner: UserModel, staff: UserModel) -> int:
+    """The demo workspace, made the way signup makes one (owner as admin,
+    then bootstrapped), with the staff member added as staff."""
     from api.services.organization_bootstrap import ensure_organization_bootstrapped
 
-    provider_id = provider_id_for(business)
+    provider_id = workspace.provider_id
     existing = await _org_by_provider(provider_id)
     if existing is None:
         organization, _ = await db_client.get_or_create_organization_by_provider_id(
@@ -246,12 +293,12 @@ async def ensure_org(business: Business, owner: UserModel, staff: UserModel) -> 
         await db_client.upsert_configuration(
             organization_id,
             DEMO_KEY,
-            {"slug": business.slug, "created_at": _now().isoformat()},
+            {"slug": workspace.slug, "created_at": _now().isoformat()},
         )
     else:
         organization_id = existing.id
         await assert_demo_org(organization_id, provider_id)
-    await db_client.update_organization_name(organization_id, business.name)
+    await db_client.update_organization_name(organization_id, workspace.name)
     await db_client.add_user_to_organization(
         owner.id, organization_id, role=OrgRole.ADMIN
     )
@@ -269,7 +316,7 @@ async def ensure_org(business: Business, owner: UserModel, staff: UserModel) -> 
         DEMO_KEY,
         {
             **(row.value if row else {}),
-            "slug": business.slug,
+            "slug": workspace.slug,
             "seeded_at": _now().isoformat(),
         },
     )
@@ -385,18 +432,24 @@ async def _agent(organization_id: int, name: str) -> WorkflowModel | None:
         )
 
 
-async def _transfer_function(organization_id: int) -> str:
-    """The LLM function name of the agent's "put through" tool."""
+async def _transfer_function(organization_id: int, workflow: WorkflowModel) -> str:
+    """The LLM function name of the agent's "put through" tool: the one its
+    definition uses (each agent gets its own), else the workspace's first."""
     from api.services.workflow.tools.custom_tool import custom_tool_function_name
 
     async with db_client.async_session() as session:
-        name = await session.scalar(
-            text(
-                "select name from tools where organization_id = :org and "
-                "category = 'transfer_call' order by id limit 1"
-            ),
-            {"org": organization_id},
-        )
+        rows = (
+            await session.execute(
+                text(
+                    "select name, tool_uuid from tools where organization_id = :org "
+                    "and category = 'transfer_call' order by id"
+                ),
+                {"org": organization_id},
+            )
+        ).all()
+    used = json.dumps(workflow.workflow_definition or {})
+    mine = next((row.name for row in rows if str(row.tool_uuid) in used), None)
+    name = mine or (rows[0].name if rows else None)
     return custom_tool_function_name(name or "transfer_call")
 
 
@@ -424,6 +477,25 @@ async def ensure_email_reports(organization_id: int, owner: UserModel) -> None:
                 by=owner.name,
                 change=f"added {owner.email} (active); daily and weekly report on",
             )
+
+    await email_reports.change_settings(organization_id, change)
+
+
+async def email_reports_off(organization_id: int, owner: UserModel) -> None:
+    """Daily and weekly reports off (the live site's demo: the demo
+    addresses have no mailbox). "Email me" on Reports still works."""
+
+    def change(settings):
+        if not (settings.daily or settings.weekly):
+            return
+        settings.daily = False
+        settings.weekly = False
+        record_change(
+            settings,
+            by_user_id=owner.id,
+            by=owner.name,
+            change="daily and weekly report off (demo seed)",
+        )
 
     await email_reports.change_settings(organization_id, change)
 
@@ -953,15 +1025,26 @@ def _caller(business: Business, rng: random.Random):
 # --- seeding the calls ---------------------------------------------------------
 
 
-async def seeded_runs(organization_id: int) -> list[WorkflowRunModel]:
+async def seeded_runs(
+    organization_id: int, business_slug: str | None = None
+) -> list[WorkflowRunModel]:
+    """The seeded calls of a workspace, or of one business in it (a shared
+    workspace holds several)."""
+    conditions = [
+        WorkflowModel.organization_id == organization_id,
+        text(f"workflow_runs.extra->>'{SEED_MARK}' is not null"),
+    ]
+    if business_slug is not None:
+        conditions.append(
+            text(
+                f"workflow_runs.extra->'{SEED_MARK}'->>'business' = :business"
+            ).bindparams(business=business_slug)
+        )
     async with db_client.async_session() as session:
         result = await session.execute(
             select(WorkflowRunModel)
             .join(WorkflowModel, WorkflowRunModel.workflow_id == WorkflowModel.id)
-            .where(
-                WorkflowModel.organization_id == organization_id,
-                text(f"workflow_runs.extra->>'{SEED_MARK}' is not null"),
-            )
+            .where(*conditions)
         )
         return list(result.scalars().all())
 
@@ -974,8 +1057,17 @@ def _object_keys(run: WorkflowRunModel) -> list[str]:
     return [k for k in keys if k]
 
 
-async def delete_seeded_calls(organization_id: int) -> int:
-    runs = await seeded_runs(organization_id)
+def _public_token(rng: random.Random) -> str:
+    """A random listen-link token. Draws from ``rng`` as the seed always has,
+    so the rest of the call comes out the same, but doesn't use the draw."""
+    rng.getrandbits(128)
+    return str(uuid.uuid4())
+
+
+async def delete_seeded_calls(
+    organization_id: int, business_slug: str | None = None
+) -> int:
+    runs = await seeded_runs(organization_id, business_slug)
     for run in runs:
         for key in _object_keys(run):
             await storage_fs.adelete_file(key)
@@ -1028,7 +1120,7 @@ async def seed_calls(
     speech: Speech | None,
 ) -> Totals:
     """Replace the business's seeded calls with a month ending ``now``."""
-    await delete_seeded_calls(organization_id)
+    await delete_seeded_calls(organization_id, business.slug)
     now_local = now.astimezone(TIMEZONE)
     starts = call_dates(business, now_local)
     backend = get_current_storage_backend().value
@@ -1098,7 +1190,11 @@ async def seed_calls(
             annotations=annotations,
             extra={SEED_MARK: {"version": SEED_VERSION, "business": business.slug}},
             created_at=start,
-            public_access_token=str(uuid.UUID(int=rng.getrandbits(128))),
+            # Random, not drawn from the call's seed: the token opens the
+            # call's public listen link, so it must not be guessable (and
+            # the same business may be seeded into more than one workspace).
+            # The draw stays, so every later detail of the call is unchanged.
+            public_access_token=_public_token(rng),
         )
         rows.append((run, rendered))
         totals.calls += 1
@@ -1297,17 +1393,18 @@ async def seed_lines_busy_calls(
 # --- deleting --------------------------------------------------------------------
 
 
-async def delete_demo_org(business: Business) -> bool:
+async def delete_demo_org(workspace: Workspace, businesses: list[Business]) -> bool:
     """Delete one demo workspace, its users and every stored file of its
     calls. Refuses anything that isn't a marked demo workspace."""
-    provider_id = provider_id_for(business)
+    provider_id = workspace.provider_id
     org = await _org_by_provider(provider_id)
     if org is None:
         return False
     await assert_demo_org(org.id, provider_id)
-    before_delete = getattr(business, "before_delete", None)
-    if before_delete is not None:
-        await before_delete(org.id)
+    for business in businesses:
+        before_delete = getattr(business, "before_delete", None)
+        if before_delete is not None:
+            await before_delete(org.id)
     async with db_client.async_session() as session:
         runs = await session.execute(
             select(WorkflowRunModel)
@@ -1364,28 +1461,36 @@ async def delete_demo_org(business: Business) -> bool:
 # --- main ----------------------------------------------------------------------
 
 
+async def ensure_workspace(
+    workspace: Workspace, *, password: str, email_reports_on: bool
+) -> tuple[int, UserModel, UserModel]:
+    """The workspace with its owner and staff logins, ready for agents."""
+    owner = await ensure_user(workspace.email("owner"), workspace.owner_name, password)
+    staff = await ensure_user(workspace.email("staff"), workspace.staff_name, password)
+    organization_id = await ensure_org(workspace, owner, staff)
+    owner = await db_client.get_user_by_id(owner.id)
+    if email_reports_on:
+        await ensure_email_reports(organization_id, owner)
+    else:
+        await email_reports_off(organization_id, owner)
+    return organization_id, owner, staff
+
+
 async def seed_business(
     business: Business,
     *,
-    password: str,
+    organization_id: int,
+    owner: UserModel,
+    staff: UserModel,
     now: datetime,
     recordings: int,
     speech: Speech | None,
 ) -> dict:
-    owner = await ensure_user(
-        email_for(business, "owner"), business.owner_name, password
-    )
-    staff = await ensure_user(
-        email_for(business, "staff"), business.staff_name, password
-    )
-    organization_id = await ensure_org(business, owner, staff)
-    owner = await db_client.get_user_by_id(owner.id)
     workflow = await ensure_agent(business, organization_id, owner)
     customise = getattr(business, "customise_agent", None)
     if customise is not None:
         workflow = await customise(organization_id, owner, workflow, now)
-    await ensure_email_reports(organization_id, owner)
-    agent = agent_shape(workflow, await _transfer_function(organization_id))
+    agent = agent_shape(workflow, await _transfer_function(organization_id, workflow))
     before = (speech.synthesised_chars, speech.cached_chars) if speech else (0, 0)
     totals = await seed_calls(
         business,
@@ -1404,7 +1509,9 @@ async def seed_business(
     from api.services.dashboard.service import follow_up_list
 
     follow_ups = await follow_up_list(
-        organization_id=organization_id, status=FollowUpStatus.OPEN, workflow_id=None
+        organization_id=organization_id,
+        status=FollowUpStatus.OPEN,
+        workflow_id=workflow.id,
     )
     return {
         "business": business.name,
@@ -1427,42 +1534,89 @@ async def seed_business(
     }
 
 
-async def _main(args: argparse.Namespace) -> None:
-    if ENVIRONMENT not in ALLOWED_ENVIRONMENTS:
+def check_environment(args: argparse.Namespace, password: str) -> bool:
+    """Whether this run may go ahead here; True on the live site. Exits with
+    the reason otherwise."""
+    if ENVIRONMENT in ALLOWED_ENVIRONMENTS and not args.production:
+        return False
+    if ENVIRONMENT not in PRODUCTION_ENVIRONMENTS:
         raise SystemExit(
-            f"Refusing to run with ENVIRONMENT={ENVIRONMENT!r}: demo accounts are "
-            "for local and development databases only."
+            f"Refusing to run with ENVIRONMENT={ENVIRONMENT!r}"
+            + (" and --production" if args.production else "")
+            + ": demo accounts are for local and development databases, or "
+            "production with --production."
         )
+    problems = []
+    if not args.production:
+        problems.append("pass --production")
+    if os.environ.get("DEMO_ALLOW_PRODUCTION") != "yes":
+        problems.append("set DEMO_ALLOW_PRODUCTION=yes")
+    if not args.workspace:
+        problems.append('pass --workspace "<name>" (one demo workspace)')
+    if len(password) < MIN_PRODUCTION_PASSWORD or password == DEFAULT_PASSWORD:
+        problems.append(
+            f"set DEMO_PASSWORD to a new password of {MIN_PRODUCTION_PASSWORD}+ "
+            "characters (not the local default)"
+        )
+    if problems:
+        raise SystemExit("Refusing to seed the live site: " + "; ".join(problems) + ".")
+    return True
+
+
+async def _main(args: argparse.Namespace) -> None:
+    password = os.environ.get("DEMO_PASSWORD") or ""
+    live = check_environment(args, password)
     businesses = [
         b for b in [*BUSINESSES, CHMARINE] if not args.only or b.slug in args.only
     ]
+    if args.workspace:
+        groups = [(shared_workspace(args.workspace), businesses)]
+    else:
+        groups = [(workspace_for(b), [b]) for b in businesses]
     if args.reset or args.delete:
-        for business in businesses:
-            deleted = await delete_demo_org(business)
-            print(f"{business.slug}: {'deleted' if deleted else 'nothing to delete'}")
+        for workspace, members in groups:
+            deleted = await delete_demo_org(workspace, members)
+            print(f"{workspace.slug}: {'deleted' if deleted else 'nothing to delete'}")
         if args.delete:
             return
-    password = os.environ.get("DEMO_PASSWORD") or ""
     if not password:
         password = DEFAULT_PASSWORD
         print(f"DEMO_PASSWORD is not set; using the local default: {DEFAULT_PASSWORD}")
+    # The live site's demo addresses have no mailbox: no scheduled reports.
+    email_reports_on = not (live or args.no_email_reports)
     speech = (
         None
         if args.no_audio
         else Speech(Path(os.environ.get("DEMO_TTS_CACHE") or "/tmp/lightmove-demo-tts"))
     )
     now = _now()
-    report = []
-    for business in businesses:
-        result = await seed_business(
-            business,
-            password=password,
-            now=now,
-            recordings=args.recordings,
-            speech=speech,
+    for workspace, members in groups:
+        organization_id, owner, staff = await ensure_workspace(
+            workspace, password=password, email_reports_on=email_reports_on
         )
-        report.append(result)
-        print(json.dumps(result, ensure_ascii=False))
+        print(
+            json.dumps(
+                {
+                    "workspace": workspace.name,
+                    "organization_id": organization_id,
+                    "owner": owner.email,
+                    "staff": staff.email,
+                    "email_reports": "daily and weekly" if email_reports_on else "off",
+                },
+                ensure_ascii=False,
+            )
+        )
+        for business in members:
+            result = await seed_business(
+                business,
+                organization_id=organization_id,
+                owner=owner,
+                staff=staff,
+                now=now,
+                recordings=args.recordings,
+                speech=speech,
+            )
+            print(json.dumps(result, ensure_ascii=False))
     if speech:
         print(
             f"TTS characters synthesised this run: {speech.synthesised_chars} "
@@ -1491,6 +1645,20 @@ def main() -> None:
     )
     parser.add_argument(
         "--no-audio", action="store_true", help="no recordings (no TTS calls)"
+    )
+    parser.add_argument(
+        "--workspace",
+        help='every business as an agent of one workspace with this name, e.g. "LightMove Demo"',
+    )
+    parser.add_argument(
+        "--no-email-reports",
+        action="store_true",
+        help="leave the daily and weekly email reports off (always so on the live site)",
+    )
+    parser.add_argument(
+        "--production",
+        action="store_true",
+        help="allow the live site (also needs DEMO_ALLOW_PRODUCTION=yes, DEMO_PASSWORD and --workspace)",
     )
     logger.remove()
     logger.add(lambda message: print(message, end=""), level="WARNING")

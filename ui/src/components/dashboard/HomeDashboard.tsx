@@ -8,6 +8,7 @@ import {
     CalendarRange,
     Check,
     CheckCircle2,
+    ChevronDown,
     Clock,
     FileText,
     Headphones,
@@ -34,6 +35,13 @@ import type {
 import { useOwnsPageHeading } from "@/components/layout/pageHeading";
 import { runDetailHref } from "@/components/layout/shellContext";
 import { Button } from "@/components/ui/button";
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuLabel,
+    DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { EmptyState } from "@/components/ui/empty-state";
 import { agentFactsHref, agentTalkHref } from "@/components/workflow/agentLinks";
 import { useOrgConfig } from "@/context/OrgConfigContext";
@@ -43,6 +51,7 @@ import { AddAnswerDialog } from "./AddAnswerDialog";
 import { CallersWantedChart } from "./CallersWantedChart";
 import {
     afterHoursWords,
+    agentLineLabel,
     busiestHour,
     callDayAndTime,
     callerWords,
@@ -58,6 +67,7 @@ import {
     notAnsweringWords,
     type OpenHoursLegend,
     openHoursLegend,
+    primaryAgentId,
     RANGE_OPTIONS,
     rangeSentence,
     RESULT_WORDS,
@@ -795,9 +805,46 @@ function CallersWanted({ summary, empty }: { summary: DashboardSummaryResponse; 
     );
 }
 
-/** The agent the "Try your agent" and "Opening hours" links open. */
-function primaryAgentId(summary: DashboardSummaryResponse): number | null {
-    return (summary.agents.find((a) => a.active) ?? summary.agents[0])?.id ?? null;
+/**
+ * With more than one agent, "Try your agent" asks which one: each agent with
+ * the number that rings it, so it's clear which agent callers reach.
+ */
+function TryAgentMenu({
+    agents,
+    onPick,
+}: {
+    agents: DashboardSummaryResponse["agents"];
+    onPick: (agentId: number) => void;
+}) {
+    return (
+        <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+                <Button variant="soft" className="self-start @4xl:self-end">
+                    <Mic aria-hidden />
+                    Try an agent
+                    <ChevronDown aria-hidden />
+                </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-72">
+                <DropdownMenuLabel className="text-caption font-normal text-ink-3">
+                    Callers reach the agent their number rings
+                </DropdownMenuLabel>
+                {agents.map((agent) => (
+                    <DropdownMenuItem
+                        key={agent.id}
+                        onSelect={() => onPick(agent.id)}
+                        className="flex flex-col items-start gap-0.5"
+                    >
+                        <span className="font-medium text-foreground">{agent.name}</span>
+                        <span className="text-caption text-ink-3">
+                            {agentLineLabel(agent)}
+                            {agent.active ? "" : " · Switched off"}
+                        </span>
+                    </DropdownMenuItem>
+                ))}
+            </DropdownMenuContent>
+        </DropdownMenu>
+    );
 }
 
 function AgentCard({
@@ -1100,8 +1147,12 @@ export function HomeDashboard({ heading, workflowId, onTryAgent }: HomeDashboard
     // for members who may start a test call (creating a run needs agents:write).
     const { can } = useOrgConfig();
     const [testing, setTesting] = useState(false);
-    const homeAgentId = summary ? primaryAgentId(summary) : null;
+    // With several agents, the one picked from the Try menu.
+    const [pickedAgentId, setPickedAgentId] = useState<number | null>(null);
+    const primaryId = summary ? primaryAgentId(summary) : null;
+    const homeAgentId = summary?.agents.some((a) => a.id === pickedAgentId) ? pickedAgentId : primaryId;
     const homeAgentName = summary?.agents.find((a) => a.id === homeAgentId)?.name ?? null;
+    const severalAgents = (summary?.agents.length ?? 0) > 1;
     const tryOnHome = !onTryAgent && homeAgentId != null && can("agents:write");
     const afterTest = useRef<number | null>(null);
     useEffect(() => {
@@ -1110,7 +1161,11 @@ export function HomeDashboard({ heading, workflowId, onTryAgent }: HomeDashboard
         return () => timers.forEach((t) => window.clearTimeout(t));
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [testing]);
-    const tryAgent = !can("agents:write") ? undefined : (onTryAgent ?? (tryOnHome ? () => setTesting(true) : undefined));
+    const testPrimary = () => {
+        setPickedAgentId(null);
+        setTesting(true);
+    };
+    const tryAgent = !can("agents:write") ? undefined : (onTryAgent ?? (tryOnHome ? testPrimary : undefined));
 
     const header = (
         <header className="flex flex-col gap-3 @4xl:flex-row @4xl:items-end @4xl:justify-between @4xl:gap-6">
@@ -1122,8 +1177,17 @@ export function HomeDashboard({ heading, workflowId, onTryAgent }: HomeDashboard
                 {summary && <TodayLine summary={summary} />}
             </div>
             <div className="flex flex-col gap-3 @4xl:items-end">
-                {tryOnHome && (
-                    <Button variant="soft" className="self-start @4xl:self-end" onClick={() => setTesting(true)}>
+                {tryOnHome && summary && severalAgents && (
+                    <TryAgentMenu
+                        agents={summary.agents}
+                        onPick={(agentId) => {
+                            setPickedAgentId(agentId);
+                            setTesting(true);
+                        }}
+                    />
+                )}
+                {tryOnHome && !severalAgents && (
+                    <Button variant="soft" className="self-start @4xl:self-end" onClick={testPrimary}>
                         <Mic aria-hidden />
                         Try your agent
                     </Button>

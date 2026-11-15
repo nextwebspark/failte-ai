@@ -8,7 +8,7 @@ from decimal import Decimal
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, EmailStr, Field
 
 from api.db import db_client
 from api.services.auth.depends import OrgMembership, require_permission
@@ -553,8 +553,34 @@ async def get_report_calls(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
+class EmailMeRequest(BaseModel):
+    # Where to send it; empty means the member's own address. Only members
+    # who may schedule reports can send to another address.
+    to: EmailStr | None = None
+
+
 class EmailMeResponse(BaseModel):
     sent_to: str
+
+
+def email_me_address(membership: OrgMembership, requested: str | None) -> str:
+    """Where "Email me" sends: the member's own address, or the one they
+    typed when they may schedule reports (owners and admins). Raises the
+    HTTP error to show otherwise."""
+    own = (membership.user.email or "").strip()
+    wanted = (requested or "").strip()
+    if not wanted or wanted.lower() == own.lower():
+        if not own:
+            raise HTTPException(
+                status_code=422, detail="Your account has no email address."
+            )
+        return own
+    if not membership.can(Permission.REPORTS_SCHEDULE):
+        raise HTTPException(
+            status_code=403,
+            detail="Only an owner or admin can send a report to another address.",
+        )
+    return wanted
 
 
 @router.post("/email-me", response_model=EmailMeResponse)
@@ -565,18 +591,17 @@ async def email_me_this_report(
     end_date: DayQuery = None,
     workflow_id: WorkflowQuery = None,
     timezone: ZoneQuery = None,
+    body: EmailMeRequest | None = None,
 ) -> Any:
     """ "Email me this report": the days and agent on the Reports screen, as
-    the emailed report, sent now to the member asking and nobody else."""
+    the emailed report, sent now, once, to the member asking (or the address
+    an owner or admin typed). Nobody is added to the daily or weekly list."""
     from api.services.dashboard.service import resolve_timezone
     from api.services.email import get_email_sender
     from api.services.email_reports import service as email_reports
 
-    to = membership.user.email
-    if not to:
-        raise HTTPException(
-            status_code=422, detail="Your account has no email address."
-        )
+    to = email_me_address(membership, body.to if body else None)
+    own = to.lower() == (membership.user.email or "").strip().lower()
     try:
         delivers = get_email_sender().delivers
     except Exception:  # noqa: BLE001 - a misconfigured provider sends nothing
@@ -602,7 +627,10 @@ async def email_me_this_report(
         previous_start=bounds.previous_start,
         previous_end=bounds.previous_end,
         workflow_id=workflow_id,
-        show_credit=membership.can(Permission.BILLING_READ),
+        # Someone else's copy leaves the credit out, as scheduled reports do
+        # for outside addresses, and says who sent it.
+        show_credit=own and membership.can(Permission.BILLING_READ),
+        sent_by=None if own else (_who(membership) or "Your team"),
     )
     if error:
         raise HTTPException(status_code=429 if "hour" in error else 503, detail=error)

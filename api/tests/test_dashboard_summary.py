@@ -16,6 +16,7 @@ from api.services.dashboard.summary import (
     callers_wanted,
     calls_by_hour,
     credit_summary,
+    live_numbers_by_agent,
     range_bounds,
     recent_calls,
     tiles,
@@ -520,3 +521,17 @@ def test_band_only_when_the_agents_share_hours():
 def test_no_band_without_hours_as_times():
     band = _band([_agent(1, None)], DashboardRange.TODAY, _MONDAY)
     assert band["kind"] == "none" and band["ranges"] == []
+
+
+def test_live_numbers_by_agent_lists_only_numbers_that_ring():
+    numbers = [
+        _number("+35315550100", workflow=18),
+        _number("+35315550101", workflow=50),
+        _number("+35315550102", workflow=50, active=False),
+        _number("+35315550103", workflow=50, config_inactive=True),
+        _number("+35315550104", workflow=None),
+    ]
+    assert live_numbers_by_agent(numbers) == {
+        18: ["+35315550100"],
+        50: ["+35315550101"],
+    }

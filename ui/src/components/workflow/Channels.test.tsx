@@ -12,6 +12,11 @@ describe('Channels', () => {
         expect(icons).toEqual(['Phone', 'Website widget']);
     });
 
+    it('shows the number that rings the agent', () => {
+        render(<Channels channels={['phone']} phoneNumbers={['7000', '7001']} />);
+        expect(screen.getByText('7000 +1')).toBeTruthy();
+    });
+
     it('says when nothing is connected', () => {
         render(<Channels channels={[]} />);
         expect(screen.getByText('Not connected')).toBeTruthy();

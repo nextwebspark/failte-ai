@@ -3490,6 +3490,10 @@ export type DashboardAgent = {
      * Active
      */
     active: boolean;
+    /**
+     * Phone Numbers
+     */
+    phone_numbers?: Array<string>;
 };
 
 /**
@@ -4527,6 +4531,16 @@ export type ElevenlabsTtsConfiguration = {
      * ElevenLabs API base URL. Override to use a Data Residency endpoint (e.g. https://api.eu.residency.elevenlabs.io) for GDPR / HIPAA / regional compliance.
      */
     base_url?: string;
+};
+
+/**
+ * EmailMeRequest
+ */
+export type EmailMeRequest = {
+    /**
+     * To
+     */
+    to?: string | null;
 };
 
 /**
@@ -14182,6 +14196,10 @@ export type WorkflowListResponse = {
      * Channels
      */
     channels?: Array<'phone' | 'web'> | null;
+    /**
+     * Phone Numbers
+     */
+    phone_numbers?: Array<string> | null;
 };
 
 /**
@@ -23463,7 +23481,10 @@ export type GetReportCallsApiV1OrganizationsReportsCallsGetResponses = {
 export type GetReportCallsApiV1OrganizationsReportsCallsGetResponse = GetReportCallsApiV1OrganizationsReportsCallsGetResponses[keyof GetReportCallsApiV1OrganizationsReportsCallsGetResponses];
 
 export type EmailMeThisReportApiV1OrganizationsReportsEmailMePostData = {
-    body?: never;
+    /**
+     * Body
+     */
+    body?: EmailMeRequest | null;
     headers?: {
         /**
          * Authorization

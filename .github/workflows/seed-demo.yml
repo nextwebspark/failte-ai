@@ -1,0 +1,112 @@
+name: Seed demo
+
+# Builds, refreshes or deletes the live site's demo workspace ("LightMove
+# Demo": five made-up businesses as agents, one owner and one staff login, a
+# month of made-up calls). Never runs on its own; running it is the approval.
+#
+#   1. check the confirmation and that the app VM is running
+#   2. on-demand Cloud SQL backup (it writes to the production database)
+#   3. IAP SSH to dograh-app; deploy/gcp/seed-demo.sh runs the seed inside the
+#      live api container, with the password from Secret Manager
+#
+# Uses the Deploy workflow's identity (GCP_WIF_PROVIDER, GCP_DEPLOY_SA) and
+# optional VM_APP_DIR. See docs/demo-production.md.
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: refresh (build, or a fresh month of calls), reset (delete then build) or delete
+        type: choice
+        options: [refresh, reset, delete]
+        default: refresh
+      workspace:
+        description: Demo workspace name
+        type: string
+        default: LightMove Demo
+      confirm:
+        description: Type "seed production" to confirm
+        type: string
+        required: true
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+env:
+  GCP_PROJECT: dograh-eu
+  ZONE: europe-west1-b
+  APP_VM: dograh-app
+  SQL_INSTANCE: dograh-pg
+  APP_DIR: ${{ vars.VM_APP_DIR || '/opt/lightmove/dograh' }}
+  SSH_FLAGS: --tunnel-through-iap --quiet --strict-host-key-checking=no --ssh-key-expire-after=1h
+
+jobs:
+  seed:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Confirmed
+        env:
+          CONFIRM: ${{ inputs.confirm }}
+          ACTION: ${{ inputs.action }}
+          WORKSPACE: ${{ inputs.workspace }}
+        run: |
+          [[ "$CONFIRM" == "seed production" ]] || { echo "::error::Type 'seed production' in the confirm box."; exit 1; }
+          [[ "$WORKSPACE" =~ ^[A-Za-z0-9][A-Za-z0-9\ ._-]{1,60}$ ]] || { echo "::error::Bad workspace name."; exit 1; }
+          echo "### Seed demo: ${ACTION} '${WORKSPACE}'" >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: deploy/gcp/seed-demo.sh
+          sparse-checkout-cone-mode: false
+
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOY_SA }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - name: App VM is running
+        run: |
+          status="$(gcloud compute instances describe "$APP_VM" --zone "$ZONE" --project "$GCP_PROJECT" --format 'value(status)')"
+          [[ "$status" == "RUNNING" ]] || { echo "::error::${APP_VM} is ${status}."; exit 1; }
+
+      - name: Back up Cloud SQL
+        env:
+          ACTION: ${{ inputs.action }}
+        run: |
+          gcloud sql backups create --instance "$SQL_INSTANCE" --project "$GCP_PROJECT" \
+            --description "demo-seed ${ACTION} (run ${GITHUB_RUN_ID})"
+
+      # Backups hold personal data and the privacy policy promises they go
+      # after 30 days: prune this workflow's own (matched by description).
+      - name: Prune demo-seed Cloud SQL backups older than 30 days
+        continue-on-error: true
+        timeout-minutes: 10
+        run: |
+          ids=$(gcloud sql backups list --instance "$SQL_INSTANCE" --project "$GCP_PROJECT" \
+            --filter="type=ON_DEMAND AND startTime<-P30D AND description~'^demo-seed '" \
+            --format='value(id)') || { echo "::warning::could not list Cloud SQL backups"; exit 0; }
+          for id in $ids; do
+            gcloud sql backups delete "$id" --instance "$SQL_INSTANCE" --project "$GCP_PROJECT" --quiet \
+              || echo "::warning::could not delete backup ${id}"
+          done
+
+      - name: Seed on the app VM
+        shell: bash
+        env:
+          ACTION: ${{ inputs.action }}
+          WORKSPACE: ${{ inputs.workspace }}
+        run: |
+          # shellcheck disable=SC2086  # SSH_FLAGS is a flag list
+          gcloud compute ssh "$APP_VM" --zone "$ZONE" --project "$GCP_PROJECT" $SSH_FLAGS \
+            --ssh-flag "-o ServerAliveInterval=30" \
+            --command "bash -s -- '${ACTION}' '${WORKSPACE}' '${APP_DIR}'" \
+            < deploy/gcp/seed-demo.sh | tee seed.log
+          grep -E '^\{' seed.log | sed 's/^/    /' >> "$GITHUB_STEP_SUMMARY" || true

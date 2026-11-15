@@ -33,6 +33,7 @@ from api.services.dashboard.summary import (
     callers_wanted,
     calls_by_hour,
     credit_summary,
+    live_numbers_by_agent,
     opening_hours_band,
     range_bounds,
     recent_calls,
@@ -171,14 +172,16 @@ async def dashboard_summary(
     last_call_at = await db_client.get_last_inbound_call_at(
         organization_id, workflow_id
     )
+    numbers = await db_client.get_answering_numbers(organization_id)
     status = agent_status(
         agents=agents,
-        numbers=await db_client.get_answering_numbers(organization_id),
+        numbers=numbers,
         workflow_id=workflow_id,
         credit_too_low=bool(credit and credit["too_low"]),
         last_call_at=last_call_at,
     )
     scoped_agents = [a for a in agents if workflow_id is None or a["id"] == workflow_id]
+    ringing = live_numbers_by_agent(numbers)
     return {
         "range": range_,
         "timezone": tz.key,
@@ -202,7 +205,12 @@ async def dashboard_summary(
         "agent_status": status,
         "credit": credit if show_credit else None,
         "agents": [
-            {"id": a["id"], "name": a["name"], "active": a.get("status") == "active"}
+            {
+                "id": a["id"],
+                "name": a["name"],
+                "active": a.get("status") == "active",
+                "phone_numbers": ringing.get(a["id"], []),
+            }
             for a in scoped_agents
         ],
     }

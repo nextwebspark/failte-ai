@@ -18,6 +18,7 @@ import { RESULT_WORDS } from '@/components/dashboard/dashboardView';
 import { EmptyState } from '@/components/page-states/EmptyState';
 import { Button } from '@/components/ui/button';
 import { Calendar as CalendarPicker } from '@/components/ui/calendar';
+import { Input } from '@/components/ui/input';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -31,6 +32,25 @@ import { CSV_HEADERS, csvCell } from './csv';
 import { comparedWith, RANGE_OPTIONS, reportTitle, shownCards } from './reportView';
 
 const LOAD_FAILED = "We couldn't load this report";
+
+// The last address an owner typed for "Email me", kept in this browser only.
+const EMAIL_TO_KEY = 'lightmove:report-email-to';
+
+function readLastEmailTo(): string {
+    try {
+        return window.localStorage.getItem(EMAIL_TO_KEY) ?? '';
+    } catch {
+        return '';
+    }
+}
+
+function saveLastEmailTo(address: string) {
+    try {
+        window.localStorage.setItem(EMAIL_TO_KEY, address);
+    } catch {
+        // Private windows may refuse storage; the box just starts empty next time.
+    }
+}
 
 type Query = {
     range: ReportRange;
@@ -122,18 +142,32 @@ export default function ReportsPage() {
         [],
     );
 
-    // The days and agent on screen, sent now to your own sign-in address.
+    // Owners and admins may type where it goes (e.g. a prospect's address in
+    // a demo); everyone else gets it at their own sign-in address.
+    const canSendElsewhere = can('reports:schedule');
+    const [emailOpen, setEmailOpen] = useState(false);
+    const [emailTo, setEmailTo] = useState('');
+    useEffect(() => {
+        if (canSendElsewhere) setEmailTo(readLastEmailTo());
+    }, [canSendElsewhere]);
+
+    // The days and agent on screen, sent now, once.
     const emailMe = async () => {
         if (!auth.isAuthenticated || !query || emailing || !report) return;
+        const to = canSendElsewhere ? emailTo.trim() : '';
         setEmailing(true);
         try {
-            const response = await emailMeThisReportApiV1OrganizationsReportsEmailMePost({ query });
+            const response = await emailMeThisReportApiV1OrganizationsReportsEmailMePost(
+                to ? { query, body: { to } } : { query },
+            );
             if (response.error || !response.data) {
                 const detail = (response.error as { detail?: unknown } | undefined)?.detail;
                 toast.error(typeof detail === 'string' ? detail : "Couldn't send the report. Please try again.");
                 return;
             }
             toast.success(`Sent to ${response.data.sent_to}. It can take a minute to arrive.`);
+            if (to) saveLastEmailTo(to);
+            setEmailOpen(false);
         } catch {
             toast.error("Couldn't send the report. Please try again.");
         } finally {
@@ -297,10 +331,47 @@ export default function ReportsPage() {
                                 <Download aria-hidden />
                                 {downloading ? 'Preparing…' : 'Download'}
                             </Button>
-                            <Button variant="outline" className="h-10 flex-1 bg-panel sm:flex-none" onClick={emailMe} disabled={emailing || !report}>
-                                <Mail aria-hidden />
-                                {emailing ? 'Sending…' : 'Email me'}
-                            </Button>
+                            <Popover open={emailOpen} onOpenChange={setEmailOpen}>
+                                <PopoverTrigger asChild>
+                                    <Button variant="outline" className="h-10 flex-1 bg-panel sm:flex-none" disabled={emailing || !report}>
+                                        <Mail aria-hidden />
+                                        {emailing ? 'Sending…' : 'Email me'}
+                                    </Button>
+                                </PopoverTrigger>
+                                <PopoverContent align="end" className="w-80">
+                                    <form
+                                        className="flex flex-col gap-3"
+                                        onSubmit={(event) => {
+                                            event.preventDefault();
+                                            void emailMe();
+                                        }}
+                                    >
+                                        <p className="text-body font-semibold text-foreground">Email this report</p>
+                                        {canSendElsewhere ? (
+                                            <label className="flex flex-col gap-1.5 text-caption text-ink-2">
+                                                Send to
+                                                <Input
+                                                    type="email"
+                                                    value={emailTo}
+                                                    onChange={(event) => setEmailTo(event.target.value)}
+                                                    placeholder="Your own address"
+                                                    autoComplete="email"
+                                                />
+                                                <span className="text-ink-3">Leave it empty to send it to your own sign-in address.</span>
+                                            </label>
+                                        ) : (
+                                            <p className="text-caption text-ink-2">It goes to your own sign-in address.</p>
+                                        )}
+                                        <p className="text-caption text-ink-3">
+                                            The days and agent on screen, sent once. Nobody is added to the daily or weekly emails.
+                                        </p>
+                                        <Button type="submit" className="h-9 self-end" disabled={emailing}>
+                                            <Mail aria-hidden />
+                                            {emailing ? 'Sending…' : 'Send'}
+                                        </Button>
+                                    </form>
+                                </PopoverContent>
+                            </Popover>
                             {report?.layout.can_customise ? (
                                 <Button className="h-10 flex-1 sm:flex-none" onClick={() => setCustomising(true)}>
                                     <Settings2 aria-hidden />

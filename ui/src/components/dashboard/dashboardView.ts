@@ -5,6 +5,7 @@
 import { formatDuration, formatPhone } from "@/app/usage/callsView";
 import type {
     CallResult,
+    DashboardAgent,
     DashboardRange,
     FollowUpItem,
     FollowUpKind,
@@ -534,4 +535,22 @@ export function openHoursLegend(opening: {
 export function callDayAndTime(value: string, timezone: string | null | undefined, now: Date = new Date()): string {
     const words = callWhen(value, timezone, now);
     return /^\d/.test(words) ? `Today ${words}` : words;
+}
+
+/**
+ * The agent the "Try your agent" and "Opening hours" links open: the one
+ * your phone number rings, else the first switched-on agent, else the first.
+ */
+export function primaryAgentId(summary: { agents: DashboardAgent[] }): number | null {
+    const agents = summary.agents;
+    const answering = agents.find((a) => a.active && (a.phone_numbers?.length ?? 0) > 0);
+    return (answering ?? agents.find((a) => a.active) ?? agents[0])?.id ?? null;
+}
+
+/** Which number rings an agent, in a few words. */
+export function agentLineLabel(agent: DashboardAgent): string {
+    const numbers = agent.phone_numbers ?? [];
+    if (numbers.length === 0) return "No phone number yet";
+    const first = formatPhone(numbers[0]);
+    return numbers.length === 1 ? `Answers ${first}` : `Answers ${first} and ${numbers.length - 1} more`;
 }

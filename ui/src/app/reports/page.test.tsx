@@ -295,9 +295,24 @@ describe('ReportsPage', () => {
         mocks.emailMe.mockResolvedValue({ data: { sent_to: 'niamh@example.ie' } });
         render(<ReportsPage />);
         fireEvent.click(await screen.findByRole('button', { name: 'Email me' }));
+        // Without reports:schedule there is no address box: it goes to their own.
+        expect(screen.queryByLabelText(/Send to/)).toBeNull();
+        fireEvent.click(await screen.findByRole('button', { name: 'Send' }));
         await waitFor(() => expect(mocks.emailMe).toHaveBeenCalledTimes(1));
         // The same days and agent as the report on screen.
         expect(mocks.emailMe.mock.calls[0][0]).toEqual({ query: mocks.overview.mock.calls.at(-1)?.[0].query });
         await waitFor(() => expect(toast.success).toHaveBeenCalledWith(expect.stringContaining('niamh@example.ie')));
+    });
+
+    it('lets an owner send the report to an address they type', async () => {
+        mocks.perms = ['reports:read', 'reports:schedule'];
+        mocks.emailMe.mockResolvedValue({ data: { sent_to: 'prospect@example.com' } });
+        render(<ReportsPage />);
+        fireEvent.click(await screen.findByRole('button', { name: 'Email me' }));
+        fireEvent.change(await screen.findByLabelText(/Send to/), { target: { value: 'prospect@example.com' } });
+        fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+        await waitFor(() => expect(mocks.emailMe).toHaveBeenCalledTimes(1));
+        expect(mocks.emailMe.mock.calls[0][0].body).toEqual({ to: 'prospect@example.com' });
+        await waitFor(() => expect(toast.success).toHaveBeenCalledWith(expect.stringContaining('prospect@example.com')));
     });
 });
