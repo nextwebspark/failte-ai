@@ -23,6 +23,7 @@ from api.services.workflow.template_setup import (
     CALENDLY,
     GOOGLE_CALENDAR,
     INTEGRATION_TOOL_PREFIX,
+    OUTLOOK_CALENDAR,
     TemplateSetupError,
     allowed_integrations,
     attach_integration_tools,
@@ -131,7 +132,11 @@ def _definition() -> dict[str, Any]:
 
 
 def test_calendly_is_allowed_where_google_calendar_is():
-    assert allowed_integrations([GOOGLE_CALENDAR]) == {GOOGLE_CALENDAR, CALENDLY}
+    assert allowed_integrations([GOOGLE_CALENDAR]) == {
+        GOOGLE_CALENDAR,
+        OUTLOOK_CALENDAR,
+        CALENDLY,
+    }
     assert allowed_integrations([]) == set()
     check_integration_tools([GOOGLE_CALENDAR], {CALENDLY: "tool-c"})
     check_integration_tools([GOOGLE_CALENDAR], {GOOGLE_CALENDAR: "tool-g"})
@@ -189,3 +194,47 @@ def test_appointment_hours_are_only_for_google_calendar():
     assert appointment_hours_answers([field], without_hours) == {
         "appointment_hours": ""
     }
+
+
+def test_outlook_calendar_stands_in_for_google_calendar():
+    from api.services.workflow.template_setup import calendar_tool_provider
+
+    check_integration_tools([GOOGLE_CALENDAR], {OUTLOOK_CALENDAR: "tool-o"})
+    with pytest.raises(TemplateSetupError, match="Pick one calendar"):
+        check_integration_tools(
+            [GOOGLE_CALENDAR], {GOOGLE_CALENDAR: "tool-g", OUTLOOK_CALENDAR: "tool-o"}
+        )
+    filled = attach_integration_tools(_definition(), {OUTLOOK_CALENDAR: "tool-o"})
+    assert filled["nodes"][0]["data"]["tool_uuids"] == ["tool-o", "transfer-tool"]
+    mcp = {"config": {"url": "http://fallcha-tools:8000/mcp/outlook-calendar"}}
+    assert calendar_tool_provider("mcp", mcp) == OUTLOOK_CALENDAR
+
+
+def test_appointment_hours_also_apply_to_outlook_calendar():
+    """Outlook Calendar keeps LightMove's booking rules, as Google does."""
+    from api.schemas.workflow_template import (
+        DuplicateTemplateRequest,
+        SetupFieldType,
+        TemplateSetupField,
+    )
+
+    field = TemplateSetupField(
+        key="appointment_hours",
+        label="Appointment hours",
+        type=SetupFieldType.APPOINTMENT_HOURS,
+        required=False,
+    )
+    request = DuplicateTemplateRequest(
+        template_id=1,
+        workflow_name="Clinic",
+        integration_tools={OUTLOOK_CALENDAR: "tool-o"},
+        appointment_hours={
+            "booking_days": [0, 1, 2, 3, 4],
+            "open_hour": 9,
+            "close_hour": 17,
+            "slot_minutes": 30,
+            "timezone": "Europe/Dublin",
+        },
+    )
+    answers = appointment_hours_answers([field], request)
+    assert answers["appointment_hours"].strip()

@@ -1,17 +1,18 @@
 ---
 title: "Integrations"
-description: "Connect Google Calendar, Google Sheets or your shop's product catalogue once, then give any agent the tools it adds."
+description: "Connect Google Calendar, Outlook Calendar, Google Sheets or your shop's product catalogue once, then give any agent the tools it adds."
 ---
 
 Integrations are ready-made tools that LightMove.ai hosts for you. You connect an app such as Google Calendar with your workspace's own account or key. LightMove.ai then adds an agent tool that you attach to workflow nodes like any other tool. You do not write API calls or run a server.
 
 ## The catalog
 
-Open **Integrations** in the sidebar. **Available integrations** lists the catalog. It is the same for every workspace, and each card shows what your agents can do with it.
+Open **Integrations** in the sidebar. **Available integrations** lists the catalog. It is the same for every workspace. Each card says in one line what the integration is for; click **Explore** on a card to see everything your agents can do with it and how it connects.
 
 | Integration | What the agent can do | Connect with |
 |---|---|---|
 | **Google Calendar** | Check free appointment slots, book a slot, find a caller's bookings, move or cancel an event it booked | Service account key, or sign in with your Google account |
+| **Outlook Calendar** | The same as Google Calendar, on an Outlook or Microsoft 365 calendar | Sign in with your Microsoft account (shown only when your administrator has set up Microsoft sign-in) |
 | **Google Sheets** | Find rows by a column value, read a row, add a row, look up an order with caller verification | Service account key, or sign in with your Google account |
 | **Website product catalogue** | Search your shop's products and describe one, with spoken prices and stock | Nothing: it reads your public website |
 
@@ -99,6 +100,20 @@ If you untick a permission on Google's screen, the connection is not created.
 
 <Note>
 If **Sign in with your account** says it isn't set up on this server, your administrator has not set `TOOLS_PUBLIC_BASE_URL` and `TOOLS_UI_RETURN_URL` yet (see [Environment Variables](/developer/environment-variables#integrations-tools-service)). Service accounts work without them.
+</Note>
+
+## Connect Outlook Calendar
+
+Outlook Calendar books into the default calendar of a Microsoft 365 (work or school) or Outlook.com account, with the same booking rules, functions and caller checks as Google Calendar.
+
+1. On the **Outlook Calendar** card, click **Connect**, then **Connect with Microsoft**.
+2. Pick your Microsoft account and approve the requested permissions: see free times and book, move and cancel appointments in your calendar, read your account's email address (to label the connection), and stay connected. You come back to the Integrations page, where the connection is confirmed and its agent tool is created.
+3. Turn on **Take bookings** on the agent's **What your agent knows** page, or attach the tool to its steps.
+
+Free times follow your Outlook calendar: anything shown as **Busy**, **Tentative** or **Away** blocks its time; events shown as **Free** or **Working elsewhere** do not. Bookings show on the **Bookings** screen next to your other calendars. A booking deleted in Outlook disappears from that screen rather than showing as cancelled.
+
+<Note>
+The **Outlook Calendar** card only appears once your administrator has registered LightMove.ai with Microsoft (`TOOLS_MICROSOFT_CLIENT_ID`, see [Environment Variables](/developer/environment-variables#integrations-tools-service)). If your organisation's Microsoft 365 admin requires approval for new apps, they need to approve it once before anyone in the organisation can connect.
 </Note>
 
 ## Website product catalogue

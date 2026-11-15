@@ -411,6 +411,12 @@ services:
       # URIs must include {TOOLS_PUBLIC_BASE_URL}/oauth/google-{calendar,sheets}/callback.
       TOOLS_GOOGLE_CLIENT_ID: "${TOOLS_GOOGLE_CLIENT_ID:-}"
       TOOLS_GOOGLE_CLIENT_SECRET: "${TOOLS_GOOGLE_CLIENT_SECRET:-}"
+      # Optional platform Microsoft (Entra) client: Outlook Calendar is only
+      # offered with it (both or neither). Its redirect URI must be
+      # {TOOLS_PUBLIC_BASE_URL}/oauth/outlook-calendar/callback.
+      TOOLS_MICROSOFT_CLIENT_ID: "${TOOLS_MICROSOFT_CLIENT_ID:-}"
+      TOOLS_MICROSOFT_CLIENT_SECRET: "${TOOLS_MICROSOFT_CLIENT_SECRET:-}"
+      TOOLS_MICROSOFT_TENANT: "${TOOLS_MICROSOFT_TENANT:-common}"
       LOG_LEVEL: "${TOOLS_LOG_LEVEL:-INFO}"
     logging:
       driver: "json-file"

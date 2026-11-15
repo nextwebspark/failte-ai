@@ -16,7 +16,14 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Switch } from "@/components/ui/switch";
 import { copyTextToClipboard } from "@/lib/clipboard";
 
-import { CALENDLY_PROVIDER, credentialFamily, integrationErrorMessage, isUnavailableError, scopeLabel } from "./messages";
+import {
+    CALENDLY_PROVIDER,
+    credentialFamily,
+    integrationErrorMessage,
+    isUnavailableError,
+    MICROSOFT_FAMILY,
+    scopeLabel,
+} from "./messages";
 import { isTrustedAuthorizationUrl, startOAuth } from "./oauthCalls";
 import { clearOAuthPopupMarker } from "./oauthPopup";
 import { rememberPendingOAuth } from "./pendingOAuth";
@@ -70,7 +77,10 @@ export function OAuthConnect({
     const managedApp = apps.find((a) => a.managed);
     const ownApps = apps.filter((a) => !a.managed);
     const [ownClientChosen, setOwnClientChosen] = useState(() => ownApps.length > 0);
-    const ownClient = ownClientChosen || !managedApp;
+    // Microsoft sign-in only uses the deployment's own app (set up by the
+    // administrator); there is no form here for a workspace's own one.
+    const microsoft = family === MICROSOFT_FAMILY;
+    const ownClient = !microsoft && (ownClientChosen || !managedApp);
     const [selected, setSelected] = useState<string>(() => ownApps[0]?.id ?? NEW_CLIENT);
     // "Continue as alice@…": Google skips the account chooser. Each
     // integration keeps its own grant.
@@ -102,6 +112,24 @@ export function OAuthConnect({
     const calendly = provider.id === CALENDLY_PROVIDER;
     const addingClient = ownClient && selected === NEW_CLIENT;
     const sharedClient = ownClient && !addingClient && ownApps.length > 0 && family !== provider.id;
+
+    if (microsoft && (!provider.oauth || !redirectUri || !managedApp)) {
+        return (
+            <div className="grid gap-4">
+                <Panel accent="amber" padding="sm">
+                    <p className="text-sm">
+                        Signing in with Microsoft isn&apos;t set up on this server yet. Ask your administrator to
+                        configure it.
+                    </p>
+                </Panel>
+                <DialogFooter>
+                    <Button variant="outline" onClick={onCancel}>
+                        Close
+                    </Button>
+                </DialogFooter>
+            </div>
+        );
+    }
 
     if (!provider.oauth || !redirectUri) {
         return (
@@ -230,7 +258,10 @@ export function OAuthConnect({
             }}
             noValidate
         >
-            {managedApp && (
+            {managedApp && microsoft && (
+                <p className="text-sm text-ink-2">Sign in with your Microsoft account. No setup needed.</p>
+            )}
+            {managedApp && !microsoft && (
                 <div className="grid gap-2">
                     {!ownClient && (
                         <p className="text-sm text-ink-2">Sign in with your {familyTitle} account. No setup needed.</p>

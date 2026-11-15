@@ -248,7 +248,7 @@ def test_without_hours_the_field_stays_empty():
             "doesn't ask for appointment hours",
         ),
         # Only bookings use the hours, and only Google Calendar books.
-        (FIELDS, {}, "need Google Calendar attached"),
+        (FIELDS, {}, "need Google Calendar or Outlook Calendar attached"),
         (
             FIELDS,
             {
@@ -703,7 +703,7 @@ def test_route_rejects_hours_without_a_calendar():
     response, db = _duplicate(ToolsServiceStub(), appointment_hours={})
 
     assert response.status_code == 422
-    assert "need Google Calendar attached" in response.text
+    assert "need Google Calendar or Outlook Calendar attached" in response.text
     db.create_workflow.assert_not_awaited()
 
 

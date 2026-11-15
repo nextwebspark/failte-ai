@@ -2296,8 +2296,8 @@ class AgentCalendar(BaseModel):
 
 
 class SetAgentCalendarRequest(BaseModel):
-    # A booking calendar tool of this workspace (Google Calendar or
-    # Calendly, connected under Integrations); null stops booking.
+    # A booking calendar tool of this workspace (Google Calendar, Outlook
+    # Calendar or Calendly, connected under Integrations); null stops booking.
     tool_uuid: str | None = None
 
 

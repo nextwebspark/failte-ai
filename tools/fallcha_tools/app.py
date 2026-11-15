@@ -36,7 +36,7 @@ from fallcha_tools.core.platform_apps import sync_platform_client
 from fallcha_tools.core.provider import ProviderRegistry
 from fallcha_tools.core.repositories import KeyPrincipal, KeyRepository
 from fallcha_tools.core.sync import SyncRunner
-from fallcha_tools.providers import build_registry, platform_client
+from fallcha_tools.providers import build_registry, platform_clients
 from fallcha_tools.routes import internal, oauth
 from fallcha_tools.routes.rest import connection_key_dependency
 
@@ -100,8 +100,8 @@ def create_app(
 
     box = SecretBox(settings.encryption_keys)
     db = Database(settings.database_url)
-    platform = platform_client(settings)
-    platform_app_id = platform.app_id if platform is not None else None
+    platforms = platform_clients(settings)
+    platform_app_ids = frozenset(platform.app_id for platform in platforms)
     http = httpx.AsyncClient(timeout=httpx.Timeout(20.0, connect=5.0))
     tokens = OAuthTokenManager(db=db, box=box, http=http, clock=clock)
     contexts = ContextLoader(
@@ -114,7 +114,7 @@ def create_app(
         registry=registry,
         public_base_url=settings.public_base_url,
         ui_return_url=settings.ui_return_url,
-        platform_app_id=platform_app_id,
+        platform_app_ids=platform_app_ids,
         clock=clock,
     )
     mounts = McpMounts(registry, ConnectionResolver(contexts), _make_key_lookup(db))
@@ -128,14 +128,14 @@ def create_app(
         contexts=contexts,
         oauth=oauth_flow,
         sync=SyncRunner(db=db, contexts=contexts, registry=registry, clock=clock),
-        platform_app_id=platform_app_id,
+        platform_app_ids=platform_app_ids,
     )
 
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
         logger.info("fallcha-tools starting with providers: {}", list(mounts.apps))
         try:
-            if platform is not None:
+            for platform in platforms:
                 await sync_platform_client(db, box, platform)
             async with mounts.lifespan():
                 yield

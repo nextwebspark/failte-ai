@@ -12,13 +12,13 @@ from collections.abc import AsyncIterator, Callable, Iterable, Mapping, Sequence
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import Any
+from typing import Any, Protocol
 
 from loguru import logger
 from pydantic import JsonValue
 
 from fallcha_tools.core.provider import ConnectionContext
-from fallcha_tools.providers.google_calendar.client import Budget, GoogleClient
+from fallcha_tools.providers.google_calendar.client import Budget
 from fallcha_tools.providers.google_calendar.credentials import Clock
 from fallcha_tools.providers.google_calendar.errors import (
     BadArgumentError,
@@ -180,6 +180,71 @@ def _slots(found: Sequence[datetime]) -> list[Slot]:
 SlotFinder = Callable[[Window, str | None], list[datetime]]
 
 
+class CalendarBackend(Protocol):
+    """The calendar calls the service makes, on Google's event model.
+
+    :class:`~fallcha_tools.providers.google_calendar.client.GoogleClient` is
+    Google Calendar itself; another calendar (Outlook) translates its events
+    to and from this shape: ``id``, ``status``, ``summary``, ``description``,
+    ``created``, ``transparency``, ``start``/``end`` (``dateTime`` or
+    ``date``) and ``extendedProperties.private``. Failures are raised as
+    :class:`GoogleApiError` (the shared calendar error)."""
+
+    @property
+    def account_hint(self) -> str | None: ...
+
+    async def free_busy(
+        self, calendar_id: str, start: datetime, end: datetime, timezone: str
+    ) -> list[Busy]: ...
+
+    async def list_events(
+        self,
+        calendar_id: str,
+        start: datetime,
+        end: datetime,
+        *,
+        show_deleted: bool = False,
+        private_property: str | None = None,
+        budget: Budget | None = None,
+    ) -> list[dict[str, Any]]: ...
+
+    async def insert_event(
+        self,
+        calendar_id: str,
+        event: Mapping[str, JsonValue],
+        *,
+        budget: Budget | None = None,
+    ) -> bool: ...
+
+    async def restore_event(
+        self,
+        calendar_id: str,
+        event: Mapping[str, JsonValue],
+        *,
+        budget: Budget | None = None,
+    ) -> None: ...
+
+    async def get_event(
+        self, calendar_id: str, event_id: str, *, budget: Budget | None = None
+    ) -> dict[str, Any] | None: ...
+
+    async def delete_event(self, calendar_id: str, event_id: str) -> bool: ...
+
+    async def list_tagged_events(
+        self,
+        calendar_id: str,
+        *,
+        private_properties: Mapping[str, str],
+        time_min: datetime,
+        time_max: datetime,
+        page_size: int,
+        max_pages: int = 1,
+        budget: Budget | None = None,
+    ) -> list[dict[str, Any]]: ...
+
+    async def calendar_summary(self, calendar_id: str) -> str: ...
+
+
 @dataclass(frozen=True, slots=True)
 class CalendarService:
     """One connection's calendar, with its booking rules.
@@ -192,7 +257,7 @@ class CalendarService:
       counted, see ``_classify`` and ``scheduling.has_room``.
     """
 
-    client: GoogleClient
+    client: CalendarBackend
     config: CalendarConfig
     connection_id: uuid.UUID
     clock: Clock
@@ -203,6 +268,8 @@ class CalendarService:
     # The number of the person on the call, from the call record (see
     # ConnectionContext.contact_phone); None when hidden or unknown.
     contact_phone: str | None = None
+    # Whose calendar it is, in the messages the agent may be given.
+    vendor: str = "Google"
 
     async def availability(
         self,
@@ -319,7 +386,7 @@ class CalendarService:
                     return self._booked(candidate, slot)
         except GoogleApiError as exc:
             if exc.retryable:
-                raise GoogleApiError(UNCONFIRMED_BOOKING, retryable=True) from None
+                raise GoogleApiError(self._unconfirmed, retryable=True) from None
             raise
         # Both ids exist on Google but neither can be read: give up cleanly.
         return self._gone(alternatives)
@@ -489,10 +556,13 @@ class CalendarService:
             await self.client.restore_event(calendar_id, event, budget=budget)
         return True
 
-    @staticmethod
-    def _require_time(budget: Budget) -> None:
+    @property
+    def _unconfirmed(self) -> str:
+        return UNCONFIRMED_BOOKING.replace("Google", self.vendor)
+
+    def _require_time(self, budget: Budget) -> None:
         if not budget.allows_request():
-            raise GoogleApiError(UNCONFIRMED_BOOKING, retryable=True)
+            raise GoogleApiError(self._unconfirmed, retryable=True)
 
     def _gone(self, alternatives: Sequence[datetime]) -> BookingResult:
         if not alternatives and self.config.counts_capacity:
@@ -1017,7 +1087,7 @@ class CalendarService:
             async with asyncio.timeout(self.deadline_seconds):
                 yield
         except TimeoutError:
-            raise GoogleApiError("Google did not respond in time") from None
+            raise GoogleApiError(f"{self.vendor} did not respond in time") from None
 
 
 ServiceFactory = Callable[[ConnectionContext], CalendarService]

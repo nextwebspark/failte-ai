@@ -159,7 +159,11 @@ describe("IntegrationsPage", () => {
         });
         render(<IntegrationsPage />);
 
-        expect(await screen.findByText("Book appointment")).toBeTruthy();
+        // One short line per card; its functions are under Explore.
+        expect(await screen.findByText("Offer free times and book callers into Google Calendar.")).toBeTruthy();
+        expect(screen.queryByText("Check availability and book appointments.")).toBeNull();
+        fireEvent.click(screen.getByRole("button", { name: "Explore Google Calendar" }));
+        expect(screen.getByText("Book appointment")).toBeTruthy();
         expect(screen.getByText("Needs attention")).toBeTruthy();
         expect(screen.getByText(/Access was revoked or expired/)).toBeTruthy();
         expect(screen.getByRole("button", { name: /Reconnect/ })).toBeTruthy();
@@ -498,7 +502,7 @@ describe("IntegrationsPage", () => {
 
         async function openSheets() {
             render(<IntegrationsPage />);
-            await screen.findByText("Find rows");
+            await screen.findByRole("button", { name: "Explore Google Sheets" });
             const connectButtons = await screen.findAllByRole("button", { name: /^(Connect|Add another)$/ });
             fireEvent.click(connectButtons[connectButtons.length - 1]);
         }
@@ -730,6 +734,82 @@ describe("IntegrationsPage", () => {
         });
     });
 
+    describe("Outlook Calendar", () => {
+        const OUTLOOK: IntegrationProvider = {
+            id: "outlook-calendar",
+            title: "Outlook Calendar",
+            description: "Offer free appointment slots, and book them, on an Outlook calendar.",
+            icon: "calendar",
+            auth_family: "microsoft",
+            auth_modes: ["oauth2"],
+            scopes: ["Calendars.ReadWrite"],
+            tools: [{ name: "book_appointment", description: "Book a slot", summary: "Book an appointment" }],
+            config_schema: { type: "object", properties: { calendar_id: { type: "string" } } },
+            oauth: {
+                scopes: ["Calendars.ReadWrite", "User.Read"],
+                optional_scopes: [],
+                redirect_uri: "https://tools.fallcha.test/oauth/outlook-calendar/callback",
+            },
+        };
+        const MICROSOFT_APP = {
+            id: "microsoft-platform-app",
+            provider: "microsoft",
+            client_id: "11111111-2222-3333-4444-555555555555",
+            created_at: "",
+            updated_at: "",
+            managed: true,
+        };
+        const MS_AUTHORIZE = "https://login.microsoftonline.com/common/oauth2/v2.0/authorize?state=x";
+        const original = window.location;
+        let assign: ReturnType<typeof vi.fn>;
+
+        beforeEach(() => {
+            assign = vi.fn();
+            Object.defineProperty(window, "location", {
+                configurable: true,
+                value: { ...original, assign, search: "", href: original.href },
+            });
+            mocks.getCatalog.mockResolvedValue({ data: { providers: [OUTLOOK] } });
+            mocks.startOauth.mockResolvedValue({
+                data: { authorization_url: MS_AUTHORIZE, redirect_uri: "", expires_at: "", browser_nonce: NONCE },
+            });
+        });
+
+        afterEach(() => {
+            Object.defineProperty(window, "location", { configurable: true, value: original });
+        });
+
+        it("signs in with the platform's Microsoft app in one click", async () => {
+            mocks.listProviderApps.mockResolvedValue({ data: { provider_apps: [MICROSOFT_APP] } });
+            render(<IntegrationsPage />);
+            expect(await screen.findByText("Offer free times and book callers into Outlook.")).toBeTruthy();
+            fireEvent.click(screen.getByRole("button", { name: /^Connect$/ }));
+            const dialog = await screen.findByRole("dialog");
+
+            // No Google Cloud set-up, and no own-client form for Microsoft.
+            expect(within(dialog).queryByRole("switch")).toBeNull();
+            expect(within(dialog).queryByLabelText("Client ID")).toBeNull();
+            expect(within(dialog).getByText(/See free times and book, move and cancel appointments/)).toBeTruthy();
+            fireEvent.click(within(dialog).getByRole("button", { name: "Connect with Microsoft" }));
+
+            await waitFor(() => expect(assign).toHaveBeenCalledWith(MS_AUTHORIZE));
+            expect(mocks.startOauth).toHaveBeenCalledWith({
+                body: { provider: OUTLOOK.id, provider_app_id: MICROSOFT_APP.id, optional_scopes: [] },
+            });
+        });
+
+        it("says Microsoft sign-in isn't set up without the platform app", async () => {
+            mocks.listProviderApps.mockResolvedValue({ data: { provider_apps: [] } });
+            render(<IntegrationsPage />);
+            fireEvent.click(await screen.findByRole("button", { name: /^Connect$/ }));
+            const dialog = await screen.findByRole("dialog");
+
+            expect(within(dialog).getByText(/Signing in with Microsoft isn't set up on this server yet/)).toBeTruthy();
+            expect(within(dialog).queryByRole("button", { name: /Connect with|Sign in/ })).toBeNull();
+            expect(mocks.startOauth).not.toHaveBeenCalled();
+        });
+    });
+
     describe("catalogue sync", () => {
         const CATALOGUE: IntegrationProvider = {
             id: "website-catalogue",
@@ -776,13 +856,27 @@ describe("IntegrationsPage", () => {
             mocks.getCatalog.mockResolvedValue({ data: { providers: [CATALOGUE] } });
         });
 
-        it("shows short summaries only, collapsed to three", async () => {
+        it("keeps the card short until Explore opens every function", async () => {
             render(<IntegrationsPage />);
-            expect(await screen.findByText("Find products")).toBeTruthy();
+            const explore = await screen.findByRole("button", { name: "Explore Website product catalogue" });
+            expect(explore.getAttribute("aria-expanded")).toBe("false");
+            expect(screen.queryByText("Find products")).toBeNull();
+            expect(screen.queryByText(/Connect with:/)).toBeNull();
+
+            fireEvent.click(explore);
+
+            expect(explore.getAttribute("aria-expanded")).toBe("true");
+            const panel = document.getElementById(explore.getAttribute("aria-controls") ?? "");
+            expect(panel).not.toBeNull();
+            const items = within(panel as HTMLElement).getAllByRole("listitem").map((li) => li.textContent);
+            expect(items).toEqual(["Find products", "Get product details", "Third", "Fourth"]);
+            // Short summaries only: the agent's instructions stay hidden.
             expect(screen.queryByText(/Always call this/)).toBeNull();
+            expect(within(panel as HTMLElement).getByText("Connect with: No sign-in")).toBeTruthy();
+
+            fireEvent.click(explore);
+            expect(explore.getAttribute("aria-expanded")).toBe("false");
             expect(screen.queryByText("Fourth")).toBeNull();
-            fireEvent.click(screen.getByRole("button", { name: /Show all 4/ }));
-            expect(screen.getByText("Fourth")).toBeTruthy();
         });
 
         it("starts a sync, shows progress and the result", async () => {

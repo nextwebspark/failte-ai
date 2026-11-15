@@ -372,7 +372,7 @@ function NoCalendar({ canConnect }: { canConnect: boolean }) {
                 ) : null
             }
         >
-            Link your Google Calendar or Calendly and your agent can offer callers real free times and book them
+            Link your Google Calendar, Outlook Calendar or Calendly and your agent can offer callers real free times and book them
             while they&apos;re still on the line. Every booking then shows up here, day by day.
             {!canConnect && <span className="mt-2 block">Ask an admin on your team to connect it.</span>}
         </EmptyState>

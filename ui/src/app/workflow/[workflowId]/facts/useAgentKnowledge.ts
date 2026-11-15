@@ -261,7 +261,7 @@ async function loadVoice(
 }
 
 /**
- * Whether the agent books with a calendar (Google Calendar or Calendly), and how it is.
+ * Whether the agent books with a calendar (Google Calendar, Outlook Calendar or Calendly), and how it is.
  * The calendar's switch and booking rules come from the bookings list (every
  * member who sees calls may read it); which connection is this agent's needs
  * the integrations list, so without it a single calendar is assumed only

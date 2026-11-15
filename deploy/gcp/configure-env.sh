@@ -320,6 +320,23 @@ if [[ "${DOGRAH_GOOGLE:-}" != off ]]; then
   sm_read dograh-google-oauth-client-id GOOGLE_ID || GOOGLE_ID_STATUS=$?
   sm_read dograh-google-oauth-client-secret GOOGLE_SECRET || GOOGLE_SECRET_STATUS=$?
 fi
+# The platform Microsoft (Entra) client for Outlook Calendar (fallcha-tools
+# only, tools.env below): on with both secrets, off with neither or only one.
+# DOGRAH_MICROSOFT=off turns it off; DOGRAH_MICROSOFT_TENANT (default common)
+# limits who may sign in. The app registration must list the redirect URI
+# <PUBLIC_BASE_URL>/oauth/outlook-calendar/callback (see README.md).
+MICROSOFT_ID="" MICROSOFT_SECRET=""
+if [[ "${DOGRAH_MICROSOFT:-}" != off ]]; then
+  MICROSOFT_ID="$(sm_optional dograh-microsoft-oauth-client-id)"
+  MICROSOFT_SECRET="$(sm_optional dograh-microsoft-oauth-client-secret)"
+fi
+if [[ -z "$MICROSOFT_ID" || -z "$MICROSOFT_SECRET" ]]; then
+  if [[ -n "$MICROSOFT_ID" || -n "$MICROSOFT_SECRET" ]]; then
+    echo "  only one of dograh-microsoft-oauth-client-id / -secret exists:" \
+      "Outlook Calendar stays off" >&2
+  fi
+  MICROSOFT_ID="" MICROSOFT_SECRET=""
+fi
 PUBLIC_URL="$(grep -E '^PUBLIC_BASE_URL=' "$ENV_FILE" | tail -1 | cut -d= -f2- | tr -d '"' || true)"
 # CORS: an explicit allowlist, never "*". The UI is served from
 # PUBLIC_BASE_URL, so that origin is the default; add more (comma-separated)
@@ -372,6 +389,7 @@ set_key CREDENTIALS_ENCRYPTION_KEYS "$CRED_KEYS"
 # Names: dograh-stripe-secret-key (sk_test_/sk_live_), dograh-stripe-webhook-secret
 # (whsec_ of the dashboard endpoint), dograh-resend-api-key (re_...),
 # dograh-google-oauth-client-id / dograh-google-oauth-client-secret,
+# dograh-microsoft-oauth-client-id / dograh-microsoft-oauth-client-secret,
 # dograh-twilio-sms-account-sid / dograh-twilio-sms-auth-token.
 
 if [[ -n "$STRIPE_KEY" ]]; then
@@ -471,6 +489,12 @@ mkdir -p "$TOOLS_DIR"
     if [[ -n "$GOOGLE_ID" && -n "$GOOGLE_SECRET" ]]; then
       printf 'TOOLS_GOOGLE_CLIENT_ID=%s\n' "$GOOGLE_ID"
       printf 'TOOLS_GOOGLE_CLIENT_SECRET=%s\n' "$GOOGLE_SECRET"
+    fi
+    # The Microsoft client read above (both or neither): Outlook Calendar.
+    if [[ -n "$MICROSOFT_ID" && -n "$MICROSOFT_SECRET" ]]; then
+      printf 'TOOLS_MICROSOFT_CLIENT_ID=%s\n' "$MICROSOFT_ID"
+      printf 'TOOLS_MICROSOFT_CLIENT_SECRET=%s\n' "$MICROSOFT_SECRET"
+      printf 'TOOLS_MICROSOFT_TENANT=%s\n' "${DOGRAH_MICROSOFT_TENANT:-common}"
     fi
   } > "$TOOLS_ENV"
 )

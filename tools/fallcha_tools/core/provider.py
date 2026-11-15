@@ -63,6 +63,14 @@ class OAuthSpec:
     revocation_url: str | None = None
     authorize_params: Mapping[str, str] = field(default_factory=dict)
     default_config: Mapping[str, JsonValue] = field(default_factory=dict)
+    # Fields of the userinfo response that may hold the account's address,
+    # first match wins (Microsoft Graph's ``/me`` has ``mail`` and
+    # ``userPrincipalName`` rather than ``email``).
+    userinfo_email_fields: tuple[str, ...] = ("email",)
+    # Granted scopes may come back with a resource prefix (Microsoft:
+    # ``https://graph.microsoft.com/Calendars.ReadWrite``); it is removed
+    # before they are compared with ``scopes``.
+    scope_prefixes: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)

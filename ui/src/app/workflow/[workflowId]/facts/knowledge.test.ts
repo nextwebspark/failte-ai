@@ -52,10 +52,13 @@ describe("what the agent's definition says", () => {
         expect(calendarProvider(tool("https://tools.example/mcp/calendly"))).toBe("calendly");
         expect(calendarProvider(tool("https://tools.example/mcp/calendly/"))).toBe("calendly");
         expect(calendarProvider(tool("https://x/mcp/google-calendar"))).toBe("google-calendar");
+        expect(calendarProvider(tool("https://x/mcp/outlook-calendar"))).toBe("outlook-calendar");
+        expect(calendarProvider(tool("https://x/mcp/outlook-calendar-lookalike"))).toBeNull();
         expect(calendarProvider(tool("https://x/mcp/calendly-lookalike"))).toBeNull();
         expect(isCalendarTool(tool("https://tools.example/mcp/calendly"))).toBe(true);
         expect(bookingLine("calendly")).toBe("Checks free times in your Calendly and books them.");
         expect(bookingLine("google-calendar")).toBe("Checks free times in your Google Calendar and books them.");
+        expect(bookingLine("outlook-calendar")).toBe("Checks free times in your Outlook Calendar and books them.");
     });
 });
 

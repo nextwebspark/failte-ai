@@ -29,6 +29,7 @@ from api.services.tool_integrations.service import (
 START = datetime(2026, 10, 12, tzinfo=UTC)
 END = START + timedelta(days=14)
 CALENDAR = "google-calendar"
+OUTLOOK = "outlook-calendar"
 
 
 def _catalog() -> IntegrationCatalogResponse:
@@ -48,6 +49,7 @@ def _catalog() -> IntegrationCatalogResponse:
         {
             "providers": [
                 provider(CALENDAR, "Google Calendar", ["bookings"]),
+                provider(OUTLOOK, "Outlook Calendar", ["bookings"]),
                 provider("google-sheets", "Google Sheets", []),
             ]
         }
@@ -149,6 +151,34 @@ async def test_bookings_from_every_calendar_in_start_order() -> None:
         (lunch.id, False, True),
     ]
     assert set(tools.asked) == {dinner.id, lunch.id}  # not Sheets, not revoked
+
+
+async def test_outlook_bookings_show_next_to_google_ones() -> None:
+    google = _connection()
+    outlook = _connection(
+        OUTLOOK,
+        auth_mode="oauth2",
+        account_label="alice@contoso.test",
+        config={"calendar_id": "primary"},
+    )
+    tools = FakeTools(
+        [google, outlook],
+        {
+            google.id: [_booking(19, "Byrne")],
+            outlook.id: [_booking(10, "Walsh")],
+        },
+    )
+
+    result = await _service(tools).list_bookings(ACTOR, START, END)
+
+    assert [(b.caller_name, b.connection_id) for b in result.bookings] == [
+        ("Walsh", outlook.id),
+        ("Byrne", google.id),
+    ]
+    assert [(c.provider, c.title) for c in result.calendars] == [
+        (CALENDAR, "Google Calendar"),
+        (OUTLOOK, "Outlook Calendar"),
+    ]
 
 
 async def test_an_unreadable_calendar_is_reported_not_fatal() -> None:
