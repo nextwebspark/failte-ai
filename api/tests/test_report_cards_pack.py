@@ -25,7 +25,9 @@ def templates(monkeypatch):
 @pytest.mark.asyncio
 async def test_one_agent_uses_its_own_pack(templates):
     templates.update({1: "restaurant", 2: "clinic"})
-    template, pack, _ = await service.resolve_pack(9, 2, _agents((1, "active"), (2, "active")))
+    template, pack, _ = await service.resolve_pack(
+        9, 2, _agents((1, "active"), (2, "active"))
+    )
     assert template == "clinic"
     assert pack.pack == Pack.CLINIC
 
@@ -33,7 +35,9 @@ async def test_one_agent_uses_its_own_pack(templates):
 @pytest.mark.asyncio
 async def test_all_agents_of_one_kind_share_their_pack(templates):
     templates.update({1: "restaurant", 2: "restaurant"})
-    _, pack, _ = await service.resolve_pack(9, None, _agents((1, "active"), (2, "active")))
+    _, pack, _ = await service.resolve_pack(
+        9, None, _agents((1, "active"), (2, "active"))
+    )
     assert pack.pack == Pack.RESTAURANT
 
 
@@ -51,7 +55,9 @@ async def test_mixed_agents_get_the_standard_pack(templates):
 @pytest.mark.asyncio
 async def test_agents_switched_off_do_not_count(templates):
     templates.update({1: "restaurant", 2: "clinic"})
-    _, pack, _ = await service.resolve_pack(9, None, _agents((1, "active"), (2, "inactive")))
+    _, pack, _ = await service.resolve_pack(
+        9, None, _agents((1, "active"), (2, "inactive"))
+    )
     assert pack.pack == Pack.RESTAURANT
 
 
