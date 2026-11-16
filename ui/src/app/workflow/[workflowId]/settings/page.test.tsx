@@ -70,10 +70,10 @@ function renderPage() {
     );
 }
 
-describe("Advanced settings", () => {
+describe("Agent settings", () => {
     it("has one save bar instead of a Save button per card", () => {
         renderPage();
-        expect(screen.getByRole("heading", { name: "Advanced settings" })).toBeTruthy();
+        expect(screen.getByRole("heading", { name: "Agent settings" })).toBeTruthy();
         expect(screen.queryByRole("button", { name: /save/i })).toBeNull();
 
         fireEvent.change(screen.getByLabelText("Agent name"), { target: { value: "Reception" } });

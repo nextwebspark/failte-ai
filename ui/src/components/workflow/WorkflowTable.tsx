@@ -17,6 +17,7 @@ import { useRouter } from 'next/navigation';
 import { useState, useTransition } from 'react';
 import { toast } from 'sonner';
 
+import { formatPhone } from '@/app/usage/callsView';
 import {
     moveWorkflowToFolderApiV1WorkflowWorkflowIdFolderPut,
     updateWorkflowStatusApiV1WorkflowWorkflowIdStatusPut,
@@ -63,21 +64,32 @@ interface WorkflowTableProps {
 // Agent · Status · Channels · Calls (7 days) · Last call · menu. Narrow screens
 // keep the agent and the menu; the status drops under the name.
 const ROW_GRID =
-    'grid grid-cols-[minmax(0,1fr)_40px] items-center gap-3 px-4 md:grid-cols-[minmax(0,1fr)_200px_100px_150px_130px_40px]';
+    'grid grid-cols-[minmax(0,1fr)_40px] items-center gap-3 px-4 md:grid-cols-[minmax(0,1fr)_200px_150px_150px_130px_40px]';
 
 const CHANNELS = [
     { key: 'phone', label: 'Phone', Icon: Phone },
     { key: 'web', label: 'Website widget', Icon: AppWindow },
 ] as const;
 
-/** How callers reach the agent: a phone number and/or the website widget. */
-export function Channels({ channels }: { channels: WorkflowListResponse['channels'] }) {
+/**
+ * How callers reach the agent: a phone number and/or the website widget,
+ * and which number rings it (a number rings one agent only).
+ */
+export function Channels({
+    channels,
+    phoneNumbers,
+}: {
+    channels: WorkflowListResponse['channels'];
+    phoneNumbers?: WorkflowListResponse['phone_numbers'];
+}) {
     const connected = CHANNELS.filter(({ key }) => channels?.includes(key));
     if (connected.length === 0) {
         return <span className="text-[12px] text-ink-3">Not connected</span>;
     }
+    const numbers = phoneNumbers ?? [];
     return (
-        <span className="flex items-center gap-1.5">
+        <span className="flex flex-col gap-1">
+            <span className="flex items-center gap-1.5">
             {connected.map(({ key, label, Icon }) => (
                 <span
                     key={key}
@@ -89,6 +101,16 @@ export function Channels({ channels }: { channels: WorkflowListResponse['channel
                     <Icon className="size-3.25" aria-hidden />
                 </span>
             ))}
+            </span>
+            {numbers.length > 0 && (
+                <span
+                    className="truncate font-mono text-[11px] text-ink-3"
+                    title={numbers.map(formatPhone).join(', ')}
+                >
+                    {formatPhone(numbers[0])}
+                    {numbers.length > 1 ? ` +${numbers.length - 1}` : ''}
+                </span>
+            )}
         </span>
     );
 }
@@ -263,7 +285,7 @@ export function WorkflowTable({ workflows, showArchived, folders }: WorkflowTabl
                             <div className="hidden md:block">{pill}</div>
 
                             <div className="hidden md:block">
-                                <Channels channels={workflow.channels} />
+                                <Channels channels={workflow.channels} phoneNumbers={workflow.phone_numbers} />
                             </div>
 
                             <div className="hidden items-center gap-2.5 md:flex">

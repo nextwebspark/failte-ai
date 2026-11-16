@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { agentRowHref, getPageMeta, getRequiredPermission, NAV_SECTIONS } from "../navConfig";
+import { getPageMeta, getRequiredPermission, NAV_SECTIONS } from "../navConfig";
 
 describe("getRequiredPermission", () => {
   it.each([
@@ -41,25 +41,49 @@ describe("getRequiredPermission", () => {
     expect(getRequiredPermission("/teams-of-agents")).toBeNull();
   });
 
-  it("folds Team, Billing and Developers into one Settings row", () => {
+  it("puts Team, Billing and the phone and AI setup under Settings", () => {
     const items = NAV_SECTIONS.flatMap((section) => section.items);
     expect(items.find((item) => item.settingsHub)?.url).toBe("/settings");
-    for (const moved of ["/team", "/billing", "/api-keys"]) {
-      expect(items.some((item) => item.url === moved)).toBe(false);
+    for (const url of ["/team", "/billing", "/api-keys", "/tools", "/files", "/telephony-configurations", "/recordings"]) {
+      expect(items.some((item) => item.url === url)).toBe(false);
     }
-    expect(items.find((item) => item.url === "/tools")?.requires).toBe("agents:write");
+    // Their screens stay as strict as before.
+    expect(getRequiredPermission("/tools")).toBe("agents:write");
+    expect(getRequiredPermission("/tools/abc")).toBe("agents:write");
+    expect(getRequiredPermission("/files")).toBe("agents:write");
+    expect(getRequiredPermission("/recordings")).toBe("agents:write");
+    expect(getRequiredPermission("/model-configurations")).toBe("credentials:write");
   });
 });
 
-describe("the redesigned nav", () => {
-  it("has the owner's screens, Your agent and one Advanced setup group", () => {
-    expect(NAV_SECTIONS.map((section) => [section.id, section.label ?? null, Boolean(section.collapsible)])).toEqual([
-      ["main", null, false],
-      ["agent", "Your agent", false],
-      ["advanced", "Advanced setup", true],
+describe("the one menu", () => {
+  it("has the business, the agent and the workspace, with nothing folded away", () => {
+    expect(NAV_SECTIONS.map((section) => [section.id, section.label ?? null])).toEqual([
+      ["main", null],
+      ["agent", "Your agent"],
+      ["workspace", "Workspace"],
     ]);
-    expect(NAV_SECTIONS[0].items.map((item) => item.title)).toEqual(["Home", "Calls", "Follow-ups", "Bookings", "Reports"]);
-    expect(NAV_SECTIONS[1].items.map((item) => item.title)).toEqual(["What your agent knows", "Phone number", "Settings"]);
+    const titles = (id: string) => NAV_SECTIONS.find((s) => s.id === id)!.items.map((item) => item.title);
+    expect(titles("main")).toEqual(["Home", "Calls", "Follow-ups", "Bookings", "Reports"]);
+    expect(titles("agent")).toEqual([
+      "What your agent knows",
+      "Phone number",
+      "Voice & model",
+      "Call flow",
+      "Agent settings",
+    ]);
+    // Campaigns and Skills are switched off by default.
+    expect(titles("workspace")).toEqual(["Voice agents", "Integrations", "Settings"]);
+  });
+
+  it("keeps every row as strict as its screen", () => {
+    const items = NAV_SECTIONS.flatMap((section) => section.items);
+    const requires = (title: string) => items.find((item) => item.title === title)?.requires;
+    expect(requires("Voice & model")).toBe("agents:write");
+    expect(requires("Agent settings")).toBe("agents:write");
+    expect(requires("Call flow")).toBe("agents:read");
+    expect(requires("What your agent knows")).toBe("agents:read");
+    expect(requires("Integrations")).toBe("integrations:read");
   });
 
   it("names the dashboard Home in the breadcrumb", () => {
@@ -67,32 +91,10 @@ describe("the redesigned nav", () => {
     expect(getPageMeta("/follow-ups").title).toBe("Follow-ups");
   });
 
-  it("does not guard the agents list with a Your agent row's fallback address", () => {
-    // "What your agent knows" falls back to /workflow; that must not change
-    // what /workflow itself needs.
+  it("does not guard the agents list with an Agent row's fallback address", () => {
+    // The Agent rows fall back to /workflow while agents load; that must not
+    // change what /workflow itself needs.
     expect(getRequiredPermission("/workflow")).toBe("agents:read");
     expect(getRequiredPermission("/telephony-configurations")).toBe("telephony:read");
-  });
-});
-
-describe("agentRowHref", () => {
-  const all = () => true;
-  const owner = (p: string) => p === "agents:read";
-
-  it("goes straight to the one agent", () => {
-    expect(agentRowHref("facts", [{ id: 7 }], all)).toBe("/workflow/7/facts");
-    expect(agentRowHref("phone", [{ id: 7 }], owner)).toBe("/workflow/7/deployment#phone");
-  });
-
-  it("starts someone who can build on creating an agent when there is none", () => {
-    expect(agentRowHref("facts", [], all)).toBe("/workflow/create");
-    expect(agentRowHref("facts", [], owner)).toBe("/workflow");
-  });
-
-  it("lists the agents when there are several, or while they load", () => {
-    expect(agentRowHref("facts", [{ id: 1 }, { id: 2 }], all)).toBe("/workflow");
-    expect(agentRowHref("facts", null, all)).toBe("/workflow");
-    expect(agentRowHref("phone", [{ id: 1 }, { id: 2 }], all)).toBe("/telephony-configurations");
-    expect(agentRowHref("phone", [{ id: 1 }, { id: 2 }], owner)).toBe("/workflow");
   });
 });

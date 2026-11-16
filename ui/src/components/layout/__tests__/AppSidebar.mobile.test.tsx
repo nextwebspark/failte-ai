@@ -1,13 +1,15 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { SidebarProvider, useSidebar } from "@/components/ui/sidebar";
 
-import { ADVANCED_OPEN_KEY, AppSidebar } from "../AppSidebar";
+import { AppSidebar } from "../AppSidebar";
 
 const mocks = vi.hoisted(() => ({
   pathname: "/overview",
-  agents: [{ id: 14, name: "Bia Bistro bookings" }] as { id: number; name: string }[] | null,
+  agents: [{ id: 14, name: "Bia Bistro bookings", phone_numbers: [] }] as
+    | { id: number; name: string; phone_numbers: string[] }[]
+    | null,
   role: "admin" as string | null,
   can: (() => true) as (p: string) => boolean,
   mobile: true,
@@ -35,7 +37,11 @@ vi.mock("@/context/OrgConfigContext", () => ({
   }),
 }));
 vi.mock("@/lib/auth", () => ({ useAuth: () => ({ user: { displayName: "Maria Keane" } }) }));
-vi.mock("../workspaceAgents", () => ({ useWorkspaceAgents: () => mocks.agents }));
+vi.mock("@/components/dashboard/useDashboardData", () => ({ useOpenFollowUpCount: () => null }));
+vi.mock("../workspaceAgents", () => ({
+  useWorkspaceAgents: () => mocks.agents,
+  useSelectedAgent: () => ({ agents: mocks.agents, selected: mocks.agents?.[0] ?? null, select: vi.fn() }),
+}));
 vi.mock("next-themes", () => ({ useTheme: () => ({ resolvedTheme: "light", setTheme: vi.fn() }) }));
 
 // Radix measures some parts of the menu; jsdom has no ResizeObserver.
@@ -72,7 +78,7 @@ async function openMenu() {
 describe("AppSidebar on a phone", () => {
   beforeEach(() => {
     mocks.pathname = "/overview";
-    mocks.agents = [{ id: 14, name: "Bia Bistro bookings" }];
+    mocks.agents = [{ id: 14, name: "Bia Bistro bookings", phone_numbers: [] }];
     mocks.role = "admin";
     mocks.can = () => true;
     mocks.mobile = true;
@@ -96,26 +102,25 @@ describe("AppSidebar on a phone", () => {
     await waitFor(() => expect(screen.getByText("menu closed")).toBeTruthy());
   });
 
-  it("marks the section of a nested screen as the current page, opening Advanced setup for it", async () => {
+  it("lights Settings on a setup screen that now lives under it", async () => {
     mocks.pathname = "/telephony-configurations/7";
     await openMenu();
     const current = await screen.findByRole("link", { current: "page" });
-    expect(current.textContent).toContain("Telephony");
-    expect(screen.getByRole("button", { name: "Advanced setup" }).getAttribute("aria-expanded")).toBe("true");
+    expect(current.textContent).toContain("Settings");
   });
 });
 
 describe("AppSidebar layout", () => {
   beforeEach(() => {
     mocks.pathname = "/overview";
-    mocks.agents = [{ id: 14, name: "Bia Bistro bookings" }];
+    mocks.agents = [{ id: 14, name: "Bia Bistro bookings", phone_numbers: [] }];
     mocks.role = "admin";
     mocks.can = () => true;
     mocks.mobile = true;
     localStorage.clear();
   });
 
-  it("lists the owner's screens first, then Your agent, with the builder screens folded away", async () => {
+  it("lists the business first, then the agent, then the workspace, with nothing folded away", async () => {
     await openMenu();
     const links = screen.getAllByRole("link").map((a) => a.textContent?.trim());
     expect(links).toEqual([
@@ -126,9 +131,16 @@ describe("AppSidebar layout", () => {
       "Reports",
       "What your agent knows",
       "Phone number",
+      "Voice & model",
+      "Call flow",
+      "Agent settings",
+      "Voice agents",
+      "Integrations",
       "Settings",
     ]);
     expect(screen.getByText("Your agent")).toBeTruthy();
+    expect(screen.getByText("Workspace")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /Advanced/ })).toBeNull();
     expect(screen.queryByText(/for your developer/i)).toBeNull();
     expect(screen.getByRole("link", { name: "Home" }).getAttribute("aria-current")).toBe("page");
   });
@@ -140,47 +152,27 @@ describe("AppSidebar layout", () => {
     expect(screen.getByText("Admin")).toBeTruthy();
   });
 
-  it("opens Advanced setup on request and remembers it", async () => {
-    await openMenu();
-    const toggle = screen.getByRole("button", { name: "Advanced setup" });
-    expect(toggle.getAttribute("aria-expanded")).toBe("false");
-    fireEvent.click(toggle);
-    for (const name of ["Voice agents", "Models & voice", "Telephony", "Tools", "Integrations", "Files", "Prompt audio"]) {
-      expect(screen.getByRole("link", { name })).toBeTruthy();
-    }
-    expect(localStorage.getItem(ADVANCED_OPEN_KEY)).toBe("1");
-  });
-
-  it("points Your agent at the one agent", async () => {
+  it("points the Agent rows at the agent", async () => {
     await openMenu();
     expect(screen.getByRole("link", { name: "What your agent knows" }).getAttribute("href")).toBe("/workflow/14/facts");
     expect(screen.getByRole("link", { name: "Phone number" }).getAttribute("href")).toBe("/workflow/14/deployment#phone");
   });
 
-  it("sends Your agent to creating one, or to the list when there are several", async () => {
-    mocks.agents = [];
-    const { unmount } = render(<Shell />);
-    fireEvent.click(screen.getByText("menu closed"));
-    expect((await screen.findByRole("link", { name: "What your agent knows" })).getAttribute("href")).toBe("/workflow/create");
-    unmount();
-
-    mocks.agents = [{ id: 1, name: "A" }, { id: 2, name: "B" }];
+  it("leads to the agents list while the agents load", async () => {
+    mocks.agents = null;
     await openMenu();
     expect(screen.getByRole("link", { name: "What your agent knows" }).getAttribute("href")).toBe("/workflow");
-    expect(screen.getByRole("link", { name: "Phone number" }).getAttribute("href")).toBe("/telephony-configurations");
   });
 
-  it("hides the builder screens an owner can't open", async () => {
+  it("hides the screens an owner can't open", async () => {
     mocks.role = "viewer";
     const owner = new Set(["agents:read", "calls:read", "reports:read", "members:read", "billing:read", "campaigns:read", "agents:facts", "bookings:manage"]);
     mocks.can = (p) => owner.has(p);
-    mocks.agents = [{ id: 1, name: "A" }, { id: 2, name: "B" }];
     await openMenu();
-    // No telephony access: the Phone number row falls back to the agents list.
-    expect(screen.getByRole("link", { name: "Phone number" }).getAttribute("href")).toBe("/workflow");
-    fireEvent.click(screen.getByRole("button", { name: "Advanced setup" }));
-    const nav = screen.getByRole("link", { name: "Voice agents" }).closest("ul") as HTMLElement;
-    expect(within(nav).queryByRole("link", { name: "Tools" })).toBeNull();
-    expect(within(nav).queryByRole("link", { name: "Telephony" })).toBeNull();
+    expect(screen.getByRole("link", { name: "Settings" })).toBeTruthy();
+    expect(screen.queryByRole("link", { name: "Integrations" })).toBeNull();
+    expect(screen.queryByRole("link", { name: "Voice & model" })).toBeNull();
+    expect(screen.queryByRole("link", { name: "Agent settings" })).toBeNull();
   });
+
 });

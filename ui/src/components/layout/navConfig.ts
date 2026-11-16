@@ -1,45 +1,43 @@
 import {
-  AudioLines,
   BookOpen,
-  Bot,
   CalendarDays,
   ChartLine,
-  Cpu,
-  Database,
   GitBranch,
   Home,
   ListChecks,
   type LucideIcon,
   Megaphone,
   Phone,
-  PhoneForwarded,
   Plug,
   Settings,
-  Smartphone,
-  Wrench,
 } from "lucide-react";
 
 import { SETTINGS_ROUTE_PERMISSIONS } from "@/components/settings/settingsNav";
 import { DEFAULT_FEATURE_FLAGS, type Feature, type FeatureFlags } from "@/config/features";
 import type { Permission } from "@/lib/auth/roles";
 
-/**
- * Single source of truth for the workspace ("org level") shell: what the left
- * nav lists, and what the top bar prints in the breadcrumb for each route.
- *
- * The layout follows the 5 November redesign (Home mock): the screens an
- * owner uses every day first, then "Your agent", then every builder screen
- * folded under one collapsed "Advanced setup" row.
- */
+import { AGENT_PAGES } from "./agentNav";
 
 /**
- * A "Your agent" row whose address depends on the workspace's agents: with
- * exactly one agent it goes straight to that agent (see `agentRowHref`).
+ * Single source of truth for the shell's ONE menu: what the left nav lists
+ * (on every screen, agent screens included), and what the top bar prints in
+ * the breadcrumb for each route.
+ *
+ *   Home · Calls · Follow-ups · Bookings · Reports        the business, every day
+ *   YOUR AGENT  [switcher: which agent, which number rings it]
+ *           What your agent knows · Phone number · Voice & model ·
+ *           Call flow · Agent settings
+ *   WORKSPACE  Voice agents · Integrations · Settings (· Campaigns · Skills)
+ *
+ * Team, Billing and the phone and AI setup (Telephony, Default voice & model,
+ * Prompt audio, Tools, Files) live in the Settings menu (settingsNav.ts).
+ *
+ * The Agent rows always point at the selected agent (workspaceAgents.tsx).
  */
-export type AgentRowKind = "facts" | "phone";
 
 export type NavItem = {
   title: string;
+  /** For an Agent row: only the fallback while no agent is known. */
   url: string;
   icon: LucideIcon;
   /** Flags the amber dot the canvas puts on a nav row needing attention. */
@@ -58,94 +56,63 @@ export type NavItem = {
    * shown when it is unset or 0.
    */
   badge?: number;
-  /** `url` is only the fallback: the real address comes from `agentRowHref`. */
-  agentRow?: AgentRowKind;
+  /** An Agent row: the screen under `/workflow/<selected id>`. */
+  agentSegment?: string;
+  /** Appended to an Agent row's link (`#phone`). */
+  agentHash?: string;
 };
 
 export type NavSection = {
-  /** Stable key (also the remembered open/closed state of a collapsible group). */
-  id: "main" | "agent" | "advanced";
+  /** Stable key. */
+  id: "main" | "agent" | "workspace";
   label?: string;
   items: NavItem[];
-  /** Shown as one row that opens and closes ("Advanced setup"). */
-  collapsible?: boolean;
 };
 
 /** The Follow-ups row; its open count is set as `badge` by the sidebar. */
 export const FOLLOW_UPS_URL = "/follow-ups";
 
-/** Every workspace screen, switched-off areas included (route permissions). */
+/** The Calls row: also lit on an agent's own calls and on one call. */
+export const CALLS_URL = "/usage";
+
+const agentRows = (): NavItem[] =>
+  AGENT_PAGES.filter((page) => !page.notInMenu).map((page) => ({
+    title: page.title,
+    url: "/workflow",
+    icon: page.icon,
+    requires: page.requires,
+    agentSegment: page.segment,
+    agentHash: page.hash,
+  }));
+
+/** Every screen in the menu, switched-off areas included (route permissions). */
 const ALL_NAV_SECTIONS: NavSection[] = [
   {
     id: "main",
     items: [
       { title: "Home", url: "/overview", icon: Home },
-      { title: "Calls", url: "/usage", icon: Phone, requires: "reports:read" },
+      { title: "Calls", url: CALLS_URL, icon: Phone, requires: "reports:read" },
       { title: "Follow-ups", url: FOLLOW_UPS_URL, icon: ListChecks, requires: "calls:read" },
       { title: "Bookings", url: "/bookings", icon: CalendarDays, requires: "calls:read" },
       { title: "Reports", url: "/reports", icon: ChartLine, requires: "reports:read" },
     ],
   },
+  { id: "agent", label: "Your agent", items: agentRows() },
   {
-    id: "agent",
-    label: "Your agent",
-    items: [
-      { title: "What your agent knows", url: "/workflow", icon: Bot, agentRow: "facts", requires: "agents:read" },
-      { title: "Phone number", url: "/telephony-configurations", icon: Smartphone, agentRow: "phone" },
-      // Team, Billing, Developers and Compliance live under Settings.
-      { title: "Settings", url: "/settings", icon: Settings, settingsHub: true },
-    ],
-  },
-  {
-    id: "advanced",
-    label: "Advanced setup",
-    collapsible: true,
+    id: "workspace",
+    label: "Workspace",
     items: [
       { title: "Voice agents", url: "/workflow", icon: GitBranch, requires: "agents:read" },
-      { title: "Campaigns", url: "/campaigns", icon: Megaphone, requires: "campaigns:read", feature: "campaigns" },
-      { title: "Models & voice", url: "/model-configurations", icon: Cpu, requires: "credentials:write" },
-      {
-        title: "Telephony",
-        url: "/telephony-configurations",
-        icon: PhoneForwarded,
-        showsTelephonyWarning: true,
-        requires: "telephony:read",
-      },
-      { title: "Tools", url: "/tools", icon: Wrench, requires: "agents:write" },
       { title: "Integrations", url: "/integrations", icon: Plug, requires: "integrations:read" },
+      { title: "Campaigns", url: "/campaigns", icon: Megaphone, requires: "campaigns:read", feature: "campaigns" },
       { title: "Skills", url: "/skills", icon: BookOpen, requires: "agents:read", feature: "skills" },
-      { title: "Files", url: "/files", icon: Database, requires: "agents:write" },
-      { title: "Prompt audio", url: "/recordings", icon: AudioLines, requires: "agents:write" },
+      // Team, Billing, Telephony, voice and model defaults, Prompt audio,
+      // Tools, Files, Notifications, Compliance, API keys and Your account
+      // live under Settings. A telephony problem shows its dot here.
+      { title: "Settings", url: "/settings", icon: Settings, settingsHub: true, showsTelephonyWarning: true },
     ],
   },
 ];
-
-/** The workspace's agents as the "Your agent" rows need them; null while loading. */
-export type WorkspaceAgents = readonly { id: number }[] | null;
-
-/**
- * Where a "Your agent" row goes. "Your agent" is singular, but a workspace
- * may have none or several:
- *   - What your agent knows: the one agent's facts; with none, create one
- *     (or the agents list for someone who can't); with several, the list.
- *   - Phone number: the one agent's number; otherwise the phone accounts for
- *     someone who may open them, else the agents list.
- */
-export function agentRowHref(
-  kind: AgentRowKind,
-  agents: WorkspaceAgents,
-  can: ((permission: Permission) => boolean) | null,
-): string {
-  const only = agents?.length === 1 ? agents[0] : null;
-  if (kind === "facts") {
-    if (only) return `/workflow/${only.id}/facts`;
-    if (agents?.length === 0 && (!can || can("agents:write"))) return "/workflow/create";
-    return "/workflow";
-  }
-  if (only) return `/workflow/${only.id}/deployment#phone`;
-  if (!can || can("telephony:read")) return "/telephony-configurations";
-  return "/workflow";
-}
 
 /** What the left nav lists: areas that are switched off are left out. */
 export function getNavSections(flags: FeatureFlags): NavSection[] {
@@ -188,7 +155,7 @@ const PAGE_META: Record<string, PageMeta> = {
   "/workflow/create": { title: "New voice agent", subtitle: "Pick a ready-made agent" },
   "/campaigns": { title: "Campaigns", subtitle: "Bulk runs across contact lists" },
   "/campaigns/new": { title: "New campaign", subtitle: "Pick an agent and a contact list" },
-  "/model-configurations": { title: "Models & voice", subtitle: "How your agents listen, think and speak" },
+  "/model-configurations": { title: "Default voice & model", subtitle: "How your agents listen, think and speak" },
   "/telephony-configurations": { title: "Telephony", subtitle: "Your phone accounts and numbers" },
   "/tools": { title: "Tools", subtitle: "Things your agents can do during a call" },
   "/integrations": { title: "Integrations", subtitle: "Connect apps like Google Calendar to your agents" },
@@ -237,8 +204,10 @@ export function getPageMeta(pathname: string): PageMeta {
 const ROUTE_PERMISSIONS: Record<string, Permission> = {
   ...Object.fromEntries(
     ALL_NAV_SECTIONS.flatMap((section) => section.items)
-      // A "Your agent" row's url is only a fallback address, not its screen.
-      .filter((item): item is NavItem & { requires: Permission } => Boolean(item.requires) && !item.agentRow)
+      // An Agent row's url is only a fallback address, not its screen.
+      .filter(
+        (item): item is NavItem & { requires: Permission } => Boolean(item.requires) && item.agentSegment === undefined,
+      )
       .map((item) => [item.url, item.requires]),
   ),
   ...SETTINGS_ROUTE_PERMISSIONS,
@@ -251,9 +220,9 @@ const ROUTE_PERMISSIONS: Record<string, Permission> = {
 };
 
 /**
- * An agent's editing screens (Advanced settings, Model and voice): only for
- * people who may change the agent. Staff still see the agent's dashboard,
- * facts, phone number and calls.
+ * An agent's editing screens (Agent settings, Voice & model): only for
+ * people who may change the agent. Staff still see the agent's calls,
+ * what it knows, its phone number and its conversation.
  */
 const AGENT_EDIT_SCREEN = /^\/workflow\/\d+\/(settings|model)(\/|$)/;
 

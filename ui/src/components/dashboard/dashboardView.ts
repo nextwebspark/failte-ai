@@ -5,6 +5,7 @@
 import { formatDuration, formatPhone } from "@/app/usage/callsView";
 import type {
     CallResult,
+    DashboardAgent,
     DashboardRange,
     FollowUpItem,
     FollowUpKind,
@@ -195,9 +196,11 @@ export function afterHoursWords(afterHours: {
     return { count, note };
 }
 
-export function rangeSentence(range: DashboardRange, now: Date, timezone?: string | null): string {
-    if (range === "today") return `Here's how your phone agent did today, ${dayLine(now, timezone)}.`;
-    return `Here's how your phone agent did in the last ${range === "7d" ? "7" : "30"} days.`;
+/** `several`: Home shows all of a workspace's agents together. */
+export function rangeSentence(range: DashboardRange, now: Date, timezone?: string | null, several = false): string {
+    const who = several ? "your phone agents" : "your phone agent";
+    if (range === "today") return `Here's how ${who} did today, ${dayLine(now, timezone)}.`;
+    return `Here's how ${who} did in the last ${range === "7d" ? "7" : "30"} days.`;
 }
 
 /** The Calls tile's label for the range. */
@@ -225,12 +228,44 @@ export function changeWords(
     };
 }
 
-/** What the "not answering" banner says, and the fix it offers. */
-export function notAnsweringWords(reason: NotAnsweringReason): {
+/**
+ * What the "not answering" banner says, and the fix it offers. `several`:
+ * Home shows all of a workspace's agents together, and none of them answers.
+ */
+export function notAnsweringWords(reason: NotAnsweringReason, several = false): {
     title: string;
     detail: string;
     fix: { label: string; href: string; requires: "billing:read" | "telephony:read" | "agents:write" | "agents:read" };
 } {
+    if (several && reason !== "no_agent") {
+        const fix = notAnsweringWords(reason).fix;
+        switch (reason) {
+            case "no_credit":
+                return {
+                    title: "Your agents aren't answering",
+                    detail: "Your credit has run out, so calls can't start. Top up to switch them back on.",
+                    fix,
+                };
+            case "number_off":
+                return {
+                    title: "Your agents aren't answering",
+                    detail: "Your phone numbers are switched off, so calls don't reach your agents.",
+                    fix,
+                };
+            case "agent_off":
+                return {
+                    title: "Your agents aren't answering",
+                    detail: "Your agents are switched off, so nobody answers calls to your numbers.",
+                    fix,
+                };
+            default:
+                return {
+                    title: "None of your agents is answering",
+                    detail: "No phone number is linked to any of your agents yet, so they can't take calls.",
+                    fix,
+                };
+        }
+    }
     switch (reason) {
         case "no_credit":
             return {
@@ -534,4 +569,42 @@ export function openHoursLegend(opening: {
 export function callDayAndTime(value: string, timezone: string | null | undefined, now: Date = new Date()): string {
     const words = callWhen(value, timezone, now);
     return /^\d/.test(words) ? `Today ${words}` : words;
+}
+
+/**
+ * The agent the "Try your agent" and "Opening hours" links open: the one
+ * your phone number rings, else the first switched-on agent, else the first.
+ */
+export function primaryAgentId(summary: { agents: DashboardAgent[] }): number | null {
+    const agents = summary.agents;
+    const answering = agents.find((a) => a.active && (a.phone_numbers?.length ?? 0) > 0);
+    return (answering ?? agents.find((a) => a.active) ?? agents[0])?.id ?? null;
+}
+
+/** Which number rings an agent, in a few words. */
+/**
+ * An agent's name in two parts: agents made from a starter are named
+ * "<starter> · <business>" ("Restaurant bookings · Linen Quay Kitchen").
+ * The business tells them apart in a narrow menu; the starter says what
+ * kind of agent it is. A name without the separator is all title.
+ */
+export function agentNameParts(name: string): { title: string; kind: string | null } {
+    const at = name.lastIndexOf(" · ");
+    if (at <= 0 || at + 3 >= name.length) return { title: name, kind: null };
+    return { title: name.slice(at + 3).trim(), kind: name.slice(0, at).trim() };
+}
+
+/** Which number rings an agent, in as few words as a narrow menu allows. */
+export function agentLineShort(agent: { phone_numbers?: string[] | null }): string {
+    const numbers = agent.phone_numbers ?? [];
+    if (numbers.length === 0) return "No number yet";
+    const first = formatPhone(numbers[0]);
+    return numbers.length === 1 ? `Answers ${first}` : `Answers ${first} +${numbers.length - 1}`;
+}
+
+export function agentLineLabel(agent: { phone_numbers?: string[] | null }): string {
+    const numbers = agent.phone_numbers ?? [];
+    if (numbers.length === 0) return "No phone number yet";
+    const first = formatPhone(numbers[0]);
+    return numbers.length === 1 ? `Answers ${first}` : `Answers ${first} and ${numbers.length - 1} more`;
 }

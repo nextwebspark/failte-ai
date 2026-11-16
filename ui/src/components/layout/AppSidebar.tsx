@@ -1,13 +1,12 @@
 "use client";
 
-import { AlertTriangle, ArrowLeft, ChevronRight, Wrench } from "lucide-react";
+import { AlertTriangle } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import React, { useEffect, useState } from "react";
+import React, { useEffect } from "react";
 
 import { BrandLogo } from "@/components/BrandLogo";
 import ThemeToggle from "@/components/ThemeSwitcher";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import {
   Sidebar,
   SidebarContent,
@@ -21,49 +20,20 @@ import {
   SidebarRail,
   useSidebar,
 } from "@/components/ui/sidebar";
-import { StatusPill, statusTone } from "@/components/ui/status-pill";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { useAgentShellOptional } from "@/context/AgentShellContext";
 import { useOrgConfig } from "@/context/OrgConfigContext";
 import { useAuth } from "@/lib/auth";
 import { ROLE_LABELS } from "@/lib/auth/roles";
 import { cn } from "@/lib/utils";
 import { workspaceDisplayName } from "@/lib/workspaceName";
 
-import { AGENT_NAV_SECTIONS, agentHref, agentSectionFor, isWorkspaceAgentScreen } from "./agentNav";
+import { AgentSwitcher } from "./AgentSwitcher";
 import { initialsOf, memberName } from "./memberIdentity";
 import { type ResolvedNavItem, useWorkspaceNav } from "./useWorkspaceNav";
-import { useWorkspaceAgents } from "./workspaceAgents";
 
 const TELEPHONY_WARNING_COPY = "Action required";
 
-/** The agent's status in owner words, matching the agent list ("Live"). */
-const AGENT_STATUS_LABEL: Record<string, string> = {
-  published: "Live",
-  draft: "Draft",
-  archived: "Archived",
-};
-
-/** Remembers whether "Advanced setup" was left open (closed by default). */
-export const ADVANCED_OPEN_KEY = "lightmove.nav.advancedOpen";
-
-function readAdvancedOpen(): boolean {
-  try {
-    return globalThis.localStorage?.getItem(ADVANCED_OPEN_KEY) === "1";
-  } catch {
-    return false;
-  }
-}
-
-function writeAdvancedOpen(open: boolean) {
-  try {
-    globalThis.localStorage?.setItem(ADVANCED_OPEN_KEY, open ? "1" : "0");
-  } catch {
-    // Storage unavailable: the row just starts closed next time.
-  }
-}
-
-/** What a nav row needs, whichever nav it came from. */
+/** What a nav row needs. */
 type SidebarLinkProps = {
   title: string;
   url: string;
@@ -82,18 +52,20 @@ function badgeLabel(title: string, count: number): string {
 }
 
 /**
- * The left nav from the 5 November redesign (mocks/home.png):
+ * The one left nav, the same on every screen (sections in navConfig.ts):
  *
  *   [business card]          workspace name
  *   Home · Calls · Follow-ups · Bookings · Reports
- *   YOUR AGENT               What your agent knows · Phone number · Settings
- *   Advanced setup ›         every builder screen, folded away (remembered)
+ *   YOUR AGENT  [switcher]   which agent, and the number that rings it
+ *           What your agent knows · Phone number · Voice & model ·
+ *           Call flow · Agent settings
+ *   WORKSPACE                Voice agents · Integrations · Settings
  *   ─────────────
  *   [you] name, role         dark mode
  *
- * On an agent route it swaps to that agent's own nav: a way back, the
- * agent's name and status, then AGENT_NAV_SECTIONS. The header and the test
- * rail either side of it never move.
+ * The Agent rows always open the selected agent's screens, and opening an
+ * agent's screen from anywhere selects that agent, so the menu never swaps
+ * and never points at another agent than the page.
  *
  * `docked` positions the panel under the 46px header, in the 14px gutter the
  * canvas body uses.
@@ -101,24 +73,10 @@ function badgeLabel(title: string, count: number): string {
 export function AppSidebar({ docked = true }: { docked?: boolean }) {
   const pathname = usePathname();
   const { state, isMobile, setOpenMobile } = useSidebar();
-  const agentShellContext = useAgentShellOptional();
-  // The main menu stays on the agent screens it links to itself.
-  const agentShell = isWorkspaceAgentScreen(pathname) ? null : agentShellContext;
   const isCollapsed = !isMobile && state === "collapsed";
-  const { role, orgContext, can } = useOrgConfig();
+  const { role, orgContext } = useOrgConfig();
   const { user } = useAuth();
   const sections = useWorkspaceNav();
-  const agents = useWorkspaceAgents();
-
-  // "Advanced setup" starts closed, remembers the member's choice, and is
-  // open whenever one of its screens is the current one.
-  const [advancedOpen, setAdvancedOpen] = useState(false);
-  useEffect(() => setAdvancedOpen(readAdvancedOpen()), []);
-  const advancedActive = sections.some((s) => s.collapsible && s.items.some((item) => item.isActive));
-  const toggleAdvanced = (open: boolean) => {
-    setAdvancedOpen(open);
-    writeAdvancedOpen(open);
-  };
 
   const handleMobileNavClick = () => {
     if (isMobile) {
@@ -233,135 +191,32 @@ export function AppSidebar({ docked = true }: { docked?: boolean }) {
     </SidebarMenuItem>
   );
 
-  const advancedIsOpen = advancedOpen || advancedActive;
-
-  const workspaceNav = sections.map((section) =>
-    section.collapsible ? (
-      <SidebarGroup key={section.id} className="px-2 py-0 pt-2">
-        <Collapsible open={advancedIsOpen} onOpenChange={toggleAdvanced}>
-          <SidebarMenu>
-            <SidebarMenuItem>
-              <CollapsibleTrigger asChild>
-                <SidebarMenuButton
-                  tooltip={{ children: <p>{section.label}</p> }}
-                  className={cn(
-                    "h-auto gap-2.5 rounded-lg px-2.5 py-2 text-sm font-medium text-ink-3",
-                    isMobile && "min-h-11 py-2.5 text-[14.5px]",
-                    "transition-colors hover:bg-panel-2 hover:text-foreground",
-                    isCollapsed && "justify-center"
-                  )}
-                >
-                  <Wrench className="h-[17px] w-[17px] shrink-0" aria-hidden />
-                  <span className={cn("notranslate min-w-0 flex-1 truncate text-left", isCollapsed && "sr-only")}>
-                    {section.label}
-                  </span>
-                  {!isCollapsed && (
-                    <ChevronRight
-                      aria-hidden
-                      className={cn(
-                        "h-3.5 w-3.5 shrink-0 transition-transform motion-reduce:transition-none",
-                        advancedIsOpen && "rotate-90"
-                      )}
-                    />
-                  )}
-                </SidebarMenuButton>
-              </CollapsibleTrigger>
-            </SidebarMenuItem>
-          </SidebarMenu>
-          <CollapsibleContent>
-            <SidebarMenu className={cn("mt-0.5 gap-0.5", !isCollapsed && "pl-3")}>
-              {section.items.map(navRow)}
-            </SidebarMenu>
-          </CollapsibleContent>
-        </Collapsible>
-      </SidebarGroup>
-    ) : (
-      <SidebarGroup key={section.id} className="px-2 py-0">
-        {section.label && (
-          <SidebarGroupLabel className={cn(GROUP_LABEL_CLASS, isCollapsed && "hidden")} translate="no">
-            {section.label}
-          </SidebarGroupLabel>
-        )}
-        <SidebarMenu className="gap-0.5">{section.items.map(navRow)}</SidebarMenu>
-      </SidebarGroup>
-    )
+  const groupLabel = (label: string) => (
+    <SidebarGroupLabel className={cn(GROUP_LABEL_CLASS, isCollapsed && "hidden")} translate="no">
+      {label}
+    </SidebarGroupLabel>
   );
+  const switcher = <AgentSwitcher collapsed={isCollapsed} onNavigate={handleMobileNavClick} />;
 
-  const activeAgentSegment = agentShell ? agentSectionFor(pathname)?.segment ?? "" : "";
-  // With one agent the workspace IS that agent's business, so "back" is Home.
-  // With several, back to the list to pick another.
-  const back = agents !== null && agents.length > 1
-    ? { href: "/workflow", label: "All voice agents" }
-    : { href: "/overview", label: "Back to Home" };
-
-  const agentNav = agentShell && (
-    <>
-      <SidebarGroup className="px-2 py-0">
-        <SidebarMenu>
-          <SidebarMenuItem>
-            <SidebarMenuButton
-              asChild
-              tooltip={{ children: <p>{back.label}</p> }}
-              className={cn(
-                "h-auto gap-2.5 rounded-lg px-2.5 py-2 text-caption font-medium text-ink-2",
-                isMobile && "min-h-11",
-                "transition-colors hover:bg-panel-2 hover:text-foreground"
-              )}
-            >
-              <Link href={back.href} onClick={handleMobileNavClick} translate="no">
-                <ArrowLeft className="h-4 w-4 shrink-0" />
-                <span className={cn("notranslate truncate", isCollapsed && "sr-only")}>
-                  {back.label}
-                </span>
-              </Link>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-        </SidebarMenu>
-      </SidebarGroup>
-
-      {!isCollapsed && (
-        <>
-          <div className="mx-3 mt-2.5 h-px bg-line-soft" />
-          <div className="px-4 pb-1 pt-2.5">
-            <p className="truncate text-sm font-semibold text-foreground" title={agentShell.agent?.name}>
-              {agentShell.agent?.name ?? "…"}
-            </p>
-            {agentShell.agent?.versionStatus && (
-              <StatusPill
-                tone={statusTone(agentShell.agent.versionStatus)}
-                dot
-                className="mt-1.5 px-2 py-0.5 text-meta"
-              >
-                {AGENT_STATUS_LABEL[agentShell.agent.versionStatus] ?? agentShell.agent.versionStatus}
-              </StatusPill>
-            )}
-          </div>
-        </>
-      )}
-
-      {AGENT_NAV_SECTIONS.map((section) => (
-        <SidebarGroup key={section.label ?? "agent"} className="px-2 py-0">
-          {section.label && (
-            <SidebarGroupLabel className={cn(GROUP_LABEL_CLASS, isCollapsed && "hidden")} translate="no">
-              {section.label}
-            </SidebarGroupLabel>
-          )}
-          <SidebarMenu className="gap-0.5">
-            {section.items.filter((item) => !item.editorsOnly || can("agents:write")).map((item) => (
-              <SidebarMenuItem key={item.title}>
-                <SidebarLink
-                  title={item.title}
-                  url={agentHref(agentShell.workflowId, item.segment)}
-                  icon={item.icon}
-                  isActive={activeAgentSegment === item.segment}
-                />
-              </SidebarMenuItem>
-            ))}
-          </SidebarMenu>
-        </SidebarGroup>
-      ))}
-    </>
-  );
+  const nav: React.ReactNode[] = sections.map((section) => (
+    <SidebarGroup key={section.id} className="px-2 py-0">
+      {section.label && groupLabel(section.label)}
+      {section.id === "agent" && switcher}
+      <SidebarMenu className="gap-0.5">{section.items.map(navRow)}</SidebarMenu>
+    </SidebarGroup>
+  ));
+  // No agent yet: the Agent heading still shows, with a way to create one.
+  if (!sections.some((section) => section.id === "agent")) {
+    const at = sections.findIndex((section) => section.id === "main") + 1;
+    nav.splice(
+      at,
+      0,
+      <SidebarGroup key="agent" className="px-2 py-0">
+        {groupLabel("Your agent")}
+        {switcher}
+      </SidebarGroup>,
+    );
+  }
 
   const workspaceName = workspaceDisplayName(orgContext?.organization_name);
   const person = memberName(user);
@@ -393,29 +248,27 @@ export function AppSidebar({ docked = true }: { docked?: boolean }) {
           </Link>
         )}
         {/* The business this workspace is: only what is stored, its name. */}
-        {!agentShell && (
-          <div
-            className={cn(
-              "flex items-center gap-2.5 rounded-[10px] border border-line px-2.5 py-2",
-              isCollapsed && "justify-center border-0 p-0"
-            )}
-            title={isCollapsed ? workspaceName : undefined}
+        <div
+          className={cn(
+            "flex items-center gap-2.5 rounded-[10px] border border-line px-2.5 py-2",
+            isCollapsed && "justify-center border-0 p-0"
+          )}
+          title={isCollapsed ? workspaceName : undefined}
+        >
+          <span
+            aria-hidden
+            className="grid size-[30px] shrink-0 place-items-center rounded-lg bg-brand-dim text-[12px] font-bold text-brand"
           >
-            <span
-              aria-hidden
-              className="grid size-[30px] shrink-0 place-items-center rounded-lg bg-brand-dim text-[12px] font-bold text-brand"
-            >
-              {initialsOf(workspaceName, "W")}
-            </span>
-            <p className={cn("min-w-0 flex-1 truncate text-caption font-semibold text-foreground", isCollapsed && "sr-only")}>
-              {workspaceName}
-            </p>
-          </div>
-        )}
+            {initialsOf(workspaceName, "W")}
+          </span>
+          <p className={cn("min-w-0 flex-1 truncate text-caption font-semibold text-foreground", isCollapsed && "sr-only")}>
+            {workspaceName}
+          </p>
+        </div>
       </SidebarHeader>
 
       <SidebarContent className={cn("notranslate gap-0 pt-2.5", isCollapsed && "px-0")} translate="no">
-        {agentShell ? agentNav : workspaceNav}
+        {nav}
       </SidebarContent>
 
       <SidebarFooter

@@ -141,7 +141,7 @@ it('asks the template’s questions, previews the greeting, and creates the agen
     expect(screen.getByText('Takes a message for now')).toBeTruthy();
 
     fireEvent.click(screen.getByRole('button', { name: 'Talk to your agent' }));
-    expect(mocks.push).toHaveBeenCalledWith('/workflow/42/home?onboarding=web_call');
+    expect(mocks.push).toHaveBeenCalledWith('/overview?agent=42&onboarding=web_call');
 });
 
 it('attaches the workspace’s Google Calendar when it is connected', async () => {
@@ -276,7 +276,7 @@ it('builds an agent from a description', async () => {
     });
     fireEvent.click(build);
 
-    await waitFor(() => expect(mocks.push).toHaveBeenCalledWith('/workflow/42/home?onboarding=web_call'));
+    await waitFor(() => expect(mocks.push).toHaveBeenCalledWith('/overview?agent=42&onboarding=web_call'));
     expect(mocks.describe.mock.calls[0][0].body).toEqual({
         call_type: 'outbound',
         use_case: 'Call new leads from the website.',

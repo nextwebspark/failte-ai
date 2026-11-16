@@ -5,10 +5,12 @@ import { usePathname } from "next/navigation";
 import { type ReactNode, useEffect, useRef } from "react";
 
 import { useOwnsPageHeading } from "@/components/layout/pageHeading";
+import { ScopeNote } from "@/components/layout/ScopeNote";
 import { useOrgConfig } from "@/context/OrgConfigContext";
 import { cn } from "@/lib/utils";
 
-import { settingsItemFor, visibleSettingsSections } from "./settingsNav";
+import { SettingsFrameContext } from "./SettingsFrameContext";
+import { settingsItemFor, settingsScopeFor, visibleSettingsSections } from "./settingsNav";
 
 /**
  * The frame every settings screen shares: the screen's title and one-line
@@ -21,9 +23,18 @@ import { settingsItemFor, visibleSettingsSections } from "./settingsNav";
  */
 export function SettingsShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
+  const current = settingsItemFor(pathname);
+  // A detail screen under a list (/tools/<id>) keeps the full width.
+  if (current?.listOnly && pathname !== current.url) return <>{children}</>;
+  return <SettingsFrame>{children}</SettingsFrame>;
+}
+
+function SettingsFrame({ children }: { children: ReactNode }) {
+  const pathname = usePathname();
   const { role, can } = useOrgConfig();
   const sections = visibleSettingsSections(role === null ? null : can);
   const current = settingsItemFor(pathname);
+  const scope = settingsScopeFor(pathname);
   // The title below is the page's h1; the app header keeps "Settings" as text.
   useOwnsPageHeading();
 
@@ -46,6 +57,7 @@ export function SettingsShell({ children }: { children: ReactNode }) {
         {current?.description && (
           <p className="text-sm leading-relaxed text-ink-2">{current.description}</p>
         )}
+        {scope && <ScopeNote scope={scope} className="mt-1 self-start" />}
       </header>
 
       <div className="flex flex-col gap-5 @4xl:flex-row @4xl:gap-7">
@@ -106,7 +118,7 @@ export function SettingsShell({ children }: { children: ReactNode }) {
 
         {/* The screen keeps its own .page-body; here the frame already pads it. */}
         <div className="min-w-0 max-w-[820px] flex-1 [&>.page-body]:max-w-none [&>.page-body]:p-0">
-          {children}
+          <SettingsFrameContext.Provider value={true}>{children}</SettingsFrameContext.Provider>
         </div>
       </div>
     </div>

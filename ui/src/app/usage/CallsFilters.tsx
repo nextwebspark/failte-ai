@@ -90,6 +90,7 @@ export function CallsFilterBar({
     expertOpen,
     onChange,
     onToggleExpert,
+    agentFilter = null,
 }: {
     query: CallsQuery;
     outcomeCodes: string[];
@@ -97,6 +98,8 @@ export function CallsFilterBar({
     expertOpen: boolean;
     onChange: (next: Partial<CallsQuery>, options?: { replace?: boolean }) => void;
     onToggleExpert: () => void;
+    /** The one agent the list is narrowed to (from "More filters" or a link), shown as a chip. */
+    agentFilter?: { label: string; onClear: () => void } | null;
 }) {
     const [text, setText] = useState(query.q);
     const typed = useRef(false);
@@ -190,6 +193,18 @@ export function CallsFilterBar({
                         </DropdownMenuRadioGroup>
                     </DropdownMenuContent>
                 </DropdownMenu>}
+
+                {agentFilter && (
+                    <button
+                        type="button"
+                        onClick={agentFilter.onClear}
+                        aria-label={`Showing ${agentFilter.label}'s calls. Show every agent's calls`}
+                        className={cn(CHIP, CHIP_ON)}
+                    >
+                        <span className="max-w-[200px] truncate">Agent: {agentFilter.label}</span>
+                        <X className="size-3.5" aria-hidden />
+                    </button>
+                )}
 
                 <DropdownMenu>
                     <DropdownMenuTrigger className={cn(CHIP, query.who ? CHIP_ON : CHIP_OFF)}>

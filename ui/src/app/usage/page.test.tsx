@@ -219,6 +219,20 @@ describe("Calls list", () => {
         ]);
     });
 
+    it("shows a link's agent filter as a chip, with the filter panel closed", async () => {
+        mocks.query = `filters=${encodeURIComponent(JSON.stringify([{ id: "workflowId", value: { value: 4 } }]))}`;
+        render(<UsagePage />);
+        await screen.findByText("Sinéad O'Brien");
+        const chip = await screen.findByRole("button", { name: /Show every agent's calls/ });
+        expect(chip.textContent).toContain("Agent:");
+        expect(screen.getByRole("button", { name: /More filters/ }).getAttribute("aria-expanded")).toBe("false");
+        expect(screen.queryByText("Find calls")).toBeNull();
+
+        fireEvent.click(chip);
+        await waitFor(() => expect(mocks.push).toHaveBeenCalled());
+        expect(String(mocks.push.mock.calls.at(-1)?.[0])).not.toContain("filters=");
+    });
+
     it("says plainly when nothing matches and offers to clear the filters", async () => {
         mocks.history.mockImplementation(async ({ query }) => ({ data: query.filters ? EMPTY : { ...PAGE, total_count: 5 } }));
         mocks.query = "q=zzzz";

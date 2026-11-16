@@ -82,6 +82,9 @@ PLATFORM_ADMIN_ROUTES = {
     ("GET", "/api/v1/superuser/admin/users"),
     ("PUT", "/api/v1/superuser/admin/users/{user_id}/platform-admin"),
     ("GET", "/api/v1/superuser/admin/audit-log"),
+    # The platform's default Home layout.
+    ("GET", "/api/v1/superuser/admin/home-layout"),
+    ("PUT", "/api/v1/superuser/admin/home-layout"),
 }
 
 
@@ -227,6 +230,29 @@ async def client_as(org):
             "GET",
             "/api/v1/dashboard/summary",
             {OrgRole.STAFF, OrgRole.VIEWER, OrgRole.DEVELOPER, OrgRole.ADMIN},
+        ),
+        # Home layout: everyone keeps their own; the workspace default is a
+        # workspace setting (admins only).
+        (
+            "GET",
+            "/api/v1/dashboard/layout",
+            {OrgRole.STAFF, OrgRole.VIEWER, OrgRole.DEVELOPER, OrgRole.ADMIN},
+        ),
+        (
+            "PUT",
+            "/api/v1/dashboard/layout",
+            {OrgRole.STAFF, OrgRole.VIEWER, OrgRole.DEVELOPER, OrgRole.ADMIN},
+        ),
+        (
+            "DELETE",
+            "/api/v1/dashboard/layout",
+            {OrgRole.STAFF, OrgRole.VIEWER, OrgRole.DEVELOPER, OrgRole.ADMIN},
+        ),
+        ("PUT", "/api/v1/dashboard/layout/workspace", {OrgRole.ADMIN, OrgRole.VIEWER}),
+        (
+            "DELETE",
+            "/api/v1/dashboard/layout/workspace",
+            {OrgRole.ADMIN, OrgRole.VIEWER},
         ),
         (
             "GET",

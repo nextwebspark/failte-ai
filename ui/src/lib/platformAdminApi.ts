@@ -22,6 +22,16 @@ export type AdminFeature = {
     overrides: { organization_id: number; organization_name: string | null; enabled: boolean; updated_at: string }[];
 };
 
+/** The platform's default Home layout (cards hidden, cards pinned). */
+export type HomeLayoutValue = { hidden: string[]; pinned: string[] };
+
+export type PlatformHomeLayout = {
+    /** What a platform admin saved, or null (the built-in layout applies). */
+    layout: HomeLayoutValue | null;
+    built_in: HomeLayoutValue;
+    cards: { id: string; label: string }[];
+};
+
 export type AdminOrganization = {
     id: number;
     name: string | null;
@@ -189,6 +199,9 @@ export const platformAdminApi = {
     overview: () => call<AdminOverview>("get", `${ADMIN}/overview`),
     health: () => call<AdminHealth>("get", `${ADMIN}/health`),
     features: () => call<{ features: AdminFeature[] }>("get", `${ADMIN}/features`),
+    homeLayout: () => call<PlatformHomeLayout>("get", `${ADMIN}/home-layout`),
+    setHomeLayout: (layout: HomeLayoutValue | null) =>
+        call<PlatformHomeLayout>("put", `${ADMIN}/home-layout`, { body: { layout } }),
     setPlatformFeature: (feature: string, enabled: boolean | null) =>
         call<{ features: AdminFeature[] }>("put", `${ADMIN}/features/${feature}`, { body: { enabled } }),
     setOrganizationFeature: (feature: string, organizationId: number, enabled: boolean | null) =>

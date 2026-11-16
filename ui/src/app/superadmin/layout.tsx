@@ -15,6 +15,7 @@ const ADMIN_TABS = [
     { href: "/superadmin", label: "Overview", exact: true },
     { href: "/superadmin/health", label: "Health" },
     { href: "/superadmin/features", label: "Features" },
+    { href: "/superadmin/home-layout", label: "Home layout" },
     { href: "/superadmin/organizations", label: "Organisations" },
     { href: "/superadmin/users", label: "Users" },
     { href: "/superadmin/audit", label: "Audit log" },

@@ -14,6 +14,7 @@ class AuditAction(StrEnum):
     PLATFORM_ADMIN_GRANTED = "user.platform_admin_granted"
     PLATFORM_ADMIN_REVOKED = "user.platform_admin_revoked"
     IMPERSONATION_STARTED = "user.impersonation_started"
+    HOME_LAYOUT_PLATFORM_SET = "home_layout.platform_set"
 
 
 def json_safe(value: Any) -> Any:

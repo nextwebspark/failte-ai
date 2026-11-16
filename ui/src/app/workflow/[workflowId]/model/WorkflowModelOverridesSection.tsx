@@ -186,7 +186,7 @@ export function WorkflowModelOverridesSection({
             <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-base">
                     <Brain className="h-4 w-4" />
-                    Model and voice
+                    Voice &amp; model
                 </CardTitle>
                 <CardDescription>
                     {platformModels

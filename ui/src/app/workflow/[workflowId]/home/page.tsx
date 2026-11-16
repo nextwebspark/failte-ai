@@ -1,42 +1,27 @@
 "use client";
 
-import { useParams, usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useRef } from "react";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
+import { useEffect } from "react";
 
-import { HomeDashboard } from "@/components/dashboard/HomeDashboard";
-import { useAgentShell } from "@/context/AgentShellContext";
+import { HomeSkeleton } from "@/components/dashboard/HomeSkeleton";
+import { agentHomeHref } from "@/components/workflow/agentLinks";
 
 /**
- * Opening an agent lands here: the same dashboard as Home, for this agent's
- * calls only, under the agent's name.
+ * An agent's dashboard is Home showing that agent's calls. Old links
+ * (and bookmarks) to /workflow/<id>/home land there, keeping
+ * ?onboarding=web_call so the test panel still opens.
  */
 export default function AgentHomePage() {
     const params = useParams<{ workflowId: string }>();
-    const workflowId = Number(params.workflowId);
-    const { agent, openTester } = useAgentShell();
-    useOpenTesterFromOnboarding(openTester);
-
-    return <HomeDashboard heading={agent?.name ?? "Your agent"} workflowId={workflowId} onTryAgent={openTester} />;
-}
-
-/**
- * "Try your agent" links and the create wizard arrive with
- * ?onboarding=web_call: open the test panel once, then drop the flag so a
- * refresh or Back doesn't open it again.
- */
-function useOpenTesterFromOnboarding(openTester: () => void) {
     const searchParams = useSearchParams();
     const router = useRouter();
-    const pathname = usePathname();
-    const opened = useRef(false);
+    const workflowId = Number(params.workflowId);
+    const onboarding = searchParams.get("onboarding");
 
     useEffect(() => {
-        if (opened.current || searchParams.get("onboarding") !== "web_call") return;
-        opened.current = true;
-        openTester();
-        const next = new URLSearchParams(searchParams.toString());
-        next.delete("onboarding");
-        const query = next.toString();
-        router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
-    }, [openTester, pathname, router, searchParams]);
+        const href = agentHomeHref(workflowId);
+        router.replace(onboarding ? `${href}&onboarding=${encodeURIComponent(onboarding)}` : href);
+    }, [onboarding, router, workflowId]);
+
+    return <HomeSkeleton />;
 }
