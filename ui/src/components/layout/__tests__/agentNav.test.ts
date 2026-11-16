@@ -19,20 +19,18 @@ describe("agentIdFromPath", () => {
 });
 
 describe("agentSectionFor", () => {
-  it("treats the bare agent route as the conversation", () => {
-    expect(agentSectionFor("/workflow/12")?.title).toBe("Conversation");
+  it("treats the bare agent route as the call flow", () => {
+    expect(agentSectionFor("/workflow/12")?.title).toBe("Call flow");
   });
 
-  it("lists what the agent knows and its number first, the builder screens under Advanced", () => {
+  it("lists what the agent knows and its number first, then its voice, call flow and settings", () => {
     const menu = AGENT_PAGES.filter((page) => !page.notInMenu);
-    expect(menu.filter((page) => !page.advanced).map((page) => page.title)).toEqual([
+    expect(menu.map((page) => page.title)).toEqual([
       "What your agent knows",
       "Phone number",
-    ]);
-    expect(menu.filter((page) => page.advanced).map((page) => page.title)).toEqual([
-      "Conversation",
-      "Model and voice",
-      "Advanced settings",
+      "Voice & model",
+      "Call flow",
+      "Agent settings",
     ]);
     // An agent's calls are the main Calls row's, not a row of their own.
     expect(AGENT_PAGES.find((page) => page.segment === "/runs")?.notInMenu).toBe(true);
@@ -40,8 +38,8 @@ describe("agentSectionFor", () => {
 
   it("resolves each declared section", () => {
     expect(agentSectionFor("/workflow/12/facts")?.title).toBe("What your agent knows");
-    expect(agentSectionFor("/workflow/12/model")?.title).toBe("Model and voice");
-    expect(agentSectionFor("/workflow/12/settings")?.title).toBe("Advanced settings");
+    expect(agentSectionFor("/workflow/12/model")?.title).toBe("Voice & model");
+    expect(agentSectionFor("/workflow/12/settings")?.title).toBe("Agent settings");
     expect(agentSectionFor("/workflow/12/deployment")?.title).toBe("Phone number");
     expect(agentSectionFor("/workflow/12/runs")?.title).toBe("Calls");
   });

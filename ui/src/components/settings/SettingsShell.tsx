@@ -9,6 +9,7 @@ import { ScopeNote } from "@/components/layout/ScopeNote";
 import { useOrgConfig } from "@/context/OrgConfigContext";
 import { cn } from "@/lib/utils";
 
+import { SettingsFrameContext } from "./SettingsFrameContext";
 import { settingsItemFor, settingsScopeFor, visibleSettingsSections } from "./settingsNav";
 
 /**
@@ -21,6 +22,14 @@ import { settingsItemFor, settingsScopeFor, visibleSettingsSections } from "./se
  * The screens keep their own `.page-body`; inside the frame it only lays out.
  */
 export function SettingsShell({ children }: { children: ReactNode }) {
+  const pathname = usePathname();
+  const current = settingsItemFor(pathname);
+  // A detail screen under a list (/tools/<id>) keeps the full width.
+  if (current?.listOnly && pathname !== current.url) return <>{children}</>;
+  return <SettingsFrame>{children}</SettingsFrame>;
+}
+
+function SettingsFrame({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const { role, can } = useOrgConfig();
   const sections = visibleSettingsSections(role === null ? null : can);
@@ -109,7 +118,7 @@ export function SettingsShell({ children }: { children: ReactNode }) {
 
         {/* The screen keeps its own .page-body; here the frame already pads it. */}
         <div className="min-w-0 max-w-[820px] flex-1 [&>.page-body]:max-w-none [&>.page-body]:p-0">
-          {children}
+          <SettingsFrameContext.Provider value={true}>{children}</SettingsFrameContext.Provider>
         </div>
       </div>
     </div>

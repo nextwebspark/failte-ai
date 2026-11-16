@@ -56,8 +56,6 @@ export type AgentNavItem = {
   altSegments?: string[];
   /** Hidden unless the member's role grants this (navConfig guards the route too). */
   requires?: Permission;
-  /** Listed under the agent's collapsed "Advanced" row. */
-  advanced?: boolean;
   /** Not a row of its own in the menu (reached from another row). */
   notInMenu?: boolean;
 };
@@ -78,28 +76,25 @@ export const AGENT_PAGES: AgentNavItem[] = [
     subtitle: "Put this agent on a phone number or your website",
   },
   {
-    title: "Conversation",
-    segment: "",
-    icon: MessageSquare,
-    subtitle: "The steps a call follows",
-    requires: "agents:read",
-    advanced: true,
-  },
-  {
-    title: "Model and voice",
+    title: "Voice & model",
     segment: "/model",
     icon: SlidersHorizontal,
     subtitle: "The voice and language this agent uses",
     requires: "agents:write",
-    advanced: true,
   },
   {
-    title: "Advanced settings",
+    title: "Call flow",
+    segment: "",
+    icon: MessageSquare,
+    subtitle: "The steps a call follows",
+    requires: "agents:read",
+  },
+  {
+    title: "Agent settings",
     segment: "/settings",
     icon: Settings2,
-    subtitle: "Behaviour, variables, dictionary and diagnostics",
+    subtitle: "Call limits, what it records, words it should know, and diagnostics",
     requires: "agents:write",
-    advanced: true,
   },
   {
     title: "Calls",

@@ -74,7 +74,7 @@ describe("MobileTabBar", () => {
     const more = screen.getByRole("button", { name: "More" });
     fireEvent.click(more);
     const sheet = await screen.findByRole("dialog");
-    for (const name of ["Bookings", "Reports", "Phone number", "Voice agents", "Team", "Billing", "Settings"]) {
+    for (const name of ["Bookings", "Reports", "Phone number", "Voice & model", "Call flow", "Voice agents", "Integrations", "Settings"]) {
       expect(within(sheet).getByRole("link", { name: new RegExp(name) })).toBeTruthy();
     }
     // The agent the Agent rows open, and the number that rings it.
@@ -82,12 +82,8 @@ describe("MobileTabBar", () => {
     expect(within(sheet).getByRole("button", { name: /Help/ })).toBeTruthy();
     expect(within(sheet).getByText("Trattoria Bella")).toBeTruthy();
     expect(within(sheet).getByText("Maria Keane · Owner")).toBeTruthy();
-    const advanced = within(sheet).getByRole("button", { name: /Advanced setup/ });
-    expect(advanced.textContent).toContain("Best on a computer");
-    fireEvent.click(advanced);
-    expect(within(sheet).getByRole("link", { name: "Telephony" })).toBeTruthy();
-    fireEvent.click(within(sheet).getByRole("button", { name: /^Advanced(?! setup)/ }));
-    expect(within(sheet).getByRole("link", { name: "Model and voice" }).getAttribute("href")).toBe("/workflow/14/model");
+    expect(within(sheet).queryByRole("button", { name: /Advanced/ })).toBeNull();
+    expect(within(sheet).getByRole("link", { name: "Voice & model" }).getAttribute("href")).toBe("/workflow/14/model");
 
     fireEvent.keyDown(sheet, { key: "Escape" });
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());

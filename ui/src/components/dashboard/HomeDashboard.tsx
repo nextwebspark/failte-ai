@@ -236,11 +236,19 @@ function TodayLine({ summary }: { summary: DashboardSummaryResponse }) {
     );
 }
 
-function NotAnsweringBanner({ summary, now }: { summary: DashboardSummaryResponse; now: Date }) {
+function NotAnsweringBanner({
+    summary,
+    now,
+    several,
+}: {
+    summary: DashboardSummaryResponse;
+    now: Date;
+    several: boolean;
+}) {
     const { can } = useOrgConfig();
     const reason = summary.agent_status.reason;
     if (summary.agent_status.answering || !reason) return null;
-    const words = notAnsweringWords(reason);
+    const words = notAnsweringWords(reason, several);
     return (
         <div
             role="alert"
@@ -1269,6 +1277,8 @@ export function HomeDashboard({
         ? ["get-started", "your-agent", "quick-links"]
         : ["tiles", "attention", "recent-calls", "your-agent", "callers-wanted", "when-called", "quick-links"];
     const arranged = controls ? arrangeCards(controls.layout, present, showHidden) : null;
+    // All agents together (no one agent picked) speaks of them in the plural.
+    const several = workflowId == null && severalAgents;
 
     const header = (
         <header className="flex flex-col gap-3 @4xl:flex-row @4xl:items-end @4xl:justify-between @4xl:gap-6">
@@ -1276,7 +1286,7 @@ export function HomeDashboard({
                 <h1 className="font-display text-[26px] font-semibold leading-tight tracking-[-0.015em] text-foreground sm:text-page">
                     {heading}
                 </h1>
-                <p className="mt-1 text-body text-ink-3">{rangeSentence(range, now, timezone)}</p>
+                <p className="mt-1 text-body text-ink-3">{rangeSentence(range, now, timezone, several)}</p>
                 {summary && <TodayLine summary={summary} />}
             </div>
             <div className="flex flex-col gap-3 @4xl:items-end">
@@ -1425,7 +1435,7 @@ export function HomeDashboard({
         <CardControlsProvider value={controls}>
         <div className="page-body @container flex min-w-0 flex-col gap-5 @4xl:gap-6">
             {header}
-            <NotAnsweringBanner summary={summary} now={now} />
+            <NotAnsweringBanner summary={summary} now={now} several={several} />
 
             {/* Pinned cards first, in the order they were pinned. */}
             {pinnedCards.length > 0 && (

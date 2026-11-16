@@ -100,13 +100,13 @@ describe("AppSidebar on an agent's screens", () => {
     expect(switcher.textContent).toContain("Answers +353");
   });
 
-  it("shows people who may change the agent every screen, under Advanced", () => {
+  it("shows people who may change the agent every screen, with nothing folded away", () => {
     mocks.pathname = "/workflow/14/model";
     renderMenu();
-    expect(screen.getByRole("button", { name: "Advanced" }).getAttribute("aria-expanded")).toBe("true");
-    expect(screen.getByRole("link", { name: "Model and voice" }).getAttribute("href")).toBe("/workflow/14/model");
-    expect(screen.getByRole("link", { name: "Advanced settings" }).getAttribute("href")).toBe("/workflow/14/settings");
-    expect(screen.getByRole("link", { name: "Conversation" }).getAttribute("href")).toBe("/workflow/14");
+    expect(screen.queryByRole("button", { name: "Advanced" })).toBeNull();
+    expect(screen.getByRole("link", { name: "Voice & model" }).getAttribute("href")).toBe("/workflow/14/model");
+    expect(screen.getByRole("link", { name: "Agent settings" }).getAttribute("href")).toBe("/workflow/14/settings");
+    expect(screen.getByRole("link", { name: "Call flow" }).getAttribute("href")).toBe("/workflow/14");
   });
 
   it("leaves the editing screens out for staff, who can't open them", () => {
@@ -114,12 +114,11 @@ describe("AppSidebar on an agent's screens", () => {
     const staff = new Set(["agents:read", "calls:read", "reports:read", "followups:manage"]);
     mocks.can = (p) => staff.has(p);
     renderMenu();
-    fireEvent.click(screen.getByRole("button", { name: "Advanced" }));
-    expect(screen.queryByRole("link", { name: "Model and voice" })).toBeNull();
-    expect(screen.queryByRole("link", { name: "Advanced settings" })).toBeNull();
-    expect(screen.getByRole("link", { name: "Conversation" })).toBeTruthy();
+    expect(screen.queryByRole("link", { name: "Voice & model" })).toBeNull();
+    expect(screen.queryByRole("link", { name: "Agent settings" })).toBeNull();
+    expect(screen.getByRole("link", { name: "Call flow" })).toBeTruthy();
     expect(screen.getByRole("link", { name: "What your agent knows" })).toBeTruthy();
-    for (const name of ["Team", "Billing", "Tools", "Telephony", "Models & voice", "Files", "Prompt audio"]) {
+    for (const name of ["Team", "Billing", "Tools", "Telephony", "Integrations", "Files", "Prompt audio"]) {
       expect(screen.queryByRole("link", { name })).toBeNull();
     }
   });

@@ -56,6 +56,7 @@ describe("settings menu", () => {
     expect(firstSettingsUrl(null)).toBe("/settings");
     expect(visibleSettingsSections(null).map((s) => s.label)).toEqual([
       "Workspace",
+      "Phone & AI setup",
       "Compliance",
       "Developer",
       "Account",

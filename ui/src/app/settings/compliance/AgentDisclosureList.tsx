@@ -128,7 +128,7 @@ export function AgentDisclosureList() {
       {state.unchecked > 0 && (
         <p className="px-[18px] pb-3.5 text-xs text-ink-3">
           {state.unchecked} more active agent{state.unchecked === 1 ? " is" : "s are"} not checked here. Open
-          each one&apos;s Advanced settings to check it.
+          each one&apos;s Agent settings to check it.
         </p>
       )}
       <p className="border-t border-line-soft px-[18px] py-3 text-xs text-ink-3">

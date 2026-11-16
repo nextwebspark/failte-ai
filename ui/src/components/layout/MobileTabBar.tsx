@@ -2,7 +2,6 @@
 
 import {
   Bot,
-  ChevronDown,
   CircleHelp,
   Home,
   ListChecks,
@@ -12,7 +11,6 @@ import {
   Moon,
   Phone,
   Sun,
-  Wrench,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -128,15 +126,11 @@ export function MobileTabBar() {
   const { user, logout } = useAuth();
   const { resolvedTheme, setTheme } = useTheme();
   const [moreOpen, setMoreOpen] = useState(false);
-  const [openGroup, setOpenGroup] = useState<string | null>(null);
 
   // Any move to another screen closes the sheet (links, Back, Forward).
   useEffect(() => {
     setMoreOpen(false);
   }, [pathname]);
-  useEffect(() => {
-    if (!moreOpen) setOpenGroup(null);
-  }, [moreOpen]);
 
   const items = sections.flatMap((s) => s.items);
   const byUrl = (url: string) => items.find((item) => item.url === url && item.agentSegment === undefined);
@@ -144,10 +138,7 @@ export function MobileTabBar() {
   const agentFacts = items.find((item) => item.agentSegment === "/facts");
   // The Agent and Workspace rows the tab bar doesn't already have.
   const agentRows = (section("agent")?.items ?? []).filter((item) => item !== agentFacts);
-  const agentAdvanced = section("agent-advanced");
   const workspaceRows = section("workspace")?.items ?? [];
-  const advancedSection = section("advanced");
-  const groups = [agentAdvanced, advancedSection].filter((s): s is ResolvedNavSection => Boolean(s));
 
   // An agent's calls belong to the Calls tab.
   const onAgentScreen = isAgentRoute(pathname) && !workspaceMode && !isAgentCallsRoute(pathname);
@@ -187,7 +178,7 @@ export function MobileTabBar() {
   const tabActive = tabs.some((tab) => tab.isActive);
   const moreActive =
     moreOpen ||
-    (!tabActive && [...moreItems, ...agentRows, ...workspaceRows, ...groups.flatMap((g) => g.items)].some((i) => i.isActive));
+    (!tabActive && [...moreItems, ...agentRows, ...workspaceRows].some((i) => i.isActive));
 
   // A row that leads to another screen hands focus to that screen, not back
   // to More (AppLayout's route-change focus does the rest).
@@ -278,7 +269,7 @@ export function MobileTabBar() {
 
           {section("agent") && (
             <>
-              <SheetLabel>Agent</SheetLabel>
+              <SheetLabel>Your agent</SheetLabel>
               <div className="-mx-2 pb-1">
                 <AgentSwitcher collapsed={false} onNavigate={close} />
               </div>
@@ -287,44 +278,7 @@ export function MobileTabBar() {
               ))}
             </>
           )}
-          {groups.map((group) => (
-            <React.Fragment key={group.id}>
-              {group.id === "advanced" && workspaceRows.length > 0 && (
-                <>
-                  <SheetLabel>Workspace</SheetLabel>
-                  {workspaceRows.map((item) => (
-                    <SheetRow key={item.title} href={item.href} icon={item.icon} title={item.title} onNavigate={close} isActive={item.isActive} />
-                  ))}
-                </>
-              )}
-              <button
-                type="button"
-                onClick={() => setOpenGroup((current) => (current === group.id ? null : group.id))}
-                aria-expanded={openGroup === group.id}
-                aria-controls={`more-${group.id}`}
-                className="flex min-h-12 w-full items-center gap-3 rounded-[10px] px-1.5 text-left text-[15px] font-medium text-foreground outline-none hover:bg-panel-2 focus-visible:ring-[3px] focus-visible:ring-ring/50"
-              >
-                <Wrench className="size-5 shrink-0 text-ink-2" aria-hidden />
-                <span className="min-w-0 flex-1 truncate">{group.label}</span>
-                <span className="text-caption font-medium text-ink-3">Best on a computer</span>
-                <ChevronDown
-                  aria-hidden
-                  className={cn(
-                    "size-4 shrink-0 text-ink-3 transition-transform motion-reduce:transition-none",
-                    openGroup === group.id && "rotate-180",
-                  )}
-                />
-              </button>
-              {openGroup === group.id && (
-                <div id={`more-${group.id}`} className="ml-4 border-l border-line-soft pl-2">
-                  {group.items.map((item) => (
-                    <SheetRow key={item.title} href={item.href} icon={item.icon} title={item.title} onNavigate={close} isActive={item.isActive} />
-                  ))}
-                </div>
-              )}
-            </React.Fragment>
-          ))}
-          {!advancedSection && workspaceRows.length > 0 && (
+          {workspaceRows.length > 0 && (
             <>
               <SheetLabel>Workspace</SheetLabel>
               {workspaceRows.map((item) => (

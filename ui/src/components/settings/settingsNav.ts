@@ -1,15 +1,20 @@
 import {
+  AudioLines,
   Bell,
   CircleDollarSign,
+  Cpu,
+  Database,
   Key,
   LayoutDashboard,
   type LucideIcon,
   Mail,
+  PhoneForwarded,
   Plug,
   Settings,
   ShieldCheck,
   UserRound,
   Users,
+  Wrench,
 } from "lucide-react";
 
 import type { SettingScope } from "@/components/layout/ScopeNote";
@@ -30,6 +35,11 @@ export type SettingsNavItem = {
   description: string;
   /** Hidden (and its route blocked) unless the caller's role grants this. */
   requires?: Permission;
+  /**
+   * A list with detail screens under it (/tools/<id>): only the list sits in
+   * the settings frame; a detail screen keeps the full width.
+   */
+  listOnly?: boolean;
 };
 
 export type SettingsNavSection = {
@@ -85,6 +95,49 @@ export const SETTINGS_SECTIONS: SettingsNavSection[] = [
         icon: CircleDollarSign,
         description: "Balance, top-ups and invoices.",
         requires: "billing:read",
+      },
+    ],
+  },
+  {
+    label: "Phone & AI setup",
+    scope: "workspace",
+    items: [
+      {
+        title: "Telephony",
+        url: "/telephony-configurations",
+        icon: PhoneForwarded,
+        description: "The phone accounts and numbers your agents answer and call from.",
+        requires: "telephony:read",
+        listOnly: true,
+      },
+      {
+        title: "Default voice & model",
+        url: "/model-configurations",
+        icon: Cpu,
+        description: "How your agents listen, think and speak, unless an agent has its own.",
+        requires: "credentials:write",
+      },
+      {
+        title: "Prompt audio",
+        url: "/recordings",
+        icon: AudioLines,
+        description: "Greetings and messages recorded in your own voice, for your agents to play on calls.",
+        requires: "agents:write",
+      },
+      {
+        title: "Tools",
+        url: "/tools",
+        icon: Wrench,
+        description: "Things your agents can do during a call, like checking a booking system or passing the caller to a person.",
+        requires: "agents:write",
+        listOnly: true,
+      },
+      {
+        title: "Files",
+        url: "/files",
+        icon: Database,
+        description: "Documents your agents can look things up in, like a menu, price list or FAQs.",
+        requires: "agents:write",
       },
     ],
   },

@@ -119,23 +119,25 @@ async def load_report_calls(
 async def resolve_pack(
     organization_id: int, workflow_id: int | None, agents: Sequence[Mapping[str, Any]]
 ) -> tuple[str, PackSpec, ReasonSet]:
-    """The template of the agent shown (or, for all agents, the first one
-    that is switched on, as Home picks its wording), and its pack."""
-    agent_id = workflow_id
-    if agent_id is None:
+    """The template of the agent shown, and its pack. For all agents
+    together: their shared template when every agent that is switched on (or,
+    with none on, every agent) has the same one; otherwise the general pack,
+    so a restaurant's covers never head a report that also counts a dentist."""
+    if workflow_id is not None:
+        ids = [workflow_id]
+    else:
         active = [a for a in agents if a.get("status") == "active"]
-        agent_id = (active or list(agents) or [{"id": None}])[0]["id"]
-    source = (
-        await db_client.get_agent_template_source(organization_id, agent_id)
-        if agent_id is not None
-        else None
-    )
-    template = (
-        template_for_workflow(source["definition"], source["facts"])
-        if source
-        else "general"
-    )
+        ids = [a["id"] for a in (active or list(agents))]
+    templates = {await _template_of(organization_id, agent_id) for agent_id in ids}
+    template = templates.pop() if len(templates) == 1 else "general"
     return template, pack_for_template(template), reason_set(template)
+
+
+async def _template_of(organization_id: int, agent_id: int) -> str:
+    source = await db_client.get_agent_template_source(organization_id, agent_id)
+    if not source:
+        return "general"
+    return template_for_workflow(source["definition"], source["facts"])
 
 
 async def load_layout(organization_id: int) -> StoredLayout:

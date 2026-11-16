@@ -1,13 +1,12 @@
 "use client";
 
-import { AlertTriangle, ChevronRight, SlidersHorizontal, Wrench } from "lucide-react";
+import { AlertTriangle } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import React, { useEffect, useState } from "react";
+import React, { useEffect } from "react";
 
 import { BrandLogo } from "@/components/BrandLogo";
 import ThemeToggle from "@/components/ThemeSwitcher";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import {
   Sidebar,
   SidebarContent,
@@ -30,38 +29,9 @@ import { workspaceDisplayName } from "@/lib/workspaceName";
 
 import { AgentSwitcher } from "./AgentSwitcher";
 import { initialsOf, memberName } from "./memberIdentity";
-import type { NavSection } from "./navConfig";
-import { type ResolvedNavItem, type ResolvedNavSection, useWorkspaceNav } from "./useWorkspaceNav";
+import { type ResolvedNavItem, useWorkspaceNav } from "./useWorkspaceNav";
 
 const TELEPHONY_WARNING_COPY = "Action required";
-
-/** Remembers whether "Advanced setup" was left open (closed by default). */
-export const ADVANCED_OPEN_KEY = "lightmove.nav.advancedOpen";
-/** Remembers whether the agent's own "Advanced" was left open (closed by default). */
-export const AGENT_ADVANCED_OPEN_KEY = "lightmove.nav.agentAdvancedOpen";
-
-type CollapsibleId = Extract<NavSection["id"], "advanced" | "agent-advanced">;
-
-const OPEN_KEYS: Record<CollapsibleId, string> = {
-  advanced: ADVANCED_OPEN_KEY,
-  "agent-advanced": AGENT_ADVANCED_OPEN_KEY,
-};
-
-function readOpen(id: CollapsibleId): boolean {
-  try {
-    return globalThis.localStorage?.getItem(OPEN_KEYS[id]) === "1";
-  } catch {
-    return false;
-  }
-}
-
-function writeOpen(id: CollapsibleId, open: boolean) {
-  try {
-    globalThis.localStorage?.setItem(OPEN_KEYS[id], open ? "1" : "0");
-  } catch {
-    // Storage unavailable: the row just starts closed next time.
-  }
-}
 
 /** What a nav row needs. */
 type SidebarLinkProps = {
@@ -86,10 +56,10 @@ function badgeLabel(title: string, count: number): string {
  *
  *   [business card]          workspace name
  *   Home · Calls · Follow-ups · Bookings · Reports
- *   AGENT   [switcher]       which agent, and the number that rings it
- *           What your agent knows · Phone number · Advanced ›
- *   WORKSPACE                Voice agents · Team · Billing · Settings
- *           Advanced setup › every builder screen, folded away (remembered)
+ *   YOUR AGENT  [switcher]   which agent, and the number that rings it
+ *           What your agent knows · Phone number · Voice & model ·
+ *           Call flow · Agent settings
+ *   WORKSPACE                Voice agents · Integrations · Settings
  *   ─────────────
  *   [you] name, role         dark mode
  *
@@ -107,15 +77,6 @@ export function AppSidebar({ docked = true }: { docked?: boolean }) {
   const { role, orgContext } = useOrgConfig();
   const { user } = useAuth();
   const sections = useWorkspaceNav();
-
-  // "Advanced" and "Advanced setup" start closed, remember the member's
-  // choice, and are open whenever one of their screens is the current one.
-  const [open, setOpen] = useState<Record<CollapsibleId, boolean>>({ advanced: false, "agent-advanced": false });
-  useEffect(() => setOpen({ advanced: readOpen("advanced"), "agent-advanced": readOpen("agent-advanced") }), []);
-  const toggle = (id: CollapsibleId, next: boolean) => {
-    setOpen((current) => ({ ...current, [id]: next }));
-    writeOpen(id, next);
-  };
 
   const handleMobileNavClick = () => {
     if (isMobile) {
@@ -230,52 +191,6 @@ export function AppSidebar({ docked = true }: { docked?: boolean }) {
     </SidebarMenuItem>
   );
 
-  const collapsibleGroup = (section: ResolvedNavSection) => {
-    const id = section.id as CollapsibleId;
-    const isOpen = open[id] || section.items.some((item) => item.isActive);
-    const Icon = id === "agent-advanced" ? SlidersHorizontal : Wrench;
-    return (
-      <SidebarGroup key={section.id} className={cn("px-2 py-0", id === "advanced" && "pt-2")}>
-        <Collapsible open={isOpen} onOpenChange={(next) => toggle(id, next)}>
-          <SidebarMenu>
-            <SidebarMenuItem>
-              <CollapsibleTrigger asChild>
-                <SidebarMenuButton
-                  tooltip={{ children: <p>{section.label}</p> }}
-                  className={cn(
-                    "h-auto gap-2.5 rounded-lg px-2.5 py-2 text-sm font-medium text-ink-3",
-                    isMobile && "min-h-11 py-2.5 text-[14.5px]",
-                    "transition-colors hover:bg-panel-2 hover:text-foreground",
-                    isCollapsed && "justify-center"
-                  )}
-                >
-                  <Icon className="h-[17px] w-[17px] shrink-0" aria-hidden />
-                  <span className={cn("notranslate min-w-0 flex-1 truncate text-left", isCollapsed && "sr-only")}>
-                    {section.label}
-                  </span>
-                  {!isCollapsed && (
-                    <ChevronRight
-                      aria-hidden
-                      className={cn(
-                        "h-3.5 w-3.5 shrink-0 transition-transform motion-reduce:transition-none",
-                        isOpen && "rotate-90"
-                      )}
-                    />
-                  )}
-                </SidebarMenuButton>
-              </CollapsibleTrigger>
-            </SidebarMenuItem>
-          </SidebarMenu>
-          <CollapsibleContent>
-            <SidebarMenu className={cn("mt-0.5 gap-0.5", !isCollapsed && "pl-3")}>
-              {section.items.map(navRow)}
-            </SidebarMenu>
-          </CollapsibleContent>
-        </Collapsible>
-      </SidebarGroup>
-    );
-  };
-
   const groupLabel = (label: string) => (
     <SidebarGroupLabel className={cn(GROUP_LABEL_CLASS, isCollapsed && "hidden")} translate="no">
       {label}
@@ -283,17 +198,13 @@ export function AppSidebar({ docked = true }: { docked?: boolean }) {
   );
   const switcher = <AgentSwitcher collapsed={isCollapsed} onNavigate={handleMobileNavClick} />;
 
-  const nav: React.ReactNode[] = sections.map((section) =>
-    section.collapsible ? (
-      collapsibleGroup(section)
-    ) : (
-      <SidebarGroup key={section.id} className="px-2 py-0">
-        {section.label && groupLabel(section.label)}
-        {section.id === "agent" && switcher}
-        <SidebarMenu className="gap-0.5">{section.items.map(navRow)}</SidebarMenu>
-      </SidebarGroup>
-    )
-  );
+  const nav: React.ReactNode[] = sections.map((section) => (
+    <SidebarGroup key={section.id} className="px-2 py-0">
+      {section.label && groupLabel(section.label)}
+      {section.id === "agent" && switcher}
+      <SidebarMenu className="gap-0.5">{section.items.map(navRow)}</SidebarMenu>
+    </SidebarGroup>
+  ));
   // No agent yet: the Agent heading still shows, with a way to create one.
   if (!sections.some((section) => section.id === "agent")) {
     const at = sections.findIndex((section) => section.id === "main") + 1;
@@ -301,7 +212,7 @@ export function AppSidebar({ docked = true }: { docked?: boolean }) {
       at,
       0,
       <SidebarGroup key="agent" className="px-2 py-0">
-        {groupLabel("Agent")}
+        {groupLabel("Your agent")}
         {switcher}
       </SidebarGroup>,
     );

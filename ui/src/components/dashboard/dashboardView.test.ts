@@ -346,3 +346,17 @@ describe("agentNameParts", () => {
         expect(agentLineShort({ phone_numbers: ["7000", "7001"] })).toBe("Answers 7000 +1");
     });
 });
+
+describe("several agents together", () => {
+    it("speaks of them in the plural", () => {
+        expect(rangeSentence("7d", NOW, DUBLIN, true)).toBe("Here's how your phone agents did in the last 7 days.");
+        expect(notAnsweringWords("no_number", true)).toMatchObject({
+            title: "None of your agents is answering",
+            detail: "No phone number is linked to any of your agents yet, so they can't take calls.",
+            fix: { label: "Link a number" },
+        });
+        expect(notAnsweringWords("no_credit", true).title).toBe("Your agents aren't answering");
+        // One agent keeps the singular.
+        expect(notAnsweringWords("no_number").title).toBe("Your agent isn't answering");
+    });
+});

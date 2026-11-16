@@ -41,49 +41,49 @@ describe("getRequiredPermission", () => {
     expect(getRequiredPermission("/teams-of-agents")).toBeNull();
   });
 
-  it("gives Team and Billing their own rows, and folds the rest of Settings into one", () => {
+  it("puts Team, Billing and the phone and AI setup under Settings", () => {
     const items = NAV_SECTIONS.flatMap((section) => section.items);
     expect(items.find((item) => item.settingsHub)?.url).toBe("/settings");
-    expect(items.find((item) => item.url === "/team")?.requires).toBe("members:read");
-    expect(items.find((item) => item.url === "/billing")?.requires).toBe("billing:read");
-    expect(items.some((item) => item.url === "/api-keys")).toBe(false);
-    expect(items.find((item) => item.url === "/tools")?.requires).toBe("agents:write");
+    for (const url of ["/team", "/billing", "/api-keys", "/tools", "/files", "/telephony-configurations", "/recordings"]) {
+      expect(items.some((item) => item.url === url)).toBe(false);
+    }
+    // Their screens stay as strict as before.
+    expect(getRequiredPermission("/tools")).toBe("agents:write");
+    expect(getRequiredPermission("/tools/abc")).toBe("agents:write");
+    expect(getRequiredPermission("/files")).toBe("agents:write");
+    expect(getRequiredPermission("/recordings")).toBe("agents:write");
+    expect(getRequiredPermission("/model-configurations")).toBe("credentials:write");
   });
 });
 
 describe("the one menu", () => {
-  it("has the business, the agent, and the workspace, with the builder screens folded away", () => {
-    expect(NAV_SECTIONS.map((section) => [section.id, section.label ?? null, Boolean(section.collapsible)])).toEqual([
-      ["main", null, false],
-      ["agent", "Agent", false],
-      ["agent-advanced", "Advanced", true],
-      ["workspace", "Workspace", false],
-      ["advanced", "Advanced setup", true],
+  it("has the business, the agent and the workspace, with nothing folded away", () => {
+    expect(NAV_SECTIONS.map((section) => [section.id, section.label ?? null])).toEqual([
+      ["main", null],
+      ["agent", "Your agent"],
+      ["workspace", "Workspace"],
     ]);
     const titles = (id: string) => NAV_SECTIONS.find((s) => s.id === id)!.items.map((item) => item.title);
     expect(titles("main")).toEqual(["Home", "Calls", "Follow-ups", "Bookings", "Reports"]);
-    expect(titles("agent")).toEqual(["What your agent knows", "Phone number"]);
-    expect(titles("agent-advanced")).toEqual(["Conversation", "Model and voice", "Advanced settings"]);
-    expect(titles("workspace")).toEqual(["Voice agents", "Team", "Billing", "Settings"]);
-    expect(titles("advanced")).toEqual([
-      "Integrations",
-      "Tools",
-      "Files",
-      "Telephony",
-      "Models & voice",
-      "Prompt audio",
+    expect(titles("agent")).toEqual([
+      "What your agent knows",
+      "Phone number",
+      "Voice & model",
+      "Call flow",
+      "Agent settings",
     ]);
+    // Campaigns and Skills are switched off by default.
+    expect(titles("workspace")).toEqual(["Voice agents", "Integrations", "Settings"]);
   });
 
   it("keeps every row as strict as its screen", () => {
     const items = NAV_SECTIONS.flatMap((section) => section.items);
     const requires = (title: string) => items.find((item) => item.title === title)?.requires;
-    expect(requires("Model and voice")).toBe("agents:write");
-    expect(requires("Advanced settings")).toBe("agents:write");
-    expect(requires("Conversation")).toBe("agents:read");
+    expect(requires("Voice & model")).toBe("agents:write");
+    expect(requires("Agent settings")).toBe("agents:write");
+    expect(requires("Call flow")).toBe("agents:read");
     expect(requires("What your agent knows")).toBe("agents:read");
-    expect(requires("Models & voice")).toBe("credentials:write");
-    expect(requires("Telephony")).toBe("telephony:read");
+    expect(requires("Integrations")).toBe("integrations:read");
   });
 
   it("names the dashboard Home in the breadcrumb", () => {

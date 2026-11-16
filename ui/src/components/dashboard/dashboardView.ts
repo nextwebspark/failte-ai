@@ -196,9 +196,11 @@ export function afterHoursWords(afterHours: {
     return { count, note };
 }
 
-export function rangeSentence(range: DashboardRange, now: Date, timezone?: string | null): string {
-    if (range === "today") return `Here's how your phone agent did today, ${dayLine(now, timezone)}.`;
-    return `Here's how your phone agent did in the last ${range === "7d" ? "7" : "30"} days.`;
+/** `several`: Home shows all of a workspace's agents together. */
+export function rangeSentence(range: DashboardRange, now: Date, timezone?: string | null, several = false): string {
+    const who = several ? "your phone agents" : "your phone agent";
+    if (range === "today") return `Here's how ${who} did today, ${dayLine(now, timezone)}.`;
+    return `Here's how ${who} did in the last ${range === "7d" ? "7" : "30"} days.`;
 }
 
 /** The Calls tile's label for the range. */
@@ -226,12 +228,44 @@ export function changeWords(
     };
 }
 
-/** What the "not answering" banner says, and the fix it offers. */
-export function notAnsweringWords(reason: NotAnsweringReason): {
+/**
+ * What the "not answering" banner says, and the fix it offers. `several`:
+ * Home shows all of a workspace's agents together, and none of them answers.
+ */
+export function notAnsweringWords(reason: NotAnsweringReason, several = false): {
     title: string;
     detail: string;
     fix: { label: string; href: string; requires: "billing:read" | "telephony:read" | "agents:write" | "agents:read" };
 } {
+    if (several && reason !== "no_agent") {
+        const fix = notAnsweringWords(reason).fix;
+        switch (reason) {
+            case "no_credit":
+                return {
+                    title: "Your agents aren't answering",
+                    detail: "Your credit has run out, so calls can't start. Top up to switch them back on.",
+                    fix,
+                };
+            case "number_off":
+                return {
+                    title: "Your agents aren't answering",
+                    detail: "Your phone numbers are switched off, so calls don't reach your agents.",
+                    fix,
+                };
+            case "agent_off":
+                return {
+                    title: "Your agents aren't answering",
+                    detail: "Your agents are switched off, so nobody answers calls to your numbers.",
+                    fix,
+                };
+            default:
+                return {
+                    title: "None of your agents is answering",
+                    detail: "No phone number is linked to any of your agents yet, so they can't take calls.",
+                    fix,
+                };
+        }
+    }
     switch (reason) {
         case "no_credit":
             return {

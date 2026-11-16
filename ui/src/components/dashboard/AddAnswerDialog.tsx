@@ -67,7 +67,7 @@ export function AddAnswerDialog({
                 toast.error(
                     current.error
                         ? SAVE_FAILED
-                        : "This agent has no list of answers to add to. Change its wording in advanced setup.",
+                        : "This agent has no list of answers to add to. Change what it says in its call flow.",
                 );
                 return;
             }

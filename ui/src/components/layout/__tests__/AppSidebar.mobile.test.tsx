@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { SidebarProvider, useSidebar } from "@/components/ui/sidebar";
 
-import { ADVANCED_OPEN_KEY, AGENT_ADVANCED_OPEN_KEY, AppSidebar } from "../AppSidebar";
+import { AppSidebar } from "../AppSidebar";
 
 const mocks = vi.hoisted(() => ({
   pathname: "/overview",
@@ -102,12 +102,11 @@ describe("AppSidebar on a phone", () => {
     await waitFor(() => expect(screen.getByText("menu closed")).toBeTruthy());
   });
 
-  it("marks the section of a nested screen as the current page, opening Advanced setup for it", async () => {
+  it("lights Settings on a setup screen that now lives under it", async () => {
     mocks.pathname = "/telephony-configurations/7";
     await openMenu();
     const current = await screen.findByRole("link", { current: "page" });
-    expect(current.textContent).toContain("Telephony");
-    expect(screen.getByRole("button", { name: "Advanced setup" }).getAttribute("aria-expanded")).toBe("true");
+    expect(current.textContent).toContain("Settings");
   });
 });
 
@@ -121,7 +120,7 @@ describe("AppSidebar layout", () => {
     localStorage.clear();
   });
 
-  it("lists the business first, then the agent, then the workspace, with the builder screens folded away", async () => {
+  it("lists the business first, then the agent, then the workspace, with nothing folded away", async () => {
     await openMenu();
     const links = screen.getAllByRole("link").map((a) => a.textContent?.trim());
     expect(links).toEqual([
@@ -132,14 +131,16 @@ describe("AppSidebar layout", () => {
       "Reports",
       "What your agent knows",
       "Phone number",
+      "Voice & model",
+      "Call flow",
+      "Agent settings",
       "Voice agents",
-      "Team",
-      "Billing",
+      "Integrations",
       "Settings",
     ]);
-    expect(screen.getByText("Agent")).toBeTruthy();
+    expect(screen.getByText("Your agent")).toBeTruthy();
     expect(screen.getByText("Workspace")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Advanced" }).getAttribute("aria-expanded")).toBe("false");
+    expect(screen.queryByRole("button", { name: /Advanced/ })).toBeNull();
     expect(screen.queryByText(/for your developer/i)).toBeNull();
     expect(screen.getByRole("link", { name: "Home" }).getAttribute("aria-current")).toBe("page");
   });
@@ -149,24 +150,6 @@ describe("AppSidebar layout", () => {
     expect(screen.getByText("Trattoria Bella")).toBeTruthy();
     expect(screen.getByText("Maria Keane")).toBeTruthy();
     expect(screen.getByText("Admin")).toBeTruthy();
-  });
-
-  it("opens Advanced setup on request and remembers it", async () => {
-    await openMenu();
-    const toggle = screen.getByRole("button", { name: "Advanced setup" });
-    expect(toggle.getAttribute("aria-expanded")).toBe("false");
-    fireEvent.click(toggle);
-    for (const name of ["Models & voice", "Telephony", "Tools", "Integrations", "Files", "Prompt audio"]) {
-      expect(screen.getByRole("link", { name })).toBeTruthy();
-    }
-    expect(localStorage.getItem(ADVANCED_OPEN_KEY)).toBe("1");
-  });
-
-  it("opens the agent's Advanced on request and remembers it", async () => {
-    await openMenu();
-    fireEvent.click(screen.getByRole("button", { name: "Advanced" }));
-    expect(screen.getByRole("link", { name: "Conversation" }).getAttribute("href")).toBe("/workflow/14");
-    expect(localStorage.getItem(AGENT_ADVANCED_OPEN_KEY)).toBe("1");
   });
 
   it("points the Agent rows at the agent", async () => {
@@ -181,16 +164,15 @@ describe("AppSidebar layout", () => {
     expect(screen.getByRole("link", { name: "What your agent knows" }).getAttribute("href")).toBe("/workflow");
   });
 
-  it("hides the builder screens an owner can't open", async () => {
+  it("hides the screens an owner can't open", async () => {
     mocks.role = "viewer";
     const owner = new Set(["agents:read", "calls:read", "reports:read", "members:read", "billing:read", "campaigns:read", "agents:facts", "bookings:manage"]);
     mocks.can = (p) => owner.has(p);
     await openMenu();
-    expect(screen.getByRole("link", { name: "Team" })).toBeTruthy();
-    expect(screen.getByRole("link", { name: "Billing" })).toBeTruthy();
-    // None of the builder screens is theirs, so the whole group is left out.
-    expect(screen.queryByRole("button", { name: "Advanced setup" })).toBeNull();
-    expect(screen.queryByRole("link", { name: "Tools" })).toBeNull();
-    expect(screen.queryByRole("link", { name: "Telephony" })).toBeNull();
+    expect(screen.getByRole("link", { name: "Settings" })).toBeTruthy();
+    expect(screen.queryByRole("link", { name: "Integrations" })).toBeNull();
+    expect(screen.queryByRole("link", { name: "Voice & model" })).toBeNull();
+    expect(screen.queryByRole("link", { name: "Agent settings" })).toBeNull();
   });
+
 });

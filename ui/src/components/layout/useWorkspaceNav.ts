@@ -31,16 +31,9 @@ export type ResolvedNavItem = NavItem & {
 
 export type ResolvedNavSection = Omit<NavSection, "items"> & { items: ResolvedNavItem[] };
 
-/** Screens with a row of their own in the Workspace section, not under Settings. */
-const OWN_ROW_SETTINGS = ["/team", "/billing"];
-
-/**
- * Where the Settings row leads: the first settings screen this member may
- * open that doesn't already have its own row (Team, Billing).
- */
+/** Where the Settings row leads: the first settings screen this member may open. */
 export function settingsHubUrl(can: ((permission: Permission) => boolean) | null): string {
-  const items = visibleSettingsSections(can).flatMap((section) => section.items);
-  return (items.find((item) => !OWN_ROW_SETTINGS.includes(item.url)) ?? items[0])?.url ?? "/account";
+  return visibleSettingsSections(can)[0]?.items[0]?.url ?? "/account";
 }
 
 /**
@@ -78,7 +71,7 @@ export function useWorkspaceNav(): ResolvedNavSection[] {
     let isActive: boolean;
     if (item.settingsHub) {
       href = settingsUrl;
-      isActive = isSettingsRoute(pathname) && !OWN_ROW_SETTINGS.some((url) => isWithin(pathname, url));
+      isActive = isSettingsRoute(pathname);
     } else if (item.agentSegment !== undefined) {
       // While the agents load, the rows lead to the agents list.
       href = selected ? agentHref(selected.id, item.agentSegment, item.agentHash) : item.url;
@@ -101,7 +94,7 @@ export function useWorkspaceNav(): ResolvedNavSection[] {
 
   const noAgent = agents !== null && agents.length === 0 && selected === null;
   return getNavSections(featureFlags)
-    .filter((section) => !(noAgent && (section.id === "agent" || section.id === "agent-advanced")))
+    .filter((section) => !(noAgent && section.id === "agent"))
     .map((section) => ({ ...section, items: section.items.filter(allowed).map(resolve) }))
     .filter((section) => section.items.length > 0);
 }

@@ -992,7 +992,7 @@ function ReadyForCalls({
                         href={`/workflow/${workflowId}`}
                         className="font-semibold text-brand underline-offset-2 hover:underline"
                     >
-                        Open advanced setup
+                        Open the call flow
                     </Link>
                 </p>
             )}

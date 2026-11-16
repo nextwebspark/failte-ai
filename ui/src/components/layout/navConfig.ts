@@ -1,22 +1,15 @@
 import {
-  AudioLines,
   BookOpen,
   CalendarDays,
   ChartLine,
-  CircleDollarSign,
-  Cpu,
-  Database,
   GitBranch,
   Home,
   ListChecks,
   type LucideIcon,
   Megaphone,
   Phone,
-  PhoneForwarded,
   Plug,
   Settings,
-  Users,
-  Wrench,
 } from "lucide-react";
 
 import { SETTINGS_ROUTE_PERMISSIONS } from "@/components/settings/settingsNav";
@@ -31,12 +24,13 @@ import { AGENT_PAGES } from "./agentNav";
  * the breadcrumb for each route.
  *
  *   Home · Calls · Follow-ups · Bookings · Reports        the business, every day
- *   AGENT   [switcher: which agent, which number rings it]
- *           What your agent knows · Phone number
- *           Advanced ›  Conversation · Model and voice · Advanced settings
- *   WORKSPACE  Voice agents · Team · Billing · Settings
- *           Advanced setup ›  Integrations · Tools · Files · Telephony ·
- *                             Models & voice · Prompt audio (· Campaigns · Skills)
+ *   YOUR AGENT  [switcher: which agent, which number rings it]
+ *           What your agent knows · Phone number · Voice & model ·
+ *           Call flow · Agent settings
+ *   WORKSPACE  Voice agents · Integrations · Settings (· Campaigns · Skills)
+ *
+ * Team, Billing and the phone and AI setup (Telephony, Default voice & model,
+ * Prompt audio, Tools, Files) live in the Settings menu (settingsNav.ts).
  *
  * The Agent rows always point at the selected agent (workspaceAgents.tsx).
  */
@@ -69,12 +63,10 @@ export type NavItem = {
 };
 
 export type NavSection = {
-  /** Stable key (also the remembered open/closed state of a collapsible group). */
-  id: "main" | "agent" | "agent-advanced" | "workspace" | "advanced";
+  /** Stable key. */
+  id: "main" | "agent" | "workspace";
   label?: string;
   items: NavItem[];
-  /** Shown as one row that opens and closes ("Advanced"). */
-  collapsible?: boolean;
 };
 
 /** The Follow-ups row; its open count is set as `badge` by the sidebar. */
@@ -83,8 +75,8 @@ export const FOLLOW_UPS_URL = "/follow-ups";
 /** The Calls row: also lit on an agent's own calls and on one call. */
 export const CALLS_URL = "/usage";
 
-const agentRows = (advanced: boolean): NavItem[] =>
-  AGENT_PAGES.filter((page) => !page.notInMenu && Boolean(page.advanced) === advanced).map((page) => ({
+const agentRows = (): NavItem[] =>
+  AGENT_PAGES.filter((page) => !page.notInMenu).map((page) => ({
     title: page.title,
     url: "/workflow",
     icon: page.icon,
@@ -105,39 +97,19 @@ const ALL_NAV_SECTIONS: NavSection[] = [
       { title: "Reports", url: "/reports", icon: ChartLine, requires: "reports:read" },
     ],
   },
-  { id: "agent", label: "Agent", items: agentRows(false) },
-  { id: "agent-advanced", label: "Advanced", collapsible: true, items: agentRows(true) },
+  { id: "agent", label: "Your agent", items: agentRows() },
   {
     id: "workspace",
     label: "Workspace",
     items: [
       { title: "Voice agents", url: "/workflow", icon: GitBranch, requires: "agents:read" },
-      { title: "Team", url: "/team", icon: Users, requires: "members:read" },
-      { title: "Billing", url: "/billing", icon: CircleDollarSign, requires: "billing:read" },
-      // Notifications, Reports by email, Compliance, API keys and Your account
-      // live under Settings.
-      { title: "Settings", url: "/settings", icon: Settings, settingsHub: true },
-    ],
-  },
-  {
-    id: "advanced",
-    label: "Advanced setup",
-    collapsible: true,
-    items: [
       { title: "Integrations", url: "/integrations", icon: Plug, requires: "integrations:read" },
-      { title: "Tools", url: "/tools", icon: Wrench, requires: "agents:write" },
-      { title: "Files", url: "/files", icon: Database, requires: "agents:write" },
-      {
-        title: "Telephony",
-        url: "/telephony-configurations",
-        icon: PhoneForwarded,
-        showsTelephonyWarning: true,
-        requires: "telephony:read",
-      },
-      { title: "Models & voice", url: "/model-configurations", icon: Cpu, requires: "credentials:write" },
-      { title: "Prompt audio", url: "/recordings", icon: AudioLines, requires: "agents:write" },
       { title: "Campaigns", url: "/campaigns", icon: Megaphone, requires: "campaigns:read", feature: "campaigns" },
       { title: "Skills", url: "/skills", icon: BookOpen, requires: "agents:read", feature: "skills" },
+      // Team, Billing, Telephony, voice and model defaults, Prompt audio,
+      // Tools, Files, Notifications, Compliance, API keys and Your account
+      // live under Settings. A telephony problem shows its dot here.
+      { title: "Settings", url: "/settings", icon: Settings, settingsHub: true, showsTelephonyWarning: true },
     ],
   },
 ];
@@ -183,7 +155,7 @@ const PAGE_META: Record<string, PageMeta> = {
   "/workflow/create": { title: "New voice agent", subtitle: "Pick a ready-made agent" },
   "/campaigns": { title: "Campaigns", subtitle: "Bulk runs across contact lists" },
   "/campaigns/new": { title: "New campaign", subtitle: "Pick an agent and a contact list" },
-  "/model-configurations": { title: "Models & voice", subtitle: "How your agents listen, think and speak" },
+  "/model-configurations": { title: "Default voice & model", subtitle: "How your agents listen, think and speak" },
   "/telephony-configurations": { title: "Telephony", subtitle: "Your phone accounts and numbers" },
   "/tools": { title: "Tools", subtitle: "Things your agents can do during a call" },
   "/integrations": { title: "Integrations", subtitle: "Connect apps like Google Calendar to your agents" },
@@ -248,7 +220,7 @@ const ROUTE_PERMISSIONS: Record<string, Permission> = {
 };
 
 /**
- * An agent's editing screens (Advanced settings, Model and voice): only for
+ * An agent's editing screens (Agent settings, Voice & model): only for
  * people who may change the agent. Staff still see the agent's calls,
  * what it knows, its phone number and its conversation.
  */

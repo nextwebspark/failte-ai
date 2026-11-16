@@ -3,6 +3,7 @@
 import type { ReactNode } from "react";
 
 import { useOwnsPageHeading } from "@/components/layout/pageHeading";
+import { useInSettingsFrame } from "@/components/settings/SettingsFrameContext";
 import { cn } from "@/lib/utils";
 
 export interface PageHeaderProps {
@@ -22,6 +23,11 @@ export interface PageHeaderProps {
  */
 export function PageHeader({ title, description, action, className }: PageHeaderProps) {
   useOwnsPageHeading();
+  const framed = useInSettingsFrame();
+  // Inside Settings the frame prints the title and description already.
+  if (framed) {
+    return action ? <div className={cn("mb-4 flex justify-end gap-2", className)}>{action}</div> : null;
+  }
   return (
     <header className={cn("mb-6 flex flex-wrap items-start justify-between gap-x-4 gap-y-2", className)}>
       <div className="min-w-0 max-w-2xl">
